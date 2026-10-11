@@ -198,6 +198,17 @@ function formatEuro(value: number) {
   return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(value)
 }
 
+/**
+ * Jour AAAA-MM-JJ d'une date d'intervention : une date de calendrier (minuit
+ * UTC, formulaire) garde son jour ; un horodatage (assistant, ancien « Noter »)
+ * prend le jour local. `split("T")` avançait d'un jour un arrosage du soir aux
+ * Antilles, que la garde « date dans le futur » refusait ensuite (revue QA
+ * cmv3jatw8).
+ */
+function jourSaisi(iso: string): string {
+  return /T00:00:00(\.000)?Z$/.test(iso) ? iso.slice(0, 10) : new Date(iso).toLocaleDateString("sv-SE")
+}
+
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("fr-FR")
 }
@@ -414,6 +425,21 @@ export default function InterventionsPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
+    // Ticket QA cmv3jatw8 : une intervention réalisée datée d'après aujourd'hui
+    // (arrosage du 12/10 coché « réalisé » le 11/10) brouillait le dernier
+    // arrosage du conseil d'irrigation.
+    // Seulement sur un geste de l'utilisateur : une intervention déjà réalisée
+    // dont ni la date ni l'état ne changent s'enregistre telle quelle (revue).
+    const dateOuEtatChange =
+      !editingIntervention || !editingIntervention.fait || form.date !== jourSaisi(editingIntervention.date)
+    if (form.fait && dateOuEtatChange && form.date > todayLocalISO()) {
+      toast({
+        variant: "destructive",
+        title: "Date dans le futur",
+        description: "Une intervention réalisée se date au plus tard aujourd'hui. Datez-la du jour où elle a été faite, ou laissez-la planifiée.",
+      })
+      return
+    }
 
     const dureeMinutes =
       (form.dureeHeures ? parseInt(form.dureeHeures) * 60 : 0) +
@@ -509,7 +535,8 @@ export default function InterventionsPage() {
     // modifier » muet : on ouvre la fiche, cochée « Réalisée », pour la saisir.
     if (!intervention.dureeMinutes) {
       handleEdit(intervention)
-      setForm((f) => ({ ...f, fait: true }))
+      // Réalisée maintenant : une date prévue plus tard devient celle du jour (QA cmv3jatw8).
+      setForm((f) => ({ ...f, fait: true, date: f.date > todayLocalISO() ? todayLocalISO() : f.date }))
       toast({ title: "Durée à renseigner", description: "Indiquez le temps passé pour marquer l'intervention comme réalisée." })
       return
     }
@@ -602,7 +629,7 @@ export default function InterventionsPage() {
     setArrosageAComplete(null)
     setEditingIntervention(intervention)
     setForm({
-      date: intervention.date ? intervention.date.split("T")[0] : todayLocalISO(),
+      date: intervention.date ? jourSaisi(intervention.date) : todayLocalISO(),
       type: intervention.type,
       cultureId: intervention.cultureId?.toString() || "",
       plancheId: valeurOptionPlancheRef(intervention.plancheId, planches),
@@ -845,7 +872,10 @@ export default function InterventionsPage() {
                       <Input
                         type="date"
                         value={form.date}
-                        onChange={(e) => setForm({ ...form, date: e.target.value })}
+                        // Une date future se planifie : « Réalisée » se décoche (QA cmv3jatw8).
+                        onChange={(e) =>
+                          setForm({ ...form, date: e.target.value, ...(e.target.value > todayLocalISO() ? { fait: false } : {}) })
+                        }
                         required
                       />
                     </div>
@@ -878,7 +908,14 @@ export default function InterventionsPage() {
                         <input
                           type="checkbox"
                           checked={form.fait}
-                          onChange={(e) => setForm({ ...form, fait: e.target.checked })}
+                          // Réalisée : au plus tard aujourd'hui (QA cmv3jatw8).
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              fait: e.target.checked,
+                              ...(e.target.checked && form.date > todayLocalISO() ? { date: todayLocalISO() } : {}),
+                            })
+                          }
                           className="rounded"
                         />
                         <span className="text-sm">{form.fait ? "Réalisée" : "Planifiée"}</span>

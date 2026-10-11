@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { consommationHebdoTotale } from "@/lib/irrigation/consommation"
 import { libelleIrrigation } from '@/lib/planches/libelle-irrigation'
+import { formatNombre } from '@/lib/accueil/classement'
 
 interface MeteoResume {
   pluie48h: number
@@ -734,8 +735,9 @@ function CulturesIrriguerContent() {
                                 {culture.raisonUrgence}
                                 {culture.reserve && culture.reserve.litresParM2 > 0 && (
                                   <>
-                                    {" "}Dose conseillée : {culture.reserve.litresParM2} L/m²
-                                    {culture.reserve.litresConseilles > 0 && `, soit ${culture.reserve.litresConseilles} L pour cette culture`}
+                                    {/* Nombres à la française (QA cmv3javy4). */}
+                                    {" "}Dose conseillée : {formatNombre(culture.reserve.litresParM2, 1)} L/m²
+                                    {culture.reserve.litresConseilles > 0 && `, soit ${formatNombre(culture.reserve.litresConseilles)} L pour cette culture`}
                                     {culture.reserve.passages >= 2 &&
                                       `, en ${culture.reserve.passages} passages d'environ ${Math.round(culture.reserve.litresParM2 / culture.reserve.passages)} L/m² espacés de quelques heures`}.
                                   </>

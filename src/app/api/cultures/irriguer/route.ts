@@ -1,7 +1,7 @@
 /**
  * API Route pour les cultures à irriguer — intégration météo complète
  * GET  /api/cultures/irriguer - Liste avec urgence météo-aware
- * PATCH /api/cultures/irriguer - Marquer arrosage, l'annuler / toggle aIrriguer
+ * PATCH /api/cultures/irriguer - Marquer arrosage (avec ou sans litres versés), l'annuler / toggle aIrriguer
  *
  * Le calcul (bilan hydrique, urgences, consommations) vit dans
  * src/lib/irrigation-conseil.ts, partagé avec l'assistant IA pour que les
@@ -12,7 +12,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { getUserId, refusSiLectureSeule } from '@/lib/exploitation/garde-session'
 import prisma from '@/lib/prisma'
-import { annulerArrosageCultures, enregistrerArrosageCultures, supprimerArrosageNote } from '@/lib/irrigation-recording'
+import {
+  annulerArrosageCultures,
+  annulerArrosageMesure,
+  enregistrerArrosageCultures,
+  enregistrerArrosageMesure,
+  supprimerArrosageNote,
+} from '@/lib/irrigation-recording'
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
 
 // ── GET ─────────────────────────────────────────────────────
@@ -51,6 +57,16 @@ export async function PATCH(request: NextRequest) {
     const { cultureId, cultureIds, aIrriguer, marquerArrosage } = body
     const notes = typeof body.notes === 'string' ? body.notes : null
 
+    // Annuler un arrosage noté avec sa quantité : l'intervention créée.
+    if (body.annulerArrosage === true && body.interventionId !== undefined) {
+      const interventionId = Number(body.interventionId)
+      if (!Number.isInteger(interventionId) || interventionId <= 0) {
+        return NextResponse.json({ error: 'interventionId invalide' }, { status: 400 })
+      }
+      const result = await annulerArrosageMesure({ userId, interventionId })
+      return NextResponse.json({ success: true, ...result })
+    }
+
     // Annuler un arrosage noté (inverse exact, revue du 2026-10-10).
     if (body.annulerArrosage === true) {
       const dateEffective = new Date(body.dateEffective)
@@ -65,6 +81,15 @@ export async function PATCH(request: NextRequest) {
     // Arrosage multiple (groupe par îlot). Chaque culture demandée étend la
     // mise à jour à ses colocataires actifs sur la même planche.
     if (marquerArrosage && cultureIds && Array.isArray(cultureIds)) {
+      // Quantité versée connue (ticket QA cmv3japsf) : le bilan retranche ces
+      // litres au lieu de remettre la réserve pleine.
+      if (body.litres !== undefined && body.litres !== null) {
+        const mesure = await enregistrerArrosageMesure({ userId, cultureIds, litres: Number(body.litres), notes })
+        if (!mesure.ok) {
+          return NextResponse.json({ error: mesure.erreur }, { status: mesure.erreur === 'Culture non trouvée' ? 404 : 400 })
+        }
+        return NextResponse.json({ success: true, ...mesure })
+      }
       const result = await enregistrerArrosageCultures({
         userId,
         cultureIds,

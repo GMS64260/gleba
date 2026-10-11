@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
+import { apresDemain, MESSAGE_REALISEE_FUTURE } from '@/lib/interventions/date-realisee'
 import { irrigationCache } from '@/lib/irrigation-cache'
 import { supprimerArrosageNote } from '@/lib/irrigation-recording'
 import { lireAnnee } from '@/lib/api/annee'
@@ -516,6 +517,10 @@ export async function POST(request: NextRequest) {
 
     const userId = session.user.id
     const d = parsed.data
+    // Réalisée dans le futur : refusée (ticket QA cmv3jatw8, `date-realisee.ts`).
+    if (d.fait && apresDemain(d.date)) {
+      return NextResponse.json({ error: MESSAGE_REALISEE_FUTURE }, { status: 400 })
+    }
     // On stocke l'identifiant de la planche, jamais son libellé (règle du
     // projet) ; une référence par nom, héritée des anciens formulaires, est
     // traduite ; une référence inconnue est conservée telle quelle.
@@ -667,6 +672,12 @@ export async function PATCH(request: NextRequest) {
           { status: 400 }
         )
       }
+    }
+
+    const faitFinal = updates.fait !== undefined ? updates.fait === true : existing.fait
+    const dateFinale = updates.date !== undefined ? new Date(updates.date) : existing.date
+    if (faitFinal && !Number.isNaN(dateFinale.getTime()) && apresDemain(dateFinale)) {
+      return NextResponse.json({ error: MESSAGE_REALISEE_FUTURE }, { status: 400 })
     }
 
     // Build update data

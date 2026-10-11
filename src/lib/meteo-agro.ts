@@ -7,8 +7,8 @@
 import type { MeteoJournaliere, MeteoPrevision } from './meteo'
 import { SEUIL_PLUIE_SIGNIFICATIVE } from './irrigation/seuils'
 import { kcAuStade, phraseVolume, profilEspece, volumeArrosage } from './irrigation/bilan-sol'
-import { bilanCulture, type CultureBilan } from './irrigation/bilan-culture'
-import { dernierArrosage, type ArrosageSaisi } from './irrigation/arrosages-saisis'
+import { bilanCulture, joursDepuisArrosage, type CultureBilan } from './irrigation/bilan-culture'
+import type { ArrosageSaisi } from './irrigation/arrosages-saisis'
 import { pluieSeptDerniersJours, type MeteoBilan } from './irrigation/meteo-bilan'
 
 // ============================================================
@@ -177,7 +177,8 @@ export function genererRecommandationIrrigation(
     /** Système d'arrosage de la planche (efficacité de l'apport). */
     irrigation?: string | null
   },
-  sousAbri = false,
+  /** null : type de planche non renseigné (`typeSousAbri`), le conseil le dit. */
+  sousAbri: boolean | null = false,
 ): RecommandationIrrigation {
   const res = bilanCulture(meteo, culture, planche, { sousAbri, arrosages: culture.arrosages })
 
@@ -200,11 +201,11 @@ export function genererRecommandationIrrigation(
   // Dose : remplir la réserve, à l'efficacité du système près.
   const volume = volumeArrosage(res.doseMm, planche.surface, planche.irrigation)
   const conseilQuantite = volume.litresParM2
+  // Sol de la planche inconnu : la dose n'est qu'un ordre de grandeur (QA cmv3jaru7).
   const conseilMessage = conseilQuantite > 0
-    ? `${res.raison} ${phraseVolume(volume, 'pour la planche')}`
+    ? `${res.raison} ${phraseVolume(volume, 'pour la planche', res.solSource !== 'planche')}`
     : res.raison
 
-  const dernier = dernierArrosage(culture.derniereIrrigation, culture.arrosages)
   return {
     cultureId: culture.id,
     cultureName: culture.espece,
@@ -216,7 +217,7 @@ export function genererRecommandationIrrigation(
     conseilMessage,
     prochainePluie,
     joursSansPluie,
-    joursDepuisIrrigation: dernier ? Math.max(0, Math.floor((Date.now() - dernier.getTime()) / 86_400_000)) : null,
+    joursDepuisIrrigation: joursDepuisArrosage(meteo, culture.derniereIrrigation, culture.arrosages),
   }
 }
 

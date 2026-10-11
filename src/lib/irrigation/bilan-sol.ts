@@ -31,6 +31,8 @@
  * noter, c'est dire « la planche a eu son eau », le bilan repart de zéro).
  */
 
+import { formatNombre } from '@/lib/accueil/classement'
+
 export type UrgenceArrosage = 'critique' | 'haute' | 'moyenne' | 'faible' | 'aucune'
 
 /** Un jour de météo : pluie (mm) et évapotranspiration de référence ET0 (mm). */
@@ -99,7 +101,15 @@ export interface ResultatBilanSol {
   dernierApport: { type: 'pluie' | 'arrosage'; date: string; mm: number | null } | null
   /** Sol connu (planche ou parcelle) ; sinon la réserve est celle d'un sol moyen. */
   solRenseigne: boolean
+  /**
+   * D'où vient le sol de la réserve : la planche, sa parcelle (planche sans
+   * sol renseigné) ou un sol moyen par défaut. Hors planche, la réserve et la
+   * dose ne sont qu'une estimation, et l'écran le dit (ticket QA cmv3jaru7).
+   */
+  solSource: SourceSol
 }
+
+export type SourceSol = 'planche' | 'parcelle' | 'defaut'
 
 // ── Référentiels ─────────────────────────────────────────────
 
@@ -143,6 +153,21 @@ function eauDisponibleRetention(texte: string | null | undefined): number | null
 /** Texture de la planche, sinon sa rétention, sinon la texture de la parcelle ; null si rien. */
 function eauDisponibleConnue(sol: EntreeBilanSol['sol']): number | null {
   return eauDisponibleTexture(sol.typeSol) ?? eauDisponibleRetention(sol.retentionEau) ?? eauDisponibleTexture(sol.typeSolParcelle)
+}
+
+/** Origine du sol retenu par `eauDisponibleConnue`, dans le même ordre. */
+export function sourceSol(sol: EntreeBilanSol['sol']): SourceSol {
+  if (eauDisponibleTexture(sol.typeSol) !== null || eauDisponibleRetention(sol.retentionEau) !== null) return 'planche'
+  return eauDisponibleTexture(sol.typeSolParcelle) !== null ? 'parcelle' : 'defaut'
+}
+
+/** Phrase sur l'origine du sol de la réserve ; vide pour un sol de planche (QA cmv3jaru7). */
+export function noteSol(sol: EntreeBilanSol['sol']): string {
+  const source = sourceSol(sol)
+  if (source === 'parcelle') {
+    return `Sol de la planche non renseigné : réserve estimée d'après le sol de la parcelle (${sol.typeSolParcelle?.trim()}).`
+  }
+  return source === 'defaut' ? 'Sol non renseigné (planche et parcelle) : réserve estimée pour un sol moyen.' : ''
 }
 
 export function eauDisponibleSol(sol: EntreeBilanSol['sol']): number {
@@ -340,17 +365,22 @@ export function volumeArrosage(doseMm: number, surfaceM2: number, systeme: strin
   return { litresParM2, litres: Math.round(litresParM2 * Math.max(0, surfaceM2)), passages }
 }
 
-/** Fin de phrase d'un conseil de volume (« Apport conseillé : … ») ; vide si rien à verser. */
-export function phraseVolume(v: ReturnType<typeof volumeArrosage>, cible: string): string {
+/**
+ * Fin de phrase d'un conseil de volume (« Apport conseillé : … ») ; vide si
+ * rien à verser. Nombres à la française (« 29,9 L/m² », ticket QA cmv3javy4).
+ */
+export function phraseVolume(v: ReturnType<typeof volumeArrosage>, cible: string, estimation = false): string {
   if (v.litresParM2 === 0) return ''
-  const litres = v.litres > 0 ? `, soit ${v.litres} L ${cible}` : ''
+  const litres = v.litres > 0 ? `, soit ${formatNombre(v.litres)} L ${cible}` : ''
   const passages = v.passages >= 2
     ? `, en ${v.passages} passages d'environ ${Math.round(v.litresParM2 / v.passages)} L/m² espacés de quelques heures`
     : ''
-  return `Apport conseillé : ${v.litresParM2} L/m²${litres}${passages}.`
+  // Sol de la planche inconnu : un ordre de grandeur, pas une dose certaine (QA cmv3jaru7).
+  return `Apport conseillé : ${estimation ? 'environ ' : ''}${formatNombre(v.litresParM2, 1)} L/m²${litres}${passages}.`
 }
 
-function joursEntre(a: string, b: string): number {
+/** Jours de calendrier de `a` à `b` (AAAA-MM-JJ). */
+export function joursEntre(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T12:00:00`) - Date.parse(`${a}T12:00:00`)) / 86_400_000)
 }
 
@@ -560,7 +590,7 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
     ? dernierApport.type === 'arrosage'
       ? dernierApport.mm === null
         ? `dernier arrosage noté le ${formatJour(dernierApport.date)}`
-        : `dernier arrosage le ${formatJour(dernierApport.date)} (${dernierApport.mm} mm au sol)`
+        : `dernier arrosage le ${formatJour(dernierApport.date)} (${formatNombre(dernierApport.mm, 1)} mm au sol)`
       : `dernière pluie utile ${dernierApport.mm} mm le ${formatJour(dernierApport.date)}`
     : `aucun apport notable depuis ${depuis}`
   const reserve = taux < 1
@@ -573,10 +603,23 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
   else if (urgence === 'moyenne') raison = `${dans ?? 'À surveiller'} : ${reserve}, ${apport}.`
   else if (urgence === 'faible') raison = `${dans ?? 'Sol encore pourvu'} : ${reserve}, ${apport}.`
   else raison = `Sol bien pourvu : ${reserve}, ${apport}.`
+  // La dose est plafonnée à la réserve facile : verser la dose conseillée
+  // peut laisser la planche « à arroser ». On le dit dès le conseil.
+  const reste = depletion - doseMm
+  if (doseMm > 0 && reste >= 0.75 * raw) {
+    raison += ` Un apport ne suffit pas : après cette dose, il manquera encore ${formatNombre(reste, 1)} mm, à apporter par un second arrosage.`
+  }
   if (e.culture.sousAbri) raison = `Sous abri, sans pluie. ${raison}`
-  if (aFaire && e.joursArroses.length === 0 && !(e.apports ?? []).length) raison += ' Aucun arrosage noté : le bilan ne compte que la pluie.'
-  const solRenseigne = eauDisponibleConnue(e.sol) !== null
-  if (!solRenseigne) raison += ' Sol non renseigné (planche et parcelle) : réserve calculée pour un sol moyen.'
+  if (aFaire && e.joursArroses.length === 0 && !(e.apports ?? []).length) {
+    // Sous abri, il n'y a pas de pluie à compter (ticket QA cmv3ja7nr).
+    raison += e.culture.sousAbri
+      ? ' Aucun arrosage noté : le bilan ne compte aucun apport d\'eau.'
+      : ' Aucun arrosage noté : le bilan ne compte que la pluie.'
+  }
+  const solSource = sourceSol(e.sol)
+  const solRenseigne = solSource !== 'defaut'
+  const note = noteSol(e.sol)
+  if (note) raison += ` ${note}`
   if (!enPlace(e, e.aujourdhui.date)) raison = `Pas encore sur la planche : mise en place prévue le ${formatJour(e.culture.debut!)}.`
 
   return {
@@ -596,5 +639,6 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
     pluiePrevue48h: Math.round(pluiePrevue48h * 10) / 10,
     dernierApport,
     solRenseigne,
+    solSource,
   }
 }

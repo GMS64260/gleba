@@ -5,11 +5,13 @@
  * d'intervention). Module client, sans dépendance serveur.
  */
 
-/** Ce qu'il faut pour annuler exactement un arrosage noté. */
-export interface AnnulationArrosage {
-  dateEffective: string
-  avant: Record<number, string | null>
-}
+/**
+ * Ce qu'il faut pour annuler exactement un arrosage noté : sans quantité, la
+ * trace et les dates d'avant ; avec, l'intervention créée.
+ */
+export type AnnulationArrosage =
+  | { dateEffective: string; avant: Record<number, string | null> }
+  | { interventionId: number }
 
 type Resultat<T> = ({ ok: true } & T) | { ok: false; erreur: string }
 
@@ -29,16 +31,23 @@ async function patch(corps: Record<string, unknown>, erreurParDefaut: string) {
   return reponse
 }
 
+/**
+ * `litres` : quantité versée sur la planche, si connue (ticket QA cmv3japsf) ;
+ * sans elle, l'arrosage compte comme un plein.
+ */
 export async function noterArrosage(
   cultureIds: number[],
   notes?: string | null,
+  litres?: number | null,
+  source = "noter-arrosage",
 ): Promise<Resultat<{ annulation: AnnulationArrosage }>> {
   try {
     const r = await patch(
-      { cultureIds, marquerArrosage: true, notes: notes?.trim() || null },
+      { cultureIds, marquerArrosage: true, notes: notes?.trim() || null, ...(litres ? { litres } : {}) },
       "Impossible de noter l'arrosage",
     )
-    signalerMiseAJour("noter-arrosage")
+    signalerMiseAJour(source)
+    if (litres) return { ok: true, annulation: { interventionId: r.interventionId } }
     return { ok: true, annulation: { dateEffective: r.dateEffective, avant: r.derniereIrrigationAvant ?? {} } }
   } catch (e) {
     return { ok: false, erreur: e instanceof Error ? e.message : "Impossible de noter l'arrosage" }
