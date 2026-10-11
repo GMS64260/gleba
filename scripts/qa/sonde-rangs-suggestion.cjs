@@ -11,6 +11,8 @@ const PLANCHE = process.argv[3] || "cms1i3lr5000q159dxjiwppbx"; // B1 de la dém
 const REFUS = {
   error: "Largeur insuffisante : besoin de 0.70m, disponible 0.50m (manque 0.20m). Espacement entre rangs de l'itinéraire technique : 35 cm.",
   suggestions: ["Réduire à 2 rangs (au lieu de 3)"],
+  // Forme structurée renvoyée par POST /api/cultures depuis le 2026-10-11.
+  ajustements: [{ reduireRangs: 2, message: "Réduire à 2 rangs (au lieu de 3)" }],
 }
 
 ;(async () => {
@@ -70,5 +72,11 @@ const REFUS = {
   const messages = await page.locator("form p.text-destructive, form [id$='-form-item-message']").allInnerTexts();
   console.log("messages de champ :", messages.filter(Boolean));
   console.log("dates envoyées :", envois.map((e) => [e.dateSemis, e.datePlantation, e.dateRecolte].map((d) => d && String(d).slice(0, 10)).join(" / ")));
+  // Aperçu de l'assistant (lecture seule) : même règle que l'enregistrement.
+  for (const nbRangs of [3, 6]) {
+    const params = new URLSearchParams({ plancheId: PLANCHE, itpId: "Zinnia — plein champ", nbRangs: String(nbRangs), longueur: "10", dateSemis: envois[0]?.dateSemis ?? "", datePlantation: envois[0]?.datePlantation ?? "", dateRecolte: envois[0]?.dateRecolte ?? "" });
+    const v = await (await page.request.get(`${BASE}/api/cultures/occupation?${params}`)).json();
+    console.log(`aperçu ${nbRangs} rangs :`, JSON.stringify({ verifie: v.verifie, possible: v.possible, disponible: v.largeurDisponible, necessaire: v.largeurNecessaire, ajustements: v.ajustements?.map((a) => a.message) }));
+  }
   await browser.close();
 })().catch((e) => { console.error("ERREUR", e); process.exit(1); });
