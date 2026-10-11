@@ -331,7 +331,10 @@ function AnimauxSubTab() {
       causeSortie: a.causeSortie ?? "",
       nExploitationDestination: a.nExploitationDestination ?? "",
       statutSanitaire: a.statutSanitaire.join("\n"),
-      prixAchat: a.prixAchat ? a.prixAchat.toString() : "",
+      // QA cmv3ikt5l — 0 € est un prix enregistré (don, animal cédé), distinct
+      // d'un prix inconnu : le test de vérité l'affichait vide, et la mise à
+      // jour suivante écrasait 0 par null.
+      prixAchat: a.prixAchat != null ? a.prixAchat.toString() : "",
       prixAchatInclusDansLot: a.prixAchatInclusDansLot,
       poidsActuel: a.poidsActuel ? a.poidsActuel.toString() : "",
       notes: a.notes ?? "",
@@ -449,6 +452,18 @@ function AnimauxSubTab() {
   }, [filterStatut, toast])
 
   React.useEffect(() => { fetchData() }, [fetchData])
+
+  // QA cmv3ik186 — un remplissage programmatique (agent, autofill) pose la
+  // date dans le DOM sans que React émette onChange ; le re-render suivant
+  // (prix, lot) remettait le champ à vide et le filet FormData du submit ne
+  // trouvait plus rien : la date de naissance partait à null. L'événement
+  // natif input (onInput) et le blur, eux, arrivent toujours : on y recopie
+  // la valeur dans l'état (même motif que QA cmsp5gx9u au verger).
+  const resynchroniserDate = (champ: "dateNaissance" | "dateArrivee") =>
+    (e: React.SyntheticEvent<HTMLInputElement>) => {
+      const valeur = e.currentTarget.value
+      if (valeur) setFormData((f) => (f[champ] === valeur ? f : { ...f, [champ]: valeur }))
+    }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -1103,12 +1118,13 @@ function AnimauxSubTab() {
                 <div className="space-y-2">
                   <Label>Date de naissance</Label>
                   {/* Ticket cmsogkqpf — name requis pour la relecture FormData de
-                      secours au submit (saisie automatisée sans onChange). */}
-                  <Input type="date" name="dateNaissance" min="1990-01-01" max={todayLocalISO()} value={formData.dateNaissance} onChange={(e) => setFormData(f => ({ ...f, dateNaissance: e.target.value }))} />
+                      secours au submit (saisie automatisée sans onChange).
+                      QA cmv3ik186 — onInput/onBlur : voir resynchroniserDate. */}
+                  <Input type="date" name="dateNaissance" min="1990-01-01" max={todayLocalISO()} value={formData.dateNaissance} onChange={(e) => setFormData(f => ({ ...f, dateNaissance: e.target.value }))} onInput={resynchroniserDate("dateNaissance")} onBlur={resynchroniserDate("dateNaissance")} />
                 </div>
                 <div className="space-y-2">
                   <Label>Date d&apos;arrivée</Label>
-                  <Input type="date" name="dateArrivee" min="1990-01-01" max={todayLocalISO()} value={formData.dateArrivee} onChange={(e) => setFormData(f => ({ ...f, dateArrivee: e.target.value }))} />
+                  <Input type="date" name="dateArrivee" min="1990-01-01" max={todayLocalISO()} value={formData.dateArrivee} onChange={(e) => setFormData(f => ({ ...f, dateArrivee: e.target.value }))} onInput={resynchroniserDate("dateArrivee")} onBlur={resynchroniserDate("dateArrivee")} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1354,8 +1370,13 @@ function AnimauxSubTab() {
                 <article key={animal.id} className="rounded-lg border bg-white p-3 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
+                      {/* QA cmv3ivtzp — le nom de la carte n'était pas un lien,
+                          contrairement à celui du tableau : cette copie, première
+                          dans le DOM (masquée sur grand écran), ne menait nulle part. */}
                       <h3 className="truncate font-semibold">
-                        {animal.nom || animal.identifiant || `Animal #${animal.id}`}
+                        <Link href={`/elevage/animaux/${animal.id}`} className="hover:underline">
+                          {animal.nom || animal.identifiant || `Animal #${animal.id}`}
+                        </Link>
                       </h3>
                       <p className="text-sm text-muted-foreground">
                         {animal.identifiant || "Identifiant non renseigné"} · {especeBaseLabel(animal.especeAnimale.id)}
@@ -1479,7 +1500,24 @@ function AnimauxSubTab() {
               </TableHeader>
               <TableBody>
                 {filteredAnimaux.map((animal) => (
-                  <TableRow key={animal.id} className="cursor-pointer hover:bg-muted/50">
+                  // QA cmv3ivtzp — la ligne s'affichait cliquable (curseur main)
+                  // sans aucun gestionnaire : elle ouvre désormais la fiche,
+                  // comme la ligne d'un lot (Bug #11). Au clavier, le nom
+                  // reste le lien vers la fiche.
+                  <TableRow
+                    key={animal.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={(e) => {
+                      // Le nom, la fiche & soins et les actions gardent leur
+                      // propre comportement ; une sélection de texte (copier
+                      // un identifiant) n'ouvre rien ; Ctrl/⌘ ouvre un onglet.
+                      if ((e.target as HTMLElement).closest('a, button, input, select, label')) return
+                      if (window.getSelection()?.toString()) return
+                      const url = `/elevage/animaux/${animal.id}`
+                      if (e.ctrlKey || e.metaKey) window.open(url, '_blank')
+                      else window.location.href = url
+                    }}
+                  >
                     <TableCell className="font-medium">
                       {/* Bug feedback testeur 2026-05-25 (cmplkdjtx/cmplk8k2h)
                           — la colonne montrait "-" sans signaler que le

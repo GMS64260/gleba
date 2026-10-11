@@ -120,6 +120,63 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     }))
   })
 
+  // QA cmv3ik186 / cmv3ikt5l (2026-10-11) — corps tel que l'écran Animaux
+  // (AnimauxTab, handleSubmit) l'envoie pour « Agnelle A3 1011 » : date de
+  // naissance la veille de l'arrivée, prix d'achat 0, lot choisi. La date et
+  // le 0 se perdaient côté écran ; la route doit les écrire tels quels.
+  const corpsEcranAnimaux = {
+    especeAnimaleId: 'brebis_solognote',
+    identifiant: null,
+    typeIdentifiant: null,
+    nom: 'Agnelle A3 1011',
+    raceAnimaleId: null,
+    raceHistorique: '',
+    orientationProduction: null,
+    sexe: 'femelle',
+    dateNaissance: '2026-10-10',
+    dateArrivee: '2026-10-11',
+    provenance: null,
+    nExploitationOrigine: null,
+    statutSanitaire: [],
+    prixAchat: 0,
+    prixAchatInclusDansLot: false,
+    poidsActuel: null,
+    notes: '',
+    lotId: 42,
+    parcelleGeoId: null,
+    mereId: null,
+    pereId: null,
+    pereIdentifiant: null,
+    mereIdentifiant: null,
+  }
+
+  it('POST écrit la date de naissance et un prix d’achat à 0 envoyés par l’écran', async () => {
+    mocks.isAssignableAnimalLot.mockResolvedValue(true)
+
+    const response = await POST(request('POST', { ...corpsEcranAnimaux, statut: 'actif' }))
+
+    expect(response.status).toBe(201)
+    expect(mocks.animalCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        dateNaissance: new Date('2026-10-10'),
+        prixAchat: 0,
+        prixAchatInclusDansLot: false,
+      }),
+    }))
+  })
+
+  it('PATCH de « Modifier » conserve un prix d’achat à 0 au lieu de l’effacer', async () => {
+    mocks.isAssignableAnimalLot.mockResolvedValue(true)
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'brebis_solognote', lotId: 42, prixAchat: 0, prixAchatInclusDansLot: false })
+
+    const response = await PATCH(request('PATCH', { id: 7, ...corpsEcranAnimaux }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.animalUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ prixAchat: 0, dateNaissance: new Date('2026-10-10') }),
+    }))
+  })
+
   it('PATCH accepte un lot assignable et permet le détachement', async () => {
     mocks.isAssignableAnimalLot.mockResolvedValue(true)
     await PATCH(request('PATCH', { id: 7, lotId: 42 }))
