@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { Bird, CalendarCheck, CloudSun, Map as MapIcon, Megaphone, Settings, Sprout, Store, TreeDeciduous, Wallet } from "lucide-react"
+import { Bird, CalendarCheck, ClipboardList, CloudSun, Map as MapIcon, Megaphone, Settings, Sprout, Store, TreeDeciduous, Wallet } from "lucide-react"
 
 import { useModules } from "@/hooks/use-modules"
 import type { ModuleId } from "@/lib/modules"
@@ -27,6 +27,9 @@ const ENTREES: Entree[] = [
   { href: "/aujourdhui", libelle: "Aujourd'hui", icone: CalendarCheck },
   { href: "/jardin", libelle: "Plan & carte", icone: MapIcon },
   { href: "/maraichage", libelle: "Cultures", icone: Sprout, module: "maraichage" },
+  // QA cmv2r57qk — registre des interventions, sans module : il sert aux
+  // cultures comme au verger.
+  { href: "/interventions", libelle: "Interventions", icone: ClipboardList },
   { href: "/verger", libelle: "Verger", icone: TreeDeciduous, module: "verger" },
   { href: "/elevage", libelle: "Élevage", icone: Bird, module: "elevage" },
   { href: "/comptabilite", libelle: "Comptabilité", icone: Wallet, module: "comptabilite" },

@@ -20,6 +20,7 @@ import {
   RefreshCw,
   AlertTriangle,
   CalendarClock,
+  ClipboardList,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -563,6 +564,20 @@ function TachesContent() {
             </div>
           </div>
         )}
+
+        {/* QA cmv2r57qk — « Noter » mène ici : un geste hors de la liste
+            (désherbage, traitement, taille…) se note au registre des
+            interventions, qui n'avait aucun accès depuis le nouvel accueil. */}
+        <Link
+          href="/interventions?nouvelle=1"
+          className="flex min-h-11 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          <span className="flex items-center gap-2">
+            <ClipboardList className="h-4 w-4 text-orange-600" aria-hidden />
+            Noter une intervention hors liste
+          </span>
+          <span className="text-xs text-slate-500">désherbage, traitement, taille…</span>
+        </Link>
 
         {/* Sections de taches */}
         {data && (
