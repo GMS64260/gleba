@@ -18,10 +18,11 @@
 
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
-import { volumeArrosage, type ResultatBilanSol } from '@/lib/irrigation/bilan-sol'
-import { bilanCulture } from '@/lib/irrigation/bilan-culture'
+import { joursEntre, volumeArrosage, type ResultatBilanSol } from '@/lib/irrigation/bilan-sol'
+import { bilanCulture, dernierArrosageDuLieu } from '@/lib/irrigation/bilan-culture'
+import { typeSousAbri } from '@/lib/irrigation/abri'
 import { chargerArrosagesSaisis, dernierArrosage } from '@/lib/irrigation/arrosages-saisis'
-import { chargerMeteoBilan, debutArrosagesBilan, pluieSeptDerniersJours, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
+import { chargerMeteoBilan, debutArrosagesBilan, jourLocalIso, pluieSeptDerniersJours, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
 import {
   getIrrigationFactors,
   calculerConsommationEauAvecSol,
@@ -46,8 +47,6 @@ interface MeteoParCoord {
   pluiePrevue5j: number    // mm prévus dans les 5 prochains jours
   joursAvantPluie: number  // jours avant la prochaine pluie significative (99 = aucune)
 }
-
-const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
 
 // Seuils partagés avec le conseiller du Calendrier (meteo-agro.ts) et le moteur.
 import {
@@ -296,10 +295,17 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
   const culturesAvecUrgence = cultures.map(c => {
     // Dernier arrosage : « Noter » ou intervention « arrosage » (ticket cmv2rdmdn).
     const arrosages = arrosagesParCulture.get(c.id) ?? []
-    const dernierArrosageConnu = dernierArrosage(c.derniereIrrigation, arrosages)
+    // Jours de calendrier du LIEU, comme le conseiller (`dernierArrosageDuLieu`),
+    // pas des tranches de 24 h : noté hier soir, « Auj. » le restait jusqu'au
+    // soir ; un arrosage daté d'après aujourd'hui ne compte pas (ticket QA
+    // cmv3jatw8). Sans météo, jour de Paris.
+    const meteoLieu = meteoParCoord.get(cultureCoordKey.get(c.id) ?? '')?.bilan ?? null
+    const duLieu = meteoLieu ? dernierArrosageDuLieu(meteoLieu, c.derniereIrrigation, arrosages) : null
+    const dernierArrosageConnu = meteoLieu ? duLieu?.date ?? null : dernierArrosage(c.derniereIrrigation, arrosages)
     let joursSansEau: number | null = null
-    if (dernierArrosageConnu) {
-      joursSansEau = Math.max(0, Math.floor((now - dernierArrosageConnu.getTime()) / (1000 * 60 * 60 * 24)))
+    if (meteoLieu && duLieu) joursSansEau = joursEntre(duLieu.jour, meteoLieu.aujourdhui.date)
+    else if (!meteoLieu && dernierArrosageConnu) {
+      joursSansEau = Math.max(0, joursEntre(jourLocalIso(dernierArrosageConnu), jourLocalIso(new Date(now))))
     }
 
     // Âge depuis plantation/semis
@@ -316,7 +322,9 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
 
     const besoinEau = c.espece?.besoinEau || 3
     const retentionEauSol = c.planche?.retentionEau || null
-    const sousAbri = TYPES_SOUS_ABRI.includes(c.planche?.type ?? '')
+    // Type de planche absent : null, le bilan le signale (ticket QA cmv3ja7nr).
+    const abri = typeSousAbri(c.planche?.type)
+    const sousAbri = abri === true
 
     // Météo pour cette culture
     const coordKey = cultureCoordKey.get(c.id)
@@ -344,7 +352,7 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
             typeSolParcelle: c.planche?.parcelleGeo ? c.planche.parcelleGeo.typeSol : solParcelleRepli,
             irrigation: c.planche?.irrigation ?? null,
           },
-          { sousAbri, arrosages },
+          { sousAbri: abri, arrosages },
         )
       : null
     const coordKeyCulture = cultureCoordKey.get(c.id)

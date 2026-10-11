@@ -11,9 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
-
-// Types de planches considérés comme "sous abri" (pas de pluie directe)
-const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
+import { estSousAbri } from '@/lib/irrigation/abri'
 
 export interface PluviometriePlancheResponse {
   plancheId: string
@@ -68,7 +66,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Planche non trouvée' }, { status: 404 })
     }
 
-    const sousAbri = TYPES_SOUS_ABRI.includes(planche.type ?? '')
+    const sousAbri = estSousAbri(planche.type)
 
     // Si sous abri, on retourne directement sans données météo
     if (sousAbri) {

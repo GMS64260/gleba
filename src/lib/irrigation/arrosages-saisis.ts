@@ -14,10 +14,16 @@
  * ET planche : arroser la seule culture laissait une colocataire « critique »).
  * Sans planche, la culture seule, sur sa surface. Sans volume ou sans surface
  * connue : un arrosage plein, comme « Noter ».
+ *
+ * Tout est chargé, y compris un arrosage daté d'après aujourd'hui : le bilan
+ * s'arrête au jour du LIEU, et le dernier arrosage affiché se juge aussi dans
+ * le jour du lieu (`dernierArrosageDuLieu`, `bilan-culture.ts`). Filtrer ici
+ * au jour de Paris écartait le matin l'arrosage du jour à Nouméa.
  */
 import prisma from '@/lib/prisma'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
 import { whereArrosageNote } from './arrosages-notes'
+import { apresDemain } from '@/lib/interventions/date-realisee'
 
 export interface ArrosageSaisi {
   date: Date
@@ -147,9 +153,20 @@ export async function chargerArrosagesSaisis(
   return parCulture
 }
 
-/** Dernier arrosage connu d'une culture : le plus récent entre `derniereIrrigation` et ses saisies. */
-export function dernierArrosage(derniereIrrigation: Date | null, saisis: ArrosageSaisi[]): Date | null {
-  let dernier = derniereIrrigation
-  for (const a of saisis) if (!dernier || a.date > dernier) dernier = a.date
+/**
+ * Dernier arrosage connu d'une culture : le plus récent entre
+ * `derniereIrrigation` et ses saisies. Repli sans météo (donc sans jour du
+ * lieu) : au plus demain au jour de Paris, la marge de la route Interventions
+ * (`apresDemain`). Avec la météo : `dernierArrosageDuLieu`.
+ */
+export function dernierArrosage(
+  derniereIrrigation: Date | null,
+  saisis: ArrosageSaisi[],
+  maintenant: Date = new Date(),
+): Date | null {
+  let dernier: Date | null = null
+  for (const date of [derniereIrrigation, ...saisis.map((a) => a.date)]) {
+    if (date && !apresDemain(date, maintenant) && (!dernier || date > dernier)) dernier = date
+  }
   return dernier
 }

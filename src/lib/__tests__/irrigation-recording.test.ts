@@ -12,6 +12,10 @@ vi.mock("@/lib/prisma", () => ({
       createMany: vi.fn(),
       update: vi.fn(),
     },
+    intervention: {
+      create: vi.fn(),
+      deleteMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }))
@@ -24,7 +28,7 @@ vi.mock("@/lib/irrigation-cache", () => ({
 
 import prisma from "@/lib/prisma"
 import { irrigationCache } from "@/lib/irrigation-cache"
-import { enregistrerArrosageCultures } from "@/lib/irrigation-recording"
+import { annulerArrosageMesure, enregistrerArrosageCultures, enregistrerArrosageMesure } from "@/lib/irrigation-recording"
 
 const mockedPrisma = prisma as unknown as {
   culture: {
@@ -362,5 +366,60 @@ describe("enregistrerArrosageCultures", () => {
     expect(result.culturesMisesAJour).toBe(0)
     expect(mockedPrisma.$transaction).not.toHaveBeenCalled()
     expect(irrigationCache.invalidateUser).not.toHaveBeenCalled()
+  })
+})
+
+// Ticket QA cmv3japsf : « Noter » avec la quantité versée.
+describe("enregistrerArrosageMesure", () => {
+  const p = prisma as unknown as {
+    culture: { findMany: ReturnType<typeof vi.fn>; updateMany: ReturnType<typeof vi.fn> }
+    intervention: { create: ReturnType<typeof vi.fn>; deleteMany: ReturnType<typeof vi.fn> }
+    irrigationPlanifiee: { createMany: ReturnType<typeof vi.fn> }
+  }
+  beforeEach(() => vi.clearAllMocks())
+
+  it("crée une intervention « arrosage » avec ses litres, sans remettre le sol plein", async () => {
+    p.culture.findMany.mockResolvedValue([{ id: 7, plancheId: "c3" }, { id: 8, plancheId: "c3" }])
+    p.intervention.create.mockResolvedValue({ id: 501 })
+    const r = await enregistrerArrosageMesure({ userId: "u1", cultureIds: [8, 7], litres: 193.04, dateEffective: DATE_EFFECTIVE })
+    expect(r).toEqual({ ok: true, interventionId: 501, cultureIds: [7, 8], plancheId: "c3" })
+    expect(p.intervention.create).toHaveBeenCalledWith({
+      data: {
+        userId: "u1",
+        date: DATE_EFFECTIVE,
+        type: "arrosage",
+        cultureId: 8,
+        plancheId: "c3",
+        fait: true,
+        intrantNom: "Eau",
+        intrantQuantite: 193,
+        intrantUnite: "L",
+        notes: null,
+      },
+      select: { id: true },
+    })
+    // Ni `derniereIrrigation` ni trace « Noter » : tous deux valent un plein.
+    expect(p.culture.updateMany).not.toHaveBeenCalled()
+    expect(p.irrigationPlanifiee.createMany).not.toHaveBeenCalled()
+    expect(irrigationCache.invalidateUser).toHaveBeenCalledWith("u1")
+  })
+
+  it("refuse une quantité nulle ou démesurée, des planches mêlées ou des cultures d'un autre compte", async () => {
+    expect(await enregistrerArrosageMesure({ userId: "u1", cultureIds: [7], litres: 0 })).toEqual({ ok: false, erreur: "Quantité versée invalide" })
+    expect((await enregistrerArrosageMesure({ userId: "u1", cultureIds: [7], litres: 250_000 })).ok).toBe(false)
+    p.culture.findMany.mockResolvedValueOnce([{ id: 7, plancheId: "c3" }, { id: 9, plancheId: "b5" }])
+    expect(await enregistrerArrosageMesure({ userId: "u1", cultureIds: [7, 9], litres: 50 })).toEqual({
+      ok: false,
+      erreur: "Une quantité se note planche par planche",
+    })
+    p.culture.findMany.mockResolvedValueOnce([])
+    expect(await enregistrerArrosageMesure({ userId: "u1", cultureIds: [7], litres: 50 })).toEqual({ ok: false, erreur: "Culture non trouvée" })
+    expect(p.intervention.create).not.toHaveBeenCalled()
+  })
+
+  it("s'annule en supprimant l'intervention du compte, et elle seule", async () => {
+    p.intervention.deleteMany.mockResolvedValue({ count: 1 })
+    expect(await annulerArrosageMesure({ userId: "u1", interventionId: 501 })).toEqual({ interventionsSupprimees: 1 })
+    expect(p.intervention.deleteMany).toHaveBeenCalledWith({ where: { id: 501, userId: "u1", type: "arrosage" } })
   })
 })

@@ -99,3 +99,25 @@ describe("arrosages saisis", () => {
     expect(dernierArrosage(note, [])).toEqual(note)
   })
 })
+
+// Ticket QA cmv3jatw8 : intervention du 12/10 cochée « réalisée » le 11/10.
+describe("arrosages datés d'après aujourd'hui", () => {
+  beforeEach(() => vi.clearAllMocks())
+  const MAINTENANT = new Date("2026-10-11T08:00:00Z")
+
+  it("sont chargés (le bilan juge au jour du lieu) ; le repli sans météo s'arrête à demain", async () => {
+    mocked.irrigationPlanifiee.findMany.mockResolvedValue([])
+    mocked.intervention.findMany.mockResolvedValue([
+      { date: new Date("2026-10-12T00:00:00Z"), cultureId: 10, plancheId: "p1", intrantQuantite: 96, intrantUnite: "L" },
+      { date: new Date("2026-10-11T00:00:00Z"), cultureId: 10, plancheId: "p1", intrantQuantite: 123, intrantUnite: "L" },
+    ])
+    mocked.culture.findMany.mockResolvedValue([])
+    mocked.planche.findMany.mockResolvedValue([PLANCHE])
+    const saisis = await chargerArrosagesSaisis("u1", CULTURES, new Date("2026-01-01T00:00:00Z"))
+    // Nouméa est déjà le 12/10 quand Paris est le 11/10 : rien n'est écarté ici.
+    expect(saisis.get(10)?.map((a) => a.date.toISOString())).toEqual(["2026-10-12T00:00:00.000Z", "2026-10-11T00:00:00.000Z"])
+    // Repli sans météo : un jour de marge, comme la route Interventions.
+    expect(dernierArrosage(new Date("2026-10-13T00:00:00Z"), [], MAINTENANT)).toBeNull()
+    expect(dernierArrosage(null, saisis.get(10) ?? [], MAINTENANT)?.toISOString()).toBe("2026-10-12T00:00:00.000Z")
+  })
+})

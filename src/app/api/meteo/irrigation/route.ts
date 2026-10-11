@@ -11,7 +11,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { chargerMeteoBilan, debutArrosagesBilan } from '@/lib/irrigation/meteo-bilan'
-import { chargerArrosagesSaisis, dernierArrosage } from '@/lib/irrigation/arrosages-saisis'
+import { chargerArrosagesSaisis } from '@/lib/irrigation/arrosages-saisis'
+import { dernierArrosageDuLieu } from '@/lib/irrigation/bilan-culture'
 import { genererRecommandationIrrigation } from '@/lib/meteo-agro'
 import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
 import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
@@ -19,9 +20,9 @@ import { whereCulturesEnPlace } from '@/lib/irrigation-conseil'
 import { grouperRecommandationsParPlanche } from '@/lib/irrigation-planche'
 import { etatCulture } from '@/lib/cultures/etat'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
+import { typeSousAbri } from '@/lib/irrigation/abri'
+import { sourceSol } from '@/lib/irrigation/bilan-sol'
 import type { Prisma } from '@prisma/client'
-
-const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -154,7 +155,9 @@ export async function GET(request: NextRequest) {
       if (!meteo) continue
 
       for (const culture of group.cultures) {
-        const sousAbri = TYPES_SOUS_ABRI.includes(culture.planche?.type ?? '')
+        // null : type de planche non renseigné, le conseil le dit (ticket QA cmv3ja7nr).
+        const sousAbri = typeSousAbri(culture.planche?.type)
+        const surface = surfaceCultureM2({ planche: culture.planche })
         const reco = genererRecommandationIrrigation(
           meteo,
           {
@@ -174,7 +177,7 @@ export async function GET(request: NextRequest) {
           {
             nom: culture.planche!.nom,
             // Surface de la planche (sinon largeur × longueur) ; inconnue : pas de litres.
-            surface: surfaceCultureM2({ planche: culture.planche }),
+            surface,
             retentionEau: culture.planche!.retentionEau,
             typeSol: culture.planche!.typeSol,
             typeSolParcelle: culture.planche!.parcelleGeo ? culture.planche!.parcelleGeo.typeSol : solParcelleRepli,
@@ -191,8 +194,18 @@ export async function GET(request: NextRequest) {
           // QA cmv2eg99z — même état que la liste des cultures : une culture
           // récoltée s'affichait « Semée » (cascade recopiée sans `recolteFaite`).
           etatCulture: etatCulture(culture),
-          derniereIrrigation: dernierArrosage(culture.derniereIrrigation, arrosages.get(culture.id) ?? [])?.toISOString() ?? null,
+          // Jour du lieu, comme le bilan et « Arrosée aujourd'hui » (QA cmv3jatw8).
+          derniereIrrigation:
+            dernierArrosageDuLieu(meteo, culture.derniereIrrigation, arrosages.get(culture.id) ?? [])?.date.toISOString() ?? null,
           irrigationSysteme: culture.planche?.irrigation ?? null,
+          sousAbri,
+          surfaceM2: surface,
+          // Ce qui manque à la planche pour un conseil sûr, affiché avec un
+          // lien vers sa fiche (tickets QA cmv3ja7nr et cmv3jaru7).
+          plancheACompleter: [
+            ...(sousAbri === null ? ['type'] : []),
+            ...(sourceSol({ typeSol: culture.planche!.typeSol, retentionEau: culture.planche!.retentionEau }) !== 'planche' ? ['sol'] : []),
+          ],
         })
       }
     }

@@ -370,3 +370,79 @@ export async function supprimerArrosageNote({
   irrigationCache.invalidateUser(userId)
   return { supprime: true, cultureIds }
 }
+
+export interface EnregistrerArrosageMesureParams {
+  userId: string
+  cultureIds: number[]
+  /** Litres versés sur la planche. */
+  litres: number
+  notes?: string | null
+  /**
+   * Horodatage du geste : le bilan le date au jour du LIEU (`jourArrosage`) et
+   * l'écran au jour local. Une date de calendrier (minuit UTC) s'affichait la
+   * veille aux Antilles (revue du lot cmv3japsf).
+   */
+  dateEffective?: Date
+}
+
+/** Plus que n'importe quel arrosage d'une planche : une faute de frappe. */
+const LITRES_MAX_PAR_GESTE = 100_000
+
+/**
+ * « Noter » avec la quantité versée (ticket QA cmv3japsf : « Noter » sans
+ * quantité remettait le sol plein et le conseil passait à « Rien à faire »
+ * après un arrosage de quelques litres).
+ *
+ * L'arrosage devient une intervention « arrosage » réalisée (eau, litres) sur
+ * la planche, que le bilan lit avec son volume (`chargerArrosagesSaisis`) :
+ * il retranche l'eau versée au lieu de remettre la réserve pleine. Ni trace
+ * `IrrigationPlanifiee` ni `derniereIrrigation`, qui valent tous deux un plein.
+ * Une seule planche par geste : des litres ne se répartissent pas entre planches.
+ */
+export async function enregistrerArrosageMesure({
+  userId,
+  cultureIds,
+  litres,
+  notes,
+  dateEffective = new Date(),
+}: EnregistrerArrosageMesureParams): Promise<
+  { ok: true; interventionId: number; cultureIds: number[]; plancheId: string | null } | { ok: false; erreur: string }
+> {
+  if (!(Number.isFinite(litres) && litres > 0)) return { ok: false, erreur: 'Quantité versée invalide' }
+  if (litres > LITRES_MAX_PAR_GESTE) return { ok: false, erreur: 'Quantité versée invalide (plus de 100 000 L)' }
+  const ids = Array.from(new Set(cultureIds.filter((id) => Number.isInteger(id) && id > 0)))
+  const cultures = ids.length
+    ? await prisma.culture.findMany({ where: { userId, id: { in: ids } }, select: { id: true, plancheId: true } })
+    : []
+  if (cultures.length === 0) return { ok: false, erreur: 'Culture non trouvée' }
+  const planches = new Set(cultures.map((c) => c.plancheId))
+  if (planches.size > 1) return { ok: false, erreur: 'Une quantité se note planche par planche' }
+
+  const pilote = cultures.find((c) => c.id === ids[0]) ?? cultures[0]
+  const intervention = await prisma.intervention.create({
+    data: {
+      userId,
+      date: dateEffective,
+      type: 'arrosage',
+      cultureId: pilote.id,
+      plancheId: pilote.plancheId,
+      fait: true,
+      intrantNom: 'Eau',
+      intrantQuantite: Math.round(litres * 10) / 10,
+      intrantUnite: 'L',
+      notes: notes?.trim().slice(0, 1000) || null,
+    },
+    select: { id: true },
+  })
+  irrigationCache.invalidateUser(userId)
+  return { ok: true, interventionId: intervention.id, cultureIds: cultures.map((c) => c.id), plancheId: pilote.plancheId }
+}
+
+/** Inverse exact de `enregistrerArrosageMesure` (toast « Annuler »). */
+export async function annulerArrosageMesure({ userId, interventionId }: { userId: string; interventionId: number }) {
+  const { count } = await prisma.intervention.deleteMany({
+    where: { id: interventionId, userId, type: 'arrosage' },
+  })
+  irrigationCache.invalidateUser(userId)
+  return { interventionsSupprimees: count }
+}

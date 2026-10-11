@@ -10,8 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { fetchOpenMeteoHistory } from '@/lib/meteo'
-
-const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
+import { estSousAbri } from '@/lib/irrigation/abri'
 
 export interface PluviometrieBulkItem {
   plancheId: string
@@ -65,7 +64,7 @@ export async function GET(request: NextRequest) {
     const coordsMap = new Map<string, { lat: number; lng: number; plancheIds: string[] }>()
 
     for (const planche of planches) {
-      if (TYPES_SOUS_ABRI.includes(planche.type ?? '')) continue // sous abri, pas besoin
+      if (estSousAbri(planche.type)) continue // sous abri, pas besoin
 
       const lat = planche.parcelleGeo?.centroidLat ?? fallbackLat
       const lng = planche.parcelleGeo?.centroidLng ?? fallbackLng
@@ -118,7 +117,7 @@ export async function GET(request: NextRequest) {
 
     // Construire la réponse
     const result: PluviometrieBulkItem[] = planches.map(planche => {
-      const sousAbri = TYPES_SOUS_ABRI.includes(planche.type ?? '')
+      const sousAbri = estSousAbri(planche.type)
       if (sousAbri) {
         return { plancheId: planche.id, sousAbri: true, total7j: null, joursSansPluie: null }
       }

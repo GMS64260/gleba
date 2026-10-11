@@ -108,7 +108,7 @@ describe("bilanReserveSol", () => {
     expect(plein.depletionMm).toBe(0)
     expect(plein.urgence).toBe("aucune")
     expect(plein.dernierApport).toEqual({ type: "arrosage", date: AUJOURDHUI, mm: sec.doseMm })
-    expect(plein.raison).toMatch(/dernier arrosage le 20\/07 \([0-9.]+ mm au sol\)/)
+    expect(plein.raison).toMatch(/dernier arrosage le 20\/07 \([0-9,]+ mm au sol\)/)
     // Un apport partiel ne retranche que son eau.
     const partiel = bilanReserveSol(entree({ joursArroses: ["2026-07-13"], apports: [{ date: AUJOURDHUI, mm: 10 }] }))
     expect(sec.depletionMm - partiel.depletionMm).toBeCloseTo(10, 0)
@@ -130,6 +130,35 @@ describe("bilanReserveSol", () => {
     expect(sable.reserveUtileMm).toBeLessThan(limon.reserveUtileMm)
     expect(sable.tauxEpuisement).toBeGreaterThan(limon.tauxEpuisement)
     expect(sable.solRenseigne).toBe(true)
+  })
+
+  // Ticket QA cmv3jaru7 : sol de planche absent, sol de parcelle utilisé en silence.
+  it("sol de la parcelle : la réserve est dite estimée, avec le sol retenu", () => {
+    const r = bilanReserveSol(entree({ sol: { typeSol: null, retentionEau: null, typeSolParcelle: "limono-sableux" } }))
+    expect(r.solSource).toBe("parcelle")
+    expect(r.raison).toMatch(/Sol de la planche non renseigné : réserve estimée d'après le sol de la parcelle \(limono-sableux\)\.$/)
+    expect(bilanReserveSol(entree()).solSource).toBe("planche")
+    expect(bilanReserveSol(entree({ sol: { typeSol: null, retentionEau: "Faible" } })).solSource).toBe("planche")
+    expect(bilanReserveSol(entree({ sol: { typeSol: null, retentionEau: null } })).solSource).toBe("defaut")
+    expect(bilanReserveSol(entree()).raison).not.toMatch(/estimée/)
+  })
+
+  // Revue du lot cmv3japsf : verser la dose conseillée peut laisser « à arroser ».
+  it("une réserve trop entamée pour une seule dose : le conseil annonce le second apport", () => {
+    const r = bilanReserveSol(entree({ et0: 6 }))
+    expect(r.urgence).toBe("critique")
+    expect(r.depletionMm - r.doseMm).toBeGreaterThanOrEqual(0.75 * r.reserveFacileMm)
+    expect(r.raison).toMatch(/Un apport ne suffit pas : après cette dose, il manquera encore [0-9,]+ mm, à apporter par un second arrosage\./)
+    const leger = bilanReserveSol(entree({ joursArroses: ["2026-07-13"] }))
+    expect(leger.raison).not.toMatch(/second arrosage/)
+  })
+
+  // Ticket QA cmv3ja7nr : « le bilan ne compte que la pluie » sous un tunnel.
+  it("sous abri sans arrosage noté, le motif ne parle pas de pluie", () => {
+    const abri = bilanReserveSol(entree({ culture: { sousAbri: true } as never }))
+    expect(abri.raison).toMatch(/Aucun arrosage noté : le bilan ne compte aucun apport d'eau\./)
+    expect(abri.raison).not.toMatch(/ne compte que la pluie/)
+    expect(bilanReserveSol(entree()).raison).toMatch(/ne compte que la pluie/)
   })
 
   it("sol inconnu partout : réserve d'un sol moyen, et le motif le dit", () => {
@@ -324,6 +353,11 @@ describe("bilanReserveSol", () => {
       "Apport conseillé : 75 L/m², soit 750 L pour la planche, en 4 passages d'environ 19 L/m² espacés de quelques heures.",
     )
     expect(phraseVolume(volumeArrosage(16, 0, null), "pour la planche")).toBe("Apport conseillé : 20 L/m².")
+    // Ticket QA cmv3javy4 : nombres à la française ; ordre de grandeur sans sol de planche.
+    expect(phraseVolume(volumeArrosage(26.9, 0, "Goutte-a-goutte"), "pour la planche")).toBe("Apport conseillé : 29,9 L/m².")
+    expect(phraseVolume(volumeArrosage(45.6, 30, null), "pour la planche", true)).toBe(
+      "Apport conseillé : environ 57 L/m², soit 1\u202f710 L pour la planche, en 3 passages d'environ 19 L/m² espacés de quelques heures.",
+    )
     expect(phraseVolume(volumeArrosage(0, 10, null), "pour la planche")).toBe("")
   })
 
