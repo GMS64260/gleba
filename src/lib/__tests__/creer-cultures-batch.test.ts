@@ -81,7 +81,7 @@ describe('creerCulturesBatch — occupation de la planche', () => {
     expect(mocks.cultureCreate).not.toHaveBeenCalled()
     expect(r.ignorees[0].motif).toMatch(/Largeur insuffisante : besoin de 0\.75m, disponible 0\.50m/)
     // 3 rangs × 25 cm = 0,50 m : un ajustement exact tient (pas d'arrondi flottant).
-    expect(r.ignorees[0].motif).toMatch(/réduire à 3 rangs/)
+    expect(r.ignorees[0].motif).toMatch(/en réduisant à 3 rangs$/)
   })
 
   it('crée quand elle tient, avec la fenêtre de récolte de l’ITP', async () => {

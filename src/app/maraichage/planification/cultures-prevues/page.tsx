@@ -225,7 +225,7 @@ function CulturesPrevuesContent() {
             {!!stats.etapesNonSuivies && (
               <Link href={`/maraichage/planification/creer-cultures?annee=${annee}`}>
                 <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100">
-                  {stats.etapesNonSuivies} étape{stats.etapesNonSuivies > 1 ? "s" : ""} de rotation non suivie{stats.etapesNonSuivies > 1 ? "s" : ""}
+                  {stats.etapesNonSuivies} culture{stats.etapesNonSuivies > 1 ? "s" : ""} de la rotation non créée{stats.etapesNonSuivies > 1 ? "s" : ""}
                 </Badge>
               </Link>
             )}
