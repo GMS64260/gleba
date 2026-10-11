@@ -80,3 +80,36 @@ describe("arrosagesDuJour", () => {
     expect(arrosagesDuJour([sousAbri])[0].sousAbri).toBe(true)
   })
 })
+
+// Ticket QA cmv3japsf, étendu aux Tâches et au Calendrier : « Noter » y
+// demande la quantité versée, préremplie comme sur le conseiller.
+describe("quantité conseillée d'une ligne", () => {
+  const A3_DIM = { ...A3, surface: 12, largeur: 0.8, longueur: 25 }
+
+  it("L/m² de la culture pilote et surface de la planche", () => {
+    const [ligne] = arrosagesDuJour([{ ...culture(1, "haute", A3_DIM), reserve: { litresParM2: 20 } }])
+    // La surface de la planche (12 m²), pas la portion de la culture : les
+    // litres notés se répartissent sur toute la planche.
+    expect(ligne).toMatchObject({ litresParM2: 20, surfaceM2: 12 })
+  })
+
+  it("à urgence égale, la plus forte dose pilote, comme sur le conseiller", () => {
+    const [ligne] = arrosagesDuJour([
+      { ...culture(1, "haute", A3_DIM, "Laitue"), reserve: { litresParM2: 8 } },
+      { ...culture(2, "haute", A3_DIM, "Tomate"), reserve: { litresParM2: 25 } },
+    ])
+    expect(ligne).toMatchObject({ litresParM2: 25, raison: "raison 2" })
+    // La plus forte urgence passe avant la dose.
+    const [critique] = arrosagesDuJour([
+      { ...culture(1, "critique", A3_DIM), reserve: { litresParM2: 8 } },
+      { ...culture(2, "haute", A3_DIM), reserve: { litresParM2: 25 } },
+    ])
+    expect(critique.litresParM2).toBe(8)
+  })
+
+  it("sans météo pas de dose ; sans planche ou sans dimension, surface inconnue", () => {
+    expect(arrosagesDuJour([culture(1, "haute", A3)])[0]).toMatchObject({ litresParM2: null, surfaceM2: 0 })
+    const seule = { ...culture(7, "haute", null), reserve: { litresParM2: 5 } }
+    expect(arrosagesDuJour([seule])[0]).toMatchObject({ litresParM2: 5, surfaceM2: 0 })
+  })
+})

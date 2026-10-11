@@ -157,7 +157,13 @@ export async function chargerArrosagesSaisis(
  * Dernier arrosage connu d'une culture : le plus récent entre
  * `derniereIrrigation` et ses saisies. Repli sans météo (donc sans jour du
  * lieu) : au plus demain au jour de Paris, la marge de la route Interventions
- * (`apresDemain`). Avec la météo : `dernierArrosageDuLieu`.
+ * (`apresDemain`). Avec la météo : `dernierArrosageDuLieu`, au plus
+ * aujourd'hui au jour du lieu.
+ *
+ * La marge est voulue (relecture du 2026-10-11) : sans le lieu, une
+ * intervention datée de « demain » à Paris peut être celle du jour à Nouméa
+ * (UTC+11), et l'assistant appelle ce repli pour tous les comptes. Une
+ * intervention réalisée vraiment future est refusée à la saisie.
  */
 export function dernierArrosage(
   derniereIrrigation: Date | null,

@@ -38,7 +38,7 @@ import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { consommationHebdoTotale } from "@/lib/irrigation/consommation"
 import { libelleIrrigation } from '@/lib/planches/libelle-irrigation'
-import { formatNombre } from '@/lib/accueil/classement'
+import { formatNombre } from '@/lib/format-utils'
 
 interface MeteoResume {
   pluie48h: number

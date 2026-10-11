@@ -30,15 +30,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { format, startOfWeek, endOfWeek, addWeeks } from "date-fns"
 import { fr } from "date-fns/locale"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 import type { ArrosageDuJour } from "@/lib/irrigation/a-arroser"
 import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
+import { detailArrosageNote } from "@/lib/irrigation/quantite-versee"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { LigneArrosage, LigneTache } from "@/components/potager/LigneTache"
+import { SaisieArrosage } from "@/components/potager/SaisieArrosage"
 
 interface TacheItem {
   id: number
@@ -113,8 +114,10 @@ function TachesContent() {
   const startIso = React.useMemo(() => weekStart.toISOString(), [weekStart])
   const endIso = React.useMemo(() => weekEnd.toISOString(), [weekEnd])
 
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
+  // `silencieux` : recharger sans remplacer la page par le squelette (arrosage
+  // noté avec sa quantité : on reste à sa place dans la liste).
+  const fetchData = React.useCallback(async ({ silencieux = false }: { silencieux?: boolean } = {}) => {
+    if (!silencieux) setIsLoading(true)
     try {
       const response = await fetch(
         `/api/taches?start=${startIso}&end=${endIso}${anneeChoisie !== null ? `&year=${anneeChoisie}` : ""}`
@@ -359,39 +362,44 @@ function TachesContent() {
     }
   }
 
-  // Noter l'arrosage d'une planche à arroser aujourd'hui (bilan hydrique)
-  const marquerIrrigation = async (arrosage: ArrosageDuJour) => {
-    const noteStr = actionValue.trim()
+  // Noter l'arrosage d'une planche à arroser aujourd'hui (bilan hydrique).
+  // Avec la quantité versée, le bilan retranche ces litres et la planche peut
+  // rester à arroser ; sans, l'arrosage compte comme complet (ticket QA cmv3japsf).
+  const marquerIrrigation = async (arrosage: ArrosageDuJour, litres: number | null, notes: string | null) => {
     setActionLoading(true)
     try {
-      const resultat = await noterArrosage(arrosage.cultureIds, noteStr || null)
+      const resultat = await noterArrosage(arrosage.cultureIds, notes, litres, "taches")
       if (!resultat.ok) throw new Error(resultat.erreur)
 
-      setData(prev => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          irrigation: prev.irrigation.filter(a => a.cle !== arrosage.cle),
-          stats: { ...prev.stats, aIrriguer: Math.max(0, prev.stats.aIrriguer - 1) },
-        }
-      })
+      if (litres) {
+        fetchData({ silencieux: true })
+      } else {
+        setData(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            irrigation: prev.irrigation.filter(a => a.cle !== arrosage.cle),
+            stats: { ...prev.stats, aIrriguer: Math.max(0, prev.stats.aIrriguer - 1) },
+          }
+        })
+      }
 
       // Un geste de trop s'annule : inverse exact (revue du 2026-10-10).
       notifierEnregistrement({
         titre: "Arrosage noté",
-        detail: noteStr || (arrosage.plancheNom ?? arrosage.especes),
+        detail: detailArrosageNote(arrosage.plancheNom ?? arrosage.especes, litres),
         annuler: async () => {
           const annule = await annulerArrosage(resultat.annulation)
           if (!annule.ok) throw new Error(annule.erreur)
-          fetchData()
+          fetchData({ silencieux: true })
         },
       })
       setPendingAction(null)
-    } catch {
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de noter l'arrosage",
+        description: e instanceof Error && e.message ? e.message : "Impossible de noter l'arrosage",
       })
     } finally {
       setActionLoading(false)
@@ -488,7 +496,7 @@ function TachesContent() {
               </Button>
             </Link>
             <h1 className="text-lg font-bold">Tâches</h1>
-            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={fetchData}>
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => fetchData()}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
@@ -644,7 +652,6 @@ function TachesContent() {
                           arrosage.sousAbri ? "sous abri" : null,
                         ]}
                         onAction={() => {
-                          setActionValue("")
                           setPendingAction({
                             kind: "irrigation",
                             arrosage,
@@ -708,33 +715,14 @@ function TachesContent() {
           )}
 
           {pendingAction?.kind === "irrigation" && (
-            <>
-              <DialogHeader>
-                <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-100">
-                  <Droplets className="h-5 w-5 text-cyan-600" />
-                </div>
-                <DialogTitle>Confirmer l’arrosage</DialogTitle>
-                <DialogDescription>{pendingAction.label}</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-2 rounded-xl border border-cyan-200 bg-cyan-50/60 p-4">
-                <Label htmlFor="task-irrigation-notes">Observation facultative</Label>
-                <Textarea
-                  id="task-irrigation-notes"
-                  autoFocus
-                  value={actionValue}
-                  onChange={(e) => setActionValue(e.target.value)}
-                  placeholder="Sol sec, pluie récente, quantité ajustée…"
-                  className="min-h-24 resize-none bg-white"
-                />
-              </div>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <Button variant="outline" onClick={() => setPendingAction(null)} disabled={actionLoading}>Retour</Button>
-                <Button onClick={() => marquerIrrigation(pendingAction.arrosage)} disabled={actionLoading}>
-                  {actionLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
-                  Confirmer l’arrosage
-                </Button>
-              </div>
-            </>
+            <SaisieArrosage
+              key={pendingAction.arrosage.cle}
+              arrosage={pendingAction.arrosage}
+              libelle={pendingAction.label}
+              enCours={actionLoading}
+              onNoter={(litres, notes) => marquerIrrigation(pendingAction.arrosage, litres, notes)}
+              onRetour={() => setPendingAction(null)}
+            />
           )}
 
           {pendingAction?.kind === "report" && (

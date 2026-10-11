@@ -62,10 +62,7 @@ export function sousTitreAujourdhui(nombre: number): string {
   return `${nombre} choses · classées par urgence`
 }
 
-/** Nombre entier en français (« 11 666 »). */
-export function formatNombre(valeur: number, decimales = 0): string {
-  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: decimales }).format(valeur)
-}
+export { formatNombre } from "@/lib/format-utils"
 
 /** Jour civil local AAAA-MM-JJ d'une date (jamais `toISOString`, qui est en UTC). */
 export function jourLocalISO(date: Date): string {

@@ -112,6 +112,14 @@ describe("bilanCulture, type de planche non renseigné", () => {
 
     const r = bilanCulture(meteo, CULTURE, PLANCHE, { sousAbri: null, arrosages: [] })
     expect(r.doseMm).toBe(Math.max(plein.doseMm, abri.doseMm))
+    // Relecture de 0e07f60 : la réserve affichée est celle du cas de la dose,
+    // jamais une dose au-delà de la réserve facile affichée.
+    const forte = abri.doseMm >= plein.doseMm ? abri : plein
+    expect(r.reserveFacileMm).toBe(forte.reserveFacileMm)
+    expect(r.depletionMm).toBe(forte.depletionMm)
+    expect(r.doseMm).toBeLessThanOrEqual(r.reserveFacileMm)
+    // La consommation reste celle du plein champ (litres de la semaine).
+    expect(r.etcPotentielleMoyenne7j).toBe(plein.etcPotentielleMoyenne7j)
     expect(r.urgence).toBe(plein.urgence === "haute" || abri.urgence === "haute" ? "haute" : "critique")
     expect(r.pluiePrevue48h).toBe(0)
     expect(r.raison).toMatch(

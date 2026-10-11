@@ -21,10 +21,14 @@ function signalerMiseAJour(source: string) {
 }
 
 async function patch(corps: Record<string, unknown>, erreurParDefaut: string) {
+  // Coupure réseau : « Failed to fetch » du navigateur, en anglais, devient
+  // un message lisible.
   const res = await fetch("/api/cultures/irriguer", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(corps),
+  }).catch(() => {
+    throw new Error(`${erreurParDefaut} : pas de connexion au serveur.`)
   })
   const reponse = await res.json().catch(() => null)
   if (!res.ok) throw new Error(reponse?.error || erreurParDefaut)

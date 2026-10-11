@@ -14,6 +14,7 @@
  */
 
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
+import { surfaceCultureM2 } from '@/lib/culture-surface'
 
 /** Urgences qui font une ligne « à arroser » ; « moyenne » et « faible » se surveillent. */
 export const URGENCES_A_ARROSER = ['critique', 'haute'] as const
@@ -34,7 +35,16 @@ export interface CultureConseil {
   raisonUrgence: string
   sousAbri: boolean
   espece: { nom: string | null } | null
-  planche: { id: string; nom: string | null; ilot: string | null } | null
+  planche: {
+    id: string
+    nom: string | null
+    ilot: string | null
+    surface?: number | null
+    largeur?: number | null
+    longueur?: number | null
+  } | null
+  /** Conseil du bilan (null sans météo) : L/m² à verser, efficacité du système comprise. */
+  reserve?: { litresParM2: number } | null
 }
 
 export interface ArrosageDuJour {
@@ -52,6 +62,14 @@ export interface ArrosageDuJour {
   /** Raison de la culture la plus urgente (« Déficit de 18 mm, 4 j sans eau. »). */
   raison: string
   sousAbri: boolean
+  /**
+   * L/m² conseillés par la culture qui pilote la ligne (null sans météo),
+   * et surface sur laquelle des litres notés se répartissent : la planche,
+   * sinon la culture (0 si inconnue). Préremplissent « Quantité versée »,
+   * comme sur le conseiller (ticket QA cmv3japsf).
+   */
+  litresParM2: number | null
+  surfaceM2: number
 }
 
 const RANG: Record<UrgenceAArroser, number> = { critique: 0, haute: 1 }
@@ -72,8 +90,15 @@ export function arrosagesDuJour(cultures: CultureConseil[]): ArrosageDuJour[] {
   }
 
   const lignes = Array.from(groupes.entries()).map(([cle, groupe]) => {
+    // Même règle de pilote que le conseiller (`grouperRecommandationsParPlanche`) :
+    // la plus forte urgence, puis la plus forte dose. Mais parmi les seules
+    // cultures cochées « à irriguer » : le conseiller voit toute la planche,
+    // et une culture décochée (goutte-à-goutte programmé) peut y piloter un
+    // autre volume.
     const tete = [...groupe].sort(
-      (a, b) => RANG[a.urgence as UrgenceAArroser] - RANG[b.urgence as UrgenceAArroser],
+      (a, b) =>
+        RANG[a.urgence as UrgenceAArroser] - RANG[b.urgence as UrgenceAArroser] ||
+        (b.reserve?.litresParM2 ?? 0) - (a.reserve?.litresParM2 ?? 0),
     )[0]
     const especes = Array.from(
       new Set(groupe.map((c) => c.espece?.nom).filter((n): n is string => Boolean(n))),
@@ -88,6 +113,10 @@ export function arrosagesDuJour(cultures: CultureConseil[]): ArrosageDuJour[] {
       urgence: tete.urgence as UrgenceAArroser,
       raison: tete.raisonUrgence,
       sousAbri: groupe.some((c) => c.sousAbri),
+      litresParM2: tete.reserve ? tete.reserve.litresParM2 : null,
+      // Même surface que le chargeur des arrosages saisis (`arrosages-saisis.ts`) ;
+      // sans planche, inconnue (0) : l'arrosage compte comme complet.
+      surfaceM2: tete.planche ? surfaceCultureM2({ planche: tete.planche }) : 0,
     }
   })
 
