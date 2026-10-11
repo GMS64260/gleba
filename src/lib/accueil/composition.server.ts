@@ -41,6 +41,7 @@ import { mutationEtapeCulture } from "./mutations"
 import { regrouperLotsVerger } from "./verger"
 import { projeterParcelles } from "./carte"
 import { TUILES_OPTIONNELLES, type IdTuile } from "./disposition"
+import { libelleTypeIntervention } from "@/lib/interventions/types"
 
 /** Une variété de repli (« Non spécifiée ») n'est pas une information à afficher. */
 function varieteAffichable(nom: string | null | undefined): string {
@@ -589,7 +590,7 @@ export async function composerAujourdhui(
               entrees: interventions.map((i) => ({
                 id: `intervention:${i.id}`,
                 date: i.date.toISOString(),
-                titre: i.type.replace(/_/g, " "),
+                titre: libelleTypeIntervention(i.type),
                 detail: i.description ?? null,
                 href: "/interventions",
               })),

@@ -33,6 +33,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { libelleCulture } from "@/lib/cultures/label"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { todayLocalISO } from '@/lib/format-utils'
+import { TYPES_INTERVENTION, libelleTypeIntervention } from "@/lib/interventions/types"
 import {
   Sprout,
   TreeDeciduous,
@@ -161,49 +162,27 @@ function valeurOptionPlancheRef(ref: string | null | undefined, planches: Planch
 // Constants
 // ============================================================
 
-const TYPE_OPTIONS = [
-  { value: "semis", label: "Semis" },
-  { value: "plantation", label: "Plantation" },
-  { value: "desherbage", label: "Désherbage" },
-  { value: "binage", label: "Binage" },
-  { value: "paillage", label: "Paillage" },
-  { value: "traitement_phyto", label: "Traitement phyto" },
-  { value: "fertilisation", label: "Fertilisation" },
-  { value: "recolte", label: "Récolte" },
-  { value: "taille", label: "Taille" },
-  { value: "arrosage", label: "Arrosage" },
-  { value: "tuteurage", label: "Tuteurage" },
-  { value: "autre", label: "Autre" },
-] as const
+// Liste partagée avec la traçabilité et l'accueil (QA cmv2r21ns).
+const TYPE_OPTIONS = TYPES_INTERVENTION
 
 const TYPE_COLORS: Record<string, { bg: string; text: string }> = {
   semis: { bg: "bg-green-100", text: "text-green-800" },
+  repiquage: { bg: "bg-green-100", text: "text-green-800" },
   plantation: { bg: "bg-emerald-100", text: "text-emerald-800" },
   desherbage: { bg: "bg-yellow-100", text: "text-yellow-800" },
   binage: { bg: "bg-amber-100", text: "text-amber-800" },
+  eclaircissage: { bg: "bg-amber-100", text: "text-amber-800" },
   paillage: { bg: "bg-orange-100", text: "text-orange-800" },
   traitement_phyto: { bg: "bg-red-100", text: "text-red-800" },
   fertilisation: { bg: "bg-purple-100", text: "text-purple-800" },
   recolte: { bg: "bg-blue-100", text: "text-blue-800" },
   taille: { bg: "bg-cyan-100", text: "text-cyan-800" },
+  pincement: { bg: "bg-cyan-100", text: "text-cyan-800" },
+  ebourgeonnage: { bg: "bg-cyan-100", text: "text-cyan-800" },
   arrosage: { bg: "bg-sky-100", text: "text-sky-800" },
+  palissage: { bg: "bg-slate-100", text: "text-slate-800" },
   tuteurage: { bg: "bg-slate-100", text: "text-slate-800" },
   autre: { bg: "bg-slate-100", text: "text-slate-800" },
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  semis: "Semis",
-  plantation: "Plantation",
-  desherbage: "Désherbage",
-  binage: "Binage",
-  paillage: "Paillage",
-  traitement_phyto: "Traitement phyto",
-  fertilisation: "Fertilisation",
-  recolte: "Récolte",
-  taille: "Taille",
-  arrosage: "Arrosage",
-  tuteurage: "Tuteurage",
-  autre: "Autre",
 }
 
 // QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
@@ -673,7 +652,7 @@ export default function InterventionsPage() {
     if (!searchText) return interventions
     const lower = searchText.toLowerCase()
     return interventions.filter((i) => {
-      const typeLabel = TYPE_LABELS[i.type] || i.type
+      const typeLabel = libelleTypeIntervention(i.type)
       return (
         typeLabel.toLowerCase().includes(lower) ||
         (i.description && i.description.toLowerCase().includes(lower)) ||
@@ -1382,7 +1361,7 @@ export default function InterventionsPage() {
                     {filteredInterventions.map((intervention) => {
                       const isExpanded = expandedRow === intervention.id
                       const typeColor = TYPE_COLORS[intervention.type] || TYPE_COLORS.autre
-                      const typeLabel = TYPE_LABELS[intervention.type] || intervention.type
+                      const typeLabel = libelleTypeIntervention(intervention.type)
 
                       // Try to find culture name
                       const isVirtual = intervention.source !== 'intervention'
