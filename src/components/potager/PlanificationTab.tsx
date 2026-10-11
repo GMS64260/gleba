@@ -245,7 +245,7 @@ function PlanificationSubTab({ year }: { year: number }) {
               )}
               {!isLoading && !!stats?.etapesRotationNonSuivies && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-200">
-                  {stats.etapesRotationNonSuivies} étape{stats.etapesRotationNonSuivies > 1 ? "s" : ""} de rotation non suivie{stats.etapesRotationNonSuivies > 1 ? "s" : ""}
+                  {stats.etapesRotationNonSuivies} culture{stats.etapesRotationNonSuivies > 1 ? "s" : ""} de la rotation non créée{stats.etapesRotationNonSuivies > 1 ? "s" : ""}
                 </span>
               )}
             </div>
@@ -262,7 +262,7 @@ function PlanificationSubTab({ year }: { year: number }) {
             {stats?.culturesACreer
               ? `Créer ${stats.culturesACreer} culture${stats.culturesACreer > 1 ? "s" : ""}`
               : stats?.etapesRotationNonSuivies
-                ? "Voir les étapes non suivies"
+                ? "Voir la rotation non suivie"
                 : "Consulter mon plan"}
             <ArrowRight className="h-4 w-4" />
           </Link>

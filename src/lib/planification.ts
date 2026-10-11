@@ -1688,7 +1688,7 @@ export async function creerCulturesBatch(
         ignorees.push({
           plancheId: culture.plancheId,
           itpId: culture.itpId,
-          motif: `${verdict.message}${ajustement ? ` : ${ajustement.message.toLowerCase()} depuis « Nouvelle culture »` : ""}`,
+          motif: `${verdict.message}${ajustement ? `. Créez-la depuis « Nouvelle culture » en réduisant à ${ajustement.reduireRangs} rang${ajustement.reduireRangs! > 1 ? "s" : ""}` : ""}`,
         })
         continue
       }

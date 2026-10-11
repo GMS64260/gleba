@@ -184,16 +184,15 @@ function CreerCulturesContent() {
       // demandées : l'écart est désormais nommé, motif par motif.
       const ignorees: { plancheId: string; itpId: string; motif: string }[] = result.ignorees ?? []
       if (ignorees.length > 0) {
-        const motifs = [...new Set(ignorees.map((i) => i.motif))].join(" ; ")
+        // Un motif par planche : un refus de largeur porte ses propres chiffres,
+        // deux refus juxtaposés ne disaient plus lequel allait avec quelle planche.
         toast({
           variant: result.created > 0 ? "default" : "destructive",
           title:
             result.created > 0
               ? `${result.created} culture(s) créée(s), ${ignorees.length} écartée(s)`
               : "Aucune culture créée",
-          description: `Planches concernées : ${ignorees
-            .map((i) => i.plancheId)
-            .join(", ")}. Motif : ${motifs}.`,
+          description: ignorees.map((i) => `${i.plancheId} : ${i.motif}`).join(" ; ") + ".",
         })
       } else {
         toast({
@@ -274,7 +273,7 @@ function CreerCulturesContent() {
           <Card className="mb-6 border-amber-300 bg-amber-50">
             <CardHeader className="pb-2">
               <CardTitle className="text-base text-amber-900">
-                {etapesNonSuivies.length} étape{etapesNonSuivies.length > 1 ? "s" : ""} de rotation non suivie{etapesNonSuivies.length > 1 ? "s" : ""} en {annee}
+                {etapesNonSuivies.length} culture{etapesNonSuivies.length > 1 ? "s" : ""} de la rotation non créée{etapesNonSuivies.length > 1 ? "s" : ""} en {annee}
               </CardTitle>
               <CardDescription className="text-amber-900/80">
                 La rotation prévoit ces cultures, mais la planche porte déjà d&apos;autres cultures cette saison.
@@ -374,12 +373,12 @@ function CreerCulturesContent() {
                 <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-600" />
                 <p className="text-lg font-medium">
                   {etapesNonSuivies.length > 0
-                    ? "Toutes les cultures du plan sont créées, hors étapes non suivies"
+                    ? "Toutes les cultures du plan sont créées, sauf celles de la rotation listées plus haut"
                     : "Toutes les cultures sont déjà créées"}
                 </p>
                 <p className="mt-2">
                   {etapesNonSuivies.length > 0
-                    ? "Les étapes de rotation non suivies sont listées plus haut."
+                    ? "La planche de ces cultures est déjà occupée cette saison."
                     : "Ou aucune planche n'a de rotation assignée."}
                 </p>
                 <Link href="/maraichage/planches" className="mt-4 inline-block">
