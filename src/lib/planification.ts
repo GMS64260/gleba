@@ -22,6 +22,9 @@ import { chargerSurchargesRendement, rendementEffectif } from './recolte/rendeme
 import type { StatutSemence } from './semences/calcul'
 import { zoneEffectiveUser } from './terroir'
 import { etapeCycleRotation } from './rotation/etape-cycle'
+import { evaluerOccupationPlanche } from './planche-validation'
+import { selectCulturesOccupation } from './planches/occupation'
+import { finDeCycle, finRecolteDepuisItp } from './cultures/fenetre-recolte'
 
 export { etapeCycleRotation, EPOCH_ROTATION_SANS_ANCRAGE } from './rotation/etape-cycle'
 
@@ -99,6 +102,40 @@ export interface CulturePrevue {
   surface: number
   existante: boolean // Culture deja creee ?
   cultureId: number | null // ID si existante
+}
+
+/**
+ * Étape de rotation prévue pour l'année mais non suivie : la planche porte déjà
+ * des cultures d'autres espèces cette année-là.
+ *
+ * QA cmv2r2rl8 (2026-10-10) — la règle « R3/B » écarte ces étapes des listes et
+ * des projections (proposer une culture à créer sur une planche déjà occupée
+ * polluait l'inventaire réel), mais en silence : « Créer les cultures »
+ * annonçait 31 prévues, 31 créées, 0 à créer alors que l'Oignon de l'étape 4/4
+ * n'existait pas, comme si le Radis et le Zinnia de la planche l'avaient
+ * remplacé. L'étape reste hors des listes et des besoins, mais elle est
+ * désormais nommée, avec les espèces qui occupent la planche, et peut être
+ * créée quand même.
+ */
+export interface EtapeRotationNonSuivie {
+  /** Nom de la planche (même convention que `CulturePrevue.plancheId`). */
+  plancheId: string
+  ilot: string | null
+  rotationId: string | null
+  rotationAnnee: number
+  rotationNbAnnees: number
+  annee: number
+  itpId: string | null
+  especeId: string | null
+  especeCouleur: string | null
+  semaineSemis: number | null
+  semainePlantation: number | null
+  semaineRecolte: number | null
+  surface: number
+  /** Espèces d'AUTRES étapes ou hors rotation, déjà sur la planche cette année. */
+  especesPresentes: string[]
+  /** Une autre culture de la même étape (succession) est déjà créée. */
+  etapeEntamee: boolean
 }
 
 export interface RecoltePrevue {
@@ -323,6 +360,25 @@ function coherenceSemaines(input: {
 // FONCTIONS PRINCIPALES
 // ============================================================
 
+type OptionsCulturesPrevues = {
+  especeId?: string
+  ilot?: string
+  plancheId?: string
+  /**
+   * Les écrans d'inventaire et leurs compteurs doivent conserver toutes les
+   * cultures réellement créées, y compris celles déjà récoltées/terminées.
+   * Les calculs de besoins et de récoltes restantes gardent le filtre
+   * historique quand cette option est absente.
+   */
+  includeAllCultures?: boolean
+  /**
+   * QA cmsbterw9 — une culture « en récolte » (recolteFaite=true mais non
+   * terminée) occupe encore physiquement la planche : les associations
+   * doivent la voir comme voisine. Les cultures terminées restent exclues.
+   */
+  inclureEnRecolte?: boolean
+}
+
 /**
  * Recupere les cultures prevues pour une annee donnee
  * Basee sur les rotations assignees aux planches
@@ -330,25 +386,20 @@ function coherenceSemaines(input: {
 export async function getCulturesPrevues(
   userId: string,
   annee: number,
-  options?: {
-    especeId?: string
-    ilot?: string
-    plancheId?: string
-    /**
-     * Les écrans d'inventaire et leurs compteurs doivent conserver toutes les
-     * cultures réellement créées, y compris celles déjà récoltées/terminées.
-     * Les calculs de besoins et de récoltes restantes gardent le filtre
-     * historique quand cette option est absente.
-     */
-    includeAllCultures?: boolean
-    /**
-     * QA cmsbterw9 — une culture « en récolte » (recolteFaite=true mais non
-     * terminée) occupe encore physiquement la planche : les associations
-     * doivent la voir comme voisine. Les cultures terminées restent exclues.
-     */
-    inclureEnRecolte?: boolean
-  }
+  options?: OptionsCulturesPrevues
 ): Promise<CulturePrevue[]> {
+  return (await getCulturesPrevuesEtEtapesNonSuivies(userId, annee, options)).cultures
+}
+
+/**
+ * Même calcul que `getCulturesPrevues`, avec en plus les étapes de rotation de
+ * l'année que la planche ne suit pas (voir `EtapeRotationNonSuivie`).
+ */
+export async function getCulturesPrevuesEtEtapesNonSuivies(
+  userId: string,
+  annee: number,
+  options?: OptionsCulturesPrevues
+): Promise<{ cultures: CulturePrevue[]; etapesNonSuivies: EtapeRotationNonSuivie[] }> {
   const userZone = await zoneEffectiveUser(prisma, userId)
 
   // Mode 1: Cultures basées sur rotations
@@ -379,6 +430,7 @@ export async function getCulturesPrevues(
         select: {
           id: true,
           especeId: true,
+          espece: { select: { nom: true } },
           varieteId: true,
           itpId: true,
           dateSemis: true,
@@ -396,6 +448,7 @@ export async function getCulturesPrevues(
   })
 
   const culturesPrevues: CulturePrevue[] = []
+  const etapesNonSuivies: EtapeRotationNonSuivie[] = []
   /** Position dans le cycle de rotation, par planche (cf. QA cmswy9fyr). */
   const phaseParPlanche = new Map<
     string,
@@ -423,6 +476,13 @@ export async function getCulturesPrevues(
       nbAnnees: nbAnneesCycle,
       ancrage: planche.annee ?? null,
     })
+
+    // Espèces prévues par l'étape courante (plusieurs ITP = successions).
+    const especesEtape = new Set(
+      planche.rotation.details
+        .filter((d) => d.annee === etapeCourante && d.itp?.especeId)
+        .map((d) => d.itp!.especeId as string)
+    )
 
     for (const detail of planche.rotation.details) {
       if (detail.annee !== etapeCourante) continue
@@ -453,7 +513,47 @@ export async function getCulturesPrevues(
       // Bug R3/B (testeur) : ne pas injecter de culture « fantôme » à créer
       // quand la planche est DÉJÀ occupée par des cultures réelles cette
       // année (la suggestion de rotation polluait l'inventaire réel).
-      if (!cultureExistante && planche.cultures.length > 0) continue
+      if (!cultureExistante && planche.cultures.length > 0) {
+        // QA cmv2r2rl8 — écartée des listes, mais pas en silence.
+        const itpEtape = detail.itp
+          ? appliquerDecalageItp(detail.itp, decalageItpPourLecteur(detail.itp, userZone, userId))
+          : null
+        const semainesEtape = coherenceSemaines({
+          semaineSemis: itpEtape?.semaineSemis || null,
+          semainePlantation: itpEtape?.semainePlantation || null,
+          semaineRecolte: itpEtape?.semaineRecolte || null,
+          semisReel: false,
+          plantationReelle: false,
+          recolteReelle: false,
+        })
+        etapesNonSuivies.push({
+          plancheId: planche.nom,
+          ilot: deriveIlot(planche.ilot, planche.nom),
+          rotationId: planche.rotationId,
+          rotationAnnee: detail.annee,
+          rotationNbAnnees: nbAnneesCycle,
+          annee,
+          itpId: detail.itpId,
+          especeId: detail.itp?.especeId || null,
+          especeCouleur: detail.itp?.espece?.couleur || null,
+          semaineSemis: semainesEtape.semaineSemis,
+          semainePlantation: semainesEtape.semainePlantation,
+          semaineRecolte: semainesEtape.semaineRecolte,
+          surface: (planche.longueur || 0) * (planche.largeur || 0),
+          // Une succession de la même étape (deux ITP la même année) n'est pas
+          // une « autre espèce » : elle est dite à part (revue du 2026-10-11).
+          especesPresentes: [
+            ...new Set(
+              planche.cultures
+                .filter((c) => !especesEtape.has(c.especeId))
+                .map((c) => c.espece?.nom ?? c.especeId)
+                .filter(Boolean)
+            ),
+          ],
+          etapeEntamee: planche.cultures.some((c) => especesEtape.has(c.especeId)),
+        })
+        continue
+      }
 
       // Bug R19/R26 : si une culture réelle existe, ses dates SAISIES priment
       // sur les semaines théoriques de l'ITP (sinon toutes les successions
@@ -628,7 +728,7 @@ export async function getCulturesPrevues(
     }
   }
 
-  return culturesPrevues
+  return { cultures: culturesPrevues, etapesNonSuivies }
 }
 
 /**
@@ -1460,9 +1560,17 @@ export async function creerCulturesBatch(
   // Résolution par nom OU par id, mais UNIQUEMENT parmi les planches de
   // l'utilisateur (audit 2026-07, #42 IDOR : le fallback sur l'id brut du
   // client permettait de rattacher une culture à la planche d'un autre compte).
+  // Cultures en place lues comme la création unitaire (selectCulturesOccupation) :
+  // même verdict d'occupation que POST /api/cultures (revue du 2026-10-11).
   const planchesDb = await prisma.planche.findMany({
     where: { userId, OR: [{ nom: { in: plancheNoms } }, { id: { in: plancheNoms } }] },
-    select: { id: true, nom: true, largeur: true, longueur: true },
+    select: {
+      id: true,
+      nom: true,
+      largeur: true,
+      longueur: true,
+      cultures: { where: { terminee: null }, select: selectCulturesOccupation },
+    },
   })
   const plancheNomToId = new Map(planchesDb.map(p => [p.nom, p.id]))
   const plancheIdsUser = new Set(planchesDb.map(p => p.id))
@@ -1559,6 +1667,32 @@ export async function creerCulturesBatch(
     const espacement = itp.espacement && itp.espacement > 0 ? Math.round(itp.espacement) : null
     const nbPlants = calculerNbPlants(longueur, null, itp.nbRangs, espacement)
     const quantite = nbPlants > 0 ? nbPlants : null
+    // Fenêtre de récolte dérivée de l'itinéraire, comme à la création unitaire.
+    const finRecolte = finRecolteDepuisItp(dateRecolte, itpCalibre)
+
+    // Revue du 2026-10-11 (QA cmv2r1v63, cmv2r2rl8) — même règle d'occupation
+    // que POST /api/cultures : « Créer quand même » une étape de rotation sur
+    // une planche déjà occupée ne contourne plus le refus de largeur.
+    if (planche) {
+      const verdict = evaluerOccupationPlanche({
+        planche: { largeur: planche.largeur, longueur: planche.longueur },
+        culturesEnPlace: planche.cultures,
+        espacementRangs: itp.espacementRangs ?? null,
+        nbRangs: itp.nbRangs,
+        longueur,
+        debut: dateSemis ?? datePlantation,
+        fin: finDeCycle({ dateRecolte, finRecolte }),
+      })
+      if (verdict.verifie && !verdict.possible) {
+        const ajustement = verdict.ajustements.find((a) => a.reduireRangs)
+        ignorees.push({
+          plancheId: culture.plancheId,
+          itpId: culture.itpId,
+          motif: `${verdict.message}${ajustement ? ` : ${ajustement.message.toLowerCase()} depuis « Nouvelle culture »` : ""}`,
+        })
+        continue
+      }
+    }
 
     // Creer la culture
     const newCulture = await prisma.culture.create({
@@ -1572,11 +1706,23 @@ export async function creerCulturesBatch(
         dateSemis,
         datePlantation,
         dateRecolte,
+        finRecolte,
         nbRangs: itp.nbRangs,
         longueur,
         espacement,
         quantite,
       },
+    })
+    // Une seconde ligne du même lot sur cette planche compte celle-ci.
+    planche?.cultures.push({
+      id: newCulture.id,
+      espece: { id: itp.especeId, vivace: itp.espece?.vivace ?? false },
+      dateSemis,
+      datePlantation,
+      dateRecolte,
+      finRecolte,
+      nbRangs: itp.nbRangs,
+      itp: { espacementRangs: itp.espacementRangs ?? null },
     })
 
     // Pas de décrément automatique du stock de semences ici.
@@ -1605,7 +1751,7 @@ export async function creerCulturesBatch(
  * Statistiques de planification
  */
 export async function getStatsPlanification(userId: string, annee: number) {
-  const culturesPrevues = await getCulturesPrevues(userId, annee, {
+  const { cultures: culturesPrevues, etapesNonSuivies } = await getCulturesPrevuesEtEtapesNonSuivies(userId, annee, {
     includeAllCultures: true,
   })
   const recoltesPrevues = await getRecoltesPrevues(userId, annee, 'mois')
@@ -1643,6 +1789,9 @@ export async function getStatsPlanification(userId: string, annee: number) {
     totalCultures,
     culturesExistantes,
     culturesACreer,
+    // QA cmv2r2rl8 — un plan « prêt » ne doit pas taire une étape de rotation
+    // que la planche ne suit pas.
+    etapesRotationNonSuivies: etapesNonSuivies.length,
     surfaceTotale: Math.round(surfaceTotale * 100) / 100,
     recoltesTotales: Math.round(recoltesTotales * 100) / 100,
     nbEspeces: especesUniques.size,

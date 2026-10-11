@@ -141,7 +141,7 @@ function CulturesPrevuesContent() {
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
-  const [stats, setStats] = React.useState<{ total: number; existantes: number; aCreer: number }>({
+  const [stats, setStats] = React.useState<{ total: number; existantes: number; aCreer: number; etapesNonSuivies?: number }>({
     total: 0,
     existantes: 0,
     aCreer: 0,
@@ -221,6 +221,14 @@ function CulturesPrevuesContent() {
             <Badge variant="outline">{stats.total} cultures</Badge>
             <Badge variant="default" className="bg-green-600">{stats.existantes} créées</Badge>
             <Badge variant="secondary">{stats.aCreer} à créer</Badge>
+            {/* QA cmv2r2rl8 — étape de rotation que la planche ne suit pas. */}
+            {!!stats.etapesNonSuivies && (
+              <Link href={`/maraichage/planification/creer-cultures?annee=${annee}`}>
+                <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100">
+                  {stats.etapesNonSuivies} étape{stats.etapesNonSuivies > 1 ? "s" : ""} de rotation non suivie{stats.etapesNonSuivies > 1 ? "s" : ""}
+                </Badge>
+              </Link>
+            )}
           </div>
           <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
         </div>
