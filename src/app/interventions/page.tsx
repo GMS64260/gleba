@@ -190,6 +190,20 @@ const TYPE_COLORS: Record<string, { bg: string; text: string }> = {
 const currentYearNow = new Date().getFullYear()
 const availableYears = getAvailableYears()
 
+/**
+ * Ticket QA cmv4z983m — l'URL est la source de vérité du filtre d'année
+ * (`?annee=`), pour qu'un rechargement ou un lien partagé gardent 2025.
+ * Les paramètres d'ouverture (`nouvelle`, `prefill`) sont retirés sans toucher
+ * au reste de la requête.
+ */
+function urlSansOuverture(): string {
+  const sp = new URLSearchParams(window.location.search)
+  sp.delete("nouvelle")
+  sp.delete("prefill")
+  const q = sp.toString()
+  return q ? `${window.location.pathname}?${q}` : window.location.pathname
+}
+
 // ============================================================
 // Helper functions
 // ============================================================
@@ -242,6 +256,20 @@ export default function InterventionsPage() {
   const [filterDateTo, setFilterDateTo] = React.useState("")
   const [filterFait, setFilterFait] = React.useState<string>("all") // "all" | "true" | "false"
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
+  // Vrai une fois `?annee=` lu : la première lecture attend l'année de l'URL
+  // au lieu de charger l'année courante puis la bonne (ticket cmv4z983m).
+  const [anneeRestauree, setAnneeRestauree] = React.useState(false)
+  const changerAnnee = React.useCallback((annee: number) => {
+    setSelectedYear(annee)
+    const sp = new URLSearchParams(window.location.search)
+    sp.set("annee", String(annee))
+    // Un filtre n'encombre pas l'historique (replace) ; l'API History suffit,
+    // `router.replace` sur le même chemin est ignoré après préchargement.
+    // État `null` et non celui de Next : avec lui, le routeur ne voit pas la
+    // nouvelle URL et la réécrirait sans `annee` à sa prochaine mise à jour
+    // (cf. use-annee-planification.ts, relecture du 2026-10-12).
+    window.history.replaceState(null, "", `${window.location.pathname}?${sp.toString()}`)
+  }, [])
   const [searchText, setSearchText] = React.useState("")
 
   // UI state
@@ -297,11 +325,15 @@ export default function InterventionsPage() {
   React.useEffect(() => {
     if (typeof window === "undefined") return
     const sp = new URLSearchParams(window.location.search)
+    // Ticket cmv4z983m — année du deep-link, si elle est dans la plage du sélecteur.
+    const anneeUrl = Number.parseInt(sp.get("annee") ?? "", 10)
+    if (availableYears.includes(anneeUrl)) setSelectedYear(anneeUrl)
+    setAnneeRestauree(true)
     // QA cmv2r57qk — « Noter une intervention » depuis la navigation de
     // l'accueil (palette, Tâches) ouvre directement une fiche vierge.
     if (sp.get("nouvelle") === "1") {
       setDialogOpen(true)
-      window.history.replaceState(window.history.state, "", window.location.pathname)
+      window.history.replaceState(null, "", urlSansOuverture())
       return
     }
     const prefill = sp.get("prefill")
@@ -322,7 +354,7 @@ export default function InterventionsPage() {
     // QA cmsno1hct — sans nettoyage, `?prefill=` survivait au reload : la
     // modale se rouvrait pré-remplie après F5, donnant l'impression que la
     // saisie précédente n'avait jamais été enregistrée.
-    window.history.replaceState(window.history.state, "", window.location.pathname)
+    window.history.replaceState(null, "", urlSansOuverture())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -407,10 +439,10 @@ export default function InterventionsPage() {
   }, [])
 
   React.useEffect(() => {
-    if (session?.user) {
+    if (session?.user && anneeRestauree) {
       fetchInterventions()
     }
-  }, [session?.user, fetchInterventions])
+  }, [session?.user, fetchInterventions, anneeRestauree])
 
   React.useEffect(() => {
     if (session?.user) {
@@ -815,7 +847,7 @@ export default function InterventionsPage() {
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              onChange={(e) => changerAnnee(parseInt(e.target.value))}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm"
             >
               {availableYears.map((y) => (
