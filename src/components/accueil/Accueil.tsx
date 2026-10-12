@@ -53,6 +53,8 @@ import { toast } from "@/hooks/use-toast"
 import { useAccueilDisposition } from "@/hooks/use-accueil-disposition"
 import { cn } from "@/lib/utils"
 
+import { LunaireWidget } from "@/components/lunaire/LunaireWidget"
+
 import { AccueilEnTete } from "./AccueilEnTete"
 import { BarreCommande } from "./BarreCommande"
 import { CLASSES_BOUTON, CLASSES_BOUTON_PRINCIPAL } from "./boutons"
@@ -378,6 +380,8 @@ export function Accueil() {
           <div className="flex items-center gap-3">
             <BarreCommande className="max-w-[560px] flex-1" compact />
             <MeteoResume meteo={meteo.donnees} className="ml-auto hidden md:flex" />
+            {/* Ticket QA cmv4zb9yy — sur grand écran, le rail porte le calendrier lunaire. */}
+            <LunaireWidget className="lg:hidden" />
             {session?.user && <UserMenu user={session.user} />}
           </div>
 
