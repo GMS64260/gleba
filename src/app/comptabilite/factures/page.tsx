@@ -225,25 +225,27 @@ export default function FacturesPage() {
     ouvrirApercu(`/api/comptabilite/factures/${factureId}/pdf`, `Facture ${numero}`)
   }
 
-  const downloadFactureUBL = async (factureId: number, numero: string) => {
+  /** UBL 2.1 (XML) ou Factur-X (PDF/A-3 avec XML CII) : même contrôle de complétude côté serveur (422 détaillé). */
+  const telechargerExportFacture = async (factureId: number, numero: string, format: "ubl" | "facturx") => {
+    const libelle = format === "ubl" ? "UBL" : "Factur-X"
     try {
-      const res = await fetch(`/api/comptabilite/factures/${factureId}/ubl`, { credentials: "include" })
+      const res = await fetch(`/api/comptabilite/factures/${factureId}/${format}`, { credentials: "include" })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
         const details = Array.isArray(payload.details) ? payload.details.join(" · ") : ""
-        toast({ variant: "destructive", title: "Export UBL impossible", description: [payload.error || `Erreur ${res.status}`, details].filter(Boolean).join(" — ") })
+        toast({ variant: "destructive", title: `Export ${libelle} impossible`, description: [payload.error || `Erreur ${res.status}`, details].filter(Boolean).join(" — ") })
         return
       }
       const url = URL.createObjectURL(await res.blob())
       const link = document.createElement("a")
       link.href = url
-      link.download = `${numero}.ubl.xml`
+      link.download = format === "ubl" ? `${numero}.ubl.xml` : `${numero}-facturx.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch {
-      toast({ variant: "destructive", title: "Export UBL impossible", description: "Erreur réseau" })
+      toast({ variant: "destructive", title: `Export ${libelle} impossible`, description: "Erreur réseau" })
     }
   }
 
@@ -658,7 +660,7 @@ export default function FacturesPage() {
           {/* Onglet Factures émises */}
           <TabsContent value="emises">
             <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-              L’export UBL produit un fichier structuré contrôlé avant téléchargement. Il ne constitue pas une transmission réglementaire : l’envoi doit passer par une plateforme agréée.
+              Les exports UBL 2.1 et Factur-X produisent un fichier structuré contrôlé avant téléchargement. Ils ne constituent pas une transmission réglementaire : l’envoi doit passer par une plateforme agréée (obligatoire pour l’émission des PME et micro-entreprises à partir du 1er septembre 2027).
             </p>
             <Card>
               <CardHeader>
@@ -773,10 +775,21 @@ export default function FacturesPage() {
                                   variant="outline"
                                   size="sm"
                                   title="Exporter au format structuré UBL 2.1"
-                                  onClick={() => downloadFactureUBL(f.id, f.numero)}
+                                  onClick={() => telechargerExportFacture(f.id, f.numero, "ubl")}
                                 >
                                   <Download className="h-4 w-4 mr-1" />
                                   UBL
+                                </Button>
+                              )}
+                              {f.statut !== "brouillon" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  title="Exporter en Factur-X : PDF/A-3 avec le XML CII (profil EN 16931) incorporé"
+                                  onClick={() => telechargerExportFacture(f.id, f.numero, "facturx")}
+                                >
+                                  <Download className="h-4 w-4 mr-1" />
+                                  Factur-X
                                 </Button>
                               )}
                             </div>
