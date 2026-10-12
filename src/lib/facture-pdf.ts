@@ -329,7 +329,12 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
     fy += 12
   }
 
-  // Footer minimal
+  // Footer minimal. À 810 pt il est sous la marge basse (792 pt) : pdfkit
+  // ouvrait une seconde page, vide, pour y poser cette seule ligne (toutes les
+  // factures PDF avaient deux pages, constaté le 2026-10-12). La marge basse est
+  // levée le temps d'écrire le pied, puis rétablie.
+  const margeBasse = doc.page.margins.bottom
+  doc.page.margins.bottom = 0
   doc
     .fontSize(7)
     .fillColor("#cbd5e1")
@@ -337,8 +342,9 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
       `Document généré le ${new Date().toLocaleDateString("fr-FR")} via Gleba — gleba.fr`,
       50,
       810,
-      { width: 495, align: "center" }
+      { width: 495, align: "center", lineBreak: false }
     )
+  doc.page.margins.bottom = margeBasse
 }
 
 export interface OptionsPdfFacture {
