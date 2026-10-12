@@ -6,7 +6,9 @@
  * La météo n'existait qu'en widgets dispersés (header, onglets) ; cette page
  * regroupe conditions/prévisions (MeteoWidget) et conseil d'irrigation
  * (IrrigationAdvisor) pour la parcelle choisie. Accessible depuis le popover
- * météo du header sur toutes les pages.
+ * météo du header sur toutes les pages. Depuis le 2026-10-12, elle porte aussi
+ * le calendrier lunaire complet (`#calendrier-lunaire`), que l'accueil v2
+ * annonce par une petite lune à côté de la météo.
  */
 
 import * as React from "react"
@@ -15,6 +17,7 @@ import { CloudSun, MapPin, Radio, Settings } from "lucide-react"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { MeteoWidget } from "@/components/meteo/MeteoWidget"
 import { IrrigationAdvisor } from "@/components/meteo/IrrigationAdvisor"
+import { CalendrierLunaire } from "@/components/lunaire/CalendrierLunaire"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -261,6 +264,8 @@ export default function MeteoPage() {
             <IrrigationAdvisor key={`irrigation-${sourceVersion}-${parcelle.id}`} parcelleId={parcelle.id} lat={parcelle.centroidLat} lng={parcelle.centroidLng} scopeLabel={parcelle.nom} />
           </div>
         )}
+        {/* Sans parcelle géolocalisée aussi : la Lune ne dépend pas du lieu. */}
+        <CalendrierLunaire variante="page" className="mt-4" />
       </main>
     </div>
   )
