@@ -8,6 +8,7 @@
 import * as React from "react"
 import { Moon, ChevronLeft, ChevronRight, ChevronDown, Loader2 } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { EVENEMENT_OUVRIR_LUNE, enregistrerCalendrierLunaire } from "@/lib/accueil/evenements"
 
 interface JourLunaire {
   date: string
@@ -41,7 +42,37 @@ const MOIS = [
 ]
 const JOURS_SEM = ["L", "M", "M", "J", "V", "S", "D"]
 
-export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
+export interface LunaireWidgetProps {
+  /** Dans le bandeau météo de l'en-tête historique : sans bordure, pleine hauteur. */
+  embedded?: boolean
+  /** Libellé à côté de la phase du jour (rail de l'accueil v2) ; sans lui, phase seule. */
+  libelle?: string
+  /** Classes du bouton quand `libelle` est donné (entrée du rail). */
+  triggerClassName?: string
+  className?: string
+  side?: "top" | "right" | "bottom" | "left"
+  align?: "start" | "center" | "end"
+}
+
+/**
+ * Lecture du jour partagée entre les instances d'une même page (rail et
+ * en-tête, relecture du 2026-10-12) : une seule requête par jour civil.
+ */
+let lectureDuJour: { jour: string; promesse: Promise<JourLunaire | null> } | null = null
+function lireJourLunaire(jour: string): Promise<JourLunaire | null> {
+  if (lectureDuJour?.jour !== jour) {
+    const promesse = fetch("/api/lunaire?today=1")
+      .then((r) => r.json())
+      .then((json) => (json.jour ?? null) as JourLunaire | null)
+      .catch(() => null)
+    lectureDuJour = { jour, promesse }
+    // Un échec ne se mémorise pas : la prochaine instance retente.
+    promesse.then((j) => { if (j === null && lectureDuJour?.promesse === promesse) lectureDuJour = null })
+  }
+  return lectureDuJour.promesse
+}
+
+export function LunaireWidget({ embedded = false, libelle, triggerClassName, className, side = "bottom", align = "end" }: LunaireWidgetProps) {
   const [today, setToday] = React.useState<JourLunaire | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [calData, setCalData] = React.useState<CalendrierData | null>(null)
@@ -51,14 +82,23 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
   const [year, setYear] = React.useState(now.getFullYear())
   const [month, setMonth] = React.useState(now.getMonth() + 1)
   const [selectedDay, setSelectedDay] = React.useState<JourLunaire | null>(null)
+  const [open, setOpen] = React.useState(false)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  // Audit fuseaux #78 : jour LOCAL (year/month sont locaux). toISOString() donne
+  // le jour UTC → entre minuit et 2h, « aujourd'hui » tombait sur la veille.
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
 
   React.useEffect(() => {
-    fetch("/api/lunaire?today=1")
-      .then((r) => r.json())
-      .then((json) => setToday(json.jour))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+    let annule = false
+    lireJourLunaire(todayStr).then((jour) => {
+      if (annule) return
+      setToday(jour)
+      setLoading(false)
+    })
+    return () => {
+      annule = true
+    }
+  }, [todayStr])
 
   const fetchCalendar = React.useCallback((y: number, m: number) => {
     setCalLoading(true)
@@ -70,9 +110,31 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
       .finally(() => setCalLoading(false))
   }, [])
 
-  const handleOpenChange = React.useCallback((open: boolean) => {
-    if (open && !calData) fetchCalendar(year, month)
+  const handleOpenChange = React.useCallback((ouvert: boolean) => {
+    setOpen(ouvert)
+    if (ouvert && !calData) fetchCalendar(year, month)
   }, [year, month, calData, fetchCalendar])
+
+  // Accueil v2 (ticket QA cmv4zb9yy) : la palette et la tuile Raccourcis
+  // ouvrent ce calendrier par événement. Seul le widget visible répond : sur
+  // une même page, un autre peut être masqué par la grille responsive (rail
+  // sur grand écran, en-tête sur téléphone).
+  React.useEffect(() => {
+    const visible = () => Boolean(triggerRef.current && triggerRef.current.getClientRects().length > 0)
+    const desinscrire = enregistrerCalendrierLunaire(visible)
+    const ouvrir = () => {
+      if (!visible()) return
+      // Le déclencheur peut être défilé hors écran (en-tête de l'accueil sur
+      // téléphone, raccourci en bas de page) : le popover s'ancre dessus.
+      triggerRef.current?.scrollIntoView({ block: "nearest" })
+      handleOpenChange(true)
+    }
+    window.addEventListener(EVENEMENT_OUVRIR_LUNE, ouvrir)
+    return () => {
+      desinscrire()
+      window.removeEventListener(EVENEMENT_OUVRIR_LUNE, ouvrir)
+    }
+  }, [handleOpenChange])
 
   const navMonth = (delta: number) => {
     let m = month + delta, y = year
@@ -85,8 +147,9 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
 
   if (loading) {
     return (
-      <div className="flex items-center px-2 py-1 text-ardoise/60">
+      <div className={`flex items-center px-2 py-1 text-ardoise/60 ${className ?? ""}`} aria-label={libelle ?? "Calendrier lunaire"} aria-busy="true">
         <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
+        {libelle && <span className="ml-2.5 text-sm">{libelle}</span>}
       </div>
     )
   }
@@ -94,25 +157,29 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
   if (!today) return null
 
   const tc = TYPE_CFG[today.typeJour] || TYPE_CFG.repos
-  // Audit fuseaux #78 : jour LOCAL (year/month sont locaux). toISOString() donne
-  // le jour UTC → entre minuit et 2h, « aujourd'hui » tombait sur la veille.
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
   const firstDay = new Date(year, month - 1, 1).getDay()
   const offset = firstDay === 0 ? 6 : firstDay - 1
 
   return (
-    <Popover onOpenChange={handleOpenChange}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <button className={`flex items-center justify-center gap-1.5 px-2 sm:px-3 transition-colors group ${
-          embedded
-            ? "h-full bg-papier hover:bg-lin-doux"
-            : "rounded-lg border border-lin bg-papier py-1.5 hover:bg-lin-doux sm:py-2"
-        }`} aria-label="Calendrier lunaire">
-          <span className="text-base leading-none">{today.emoji}</span>
-          <ChevronDown className="h-3 w-3 text-ardoise group-hover:text-encre" />
-        </button>
+        {libelle ? (
+          <button ref={triggerRef} type="button" className={`${triggerClassName ?? ""} ${className ?? ""}`} aria-haspopup="dialog" aria-expanded={open}>
+            <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center text-base leading-none" aria-hidden>{today.emoji}</span>
+            {libelle}
+          </button>
+        ) : (
+          <button ref={triggerRef} type="button" className={`flex items-center justify-center gap-1.5 px-2 sm:px-3 transition-colors group ${
+            embedded
+              ? "h-full bg-papier hover:bg-lin-doux"
+              : "min-h-11 rounded-xl border border-lin bg-craie py-1.5 hover:border-sauge sm:py-2"
+          } ${className ?? ""}`} aria-label="Calendrier lunaire" aria-haspopup="dialog" aria-expanded={open}>
+            <span className="text-base leading-none">{today.emoji}</span>
+            <ChevronDown className="h-3 w-3 text-ardoise group-hover:text-encre" />
+          </button>
+        )}
       </PopoverTrigger>
-      <PopoverContent className="w-[min(320px,calc(100vw-1rem))] p-0" align="end" sideOffset={8}>
+      <PopoverContent className="w-[min(320px,calc(100vw-1rem))] p-0" side={side} align={align} sideOffset={8}>
         {/* Aujourd'hui */}
         <div className="p-3 border-b">
           <div className="flex items-center gap-2 mb-2">

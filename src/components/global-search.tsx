@@ -19,7 +19,7 @@
  */
 
 import * as React from "react"
-import { EVENEMENT_OUVRIR_RECHERCHE, ouvrirAssistant, ouvrirNouvelleIntervention } from "@/lib/accueil/evenements"
+import { EVENEMENT_OUVRIR_RECHERCHE, calendrierLunaireDisponible, ouvrirAssistant, ouvrirCalendrierLunaire, ouvrirNouvelleIntervention } from "@/lib/accueil/evenements"
 import { useRouter, usePathname } from "next/navigation"
 import { Command } from "cmdk"
 import { Search, Loader2, ArrowRight } from "lucide-react"
@@ -178,6 +178,10 @@ export function GlobalSearch() {
                       ? { id: "intervention", label: "Noter une intervention", sub: "Désherbage, traitement, taille, pincement…", action: () => ouvrirNouvelleIntervention() }
                       : { id: "intervention", label: "Noter une intervention", sub: "Désherbage, traitement, taille, pincement…", href: "/interventions?nouvelle=1" },
                     { id: "plan", label: "Ouvrir le plan de la ferme", sub: "Planches, arbres, objets", href: "/jardin" },
+                    // Ticket QA cmv4zb9yy — seulement là où un calendrier lunaire est monté (rail v2, en-tête maraîchage).
+                    ...(calendrierLunaireDisponible()
+                      ? [{ id: "lune", label: "Calendrier lunaire", sub: "Phase du jour, jours feuille, fruit, racine, fleur", action: () => ouvrirCalendrierLunaire() }]
+                      : []),
                   ].map((a) => (
                     <Command.Item
                       key={a.id}

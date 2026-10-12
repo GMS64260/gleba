@@ -36,3 +36,36 @@ export function ouvrirNouvelleIntervention(): void {
   if (typeof window === "undefined") return
   window.dispatchEvent(new CustomEvent(EVENEMENT_NOUVELLE_INTERVENTION))
 }
+
+/**
+ * Calendrier lunaire (ticket QA cmv4zb9yy) : il vivait dans l'en-tête
+ * historique, que le rail de l'accueil v2 remplace. La palette et la tuile
+ * Raccourcis l'ouvrent par événement ; `LunaireWidget` s'inscrit tant qu'il est
+ * monté, pour que la palette ne propose pas une entrée sans effet.
+ */
+export const EVENEMENT_OUVRIR_LUNE = "gleba:ouvrir-calendrier-lunaire"
+
+/**
+ * Un widget monté n'est pas forcément visible (rail masqué sous `lg`, en-tête
+ * masqué dès `lg`, chargement en cours) : chacun s'inscrit avec sa propre
+ * fonction de visibilité, et la palette ne propose l'entrée que si l'un d'eux
+ * peut répondre (relecture du 2026-10-12).
+ */
+const calendriersLunaires = new Set<() => boolean>()
+
+export function enregistrerCalendrierLunaire(visible: () => boolean): () => void {
+  calendriersLunaires.add(visible)
+  return () => {
+    calendriersLunaires.delete(visible)
+  }
+}
+
+export function calendrierLunaireDisponible(): boolean {
+  for (const visible of calendriersLunaires) if (visible()) return true
+  return false
+}
+
+export function ouvrirCalendrierLunaire(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR_LUNE))
+}
