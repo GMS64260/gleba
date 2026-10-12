@@ -12,11 +12,14 @@ const mocks = vi.hoisted(() => ({
   especeFindFirst: vi.fn(),
   itpFindFirst: vi.fn(),
   plancheFindFirst: vi.fn(),
+  plancheFindUnique: vi.fn(),
+  cultureCreate: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/rotation-check", () => ({ checkRotationViolation: vi.fn().mockResolvedValue(null) }))
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
+vi.mock("@/lib/varietes", () => ({ ensurePlaceholderVariete: vi.fn().mockResolvedValue("variete-placeholder") }))
 // Mock partiel : `calendrier-climat` dérive ses zones de `terroir` au chargement.
 vi.mock("@/lib/terroir", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/terroir")>()),
@@ -26,7 +29,8 @@ vi.mock("@/lib/prisma", () => ({
   default: {
     espece: { findFirst: mocks.especeFindFirst },
     iTP: { findFirst: mocks.itpFindFirst },
-    planche: { findFirst: mocks.plancheFindFirst },
+    planche: { findFirst: mocks.plancheFindFirst, findUnique: mocks.plancheFindUnique },
+    $transaction: (fn: (tx: unknown) => unknown) => fn({ culture: { create: mocks.cultureCreate } }),
   },
 }))
 
@@ -80,6 +84,12 @@ describe("POST /api/cultures — refus de largeur de planche", () => {
     mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1" } } })
     mocks.especeFindFirst.mockResolvedValue({ id: "Zinnia", besoinEau: 2, irrigation: null })
     mocks.itpFindFirst.mockResolvedValue({
+      // Champs d'identité lus depuis le ticket cmv4z6yhg (conduite contre type de planche).
+      id: "Zinnia — plein champ",
+      nom: null,
+      especeId: "Zinnia",
+      modeDemarrage: null,
+      typePlanche: "Plein champ",
       userId: null,
       zoneClimat: null,
       semaineSemis: 41,
@@ -93,6 +103,8 @@ describe("POST /api/cultures — refus de largeur de planche", () => {
     })
     mocks.plancheFindFirst.mockResolvedValue({
       id: "cmv2epoyb000vriklr0lp3chn",
+      nom: "Marc-v7-QA2-1010",
+      type: null,
       largeur: 0.9,
       longueur: 24,
       cultures: [enPlace(1173, 4, null), enPlace(1174, 1, 35)],
@@ -108,5 +120,58 @@ describe("POST /api/cultures — refus de largeur de planche", () => {
       expect.objectContaining({ reduireRangs: 2, message: "Réduire à 2 rangs (au lieu de 3)" })
     )
     expect(corps.suggestions).toContain("Réduire à 2 rangs (au lieu de 3)")
+  })
+})
+
+describe("POST /api/cultures — conduite de l'ITP contre le type de la planche (ticket cmv4z6yhg)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1" } } })
+    mocks.especeFindFirst.mockResolvedValue({ id: "Zinnia", besoinEau: 2, irrigation: null })
+    mocks.itpFindFirst.mockResolvedValue({
+      id: "Zinnia — sous abri",
+      nom: null,
+      especeId: "Zinnia",
+      modeDemarrage: null,
+      typePlanche: "Sous abri",
+      userId: null,
+      zoneClimat: null,
+      semaineSemis: 41,
+      semainePlantation: 47,
+      semaineRecolte: 3,
+      semaineRecolteFin: 17,
+      dureeRecolte: 14,
+      espacementRangs: 35,
+      nbGrainesPlant: null,
+      doseSemis: null,
+    })
+    mocks.plancheFindFirst.mockResolvedValue({
+      id: "cmv2epoyb000vriklr0lp3chn",
+      nom: "B1",
+      type: "Plein champ",
+      largeur: 0.9,
+      longueur: 24,
+      cultures: [],
+    })
+    mocks.plancheFindUnique.mockResolvedValue({ id: "cmv2epoyb000vriklr0lp3chn" })
+    mocks.cultureCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 1193, ...data }))
+  })
+
+  it("crée la culture et nomme l'incompatibilité dans `warnings`, sans bloquer", async () => {
+    const res = await creer(2)
+    expect(res.status).toBe(201)
+    const corps = await res.json()
+    expect(corps.warnings).toContain(
+      "L'itinéraire technique « Zinnia — sous abri » est conduit sous abri ; la planche « B1 » est en plein champ."
+    )
+    expect(mocks.cultureCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it("ne dit rien sur une planche sans type (l'écran s'en charge)", async () => {
+    mocks.plancheFindFirst.mockResolvedValue({ id: "cmv2epoyb000vriklr0lp3chn", nom: "Marc-v7-1010", type: null, largeur: 0.9, longueur: 24, cultures: [] })
+    const res = await creer(2)
+    expect(res.status).toBe(201)
+    const corps = await res.json()
+    expect((corps.warnings ?? []).some((w: string) => /conduit/.test(w))).toBe(false)
   })
 })

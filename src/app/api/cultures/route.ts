@@ -18,6 +18,8 @@ import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/et
 import { ecrituresPassageAFait, ETAPES, type EtatEtapes } from '@/lib/cultures/execution'
 import { chevauchePeriode, estVivaceEnPlace, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
 import { whereItpUtilisable } from '@/lib/itp-acces'
+import { avertissementItpPlanche, verdictItpPlanche } from '@/lib/cultures/itp-planche'
+import { nomAffichableItp } from '@/lib/itp-label'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
@@ -299,6 +301,12 @@ export async function POST(request: NextRequest) {
       itp = await prisma.iTP.findFirst({
         where: { AND: [{ id: data.itpId }, whereItpUtilisable(session!.user.id)] },
         select: {
+          id: true,
+          nom: true,
+          especeId: true,
+          modeDemarrage: true,
+          // Conduite imposée, confrontée au type de la planche (ticket cmv4z6yhg).
+          typePlanche: true,
           userId: true,
           zoneClimat: true,
           semaineSemis: true,
@@ -402,6 +410,18 @@ export async function POST(request: NextRequest) {
           },
         },
       })
+
+      // Ticket QA cmv4z6yhg — un ITP « sous abri » posé sur une planche de
+      // plein champ (ou l'inverse) est dit, sans bloquer : l'écran l'a déjà
+      // signalé, l'assistant et les imports passent aussi par ici. Une planche
+      // sans type ne déclenche rien côté serveur (la plupart n'en ont pas).
+      if (planche && itp) {
+        const avis = avertissementItpPlanche(verdictItpPlanche(itp, planche), {
+          itp: nomAffichableItp(itp),
+          planche: planche.nom || planche.id,
+        })
+        if (avis) dateWarnings.push(avis)
+      }
 
       // BUG #12 (audit Marc 2026-05-15) : détection chevauchement de
       // dates sur la même planche. Avant : Tomate (01/03–10/07) et

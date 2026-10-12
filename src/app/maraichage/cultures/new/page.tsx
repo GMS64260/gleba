@@ -56,6 +56,8 @@ import {
   resolveDashboardYear,
 } from "@/lib/dashboard-year"
 import { nomAffichableItp, nomAffichableItpAvecFenetre } from "@/lib/itp-label"
+import { choisirItpParDefaut, type MotifProposition } from "@/lib/cultures/itp-planche"
+import { AvisItpPlanche } from "@/components/cultures/AvisItpPlanche"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
 import { datesDepuisItp, recolteApresDebut, semaineSemisEffective } from "@/lib/cultures/dates-itp"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -92,6 +94,8 @@ interface ITPData {
   nbRangs: number | null
   espacement: number | null
   espacementRangs: number | null
+  /** Conduite imposée (« Sous abri », « Plein champ ») ou null (ticket cmv4z6yhg). */
+  typePlanche: string | null
 }
 
 const CHAMPS_DATE = ["dateSemis", "datePlantation", "dateRecolte"] as const
@@ -178,7 +182,7 @@ export default function NewCulturePage() {
   const [especes, setEspeces] = React.useState<EspeceOption[]>([])
   const [varietes, setVarietes] = React.useState<{ id: string; nom: string | null; especeId: string }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
-  const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null }[]>([])
+  const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null; type?: string | null }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   // QA cmsp5927v — un refus d'occupation de planche n'existait que dans un toast
   // de 5 s : l'utilisateur revoyait un formulaire vide sans savoir pourquoi.
@@ -272,6 +276,13 @@ export default function NewCulturePage() {
   // la culture partait avec itpId null. On ré-affirme l'auto-sélection tant
   // que l'utilisateur n'a pas fait de choix lui-même.
   const autoItpRef = React.useRef<string | null>(null)
+  // Pourquoi aucun ITP n'est proposé d'office (ticket cmv4z6yhg), pour l'avis.
+  const [motifProposition, setMotifProposition] = React.useState<MotifProposition | null>(null)
+  // Choix explicite d'un item, même égal à la proposition : Radix n'émet pas
+  // `onValueChange` pour une valeur inchangée (contre-revue du 2026-10-12).
+  const marquerChoixItp = React.useCallback(() => {
+    autoItpRef.current = null
+  }, [])
   React.useEffect(() => {
     const wanted = autoItpRef.current
     if (!wanted) return
@@ -329,12 +340,11 @@ export default function NewCulturePage() {
           form.setValue("varieteId", null)
           const loadedItps = itpsData.data || []
           setItps(loadedItps)
-          // Auto-sélectionner le premier ITP disponible
-          if (loadedItps.length > 0) {
-            autoItpRef.current = loadedItps[0].id
-            form.setValue("itpId", loadedItps[0].id)
-          } else {
+          // La proposition d'office est posée par l'effet « ITP proposé »
+          // plus bas, qui tient compte de la planche (ticket cmv4z6yhg).
+          if (loadedItps.length === 0) {
             autoItpRef.current = null
+            setMotifProposition(null)
             form.setValue("itpId", null)
           }
         })
@@ -342,11 +352,13 @@ export default function NewCulturePage() {
           setVarietes([])
           setItps([])
           autoItpRef.current = null
+          setMotifProposition(null)
           form.setValue("itpId", null)
         })
     } else {
       setVarietes([])
       setItps([])
+      setMotifProposition(null)
     }
   }, [selectedEspece, form])
 
@@ -420,6 +432,43 @@ export default function NewCulturePage() {
     },
     [form]
   )
+
+  // Ticket QA cmv4z6yhg — ITP proposé d'office. Le premier ITP par confiance
+  // était retenu quelle que soit la planche : sur « Marc-v7-1010 », sans type,
+  // la culture partait avec « radis — sous abri forcé » et son calendrier. La
+  // proposition tient compte du type de la planche (règle `choisirItpParDefaut`,
+  // partagée avec l'avis sous le champ) : planche typée → premier ITP qui lui
+  // convient ; planche sans type → seulement un ITP sans conduite imposée,
+  // sinon rien, et l'avis dit quoi compléter. Un choix manuel n'est jamais
+  // touché ; les dates calculées depuis un ITP retiré ne lui survivent pas,
+  // les dates saisies restent.
+  const plancheSelectionnee = React.useMemo(
+    () => planches.find((p) => p.id === selectedPlanche) ?? null,
+    [planches, selectedPlanche]
+  )
+  React.useEffect(() => {
+    if (itps.length === 0) return
+    const courant = form.getValues("itpId")
+    const choixManuel = Boolean(courant) && courant !== autoItpRef.current && itps.some((i) => i.id === courant)
+    if (choixManuel) {
+      setMotifProposition(null)
+      return
+    }
+    const { itp, motif } = choisirItpParDefaut(itps, plancheSelectionnee)
+    setMotifProposition(motif)
+    const propose = itp?.id ?? null
+    autoItpRef.current = propose
+    if (propose === (courant || null)) return
+    if (propose) {
+      form.setValue("itpId", propose)
+      return
+    }
+    form.setValue("itpId", null)
+    for (const champ of [...CHAMPS_DATE, "nbRangs", "espacement"] as const) {
+      if (!saisiesManuellesRef.current.has(champ)) form.setValue(champ, null)
+    }
+    debutCycleRef.current = null
+  }, [itps, plancheSelectionnee, form])
 
   // PROMPT 20b — Auto-remplissage ITP → dates de culture
   // L'année est dans les deps : changer d'année recalcule les dates si ITP fixé ;
@@ -778,7 +827,14 @@ export default function NewCulturePage() {
                     <FormItem>
                       <FormLabel>Itinéraire technique (ITP)</FormLabel>
                       <Select
-                        onValueChange={field.onChange}
+                        onValueChange={(v) => {
+                          // Un choix explicite n'est plus réévalué au changement de
+                          // planche (relecture cmv4z6yhg) ; la ré-affirmation Radix
+                          // sur "" reste intacte. Radix ne signale pas la re-sélection
+                          // de la valeur courante : voir `marquerChoixItp` sur l'item.
+                          if (v) autoItpRef.current = null
+                          field.onChange(v)
+                        }}
                         value={field.value || undefined}
                         disabled={!selectedEspece || itps.length === 0}
                       >
@@ -789,7 +845,14 @@ export default function NewCulturePage() {
                         </FormControl>
                         <SelectContent>
                           {itps.map((itp) => (
-                            <SelectItem key={itp.id} value={itp.id}>
+                            <SelectItem
+                              key={itp.id}
+                              value={itp.id}
+                              onPointerUp={marquerChoixItp}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") marquerChoixItp()
+                              }}
+                            >
                               <span className="flex items-center gap-2">
                                 {nomAffichableItpAvecFenetre(itp)}
                                 {/* Origine dite dans la liste elle-même : sans
@@ -811,6 +874,12 @@ export default function NewCulturePage() {
                       <FormMessage />
                     </FormItem>
                   )}
+                />
+
+                <AvisItpPlanche
+                  itp={itps.find((i) => i.id === selectedItp) ?? null}
+                  planche={plancheSelectionnee}
+                  motifSansProposition={motifProposition}
                 />
 
                 <FormField
