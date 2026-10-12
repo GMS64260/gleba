@@ -40,8 +40,11 @@ export function AvisItpPlanche({ itp, planche, motifSansProposition = null, clas
     if (motifSansProposition === "planche_sans_type") {
       contenu = (
         <>
-          Aucun itinéraire proposé d&rsquo;office : la planche « {nomPlanche} » n&rsquo;a pas de type, et les itinéraires de cette espèce
-          sont conduits sous abri ou en plein champ. Choisissez l&rsquo;itinéraire vous-même, ou complétez la planche. {lienPlanche}
+          {/* `{" "}` explicite : JSX retire l'espace en tête d'une ligne de texte
+              qui en suit une autre (« Planche 15» constaté en production). */}
+          Aucun itinéraire proposé d&rsquo;office : la planche « {nomPlanche}
+          {" "}» n&rsquo;a pas de type, et les itinéraires de cette espèce sont conduits sous abri ou en plein champ. Choisissez
+          l&rsquo;itinéraire vous-même, ou complétez la planche. {lienPlanche}
         </>
       )
     } else if (motifSansProposition === "aucun_compatible") {
