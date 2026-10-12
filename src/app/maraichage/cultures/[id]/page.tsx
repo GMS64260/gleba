@@ -40,6 +40,7 @@ import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { cultureUpdateFormSchema, type UpdateCultureInput } from "@/lib/validations"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
+import { AvisItpPlanche } from "@/components/cultures/AvisItpPlanche"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
 import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
 
@@ -65,6 +66,8 @@ interface ITPData {
   nbRangs: number | null
   espacement: number | null
   espacementRangs: number | null
+  /** Conduite imposée (« Sous abri », « Plein champ ») ou null (ticket cmv4z6yhg). */
+  typePlanche: string | null
 }
 
 export default function EditCulturePage() {
@@ -77,7 +80,7 @@ export default function EditCulturePage() {
   const [especes, setEspeces] = React.useState<{ id: string }[]>([])
   const [varietes, setVarietes] = React.useState<{ id: string; nom: string | null; especeId: string }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
-  const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null }[]>([])
+  const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null; type?: string | null }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   // Empêcher l'auto-remplissage au chargement initial
@@ -584,6 +587,9 @@ export default function EditCulturePage() {
                     </FormItem>
                   )}
                 />
+
+                {/* Ticket QA cmv4z6yhg — conduite de l'ITP contre le type de la planche. */}
+                <AvisItpPlanche itp={currentItp ?? null} planche={planches.find((p) => p.id === selectedPlanche) ?? null} />
 
                 <FormField
                   control={form.control}
