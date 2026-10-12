@@ -18,7 +18,10 @@ export function BarreCommande({ className, compact = false }: { className?: stri
       type="button"
       onClick={() => ouvrirRecherche()}
       className={cn(
-        "flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-lin bg-craie px-3.5 text-left text-sm text-ardoise shadow-[0_1px_2px_rgba(31,42,36,0.05)] hover:border-sauge focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge",
+        // `min-w-0` : item de la rangée d'en-tête, il doit pouvoir rétrécir sous la
+        // largeur de son texte (nowrap) ; à 375 px, avec le calendrier lunaire à
+        // côté, la rangée débordait de 54 px (mesuré le 2026-10-12).
+        "flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-xl border border-lin bg-craie px-3.5 text-left text-sm text-ardoise shadow-[0_1px_2px_rgba(31,42,36,0.05)] hover:border-sauge focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge",
         className,
       )}
     >
