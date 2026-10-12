@@ -6,7 +6,6 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Bird, CalendarCheck, ClipboardList, CloudSun, Map as MapIcon, Megaphone, Settings, Sprout, Store, TreeDeciduous, Wallet } from "lucide-react"
 
-import { LunaireWidget } from "@/components/lunaire/LunaireWidget"
 import { useModules } from "@/hooks/use-modules"
 import type { ModuleId } from "@/lib/modules"
 import { cn } from "@/lib/utils"
@@ -75,10 +74,6 @@ export function AccueilRail({ nomFerme, sousTitreFerme, className }: AccueilRail
         Gleba
       </Link>
       {ENTREES.filter((e) => !e.module || modules.includes(e.module)).map(lien)}
-      {/* Ticket QA cmv4zb9yy — le calendrier lunaire vivait dans l'en-tête
-          historique, que ce rail remplace : il reste à portée sur toutes les
-          pages, à côté de la météo. */}
-      <LunaireWidget libelle="Calendrier lunaire" triggerClassName={CLASSE_LIEN} side="right" align="start" />
       <div className="my-2 h-px bg-lin" aria-hidden />
       {boutique && lien({ href: "/boutique", libelle: "Boutique", icone: Store })}
       {SECONDAIRES.map(lien)}

@@ -86,38 +86,39 @@ async function interventions(page) {
 }
 
 async function lune(page) {
-  console.log("\n===== cmv4zb9yy — Calendrier lunaire dans l'accueil v2");
+  console.log("\n===== cmv4zb9yy — Calendrier lunaire depuis l'accueil v2 (intégration du 2026-10-12 après-midi : petite lune + page Météo)");
   await page.setViewportSize({ width: 1301, height: 933 });
   await page.goto(`${BASE}/aujourdhui`, { waitUntil: "domcontentloaded" });
   const rail = page.locator('aside[aria-label="Navigation principale"]');
-  const entree = rail.getByRole("button", { name: /Calendrier lunaire/ });
-  await entree.waitFor({ timeout: 30000 });
-  console.log("rail (1301 px) : entrée", JSON.stringify(await entree.innerText()));
-  await entree.click();
-  const popover = page.locator('[data-radix-popper-content-wrapper]').first();
-  await popover.waitFor({ timeout: 10000 });
-  console.log("  popover :", (await popover.innerText()).replace(/\s+/g, " ").slice(0, 140));
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(300);
-  // Palette : entrée « Calendrier lunaire » quand un widget est monté.
+  const petiteLune = page.locator('main a[aria-label^="Calendrier lunaire"]').first();
+  await petiteLune.waitFor({ timeout: 30000 });
+  console.log("1301 px : petite lune", JSON.stringify(await petiteLune.getAttribute("aria-label")), "| texte :", JSON.stringify((await petiteLune.innerText()).replace(/\s+/g, " ")));
+  console.log("  rail sans entrée lunaire =", (await rail.getByRole("button", { name: /Calendrier lunaire/ }).count()) === 0, "| débordement :", await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth));
+  await petiteLune.click();
+  await page.waitForURL((u) => u.pathname === "/meteo", { timeout: 30000 });
+  const section = page.locator("#calendrier-lunaire");
+  await section.waitFor({ timeout: 30000 });
+  await page.locator('#calendrier-lunaire button[aria-label^="1 :"]').first().waitFor({ timeout: 30000 });
+  console.log("  → /meteo", page.url().replace(BASE, ""), "| jours du mois :", await page.locator('#calendrier-lunaire button[aria-pressed]').count(), "| titre :", JSON.stringify(await section.locator("h2").innerText()));
+  const box = await section.boundingBox();
+  console.log("  section visible dans la fenêtre =", Boolean(box && box.y >= 0 && box.y < 933));
+  // Palette : entrée « Calendrier lunaire » → page Météo.
+  await page.goto(`${BASE}/aujourdhui`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: /Demander ou chercher dans Gleba|Demander à Gleba/ }).first().click();
   const item = page.locator('[cmdk-item]', { hasText: "Calendrier lunaire" }).first();
   console.log("palette : entrée présente =", (await item.count()) > 0);
   await item.click();
-  await popover.waitFor({ timeout: 10000 });
-  console.log("  popover ouvert par la palette :", (await popover.innerText()).replace(/\s+/g, " ").slice(0, 60));
-  await page.keyboard.press("Escape");
-  // Téléphone : widget de l'en-tête de /aujourdhui.
+  await page.waitForURL((u) => u.pathname === "/meteo" && u.hash === "#calendrier-lunaire", { timeout: 30000 });
+  console.log("  → ", page.url().replace(BASE, ""));
+  // Téléphone : disque seul dans la rangée d'en-tête, sans débordement ; carte Météo sans débordement.
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  const bouton = page.locator('main button[aria-label="Calendrier lunaire"]').first();
-  await bouton.waitFor({ timeout: 30000 });
-  console.log("375 px : bouton d'en-tête visible =", await bouton.isVisible(), "| rail visible =", await rail.isVisible().catch(() => false));
-  await bouton.click();
-  await popover.waitFor({ timeout: 10000 });
-  const box = await popover.boundingBox();
-  console.log("  popover ouvert, largeur", box && Math.round(box.width), "px | débordement :", await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth));
-  await page.keyboard.press("Escape");
+  await page.goto(`${BASE}/aujourdhui`, { waitUntil: "domcontentloaded" });
+  await petiteLune.waitFor({ timeout: 30000 });
+  const b375 = await petiteLune.boundingBox();
+  console.log("375 px : petite lune visible =", await petiteLune.isVisible(), "| largeur", b375 && Math.round(b375.width), "px | rail visible =", await rail.isVisible().catch(() => false), "| débordement :", await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth));
+  await page.goto(`${BASE}/meteo#calendrier-lunaire`, { waitUntil: "domcontentloaded" });
+  await page.locator('#calendrier-lunaire button[aria-pressed]').first().waitFor({ timeout: 30000 });
+  console.log("  /meteo à 375 px : jours", await page.locator('#calendrier-lunaire button[aria-pressed]').count(), "| débordement :", await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth));
   await page.setViewportSize({ width: 1301, height: 933 });
 }
 

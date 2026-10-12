@@ -4,7 +4,8 @@ import * as React from "react"
 import Link from "next/link"
 import { ChatCircleDots, CloudSun, Coins, Drop, MapTrifold, MoonStars, Package, Plant, Stethoscope } from "@/lib/phosphor-icons"
 
-import { ouvrirAssistant, ouvrirCalendrierLunaire } from "@/lib/accueil/evenements"
+import { LIEN_CALENDRIER_LUNAIRE } from "@/components/lunaire/lecture"
+import { ouvrirAssistant } from "@/lib/accueil/evenements"
 import type { CarteAccueil, JournalAccueil, StocksAccueil, TresorerieAccueil, VentesAccueil } from "@/lib/accueil/types"
 import type { VergerAccueil } from "@/lib/accueil/verger"
 import { formatMontantDevise } from "@/lib/format-utils"
@@ -320,8 +321,8 @@ const RACCOURCIS: Raccourci[] = [
   { libelle: "Plan de la ferme", detail: "planches, arbres, objets", icone: Plant, href: "/jardin" },
   { libelle: "Carte", detail: "parcelles et cadastre", icone: MapTrifold, href: "/parcelles" },
   { libelle: "Météo", detail: "prévisions à la parcelle", icone: CloudSun, href: "/meteo" },
-  // Ticket QA cmv4zb9yy — accès au calendrier lunaire depuis le nouvel accueil.
-  { libelle: "Calendrier lunaire", detail: "phase du jour, jours feuille, fruit, racine", icone: MoonStars, onClick: () => ouvrirCalendrierLunaire() },
+  // Ticket QA cmv4zb9yy — accès au calendrier lunaire depuis le nouvel accueil ; il vit sur la page Météo (2026-10-12).
+  { libelle: "Calendrier lunaire", detail: "phase du jour, jours feuille, fruit, racine", icone: MoonStars, href: LIEN_CALENDRIER_LUNAIRE },
   { libelle: "Demander à Gleba", detail: "une question, une dictée", icone: ChatCircleDots, onClick: () => ouvrirAssistant() },
 ]
 
