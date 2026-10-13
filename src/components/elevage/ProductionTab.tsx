@@ -28,6 +28,7 @@ import {
 import { LaitSubTab } from "./LaitSubTab"
 import { SelecteurPeriodeExercice, parametreAnnee, type PeriodeListe } from "./SelecteurPeriodeExercice"
 import { EconomieLaitSubTab } from "./EconomieLaitSubTab"
+import { TYPES_VENTE_LABELS } from "@/lib/elevage/types-vente"
 import { ProduitsRucheSubTab } from "./ProduitsRucheSubTab"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -191,6 +192,8 @@ interface LotVolaille {
   nom: string | null
   quantiteActuelle: number
   effectifCalcule?: number
+  /** Effectif pondeur (sans les jeunes nés dans le lot ni les mâles), QA cmv5jfsol. */
+  effectifPondeuses?: number | null
   statut: string | null
   especeAnimale: { nom: string; type: string }
 }
@@ -805,15 +808,24 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                 const lot = lots.find((l) => l.id.toString() === formData.lotId)
                 const effectif = lot ? (lot.effectifCalcule ?? lot.quantiteActuelle) : 0
                 if (!lot || effectif <= 0) return null
+                // QA cmv5jfsol — l'attendu se base sur l'effectif pondeur (sans
+                // les jeunes nés dans le lot ni les mâles), pas sur tout le lot.
+                // `effectifPondeuses` est null hors espèce pondeuse (volaille de
+                // chair) : on garde alors le libellé d'espèce.
+                const pondeuses = lot.effectifPondeuses ?? effectif
+                const exclues = lot.effectifPondeuses == null ? 0 : Math.max(0, effectif - pondeuses)
                 const attendu = oeufsAttendusJour(
-                  effectif,
+                  pondeuses,
                   lot.especeAnimale.nom,
                   formData.date ? new Date(formData.date) : new Date()
                 )
                 return (
                   <p className="text-xs text-muted-foreground -mt-2">
-                    ~{attendu} œuf{attendu > 1 ? 's' : ''}/jour attendu pour {effectif}{' '}
-                    {lot.especeAnimale.nom} à cette période
+                    ~{attendu} œuf{attendu > 1 ? 's' : ''}/jour attendu pour {pondeuses}{' '}
+                    {lot.effectifPondeuses == null ? lot.especeAnimale.nom : pondeuses > 1 ? 'pondeuses' : 'pondeuse'} à cette période
+                    {exclues > 0
+                      ? ` (${effectif} ${lot.especeAnimale.nom}, dont ${exclues} trop jeune${exclues > 1 ? 's' : ''} ou mâle${exclues > 1 ? 's' : ''})`
+                      : ''}
                   </p>
                 )
               })()}
@@ -1119,20 +1131,8 @@ interface Vente {
   notes: string | null
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  oeufs: "Œufs",
-  viande: "Viande",
-  animal_vivant: "Animal vivant",
-  lait: "Lait",
-  fromage: "Fromage",
-  miel: "Miel",
-  cire: "Cire",
-  propolis: "Propolis",
-  pollen: "Pollen",
-  gelee_royale: "Gelée royale",
-  autre_ruche: "Autre produit de la ruche",
-  autre: "Autre",
-}
+// Libellés partagés avec la page Économie (src/lib/elevage/types-vente.ts).
+const TYPE_LABELS = TYPES_VENTE_LABELS
 
 const TYPE_VENTE_UNITE_DEFAUT: Record<string, string> = {
   oeufs: "douzaine",

@@ -12,6 +12,7 @@ import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 import { tauxPonteSaisonnalise } from '@/lib/lait'
 import { fenetrePonteGlissante, tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { calculerTetesNonPondeuses, effectifPondeuses } from '@/lib/elevage/pondeuses'
 import {
   aUneActiviteOeufsDashboard,
   agregerProductionsLaitieresDashboard,
@@ -231,7 +232,7 @@ export async function GET(request: NextRequest) {
           id: true,
           quantiteInitiale: true,
           quantiteActuelle: true,
-          especeAnimale: { select: { nom: true } },
+          especeAnimale: { select: { nom: true, dureeElevage: true } },
         },
       }),
 
@@ -309,8 +310,18 @@ export async function GET(request: NextRequest) {
     // contre « Actuel 30 » dans les lots. Un seul appel au helper sert les deux
     // usages, les lots pondeurs actifs étant un sous-ensemble des lots actifs.
     const effectifsLots = await reconstituerEffectifsLots(userId, lotsActifs)
+    // QA cmv5jfsol — les poussins nés dans le lot (et les fiches mâles ou trop
+    // jeunes) ne pondent pas : retranchés de l'effectif pondeur, donc du taux
+    // observé et de l'attendu (helper partagé avec /lots et /taches).
+    // Âge des jeunes lu à la même borne que la fenêtre de ponte plus bas :
+    // aujourd'hui pour l'année courante, fin d'année pour une année passée.
+    const referencePonte = annee === new Date().getFullYear() ? new Date() : endOfYear
+    const tetesNonPondeuses = await calculerTetesNonPondeuses(userId, lotsPondeusesDetail, referencePonte)
     const effectifLotPondeur = (lot: { id: number; quantiteActuelle: number }) =>
-      effectifsLots.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
+      effectifPondeuses(
+        effectifsLots.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle,
+        tetesNonPondeuses.get(lot.id),
+      )
     const nbPondeuses = lotsPondeusesDetail.reduce(
       (somme, lot) => somme + effectifLotPondeur(lot),
       0,
