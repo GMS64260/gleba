@@ -1,3 +1,5 @@
+import { libelleTypeVente } from "@/lib/elevage/types-vente"
+
 export interface DashboardProduction {
   type: "oeufs" | "lait" | "fromage" | "viande"
   label: string
@@ -93,22 +95,8 @@ export async function agregerProductionsLaitieresDashboard(
 const arrondir = (valeur: number, decimales = 2) =>
   Math.round(valeur * 10 ** decimales) / 10 ** decimales
 
-const VENTES_LABELS: Record<string, string> = {
-  oeufs: "Œufs",
-  lait: "Lait",
-  fromage: "Fromage",
-  miel: "Miel",
-  cire: "Cire",
-  propolis: "Propolis",
-  pollen: "Pollen",
-  gelee_royale: "Gelée royale",
-  autre_ruche: "Autre produit de la ruche",
-  autre: "Autres",
-  animal_vivant: "Animal vivant",
-}
-
-const labelVente = (type: string) =>
-  VENTES_LABELS[type] ?? type.replaceAll("_", " ").replace(/^./u, (lettre) => lettre.toLocaleUpperCase("fr-FR"))
+// Libellés partagés avec l'onglet Ventes et la page Économie (QA cmv5jxvcy).
+const labelVente = (type: string) => libelleTypeVente(type)
 
 const LIBELLES_MOIS = ["Jan.", "Fév.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
 

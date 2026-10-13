@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { libelleAtelierVentes } from '@/lib/elevage/types-vente'
 
 const round = (value: number) => Math.round(value * 100) / 100
 
@@ -132,7 +133,7 @@ export async function GET(request: NextRequest) {
       a.production.kgCarcasse += abattage.poidsCarcasse || 0
     }
     for (const vente of ventes) {
-      const a = vente.animalId != null ? speciesFor(null, vente.animalId) : getAtelier(`vente_${vente.type}`, `Ventes ${vente.type.replaceAll('_', ' ')}`)
+      const a = vente.animalId != null ? speciesFor(null, vente.animalId) : getAtelier(`vente_${vente.type}`, libelleAtelierVentes(vente.type))
       a.revenus.ventes += vente.prixTotal
     }
     for (const production of productionsOeufs) speciesFor(production.lotId, production.animalId).production.oeufs += production.quantite
