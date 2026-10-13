@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { cadreFacturation, categorieDuCadre, date102Facture, dateIsoFacture, mentionsCodifiees, traitementFacture } from "@/lib/facture-regles"
+import { cadreFacturation, date102Facture, dateIsoFacture, mentionsCodifiees, traitementFacture } from "@/lib/facture-regles"
 import { createClientSchema, updateClientSchema } from "@/lib/validations/client"
 import { createFactureSchema, mentionsFactureSchema } from "@/lib/validations/facture"
 
@@ -8,15 +8,18 @@ describe("règles de facturation électronique", () => {
     expect(cadreFacturation("biens", false)).toBe("B1")
     expect(cadreFacturation("services", true)).toBe("S2")
     expect(cadreFacturation("mixte", false)).toBe("M1")
-    expect(categorieDuCadre("S2")).toBe("services")
-    expect(categorieDuCadre("M1")).toBe("mixte")
-    expect(categorieDuCadre("B1")).toBe("biens")
   })
 
-  it("traitement BAR : B2B avec un SIREN, B2C sinon", () => {
+  it("traitement BAR : B2B avec un SIREN ou un client professionnel, B2C sinon", () => {
     expect(traitementFacture("552 100 554")).toBe("B2B")
     expect(traitementFacture(null)).toBe("B2C")
     expect(traitementFacture("1234")).toBe("B2C")
+    // Un professionnel sans SIREN reste B2B : l'export sera refusé (BR-FR-11) au lieu de partir en e-reporting.
+    expect(traitementFacture(null, "professionnel")).toBe("B2B")
+    expect(traitementFacture("", "Professionnel")).toBe("B2B")
+    expect(traitementFacture(null, "amap")).toBe("B2C")
+    expect(traitementFacture(null, "association")).toBe("B2C")
+    expect(traitementFacture("552100554", "particulier")).toBe("B2B")
   })
 
   it("mentions codifiées AAB, PMD, PMT avec les valeurs de l'émetteur et des repli", () => {

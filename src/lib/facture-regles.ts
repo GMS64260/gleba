@@ -34,22 +34,20 @@ export function cadreFacturation(categorie: CategorieOperation, dejaPayee: boole
   return `${lettre}${dejaPayee ? 2 : 1}`
 }
 
-export function categorieDuCadre(cadre: string): CategorieOperation {
-  if (cadre.startsWith("S")) return "services"
-  if (cadre.startsWith("M")) return "mixte"
-  return "biens"
-}
-
 /**
  * Traitement attendu de la plateforme (note BAR, BR-FR-20) : B2B quand
- * l'acheteur est identifié par un SIREN (facture électronique obligatoire),
- * B2C sinon (particulier : e-reporting, pas de dépôt).
+ * l'acheteur est identifié par un SIREN ou déclaré professionnel dans sa fiche
+ * (facture électronique obligatoire ; sans SIREN l'export est alors refusé,
+ * BR-FR-11, au lieu d'être dégradé en e-reporting), B2C sinon (particulier,
+ * association ou AMAP sans SIREN : e-reporting, pas de dépôt).
  */
-export function traitementFacture(clientSiren?: string | null): "B2B" | "B2C" {
-  return /^\d{9}$/.test((clientSiren || "").replace(/\D/g, "")) ? "B2B" : "B2C"
+export function traitementFacture(clientSiren?: string | null, clientType?: string | null): "B2B" | "B2C" {
+  if (/^\d{9}$/.test((clientSiren || "").replace(/\D/g, ""))) return "B2B"
+  return (clientType || "").trim().toLowerCase() === "professionnel" ? "B2B" : "B2C"
 }
 
-export type CodeMentionCodifiee = "PMT" | "PMD" | "AAB" | "TXD"
+/** Codes sujet des mentions que Gleba émet. (TXD désigne le membre d'un assujetti unique, BR-FR-CO-14, hors périmètre.) */
+export type CodeMentionCodifiee = "PMT" | "PMD" | "AAB"
 
 export interface MentionCodifiee {
   /** Code sujet UNTDID 4451 (BT-21). */

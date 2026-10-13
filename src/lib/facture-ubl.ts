@@ -128,7 +128,9 @@ export function validerFactureStructuree(d: DonneesFactureStructuree): string[] 
   if (siretClient && !/^\d{14}$/.test(siretClient)) issues.push('SIRET client invalide (14 chiffres requis)')
   if (sirenClient && !/^\d{9}$/.test(sirenClient)) issues.push('SIREN client invalide (9 chiffres requis)')
   if (siretClient && sirenClient && !siretClient.startsWith(sirenClient)) issues.push('Le SIRET client ne commence pas par son SIREN')
-  if (d.traitement === 'B2B' && !/^\d{9}$/.test(sirenClient)) issues.push("SIREN de l'acheteur manquant (obligatoire en B2B, BT-47)")
+  if (d.traitement === 'B2B' && !/^\d{9}$/.test(sirenClient)) issues.push("SIREN de l'acheteur manquant (client professionnel, obligatoire sur une facture électronique, BT-47) : complétez le SIRET ou le SIREN de la fiche client")
+  // Adresse électronique de l'acheteur (BT-49, BR-FR-12) : SIREN sous 0225, sinon courriel. Le schematron l'exige aussi en B2C.
+  if (!adresseElectronique(d.customer)) issues.push("Adresse électronique de l'acheteur manquante (BT-49) : renseignez le courriel du client")
 
   for (const [label, party] of [['émetteur', d.supplier], ['client', d.customer]] as const) {
     if (!party.address?.street?.trim() || !party.address.city?.trim() || !party.address.postalCode?.trim()) issues.push(`Adresse complète ${label} manquante`)
@@ -146,7 +148,7 @@ export function validerFactureStructuree(d: DonneesFactureStructuree): string[] 
     if (!Number.isFinite(line.quantity) || line.quantity <= 0) issues.push(`Quantité invalide ligne ${n}`)
     else if (!decimals(line.quantity, 4)) issues.push(`Quantité à plus de quatre décimales ligne ${n}`)
     if (!Number.isFinite(line.netAmount) || !Number.isFinite(line.unitPrice) || !Number.isFinite(line.vatRate)) issues.push(`Montant ou TVA invalide ligne ${n}`)
-    else if (line.unitPrice <= 0) issues.push(`Prix unitaire nul ou négatif ligne ${n} (la norme française exige un prix strictement positif)`)
+    else if (line.unitPrice < 0) issues.push(`Prix unitaire négatif ligne ${n} (BR-27 ; une ligne offerte se saisit à 0)`)
     if (!TAUX_TVA_ADMIS.includes(line.vatRate)) issues.push(`Taux de TVA non admis ligne ${n} (${line.vatRate} %)`)
     if (!UNIT_CODES[(line.unit || '').trim().toLocaleLowerCase('fr-FR')]) issues.push(`Unité non reconnue ligne ${n}`)
   }
