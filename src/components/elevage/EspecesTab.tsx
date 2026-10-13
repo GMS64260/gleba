@@ -560,7 +560,9 @@ export function EspecesTab() {
               ) : (
                 <div className="space-y-2"><Label>Gestation (j)</Label><Input type="number" min="0" value={formData.dureeGestation} onChange={(e) => setFormData(f => ({ ...f, dureeGestation: e.target.value }))} placeholder="31" /></div>
               )}
-              <div className="space-y-2"><Label>Élevage (j)</Label><Input type="number" min="0" value={formData.dureeElevage} onChange={(e) => setFormData(f => ({ ...f, dureeElevage: e.target.value }))} placeholder="90" /></div>
+              {/* QA cmv5jfsol — pour une espèce pondeuse ou mixte, ce champ sert
+                  d'âge d'entrée en ponte (src/lib/elevage/pondeuses.ts). */}
+              <div className="space-y-2"><Label>Élevage (j)</Label><Input type="number" min="0" value={formData.dureeElevage} onChange={(e) => setFormData(f => ({ ...f, dureeElevage: e.target.value }))} placeholder="90" title="Jours jusqu'à maturité ou abattage ; pour une espèce pondeuse ou mixte, âge d'entrée en ponte (150 j si vide)" /></div>
               <div /> {/* placeholder pour conserver la grille à 3 cols */}
             </div>
             <div className="grid grid-cols-3 gap-4">

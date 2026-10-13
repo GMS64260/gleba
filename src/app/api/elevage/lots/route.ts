@@ -14,6 +14,7 @@ import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { enregistrerChangementLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { calculerTetesNonPondeuses, effectifPondeuses, estEspecePondeuse } from '@/lib/elevage/pondeuses'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
             production: true,
             productions: true,
             couleur: true,
+            dureeElevage: true,
           },
         },
         parcelleGeo: {
@@ -64,11 +66,19 @@ export async function GET(request: NextRequest) {
     // abattages, plafonné par le compteur stocké) via le helper partagé avec
     // GET /stats, pour que les deux surfaces ne divergent plus.
     const effectifs = await reconstituerEffectifsLots(session.user.id, lots)
+    // QA cmv5jfsol — effectif pondeur (sans les jeunes nés dans le lot ni les
+    // fiches mâles) pour la saisie de ponte ; null hors espèces pondeuses.
+    const lotsPondeurs = lots.filter((l) => estEspecePondeuse(l.especeAnimale.production))
+    const tetesNonPondeuses = await calculerTetesNonPondeuses(session.user.id, lotsPondeurs)
+    const idsPondeurs = new Set(lotsPondeurs.map((l) => l.id))
 
     const enriched = lots.map(l => {
       const e = effectifs.get(l.id)
       return {
         ...l,
+        effectifPondeuses: idsPondeurs.has(l.id)
+          ? effectifPondeuses(e?.effectifCalcule ?? l.quantiteActuelle, tetesNonPondeuses.get(l.id))
+          : null,
         naissancesVivantes: e?.naissancesVivantes ?? 0,
         abattagesTotal: e?.abattagesTotal ?? 0,
         // Effectif reconstitué pour corriger les compteurs historiques dérivés.

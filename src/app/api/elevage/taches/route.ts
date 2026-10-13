@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { oeufsAttendusJour } from '@/lib/elevage/taux-ponte'
+import { effectifsPondeursLots, estEspecePondeuse } from '@/lib/elevage/pondeuses'
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
 import { sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
         },
         include: {
           especeAnimale: {
-            select: { ponteAnnuelle: true, production: true, nom: true },
+            select: { ponteAnnuelle: true, production: true, nom: true, dureeElevage: true },
           },
         },
       }),
@@ -254,11 +255,18 @@ export async function GET(request: NextRequest) {
     // (lib/elevage/taux-ponte.ts) qui ajuste au mois courant et à la race
     // (Marans, Sussex, etc.).
     const refDate = end < now ? end : now
+    // QA cmv5jfsol — même effectif pondeur que /stats et /lots : effectif
+    // reconstitué du lot (et non plus `quantiteActuelle` brut, qui ignore les
+    // fiches nominatives rattachées) moins les jeunes nés dans le lot et les
+    // fiches mâles ou trop jeunes.
+    const effectifsPondeurs = await effectifsPondeursLots(
+      userId,
+      lotsActifs.filter(l => estEspecePondeuse(l.especeAnimale.production)),
+      refDate,
+    )
     let estimationOeufsJour = lotsActifs.reduce((sum, lot) => {
-      if (lot.especeAnimale.production === 'oeufs' || lot.especeAnimale.production === 'mixte') {
-        return sum + oeufsAttendusJour(lot.quantiteActuelle, lot.especeAnimale.nom, refDate)
-      }
-      return sum
+      const e = effectifsPondeurs.get(lot.id)
+      return e ? sum + oeufsAttendusJour(e.effectifPondeuses, lot.especeAnimale.nom, refDate) : sum
     }, 0)
 
     // Bug #9 — Si on dispose d'un historique significatif (>= 14 jours
@@ -295,14 +303,23 @@ export async function GET(request: NextRequest) {
       if (lotIdsProductifs.length > 0) {
         const lotsProductifs = await prisma.lotAnimaux.findMany({
           where: { userId, id: { in: lotIdsProductifs } },
-          include: { especeAnimale: { select: { ponteAnnuelle: true, production: true, nom: true } } },
+          include: { especeAnimale: { select: { ponteAnnuelle: true, production: true, nom: true, dureeElevage: true } } },
         })
+        // QA cmv5jfsol — le repli retranche lui aussi les têtes non pondeuses,
+        // sinon un lot de jeunes à qui des œufs ont été imputés recompterait
+        // ses poussins à plein.
+        const effectifsProductifs = await effectifsPondeursLots(
+          userId,
+          lotsProductifs.filter(l => estEspecePondeuse(l.especeAnimale.production)),
+          refDate,
+        )
         estimationOeufsJour = lotsProductifs.reduce((sum, lot) => {
-          if (lot.especeAnimale.production === 'oeufs' || lot.especeAnimale.production === 'mixte') {
-            const effectif = lot.quantiteActuelle > 0 ? lot.quantiteActuelle : lot.quantiteInitiale
-            return sum + oeufsAttendusJour(effectif, lot.especeAnimale.nom, refDate)
-          }
-          return sum
+          const e = effectifsProductifs.get(lot.id)
+          if (!e) return sum
+          const effectif = e.effectifPondeuses > 0
+            ? e.effectifPondeuses
+            : Math.max(0, lot.quantiteInitiale - e.tetesNonPondeuses)
+          return sum + oeufsAttendusJour(effectif, lot.especeAnimale.nom, refDate)
         }, 0)
       }
     }
