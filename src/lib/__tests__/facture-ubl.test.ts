@@ -84,7 +84,7 @@ describe('buildUblInvoice', () => {
     f.totalNet = 60
     f.number = 'F 2026/0042 avec espaces et plus de trente-cinq caractères'
     f.mentions = f.mentions.filter((m) => m.code !== 'PMT')
-    f.lines[0].unitPrice = 0
+    f.lines[0].unitPrice = -1
     f.lines[1].quantity = 1.23456
     f.dueDate = new Date('2026-07-01T10:00:00Z')
     const issues = validerFactureStructuree(f)
@@ -93,12 +93,30 @@ describe('buildUblInvoice', () => {
       expect.stringMatching(/SIRET émetteur/),
       expect.stringMatching(/SIREN émetteur/),
       expect.stringMatching(/Adresse complète client/),
-      expect.stringMatching(/Prix unitaire nul/),
+      expect.stringMatching(/Prix unitaire négatif/),
       expect.stringMatching(/quatre décimales/),
       expect.stringMatching(/total HT/),
       expect.stringMatching(/Mention codifiée PMT absente/),
       expect.stringMatching(/échéance antérieure/),
     ]))
     expect(() => buildUblInvoice(f)).toThrow(/SIRET|Adresse|total HT/)
+  })
+
+  it('admet une ligne offerte à prix nul (BR-27 n’interdit que le négatif) et exige une adresse électronique acheteur', () => {
+    const f = factureStructuree()
+    f.lines[0] = { ...f.lines[0], unitPrice: 0, netAmount: 0 }
+    f.totalNet = 30
+    f.totalVat = 6
+    f.totalGross = 36
+    expect(validerFactureStructuree(f)).toEqual([])
+    expect(buildUblInvoice(f)).toContain('<cbc:PriceAmount currencyID="EUR">0.00</cbc:PriceAmount>')
+
+    const sansAdresse = factureStructuree()
+    sansAdresse.customer = { ...sansAdresse.customer, siret: null, siren: null, vatId: null, email: null }
+    sansAdresse.traitement = 'B2C'
+    expect(validerFactureStructuree(sansAdresse)).toEqual([expect.stringMatching(/Adresse électronique de l'acheteur manquante \(BT-49\)/)])
+    sansAdresse.customer.email = 'jeanne@exemple.fr'
+    expect(validerFactureStructuree(sansAdresse)).toEqual([])
+    expect(buildUblInvoice(sansAdresse)).toContain('<cbc:EndpointID schemeID="EM">jeanne@exemple.fr</cbc:EndpointID>')
   })
 })

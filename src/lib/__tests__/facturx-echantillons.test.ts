@@ -147,4 +147,48 @@ describe("échantillons Factur-X et UBL de bout en bout", () => {
     )
     expect(donnees.traitement).toBe("B2C")
   })
+
+  it("facture émise puis encaissée : reste en cadre x1, net à payer = TTC, échéance d'origine", async () => {
+    const lignes = [ligne(0, "Panier de légumes", 2, "unité", 18.9, 5.5)]
+    const { donnees, cii, ubl } = await produire(
+      "facture-encaissee-apres",
+      base("F-2026-0046", "facture", lignes, { statut: "payee", datePaiement: new Date("2026-10-20T10:00:00+02:00"), modePaiement: "virement" }),
+      emetteur("reel-simplifie"),
+    )
+    expect(donnees.cadreFacturation).toBe("B1")
+    expect(donnees.paiement).toBeNull()
+    expect(cii).toContain(`<ram:DuePayableAmount>${donnees.totalGross.toFixed(2)}</ram:DuePayableAmount>`)
+    expect(cii).not.toContain("TotalPrepaidAmount")
+    expect(ubl).toContain("<cbc:DueDate>2026-11-11</cbc:DueDate>")
+  })
+
+  it("ligne offerte à 0 € : admise (BR-27 n'interdit que le négatif)", async () => {
+    const lignes = [ligne(0, "Tomates anciennes", 5, "kg", 3.2, 5.5), ligne(1, "Sac en toile offert", 1, "unité", 0, 5.5)]
+    const { donnees, cii } = await produire("facture-ligne-offerte", base("F-2026-0047", "facture", lignes), emetteur("reel-simplifie"))
+    expect(donnees.lines[1].unitPrice).toBe(0)
+    expect(cii).toContain("<ram:ChargeAmount>0.00</ram:ChargeAmount>")
+  })
+
+  it("client professionnel sans SIREN : B2B et export refusé, jamais dégradé en B2C", () => {
+    const lignes = [ligne(0, "Panier de légumes", 2, "unité", 18.9, 5.5)]
+    const pro = { ...client(), nom: "Restaurant du Port", type: "professionnel", siret: null, siren: null, tvaIntra: null }
+    const donnees = donneesFactureStructuree(
+      base("F-2026-0048", "facture", lignes, { client: pro, clientNom: pro.nom, clientSiret: null, clientSiren: null, clientTvaIntra: null }),
+      emetteur("reel-simplifie"),
+    )
+    expect(donnees.traitement).toBe("B2B")
+    expect(() => buildCiiInvoice(donnees)).toThrow(/SIREN de l'acheteur manquant/)
+    expect(() => buildUblInvoice(donnees)).toThrow(/SIREN de l'acheteur manquant/)
+  })
+
+  it("particulier sans courriel : export refusé faute d'adresse électronique (BT-49)", () => {
+    const lignes = [ligne(0, "Panier de légumes", 2, "unité", 18.9, 5.5)]
+    const particulier = { ...client(), nom: "Jeanne Martin", type: "particulier", siret: null, siren: null, tvaIntra: null, email: null }
+    const donnees = donneesFactureStructuree(
+      base("F-2026-0049", "facture", lignes, { client: particulier, clientNom: particulier.nom, clientSiret: null, clientSiren: null, clientTvaIntra: null }),
+      emetteur("reel-simplifie"),
+    )
+    expect(donnees.traitement).toBe("B2C")
+    expect(() => buildCiiInvoice(donnees)).toThrow(/BT-49/)
+  })
 })

@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client"
 
 import prisma from "@/lib/prisma"
-import { cadreFacturation, mentionsCodifiees, traitementFacture, type CategorieOperation, type MentionCodifiee } from "@/lib/facture-regles"
+import { cadreFacturation, dateIsoFacture, mentionsCodifiees, traitementFacture, type CategorieOperation, type MentionCodifiee } from "@/lib/facture-regles"
 import { snapshotDepuisExploitation, type EmetteurSnapshot } from "@/lib/facture-utils"
 import type { UblAddress, UblInvoiceData } from "@/lib/facture-ubl"
 import { sirenFromSiret } from "@/lib/siret"
@@ -39,7 +39,7 @@ export interface DonneesFactureStructuree extends UblInvoiceData {
   dateLivraison: Date
   /** Adresse de livraison si différente de celle de l'acheteur (BG-15). */
   adresseLivraison: UblAddress | null
-  /** Facture déjà payée au dépôt (cadre x2) : BT-113 = TTC, BT-115 = 0, BT-9 = date de paiement. */
+  /** Facture payée à l'émission (cadre x2) : BT-113 = TTC, BT-115 = 0, BT-9 = date de paiement. Null si payée après l'émission. */
   paiement: { date: Date; montant: number } | null
 }
 
@@ -90,8 +90,13 @@ export function donneesFactureStructuree(
   const clientSiren = facture.clientSiren || facture.client?.siren || (clientSiret && chiffres(clientSiret).length === 14 ? sirenFromSiret(clientSiret) : null)
   const clientTvaIntra = facture.clientTvaIntra || facture.client?.tvaIntra || null
 
-  // Facture déjà payée au dépôt (BR-FR-CO-09) : jamais pour un avoir.
-  const paiement = facture.statut === "payee" && typeCode !== "381" ? { date: facture.datePaiement || facture.date, montant: facture.totalTTC } : null
+  // Facture déjà payée au dépôt (cadre x2, BR-FR-CO-09, cas d'usage AFNOR n° 2) :
+  // seulement si le paiement date du jour de l'émission ou d'avant (vente
+  // comptant). Une facture émise puis encaissée reste en cadre x1, sinon son
+  // export changerait après coup sous le même numéro. Jamais pour un avoir.
+  const datePaiement = facture.datePaiement || facture.date
+  const payeeALEmission = facture.statut === "payee" && typeCode !== "381" && dateIsoFacture(datePaiement) <= dateIsoFacture(facture.date)
+  const paiement = payeeALEmission ? { date: datePaiement, montant: facture.totalTTC } : null
 
   return {
     number: facture.numero,
@@ -138,7 +143,7 @@ export function donneesFactureStructuree(
     typeCode,
     categorieOperation,
     cadreFacturation: cadreFacturation(categorieOperation, paiement !== null),
-    traitement: traitementFacture(clientSiren),
+    traitement: traitementFacture(clientSiren, facture.client?.type),
     mentions: mentionsCodifiees(emetteur, devise),
     exonerationTva: exonerationDeFacture(facture, emetteur),
     factureOrigine,

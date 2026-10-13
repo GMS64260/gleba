@@ -207,6 +207,21 @@ export async function PATCH(request: NextRequest) {
     if (updates.notes !== undefined) updateData.notes = updates.notes
     if (updates.actif !== undefined) updateData.actif = updates.actif
 
+    // Facturation électronique : un client professionnel garde un SIRET ou un
+    // SIREN (identifiant de l'acheteur, BT-47) dès que la mise à jour touche
+    // son type ou ses identifiants ; les autres champs restent modifiables.
+    if (updates.type !== undefined || updates.siret !== undefined || updates.siren !== undefined) {
+      const typeFinal = updateData.type ?? existing.type
+      const siretFinal = updateData.siret !== undefined ? updateData.siret : existing.siret
+      const sirenFinal = updateData.siren !== undefined ? updateData.siren : existing.siren
+      if (typeFinal === 'professionnel' && !siretFinal && !sirenFinal) {
+        return NextResponse.json(
+          { error: 'SIRET ou SIREN requis pour un client professionnel (identifiant de l’acheteur obligatoire sur une facture électronique)' },
+          { status: 400 }
+        )
+      }
+    }
+
     const client = await prisma.client.update({
       where: { id },
       data: updateData,

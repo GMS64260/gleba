@@ -113,6 +113,10 @@ export async function POST(request: NextRequest) {
     // référencer une facture d'origine du même compte, émise ou payée, et la
     // somme des avoirs ne peut pas dépasser le montant de la facture d'origine
     // (sinon revenus/TVA négatifs arbitraires).
+    // Facturation électronique : un avoir suit la catégorie d'opération de sa
+    // facture d'origine quand l'appelant ne la précise pas (le zod vaut
+    // « biens » par défaut, sans distinguer l'absence de la valeur).
+    let categorieOperation: string = d.categorieOperation
     if (d.type === 'avoir') {
       if (!d.factureOrigineId) {
         return NextResponse.json(
@@ -143,20 +147,12 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         )
       }
+      if (body.categorieOperation === undefined) categorieOperation = origine.categorieOperation
     }
 
     // Transaction atomique : verrouillage de l'origine + plafond des avoirs
     // + numéro facture + création. Le contrôle effectué plus haut améliore le
     // message rapide, celui-ci garantit l'invariant sous concurrence.
-    // Facturation électronique : un avoir suit la catégorie d'opération de sa
-    // facture d'origine quand l'appelant ne la précise pas (le zod vaut
-    // « biens » par défaut, sans distinguer l'absence de la valeur).
-    let categorieOperation: string = d.categorieOperation
-    if (d.type === 'avoir' && body.categorieOperation === undefined && d.factureOrigineId) {
-      const origineCat = await prisma.facture.findFirst({ where: { id: d.factureOrigineId, userId }, select: { categorieOperation: true } })
-      if (origineCat) categorieOperation = origineCat.categorieOperation
-    }
-
     const facture = await prisma.$transaction(async (tx) => {
       if (d.type === 'avoir' && d.factureOrigineId) {
         const locked = await tx.$queryRaw<Array<{ id: number; total_ttc: number }>>`
