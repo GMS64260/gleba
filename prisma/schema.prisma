@@ -3462,9 +3462,25 @@ model Facture {
   client              Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
   clientNom           String    @map("client_nom") // Copie pour archivage
   clientAdresse       String?   @map("client_adresse")
+  // Facturation électronique, lot 1 (2026-10-13) : identité du client figée à
+  // l'émission (SIREN de l'acheteur obligatoire en B2B, BT-47). La fiche
+  // `client` reste modifiable, la facture émise non.
+  clientSiret         String?   @map("client_siret")
+  clientSiren         String?   @map("client_siren")
+  clientTvaIntra      String?   @map("client_tva_intra")
   date                DateTime  @default(now()) @map("date")
   dateEcheance        DateTime? @map("date_echeance")
   objet               String?   @map("objet")
+  // Catégorie de l'opération (art. 242 nonies A ann. II CGI, décret 2022-1299),
+  // premier caractère du cadre de facturation BT-23 : "biens", "services", "mixte".
+  categorieOperation  String    @default("biens") @map("categorie_operation")
+  // Livraison : date (BT-72, si différente de la date de facture) et adresse
+  // (BG-15, si différente de l'adresse du client).
+  dateLivraison       DateTime? @map("date_livraison")
+  adresseLivraison    String?   @map("adresse_livraison")
+  codePostalLivraison String?   @map("code_postal_livraison")
+  villeLivraison      String?   @map("ville_livraison")
+  paysLivraison       String?   @map("pays_livraison")
   // Montants
   totalHT             Float     @map("total_ht")
   totalTVA            Float     @default(0) @map("total_tva")
@@ -4148,7 +4164,10 @@ model Exploitation {
   numeroTvaIntracom      String?  @map("numero_tva_intracom") // FR + clé + SIREN
   // Fiscalité
   regimeFiscal           String   @map("regime_fiscal") // 'micro-BA','reel-simplifie','reel-normal'
-  regimeTva              String   @map("regime_tva") // 'franchise-293b','reel-simplifie','reel-normal'
+  regimeTva              String   @map("regime_tva") // 'franchise-293b','reel-simplifie','reel-normal','rfa' (cf src/lib/territoires.ts)
+  // Option pour le paiement de la TVA d'après les débits (art. 269-2-c CGI) :
+  // mention obligatoire sur les factures depuis la réforme, BT-8 = 5.
+  optionTvaDebits        Boolean  @default(false) @map("option_tva_debits")
   // Adresse siège
   adresseSiege           String   @map("adresse_siege")
   codePostal             String   @map("code_postal")

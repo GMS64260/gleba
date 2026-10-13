@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SelectNatif } from "@/components/ui/select-natif"
+import { CATEGORIES_OPERATION, LABELS_CATEGORIE_OPERATION } from "@/lib/facture-regles"
 import { getAvailableYears } from "@/components/year-selector"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
@@ -107,6 +108,15 @@ export default function FacturesPage() {
     email: "",
     objet: "",
     notes: "",
+    // Facturation électronique (lot 1) : catégorie de l'opération (BT-23) et
+    // livraison si elle diffère de la facture (BT-72, BG-15).
+    categorieOperation: "biens",
+    dateLivraison: "",
+    livraisonDifferente: false,
+    adresseLivraison: "",
+    codePostalLivraison: "",
+    villeLivraison: "",
+    paysLivraison: "France",
   })
   const [lignes, setLignes] = React.useState<LigneFacture[]>([
     { id: "1", description: "", quantite: 1, unite: "unité", prixUnitaire: 0, tauxTVA: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }
@@ -385,6 +395,12 @@ export default function FacturesPage() {
           totalTTC: totalFacture,
           statut: 'emise',
           notes: factureData.notes,
+          categorieOperation: factureData.categorieOperation,
+          dateLivraison: factureData.dateLivraison || null,
+          adresseLivraison: factureData.livraisonDifferente ? factureData.adresseLivraison || null : null,
+          codePostalLivraison: factureData.livraisonDifferente ? factureData.codePostalLivraison || null : null,
+          villeLivraison: factureData.livraisonDifferente ? factureData.villeLivraison || null : null,
+          paysLivraison: factureData.livraisonDifferente ? factureData.paysLivraison || null : null,
           lignes: lignes.map(l => ({
             description: l.description,
             quantite: l.quantite,
@@ -408,6 +424,7 @@ export default function FacturesPage() {
       setFactureData({
         ...factureData,
         client: '', adresse: '', email: '', objet: '', notes: '',
+        dateLivraison: '', livraisonDifferente: false, adresseLivraison: '', codePostalLivraison: '', villeLivraison: '', paysLivraison: 'France',
       })
       // Recharge la liste & ouvre le PDF
       fetchFacturesEmises()
@@ -770,11 +787,11 @@ export default function FacturesPage() {
                                 <Eye className="h-4 w-4 mr-1" />
                                 PDF
                               </Button>
-                              {f.type !== "avoir" && (
+                              {f.statut !== "brouillon" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  title="Exporter au format structuré UBL 2.1"
+                                  title="Exporter au format structuré UBL 2.1 (CreditNote pour un avoir)"
                                   onClick={() => telechargerExportFacture(f.id, f.numero, "ubl")}
                                 >
                                   <Download className="h-4 w-4 mr-1" />
@@ -873,6 +890,72 @@ export default function FacturesPage() {
                     placeholder="Ex: Vente légumes semaine 45"
                   />
                 </div>
+
+                {/* Mentions de la facturation électronique (décret 2022-1299) :
+                    catégorie de l'opération, date et adresse de livraison. */}
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div>
+                    <Label htmlFor="categorie-operation">Catégorie de l&apos;opération</Label>
+                    <select
+                      id="categorie-operation"
+                      className="w-full h-10 rounded-md border border-slate-300 px-3 bg-white"
+                      value={factureData.categorieOperation}
+                      onChange={(e) => setFactureData({ ...factureData, categorieOperation: e.target.value })}
+                    >
+                      {CATEGORIES_OPERATION.map((c) => (
+                        <option key={c} value={c}>{LABELS_CATEGORIE_OPERATION[c]}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">Mention obligatoire de la facture électronique.</p>
+                  </div>
+                  <div>
+                    <Label>Livraison ou fin d&apos;exécution</Label>
+                    <Input
+                      type="date"
+                      value={factureData.dateLivraison}
+                      onChange={(e) => setFactureData({ ...factureData, dateLivraison: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Si différente de la date de facture.</p>
+                  </div>
+                  <div className="flex items-start gap-2 pt-7">
+                    <input
+                      id="livraison-differente"
+                      type="checkbox"
+                      className="mt-1 h-4 w-4"
+                      checked={factureData.livraisonDifferente}
+                      onChange={(e) => setFactureData({ ...factureData, livraisonDifferente: e.target.checked })}
+                    />
+                    <Label htmlFor="livraison-differente" className="font-normal">Adresse de livraison différente de celle du client</Label>
+                  </div>
+                </div>
+                {factureData.livraisonDifferente && (
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <div className="md:col-span-2">
+                      <Label>Adresse de livraison</Label>
+                      <Input
+                        value={factureData.adresseLivraison}
+                        onChange={(e) => setFactureData({ ...factureData, adresseLivraison: e.target.value })}
+                        placeholder="Voie, lieu-dit"
+                      />
+                    </div>
+                    <div>
+                      <Label>Code postal</Label>
+                      <Input
+                        value={factureData.codePostalLivraison}
+                        onChange={(e) => setFactureData({ ...factureData, codePostalLivraison: e.target.value })}
+                        placeholder="64000"
+                      />
+                    </div>
+                    <div>
+                      <Label>Ville</Label>
+                      <Input
+                        value={factureData.villeLivraison}
+                        onChange={(e) => setFactureData({ ...factureData, villeLivraison: e.target.value })}
+                        placeholder="Pau"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <div className="flex items-center justify-between mb-2">

@@ -10,7 +10,8 @@
  * production-bois, recoltes-arbres.
  */
 
-import type { PrismaClient } from '@prisma/client'
+import type { Exploitation, PrismaClient } from '@prisma/client'
+import { sirenFromSiret } from '@/lib/siret'
 import { factureSansTaxe } from '@/lib/territoires'
 
 type PrismaTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
@@ -47,6 +48,14 @@ export interface CreerFactureParams {
   factureOrigineId?: number | null
   conditionsPaiement?: string | null
   mentionsSpecifiques?: string[]
+  // Facturation électronique, lot 1 (2026-10-13) : catégorie de l'opération
+  // (défaut biens) et livraison si elle diffère de la facture.
+  categorieOperation?: string | null
+  dateLivraison?: Date | null
+  adresseLivraison?: string | null
+  codePostalLivraison?: string | null
+  villeLivraison?: string | null
+  paysLivraison?: string | null
   lignes: LigneFactureInput[]
 }
 
@@ -90,6 +99,8 @@ export interface EmetteurSnapshot {
   numeroTvaIntracom: string | null
   regimeFiscal: string
   regimeTva: string
+  // Option TVA d'après les débits (BT-8). Absent des snapshots antérieurs au 2026-10-13.
+  optionTvaDebits?: boolean
   adresseSiege: string
   codePostal: string
   ville: string
@@ -110,6 +121,11 @@ export interface EmetteurSnapshot {
 async function snapshotEmetteur(tx: PrismaTx, userId: string): Promise<EmetteurSnapshot | null> {
   const e = await tx.exploitation.findUnique({ where: { userId } })
   if (!e) return null
+  return snapshotDepuisExploitation(e)
+}
+
+/** Une seule lecture de l'identité légale pour le snapshot à l'émission et pour les factures sans snapshot (exports). */
+export function snapshotDepuisExploitation(e: Exploitation): EmetteurSnapshot {
   return {
     raisonSociale: e.raisonSociale,
     formeJuridique: e.formeJuridique,
@@ -121,6 +137,7 @@ async function snapshotEmetteur(tx: PrismaTx, userId: string): Promise<EmetteurS
     numeroTvaIntracom: e.numeroTvaIntracom,
     regimeFiscal: e.regimeFiscal,
     regimeTva: e.regimeTva,
+    optionTvaDebits: e.optionTvaDebits,
     adresseSiege: e.adresseSiege,
     codePostal: e.codePostal,
     ville: e.ville,
@@ -148,6 +165,7 @@ function mentionsParDefaut(snapshot: EmetteurSnapshot | null, lignes: LigneFactu
   // Mention 293 B si franchise ; mention d'exonération générique si non-assujetti
   // (territoires hors champ TVA : Guyane, Mayotte, COM…).
   if (snapshot?.regimeTva === 'franchise-293b') out.push('293b')
+  else if (snapshot?.regimeTva === 'rfa') out.push('rfa')
   else if (snapshot?.regimeTva === 'non-assujetti') out.push('exoneration')
   // Mentions générales obligatoires (pro)
   out.push('escompte', 'penalites', 'indemnite-40')
@@ -356,6 +374,11 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
   // et le PDF exposeraient le nom/SIRET/TVA intra du client d'un autre compte.
   let clientId: number | null = null
   let clientExonere = false
+  // Facturation électronique : l'identité de l'acheteur (SIRET, SIREN BT-47,
+  // TVA intracommunautaire BT-48) est figée sur la facture, comme l'émetteur.
+  let clientSiret: string | null = null
+  let clientSiren: string | null = null
+  let clientTvaIntra: string | null = null
 
   if (params.clientId) {
     const client = await tx.client.findFirst({
@@ -366,6 +389,9 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       clientNom = client.nom
       clientAdresse = [client.adresse, client.codePostal, client.ville].filter(Boolean).join(', ')
       clientExonere = client.exonererTVA
+      clientSiret = client.siret || null
+      clientSiren = client.siren || (client.siret ? sirenFromSiret(client.siret) : null)
+      clientTvaIntra = client.tvaIntra || null
     }
   }
 
@@ -418,6 +444,15 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       conditionsPaiement: params.conditionsPaiement ?? null,
       mentionsSpecifiques: mentions,
       emetteurSnapshot: emetteur as any,
+      clientSiret,
+      clientSiren,
+      clientTvaIntra,
+      categorieOperation: params.categorieOperation || 'biens',
+      dateLivraison: params.dateLivraison || null,
+      adresseLivraison: params.adresseLivraison || null,
+      codePostalLivraison: params.codePostalLivraison || null,
+      villeLivraison: params.villeLivraison || null,
+      paysLivraison: params.paysLivraison || null,
       notes: params.notes || null,
       lignes: {
         create: lignes.map((l, index) => ({

@@ -27,7 +27,7 @@ const optionalTvaIntra = z
   .nullable()
   .optional()
 
-export const createClientSchema = z.object({
+const clientBaseSchema = z.object({
   nom: z.string().min(1, 'Nom requis').max(200),
   // DEV1 T1 — Résilient à la casse : accepte 'particulier', 'Particulier',
   // 'PARTICULIER' et normalise vers 'particulier' (canonique).
@@ -49,6 +49,21 @@ export const createClientSchema = z.object({
   actif: z.boolean().optional().default(true),
 })
 
-export const updateClientSchema = createClientSchema.partial().extend({
+/**
+ * Facturation électronique (lot 1, 2026-10-13) : une facture B2B porte le SIREN
+ * de l'acheteur (BT-47, art. 242 nonies A). Un client professionnel sans SIRET
+ * ni SIREN ne pourrait être facturé électroniquement : on l'exige à la création.
+ */
+export const createClientSchema = clientBaseSchema.superRefine((c, ctx) => {
+  if (c.type === 'professionnel' && !c.siret && !c.siren) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['siren'],
+      message: 'SIRET ou SIREN requis pour un client professionnel (identifiant de l’acheteur obligatoire sur une facture électronique)',
+    })
+  }
+})
+
+export const updateClientSchema = clientBaseSchema.partial().extend({
   id: z.coerce.number().int().min(1, 'ID requis'),
 })

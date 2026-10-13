@@ -3,8 +3,9 @@ import PDFDocument from "pdfkit"
 import type { EmetteurSnapshot } from "@/lib/facture-utils"
 import type { FacturePourExport } from "@/lib/facture-structuree"
 import { attacherFacturX, creerDocumentPdfA3, terminerPdf, type ProfilFacturX } from "@/lib/facturx/pdfa"
+import { LABELS_CATEGORIE_OPERATION, MENTION_OPTION_DEBITS, mentionsCodifiees, type CategorieOperation } from "@/lib/facture-regles"
 import { symboleDevise } from "@/lib/format-utils"
-import { formatSiret } from "@/lib/siret"
+import { formatSiren, formatSiret } from "@/lib/siret"
 import { labelMentionAB, mentionABFacture } from "@/lib/statut-bio"
 import { getTerritoire, identifiantLegalAffichage } from "@/lib/territoires"
 
@@ -119,13 +120,34 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
     doc.text(facture.client.email, 50, y, { width: 250 })
     y += 12
   }
-  if (facture.client?.siret) {
-    doc.text(`SIRET : ${formatSiret(facture.client.siret)}`, 50, y, { width: 250 })
+  // Identité de l'acheteur figée sur la facture (lot 1), sinon la fiche client.
+  const clientSiret = facture.clientSiret || facture.client?.siret
+  const clientSiren = facture.clientSiren || facture.client?.siren
+  const clientTva = facture.clientTvaIntra || facture.client?.tvaIntra
+  if (clientSiret) {
+    doc.text(`SIRET : ${formatSiret(clientSiret)}`, 50, y, { width: 250 })
+    y += 12
+  } else if (clientSiren) {
+    doc.text(`SIREN : ${formatSiren(clientSiren)}`, 50, y, { width: 250 })
     y += 12
   }
-  if (facture.client?.tvaIntra) {
-    doc.text(`TVA intra : ${facture.client.tvaIntra}`, 50, y, { width: 250 })
+  if (clientTva) {
+    doc.text(`TVA intra : ${clientTva}`, 50, y, { width: 250 })
     y += 12
+  }
+  // Adresse de livraison si différente de celle du client (mention obligatoire, BG-15).
+  if (facture.adresseLivraison) {
+    y += 4
+    doc.font("Helvetica-Bold").fontSize(9).fillColor("#64748b").text("LIVRÉ À", 50, y)
+    y += 12
+    doc.font("Helvetica").fontSize(9).fillColor("#475569")
+    doc.text(facture.adresseLivraison, 50, y, { width: 250 })
+    y += 12
+    const localite = [facture.codePostalLivraison, facture.villeLivraison, facture.paysLivraison].filter(Boolean).join(" ")
+    if (localite) {
+      doc.text(localite, 50, y, { width: 250 })
+      y += 12
+    }
   }
 
   if (facture.objet) {
@@ -233,7 +255,13 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
   ly += 38
   doc.font("Helvetica").fontSize(9).fillColor("#475569")
 
-  // Date d'échéance / conditions
+  // Catégorie de l'opération et livraison (décret 2022-1299), échéance, conditions
+  doc.text(`Catégorie de l'opération : ${LABELS_CATEGORIE_OPERATION[facture.categorieOperation as CategorieOperation] || LABELS_CATEGORIE_OPERATION.biens}`, 50, ly, { width: 495 })
+  ly += 12
+  if (facture.dateLivraison) {
+    doc.text(`Livraison ou fin d'exécution le ${formatDate(facture.dateLivraison)}`, 50, ly, { width: 495 })
+    ly += 12
+  }
   if (facture.dateEcheance) {
     doc.text(`Date d'échéance : ${formatDate(facture.dateEcheance)}`, 50, ly, { width: 495 })
     ly += 12
@@ -292,23 +320,25 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
     doc.text("• TVA non applicable, art. 293 B du CGI.", 50, fy, { width: 495 })
     fy += 10
   }
+  if (mentions.includes("rfa")) {
+    doc.text("• TVA non applicable : exploitant agricole placé sous le régime du remboursement forfaitaire (art. 298 quater du CGI).", 50, fy, { width: 495 })
+    fy += 10
+  }
   if (mentions.includes("exoneration")) {
     doc.text("• TVA non applicable.", 50, fy, { width: 495 })
     fy += 10
   }
-  if (mentions.includes("escompte")) {
-    const escompte = emetteur?.tauxEscompte || "néant"
-    doc.text(`• Escompte pour règlement anticipé : ${escompte}.`, 50, fy, { width: 495 })
+  if (emetteur?.optionTvaDebits) {
+    doc.text(`• ${MENTION_OPTION_DEBITS}`, 50, fy, { width: 495 })
     fy += 10
   }
-  if (mentions.includes("penalites")) {
-    const tx = emetteur?.tauxPenalitesRetard || "3 × taux légal"
-    doc.text(`• Pénalités de retard : ${tx} en cas de paiement après échéance (art. L441-10 C. com.).`, 50, fy, { width: 495 })
-    fy += 10
-  }
-  if (mentions.includes("indemnite-40")) {
-    const indemnite = emetteur?.indemniteRecouvrement ?? 40
-    doc.text(`• Indemnité forfaitaire pour frais de recouvrement : ${formatMontant(indemnite, devise)} ${sym} (art. L441-10 C. com.).`, 50, fy, { width: 495 })
+  // Mentions codifiées (AAB escompte, PMD pénalités, PMT indemnité) : mêmes
+  // textes que dans le XML Factur-X / UBL (src/lib/facture-regles.ts).
+  const codifiees = mentionsCodifiees(emetteur, devise)
+  const cles: Record<string, string> = { AAB: "escompte", PMD: "penalites", PMT: "indemnite-40" }
+  for (const m of codifiees) {
+    if (!mentions.includes(cles[m.code])) continue
+    doc.text(`• ${m.texte}`, 50, fy, { width: 495 })
     fy += 10
   }
   if (facture.mentionsLegales) {
