@@ -117,6 +117,40 @@ function persisterChoixCalques(conteneur: HTMLElement) {
   }
 }
 
+/**
+ * Un clic venu d'un doigt ou d'un stylet, ou d'un navigateur sans
+ * `pointerType` sur un écran sans survol : là, la garde de Leaflet contre le
+ * tap qui ouvre le contrôle et choisit un calque d'un même geste doit rester.
+ */
+function estPointeurTactile(event: Event): boolean {
+  const pointerType = (event as PointerEvent).pointerType
+  if (pointerType === "touch" || pointerType === "pen") return true
+  if (pointerType === undefined) {
+    // Navigateur sans Pointer Events : tout appareil tactile garde la garde.
+    try {
+      return (navigator.maxTouchPoints ?? 0) > 0 || window.matchMedia("(hover: none), (any-pointer: coarse)").matches
+    } catch {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Sélecteur (bouton radio ou case) visé par un événement du contrôle Calques,
+ * que la cible soit l'input lui-même ou son libellé (`<label>` et texte) ;
+ * null hors du contrôle.
+ */
+function selecteurCalques(cible: EventTarget | null): { input: HTMLInputElement; label: HTMLElement | null } | null {
+  if (!(cible instanceof Element)) return null
+  if (cible instanceof HTMLInputElement && cible.classList.contains("leaflet-control-layers-selector")) {
+    return { input: cible, label: cible.closest("label") }
+  }
+  const label = cible.closest<HTMLElement>(".leaflet-control-layers label")
+  const input = label?.querySelector<HTMLInputElement>("input.leaflet-control-layers-selector") ?? null
+  return label && input ? { input, label } : null
+}
+
 export default function MapContainer({
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
@@ -137,6 +171,9 @@ export default function MapContainer({
   // React rappelle le ref avec null au démontage/ré-attache, et sans retrait
   // les handlers s'accumulaient (fuite + écritures localStorage dupliquées).
   const detachListenersRef = useRef<(() => void) | null>(null)
+  // Vrai pendant le rejeu synchrone d'un clic annulé par Leaflet (voir
+  // onChangeCalques) : un clic rejoué n'est jamais rejoué une seconde fois.
+  const rejeuEnCoursRef = useRef(false)
 
   // Callback quand la carte est initialisee
   const handleMapRef = useCallback(
@@ -154,9 +191,36 @@ export default function MapContainer({
         // le choix.
         const conteneur = map.getContainer()
         const onChangeCalques = (event: Event) => {
-          const cible = event.target
-          if (!(cible instanceof HTMLInputElement) || !cible.classList.contains("leaflet-control-layers-selector")) return
-          window.setTimeout(() => persisterChoixCalques(conteneur), 0)
+          // Le clic sur un libellé compte aussi : annulé, il ne transmet
+          // jamais de clic au bouton radio (action par défaut du <label>).
+          const selecteur = selecteurCalques(event.target)
+          if (!selecteur) return
+          const estRejeu = rejeuEnCoursRef.current
+          window.setTimeout(() => {
+            // Retest QA 2026-10-12 (cmv5cpu7q), sonde
+            // scripts/qa/sonde-carte-fond-20261013.cjs : sur dix gestes, le
+            // seul clic qui perd encore le fond est celui qui tombe dans la
+            // même tâche que l'ouverture du contrôle (bouton ou survol).
+            // Leaflet (`_expandSafely`, garde contre le tap qui ouvre ET
+            // choisit sur mobile) l'annule : `preventDefault` sur la liste,
+            // le bouton radio revient sur l'ancien fond, rien n'est appliqué
+            // ni persisté. Un humain n'y arrive pas, un automate si (deux
+            // clics forcés d'affilée). Hors tactile, où la garde a un sens,
+            // on rejoue ce clic une fois la garde levée : sa temporisation
+            // est antérieure à la nôtre, donc déjà passée. Le clic rejoué
+            // (sur l'élément visé à l'origine) repasse ici et persiste
+            // lui-même ; il n'est jamais rejoué une seconde fois.
+            if (!estRejeu && event.type === "click" && event.defaultPrevented && !estPointeurTactile(event)) {
+              rejeuEnCoursRef.current = true
+              try {
+                ;(event.target instanceof HTMLInputElement ? selecteur.input : selecteur.label ?? selecteur.input).click()
+              } finally {
+                rejeuEnCoursRef.current = false
+              }
+              return
+            }
+            persisterChoixCalques(conteneur)
+          }, 0)
         }
         // Retest QA du 2026-09-28 13:44 (ticket cmulatx23), reproduit le
         // 2026-10-02 : Leaflet applique le fond sur l'événement `click` de
@@ -166,10 +230,15 @@ export default function MapContainer({
         // les deux, comme Leaflet ; l'écriture relit l'état réel du DOM, donc
         // un doublon click+change est idempotent. Un `addLayer` programmatique
         // n'émet toujours aucun des deux.
+        // `input` (même sonde) : un automate qui pose `checked` puis n'émet
+        // qu'`input` cochait Satellite à l'écran sans que rien ne soit écrit ;
+        // comme `change`, un navigateur ne l'émet que pour une interaction.
         conteneur.addEventListener("change", onChangeCalques, { capture: true })
+        conteneur.addEventListener("input", onChangeCalques, { capture: true })
         conteneur.addEventListener("click", onChangeCalques, { capture: true })
         detachListenersRef.current = () => {
           conteneur.removeEventListener("change", onChangeCalques, { capture: true })
+          conteneur.removeEventListener("input", onChangeCalques, { capture: true })
           conteneur.removeEventListener("click", onChangeCalques, { capture: true })
         }
       }
