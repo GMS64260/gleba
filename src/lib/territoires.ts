@@ -47,6 +47,7 @@ export interface TerritoireConfig {
 /** Ensemble complet des régimes de taxe possibles (tous territoires confondus). */
 export const REGIMES_TVA_TOUS = [
   'franchise-293b',
+  'rfa',
   'reel-simplifie',
   'reel-normal',
   'tgc',
@@ -55,7 +56,11 @@ export const REGIMES_TVA_TOUS = [
 
 export const LABELS_REGIME_TVA: Record<string, string> = {
   'franchise-293b': 'Franchise en base (art. 293 B CGI)',
-  'reel-simplifie': 'Réel simplifié',
+  // Exploitant agricole non redevable, remboursement forfaitaire agricole
+  // (art. 298 quater CGI) : aucune TVA facturée, e-reporting par bimestre
+  // (facturation électronique, lot 1, 2026-10-13).
+  rfa: 'Remboursement forfaitaire agricole (art. 298 quater CGI)',
+  'reel-simplifie': 'Réel simplifié agricole',
   'reel-normal': 'Réel normal',
   tgc: 'TGC (Nouvelle-Calédonie)',
   'non-assujetti': 'Non assujetti / exonéré',
@@ -68,7 +73,7 @@ const SIRET_FIELDS = {
 }
 
 // Régimes métropole/DROM assujettis à la TVA française.
-const REGIMES_FR = ['franchise-293b', 'reel-simplifie', 'reel-normal'] as const
+const REGIMES_FR = ['franchise-293b', 'rfa', 'reel-simplifie', 'reel-normal'] as const
 // Régimes des territoires hors champ TVA française (ou à TVA spécifique).
 const REGIMES_EXO = ['non-assujetti', 'reel-simplifie', 'reel-normal'] as const
 
@@ -272,6 +277,8 @@ export function collecteTvaFrancaise(regimeTva?: string | null): boolean {
 export function motifHorsChampCa3(regimeTva?: string | null): string | null {
   if (regimeTva === 'franchise-293b')
     return 'Exploitation en franchise en base (art. 293 B CGI) : vous ne collectez ni ne déduisez aucune TVA — la déclaration CA3 ne vous concerne pas.'
+  if (regimeTva === 'rfa')
+    return 'Exploitation au remboursement forfaitaire agricole (art. 298 quater CGI) : vous ne collectez aucune TVA — la déclaration CA3 ne vous concerne pas.'
   if (regimeTva === 'non-assujetti')
     return 'Exploitation non assujettie à la TVA (art. 294 CGI, DROM) : la déclaration CA3 ne vous concerne pas.'
   if (regimeTva === 'tgc')
@@ -285,6 +292,7 @@ export function motifHorsChampCa3(regimeTva?: string | null): string | null {
  */
 export function mentionFiscale(regimeTva?: string | null): string | null {
   if (regimeTva === 'franchise-293b') return 'TVA non applicable, art. 293 B du CGI'
+  if (regimeTva === 'rfa') return 'TVA non applicable, exploitant agricole au remboursement forfaitaire (art. 298 quater du CGI)'
   if (regimeTva === 'non-assujetti') return 'TVA non applicable'
   return null
 }

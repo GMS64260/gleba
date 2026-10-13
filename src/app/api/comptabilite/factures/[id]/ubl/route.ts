@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { buildUblInvoice, UblValidationError } from '@/lib/facture-ubl'
-import { donneesFactureStructuree, emetteurDeFacture } from '@/lib/facture-structuree'
+import { preparerExportFacture } from '@/lib/facture-structuree'
 
+/**
+ * GET /api/comptabilite/factures/[id]/ubl — la facture en UBL 2.1 (EN 16931,
+ * règles françaises XP Z12-012) : `Invoice` pour une facture ou un acompte,
+ * `CreditNote` pour un avoir (depuis le 2026-10-13). Brouillon refusé (400),
+ * facture incomplète détaillée (422).
+ */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error, session } = await requireAuthApi()
   if (error) return error
@@ -16,14 +22,13 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     include: { client: true, lignes: { orderBy: { ordre: 'asc' } } },
   })
   if (!facture) return NextResponse.json({ error: 'Facture non trouvée' }, { status: 404 })
-  if (facture.type === 'avoir') return NextResponse.json({ error: "L'export UBL des avoirs sera disponible prochainement" }, { status: 400 })
 
-  const emetteur = await emetteurDeFacture(facture, session!.user.id)
-  if (!emetteur) return NextResponse.json({ error: "Configurez l'identité de l'exploitation avant l'export UBL" }, { status: 422 })
+  const preparation = await preparerExportFacture(facture, session!.user.id, 'UBL')
+  if (!preparation.ok) return NextResponse.json({ error: preparation.error }, { status: preparation.status })
 
   let xml: string
   try {
-    xml = buildUblInvoice(donneesFactureStructuree(facture, emetteur))
+    xml = buildUblInvoice(preparation.donnees)
   } catch (err) {
     if (err instanceof UblValidationError) {
       return NextResponse.json({ error: "Facture incomplète pour l’export UBL", details: err.issues }, { status: 422 })

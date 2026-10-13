@@ -1,54 +1,43 @@
 import { describe, expect, it } from "vitest"
-import type { DonneesFactureStructuree } from "@/lib/facture-structuree"
 import { buildCiiInvoice, validerCii } from "@/lib/facturx/cii"
+import { factureStructuree } from "./fixtures/facture-structuree"
 
-const facture = (): DonneesFactureStructuree => ({
-  number: "F-2026-0042",
-  issueDate: new Date("2026-07-22T10:00:00Z"),
-  dueDate: new Date("2026-08-21T10:00:00Z"),
-  currency: "EUR",
-  supplier: { name: "Ferme & Fils", siret: "123 456 789 00012", vatId: "FR 12 123456789", email: "contact@ferme.example", address: { street: "1 rue Verte", city: "Pau", postalCode: "64000", country: "France" } },
-  customer: { name: "Épicerie <Bio>", siret: "98765432100019", address: { street: "2 rue Bio", city: "Bayonne", postalCode: "64100", country: "FR" } },
-  lines: [
-    { id: 1, description: "Huile & olives", quantity: 2, unit: "litre", unitPrice: 10, netAmount: 20, vatRate: 5.5 },
-    { id: 2, description: "Prestation de livraison", quantity: 1.5, unit: "heure", unitPrice: 20, netAmount: 30, vatRate: 20 },
-  ],
-  totalNet: 50,
-  totalVat: 7.1,
-  totalGross: 57.1,
-  paymentReference: "F-2026-0042",
-  paymentIban: "FR76 3000 6000 0112 3456 7890 189",
-  notes: "Commande de juillet",
-  buyerReference: "98765432100019",
-  typeCode: "380",
-  exonerationTva: null,
-  factureOrigine: null,
-  conditionsPaiement: "30 jours fin de mois",
-})
+const facture = factureStructuree
 
-describe("buildCiiInvoice (Factur-X EN 16931)", () => {
-  it("produit un CII D16B conforme au profil EN 16931 avec parties, lignes, TVA et totaux", () => {
+describe("buildCiiInvoice (Factur-X EN 16931, règles BR-FR)", () => {
+  it("produit un CII D16B avec cadre de facturation, parties, notes codifiées, livraison, TVA et totaux", () => {
     const xml = buildCiiInvoice(facture())
     expect(xml).toContain("urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100")
-    expect(xml).toContain("<ram:ID>urn:cen.eu:en16931:2017</ram:ID>")
+    expect(xml).toContain("<rsm:ExchangedDocumentContext><ram:BusinessProcessSpecifiedDocumentContextParameter><ram:ID>M1</ram:ID></ram:BusinessProcessSpecifiedDocumentContextParameter><ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017</ram:ID>")
     expect(xml).toContain("<ram:TypeCode>380</ram:TypeCode>")
     expect(xml).toContain('<udt:DateTimeString format="102">20260722</udt:DateTimeString>')
-    expect(xml).toContain('<ram:SellerTradeParty><ram:ID schemeID="0009">12345678900012</ram:ID><ram:Name>Ferme &amp; Fils</ram:Name><ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">123456789</ram:ID>')
+    expect(xml).toContain("<ram:IncludedNote><ram:Content>Commande de juillet</ram:Content></ram:IncludedNote>")
+    expect(xml).toContain("<ram:SubjectCode>AAB</ram:SubjectCode>")
+    expect(xml).toContain("<ram:SubjectCode>PMD</ram:SubjectCode>")
+    expect(xml).toContain("<ram:Content>Indemnité forfaitaire pour frais de recouvrement : 40,00 € (art. L441-10 C. com.).</ram:Content><ram:SubjectCode>PMT</ram:SubjectCode>")
+    expect(xml).toContain("<ram:Content>B2B</ram:Content><ram:SubjectCode>BAR</ram:SubjectCode>")
+    expect(xml).toContain('<ram:SellerTradeParty><ram:GlobalID schemeID="0009">73282932000074</ram:GlobalID><ram:Name>Ferme &amp; Fils</ram:Name><ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">732829320</ram:ID>')
+    expect(xml).toContain('<ram:URIUniversalCommunication><ram:URIID schemeID="0225">732829320</ram:URIID></ram:URIUniversalCommunication><ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">FR44732829320</ram:ID>')
+    expect(xml).toContain('<ram:BuyerTradeParty><ram:GlobalID schemeID="0009">55210055400013</ram:GlobalID><ram:Name>Épicerie &lt;Bio&gt;</ram:Name><ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">552100554</ram:ID>')
     expect(xml).toContain("<ram:CountryID>FR</ram:CountryID>")
-    expect(xml).toContain('<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">FR12123456789</ram:ID>')
-    expect(xml).toContain("<ram:Name>Épicerie &lt;Bio&gt;</ram:Name>")
+    expect(xml).not.toContain("BuyerReference")
+    expect(xml).toContain('<ram:ApplicableHeaderTradeDelivery><ram:ActualDeliverySupplyChainEvent><ram:OccurrenceDateTime><udt:DateTimeString format="102">20260721</udt:DateTimeString>')
     expect(xml).toContain('<ram:BilledQuantity unitCode="LTR">2</ram:BilledQuantity>')
     expect(xml).toContain('<ram:BilledQuantity unitCode="HUR">1.5</ram:BilledQuantity>')
+    expect(xml).toContain("<ram:ChargeAmount>10.00</ram:ChargeAmount>")
     expect(xml).toContain("<ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>5.50</ram:RateApplicablePercent>")
     expect(xml).toContain("<ram:CalculatedAmount>6.00</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>30.00</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>20.00</ram:RateApplicablePercent>")
     expect(xml).toContain("<ram:TypeCode>58</ram:TypeCode><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>FR7630006000011234567890189</ram:IBANID>")
     expect(xml).toContain("<ram:Description>30 jours fin de mois</ram:Description><ram:DueDateDateTime>")
     expect(xml).toContain('<ram:TaxTotalAmount currencyID="EUR">7.10</ram:TaxTotalAmount><ram:GrandTotalAmount>57.10</ram:GrandTotalAmount><ram:DuePayableAmount>57.10</ram:DuePayableAmount>')
     expect(xml).not.toContain("InvoiceReferencedDocument")
+    expect(xml).not.toContain("DueDateTypeCode")
+    expect(xml).not.toContain("TotalPrepaidAmount")
   })
 
-  it("franchise en base : catégorie E, code VATEX-FR-FRANCHISE, aucune TVA", () => {
+  it("franchise en base sans numéro de TVA : catégorie E, VATEX-FR-FRANCHISE, identifiant fiscal FC = SIREN (BR-E-02)", () => {
     const f = facture()
+    f.supplier.vatId = null
     f.lines = [{ id: 1, description: "Légumes", quantity: 10, unit: "kg", unitPrice: 2, netAmount: 20, vatRate: 0 }]
     f.totalNet = 20
     f.totalVat = 0
@@ -58,16 +47,41 @@ describe("buildCiiInvoice (Factur-X EN 16931)", () => {
     expect(xml).toContain("<ram:CategoryCode>E</ram:CategoryCode><ram:RateApplicablePercent>0.00</ram:RateApplicablePercent>")
     expect(xml).toContain("<ram:ExemptionReason>TVA non applicable, art. 293 B du CGI</ram:ExemptionReason>")
     expect(xml).toContain("<ram:ExemptionReasonCode>VATEX-FR-FRANCHISE</ram:ExemptionReasonCode>")
+    expect(xml).toContain('<ram:SpecifiedTaxRegistration><ram:ID schemeID="FC">732829320</ram:ID></ram:SpecifiedTaxRegistration></ram:SellerTradeParty>')
     expect(xml).not.toContain("<ram:CategoryCode>S</ram:CategoryCode>")
   })
 
-  it("refuse une franchise avec une ligne taxée et un avoir sans facture d'origine", () => {
+  it("option TVA d'après les débits et adresse de livraison : DueDateTypeCode 5 et ShipToTradeParty", () => {
+    const f = facture()
+    f.optionTvaDebits = true
+    f.adresseLivraison = { street: "9 route du Marché", postalCode: "64100", city: "Bayonne", country: "FR" }
+    const xml = buildCiiInvoice(f)
+    expect(xml).not.toContain("ExemptionReasonCode")
+    expect(xml).toContain("<ram:CategoryCode>S</ram:CategoryCode><ram:DueDateTypeCode>5</ram:DueDateTypeCode><ram:RateApplicablePercent>5.50</ram:RateApplicablePercent>")
+    expect(xml).toContain("<ram:ShipToTradeParty><ram:Name>Épicerie &lt;Bio&gt;</ram:Name><ram:PostalTradeAddress><ram:PostcodeCode>64100</ram:PostcodeCode><ram:LineOne>9 route du Marché</ram:LineOne><ram:CityName>Bayonne</ram:CityName><ram:CountryID>FR</ram:CountryID></ram:PostalTradeAddress></ram:ShipToTradeParty>")
+  })
+
+  it("facture déjà payée : cadre x2, TotalPrepaidAmount = TTC, DuePayableAmount 0, échéance = paiement", () => {
+    const f = facture()
+    f.cadreFacturation = "M2"
+    f.paiement = { date: new Date("2026-07-25T10:00:00Z"), montant: 57.1 }
+    f.dueDate = f.paiement.date
+    const xml = buildCiiInvoice(f)
+    expect(xml).toContain("<ram:ID>M2</ram:ID>")
+    expect(xml).toContain('<ram:DueDateDateTime><udt:DateTimeString format="102">20260725</udt:DateTimeString>')
+    expect(xml).toContain("<ram:GrandTotalAmount>57.10</ram:GrandTotalAmount><ram:TotalPrepaidAmount>57.10</ram:TotalPrepaidAmount><ram:DuePayableAmount>0.00</ram:DuePayableAmount>")
+  })
+
+  it("refuse une franchise avec une ligne taxée, un avoir sans facture d'origine et un cadre inconnu", () => {
     const f = facture()
     f.exonerationTva = { code: "VATEX-FR-FRANCHISE", motif: "TVA non applicable" }
     expect(validerCii(f)).toContain("Facture en franchise de TVA avec une ligne à taux non nul")
     const avoir = facture()
     avoir.typeCode = "381"
     expect(() => buildCiiInvoice(avoir)).toThrow(/facture d'origine/)
+    const cadre = facture()
+    cadre.cadreFacturation = "S8"
+    expect(validerCii(cadre)).toContain("Cadre de facturation non géré (S8)")
   })
 
   it("avoir : type 381 et référence à la facture d'origine (BG-3)", () => {
@@ -83,7 +97,17 @@ describe("buildCiiInvoice (Factur-X EN 16931)", () => {
   it("bloque un document incomplet ou dont les totaux divergent, comme l'UBL", () => {
     const f = facture()
     f.supplier.siret = null
+    f.supplier.siren = null
     f.totalNet = 60
     expect(() => buildCiiInvoice(f)).toThrow(/SIRET|total HT/)
+  })
+
+  it("les dates sont le jour calendaire de Paris, pas le jour UTC", () => {
+    const f = facture()
+    f.issueDate = new Date("2026-10-12T00:00:00+02:00") // 2026-10-11T22:00Z
+    f.dueDate = new Date("2026-11-11T00:00:00+01:00")
+    f.dateLivraison = f.issueDate
+    const xml = buildCiiInvoice(f)
+    expect(xml).toContain('<ram:IssueDateTime><udt:DateTimeString format="102">20261012</udt:DateTimeString>')
   })
 })

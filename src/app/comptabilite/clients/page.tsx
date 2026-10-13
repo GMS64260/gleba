@@ -352,13 +352,18 @@ export default function ClientsPage() {
                         />
                       </div>
                       <div>
-                        <Label>SIREN</Label>
+                        <Label>SIREN{formData.type === 'professionnel' ? ' *' : ''}</Label>
                         <Input
                           value={formData.siren}
                           onChange={(e) => setFormData({ ...formData, siren: e.target.value })}
                           placeholder="123 456 789"
                           maxLength={11}
                         />
+                        {formData.type === 'professionnel' && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Requis : identifiant de l&apos;acheteur sur une facture électronique.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <Label>N° TVA intracom.</Label>

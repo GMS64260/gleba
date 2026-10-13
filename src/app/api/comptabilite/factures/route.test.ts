@@ -74,6 +74,28 @@ describe('PATCH /api/comptabilite/factures — propagation paiement', () => {
     expect(mocks.txVenteProduitUpdateMany).not.toHaveBeenCalled()
   })
 
+  it('corrige la catégorie d’opération et la livraison d’une facture émise sans toucher au statut (lot 1 facturation électronique)', async () => {
+    mocks.txFactureUpdate.mockResolvedValue({ id: 5, statut: 'emise', categorieOperation: 'services', lignes: [], client: null })
+    const res = await PATCH(request({ id: 5, categorieOperation: 'Services', dateLivraison: '2026-10-09', adresseLivraison: 'Lieu-dit Larrouy', codePostalLivraison: '64160', villeLivraison: 'Morlaàs' }))
+
+    expect(res.status).toBe(200)
+    expect(mocks.txFactureUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 5 },
+        data: expect.objectContaining({ categorieOperation: 'services', dateLivraison: expect.any(Date), adresseLivraison: 'Lieu-dit Larrouy', villeLivraison: 'Morlaàs' }),
+      }),
+    )
+    expect(mocks.txFactureUpdate.mock.calls[0][0].data).not.toHaveProperty('statut')
+    expect(mocks.txVenteProduitUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it('refuse une catégorie d’opération inconnue et toute mention sur une facture annulée', async () => {
+    expect((await PATCH(request({ id: 5, categorieOperation: 'autre' }))).status).toBe(400)
+    mocks.factureFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', statut: 'annulee', type: 'facture' })
+    expect((await PATCH(request({ id: 5, categorieOperation: 'biens' }))).status).toBe(409)
+    expect(mocks.txFactureUpdate).not.toHaveBeenCalled()
+  })
+
   it('refuse toujours une transition invalide (annulee → payee) sans toucher aux ventes', async () => {
     mocks.factureFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', statut: 'annulee', type: 'facture' })
 

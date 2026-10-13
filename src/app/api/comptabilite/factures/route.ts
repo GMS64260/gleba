@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { lireAnnee } from '@/lib/api/annee'
 import { creerFacture } from '@/lib/facture-utils'
 import { invalidateKpi } from '@/lib/kpi'
+import { sirenFromSiret } from '@/lib/siret'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
       }
       const origine = await prisma.facture.findFirst({
         where: { id: d.factureOrigineId, userId },
-        select: { id: true, numero: true, type: true, statut: true, totalTTC: true },
+        select: { id: true, numero: true, type: true, statut: true, totalTTC: true, categorieOperation: true },
       })
       if (!origine || origine.type === 'avoir' || !['emise', 'payee'].includes(origine.statut)) {
         return NextResponse.json(
@@ -147,6 +148,15 @@ export async function POST(request: NextRequest) {
     // Transaction atomique : verrouillage de l'origine + plafond des avoirs
     // + numéro facture + création. Le contrôle effectué plus haut améliore le
     // message rapide, celui-ci garantit l'invariant sous concurrence.
+    // Facturation électronique : un avoir suit la catégorie d'opération de sa
+    // facture d'origine quand l'appelant ne la précise pas (le zod vaut
+    // « biens » par défaut, sans distinguer l'absence de la valeur).
+    let categorieOperation: string = d.categorieOperation
+    if (d.type === 'avoir' && body.categorieOperation === undefined && d.factureOrigineId) {
+      const origineCat = await prisma.facture.findFirst({ where: { id: d.factureOrigineId, userId }, select: { categorieOperation: true } })
+      if (origineCat) categorieOperation = origineCat.categorieOperation
+    }
+
     const facture = await prisma.$transaction(async (tx) => {
       if (d.type === 'avoir' && d.factureOrigineId) {
         const locked = await tx.$queryRaw<Array<{ id: number; total_ttc: number }>>`
@@ -181,6 +191,12 @@ export async function POST(request: NextRequest) {
         factureOrigineId: d.factureOrigineId ?? null,
         notes: d.notes ?? null,
         mentionsLegales: d.mentionsLegales ?? null,
+        categorieOperation,
+        dateLivraison: d.dateLivraison ?? null,
+        adresseLivraison: d.adresseLivraison || null,
+        codePostalLivraison: d.codePostalLivraison || null,
+        villeLivraison: d.villeLivraison || null,
+        paysLivraison: d.paysLivraison || null,
         lignes: d.lignes.map((l) => ({
           description: l.description,
           quantite: l.quantite,
@@ -273,8 +289,32 @@ export async function PATCH(request: NextRequest) {
     const isEmission =
       existing.statut === 'brouillon' && ['emise', 'payee'].includes(updateData.statut)
 
+    // Facturation électronique (lot 1) : la catégorie d'opération et la
+    // livraison sont des mentions, pas des montants ; elles restent
+    // corrigeables tant que la facture n'est pas annulée (les factures émises
+    // avant le 2026-10-13 valent « biens » par défaut).
+    const CHAMPS_MENTIONS = ['categorieOperation', 'dateLivraison', 'adresseLivraison', 'codePostalLivraison', 'villeLivraison', 'paysLivraison'] as const
+    const mentionsFournies = CHAMPS_MENTIONS.filter((k) => updateData[k] !== undefined)
+    let mentions: Record<string, unknown> = {}
+    if (mentionsFournies.length) {
+      if (existing.statut === 'annulee') {
+        return NextResponse.json({ error: 'Une facture annulée ne se modifie plus' }, { status: 409 })
+      }
+      const { mentionsFactureSchema } = await import('@/lib/validations/facture')
+      const parsedMentions = mentionsFactureSchema.safeParse(updateData)
+      if (!parsedMentions.success) {
+        return NextResponse.json({ error: 'Données invalides', details: parsedMentions.error.flatten() }, { status: 400 })
+      }
+      mentions = Object.fromEntries(
+        mentionsFournies.map((k) => {
+          const v = parsedMentions.data[k]
+          return [k, k === 'dateLivraison' ? v ?? null : v || null]
+        }),
+      )
+    }
+
     const facture = await prisma.$transaction(async (tx) => {
-      const data: any = {}
+      const data: any = { ...mentions }
       if (updateData.statut !== undefined) {
         data.statut = updateData.statut
         if (updateData.statut === 'payee') data.datePaiement = new Date()
@@ -294,6 +334,15 @@ export async function PATCH(request: NextRequest) {
         data.numero = numero
         data.date = dateEmission
         data.emetteurSnapshot = (await snapshotEmetteurForEmission(tx, session.user.id)) as any
+        // L'identité de l'acheteur est figée au même moment que celle de l'émetteur.
+        if (existing.clientId) {
+          const client = await tx.client.findFirst({ where: { id: existing.clientId, userId: session.user.id } })
+          if (client) {
+            data.clientSiret = client.siret || null
+            data.clientSiren = client.siren || (client.siret ? sirenFromSiret(client.siret) : null)
+            data.clientTvaIntra = client.tvaIntra || null
+          }
+        }
       }
 
       // TICKET cmsogchrf — le pointage « payée » se propage aux ventes sources
