@@ -36,6 +36,15 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Skeleton } from "@/components/ui/skeleton"
 import { BulkActions } from "@/components/calendrier/BulkActions"
 import { SoinDetailDialog } from "@/components/elevage/SoinDetailDialog"
+import { libelleTypeSoin } from "@/lib/elevage/types-soin"
+import { todayLocalISO } from "@/lib/format-utils"
+import {
+  classerEcheanceSoin,
+  compterEcheancesSoins,
+  echeanceSoinAFaire,
+  trierParEcheanceSoin,
+  type CompteEcheancesSoins,
+} from "@/lib/elevage/echeances-soins"
 import { useToast } from "@/hooks/use-toast"
 import {
   ChartContainer,
@@ -105,7 +114,6 @@ interface DashboardData {
     nbVentes: number
     abattagesAnnee: number
     poidsCarcasseAnnee: number
-    soinsAPlanifier: number
     alimentsStockBas: number
     stockOeufs: number
     stockOeufsDetail: { produits: number; casses: number; sales?: number; vendus: number }
@@ -169,6 +177,7 @@ interface AttenteItem {
 interface SoinItem {
   id: number
   injectionId?: string | null
+  statutInjection?: string | null
   numeroInjection?: number | null
   nombreInjections?: number | null
   date: string
@@ -189,13 +198,6 @@ interface SoinItem {
 
 const MOIS_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
 const COLORS = ['#f59e0b', '#ef4444', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
-
-const TYPE_LABELS: Record<string, string> = {
-  vaccination: "Vaccination",
-  vermifuge: "Vermifuge",
-  traitement: "Traitement",
-  autre: "Autre",
-}
 
 const DASHBOARD_PREFS_KEY = "gleba:elevage:dashboard-preferences:v1"
 type DashboardPreferences = {
@@ -220,6 +222,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
   const [data, setData] = React.useState<DashboardData | null>(null)
   const [statsError, setStatsError] = React.useState<string | null>(null)
   const [soins, setSoins] = React.useState<SoinItem[]>([])
+  // QA 2026-10-19 — retards et soins à venir comptés par `/api/elevage/taches`
+  // sur les lignes mêmes de la liste « Soins à faire » (tuile, bandeau, liste).
+  const [echeancesSoins, setEcheancesSoins] = React.useState<CompteEcheancesSoins | null>(null)
   const [loadingSoins, setLoadingSoins] = React.useState(true)
   // PROMPT 20 — synthèse qualité du lait (cellules) sur 90 j
   const [qualite, setQualite] = React.useState<QualiteLaitSummary | null>(null)
@@ -296,13 +301,27 @@ export function DashboardTab({ year }: DashboardTabProps) {
       debut.setDate(debut.getDate() - 30)
       const fin = new Date()
       fin.setDate(fin.getDate() + 30)
+      // J+30 inclus jusqu'au soir, quelle que soit l'heure d'ouverture.
+      fin.setHours(23, 59, 59, 999)
       // QA 2026-09-28 — deux traitements en retard de 35 et 40 jours avaient
       // disparu des priorités : la fenêtre de 30 jours les excluait. `retards=1`
       // ramène tout soin planifié non fait antérieur à la fenêtre.
       const res = await fetch(`/api/elevage/taches?start=${debut.toISOString()}&end=${fin.toISOString()}&retards=1`)
       if (res.ok) {
         const result = await res.json()
-        setSoins((result.soins || []).filter((s: SoinItem) => !s.fait).slice(0, 20))
+        // Une injection annulée n'est pas à faire (même périmètre que les
+        // comptes `stats.echeancesSoins` de la route). Tri par échéance, plus
+        // en retard d'abord, AVANT la troncature à 20 lignes.
+        const aFaire = trierParEcheanceSoin<SoinItem>(
+          ((result.soins || []) as SoinItem[]).filter((s) => !s.fait && s.statutInjection !== "annulee"),
+        )
+        setSoins(aFaire.slice(0, 20))
+        // Comptes de la route ; à défaut (ancienne réponse), déduits de la
+        // liste reçue par la même règle, plutôt que 0 et une tuile cachée.
+        setEcheancesSoins(
+          result.stats?.echeancesSoins ??
+            compterEcheancesSoins(aFaire.map((s) => echeanceSoinAFaire(s)), todayLocalISO()),
+        )
       }
     } catch {
       // silent
@@ -359,6 +378,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
         fetchSoins()
       } else {
         toast({ title: `${soins.length} soin(s) marqué(s) comme fait(s)` })
+        // Recompte serveur (`stats.echeancesSoins`) : bandeau, badge et tuile
+        // ne doivent pas garder les soins qui viennent d'être faits.
+        fetchSoins()
       }
     } catch {
       toast({ variant: 'destructive', title: 'Erreur, recharge en cours' })
@@ -412,7 +434,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
       })
       if (!response.ok) throw new Error('Erreur')
       setSoins(prev => prev.filter(s => s.id !== id))
-      toast({ title: "Soin marque comme fait !" })
+      toast({ title: "Soin marqué comme fait" })
+      // Recompte serveur des retards et échéances (bandeau, badge, tuile).
+      fetchSoins()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
     }
@@ -487,9 +511,8 @@ export function DashboardTab({ year }: DashboardTabProps) {
               ne pas enterrer les actions sous les stats/graphes sur mobile
               (ticket cmrz0s7r8). */}
           {(() => {
-            const soinsRetard = soins.filter(
-              (s) => s.datePrevue && new Date(s.datePrevue) < new Date(new Date().toDateString())
-            ).length
+            const soinsAFaire = echeancesSoins?.total ?? soins.length
+            const soinsRetard = echeancesSoins?.enRetard ?? 0
             const chip = "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium"
             const action = "inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium hover:bg-slate-50 min-h-11"
             return (
@@ -539,10 +562,10 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 <div className="flex flex-wrap gap-2">
                   <a
                     href="#soins-section"
-                    className={`${chip} ${soinsRetard > 0 ? "bg-red-50 text-red-700" : soins.length > 0 ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}
+                    className={`${chip} ${soinsRetard > 0 ? "bg-red-50 text-red-700" : soinsAFaire > 0 ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}
                   >
                     <Stethoscope className="h-4 w-4" />
-                    {soins.length > 0 ? `${soins.length} soin(s) à faire` : "Aucun soin à faire"}
+                    {soinsAFaire > 0 ? `${soinsAFaire} soin(s) à faire` : "Aucun soin à faire"}
                     {soinsRetard > 0 ? ` · ${soinsRetard} en retard` : ""}
                   </a>
                   {attentes.length > 0 && (
@@ -591,7 +614,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                                     <p className="text-xs text-muted-foreground">
                                       {soin.numeroInjection
                                         ? `Injection ${soin.numeroInjection}/${soin.nombreInjections ?? "?"}`
-                                        : TYPE_LABELS[soin.type] || soin.type}
+                                        : libelleTypeSoin(soin.type)}
                                       {soin.produit ? ` · ${soin.produit}` : ""}
                                     </p>
                                     {(soin.dose || soin.voie) && (
@@ -1066,20 +1089,31 @@ export function DashboardTab({ year }: DashboardTabProps) {
           </section>}
 
           {/* Alertes */}
-          {(data.stats.soinsAPlanifier > 0 || data.stats.alimentsStockBas > 0) && (
+          {/* QA 2026-10-19 — la tuile comptait les retards parmi les soins
+              « prévus dans les 30 prochains jours ». Elle lit les comptes de la
+              liste « Soins à faire » : à venir (aujourd'hui à J+30) et retards. */}
+          {((echeancesSoins && (echeancesSoins.aVenir > 0 || echeancesSoins.enRetard > 0)) || data.stats.alimentsStockBas > 0) && (
             <div className="grid gap-4 md:grid-cols-2">
-              {data.stats.soinsAPlanifier > 0 && (
-                <Card className="border-blue-200 bg-blue-50">
+              {echeancesSoins && (echeancesSoins.aVenir > 0 || echeancesSoins.enRetard > 0) && (
+                <Card className="border-blue-200 bg-blue-50" data-testid="tuile-soins-a-planifier">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm text-blue-700 flex items-center gap-2">
                       <Stethoscope className="h-4 w-4" />
                       Soins à planifier
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-1">
                     <p className="text-blue-800">
-                      {data.stats.soinsAPlanifier} soin(s) prévu(s) dans les 30 prochains jours
+                      {echeancesSoins.aVenir > 0
+                        ? `${echeancesSoins.aVenir} soin(s) prévu(s) dans les ${echeancesSoins.horizonJours} prochains jours`
+                        : `Aucun soin prévu dans les ${echeancesSoins.horizonJours} prochains jours`}
                     </p>
+                    {echeancesSoins.enRetard > 0 && (
+                      <p className="flex items-center gap-1 font-medium text-red-700">
+                        <AlertTriangle className="h-4 w-4" />
+                        {echeancesSoins.enRetard} soin(s) en retard
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -1295,8 +1329,8 @@ export function DashboardTab({ year }: DashboardTabProps) {
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Stethoscope className="h-5 w-5 text-blue-600" />
             Soins à faire
-            {soins.length > 0 && (
-              <Badge variant="secondary">{soins.length}</Badge>
+            {(echeancesSoins?.total ?? soins.length) > 0 && (
+              <Badge variant="secondary">{echeancesSoins?.total ?? soins.length}</Badge>
             )}
           </h2>
           <Button asChild variant="outline" size="sm">
@@ -1339,6 +1373,11 @@ export function DashboardTab({ year }: DashboardTabProps) {
           </Card>
         ) : (
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {echeancesSoins && echeancesSoins.total > soins.length && (
+              <p className="text-xs text-muted-foreground">
+                {soins.length} soins affichés sur {echeancesSoins.total} à faire.
+              </p>
+            )}
             {soins.map((soin) => (
               <button
                 key={soin.injectionId ?? `soin-${soin.id}`}
@@ -1351,7 +1390,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs">
-                      {TYPE_LABELS[soin.type] || soin.type}
+                      {libelleTypeSoin(soin.type)}
                     </Badge>
                     <span className="break-words text-sm font-medium [overflow-wrap:anywhere]">
                       {soin.lot?.nom || (soin.animal?.nom && soin.animal?.identifiant ? `${soin.animal.nom} · ${soin.animal.identifiant}` : soin.animal?.nom || soin.animal?.identifiant) || '-'}
@@ -1378,12 +1417,12 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 </div>
                 {(() => {
                   // Bug cmp8rwths — badge "En retard" si datePrevue (ou date)
-                  // est antérieure à aujourd'hui et soin pas encore fait.
-                  const ref = soin.datePrevue ?? (!soin.fait ? soin.date : null)
+                  // est antérieure à aujourd'hui et soin pas encore fait. Même
+                  // règle que les comptes de la tuile (`echeances-soins.ts`).
+                  const ref = soin.fait ? soin.datePrevue : echeanceSoinAFaire(soin)
                   if (!ref) return null
                   const refDate = new Date(ref)
-                  const today = new Date(); today.setHours(0, 0, 0, 0)
-                  const isLate = !soin.fait && refDate < today
+                  const isLate = !soin.fait && classerEcheanceSoin(ref, todayLocalISO()) === "en_retard"
                   return (
                     <span className={`text-xs flex-shrink-0 flex items-center gap-1 ${isLate ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
                       {isLate && <AlertTriangle className="h-3 w-3" />}
@@ -1402,7 +1441,6 @@ export function DashboardTab({ year }: DashboardTabProps) {
       <SoinDetailDialog
         soin={soinDetail}
         onClose={() => setSoinDetail(null)}
-        typeLabels={TYPE_LABELS}
         onMarquerFait={async (s) => { await validerSoinOuInjection(s as SoinItem); setSoinDetail(null) }}
       />
     </div>

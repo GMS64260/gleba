@@ -8,7 +8,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { StockFromageError, verrouillerEtVerifierStockFromage } from '@/lib/elevage/stock-fromage'
+import {
+  StockFromageError,
+  recalerEtatLotFromage,
+  verrouillerEtVerifierStockFromage,
+} from '@/lib/elevage/stock-fromage'
 
 const TYPES = ['sortie_vente', 'sortie_perte', 'sortie_don', 'ajustement'] as const
 
@@ -43,13 +47,10 @@ export async function POST(request: NextRequest) {
     const d = parsed.data
     const mouvementKg = Number(d.poidsKg) || 0
     const mouvement = await prisma.$transaction(async (tx) => {
-      const { lot, sortiPieces, sortiKg } = d.type === 'ajustement'
-        ? {
-            lot: await tx.lotFromage.findFirst({ where: { id: d.lotFromageId, userId: session.user.id } }),
-            sortiPieces: 0,
-            sortiKg: 0,
-          }
-        : await verrouillerEtVerifierStockFromage(tx, session.user.id, d.lotFromageId, d.nbPieces, mouvementKg)
+      // Un ajustement d'inventaire n'est pas contrôlé contre le reliquat.
+      const lot = d.type === 'ajustement'
+        ? await tx.lotFromage.findFirst({ where: { id: d.lotFromageId, userId: session.user.id } })
+        : (await verrouillerEtVerifierStockFromage(tx, session.user.id, d.lotFromageId, d.nbPieces, mouvementKg)).lot
       if (!lot) throw new StockFromageError('Lot introuvable', 404)
 
       const saved = await tx.mouvementFromage.create({ data: {
@@ -62,10 +63,10 @@ export async function POST(request: NextRequest) {
         notes: d.notes ?? null,
       } })
 
-      const totalSortiPieces = sortiPieces + d.nbPieces
-      const totalSortiKg = sortiKg + mouvementKg
-      if (d.type !== 'ajustement' && (totalSortiPieces >= lot.nbPieces || totalSortiKg >= Number(lot.poidsTotalKg) - 1e-6)) {
-        await tx.lotFromage.update({ where: { id: lot.id }, data: { etat: 'ecoule' } })
+      // Règle de stock unique (`cave-fromage.ts`) : une sortie qui épuise le
+      // lot le passe « écoulé », pièces non pesées comprises au poids moyen.
+      if (d.type !== 'ajustement') {
+        await recalerEtatLotFromage(tx, session.user.id, lot.id, 'sortie')
       }
       return saved
     })
@@ -92,17 +93,7 @@ export async function DELETE(request: NextRequest) {
 
   // Revue élevage 2026-07-21 — recalcul de l'état : supprimer la sortie qui avait
   // épuisé un lot doit le sortir de 'ecoule' (sinon il disparaît de l'inventaire).
-  const lot = await prisma.lotFromage.findFirst({
-    where: { id: existing.lotFromageId, userId: session.user.id },
-    include: { mouvements: { select: { nbPieces: true, poidsKg: true } } },
-  })
-  if (lot && lot.etat === 'ecoule') {
-    const sortiesPieces = lot.mouvements.reduce((s, m) => s + m.nbPieces, 0)
-    const sortiesKg = lot.mouvements.reduce((s, m) => s + (Number(m.poidsKg) || 0), 0)
-    if (sortiesPieces < lot.nbPieces && sortiesKg < Number(lot.poidsTotalKg) - 1e-6) {
-      await prisma.lotFromage.update({ where: { id: lot.id }, data: { etat: 'pret' } })
-    }
-  }
+  await recalerEtatLotFromage(prisma, session.user.id, existing.lotFromageId, 'retour')
 
   return NextResponse.json({ success: true })
 }

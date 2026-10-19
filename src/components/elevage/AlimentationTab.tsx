@@ -52,7 +52,7 @@ import { todayLocalISO } from '@/lib/format-utils'
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 import { SelecteurPeriodeExercice, parametreAnnee, type PeriodeListe } from "./SelecteurPeriodeExercice"
 import { stockMedicamentEstDisponible } from "@/lib/elevage/stock-medicament"
-import { TYPES_SOIN } from "@/lib/elevage/types-soin"
+import { TYPES_SOIN, libelleTypeSoin } from "@/lib/elevage/types-soin"
 
 // ============================================================
 // Composant principal
@@ -1025,13 +1025,6 @@ function versDateHeureLocale(iso: string | Date): string {
 function dateAfficheeInjection(injection: { datePrevue: string; dateRealisee: string | null; statut: string }): string {
   const d = injection.statut === "realisee" && injection.dateRealisee ? injection.dateRealisee : injection.datePrevue
   return new Date(d).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
-}
-
-const SOIN_TYPE_LABELS: Record<string, string> = {
-  vaccination: "Vaccination",
-  vermifuge: "Vermifuge",
-  traitement: "Traitement",
-  autre: "Autre",
 }
 
 // QA caprin cms1vowbh — `fait` passe à true dès la 1re injection réalisée
@@ -2292,7 +2285,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                         )}
                       </div>
                     </TableCell>
-                    <TableCell><Badge variant="outline">{SOIN_TYPE_LABELS[soin.type] || soin.type}</Badge></TableCell>
+                    <TableCell><Badge variant="outline">{libelleTypeSoin(soin.type)}</Badge></TableCell>
                     <TableCell>{soin.lot?.nom || soin.animal?.nom || soin.animal?.identifiant || '-'}</TableCell>
                     <TableCell>
                       <div>{soin.produit || '-'}</div>
@@ -2387,7 +2380,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium">{cible}</span>
                           {boucle && boucle !== cible && <span className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">{boucle}</span>}
-                          <Badge variant="outline" className="text-xs">{SOIN_TYPE_LABELS[soin.type] || soin.type}</Badge>
+                          <Badge variant="outline" className="text-xs">{libelleTypeSoin(soin.type)}</Badge>
                         </div>
                         <div className="mt-1 text-sm">
                           {soin.produit || "—"}

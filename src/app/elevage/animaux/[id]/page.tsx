@@ -37,6 +37,7 @@ import { GenealogyTree } from "@/components/elevage/GenealogyTree"
 import { StatutsSanitairesAnimal } from "@/components/elevage/StatutsSanitairesAnimal"
 import { capacites } from "@/lib/elevage/filiere-ui"
 import { coerceFiliere } from "@/lib/elevage/filiere"
+import { libelleTypeSoin } from "@/lib/elevage/types-soin"
 
 const STATUT_COLORS: Record<string, string> = {
   actif: "bg-green-100 text-green-800",
@@ -44,13 +45,6 @@ const STATUT_COLORS: Record<string, string> = {
   abattu: "bg-red-100 text-red-800",
   mort: "bg-slate-100 text-slate-800",
   reforme: "bg-orange-100 text-orange-800",
-}
-
-const SOIN_TYPE_LABELS: Record<string, string> = {
-  vaccination: "Vaccination",
-  vermifuge: "Vermifuge",
-  traitement: "Traitement",
-  autre: "Autre",
 }
 
 interface AnimalDetail {
@@ -234,7 +228,7 @@ export default function AnimalDetailPage() {
         icon: Stethoscope,
         iconColor: "text-blue-600",
         bgColor: "bg-blue-100",
-        title: SOIN_TYPE_LABELS[s.type] || s.type,
+        title: libelleTypeSoin(s.type),
         // Ticket cmsoglwee \u2014 mention discr\u00e8te des soins h\u00e9rit\u00e9s du lot.
         // QA cmv2emln0 — dose, motif et observations du soin : une visite de
         // ruche n'affichait que « Autre », deux visites du jour étaient

@@ -1,7 +1,8 @@
 /**
  * API Cave / affinage (PROMPT 27).
  * GET  → inventaire : par lot fromage, stock restant (fabrication − sorties),
- *        état, DLC/DLUO et jours restants, valorisation.
+ *        état, DLC/DLUO et jours restants, valorisation (règles :
+ *        `src/lib/elevage/cave-fromage.ts`).
  * PATCH → met à jour l'état et/ou la DLC d'un lot.
  */
 
@@ -9,6 +10,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { stockDuLotFromage } from '@/lib/elevage/stock-fromage'
+import { valoriserStockFromage } from '@/lib/elevage/cave-fromage'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -22,21 +25,22 @@ export async function GET(request: NextRequest) {
     orderBy: { dateFabrication: 'desc' },
     include: {
       mouvements: { select: { nbPieces: true, poidsKg: true } },
-      ventesProduit: { where: { annule: false }, select: { quantite: true, prixTotal: true } },
+      ventesProduit: { where: { annule: false }, select: { quantite: true, unite: true, prixTotal: true } },
     },
   })
 
   const now = Date.now()
   const data = lots.map((l) => {
-    const sortiesPieces = l.mouvements.reduce((s, m) => s + m.nbPieces, 0)
-    const sortiesKg = l.mouvements.reduce((s, m) => s + Number(m.poidsKg), 0)
-    const stockPieces = l.nbPieces - sortiesPieces
-    const stockKg = Math.round((Number(l.poidsTotalKg) - sortiesKg) * 1000) / 1000
-    // Prix moyen au kg constaté sur les ventes du lot
-    const kgVendus = l.ventesProduit.reduce((s, v) => s + Number(v.quantite), 0)
-    const caVentes = l.ventesProduit.reduce((s, v) => s + Number(v.prixTotal), 0)
-    const prixMoyenKg = kgVendus > 0 ? caVentes / kgVendus : null
-    const valorisation = prixMoyenKg != null ? Math.round(prixMoyenKg * stockKg * 100) / 100 : null
+    // Stock et valorisation : règle unique de `cave-fromage.ts`. Une vente à la
+    // pièce sans pesée retire le poids moyen d'une pièce, et le prix constaté
+    // garde l'unité des ventes (QA 2026-10-19 : 2 pièces à 2 €/pièce étaient
+    // valorisées 0,3 kg × 2 € = 0,60 €).
+    const stock = stockDuLotFromage(l)
+    const { valorisation, prix } = valoriserStockFromage(
+      { nbPieces: l.nbPieces, poidsTotalKg: Number(l.poidsTotalKg) || 0 },
+      stock,
+      l.ventesProduit.map((v) => ({ quantite: Number(v.quantite), unite: v.unite, prixTotal: Number(v.prixTotal) })),
+    )
     const echeance = l.dlc ?? l.dluo
     const joursRestants = echeance ? Math.floor((new Date(echeance).getTime() - now) / 86_400_000) : null
 
@@ -52,9 +56,11 @@ export async function GET(request: NextRequest) {
       joursRestants,
       nbPiecesInitial: l.nbPieces,
       poidsTotalKg: Number(l.poidsTotalKg),
-      stockPieces,
-      stockKg,
-      prixMoyenKg: prixMoyenKg != null ? Math.round(prixMoyenKg * 100) / 100 : null,
+      stockPieces: stock.restantPieces,
+      stockKg: stock.restantKg,
+      // Prix moyen constaté des ventes du lot, dans leur unité (€/pièce ou €/kg).
+      prixConstate: prix?.montant ?? null,
+      unitePrixConstate: prix?.unite ?? null,
       valorisation,
       traitementThermique: l.traitementThermique,
     }
@@ -64,6 +70,9 @@ export async function GET(request: NextRequest) {
 
   const stats = {
     nbLots: visibles.length,
+    // Lots écartés par la vue par défaut (écoulés, ou épuisés par le calcul
+    // alors qu'ils sont encore « prêts » en base) : l'écran les nomme.
+    nbLotsMasques: data.length - visibles.length,
     stockPiecesTotal: visibles.reduce((s, l) => s + l.stockPieces, 0),
     stockKgTotal: Math.round(visibles.reduce((s, l) => s + l.stockKg, 0) * 100) / 100,
     valorisationTotale: Math.round(
