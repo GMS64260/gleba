@@ -537,8 +537,13 @@ function CartePageContent() {
           </div>
         )}
 
-        {/* Zone carte (centre) */}
-        <div className="flex-1 relative">
+        {/* Zone carte (centre). QA cmvflvsk4 (2026-10-19) : la barre d'outils
+            flottante (top-4, ~52 px de haut, au-dessus de toute la carte)
+            recouvrait le contrôle Calques ouvert dès que la carte est étroite
+            (rail + liste à ~1040 px de large) : boutons radio des fonds
+            inaccessibles, menu refermé au passage de la souris sur la barre.
+            Les contrôles du coin haut droit passent sous la barre. */}
+        <div className="flex-1 relative [&_.leaflet-top.leaflet-right]:top-[60px]">
           {loading ? (
             <div className="h-full w-full flex items-center justify-center bg-muted">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
