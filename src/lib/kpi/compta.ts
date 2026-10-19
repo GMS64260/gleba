@@ -20,10 +20,31 @@
  *      double comptage.
  */
 
+import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import type { ModuleCompta } from '@/lib/comptabilite/modules'
+import {
+  moduleDesVentesPortees,
+  ventilerRevenus,
+  type VentilationRevenus,
+} from '@/lib/comptabilite/ventilation-revenus'
 import type { KPICompta } from './types'
 import { shiftToPrevYear } from './types'
 import { asOfDayKey, memoize } from './cache'
+
+/**
+ * Périmètre des revenus : toutes les ventes (saisies, miroirs automatiques,
+ * ventes boutique) datées dans la période. Partagé par le total et par sa
+ * ventilation par module.
+ */
+export function whereVentesRevenus(userId: string, debut: Date, fin: Date): Prisma.VenteManuelleWhereInput {
+  return { userId, date: { gte: debut, lte: fin } }
+}
+
+/** Factures comptées dans les revenus : ni brouillon ni annulée ; un avoir se déduit. */
+export function whereFacturesRevenus(userId: string, debut: Date, fin: Date): Prisma.FactureWhereInput {
+  return { userId, date: { gte: debut, lte: fin }, statut: { notIn: ['annulee', 'brouillon'] } }
+}
 
 export async function getKpiCompta(
   userId: string,
@@ -53,23 +74,24 @@ async function computeKpiCompta(
   // ============================================================
   // REVENUS : VenteManuelle + LigneFacture (factures non annulées)
   // ============================================================
+  // Ticket cmvflua2x (2026-10-19) : les revenus de l'exercice sont lus ligne à
+  // ligne et ventilés par module dans le même calcul ; le total exposé est la
+  // somme de cette ventilation, qui ne peut donc plus s'en écarter.
   const [
-    venteYtd,
+    ventilationYtd,
     venteN1Ytd,
     venteN1Total,
-    factureYtd,
     factureN1Ytd,
     factureN1Total,
   ] = await Promise.all([
-    sumVenteManuelle(userId, startOfYear, upperBound),
+    chargerVentilationRevenus(userId, startOfYear, upperBound),
     sumVenteManuelle(userId, startOfYearN1, asOfN1),
     sumVenteManuelle(userId, startOfYearN1, endOfYearN1),
-    sumLigneFacture(userId, startOfYear, upperBound),
     sumLigneFacture(userId, startOfYearN1, asOfN1),
     sumLigneFacture(userId, startOfYearN1, endOfYearN1),
   ])
 
-  const revenusYtd = venteYtd + factureYtd
+  const revenusYtd = ventilationYtd.total
   const revenusN1Ytd = venteN1Ytd + factureN1Ytd
   const revenusN1Total = venteN1Total + factureN1Total
 
@@ -106,6 +128,7 @@ async function computeKpiCompta(
     year,
     asOf,
     revenusYtd: round2(revenusYtd),
+    revenusParModuleYtd: ventilationYtd,
     revenusN1Ytd: round2(revenusN1Ytd),
     revenusN1Total: round2(revenusN1Total),
     depensesYtd: round2(depenseYtd),
@@ -126,7 +149,7 @@ async function sumVenteManuelle(
   end: Date
 ): Promise<number> {
   const r = await prisma.venteManuelle.aggregate({
-    where: { userId, date: { gte: start, lte: end } },
+    where: whereVentesRevenus(userId, start, end),
     _sum: { montant: true },
   })
   return r._sum.montant ?? 0
@@ -154,11 +177,7 @@ async function sumLigneFacture(
   end: Date
 ): Promise<number> {
   const factures = await prisma.facture.findMany({
-    where: {
-      userId,
-      date: { gte: start, lte: end },
-      statut: { notIn: ['annulee', 'brouillon'] },
-    },
+    where: whereFacturesRevenus(userId, start, end),
     select: { type: true, totalTTC: true },
   })
 
@@ -168,6 +187,77 @@ async function sumLigneFacture(
     total += signe * f.totalTTC
   }
   return total
+}
+
+/** Ventes métier qu'une facture peut porter (relations de `Facture`). */
+const VENTES_PORTEES = {
+  ventesProduits: true,
+  abattages: true,
+  recoltesArbres: true,
+  productionsBois: true,
+  commandesBoutique: true,
+} as const
+
+/**
+ * Revenus de la période, ligne à ligne, ventilés par module : mêmes ventes et
+ * mêmes factures que `sumVenteManuelle` + `sumLigneFacture`. Une facture prend
+ * le module de la vente métier qu'elle porte, un avoir celui de sa facture
+ * d'origine, une facture saisie sans vente va en « Autre ».
+ */
+export async function chargerVentilationRevenus(userId: string, debut: Date, fin: Date): Promise<VentilationRevenus> {
+  const [ventes, factures] = await Promise.all([
+    prisma.venteManuelle.findMany({
+      where: whereVentesRevenus(userId, debut, fin),
+      select: { montant: true, module: true, categorie: true },
+    }),
+    prisma.facture.findMany({
+      where: whereFacturesRevenus(userId, debut, fin),
+      select: { id: true, type: true, totalTTC: true, factureOrigineId: true, _count: { select: VENTES_PORTEES } },
+    }),
+  ])
+
+  // Un avoir suit sa facture d'origine, qui peut dater d'un exercice antérieur.
+  const chargees = new Set(factures.map((f) => f.id))
+  const originesManquantes = [
+    ...new Set(
+      factures
+        .filter((f) => f.type === 'avoir' && f.factureOrigineId != null && !chargees.has(f.factureOrigineId))
+        .map((f) => f.factureOrigineId as number),
+    ),
+  ]
+  const origines = originesManquantes.length
+    ? await prisma.facture.findMany({
+        where: { userId, id: { in: originesManquantes } },
+        select: { id: true, _count: { select: VENTES_PORTEES } },
+      })
+    : []
+
+  // Les récoltes du potager portent `factureId` sans relation Prisma.
+  const ids = [...factures.map((f) => f.id), ...origines.map((o) => o.id)].filter((id): id is number => id != null)
+  const recoltes = ids.length
+    ? await prisma.recolte.findMany({ where: { userId, factureId: { in: ids } }, select: { factureId: true } })
+    : []
+  const recoltesParFacture = new Map<number, number>()
+  for (const r of recoltes) {
+    if (r.factureId != null) recoltesParFacture.set(r.factureId, (recoltesParFacture.get(r.factureId) ?? 0) + 1)
+  }
+
+  const moduleParFacture = new Map<number, ModuleCompta | null>()
+  for (const f of [...factures, ...origines]) {
+    moduleParFacture.set(f.id, moduleDesVentesPortees({ ...f._count, recoltes: recoltesParFacture.get(f.id) ?? 0 }))
+  }
+
+  return ventilerRevenus(
+    ventes,
+    factures.map((f) => ({
+      type: f.type,
+      totalTTC: f.totalTTC,
+      moduleSource:
+        f.type === 'avoir'
+          ? f.factureOrigineId != null ? moduleParFacture.get(f.factureOrigineId) ?? null : null
+          : moduleParFacture.get(f.id) ?? null,
+    })),
+  )
 }
 
 function round2(n: number): number {

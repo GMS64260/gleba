@@ -11,7 +11,7 @@
  */
 
 import type { Exploitation, PrismaClient } from '@prisma/client'
-import { sirenFromSiret } from '@/lib/siret'
+import { adresseDeFiche, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
 import { factureSansTaxe } from '@/lib/territoires'
 
 type PrismaTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
@@ -387,11 +387,11 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
     if (client) {
       clientId = client.id
       clientNom = client.nom
-      clientAdresse = [client.adresse, client.codePostal, client.ville].filter(Boolean).join(', ')
+      // La fiche fait foi ; sans adresse sur la fiche, celle saisie sur la
+      // facture est gardée plutôt que remplacée par une chaîne vide.
+      clientAdresse = adresseDeFiche(client) || clientAdresse
       clientExonere = client.exonererTVA
-      clientSiret = client.siret || null
-      clientSiren = client.siren || (client.siret ? sirenFromSiret(client.siret) : null)
-      clientTvaIntra = client.tvaIntra || null
+      ;({ clientSiret, clientSiren, clientTvaIntra } = identiteAcheteur(client))
     }
   }
 

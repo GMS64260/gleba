@@ -55,8 +55,15 @@ interface Stats {
     depensesSsot: number
     depensesSommeModules: number
     depensesEcart: number
-    /** QA cmsw9dcrd — Σ avoirs de l'exercice, pour nommer l'écart connu. */
+    /** QA cmsw9dcrd — Σ avoirs de l'exercice. */
     avoirsExercice?: number
+    /** Ticket cmvflua2x — d'où vient le total des revenus (somme = revenusSsot). */
+    revenusComposition?: {
+      ventes: number
+      facturesRattachees: number
+      facturesSansVente: number
+      avoirs: number
+    }
     /** Ticket cmsx69cuc — Σ des coûts analytiques (soins, aliments, fertilisation). */
     depensesAnalytiques?: number
   }
@@ -405,36 +412,29 @@ export default function RapportsPage() {
                     fertilisations…) qui ne sont pas des charges comptables ;
                     l'écart y est attendu et expliqué par le bandeau discret
                     ci-dessous, pas par une alerte rouge. */}
-                {/* QA cmsw9dcrd — quand l'écart correspond aux avoirs de
-                    l'exercice (SSOT nette d'avoirs vs ventilation en factures
-                    brutes, convention tranchée le 2026-08-10), le bandeau le
-                    dit et passe en ton neutre : c'est un fait comptable
-                    documenté, pas une anomalie. */}
-                {stats.coherenceCheck && Math.abs(stats.coherenceCheck.revenusEcart) > 0.5 && (() => {
+                {/* Ticket cmvflua2x (2026-10-19) — les revenus par module sont
+                    désormais la ventilation de la SSOT elle-même (mêmes ventes,
+                    mêmes factures, avoirs déduits du module de leur facture
+                    d'origine) : leur somme égale la carte Revenus au centime.
+                    L'ancien bandeau disait « Incohérence » sans dire d'où
+                    venait l'écart ; s'il en réapparaissait un, il est chiffré
+                    et la composition du total est nommée. */}
+                {stats.coherenceCheck && Math.abs(stats.coherenceCheck.revenusEcart) > 0.005 && (() => {
                   const cc = stats.coherenceCheck!
-                  const avoirs = cc.avoirsExercice ?? 0
-                  const ecartEstAvoirs =
-                    avoirs > 0 && Math.abs(Math.abs(cc.revenusEcart) - avoirs) < 0.01
-                  return ecartEstAvoirs ? (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex items-start gap-2">
-                      <Info className="h-4 w-4 mt-0.5 text-slate-500 flex-shrink-0" />
-                      <div>
-                        <p className="font-semibold">Écart SSOT / ventilation = avoirs de l&apos;exercice</p>
-                        <p className="text-xs mt-0.5">
-                          Le total SSOT ({formatEuro(cc.revenusSsot)}) est net des avoirs ({formatEuro(avoirs)}) ;
-                          la ventilation par module ({formatEuro(cc.revenusSommeModules)}) additionne les factures brutes.
-                          La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
+                  const comp = cc.revenusComposition
+                  return (
                     <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex items-start gap-2">
                       <Info className="h-4 w-4 mt-0.5 text-red-700 flex-shrink-0" />
                       <div>
-                        <p className="font-semibold">Incohérence détectée entre la SSOT et la ventilation par module</p>
+                        <p className="font-semibold">
+                          Écart de {formatEuro(Math.abs(cc.revenusEcart))} entre le total des revenus et la somme des modules
+                        </p>
                         <p className="text-xs mt-0.5">
-                          Revenus : SSOT {formatEuro(cc.revenusSsot)} vs somme modules {formatEuro(cc.revenusSommeModules)} (écart {formatEuro(cc.revenusEcart)}).
-                          La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
+                          Total des revenus {formatEuro(cc.revenusSsot)} ; somme des modules {formatEuro(cc.revenusSommeModules)}.
+                          {comp && (
+                            <> Composition du total : ventes {formatEuro(comp.ventes)}, factures rattachées à une vente {formatEuro(comp.facturesRattachees)}, factures sans vente rattachée {formatEuro(comp.facturesSansVente)}, avoirs {formatEuro(comp.avoirs)}.</>
+                          )}
+                          {" "}La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
                         </p>
                       </div>
                     </div>
@@ -581,6 +581,26 @@ export default function RapportsPage() {
                         })()}
                       </TableBody>
                     </Table>
+                    {/* Ticket cmvflua2x — d'où viennent les revenus des
+                        modules : une facture saisie sans vente métier n'a pas
+                        de module, elle est rangée en « Autre », et un avoir se
+                        déduit du module de sa facture d'origine. */}
+                    {(() => {
+                      const comp = stats.coherenceCheck?.revenusComposition
+                      if (!comp || (Math.abs(comp.facturesSansVente) < 0.005 && Math.abs(comp.avoirs) < 0.005)) return null
+                      const parts: string[] = []
+                      if (Math.abs(comp.facturesSansVente) >= 0.005) {
+                        parts.push(`« Autre » comprend ${formatEuro(comp.facturesSansVente)} de factures sans vente rattachée (saisies dans Factures)`)
+                      }
+                      if (Math.abs(comp.avoirs) >= 0.005) {
+                        parts.push(`les avoirs (${formatEuro(comp.avoirs)}) sont déduits du module de leur facture d'origine`)
+                      }
+                      return (
+                        <p className="mt-3 text-xs text-muted-foreground" data-testid="revenus-composition">
+                          Revenus par module : ventilation du total des revenus ({formatEuro(stats.revenus)}). {parts.join(" ; ")}.
+                        </p>
+                      )
+                    })()}
                   </CardContent>
                 </Card>
 

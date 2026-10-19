@@ -119,9 +119,11 @@ export function buildCiiInvoice(donnees: DonneesFactureStructuree): string {
     })
     .join("")
 
-  // Notes (BG-1) : objet libre, mentions codifiées (BT-21 PMT/PMD/AAB), traitement BAR.
+  // Notes (BG-1) : objet libre, conditions et notes saisies (BT-22, sans code
+  // sujet, ticket cmvflhyyu), mentions codifiées (BT-21 PMT/PMD/AAB), traitement BAR.
   const notes =
     (donnees.notes ? `<ram:IncludedNote><ram:Content>${xml(donnees.notes)}</ram:Content></ram:IncludedNote>` : "") +
+    (donnees.noteLibre ? `<ram:IncludedNote><ram:Content>${xml(donnees.noteLibre)}</ram:Content></ram:IncludedNote>` : "") +
     donnees.mentions.map((m) => `<ram:IncludedNote><ram:Content>${xml(m.texte)}</ram:Content><ram:SubjectCode>${m.code}</ram:SubjectCode></ram:IncludedNote>`).join("") +
     `<ram:IncludedNote><ram:Content>${donnees.traitement}</ram:Content><ram:SubjectCode>BAR</ram:SubjectCode></ram:IncludedNote>`
 

@@ -4,7 +4,7 @@
  * Régression du 2026-08-12 : trois 500 d'affilée sur un avoir du compte démo.
  */
 import { describe, it, expect, vi } from "vitest"
-import { reserverProchainNumeroForEmission } from "@/lib/facture-utils"
+import { creerFacture, reserverProchainNumeroForEmission } from "@/lib/facture-utils"
 
 function fauxTx(opts: { prochainNum: number; maxExistant: number | null }) {
   const executeRaw = vi.fn().mockResolvedValue(1)
@@ -55,5 +55,72 @@ describe("reserverProchainNumero", () => {
     expect(ordre).toEqual(["lock", "max"])
     const maxCall = queryRaw.mock.calls[1]
     expect(maxCall.slice(1)).toEqual(["u1", "AV-2026-"])
+  })
+})
+
+/**
+ * Ticket cmvfljaru (QA 2026-10-19) — une facture rattachée à une fiche client
+ * fige son identité d'acheteur (SIRET, SIREN, TVA intracommunautaire) ; une
+ * fiche sans adresse ne remplace plus l'adresse saisie par une chaîne vide.
+ */
+describe("creerFacture — identité de l'acheteur figée depuis la fiche", () => {
+  function txFacture(client: Record<string, unknown> | null) {
+    const { tx } = fauxTx({ prochainNum: 3, maxExistant: 2 })
+    const create = vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => data)
+    return {
+      tx: {
+        ...(tx as unknown as Record<string, unknown>),
+        client: { findFirst: vi.fn().mockResolvedValue(client) },
+        exploitation: { findUnique: vi.fn().mockResolvedValue(null) },
+        facture: { create },
+      } as never,
+      create,
+    }
+  }
+  const params = (clientId: number | null) => ({
+    userId: "u1",
+    type: "facture",
+    clientId,
+    clientNom: "Restaurant du Port",
+    clientAdresse: "2 quai des Pêcheurs, 64500 Ciboure",
+    objet: "Livraison",
+    totalHT: 100,
+    totalTVA: 5.5,
+    totalTTC: 105.5,
+    lignes: [{ description: "Légumes", quantite: 10, unite: "kg", prixUnitaire: 10, tauxTVA: 5.5, montantHT: 100, montantTVA: 5.5, montantTTC: 105.5 }],
+  })
+
+  it("reprend SIRET, SIREN dérivé et TVA intracommunautaire de la fiche", async () => {
+    const { tx, create } = txFacture({
+      id: 9, nom: "Restaurant du Port", adresse: "2 quai des Pêcheurs", codePostal: "64500", ville: "Ciboure",
+      siret: "73282932000074", siren: null, tvaIntra: "FR44732829320", exonererTVA: false,
+    })
+    await creerFacture(tx, params(9))
+    const data = create.mock.calls[0][0].data
+    expect(data).toMatchObject({
+      clientId: 9,
+      clientSiret: "73282932000074",
+      clientSiren: "732829320",
+      clientTvaIntra: "FR44732829320",
+      clientAdresse: "2 quai des Pêcheurs, 64500, Ciboure",
+    })
+  })
+
+  it("garde l'adresse saisie quand la fiche n'en a pas", async () => {
+    const { tx, create } = txFacture({
+      id: 9, nom: "Restaurant du Port", adresse: null, codePostal: null, ville: null,
+      siret: "73282932000074", siren: "732829320", tvaIntra: null, exonererTVA: false,
+    })
+    await creerFacture(tx, params(9))
+    expect(create.mock.calls[0][0].data.clientAdresse).toBe("2 quai des Pêcheurs, 64500 Ciboure")
+  })
+
+  it("sans fiche : aucune identité d'acheteur, nom et adresse saisis", async () => {
+    const { tx, create } = txFacture(null)
+    await creerFacture(tx, params(null))
+    expect(create.mock.calls[0][0].data).toMatchObject({
+      clientId: null, clientSiret: null, clientSiren: null, clientTvaIntra: null,
+      clientNom: "Restaurant du Port", clientAdresse: "2 quai des Pêcheurs, 64500 Ciboure",
+    })
   })
 })
