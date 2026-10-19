@@ -14,6 +14,7 @@ import { normaliserLibelle } from "@/lib/libelle-libre"
 import { resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
 import { noteArbreSupprime, preserverTracesPhytoArbre } from "@/lib/verger/preserver-traces-phyto"
 import { normaliserDateApi } from "@/lib/validations/date-api"
+import { estTypeArbre, messageTypeArbreInvalide } from "@/lib/verger/types-arbre"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -90,6 +91,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json()
+
+    // Liste unique des types (QA 2026-10-19). Seul un CHANGEMENT de type est
+    // contrôlé : une fiche historique au type hors liste reste modifiable.
+    if (body.type !== undefined && body.type !== existing.type && !estTypeArbre(body.type)) {
+      return NextResponse.json({ error: messageTypeArbreInvalide(body.type) }, { status: 400 })
+    }
 
     const dateAchat = normaliserDateApi(body.dateAchat)
     const datePlantation = normaliserDateApi(body.datePlantation)

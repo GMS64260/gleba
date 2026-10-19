@@ -17,14 +17,10 @@ import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
 import { parcelleParDefautArbre, resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
 import { normaliserDateApi } from "@/lib/validations/date-api"
+import { estTypeArbre, messageTypeArbreInvalide } from "@/lib/verger/types-arbre"
 
-// Types d'arbres disponibles
-export const TYPES_ARBRES = [
-  { value: "fruitier", label: "Arbre fruitier", color: "#22c55e" },
-  { value: "petit_fruit", label: "Petit fruit", color: "#ef4444" },
-  { value: "ornement", label: "Ornement", color: "#a855f7" },
-  { value: "haie", label: "Haie", color: "#84cc16" },
-]
+// Types d'arbres disponibles : src/lib/verger/types-arbre.ts (liste unique,
+// QA 2026-10-19). L'ancienne copie locale ignorait forestier et liane.
 
 // GET /api/arbres?parcelle=ID|all|none
 export async function GET(request: NextRequest) {
@@ -144,6 +140,11 @@ export async function POST(request: NextRequest) {
         { error: "Le type est requis" },
         { status: 400 }
       )
+    }
+    // La route porte la liste des types (QA 2026-10-19) : un type hors liste
+    // créait un arbre absent de tous les onglets et de tous les filtres.
+    if (!estTypeArbre(body.type)) {
+      return NextResponse.json({ error: messageTypeArbreInvalide(body.type) }, { status: 400 })
     }
 
     // Bug #2 — Date plantation requise (audit Marc 2026-05-14).

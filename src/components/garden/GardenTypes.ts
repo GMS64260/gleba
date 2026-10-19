@@ -6,6 +6,7 @@
  */
 
 import { OBJET_COLORS, couleurObjet } from "@/lib/jardin/objets-plan"
+import { COULEURS_TYPES_ARBRE } from "@/lib/verger/types-arbre"
 
 export interface SelectionItem {
   type: "planche" | "objet" | "arbre"
@@ -78,12 +79,8 @@ export interface BackgroundImageSettings {
 // ignorait mur, clôture, poteau, bâtiment et haie.
 export { OBJET_COLORS }
 
-export const ARBRE_COLORS: Record<string, string> = {
-  fruitier: "#22c55e",
-  petit_fruit: "#ef4444",
-  ornement: "#a855f7",
-  haie: "#84cc16",
-}
+// Couleurs par type d'arbre : liste unique src/lib/verger/types-arbre.ts.
+export const ARBRE_COLORS: Record<string, string> = COULEURS_TYPES_ARBRE
 
 /** Retourne la couleur d'un objet/arbre selon son type. */
 export function colorForObjet(type: string, couleur: string | null): string {

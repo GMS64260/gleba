@@ -48,6 +48,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { useToast } from "@/hooks/use-toast"
+import { dateReferenceOperationArbre } from "@/lib/verger/annee-operation"
 
 interface OperationEvent {
   id: number
@@ -109,7 +110,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
     async function fetchOps() {
       setIsLoading(true)
       try {
-        const res = await fetch(`/api/arbres/operations?year=${displayedYear}`)
+        const res = await fetch(`/api/arbres/operations?annee=${displayedYear}`)
         if (res.ok) {
           setOperations(await res.json())
         }
@@ -166,10 +167,11 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
     operations.forEach((op) => {
       // Ticket cmsogc0z3 — une opération RÉALISÉE se place à sa date de
       // réalisation (`date`), pas à sa date prévue ; une opération planifiée
-      // reste à sa date prévue.
-      const opDate = op.fait ? (op.date || op.datePrevue) : (op.datePrevue || op.date)
+      // reste à sa date prévue. Même règle que le filtre d'année de la route
+      // et de l'onglet Opérations (src/lib/verger/annee-operation.ts).
+      const opDate = dateReferenceOperationArbre(op)
       if (!opDate) return
-      const dateKey = format(new Date(opDate), "yyyy-MM-dd")
+      const dateKey = format(opDate, "yyyy-MM-dd")
       if (!map.has(dateKey)) {
         map.set(dateKey, [])
       }

@@ -39,6 +39,7 @@ import { useToast } from "@/hooks/use-toast"
 import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
 import { todayLocalISO } from '@/lib/format-utils'
 import { labelStatutRecolteArbre } from '@/lib/verger/statut-recolte-arbre'
+import { estTypeArbreFruitier } from '@/lib/verger/types-arbre'
 
 // ============================================================
 // Types
@@ -260,9 +261,7 @@ function RecoltesFruitsSubTab() {
     [clients]
   )
 
-  const arbresFruitiers = arbres.filter((a) =>
-    ["fruitier", "petit_fruit"].includes(a.type)
-  )
+  const arbresFruitiers = arbres.filter((a) => estTypeArbreFruitier(a.type))
 
   const getPeremptionBadge = (datePeremption: string | null) => {
     if (!datePeremption) return null

@@ -162,3 +162,26 @@ describe("POST /api/arbres — catalogue et parcelle par défaut (friction 2026-
     expect(mocks.arbreCreate.mock.calls[0][0].data.parcelleGeoId).toBeNull()
   })
 })
+
+describe("POST /api/arbres — type d'arbre (QA 2026-10-19, lianes fruitières)", () => {
+  it("crée un kiwi en « Liane fruitière », rattaché au catalogue", async () => {
+    mocks.especeFindMany.mockResolvedValue([
+      { id: "Kiwi", nom: "Kiwi", userId: null, type: "liane" },
+    ])
+    const res = await POST(request({ ...arbreValide, nom: "Kiwi du mur", type: "liane", espece: "kiwi" }))
+    expect(res.status).toBe(201)
+    const data = mocks.arbreCreate.mock.calls[0][0].data
+    expect(data.type).toBe("liane")
+    expect(data.espece).toBe("Kiwi")
+    expect(data.especeId).toBe("Kiwi")
+  })
+
+  it("refuse un type hors liste en nommant le champ, sans rien créer", async () => {
+    const res = await POST(request({ ...arbreValide, type: "grimpante" }))
+    expect(res.status).toBe(400)
+    const { error } = await res.json()
+    expect(error).toContain("Type d'arbre inconnu")
+    expect(error).toContain("grimpante")
+    expect(mocks.arbreCreate).not.toHaveBeenCalled()
+  })
+})

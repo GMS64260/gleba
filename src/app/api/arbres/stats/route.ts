@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { debutDeJour as startOfToday } from "@/lib/operation-arbre-statut"
+import { TYPES_ARBRE, TYPES_ARBRE_FRUITIERS, estTypeArbre, couleurTypeArbre } from "@/lib/verger/types-arbre"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -30,12 +31,15 @@ export async function GET(request: NextRequest) {
       arbresTotal,
       arbresFruitiers,
       arbresPetitsFruits,
+      arbresLianes,
       arbresForestiers,
       arbresProductifs,
     ] = await Promise.all([
       prisma.arbre.count({ where: { userId } }),
       prisma.arbre.count({ where: { userId, type: "fruitier" } }),
       prisma.arbre.count({ where: { userId, type: "petit_fruit" } }),
+      // QA 2026-10-19 — lianes fruitières (kiwi, vigne) : type d'arbre à part entière.
+      prisma.arbre.count({ where: { userId, type: "liane" } }),
       prisma.arbre.count({ where: { userId, type: "forestier" } }),
       // Bug #13 — Le filtre strict (productif=true + datePlantation passée)
       // descendait le compteur à 0 dès que la date était absente, malgré
@@ -52,7 +56,7 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           productif: true,
-          type: { in: ["fruitier", "petit_fruit"] },
+          type: { in: [...TYPES_ARBRE_FRUITIERS] },
         },
       }),
     ])
@@ -89,12 +93,12 @@ export async function GET(request: NextRequest) {
     // Bug #6 — Pyramide d'âge : count d'arbres par tranche, basée sur
     // datePlantation.
     const arbresAvecDates = await prisma.arbre.findMany({
-      where: { userId, type: { in: ["fruitier", "petit_fruit"] }, datePlantation: { not: null } },
+      where: { userId, type: { in: [...TYPES_ARBRE_FRUITIERS] }, datePlantation: { not: null } },
       select: { datePlantation: true },
     })
     const now = new Date()
     const pyramideAge = { age_0_5: 0, age_5_15: 0, age_15_30: 0, age_30_plus: 0, sansDate: 0 }
-    const arbresFruitsTotal = arbresFruitiers + arbresPetitsFruits
+    const arbresFruitsTotal = arbresFruitiers + arbresPetitsFruits + arbresLianes
     for (const a of arbresAvecDates) {
       if (!a.datePlantation) continue
       const ageMs = now.getTime() - new Date(a.datePlantation).getTime()
@@ -118,7 +122,7 @@ export async function GET(request: NextRequest) {
     // ce groupe dernier, quel que soit son effectif).
     const especesRaw = await prisma.arbre.groupBy({
       by: ["espece"],
-      where: { userId, type: { in: ["fruitier", "petit_fruit"] } },
+      where: { userId, type: { in: [...TYPES_ARBRE_FRUITIERS] } },
       _count: { _all: true },
     })
     const especesSorted = especesRaw
@@ -300,12 +304,28 @@ export async function GET(request: NextRequest) {
       _sum: { quantite: true },
     })
 
-    // Arbres par type (pour pie chart)
-    const arbresParType = [
-      { type: "Fruitiers", count: arbresFruitiers, couleur: "#22c55e" },
-      { type: "Petits fruits", count: arbresPetitsFruits, couleur: "#ef4444" },
-      { type: "Forestiers", count: arbresForestiers, couleur: "#84cc16" },
-    ].filter((t) => t.count > 0)
+    // Arbres par type (pour pie chart). QA 2026-10-19 — tous les types de la
+    // liste unique : ornementaux, haies et lianes manquaient, le disque ne
+    // totalisait pas le nombre d'arbres. Un type hérité hors liste reste
+    // compté sous son libellé brut.
+    const parType = await prisma.arbre.groupBy({
+      by: ["type"],
+      where: { userId },
+      _count: { _all: true },
+    })
+    const ordreTypes: string[] = TYPES_ARBRE.map((t) => t.value)
+    const rangType = (type: string) => {
+      const rang = ordreTypes.indexOf(type)
+      return rang < 0 ? ordreTypes.length : rang
+    }
+    const arbresParType = parType
+      .filter((r) => r._count._all > 0)
+      .sort((a, b) => rangType(a.type) - rangType(b.type))
+      .map((r) => ({
+        type: TYPES_ARBRE.find((t) => t.value === r.type)?.labelPluriel ?? r.type,
+        count: r._count._all,
+        couleur: estTypeArbre(r.type) ? couleurTypeArbre(r.type) : "#94a3b8",
+      }))
 
     // Arbres nécessitant attention (état mauvais ou mort)
     const arbresAttention = await prisma.arbre.findMany({
@@ -328,6 +348,7 @@ export async function GET(request: NextRequest) {
         arbresTotal,
         arbresFruitiers,
         arbresPetitsFruits,
+        arbresLianes,
         arbresForestiers,
         arbresProductifs,
         arbresSansParcelle,

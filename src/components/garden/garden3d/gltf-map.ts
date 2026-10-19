@@ -85,6 +85,8 @@ export function modelPourArbre(type: string, seed: number): string {
   const feuillus = ["tree_oak", "tree_fat", "tree_detailed"]
   switch (type) {
     case "petit_fruit": return treeUrl(seed % 2 ? "tree_small" : "plant_bushLarge")
+    // Liane fruitière (kiwi, vigne) : port buissonnant sur support, pas un arbre rond.
+    case "liane": return treeUrl("plant_bushLarge")
     case "ornement": return treeUrl(seed % 2 ? "tree_cone" : "tree_thin")
     case "haie": return treeUrl("tree_thin")
     case "fruitier":

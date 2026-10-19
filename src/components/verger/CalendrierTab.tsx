@@ -58,6 +58,7 @@ interface DashboardArbresData {
     arbresTotal: number
     arbresFruitiers: number
     arbresPetitsFruits: number
+    arbresLianes?: number
     arbresForestiers: number
     arbresProductifs: number
     arbresSansParcelle?: number
@@ -469,6 +470,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     }
   }, [lotsDepasses, toast])
 
+  // Lianes fruitières (kiwi, vigne) : type d'arbre à part entière depuis le 2026-10-19.
+  const nbLianes = data?.stats.arbresLianes ?? 0
+
   // Feedback Marc 2026-05-16 — V4 Bug 5 : afficher "+0% vs 2025"
   // quand 2025 = 0 kg est trompeur (Maraîchage affichait "Pas de
   // comparatif" dans le même cas). On expose désormais un flag
@@ -555,7 +559,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>+ {data?.stats.arbresPetitsFruits || 0} petits fruits</p>
+            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
+              + {data?.stats.arbresPetitsFruits || 0} petits fruits
+              {nbLianes > 0 ? `, ${nbLianes} liane${nbLianes > 1 ? "s" : ""}` : ""}
+            </p>
           </CardContent>
         </Card>
 
@@ -612,7 +619,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   Pyramide d'âge des arbres
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Tranches d'âge des fruitiers et petits fruits (basé sur la date de plantation)
+                  Tranches d'âge des fruitiers, petits fruits et lianes (basé sur la date de plantation)
                 </CardDescription>
               </CardHeader>
               <CardContent>
