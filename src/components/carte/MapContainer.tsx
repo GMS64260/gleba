@@ -5,13 +5,41 @@
  * Utilise Leaflet avec plusieurs fonds de carte (OSM, IGN Satellite, Cadastre, Plan IGN)
  */
 
-import { useCallback, useRef, useState, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactNode,
+} from "react"
 import L from "leaflet"
 import {
   MapContainer as LeafletMapContainer,
   TileLayer,
   LayersControl,
+  useMap,
 } from "react-leaflet"
+
+import {
+  CALQUE_CADASTRE,
+  CALQUES_CARTE,
+  COUCHES_CARTE,
+  FONDS_CARTE,
+  calqueCarte,
+  choixAffiche,
+  coucheCarte,
+  enregistrerChoixCalques,
+  fondCarte,
+  lireChoixCalques,
+  stockageNavigateur,
+  type CalqueCarte,
+  type ChoixCalques,
+  type CoucheCarte,
+  type EtatCalques,
+  type FondCarte,
+} from "@/lib/jardin/fond-carte"
 
 import "leaflet/dist/leaflet.css"
 import "leaflet-draw/dist/leaflet.draw.css"
@@ -47,6 +75,12 @@ export const ATTRIBUTIONS = {
   ign: '&copy; <a href="https://www.ign.fr/">IGN</a>',
 } as const
 
+const SOURCES_FONDS: Record<FondCarte, { url: string; attribution: string }> = {
+  OpenStreetMap: { url: TILE_URLS.osm, attribution: ATTRIBUTIONS.osm },
+  "Satellite IGN": { url: TILE_URLS.satelliteIgn, attribution: ATTRIBUTIONS.ign },
+  "Plan IGN": { url: TILE_URLS.planIgn, attribution: ATTRIBUTIONS.ign },
+}
+
 interface MapContainerProps {
   center?: L.LatLngExpression
   zoom?: number
@@ -54,67 +88,93 @@ interface MapContainerProps {
   children?: ReactNode
 }
 
-// QA cmsno90km — le fond et les couches choisis repartaient sur OSM à chaque
-// reload : le `checked` était codé en dur. On persiste la préférence en
-// localStorage (conventions gleba_*). Composant chargé en dynamic({ssr:false})
-// partout : la lecture au premier rendu est sans risque d'hydratation.
-const FOND_STORAGE_KEY = "gleba_carte_fond"
-const OVERLAYS_STORAGE_KEY = "gleba_carte_overlays"
-const FONDS_VALIDES = ["OpenStreetMap", "Satellite IGN", "Plan IGN"] as const
+/*
+ * Fond et calques choisis : règle de persistance dans
+ * `src/lib/jardin/fond-carte.ts` (clés `gleba_carte_fond`,
+ * `gleba_carte_overlays`). Ici, seulement la lecture du contrôle Calques et
+ * de la carte, et le moment où l'on enregistre.
+ *
+ * QA cmvflvsk4 (2026-10-19), après huit signalements du même symptôme : les
+ * correctifs précédents accrochaient l'écriture à un événement (cmswtxnnb
+ * `baselayerchange`, cmul1e6xi `change`, cmulatx23 `click`, cmv5cpu7q
+ * `input`). Un bouton radio coché sans aucun de ces événements (coche posée
+ * par script, événement arrêté avant la carte) restait affiché sans être
+ * enregistré, et Leaflet ne posait pas non plus le fond. Désormais on compare
+ * un ÉTAT, pas un événement : ce qui est coché est appliqué à la carte, puis
+ * ce que la carte montre (`map.hasLayer`) est comparé au dernier choix connu
+ * et écrit s'il diffère. Cette comparaison passe à chaque interaction avec le
+ * contrôle et une dernière fois à la sortie de la page (`pagehide`,
+ * `visibilitychange`, démontage) : ce qui est coché au rechargement est ce
+ * qui est relu.
+ */
 
-function lireFondActif(): string {
-  try {
-    const stored = window.localStorage.getItem(FOND_STORAGE_KEY)
-    if (stored && (FONDS_VALIDES as readonly string[]).includes(stored)) return stored
-  } catch {
-    // stockage indisponible (navigation privée…) : défaut
+/** Instances Leaflet des couches du contrôle Calques, par nom. */
+type CouchesCarte = Partial<Record<CoucheCarte, L.TileLayer>>
+
+/** Sélecteur du contrôle Calques ; Leaflet y attache `layerId`, le `L.stamp` de sa couche. */
+type SelecteurLeaflet = HTMLInputElement & { layerId?: number }
+
+/** Couche d'un sélecteur, par identifiant de couche ; le libellé seulement en repli. */
+function coucheDuSelecteur(input: SelecteurLeaflet, couches: CouchesCarte): CoucheCarte | null {
+  if (typeof input.layerId === "number") {
+    for (const nom of COUCHES_CARTE) {
+      const couche = couches[nom]
+      if (couche && L.stamp(couche) === input.layerId) return nom
+    }
   }
-  return "OpenStreetMap"
+  return coucheCarte(input.closest("label")?.textContent)
 }
 
-function lireOverlaysActifs(): string[] {
-  try {
-    const stored = window.localStorage.getItem(OVERLAYS_STORAGE_KEY)
-    const parsed = stored ? JSON.parse(stored) : []
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : []
-  } catch {
-    return []
+/** Ce que coche le contrôle Calques de cette carte ; null s'il n'est pas (ou plus) là. */
+function lireSelecteurs(conteneur: HTMLElement, couches: CouchesCarte): EtatCalques | null {
+  const controle = conteneur.querySelector(".leaflet-control-layers")
+  if (!controle) return null
+  let fond: FondCarte | null = null
+  const calques: CalqueCarte[] = []
+  const selecteurs = Array.from(controle.querySelectorAll<SelecteurLeaflet>("input.leaflet-control-layers-selector"))
+  for (const input of selecteurs) {
+    if (!input.checked) continue
+    const nom = coucheDuSelecteur(input, couches)
+    const commeFond = fondCarte(nom)
+    if (commeFond) {
+      if (!fond) fond = commeFond
+      continue
+    }
+    const commeCalque = calqueCarte(nom)
+    if (commeCalque) calques.push(commeCalque)
   }
+  return { fond, calques }
+}
+
+/** Ce que la carte montre réellement : les couches posées (`map.hasLayer`). */
+function lireCarte(map: L.Map, couches: CouchesCarte): EtatCalques {
+  const posee = (nom: CoucheCarte) => {
+    const couche = couches[nom]
+    return !!couche && map.hasLayer(couche)
+  }
+  return { fond: FONDS_CARTE.find(posee) ?? null, calques: CALQUES_CARTE.filter(posee) }
 }
 
 /**
- * Lit le choix RÉEL du contrôle Calques dans le DOM et le persiste.
- *
- * QA 2026-09-28 (Satellite IGN perdu au rechargement, Cadastre conservé) —
- * l'écriture du fond n'était acceptée que dans les 1,5 s suivant un événement
- * d'interaction sur la carte (cmswtxnnb, cmsx6dvhu) : une heuristique de
- * temps, seule voie par laquelle un choix légitime pouvait se perdre, alors que
- * l'overlay, écrit sans garde, survivait toujours. On ne s'appuie plus sur
- * `baselayerchange` (émis aussi par les addLayer programmatiques du (re)montage)
- * mais sur l'événement `change` des boutons radio/cases du contrôle : un
- * navigateur ne l'émet QUE pour une interaction (clic, clavier, automate),
- * jamais pour un `input.checked = …` posé par Leaflet.
+ * Pose sur la carte le fond et les calques voulus. Sans fond voulu, les fonds
+ * ne bougent pas (jamais de carte sans fond). Retraits d'abord, comme Leaflet.
+ * Leaflet reconstruit alors ses sélecteurs d'après la carte.
  */
-function persisterChoixCalques(conteneur: HTMLElement) {
-  try {
-    const controle = conteneur.querySelector(".leaflet-control-layers")
-    if (!controle) return
-    const base = controle.querySelector<HTMLInputElement>(".leaflet-control-layers-base input:checked")
-    const nomBase = base?.parentElement?.textContent?.trim()
-    // Symétrique de la whitelist de lecture : un libellé inconnu n'empoisonne
-    // pas le slot unique.
-    if (nomBase && (FONDS_VALIDES as readonly string[]).includes(nomBase)) {
-      window.localStorage.setItem(FOND_STORAGE_KEY, nomBase)
-    }
-    const overlays = Array.from(
-      controle.querySelectorAll<HTMLInputElement>(".leaflet-control-layers-overlays input:checked"),
-    )
-      .map((input) => input.parentElement?.textContent?.trim())
-      .filter((nom): nom is string => !!nom)
-    window.localStorage.setItem(OVERLAYS_STORAGE_KEY, JSON.stringify(overlays))
-  } catch {
-    // stockage indisponible (navigation privée…)
+function appliquerSurCarte(map: L.Map, voulu: EtatCalques, couches: CouchesCarte) {
+  const retraits: L.Layer[] = []
+  const ajouts: L.Layer[] = []
+  const trier = (nom: CoucheCarte, voulue: boolean) => {
+    const couche = couches[nom]
+    if (!couche) return
+    if (voulue && !map.hasLayer(couche)) ajouts.push(couche)
+    if (!voulue && map.hasLayer(couche)) retraits.push(couche)
   }
+  if (voulu.fond) {
+    for (const nom of FONDS_CARTE) trier(nom, nom === voulu.fond)
+  }
+  for (const nom of CALQUES_CARTE) trier(nom, voulu.calques.includes(nom))
+  for (const couche of retraits) map.removeLayer(couche)
+  for (const couche of ajouts) map.addLayer(couche)
 }
 
 /**
@@ -151,6 +211,106 @@ function selecteurCalques(cible: EventTarget | null): { input: HTMLInputElement;
   return label && input ? { input, label } : null
 }
 
+/**
+ * Restaure, applique et enregistre le fond et les calques de la carte.
+ * Rendu dans la carte APRÈS le contrôle Calques : ses effets passent après
+ * ceux des couches et du contrôle (posé sur la carte, sélecteurs construits).
+ */
+function SynchroCalques({
+  couches,
+  choixInitial,
+}: {
+  couches: MutableRefObject<CouchesCarte>
+  choixInitial: ChoixCalques
+}) {
+  const map = useMap()
+  // Dernier choix connu de cette page : celui restauré, puis chaque écriture
+  // réussie. Une page sans changement n'écrit donc jamais (pas d'écrasement
+  // du choix fait entre-temps dans un autre onglet).
+  const connuRef = useRef<ChoixCalques>(choixInitial)
+  // Vrai pendant le rejeu synchrone d'un clic annulé par Leaflet : un clic
+  // rejoué n'est jamais rejoué une seconde fois.
+  const rejeuEnCoursRef = useRef(false)
+
+  const synchroniser = useCallback(() => {
+    const selecteurs = lireSelecteurs(map.getContainer(), couches.current)
+    if (!selecteurs) return
+    // Ce qui est coché l'emporte : Leaflet n'applique pas une coche posée
+    // sans clic, on le fait ici, puis on enregistre l'état réel de la carte.
+    appliquerSurCarte(map, choixAffiche(selecteurs, lireCarte(map, couches.current)), couches.current)
+    const resultat = enregistrerChoixCalques(stockageNavigateur(), lireCarte(map, couches.current), connuRef.current)
+    connuRef.current = resultat.connu
+    if (resultat.echec) {
+      console.warn("Carte : choix du fond non enregistré (stockage du navigateur indisponible ou plein).")
+    }
+  }, [map, couches])
+
+  useEffect(() => {
+    const conteneur = map.getContainer()
+    // Restauration vérifiée : la carte montre le choix lu au montage, quel
+    // que soit le chemin par lequel react-leaflet a posé les couches.
+    appliquerSurCarte(map, choixInitial, couches.current)
+
+    const onSelecteur = (event: Event) => {
+      // Le clic sur un libellé compte aussi : annulé, il ne transmet jamais
+      // de clic au bouton radio (action par défaut du <label>).
+      const selecteur = selecteurCalques(event.target)
+      if (!selecteur) return
+      const estRejeu = rejeuEnCoursRef.current
+      // Après Leaflet (qui applique sur `click`) et l'action par défaut.
+      window.setTimeout(() => {
+        // QA cmv5cpu7q (sonde scripts/qa/sonde-carte-fond-20261013.cjs) : un
+        // clic tombé dans la même tâche que l'ouverture du contrôle (bouton
+        // ou survol) est annulé par la garde anti-tap `_expandSafely` de
+        // Leaflet 1.9.4 (`preventDefault` sur la liste, le radio revient sur
+        // l'ancien fond). Hors tactile, où la garde a un sens, on le rejoue
+        // une fois, la garde levée (sa temporisation précède la nôtre) ; le
+        // clic rejoué repasse ici et synchronise lui-même.
+        if (!estRejeu && event.type === "click" && event.defaultPrevented && !estPointeurTactile(event)) {
+          rejeuEnCoursRef.current = true
+          try {
+            ;(event.target instanceof HTMLInputElement ? selecteur.input : selecteur.label ?? selecteur.input).click()
+          } finally {
+            rejeuEnCoursRef.current = false
+          }
+          return
+        }
+        synchroniser()
+      }, 0)
+    }
+    // Sortie de la page (rechargement, fermeture, onglet masqué) : dernière
+    // vérification « ce qui est coché = ce qui est enregistré ».
+    const onSortie = () => synchroniser()
+    const onVisibilite = () => {
+      if (document.visibilityState === "hidden") synchroniser()
+    }
+
+    // Capture : vus avant tout arrêt de propagation dans le contrôle.
+    // `click` (Leaflet applique sur ce seul événement), `input` et `change`
+    // (clavier, automates) ; un doublon ne réécrit rien.
+    conteneur.addEventListener("click", onSelecteur, { capture: true })
+    conteneur.addEventListener("input", onSelecteur, { capture: true })
+    conteneur.addEventListener("change", onSelecteur, { capture: true })
+    window.addEventListener("pagehide", onSortie)
+    document.addEventListener("visibilitychange", onVisibilite)
+    return () => {
+      conteneur.removeEventListener("click", onSelecteur, { capture: true })
+      conteneur.removeEventListener("input", onSelecteur, { capture: true })
+      conteneur.removeEventListener("change", onSelecteur, { capture: true })
+      window.removeEventListener("pagehide", onSortie)
+      document.removeEventListener("visibilitychange", onVisibilite)
+    }
+  }, [map, couches, choixInitial, synchroniser])
+
+  // Démontage (navigation dans l'application, fermeture d'un formulaire) :
+  // dernière vérification en phase de layout, tant que le contrôle et les
+  // couches sont encore sur la carte (react-leaflet les retire ensuite, dans
+  // ses effets passifs).
+  useLayoutEffect(() => () => synchroniser(), [synchroniser])
+
+  return null
+}
+
 export default function MapContainer({
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
@@ -158,90 +318,27 @@ export default function MapContainer({
   children,
 }: MapContainerProps) {
   // QA cmsoaabhl — lecture GELÉE au montage (initializer useState), jamais au
-  // render : relue à chaque render, la préférence retombait sur le défaut
-  // « OpenStreetMap » à la moindre oscillation, react-leaflet ré-appliquait
-  // alors ce `checked` sur une couche déjà enregistrée dans le contrôle, ce
-  // qui émettait un vrai `baselayerchange` OSM… dont l'écoute ci-dessous
-  // réécrivait le défaut par-dessus le choix de l'utilisateur. L'overlay
-  // Cadastre survivait, lui, car son écriture est un Set idempotent.
-  const [fondActif] = useState(lireFondActif)
-  const [overlaysActifs] = useState(lireOverlaysActifs)
+  // render : relue à chaque render, une oscillation faisait ré-appliquer par
+  // react-leaflet un `checked` sur une couche déjà enregistrée dans le
+  // contrôle, ce qui reposait OSM par-dessus le choix de l'utilisateur.
+  const [choixInitial] = useState(() => lireChoixCalques(stockageNavigateur()))
 
-  // Écouteurs posés lors de l'attache courante, pour pouvoir les retirer :
-  // React rappelle le ref avec null au démontage/ré-attache, et sans retrait
-  // les handlers s'accumulaient (fuite + écritures localStorage dupliquées).
-  const detachListenersRef = useRef<(() => void) | null>(null)
-  // Vrai pendant le rejeu synchrone d'un clic annulé par Leaflet (voir
-  // onChangeCalques) : un clic rejoué n'est jamais rejoué une seconde fois.
-  const rejeuEnCoursRef = useRef(false)
+  const couchesRef = useRef<CouchesCarte>({})
+  // Une fonction stable par couche (react-leaflet rappelle ces refs à chaque
+  // rendu). Le rappel avec null au démontage est ignoré : l'instance reste
+  // lisible pour la dernière vérification de SynchroCalques.
+  const [refsCouches] = useState(() => {
+    const refs = {} as Record<CoucheCarte, (couche: L.TileLayer | null) => void>
+    for (const nom of COUCHES_CARTE) {
+      refs[nom] = (couche) => {
+        if (couche) couchesRef.current[nom] = couche
+      }
+    }
+    return refs
+  })
 
-  // Callback quand la carte est initialisee
   const handleMapRef = useCallback(
     (map: L.Map | null) => {
-      if (detachListenersRef.current) {
-        detachListenersRef.current()
-        detachListenersRef.current = null
-      }
-      if (map) {
-        // Historique : cmswtxnnb (un `baselayerchange` programmatique
-        // réécrivait OSM), cmsx6dvhu (le clavier n'émettait pas de pointerdown),
-        // QA 2026-09-28 (fenêtre de 1,5 s trop fragile). Voir
-        // persisterChoixCalques : seul l'événement `change` d'un sélecteur du
-        // contrôle Calques déclenche l'écriture, après que Leaflet a appliqué
-        // le choix.
-        const conteneur = map.getContainer()
-        const onChangeCalques = (event: Event) => {
-          // Le clic sur un libellé compte aussi : annulé, il ne transmet
-          // jamais de clic au bouton radio (action par défaut du <label>).
-          const selecteur = selecteurCalques(event.target)
-          if (!selecteur) return
-          const estRejeu = rejeuEnCoursRef.current
-          window.setTimeout(() => {
-            // Retest QA 2026-10-12 (cmv5cpu7q), sonde
-            // scripts/qa/sonde-carte-fond-20261013.cjs : sur dix gestes, le
-            // seul clic qui perd encore le fond est celui qui tombe dans la
-            // même tâche que l'ouverture du contrôle (bouton ou survol).
-            // Leaflet (`_expandSafely`, garde contre le tap qui ouvre ET
-            // choisit sur mobile) l'annule : `preventDefault` sur la liste,
-            // le bouton radio revient sur l'ancien fond, rien n'est appliqué
-            // ni persisté. Un humain n'y arrive pas, un automate si (deux
-            // clics forcés d'affilée). Hors tactile, où la garde a un sens,
-            // on rejoue ce clic une fois la garde levée : sa temporisation
-            // est antérieure à la nôtre, donc déjà passée. Le clic rejoué
-            // (sur l'élément visé à l'origine) repasse ici et persiste
-            // lui-même ; il n'est jamais rejoué une seconde fois.
-            if (!estRejeu && event.type === "click" && event.defaultPrevented && !estPointeurTactile(event)) {
-              rejeuEnCoursRef.current = true
-              try {
-                ;(event.target instanceof HTMLInputElement ? selecteur.input : selecteur.label ?? selecteur.input).click()
-              } finally {
-                rejeuEnCoursRef.current = false
-              }
-              return
-            }
-            persisterChoixCalques(conteneur)
-          }, 0)
-        }
-        // Retest QA du 2026-09-28 13:44 (ticket cmulatx23), reproduit le
-        // 2026-10-02 : Leaflet applique le fond sur l'événement `click` de
-        // l'input (`_onInputClick`), pas sur `change`. Un clic qui ne produit
-        // que `click` (automate, lecteur d'écran, certains navigateurs
-        // mobiles) affichait le satellite sans l'enregistrer. On écoute donc
-        // les deux, comme Leaflet ; l'écriture relit l'état réel du DOM, donc
-        // un doublon click+change est idempotent. Un `addLayer` programmatique
-        // n'émet toujours aucun des deux.
-        // `input` (même sonde) : un automate qui pose `checked` puis n'émet
-        // qu'`input` cochait Satellite à l'écran sans que rien ne soit écrit ;
-        // comme `change`, un navigateur ne l'émet que pour une interaction.
-        conteneur.addEventListener("change", onChangeCalques, { capture: true })
-        conteneur.addEventListener("input", onChangeCalques, { capture: true })
-        conteneur.addEventListener("click", onChangeCalques, { capture: true })
-        detachListenersRef.current = () => {
-          conteneur.removeEventListener("change", onChangeCalques, { capture: true })
-          conteneur.removeEventListener("input", onChangeCalques, { capture: true })
-          conteneur.removeEventListener("click", onChangeCalques, { capture: true })
-        }
-      }
       if (map && onMapReady) {
         onMapReady(map)
       }
@@ -262,33 +359,21 @@ export default function MapContainer({
         {/* Selecteur de fonds de carte */}
         <LayersControl position="topright">
           {/* Fonds de carte (base layers) - un seul actif a la fois */}
-          <LayersControl.BaseLayer checked={fondActif === "OpenStreetMap"} name="OpenStreetMap">
-            <TileLayer
-              url={TILE_URLS.osm}
-              attribution={ATTRIBUTIONS.osm}
-              maxZoom={19}
-            />
-          </LayersControl.BaseLayer>
-
-          <LayersControl.BaseLayer checked={fondActif === "Satellite IGN"} name="Satellite IGN">
-            <TileLayer
-              url={TILE_URLS.satelliteIgn}
-              attribution={ATTRIBUTIONS.ign}
-              maxZoom={19}
-            />
-          </LayersControl.BaseLayer>
-
-          <LayersControl.BaseLayer checked={fondActif === "Plan IGN"} name="Plan IGN">
-            <TileLayer
-              url={TILE_URLS.planIgn}
-              attribution={ATTRIBUTIONS.ign}
-              maxZoom={19}
-            />
-          </LayersControl.BaseLayer>
+          {FONDS_CARTE.map((nom) => (
+            <LayersControl.BaseLayer key={nom} checked={choixInitial.fond === nom} name={nom}>
+              <TileLayer
+                ref={refsCouches[nom]}
+                url={SOURCES_FONDS[nom].url}
+                attribution={SOURCES_FONDS[nom].attribution}
+                maxZoom={19}
+              />
+            </LayersControl.BaseLayer>
+          ))}
 
           {/* Couches superposables (overlays) */}
-          <LayersControl.Overlay checked={overlaysActifs.includes("Cadastre IGN")} name="Cadastre IGN">
+          <LayersControl.Overlay checked={choixInitial.calques.includes(CALQUE_CADASTRE)} name={CALQUE_CADASTRE}>
             <TileLayer
+              ref={refsCouches[CALQUE_CADASTRE]}
               url={TILE_URLS.cadastreIgn}
               attribution={ATTRIBUTIONS.ign}
               maxZoom={19}
@@ -296,6 +381,9 @@ export default function MapContainer({
             />
           </LayersControl.Overlay>
         </LayersControl>
+
+        {/* Après le contrôle : voir SynchroCalques */}
+        <SynchroCalques couches={couchesRef} choixInitial={choixInitial} />
 
         {/* Contenu additionnel (marqueurs, polygones, controles...) */}
         {children}
