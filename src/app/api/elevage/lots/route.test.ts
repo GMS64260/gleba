@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   lotFindFirst: vi.fn(),
   lotUpdate: vi.fn(),
   especeFindUnique: vi.fn(),
+  especeFindFirst: vi.fn(),
   isOwnedParcelle: vi.fn(),
   animalFindMany: vi.fn(),
   animalUpdateMany: vi.fn(),
@@ -30,7 +31,7 @@ vi.mock('@/lib/prisma', () => ({
       animal: { findMany: mocks.animalFindMany, updateMany: mocks.animalUpdateMany },
     }),
     lotAnimaux: { findFirst: mocks.lotFindFirst, update: mocks.lotUpdate },
-    especeAnimale: { findUnique: mocks.especeFindUnique },
+    especeAnimale: { findUnique: mocks.especeFindUnique, findFirst: mocks.especeFindFirst },
   },
 }))
 
@@ -59,6 +60,22 @@ describe('PATCH /api/elevage/lots (édition complète + resync compta)', () => {
       expect.objectContaining({ data: expect.objectContaining({ prixAchatTotal: 0, nom: 'Poules' }) })
     )
     expect(mocks.createDepenseFromLotAnimaux).toHaveBeenCalledTimes(1)
+  })
+
+  // Audit 2026-10-19 — le PATCH ne vérifiait que l'existence de l'espèce : la
+  // fiche privée d'un autre compte passait.
+  it('refuse une espèce animale invisible du compte en nommant le champ', async () => {
+    mocks.lotFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', parcelleGeoId: null, especeAnimaleId: 'poule' })
+    mocks.especeFindFirst.mockResolvedValueOnce(null)
+
+    const res = await PATCH(request({ id: 5, especeAnimaleId: 'espece-privee-autre' }))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).champ).toBe('especeAnimaleId')
+    expect(mocks.especeFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'espece-privee-autre' }),
+    }))
+    expect(mocks.lotUpdate).not.toHaveBeenCalled()
   })
 
   it('rejette une date d’arrivée hors bornes (faute d’année type 0204)', async () => {

@@ -17,6 +17,7 @@ import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { calculerTetesNonPondeuses, effectifPondeuses, estEspecePondeuse } from '@/lib/elevage/pondeuses'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
+import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -112,15 +113,17 @@ export async function POST(request: NextRequest) {
 
     const { especeAnimaleId, nom, dateArrivee, quantiteInitiale, provenance, prixAchatTotal, notes, parcelleGeoId } = parsed.data
 
-    // Vérifier que l'espece animale existe
-    const espece = await prisma.especeAnimale.findUnique({
-      where: { id: especeAnimaleId },
-    })
-    if (!espece) {
+    // L'espèce doit exister ET être visible du compte (catalogue, communauté
+    // ou fiche perso) : même règle que les animaux.
+    if (!await especeAnimaleAccessible(session.user.id, especeAnimaleId)) {
       return NextResponse.json(
-        { error: `Espèce animale "${especeAnimaleId}" introuvable` },
+        { error: `Espèce animale "${especeAnimaleId}" introuvable`, champ: 'especeAnimaleId' },
         { status: 400 }
       )
+    }
+    // La parcelle aussi, comme au PATCH : le POST l'écrivait sans contrôle.
+    if (parcelleGeoId && !await isOwnedParcelle(session.user.id, parcelleGeoId)) {
+      return NextResponse.json({ error: 'Parcelle invalide', champ: 'parcelleGeoId' }, { status: 400 })
     }
 
     const lot = await prisma.$transaction(async (tx) => {
@@ -199,8 +202,15 @@ export async function PATCH(request: NextRequest) {
     // d'achat auto n'était jamais resynchronisée. On applique tout + resync.
     if (nom !== undefined) updateData.nom = nom || null
     if (especeAnimaleId !== undefined && especeAnimaleId) {
-      const espece = await prisma.especeAnimale.findUnique({ where: { id: especeAnimaleId } })
-      if (!espece) return NextResponse.json({ error: `Espèce animale "${especeAnimaleId}" introuvable` }, { status: 400 })
+      if (
+        especeAnimaleId !== existing.especeAnimaleId &&
+        (typeof especeAnimaleId !== 'string' || !await especeAnimaleAccessible(session.user.id, especeAnimaleId))
+      ) {
+        return NextResponse.json(
+          { error: `Espèce animale "${especeAnimaleId}" introuvable`, champ: 'especeAnimaleId' },
+          { status: 400 }
+        )
+      }
       updateData.especeAnimaleId = especeAnimaleId
     }
     if (dateArrivee !== undefined) {

@@ -23,6 +23,7 @@ import {
 } from "@/lib/account-lifecycle"
 import { sendMail, accountDeletedEmail } from "@/lib/mail"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
+import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
 
 /**
  * GET /api/account — état du compte pour l'écran Paramètres.
@@ -82,6 +83,12 @@ export async function DELETE(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Compte de démonstration : mot de passe public, donc la revérification
+    // ci-dessous ne protège rien. Sans cette garde, un visiteur supprimait la
+    // démo et toutes ses données pour tous les suivants.
+    const refusDemo = await refusSiCompteDemo(userId, MESSAGES_REFUS_DEMO.supprimerCompte)
+    if (refusDemo) return refusDemo
 
     const body = (await request.json().catch(() => null)) as { password?: unknown } | null
     const password = typeof body?.password === "string" ? body.password : ""

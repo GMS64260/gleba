@@ -2,7 +2,8 @@
  * API Routes pour une Culture spécifique
  * GET /api/cultures/[id] - Détail d'une culture
  * PUT /api/cultures/[id] - Modifier une culture
- * DELETE /api/cultures/[id] - Supprimer une culture
+ * DELETE /api/cultures/[id] - Supprimer une culture sans récolte vendue
+ *   (sinon 409, cf. `src/lib/cultures/suppression.ts`)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -28,6 +29,7 @@ import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
+import { aDesVentes, compterVentesRecoltesCulture, messageSuppressionCultureRefusee } from '@/lib/cultures/suppression'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -626,9 +628,19 @@ export async function DELETE(
       )
     }
 
-    // Audit compta 2026-06 : les récoltes partent en cascade DB, mais leurs
-    // écritures auto-compta et leur part d'inventaire ne suivent pas — il
-    // restait des VenteManuelle orphelines comptées à vie dans le KPI.
+    // Audit 2026-10-08 — une récolte vendue retient la culture : la cascade
+    // effaçait ses ventes de la comptabilité, exercice déjà déclaré compris.
+    const ventes = await compterVentesRecoltesCulture(prisma, cultureId, session!.user.id)
+    if (aDesVentes(ventes)) {
+      return NextResponse.json(
+        { error: messageSuppressionCultureRefusee(culture, ventes), details: ventes },
+        { status: 409 }
+      )
+    }
+
+    // Audit compta 2026-06 : les récoltes partent en cascade DB. Depuis la
+    // garde ci-dessus, aucune ne porte plus de vente ; la purge des écritures
+    // auto reste en filet contre une ligne orpheline.
     const recoltes = await prisma.recolte.findMany({
       where: { cultureId, userId: session!.user.id },
       select: { id: true, especeId: true, quantite: true, statut: true },
@@ -638,6 +650,7 @@ export async function DELETE(
       if (recoltes.length > 0) {
         await tx.venteManuelle.deleteMany({
           where: {
+            userId: session!.user.id,
             sourceType: 'recolte',
             sourceId: { in: recoltes.map((r) => r.id) },
             auto: true,

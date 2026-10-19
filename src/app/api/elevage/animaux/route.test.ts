@@ -210,6 +210,30 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     }))
   })
 
+  // Audit 2026-10-19 — le contrôle convertissait avec `Number`, l'écriture
+  // avec `parseInt` : « 1e3 » passait le contrôle comme le lot inchangé 1000
+  // et s'écrivait 1, le lot d'un autre compte.
+  it('PATCH écrit le lot validé, jamais une seconde conversion', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin', lotId: 1000 })
+
+    const response = await PATCH(request('PATCH', { id: 7, lotId: '1e3' }))
+
+    expect(response.status).toBe(200)
+    const data = mocks.animalUpdate.mock.calls.at(-1)?.[0]?.data
+    expect(data.lotId).toBe(1000)
+  })
+
+  it('PATCH refuse une espèce privée d’un autre compte en nommant le champ', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin', lotId: null })
+    mocks.especeFindFirst.mockResolvedValueOnce(null)
+
+    const response = await PATCH(request('PATCH', { id: 7, especeAnimaleId: 'espece-privee-autre' }))
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'Espèce animale invalide', champ: 'especeAnimaleId' })
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
   it('persiste séparément orientation et race validée', async () => {
     const response = await PATCH(request('PATCH', { id: 7, orientationProduction: 'lait', raceAnimaleId: 'race-lacaune' }))
     expect(response.status).toBe(200)
@@ -241,6 +265,8 @@ describe('vraisemblance des dates de filiation', () => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
     mocks.especeFindUnique.mockResolvedValue({ id: 'ovin' })
+    // Espèce visible du compte (`especeAnimaleAccessible`, POST comme PATCH).
+    mocks.especeFindFirst.mockResolvedValue({ id: 'ovin' })
     mocks.isAssignableAnimalLot.mockResolvedValue(true)
     mocks.animalFindMany.mockResolvedValue([]) // pas d'ascendance → pas de cycle
     mocks.animalCreate.mockResolvedValue({ id: 8, lotId: null, prixAchat: null, createdAt: new Date(), dateArrivee: new Date(), statutSanitaire: [] })

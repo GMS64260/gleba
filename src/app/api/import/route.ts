@@ -13,6 +13,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
 import { enregistrerStockVariete } from '@/lib/stocks/stock-variete'
+import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from '@/lib/demo-garde'
 
 interface ImportData {
   version?: string
@@ -245,6 +246,11 @@ interface ImportData {
 export async function POST(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
+
+  // L'import réécrit les planches du même nom : jamais sur la ferme de
+  // démonstration, partagée par tous les visiteurs.
+  const refusDemo = await refusSiCompteDemo(session!.user.id, MESSAGES_REFUS_DEMO.importer)
+  if (refusDemo) return refusDemo
 
   try {
     const formData = await request.formData()

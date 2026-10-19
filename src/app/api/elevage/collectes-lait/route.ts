@@ -22,6 +22,24 @@ import {
   plafondCollecteLait,
 } from '@/lib/elevage/cibles-collecte-lait'
 
+/**
+ * Refus d'un lot de fromage qui n'appartient pas au compte, sinon `null`.
+ * POST et PATCH écrivaient `lotFromageId` sans rien vérifier : la collecte se
+ * rattachait au lot de fabrication d'un autre compte (audit 2026-10-19). Même
+ * refus que la vente de fromage (`ventes/route.ts`), qui nomme son champ.
+ */
+async function refusLotFromageHorsCompte(lotFromageId: string, userId: string): Promise<NextResponse | null> {
+  const lot = await prisma.lotFromage.findFirst({
+    where: { id: lotFromageId, userId },
+    select: { id: true },
+  })
+  if (lot) return null
+  return NextResponse.json(
+    { error: 'Lot de fromage introuvable dans votre cave.', champ: 'lotFromageId' },
+    { status: 400 }
+  )
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -173,6 +191,11 @@ export async function POST(request: NextRequest) {
     const soinCouvrant = await soinCouvrantCollecte(prisma, session.user.id, data.animalId ?? null, data.lotId ?? null, day)
     const ecarte = (data.ecarteAttente ?? false) || soinCouvrant !== null
 
+    if (data.lotFromageId) {
+      const refusLot = await refusLotFromageHorsCompte(data.lotFromageId, session.user.id)
+      if (refusLot) return refusLot
+    }
+
     // Upsert pour permettre "saisie identique à hier" / corrections
     const existing = await prisma.collecteLait.findFirst({
       where: {
@@ -232,6 +255,11 @@ export async function PATCH(request: NextRequest) {
     const { id, ...updates } = parsed.data
     const existing = await prisma.collecteLait.findFirst({ where: { id, userId: session.user.id } })
     if (!existing) return NextResponse.json({ error: 'Collecte non trouvée' }, { status: 404 })
+
+    if (updates.lotFromageId) {
+      const refusLot = await refusLotFromageHorsCompte(updates.lotFromageId, session.user.id)
+      if (refusLot) return refusLot
+    }
 
     // Ticket cms1v9rj5 — règle métier : une collecte dont la date est couverte
     // par la fenêtre [début soin .. fin_attente_lait] d'un soin actif DOIT être

@@ -19,6 +19,7 @@
 
 import type { Prisma, PrismaClient } from "@prisma/client"
 import prisma from "@/lib/prisma"
+import { normaliserNomClient } from "@/lib/comptabilite/rattachement-client"
 
 type Tx = PrismaClient | Prisma.TransactionClient
 
@@ -33,13 +34,36 @@ export interface EnsureClientInput {
   type?: string
 }
 
-function normaliseNom(nom: string): string {
-  return nom
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/\s+/g, " ")
+/**
+ * Refus d'un `clientId` qui ne désigne pas un client du compte. Nomme son
+ * champ pour que l'écran sache quoi signaler.
+ */
+export class ClientIntrouvableError extends Error {
+  readonly champ = "clientId"
+
+  constructor(clientId: number) {
+    super(`Client ${clientId} introuvable pour ce compte`)
+    this.name = "ClientIntrouvableError"
+  }
+}
+
+/**
+ * Exige que `clientId` désigne un client du compte `userId`, sinon lève
+ * `ClientIntrouvableError`. Seul contrôle d'appartenance d'un client choisi
+ * par l'appelant : POST ET PATCH des ventes manuelles (le PATCH réaffectait le
+ * client sans rien vérifier jusqu'au 2026-10-19, d'où une vente rattachée au
+ * client d'un autre compte, l'id étant un entier facile à deviner).
+ */
+export async function exigerClientDuCompte(
+  userId: string,
+  clientId: number,
+  tx: Tx = prisma
+): Promise<void> {
+  const client = await tx.client.findFirst({
+    where: { id: clientId, userId },
+    select: { id: true },
+  })
+  if (!client) throw new ClientIntrouvableError(clientId)
 }
 
 /**
@@ -74,12 +98,12 @@ export async function ensureClientForUser(
   }
 
   // Fallback : nom normalisé (case-insensitive, accents-insensitive)
-  const nomNormalise = normaliseNom(nom)
+  const nomNormalise = normaliserNomClient(nom)
   const candidats = await tx.client.findMany({
     where: { userId },
     select: { id: true, nom: true },
   })
-  const match = candidats.find((c) => normaliseNom(c.nom) === nomNormalise)
+  const match = candidats.find((c) => normaliserNomClient(c.nom) === nomNormalise)
   if (match) return match.id
 
   // Création

@@ -593,6 +593,11 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
             ? [{ label: "récoltes liées", count: cultureToDelete._count?.recoltes ?? 0 }]
             : []
         }
+        warning={
+          (cultureToDelete?._count?.recoltes ?? 0) > 0
+            ? "Une récolte vendue empêche la suppression : supprimez d'abord sa vente (Maraîchage > Récoltes)."
+            : undefined
+        }
         onConfirm={async () => {
           if (!cultureToDelete) return
           try {

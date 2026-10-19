@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { whereAlimentAccessible } from '@/lib/elevage/aliment-accessible'
 
 const ligneSchema = z.object({
   alimentId: z.string().min(1),
@@ -59,7 +60,7 @@ async function rationValide(
     const accessibles = await prisma.aliment.count({
       where: {
         id: { in: alimentIds },
-        OR: [{ ownerUserId: null }, { ownerUserId: userId }],
+        ...whereAlimentAccessible(userId),
       },
     })
     if (accessibles !== alimentIds.length) return 'Un ou plusieurs aliments sont introuvables ou privés.'

@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
-import { estEmailDemo } from "@/lib/demo"
+import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -60,19 +60,9 @@ export async function PUT(request: NextRequest) {
   // montrait plus la même chose à tout le monde. Vérifié en base plutôt que
   // depuis la session : `session.user` ne porte que id, role et impersonatedBy,
   // et c'est déjà par l'id que `linkAccount` (auth.ts) protège ce compte.
-  const compte = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true },
-  })
-  if (estEmailDemo(compte?.email)) {
-    return NextResponse.json(
-      {
-        error:
-          "Le compte de démonstration est partagé : ses réglages sont figés pour que chaque visiteur voie la même ferme. Créez un compte gratuit pour conserver vos préférences.",
-      },
-      { status: 403, headers: NO_STORE }
-    )
-  }
+  // Garde partagée avec les autres gestes de niveau compte (`demo-garde.ts`).
+  const refusDemo = await refusSiCompteDemo(userId, MESSAGES_REFUS_DEMO.preferences, NO_STORE)
+  if (refusDemo) return refusDemo
 
   const body = await request.json()
 

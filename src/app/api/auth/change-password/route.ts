@@ -13,6 +13,7 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi, hashPassword, verifyPassword } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
+import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
 
 const MIN_PASSWORD_LENGTH = 12
 
@@ -29,6 +30,11 @@ export async function POST(request: NextRequest) {
   if (rateLimitError) return rateLimitError
 
   try {
+    // Le mot de passe de la démo est public (bouton « Essayer la démo ») : le
+    // changer fermait la porte à tous les visiteurs suivants.
+    const refusDemo = await refusSiCompteDemo(getActeurId(session), MESSAGES_REFUS_DEMO.motDePasse)
+    if (refusDemo) return refusDemo
+
     const body = await request.json().catch(() => ({}))
     const { currentPassword, newPassword } = body
 
