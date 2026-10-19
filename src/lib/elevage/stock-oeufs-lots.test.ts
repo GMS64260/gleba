@@ -79,6 +79,24 @@ describe("stock d'œufs par lots — délai d'attente vétérinaire (cmsoeyhs5)"
     expect(stock.stats.bloquesVeto).toBe(0)
   })
 
+  // Ticket cmv9dy2ow : le 15/10, des pontes du 10/10 sous un délai fini le
+  // 13/10 s'affichaient « vendables dès le 14/10 ». Elles restent écartées
+  // après la fin du délai, et le lot porte la fin du délai qui les a écartées.
+  it("garde écartée une ponte faite pendant le délai une fois le délai passé", async () => {
+    mocks.productionFindMany.mockResolvedValue([ponte(3, "2026-10-10T00:00:00Z")])
+    mocks.soinFindMany.mockResolvedValue([soinLot54({
+      date: new Date("2026-10-10T00:00:00Z"),
+      finAttenteOeufs: new Date("2026-10-13T00:00:00Z"),
+    })])
+
+    const stock = await computeStockOeufsParLots("user-1", new Date("2026-10-15T12:00:00Z"))
+
+    expect(stock.data[0].statut).toBe("bloque_attente_veto")
+    expect(stock.data[0].finAttenteVeto?.toISOString().slice(0, 10)).toBe("2026-10-13")
+    expect(stock.stats.commercialisables).toBe(0)
+    expect(stock.stats.bloquesVeto).toBe(12)
+  })
+
   it("ignore les soins non faits : le filtre fait=true est poussé dans la requête", async () => {
     mocks.productionFindMany.mockResolvedValue([ponte(3, "2026-08-11T00:00:00Z")])
 

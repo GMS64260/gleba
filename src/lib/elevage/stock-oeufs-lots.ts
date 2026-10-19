@@ -141,6 +141,10 @@ export async function computeStockOeufsParLots(userId: string, now = new Date())
       limiteVente: dates.limiteVente,
       dcr: dates.dcr,
       statut: blocage ? ("bloque_attente_veto" as const) : statutFraicheur,
+      // Ticket cmv9dy2ow — ces œufs ne sont JAMAIS remis en vente : l'écran
+      // nomme la fin du délai qui les a écartés, pas la remise en vente (qui ne
+      // vaut que pour les pontes postérieures et se lisait « vendables dès »).
+      finAttenteVeto: blocage?.finAttenteOeufs ?? null,
       remiseEnVente: blocage?.remiseEnVente ?? null,
       mouvements: production.mouvementsStock,
     }
