@@ -176,6 +176,18 @@ const STATUT_COLORS: Record<string, string> = {
   termine: "bg-slate-100 text-slate-800",
 }
 
+// Ticket cmv9e1u2r — les boutons-icônes des lignes n'avaient aucun nom
+// accessible (le tooltip ne nomme pas le bouton) : chaque action porte un
+// aria-label qui nomme le geste ET la ligne, sinon « Vendre » répété sur
+// toute la table ne dit pas quel animal.
+function nomLigneAnimal(animal: Pick<Animal, "id" | "identifiant" | "nom">): string {
+  return [animal.identifiant, animal.nom].filter(Boolean).join(" ") || `animal n° ${animal.id}`
+}
+
+function nomLigneLot(lot: Pick<Lot, "id" | "nom">): string {
+  return lot.nom || `#${lot.id}`
+}
+
 // ============================================================
 // Composant principal
 // ============================================================
@@ -1624,9 +1636,10 @@ function AnimauxSubTab() {
                                     pour limiter le détour. */}
                                 <Link
                                   href={`/elevage/animaux/${animal.id}#soins`}
+                                  aria-label={`Fiche et soins de ${nomLigneAnimal(animal)}`}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600 inline-flex"
                                 >
-                                  <Stethoscope className="h-3.5 w-3.5" />
+                                  <Stethoscope className="h-3.5 w-3.5" aria-hidden="true" />
                                 </Link>
                               </TooltipTrigger>
                               <TooltipContent>Fiche &amp; soins</TooltipContent>
@@ -1634,10 +1647,12 @@ function AnimauxSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
+                                  type="button"
+                                  aria-label={`Modifier ${nomLigneAnimal(animal)}`}
                                   onClick={() => handleEditAnimal(animal)}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-amber-100 hover:text-amber-700"
                                 >
-                                  <Pencil className="h-3.5 w-3.5" />
+                                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent>Modifier la saisie</TooltipContent>
@@ -1645,10 +1660,12 @@ function AnimauxSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
+                                  type="button"
+                                  aria-label={`Vendre ${nomLigneAnimal(animal)}`}
                                   onClick={() => { setVenteForm(f => ({ ...f, date: todayLocalISO() })); setVenteDialog(animal) }}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-blue-100 hover:text-blue-600"
                                 >
-                                  <ShoppingCart className="h-3.5 w-3.5" />
+                                  <ShoppingCart className="h-3.5 w-3.5" aria-hidden="true" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent>Vendre</TooltipContent>
@@ -1660,10 +1677,12 @@ function AnimauxSubTab() {
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button
+                                    type="button"
+                                    aria-label={`Enregistrer l'abattage de ${nomLigneAnimal(animal)}`}
                                     onClick={() => { setAbattageForm(f => ({ ...f, date: todayLocalISO(), poidsVif: animal.poidsActuel?.toString() || "" })); setAbattageDialog(animal) }}
                                     className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
                                   >
-                                    <Scissors className="h-3.5 w-3.5" />
+                                    <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
                                   </button>
                                 </TooltipTrigger>
                                 <TooltipContent>Abattage</TooltipContent>
@@ -1672,10 +1691,12 @@ function AnimauxSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
+                                  type="button"
+                                  aria-label={`Déclarer le décès de ${nomLigneAnimal(animal)}`}
                                   onClick={() => { setMortForm(f => ({ ...f, date: todayLocalISO() })); setMortDialog(animal) }}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
                                 >
-                                  <Skull className="h-3.5 w-3.5" />
+                                  <Skull className="h-3.5 w-3.5" aria-hidden="true" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent>Décès</TooltipContent>
@@ -1689,8 +1710,10 @@ function AnimauxSubTab() {
                           size="sm"
                           onClick={() => handleDelete(animal)}
                           className="text-red-600 hover:text-red-700"
+                          aria-label={`Supprimer ${nomLigneAnimal(animal)}`}
+                          title="Supprimer"
                         >
-                          &times;
+                          <span aria-hidden="true">&times;</span>
                         </Button>
                       )}
                     </TableCell>
@@ -2484,10 +2507,12 @@ function LotsSubTab() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button
+                                type="button"
+                                aria-label={`Modifier le lot ${nomLigneLot(lot)}`}
                                 onClick={() => handleEditLot(lot)}
                                 className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-amber-100 hover:text-amber-700"
                               >
-                                <Pencil className="h-3.5 w-3.5" />
+                                <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                               </button>
                             </TooltipTrigger>
                             <TooltipContent>Modifier le lot</TooltipContent>
@@ -2496,11 +2521,12 @@ function LotsSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
+                                  type="button"
                                   onClick={() => ouvrirComposition(lot)}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-emerald-100 hover:text-emerald-700"
-                                  aria-label="Ajouter ou retirer des animaux"
+                                  aria-label={`Ajouter ou retirer des animaux du lot ${nomLigneLot(lot)}`}
                                 >
-                                  <UserPlus className="h-3.5 w-3.5" />
+                                  <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent>Ajouter / retirer des animaux</TooltipContent>
@@ -2510,10 +2536,12 @@ function LotsSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
+                                  type="button"
+                                  aria-label={`Enregistrer un abattage depuis le lot ${nomLigneLot(lot)}`}
                                   onClick={() => { setAbatLotForm(f => ({ ...f, date: todayLocalISO(), quantite: "1" })); setAbatLotDialog(lot) }}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
                                 >
-                                  <Scissors className="h-3.5 w-3.5" />
+                                  <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent>Abattage</TooltipContent>
@@ -2524,10 +2552,12 @@ function LotsSubTab() {
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button
+                                    type="button"
+                                    aria-label={`Réformer le lot ${nomLigneLot(lot)}`}
                                     onClick={() => handleReformerLot(lot)}
                                     className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-orange-100 hover:text-orange-700"
                                   >
-                                    <Archive className="h-3.5 w-3.5" />
+                                    <Archive className="h-3.5 w-3.5" aria-hidden="true" />
                                   </button>
                                 </TooltipTrigger>
                                 <TooltipContent>Réformer le lot</TooltipContent>
@@ -2535,10 +2565,12 @@ function LotsSubTab() {
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button
+                                    type="button"
+                                    aria-label={`Clôturer le lot ${nomLigneLot(lot)}`}
                                     onClick={() => handleCloturerLot(lot)}
                                     className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
                                   >
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                                   </button>
                                 </TooltipTrigger>
                                 <TooltipContent>Clôturer (terminé)</TooltipContent>
@@ -2549,10 +2581,12 @@ function LotsSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
+                                  type="button"
+                                  aria-label={`Réactiver le lot ${nomLigneLot(lot)}`}
                                   onClick={() => handleReactiverLot(lot)}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-green-100 hover:text-green-700"
                                 >
-                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent>Réactiver (repasser en actif)</TooltipContent>
@@ -2561,10 +2595,12 @@ function LotsSubTab() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button
+                                type="button"
+                                aria-label={`Supprimer le lot ${nomLigneLot(lot)}`}
                                 onClick={() => handleSupprimerLot(lot)}
                                 className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-700"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                               </button>
                             </TooltipTrigger>
                             <TooltipContent>Supprimer le lot</TooltipContent>
