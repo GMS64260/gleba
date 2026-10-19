@@ -16,6 +16,7 @@ import {
   justificatifAlimentMutationSchema,
 } from "@/lib/elevage/justificatifs-aliments"
 import prisma from "@/lib/prisma"
+import { MESSAGE_ALIMENT_INACCESSIBLE, alimentAccessible } from "@/lib/elevage/aliment-accessible"
 
 class ErreurJustificatifAliment extends Error {
   constructor(
@@ -38,18 +39,8 @@ async function verifierAlimentAccessible(
   userId: string,
 ) {
   if (!alimentId) return
-  const aliment = await tx.aliment.findFirst({
-    where: {
-      id: alimentId,
-      OR: [{ ownerUserId: null }, { ownerUserId: userId }],
-    },
-    select: { id: true },
-  })
-  if (!aliment) {
-    throw new ErreurJustificatifAliment(
-      "Aliment introuvable ou inaccessible pour ce compte",
-      404,
-    )
+  if (!(await alimentAccessible(userId, alimentId, tx))) {
+    throw new ErreurJustificatifAliment(MESSAGE_ALIMENT_INACCESSIBLE, 404)
   }
 }
 

@@ -9,7 +9,11 @@ import prisma from '@/lib/prisma'
 import { createVenteManuelleSchema, updateVenteManuelleSchema } from '@/lib/validations/vente-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
 import { champsEnvoyes, refusModificationDerivee } from '@/lib/comptabilite/ecriture-derivee'
-import { ensureClientForUser } from '@/lib/comptabilite/ensure-client'
+import {
+  ClientIntrouvableError,
+  ensureClientForUser,
+  exigerClientDuCompte,
+} from '@/lib/comptabilite/ensure-client'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -93,13 +97,7 @@ export async function POST(request: NextRequest) {
     // pas au tenant.
     const vente = await prisma.$transaction(async (tx) => {
       if (rest.clientId) {
-        const client = await tx.client.findFirst({
-          where: { id: rest.clientId, userId },
-          select: { id: true },
-        })
-        if (!client) {
-          throw new Error(`Client ${rest.clientId} introuvable pour ce compte`)
-        }
+        await exigerClientDuCompte(userId, rest.clientId, tx)
       }
       // QA 2026-05-15 — Bug #6 : auto-création du client si on a juste
       // un clientNom (typiquement saisie rapide marché/AMAP). Le find-
@@ -143,8 +141,12 @@ export async function POST(request: NextRequest) {
     invalidateKpi(userId)
     return NextResponse.json(vente, { status: 201 })
   } catch (error) {
+    // QA 2026-05-15 — Bug #3 : client introuvable = 400 explicite, qui nomme
+    // le champ (même refus qu'au PATCH).
+    if (error instanceof ClientIntrouvableError) {
+      return NextResponse.json({ error: error.message, champ: error.champ }, { status: 400 })
+    }
     console.error('POST /api/comptabilite/ventes-manuelles error:', error)
-    // QA Camille 2026-05-15 — Bug #3 : client introuvable = 400 explicite
     const msg = error instanceof Error ? error.message : ''
     if (msg.includes('introuvable')) {
       return NextResponse.json({ error: msg }, { status: 400 })
@@ -191,6 +193,19 @@ export async function PATCH(request: NextRequest) {
     const refus = refusModificationDerivee(existing, envoyes)
     if (refus) {
       return NextResponse.json({ error: refus }, { status: 400 })
+    }
+
+    // Même contrôle d'appartenance qu'à la création : sans lui, le PATCH
+    // rattachait la vente au client d'un autre compte (audit 2026-10-08).
+    if (updates.clientId != null) {
+      try {
+        await exigerClientDuCompte(session.user.id, updates.clientId)
+      } catch (e) {
+        if (e instanceof ClientIntrouvableError) {
+          return NextResponse.json({ error: e.message, champ: e.champ }, { status: 400 })
+        }
+        throw e
+      }
     }
 
     const updateData: any = {}

@@ -12,6 +12,7 @@ import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromConsommationAliment, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { consommationAlimentSchema } from '@/lib/validations/consommation-aliment'
+import { MESSAGE_ALIMENT_INACCESSIBLE, alimentAccessible } from '@/lib/elevage/aliment-accessible'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -133,6 +134,10 @@ export async function POST(request: NextRequest) {
     if (animalId != null) {
       const animal = await prisma.animal.findFirst({ where: { id: animalId, userId }, select: { id: true } })
       if (!animal) return NextResponse.json({ error: 'Animal introuvable dans votre cheptel.' }, { status: 400 })
+    }
+    // Audit 2026-10-19 — l'aliment aussi : officiel ou privé du compte.
+    if (!await alimentAccessible(userId, alimentId)) {
+      return NextResponse.json({ error: MESSAGE_ALIMENT_INACCESSIBLE, champ: 'alimentId' }, { status: 400 })
     }
 
     // Feedback Marc 2026-05-16 — V3 Bug 4 : on refusait pas une saisie
@@ -274,6 +279,11 @@ export async function PATCH(request: NextRequest) {
     if (animalId != null) {
       const animal = await prisma.animal.findFirst({ where: { id: animalId, userId }, select: { id: true } })
       if (!animal) return NextResponse.json({ error: 'Animal introuvable dans votre cheptel.' }, { status: 400 })
+    }
+    // Même contrôle qu'à la création, quand l'aliment change (une consommation
+    // déjà enregistrée reste modifiable telle quelle).
+    if (alimentId !== existing.alimentId && !await alimentAccessible(userId, alimentId)) {
+      return NextResponse.json({ error: MESSAGE_ALIMENT_INACCESSIBLE, champ: 'alimentId' }, { status: 400 })
     }
 
     // Transaction interactive : on rend l'impact stock à l'ancien aliment

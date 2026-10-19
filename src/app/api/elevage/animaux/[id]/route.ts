@@ -2,7 +2,8 @@
  * API Animal individuel
  * GET /api/elevage/animaux/[id] - Détails d'un animal
  * PUT /api/elevage/animaux/[id] - Modifier un animal
- * DELETE /api/elevage/animaux/[id] - Supprimer un animal
+ * DELETE /api/elevage/animaux/[id] - Supprimer un animal sans aucune saisie
+ *   (sinon 409 : déclarer sa sortie, cf. `src/lib/elevage/traces-animal.ts`)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -14,6 +15,8 @@ import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
 import { effacementSortieSiActif, erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
+import { aDesTracesAnimal, compterTracesAnimal, messageSuppressionAnimalRefusee } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
 
 export async function GET(
@@ -312,6 +315,12 @@ export async function PUT(
       )
     }
 
+    // Même contrôle que le PATCH de la collection : le PUT écrivait l'espèce
+    // reçue sans vérifier qu'elle est visible du compte (audit 2026-10-19).
+    if (especeAnimaleId !== undefined && especeAnimaleId !== existing.especeAnimaleId
+      && (typeof especeAnimaleId !== 'string' || !await especeAnimaleAccessible(session.user.id, especeAnimaleId))) {
+      return NextResponse.json({ error: 'Espèce animale invalide', champ: 'especeAnimaleId' }, { status: 400 })
+    }
     const especeCible = especeAnimaleId ?? existing.especeAnimaleId
     if (orientationProduction !== undefined && orientationProduction !== null && !['lait', 'viande', 'laine', 'mixte'].includes(orientationProduction)) {
       return NextResponse.json({ error: 'Orientation de production invalide' }, { status: 400 })
@@ -363,7 +372,10 @@ export async function PUT(
         where: { id: parseInt(id) },
         data: {
         especeAnimaleId,
-        lotId: lotId !== undefined ? (lotId ? parseInt(lotId) : null) : undefined,
+        // La valeur VALIDÉE ci-dessus (`Number`), jamais une seconde conversion :
+        // `parseInt("1e3")` vaut 1 quand `Number("1e3")` vaut 1000, et l'écart
+        // rattachait l'animal au lot d'un autre compte sans contrôle (2026-10-19).
+        lotId: lotId !== undefined ? lotCible : undefined,
         identifiant,
         nom,
         race: raceAnimaleId !== undefined ? (raceRef?.nom ?? null) : race,
@@ -446,6 +458,18 @@ export async function DELETE(
 
     if (!existing) {
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
+    }
+
+    // Audit 2026-10-08 — soins, mouvements, productions, naissances… retiennent
+    // l'animal : les supprimer avec lui (ou les détacher) abîmait le registre
+    // d'élevage. Un animal réel se déclare sorti ; seule une fiche sans aucune
+    // saisie se supprime.
+    const traces = await compterTracesAnimal(prisma, existing.id, session.user.id)
+    if (aDesTracesAnimal(traces)) {
+      return NextResponse.json(
+        { error: messageSuppressionAnimalRefusee(existing, traces), details: traces },
+        { status: 409 }
+      )
     }
 
     await prisma.$transaction(async (tx) => {

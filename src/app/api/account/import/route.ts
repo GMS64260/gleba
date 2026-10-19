@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { refusSiPasProprietaire } from "@/lib/exploitation/garde-session"
 import { importAccount, isValidExportPayload } from "@/lib/account-transfer"
+import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 Mo
 
@@ -27,6 +28,9 @@ export async function POST(request: NextRequest) {
   // Un import réécrit TOUTE l'exploitation : geste de propriétaire.
   const refus = refusSiPasProprietaire(session)
   if (refus) return refus
+  // Ni la ferme de démonstration partagée, que l'import remplirait pour tous.
+  const refusDemo = await refusSiCompteDemo(session!.user.id, MESSAGES_REFUS_DEMO.importer)
+  if (refusDemo) return refusDemo
 
   try {
     const { searchParams } = new URL(request.url)

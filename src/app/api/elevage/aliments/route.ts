@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { MESSAGE_ALIMENT_INACCESSIBLE, alimentAccessible } from '@/lib/elevage/aliment-accessible'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -238,6 +239,11 @@ export async function PATCH(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
+    }
+    // Audit 2026-10-19 — le stock ne se tient que sur un aliment officiel ou
+    // privé du compte, jamais sur l'aliment privé d'un autre.
+    if (typeof id !== 'string' || !await alimentAccessible(userId, id)) {
+      return NextResponse.json({ error: MESSAGE_ALIMENT_INACCESSIBLE, champ: 'id' }, { status: 404 })
     }
 
     // Audit #91 : le front envoie null quand le champ est vide → parseFloat(null)

@@ -22,6 +22,20 @@ import {
   dureeGestationEspece,
 } from '@/lib/reproduction'
 
+/**
+ * Refus d'une campagne de lutte qui n'appartient pas au compte, sinon `null`.
+ * Partagé par POST et PATCH : le PATCH rattachait la saillie à la campagne
+ * d'un autre compte sans rien vérifier (audit 2026-10-19).
+ */
+async function refusCampagneHorsCompte(campagneId: string, userId: string): Promise<NextResponse | null> {
+  const campagne = await prisma.campagneReproduction.findFirst({
+    where: { id: campagneId, userId },
+    select: { id: true },
+  })
+  if (campagne) return null
+  return NextResponse.json({ error: 'Campagne introuvable', champ: 'campagneId' }, { status: 404 })
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -107,11 +121,8 @@ export async function POST(request: NextRequest) {
 
     // PROMPT 24 — validation tenant de la campagne rattachée
     if (data.campagneId) {
-      const c = await prisma.campagneReproduction.findFirst({
-        where: { id: data.campagneId, userId: session.user.id },
-        select: { id: true },
-      })
-      if (!c) return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
+      const refusCampagne = await refusCampagneHorsCompte(data.campagneId, session.user.id)
+      if (refusCampagne) return refusCampagne
     }
 
     const saillie = await prisma.saillie.create({
@@ -172,6 +183,12 @@ export async function PATCH(request: NextRequest) {
       include: { femelle: { include: { especeAnimale: true } }, miseBas: { select: { id: true } } },
     })
     if (!existing) return NextResponse.json({ error: 'Saillie non trouvée' }, { status: 404 })
+
+    // Même validation tenant qu'à la création.
+    if (updates.campagneId) {
+      const refusCampagne = await refusCampagneHorsCompte(updates.campagneId, session.user.id)
+      if (refusCampagne) return refusCampagne
+    }
 
     // Review caprin 2026-07-21 — garde d'intégrité du statut (symétrique du DELETE
     // qui refuse déjà si une mise-bas est liée) : ne pas laisser l'UI mettre un

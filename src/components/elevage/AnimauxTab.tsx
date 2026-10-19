@@ -1912,19 +1912,14 @@ function AnimauxSubTab() {
             ? `l'animal ${animalToDelete.nom || animalToDelete.identifiant || `#${animalToDelete.id}`}`
             : ""
         }
-        dependencies={
-          animalToDelete?._count
-            ? [
-                { label: "soins / traitements", count: animalToDelete._count.soins },
-                { label: "productions d'œufs", count: animalToDelete._count.productionsOeufs },
-                { label: "enregistrements de naissances (descendants)", count: animalToDelete._count.enfants },
-              ]
-            : []
-        }
+        // Un animal qui porte des saisies ne se supprime plus (route : 409 qui
+        // nomme ce qui le retient, `traces-animal.ts`) : rien n'est donc
+        // « supprimé avec lui », on prévient seulement du refus probable.
         warning={
-          animalToDelete?._count?.enfants
-            ? "Les liens de parenté seront rompus mais les descendants resteront enregistrés."
-            : undefined
+          animalToDelete?._count &&
+          (animalToDelete._count.soins + animalToDelete._count.productionsOeufs + animalToDelete._count.enfants) > 0
+            ? "Cet animal porte des soins, des productions ou des descendants : ils restent au registre d'élevage et la suppression sera refusée. S'il a quitté l'exploitation, déclarez plutôt sa sortie (Vendre, Abattage ou Décès)."
+            : "Seule une fiche sans aucune saisie (soin, mouvement, production, pesée…) peut être supprimée. Pour un animal qui a quitté l'exploitation, déclarez plutôt sa sortie."
         }
         onConfirm={confirmDelete}
       />

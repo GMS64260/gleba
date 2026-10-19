@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { dureeGestationEspece, fenetreMiseBasCampagne } from '@/lib/reproduction'
+import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 
 const TYPES_CONDUITE = [
   'Monte naturelle',
@@ -31,6 +32,15 @@ const campagneSchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
 })
 const updateCampagneSchema = campagneSchema.partial().extend({ id: z.string().min(1) })
+
+/** Refus d'une espèce invisible du compte (audit 2026-10-19 : ni le POST ni le PATCH ne vérifiaient). */
+async function refusEspeceInaccessible(especeAnimaleId: string, userId: string): Promise<NextResponse | null> {
+  if (await especeAnimaleAccessible(userId, especeAnimaleId)) return null
+  return NextResponse.json(
+    { error: `Espèce animale "${especeAnimaleId}" introuvable`, champ: 'especeAnimaleId' },
+    { status: 400 }
+  )
+}
 
 export async function GET() {
   const { session, error } = await requireAuthApi()
@@ -85,6 +95,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const d = parsed.data
+    if (d.especeAnimaleId) {
+      const refusEspece = await refusEspeceInaccessible(d.especeAnimaleId, session.user.id)
+      if (refusEspece) return refusEspece
+    }
     const campagne = await prisma.campagneReproduction.create({
       data: {
         userId: session.user.id,
@@ -115,6 +129,10 @@ export async function PATCH(request: NextRequest) {
     const { id, ...updates } = parsed.data
     const existing = await prisma.campagneReproduction.findFirst({ where: { id, userId: session.user.id } })
     if (!existing) return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
+    if (updates.especeAnimaleId && updates.especeAnimaleId !== existing.especeAnimaleId) {
+      const refusEspece = await refusEspeceInaccessible(updates.especeAnimaleId, session.user.id)
+      if (refusEspece) return refusEspece
+    }
     const campagne = await prisma.campagneReproduction.update({ where: { id }, data: updates })
     return NextResponse.json({ data: campagne })
   } catch (err) {

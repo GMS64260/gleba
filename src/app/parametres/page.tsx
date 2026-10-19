@@ -22,6 +22,8 @@ import { ELEVAGE_MODES, ELEVAGE_MODE_IDS, type ElevageModeId } from '@/lib/eleva
 import { signOut } from 'next-auth/react'
 import { confirmDialog } from '@/lib/global-dialog'
 import { todayLocalISO } from '@/lib/format-utils'
+import { useIsDemoAccount } from '@/hooks/use-is-demo'
+import { MESSAGES_REFUS_DEMO } from '@/lib/demo'
 import { DEFAULT_NOTIF_PREFS, parseNotifPrefs, type NotifPrefs } from '@/lib/notifications/prefs'
 import {
   BRIEFING_AUTO_PAR_DEFAUT,
@@ -75,6 +77,9 @@ const defaultSettings: GardenSettings = {
 
 export default function ParametresPage() {
   const { toast } = useToast()
+  // Compte de démonstration partagé : vider, supprimer et importer y sont
+  // refusés par les routes (`src/lib/demo-garde.ts`) ; l'écran le dit d'avance.
+  const isDemo = useIsDemoAccount()
   const [settings, setSettings] = React.useState<GardenSettings>(defaultSettings)
   const [saving, setSaving] = React.useState(false)
   // BUG #10 : indicateur de synchronisation serveur. `null` = pas encore
@@ -908,7 +913,10 @@ export default function ParametresPage() {
                   onChange={handleFullFileChange}
                   className="hidden"
                 />
-                <Button variant="outline" onClick={handleFullImportClick} disabled={importingFull}>
+                {isDemo && (
+                  <p className="text-xs text-amber-800" role="note">{MESSAGES_REFUS_DEMO.importer}</p>
+                )}
+                <Button variant="outline" onClick={handleFullImportClick} disabled={importingFull || isDemo}>
                   {importingFull ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
@@ -964,7 +972,10 @@ export default function ParametresPage() {
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <Button variant="outline" onClick={handleImportClick} disabled={importing}>
+                {isDemo && (
+                  <p className="text-xs text-amber-800" role="note">{MESSAGES_REFUS_DEMO.importer}</p>
+                )}
+                <Button variant="outline" onClick={handleImportClick} disabled={importing || isDemo}>
                   {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
                   {importing ? 'Import en cours...' : 'Importer JSON'}
                 </Button>
@@ -1149,13 +1160,18 @@ export default function ParametresPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
+              {isDemo && (
+                <div className="p-3 bg-white border border-amber-300 rounded-lg" role="note">
+                  <p className="text-sm text-amber-900">{MESSAGES_REFUS_DEMO.zoneDanger}</p>
+                </div>
+              )}
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <h4 className="text-sm font-medium text-slate-900 mb-1">
                     Supprimer toutes mes données
                   </h4>
                   <p className="text-sm text-slate-600">
-                    Supprimé toutes vos cultures, planches, récoltes, arbres et objets.
+                    Supprime toutes vos cultures, planches, récoltes, arbres et objets.
                     Les référentiels (espèces, ITPs, etc.) sont conservés.
                   </p>
                 </div>
@@ -1165,7 +1181,7 @@ export default function ParametresPage() {
                     setDeleteConfirmation('')
                     setDeleteDialogOpen(true)
                   }}
-                  disabled={deleting}
+                  disabled={deleting || isDemo}
                 >
                   {deleting ? (
                     <>
@@ -1217,7 +1233,7 @@ export default function ParametresPage() {
                       })
                       .catch(() => {})
                   }}
-                  disabled={deletingAccount}
+                  disabled={deletingAccount || isDemo}
                 >
                   {deletingAccount ? (
                     <>
@@ -1938,6 +1954,7 @@ function ElevageModesSection() {
 
 function ChangePasswordSection() {
   const { toast } = useToast()
+  const isDemo = useIsDemoAccount()
   const [currentPassword, setCurrentPassword] = React.useState("")
   const [newPassword, setNewPassword] = React.useState("")
   const [confirmPassword, setConfirmPassword] = React.useState("")
@@ -1991,6 +2008,9 @@ function ChangePasswordSection() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {isDemo && (
+          <p className="mb-3 max-w-md text-sm text-amber-800" role="note">{MESSAGES_REFUS_DEMO.motDePasse}</p>
+        )}
         <form onSubmit={handleSubmit} className="space-y-3 max-w-md">
           <div>
             <Label htmlFor="cp-current">Mot de passe actuel</Label>
@@ -2057,6 +2077,7 @@ function ChangePasswordSection() {
           <Button
             type="submit"
             disabled={
+              isDemo ||
               submitting ||
               !currentPassword ||
               !newPassword ||

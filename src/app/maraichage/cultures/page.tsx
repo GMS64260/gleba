@@ -409,13 +409,22 @@ function CulturesPageInner() {
   }
 
   const handleDelete = async (row: CultureWithRelations) => {
-    if (!(await confirmDialog(`Supprimer la culture #${row.id} ?`))) return
+    // Les récoltes non vendues partent avec la culture ; une récolte vendue
+    // la retient (refus 409 de la route, affiché tel quel ci-dessous).
+    const nbRecoltes = row._count?.recoltes ?? 0
+    const annonce = nbRecoltes > 0
+      ? `Supprimer la culture #${row.id} ?\n\n${nbRecoltes > 1 ? `Ses ${nbRecoltes} récoltes seront supprimées` : "Sa récolte sera supprimée"} avec elle. Si une récolte est vendue, la suppression sera refusée : supprimez d'abord sa vente.`
+      : `Supprimer la culture #${row.id} ?`
+    if (!(await confirmDialog(annonce))) return
 
     try {
       const response = await fetch(`/api/cultures/${row.id}`, {
         method: "DELETE",
       })
-      if (!response.ok) throw new Error("Erreur lors de la suppression")
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.error || "Impossible de supprimer la culture")
+      }
       toast({
         title: "Culture supprimée",
         description: `La culture #${row.id} a été supprimée`,
@@ -424,8 +433,8 @@ function CulturesPageInner() {
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de supprimer la culture",
+        title: "Suppression impossible",
+        description: error instanceof Error ? error.message : "Impossible de supprimer la culture",
       })
     }
   }

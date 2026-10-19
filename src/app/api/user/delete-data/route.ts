@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { getUserId, refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
+import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from '@/lib/demo-garde'
 
 export async function DELETE(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -17,6 +18,11 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const userId = getUserId(session)
+
+    // Le compte de démonstration est partagé, identifiants publics : un
+    // visiteur pouvait vider la ferme de démonstration pour tous les suivants.
+    const refusDemo = await refusSiCompteDemo(userId, MESSAGES_REFUS_DEMO.viderDonnees)
+    if (refusDemo) return refusDemo
 
     // Supprimer toutes les données utilisateur
     // Ordre important pour respecter les contraintes de clés étrangères
