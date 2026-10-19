@@ -162,6 +162,17 @@ describe("échantillons Factur-X et UBL de bout en bout", () => {
     expect(ubl).toContain("<cbc:DueDate>2026-11-11</cbc:DueDate>")
   })
 
+  it("conditions et notes saisies : note libre (BT-22) dans le CII et l'UBL, PDF d'une seule page (ticket cmvflhyyu)", async () => {
+    const lignes = [ligne(0, "Panier de légumes", 2, "unité", 18.9, 5.5)]
+    const notes = "Paiement à 30 jours par virement.\nRappelez le numéro de facture en référence."
+    const { donnees, cii, ubl, pdf } = await produire("facture-notes", base("F-2026-0050", "facture", lignes, { notes }), emetteur("reel-simplifie"))
+    expect(donnees.noteLibre).toBe(notes)
+    expect(cii).toContain(`<ram:IncludedNote><ram:Content>${notes}</ram:Content></ram:IncludedNote>`)
+    expect(ubl).toContain(`<cbc:Note>${notes}</cbc:Note>`)
+    // Une seule page : le bloc de notes ne repousse pas le pied sur une page vide.
+    expect(pdf.toString("latin1").match(/\/Type \/Page(?!s)/g)?.length).toBe(1)
+  })
+
   it("ligne offerte à 0 € : admise (BR-27 n'interdit que le négatif)", async () => {
     const lignes = [ligne(0, "Tomates anciennes", 5, "kg", 3.2, 5.5), ligne(1, "Sac en toile offert", 1, "unité", 0, 5.5)]
     const { donnees, cii } = await produire("facture-ligne-offerte", base("F-2026-0047", "facture", lignes), emetteur("reel-simplifie"))

@@ -12,6 +12,9 @@ export type CategorieOperation = (typeof CATEGORIES_OPERATION)[number]
 
 const texteCourt = (max: number) => z.string().trim().max(max).nullable().optional()
 
+/** Notes / conditions d'une facture : imprimées sur le PDF et portées en BT-22. Même règle à la création et au PATCH d'un brouillon. */
+export const notesFactureSchema = z.string().max(5000, "Notes : 5 000 caractères au plus").nullable()
+
 /** Mentions de la réforme modifiables après émission : elles ne touchent ni montants ni numéro. */
 export const mentionsFactureSchema = z.object({
   categorieOperation: caseInsensitiveEnum(CATEGORIES_OPERATION).optional(),
@@ -67,7 +70,7 @@ export const createFactureSchema = z
     statut: caseInsensitiveEnum(["brouillon", "emise", "payee", "annulee"] as const).optional().default("emise"),
     modePaiement: z.string().max(50).nullable().optional(),
     factureOrigineId: z.coerce.number().int().positive().nullable().optional(),
-    notes: z.string().max(5000).nullable().optional(),
+    notes: notesFactureSchema.optional(),
     mentionsLegales: z.string().max(5000).nullable().optional(),
     // Facturation électronique, lot 1 : catégorie d'opération (défaut biens,
     // le cas général d'une ferme) et livraison (BT-72, BG-15).

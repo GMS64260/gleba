@@ -9,7 +9,8 @@ import prisma from '@/lib/prisma'
 import { lireAnnee } from '@/lib/api/annee'
 import { creerFacture } from '@/lib/facture-utils'
 import { invalidateKpi } from '@/lib/kpi'
-import { sirenFromSiret } from '@/lib/siret'
+import { clientDesigneParNom, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
+import { noteLibreDeFacture } from '@/lib/facture-structuree'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -150,6 +151,33 @@ export async function POST(request: NextRequest) {
       if (body.categorieOperation === undefined) categorieOperation = origine.categorieOperation
     }
 
+    // Ticket cmvfljaru (2026-10-19, décision de revue) — fiche client. La
+    // route ne devine pas : un `clientId` fourni fait foi (son identité est
+    // figée par creerFacture : SIRET, SIREN, TVA intracommunautaire, et son
+    // exonération de TVA s'applique), `null` = facture sans fiche, choix
+    // explicite de l'écran. Absent, la facture part sans fiche ; mais si le
+    // nom saisi désigne exactement UNE fiche active, la route refuse plutôt
+    // que de produire, sans le dire, une facture sans SIRET pour un client
+    // professionnel connu (ou de rattacher une fiche que personne n'a vue).
+    const clientId: number | null = d.clientId ?? null
+    if (d.clientId === undefined && d.type !== 'avoir' && d.clientNom?.trim()) {
+      const fiches = await prisma.client.findMany({
+        where: { userId, actif: true },
+        select: { id: true, nom: true },
+      })
+      const fiche = clientDesigneParNom(fiches, d.clientNom)
+      if (fiche) {
+        return NextResponse.json(
+          {
+            error: `Une fiche client porte ce nom (« ${fiche.nom} ») : choisissez-la ou facturez sans fiche.`,
+            champ: 'clientId',
+            clientIdPropose: fiche.id,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     // Transaction atomique : verrouillage de l'origine + plafond des avoirs
     // + numéro facture + création. Le contrôle effectué plus haut améliore le
     // message rapide, celui-ci garantit l'invariant sous concurrence.
@@ -173,7 +201,7 @@ export async function POST(request: NextRequest) {
       return creerFacture(tx, {
         userId,
         type: d.type,
-        clientId: d.clientId ?? null,
+        clientId,
         clientNom: d.clientNom,
         clientAdresse: d.clientAdresse ?? null,
         date: d.date ?? new Date(),
@@ -309,6 +337,37 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    // Ticket cmvflhyyu (2026-10-19) — les notes saisies figurent sur le PDF et
+    // dans le Factur-X : elles font partie du document, donc ne changent plus
+    // une fois la facture émise (corriger passe par un avoir), comme les
+    // montants. Un brouillon reste modifiable.
+    // Même normalisation que le texte imprimé (`noteLibreDeFacture` : vide
+    // ≡ absent, espaces ignorés) ; un brouillon valide ses notes comme le POST.
+    if (updateData.notes !== undefined && existing.statut === 'brouillon') {
+      const { notesFactureSchema } = await import('@/lib/validations/facture')
+      const parsedNotes = notesFactureSchema.safeParse(updateData.notes)
+      if (!parsedNotes.success) {
+        return NextResponse.json(
+          { error: parsedNotes.error.issues[0]?.message ?? 'Notes invalides', champ: 'notes' },
+          { status: 400 }
+        )
+      }
+    }
+    if (
+      updateData.notes !== undefined &&
+      existing.statut !== 'brouillon' &&
+      noteLibreDeFacture({ notes: typeof updateData.notes === 'string' ? updateData.notes : null, objet: existing.objet ?? null }) !==
+        noteLibreDeFacture({ notes: existing.notes ?? null, objet: existing.objet ?? null })
+    ) {
+      return NextResponse.json(
+        {
+          error: "Notes non modifiables : elles figurent sur la facture émise. Émettez un avoir puis une nouvelle facture pour les corriger.",
+          champ: 'notes',
+        },
+        { status: 409 }
+      )
+    }
+
     const facture = await prisma.$transaction(async (tx) => {
       const data: any = { ...mentions }
       if (updateData.statut !== undefined) {
@@ -318,7 +377,9 @@ export async function PATCH(request: NextRequest) {
         if (existing.statut === 'payee' && updateData.statut === 'emise') data.datePaiement = null
       }
       if (updateData.modePaiement !== undefined) data.modePaiement = updateData.modePaiement
-      if (updateData.notes !== undefined) data.notes = updateData.notes
+      // Notes : écrites sur un brouillon seulement (émise : refusées plus haut si
+      // le texte imprimé change, inutiles sinon).
+      if (updateData.notes !== undefined && existing.statut === 'brouillon') data.notes = updateData.notes
 
       if (isEmission) {
         // Import dynamique pour rester compatible avec les autres branches PATCH
@@ -333,11 +394,7 @@ export async function PATCH(request: NextRequest) {
         // L'identité de l'acheteur est figée au même moment que celle de l'émetteur.
         if (existing.clientId) {
           const client = await tx.client.findFirst({ where: { id: existing.clientId, userId: session.user.id } })
-          if (client) {
-            data.clientSiret = client.siret || null
-            data.clientSiren = client.siren || (client.siret ? sirenFromSiret(client.siret) : null)
-            data.clientTvaIntra = client.tvaIntra || null
-          }
+          if (client) Object.assign(data, identiteAcheteur(client))
         }
       }
 

@@ -33,6 +33,12 @@ export interface DonneesFactureStructuree extends UblInvoiceData {
   /** Facture d'origine d'un avoir (BG-3). */
   factureOrigine: { numero: string; date: Date } | null
   conditionsPaiement: string | null
+  /**
+   * Conditions et notes saisies sur la facture (champ `notes`, BT-22 sans
+   * code sujet), imprimées aussi sur le PDF ; null si vides ou identiques à
+   * l'objet (déjà porté par la première note). Ticket cmvflhyyu.
+   */
+  noteLibre: string | null
   /** Option pour le paiement de la TVA d'après les débits (BT-8 = 5 en CII, 3 en UBL). */
   optionTvaDebits: boolean
   /** Date de livraison ou de fin d'exécution (BT-72), la date de facture à défaut. */
@@ -74,6 +80,13 @@ export function exonerationDeFacture(
 
 function chiffres(value?: string | null): string {
   return (value || "").replace(/\D/g, "")
+}
+
+/** Note libre de la facture pour l'export structuré (même texte que le bloc « Conditions et notes » du PDF). */
+export function noteLibreDeFacture(facture: Pick<FacturePourExport, "notes" | "objet">): string | null {
+  const note = (facture.notes ?? "").replace(/\r\n?/g, "\n").trim()
+  if (!note || note === (facture.objet ?? "").trim()) return null
+  return note
 }
 
 export function donneesFactureStructuree(
@@ -148,6 +161,7 @@ export function donneesFactureStructuree(
     exonerationTva: exonerationDeFacture(facture, emetteur),
     factureOrigine,
     conditionsPaiement: facture.conditionsPaiement,
+    noteLibre: noteLibreDeFacture(facture),
     optionTvaDebits: emetteur.optionTvaDebits === true,
     dateLivraison: facture.dateLivraison || facture.date,
     adresseLivraison: facture.adresseLivraison

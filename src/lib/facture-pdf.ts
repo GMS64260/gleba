@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit"
 
 import type { EmetteurSnapshot } from "@/lib/facture-utils"
-import type { FacturePourExport } from "@/lib/facture-structuree"
+import { noteLibreDeFacture, type FacturePourExport } from "@/lib/facture-structuree"
 import { attacherFacturX, creerDocumentPdfA3, terminerPdf, type ProfilFacturX } from "@/lib/facturx/pdfa"
 import { LABELS_CATEGORIE_OPERATION, MENTION_OPTION_DEBITS, mentionsCodifiees, type CategorieOperation } from "@/lib/facture-regles"
 import { symboleDevise } from "@/lib/format-utils"
@@ -31,8 +31,24 @@ export const TYPE_LABELS: Record<string, string> = {
   acompte: "ACOMPTE",
 }
 
+/**
+ * Bloc « Conditions et notes » du pied (ticket cmvflhyyu, 2026-10-19) : le
+ * texte saisi dans « Notes / Conditions » du formulaire (champ `notes`) n'était
+ * imprimé nulle part ; seul `conditionsPaiement`, qu'aucun formulaire ne
+ * remplit, l'était. Un avoir y porte son motif. Retours à la ligne conservés.
+ */
+export function blocNotesFacture(facture: Pick<FacturePourExport, "type" | "notes" | "objet">): { titre: string; texte: string } | null {
+  // Même texte que la note libre du Factur-X et de l'UBL (BT-22).
+  const texte = noteLibreDeFacture(facture)
+  if (!texte) return null
+  return { titre: facture.type === "avoir" ? "Motif de l'avoir" : "Conditions et notes", texte }
+}
+
 export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExport, emetteur: EmetteurSnapshot | null): void {
   const typeLabel = TYPE_LABELS[facture.type] || facture.type.toUpperCase()
+  // Bas utile de la page : un texte posé plus bas ferait ouvrir une page à
+  // pdfkit (cf. le pied « Document généré le… » plus bas).
+  const basUtile = () => doc.page.height - doc.page.margins.bottom
 
   // Outre-mer : devise, identifiant légal et libellé de taxe dépendent du
   // territoire de l'émetteur (cf src/lib/territoires.ts). Anciennes factures
@@ -271,8 +287,31 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
     ly += 12
   }
 
+  // Un bloc qui ne tient plus sur la page part en tête de la suivante : posé
+  // sous la marge basse, pdfkit ouvrirait une page à chaque appel suivant.
+  const reserver = (hauteur: number) => {
+    if (ly + hauteur > basUtile()) {
+      doc.addPage()
+      ly = 50
+    }
+  }
+
+  // Conditions et notes saisies (ticket cmvflhyyu), hauteur mesurée.
+  const notes = blocNotesFacture(facture)
+  if (notes) {
+    doc.font("Helvetica").fontSize(9)
+    ly += 4
+    reserver(12 + doc.heightOfString(notes.texte, { width: 495 }))
+    doc.font("Helvetica-Bold").fontSize(9).fillColor("#475569").text(notes.titre, 50, ly, { width: 495 })
+    ly += 12
+    doc.font("Helvetica").fontSize(9).fillColor("#1e293b").text(notes.texte, 50, ly, { width: 495 })
+    ly += doc.heightOfString(notes.texte, { width: 495 }) + 6
+    doc.fillColor("#475569")
+  }
+
   // Statut payée / annulée
   if (facture.statut === "payee") {
+    reserver(16)
     doc.fontSize(10).fillColor("#059669").font("Helvetica-Bold")
     doc.text(
       `✓ Payée le ${facture.datePaiement ? formatDate(facture.datePaiement) : ""}${
@@ -284,6 +323,7 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
     )
     ly += 16
   } else if (facture.statut === "annulee") {
+    reserver(16)
     doc.fontSize(11).fillColor("#dc2626").font("Helvetica-Bold").text("✗ FACTURE ANNULÉE", 50, ly)
     ly += 16
   }
@@ -294,6 +334,7 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
   const mention = mentionABFacture(facture.lignes.map((l) => l.statutBio))
   const mentionLabel = labelMentionAB(mention)
   if (mentionLabel) {
+    reserver(30)
     const isBio = mention.mode === "ab"
     const couleur = isBio ? "#16a34a" : mention.mode === "conversion" ? "#65a30d" : "#475569"
     doc.fontSize(9).fillColor(couleur).font(isBio ? "Helvetica-Bold" : "Helvetica")
@@ -310,53 +351,54 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
   // MENTIONS LÉGALES OBLIGATOIRES — pied de page
   // ============================================================
   const mentions = facture.mentionsSpecifiques || []
-  const footerY = Math.max(ly, 660)
-
-  doc.font("Helvetica-Bold").fontSize(8).fillColor("#64748b").text("Mentions légales", 50, footerY, { width: 495 })
-  let fy = footerY + 12
-  doc.font("Helvetica").fontSize(8).fillColor("#64748b")
-
-  if (mentions.includes("293b")) {
-    doc.text("• TVA non applicable, art. 293 B du CGI.", 50, fy, { width: 495 })
-    fy += 10
-  }
-  if (mentions.includes("rfa")) {
-    doc.text("• TVA non applicable : exploitant agricole placé sous le régime du remboursement forfaitaire (art. 298 quater du CGI).", 50, fy, { width: 495 })
-    fy += 10
-  }
-  if (mentions.includes("exoneration")) {
-    doc.text("• TVA non applicable.", 50, fy, { width: 495 })
-    fy += 10
-  }
-  if (emetteur?.optionTvaDebits) {
-    doc.text(`• ${MENTION_OPTION_DEBITS}`, 50, fy, { width: 495 })
-    fy += 10
-  }
+  const lignesMentions: string[] = []
+  if (mentions.includes("293b")) lignesMentions.push("• TVA non applicable, art. 293 B du CGI.")
+  if (mentions.includes("rfa")) lignesMentions.push("• TVA non applicable : exploitant agricole placé sous le régime du remboursement forfaitaire (art. 298 quater du CGI).")
+  if (mentions.includes("exoneration")) lignesMentions.push("• TVA non applicable.")
+  if (emetteur?.optionTvaDebits) lignesMentions.push(`• ${MENTION_OPTION_DEBITS}`)
   // Mentions codifiées (AAB escompte, PMD pénalités, PMT indemnité) : mêmes
   // textes que dans le XML Factur-X / UBL (src/lib/facture-regles.ts).
   const codifiees = mentionsCodifiees(emetteur, devise)
   const cles: Record<string, string> = { AAB: "escompte", PMD: "penalites", PMT: "indemnite-40" }
   for (const m of codifiees) {
-    if (!mentions.includes(cles[m.code])) continue
-    doc.text(`• ${m.texte}`, 50, fy, { width: 495 })
-    fy += 10
+    if (mentions.includes(cles[m.code])) lignesMentions.push(`• ${m.texte}`)
   }
-  if (facture.mentionsLegales) {
-    doc.text(facture.mentionsLegales, 50, fy, { width: 495 })
-    fy += 10
+  if (facture.mentionsLegales) lignesMentions.push(facture.mentionsLegales)
+  const ibanLine = emetteur?.rib
+    ? [emetteur.banqueNom, `IBAN ${emetteur.rib}`, emetteur.bic ? `BIC ${emetteur.bic}` : null].filter(Boolean).join(" — ")
+    : null
+
+  // Hauteur du pied mesurée avant de le poser : une ligne qui passe à la ligne
+  // ne chevauche plus la suivante, et un pied repoussé par un long bloc de
+  // notes part sur une nouvelle page au lieu d'être coupé par pdfkit.
+  doc.font("Helvetica").fontSize(8)
+  const hauteurLigne = (t: string) => Math.max(10, doc.heightOfString(t, { width: 495 }))
+  const hauteurPied =
+    12 + lignesMentions.reduce((h, t) => h + hauteurLigne(t), 0) + (ibanLine ? 4 + 10 + hauteurLigne(ibanLine) + 2 : 0)
+  // Un pied haut remonte au-dessus de 660 tant qu'il reste de la place sous le
+  // contenu, plutôt que de partir seul sur une nouvelle page.
+  let footerY = Math.max(ly, Math.min(660, basUtile() - hauteurPied))
+  if (footerY + hauteurPied > basUtile()) {
+    doc.addPage()
+    footerY = 50
+  }
+
+  doc.font("Helvetica-Bold").fontSize(8).fillColor("#64748b").text("Mentions légales", 50, footerY, { width: 495 })
+  let fy = footerY + 12
+  doc.font("Helvetica").fontSize(8).fillColor("#64748b")
+  for (const ligne of lignesMentions) {
+    doc.text(ligne, 50, fy, { width: 495 })
+    fy += hauteurLigne(ligne)
   }
 
   // Coordonnées bancaires
-  if (emetteur?.rib) {
+  if (ibanLine) {
     fy += 4
     doc.font("Helvetica-Bold").fontSize(8).fillColor("#475569").text("Règlement par virement", 50, fy, { width: 495 })
     fy += 10
     doc.font("Helvetica").fontSize(8).fillColor("#475569")
-    const ibanLine = [emetteur.banqueNom, `IBAN ${emetteur.rib}`, emetteur.bic ? `BIC ${emetteur.bic}` : null]
-      .filter(Boolean)
-      .join(" — ")
     doc.text(ibanLine, 50, fy, { width: 495 })
-    fy += 12
+    fy += hauteurLigne(ibanLine) + 2
   }
 
   // Footer minimal. À 810 pt il est sous la marge basse (792 pt) : pdfkit

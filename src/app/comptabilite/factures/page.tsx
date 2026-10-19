@@ -28,6 +28,8 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { todayLocalISO } from '@/lib/format-utils'
 import { factureSansTaxe } from '@/lib/territoires'
 import { construireImpayees, type Impayee } from '@/lib/comptabilite/impayees'
+import { adresseDeFiche, clientDesigneParNom } from '@/lib/comptabilite/rattachement-client'
+import { formatSiren, formatSiret } from '@/lib/siret'
 
 interface LigneFacture {
   id: string
@@ -35,7 +37,13 @@ interface LigneFacture {
   quantite: number
   unite: string
   prixUnitaire: number // HT
-  tauxTVA: number      // 0 | 2.1 | 5.5 | 10 | 20
+  tauxTVA: number      // 0 | 2.1 | 5.5 | 10 | 20 (taux appliqué)
+  /**
+   * Taux choisi dans la ligne. Il est gardé à part du taux appliqué : un
+   * client exonéré ou une franchise imposent 0 %, et le taux choisi revient
+   * si la fiche est détachée.
+   */
+  tauxChoisi: number
   montantHT: number
   montantTVA: number
   montantTTC: number
@@ -52,6 +60,40 @@ const TAUX_TVA_PAR_CATEGORIE: Record<string, number> = {
   bois: 20,
   service: 20,
   main_oeuvre: 0,
+}
+
+/** Fiche client proposée par le formulaire (GET /api/comptabilite/clients). */
+interface ClientFiche {
+  id: number
+  nom: string
+  type: string
+  email: string | null
+  adresse: string | null
+  codePostal: string | null
+  ville: string | null
+  siret: string | null
+  siren: string | null
+  tvaIntra: string | null
+  /** Client exonéré de TVA : creerFacture met toutes les lignes à 0 %. */
+  exonererTVA: boolean
+}
+
+const LIBELLES_TYPE_CLIENT: Record<string, string> = {
+  particulier: "Particulier",
+  professionnel: "Professionnel",
+  association: "Association",
+  amap: "AMAP",
+}
+
+/** Identité de la fiche telle qu'elle sera figée sur la facture. */
+function identiteFiche(c: ClientFiche): string {
+  return [
+    LIBELLES_TYPE_CLIENT[c.type] ?? c.type,
+    c.siret ? `SIRET ${formatSiret(c.siret)}` : c.siren ? `SIREN ${formatSiren(c.siren)}` : null,
+    c.tvaIntra ? `TVA intracommunautaire ${c.tvaIntra}` : null,
+    c.email,
+    adresseDeFiche(c) || null,
+  ].filter(Boolean).join(" · ")
 }
 
 interface FactureEmise {
@@ -105,7 +147,12 @@ export default function FacturesPage() {
     echeance: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     client: "",
     adresse: "",
-    email: "",
+    // Ticket cmvfljaru (2026-10-19) — fiche client choisie (id) ; `sansFiche`
+    // quand l'utilisateur refuse le rattachement proposé pour un nom exact.
+    // Le champ « Email » a disparu : il n'était jamais envoyé, le courriel
+    // imprimé est celui de la fiche.
+    clientId: "",
+    sansFiche: false,
     objet: "",
     notes: "",
     // Facturation électronique (lot 1) : catégorie de l'opération (BT-23) et
@@ -119,10 +166,37 @@ export default function FacturesPage() {
     paysLivraison: "France",
   })
   const [lignes, setLignes] = React.useState<LigneFacture[]>([
-    { id: "1", description: "", quantite: 1, unite: "unité", prixUnitaire: 0, tauxTVA: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }
+    { id: "1", description: "", quantite: 1, unite: "unité", prixUnitaire: 0, tauxTVA: 5.5, tauxChoisi: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }
   ])
   const [savingFacture, setSavingFacture] = React.useState(false)
+  const [clientsFiches, setClientsFiches] = React.useState<ClientFiche[]>([])
   const [exploitationOk, setExploitationOk] = React.useState<boolean | null>(null)
+
+  // Ticket cmvfljaru — fiches clients actives, proposées par le formulaire.
+  React.useEffect(() => {
+    fetch('/api/comptabilite/clients?actif=true')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setClientsFiches(Array.isArray(j?.data) ? j.data : []))
+      .catch(() => setClientsFiches([]))
+  }, [])
+
+  // Fiche choisie au sélecteur, sinon fiche désignée par le nom saisi
+  // (`clientDesigneParNom`, même règle que le contrôle de la route) : dans les
+  // deux cas son id est envoyé, la route ne devine plus rien.
+  const ficheChoisie = clientsFiches.find((c) => String(c.id) === factureData.clientId) ?? null
+  const ficheDuNom = !ficheChoisie && !factureData.sansFiche ? clientDesigneParNom(clientsFiches, factureData.client) : null
+  const ficheRattachee = ficheChoisie ?? ficheDuNom
+
+  const choisirFiche = (id: string) => {
+    const fiche = clientsFiches.find((c) => String(c.id) === id)
+    if (!fiche) {
+      // « Sans fiche » choisi au sélecteur : aucun rattachement, même si le
+      // nom saisi désigne une fiche (la route reçoit clientId null).
+      setFactureData({ ...factureData, clientId: "", sansFiche: true })
+      return
+    }
+    setFactureData({ ...factureData, clientId: String(fiche.id), sansFiche: false, client: fiche.nom, adresse: adresseDeFiche(fiche) || factureData.adresse })
+  }
   const [regimeTva, setRegimeTva] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -138,7 +212,11 @@ export default function FacturesPage() {
   // Franchise 293B / non-assujetti / TGC : pas de TVA à facturer. Le formulaire
   // forçait quand même 5,5 % à l'affichage alors que la facture émise est à 0
   // (creerFacture neutralise côté serveur) → aperçu trompeur (audit #48).
-  const sansTaxe = factureSansTaxe(regimeTva)
+  // Ticket cmvfljaru (revue 2026-10-19) — une fiche exonérée de TVA
+  // (`exonererTVA`) impose aussi 0 % : creerFacture l'applique côté serveur
+  // (le TTC saisi devenait le HT alors que l'écran affichait la TVA). L'écran
+  // suit désormais la même règle que le serveur.
+  const sansTaxe = factureSansTaxe(regimeTva) || !!ficheRattachee?.exonererTVA
 
   // DEV1 #7 — État formulaire avoir refondu : sélecteur facture origine,
   // recopie auto client + montant, persistance via /api/comptabilite/factures
@@ -327,23 +405,31 @@ export default function FacturesPage() {
   const addLigne = () => {
     setLignes([
       ...lignes,
-      { id: String(Date.now()), description: "", quantite: 1, unite: "unité", prixUnitaire: 0, tauxTVA: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }
+      { id: String(Date.now()), description: "", quantite: 1, unite: "unité", prixUnitaire: 0, tauxTVA: 5.5, tauxChoisi: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }
     ])
   }
 
-  const recalcLigne = (l: LigneFacture): LigneFacture => {
+  /** Montants d'une ligne ; en franchise ou pour un client exonéré, la TVA est nulle quelle que soit la catégorie. */
+  const calculerLigne = (l: LigneFacture, exonere: boolean): LigneFacture => {
     const ht = Math.round(l.quantite * l.prixUnitaire * 100) / 100
-    // En franchise/exonéré, la TVA est nulle quelle que soit la catégorie.
-    const tauxEffectif = sansTaxe ? 0 : l.tauxTVA
+    const tauxEffectif = exonere ? 0 : l.tauxChoisi
     const tva = Math.round(ht * (tauxEffectif / 100) * 100) / 100
     const ttc = Math.round((ht + tva) * 100) / 100
     return { ...l, tauxTVA: tauxEffectif, montantHT: ht, montantTVA: tva, montantTTC: ttc }
   }
+  const recalcLigne = (l: LigneFacture): LigneFacture => calculerLigne(l, sansTaxe)
+
+  // Rattacher ou détacher une fiche exonérée (ou charger le régime) change le
+  // taux applicable : toutes les lignes sont recalculées.
+  React.useEffect(() => {
+    setLignes((ls) => ls.map((l) => calculerLigne(l, sansTaxe)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sansTaxe])
 
   const updateLigne = (id: string, field: keyof LigneFacture, value: any) => {
     setLignes(lignes.map(l => {
       if (l.id !== id) return l
-      const updated = { ...l, [field]: value }
+      const updated = field === 'tauxTVA' ? { ...l, tauxTVA: value, tauxChoisi: value } : { ...l, [field]: value }
       if (field === 'quantite' || field === 'prixUnitaire' || field === 'tauxTVA') {
         return recalcLigne(updated)
       }
@@ -385,7 +471,16 @@ export default function FacturesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'facture',
-          clientNom: factureData.client,
+          // Ticket cmvfljaru — fiche choisie : son id ; refus explicite : null ;
+          // sinon absent, et la route rattache la fiche de même nom s'il y en
+          // a une seule (identité de l'acheteur figée à l'émission).
+          // Ticket cmvfljaru (revue 2026-10-19) — la fiche affichée dans
+          // l'encadré (choisie ou désignée par le nom) part par son id ;
+          // « Facturer sans la fiche » envoie null. Sans fiche connue, le
+          // champ est omis : la route refuse (409) un nom qui désigne une
+          // fiche plutôt que de deviner.
+          clientId: ficheRattachee ? ficheRattachee.id : factureData.sansFiche ? null : undefined,
+          clientNom: ficheRattachee ? ficheRattachee.nom : factureData.client,
           clientAdresse: factureData.adresse || null,
           date: factureData.date,
           dateEcheance: factureData.echeance,
@@ -418,12 +513,17 @@ export default function FacturesPage() {
         toast({ variant: 'destructive', title: 'Erreur', description: json.error || 'Échec de la création' })
         return
       }
-      toast({ title: 'Facture enregistrée', description: `Numéro ${json.data.numero}` })
+      toast({
+        title: 'Facture enregistrée',
+        description: json.data.client?.nom
+          ? `Numéro ${json.data.numero}, rattachée à la fiche « ${json.data.client.nom} »`
+          : `Numéro ${json.data.numero}`,
+      })
       // Réinitialise le formulaire
-      setLignes([{ id: '1', description: '', quantite: 1, unite: 'unité', prixUnitaire: 0, tauxTVA: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }])
+      setLignes([{ id: '1', description: '', quantite: 1, unite: 'unité', prixUnitaire: 0, tauxTVA: 5.5, tauxChoisi: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }])
       setFactureData({
         ...factureData,
-        client: '', adresse: '', email: '', objet: '', notes: '',
+        client: '', adresse: '', clientId: '', sansFiche: false, objet: '', notes: '',
         dateLivraison: '', livraisonDifferente: false, adresseLivraison: '', codePostalLivraison: '', villeLivraison: '', paysLivraison: 'France',
       })
       // Recharge la liste & ouvre le PDF
@@ -853,34 +953,107 @@ export default function FacturesPage() {
                   </div>
                 </div>
 
+                {/* Ticket cmvfljaru (2026-10-19) — le formulaire n'offrait qu'un
+                    nom en texte libre : aucune fiche client à choisir, et une
+                    facture tapée au nom exact d'un client professionnel partait
+                    sans son SIRET. La fiche se choisit ici (ou est proposée
+                    dès que le nom saisi la désigne) ; son identité est figée
+                    sur la facture à l'émission. */}
                 <div className="grid gap-4 md:grid-cols-3">
                   <div>
-                    <Label>Client *</Label>
+                    <Label htmlFor="facture-fiche-client">Fiche client</Label>
+                    <SelectNatif
+                      id="facture-fiche-client"
+                      value={ficheRattachee ? String(ficheRattachee.id) : ""}
+                      onChange={(e) => choisirFiche(e.target.value)}
+                    >
+                      <option value="">Sans fiche (saisie libre)</option>
+                      {clientsFiches.map((c) => (
+                        <option key={c.id} value={String(c.id)}>
+                          {c.nom}{c.siret ? ` · SIRET ${formatSiret(c.siret)}` : ""}
+                        </option>
+                      ))}
+                    </SelectNatif>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {clientsFiches.length > 0
+                        ? `${clientsFiches.length} fiche${clientsFiches.length > 1 ? "s" : ""} dans Clients.`
+                        : "Aucune fiche : créez-la dans Clients."}
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="facture-client-nom">Nom du client *</Label>
                     <Input
+                      id="facture-client-nom"
+                      list="facture-clients-fiches"
                       value={factureData.client}
-                      onChange={(e) => setFactureData({ ...factureData, client: e.target.value })}
+                      onChange={(e) => setFactureData({ ...factureData, client: e.target.value, sansFiche: false })}
                       placeholder="Nom du client"
+                      readOnly={!!ficheChoisie}
                       required
                     />
+                    <datalist id="facture-clients-fiches">
+                      {clientsFiches.map((c) => (
+                        <option key={c.id} value={c.nom} />
+                      ))}
+                    </datalist>
                   </div>
                   <div>
-                    <Label>Adresse</Label>
+                    <Label htmlFor="facture-client-adresse">Adresse</Label>
                     <Input
+                      id="facture-client-adresse"
                       value={factureData.adresse}
                       onChange={(e) => setFactureData({ ...factureData, adresse: e.target.value })}
-                      placeholder="Adresse complète"
-                    />
-                  </div>
-                  <div>
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      value={factureData.email}
-                      onChange={(e) => setFactureData({ ...factureData, email: e.target.value })}
-                      placeholder="email@exemple.com"
+                      placeholder={ficheChoisie ? "Fiche sans adresse : saisissez-la ou complétez la fiche" : "Adresse complète"}
+                      readOnly={!!ficheChoisie && !!adresseDeFiche(ficheChoisie)}
                     />
                   </div>
                 </div>
+                {ficheRattachee ? (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900" data-testid="facture-fiche-rattachee">
+                    <p className="font-medium">
+                      {ficheChoisie
+                        ? `Facture rattachée à la fiche « ${ficheRattachee.nom} ».`
+                        : `Une fiche « ${ficheRattachee.nom} » porte ce nom : la facture y sera rattachée.`}
+                    </p>
+                    <p className="text-xs mt-0.5">
+                      Identité reprise de la fiche et figée à l&apos;émission : {identiteFiche(ficheRattachee)}.
+                    </p>
+                    {ficheRattachee.exonererTVA && (
+                      <p className="text-xs mt-1 font-medium" data-testid="facture-client-exonere">
+                        Client exonéré de TVA : les montants sont saisis hors taxe, toutes les lignes passent à 0 %.
+                      </p>
+                    )}
+                    {ficheRattachee.type === "professionnel" && !ficheRattachee.siret && !ficheRattachee.siren && (
+                      <p className="text-xs mt-1 text-amber-800">
+                        Fiche professionnelle sans SIRET ni SIREN : complétez-la avant l&apos;émission, sinon l&apos;export Factur-X sera refusé.
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {!ficheChoisie && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => choisirFiche(String(ficheRattachee.id))}>
+                          Utiliser cette fiche
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setFactureData({ ...factureData, clientId: "", sansFiche: true })}
+                      >
+                        Facturer sans la fiche
+                      </Button>
+                      <Link href="/comptabilite/clients" className="self-center text-xs underline">
+                        Modifier la fiche dans Clients
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Sans fiche, la facture porte le nom et l&apos;adresse saisis, sans SIRET, TVA intracommunautaire ni courriel du client.
+                    Pour un client professionnel, choisissez sa fiche ou{" "}
+                    <Link href="/comptabilite/clients" className="underline">créez-la dans Clients</Link>.
+                  </p>
+                )}
 
                 <div>
                   <Label>Objet</Label>
@@ -1067,13 +1240,18 @@ export default function FacturesPage() {
                 </div>
 
                 <div>
-                  <Label>Notes / Conditions</Label>
+                  <Label htmlFor="facture-notes">Notes / Conditions</Label>
                   <Textarea
+                    id="facture-notes"
                     value={factureData.notes}
                     onChange={(e) => setFactureData({ ...factureData, notes: e.target.value })}
                     placeholder="Conditions de paiement, mentions complémentaires..."
                     rows={3}
+                    maxLength={5000}
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Imprimées sur la facture remise au client ; elles ne se modifient plus après l&apos;émission.
+                  </p>
                 </div>
 
                 {exploitationOk === false && (

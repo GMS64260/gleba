@@ -63,9 +63,13 @@ export async function GET(request: NextRequest) {
     // ========================================
     // REVENUS
     // ========================================
+    // Ticket cmvflua2x (2026-10-19) — les revenus PAR MODULE ne se recalculent
+    // plus ici sur les tables brutes : ils viennent de la SSOT
+    // (`kpiCompta.revenusParModuleYtd`), sur les mêmes écritures que le total.
+    // Les lectures brutes ci-dessous ne servent plus qu'aux graphiques par
+    // catégorie et à la comparaison N-1.
     const [
       // Ventes elevage (VenteProduit)
-      ventesElevage,
       ventesElevageParType,
       ventesElevagePrevYear,
 
@@ -75,16 +79,10 @@ export async function GET(request: NextRequest) {
       // Bois vendu (ProductionBois avec destination=vente)
       venteBois,
 
-      // Viande vendue (Abattage avec destination=vente)
-      venteAbattage,
-      // Revenus élevage sans source brute réinjectée (paie lait, réservations)
-      ventesElevageAutoSpeciales,
-
       // Récoltes potager vendues
       recoltesPotagerVendues,
 
       // Ventes manuelles
-      ventesManuelles,
       ventesManuellesParCategorie,
 
       // ========================================
@@ -139,14 +137,7 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       // === REVENUS ===
 
-      // Ventes elevage (audit compta 2026-06 : exclure les annulées)
-      prisma.venteProduit.aggregate({
-        where: { userId, date: { gte: startOfYear, lte: endOfYear }, annule: false },
-        _sum: { prixTotal: true },
-        _count: true,
-      }),
-
-      // Ventes elevage par type
+      // Ventes elevage par type (audit compta 2026-06 : exclure les annulées)
       prisma.venteProduit.groupBy({
         by: ['type'],
         where: { userId, date: { gte: startOfYear, lte: endOfYear }, annule: false },
@@ -188,28 +179,6 @@ export async function GET(request: NextRequest) {
         _sum: { prixVente: true },
       }),
 
-      // Vente abattage
-      prisma.abattage.aggregate({
-        where: {
-          userId,
-          date: { gte: startOfYear, lte: endOfYear },
-          destination: 'vente',
-          prixVente: { not: null },
-          annule: false,
-        },
-        _sum: { prixVente: true },
-      }),
-
-      prisma.venteManuelle.aggregate({
-        where: {
-          userId,
-          date: { gte: startOfYear, lte: endOfYear },
-          auto: true,
-          sourceType: { in: ['paie_lait', 'reservation_elevage'] },
-        },
-        _sum: { montant: true },
-      }),
-
       // Récoltes potager vendues
       prisma.recolte.findMany({
         where: {
@@ -221,25 +190,9 @@ export async function GET(request: NextRequest) {
         select: { quantite: true, prixKg: true, prixTotal: true, dateVente: true },
       }),
 
-      // Ventes manuelles (exclure auto=true pour eviter double comptage).
-      // QA cmswtznh2 — exception : les ventes boutique (sourceType
-      // commande_boutique) n'ont AUCUNE table métier brute reprise ailleurs
-      // dans la ventilation ; les exclure creusait un écart SSOT/modules qui
-      // faisait crier « Incohérence détectée » au bandeau des Rapports.
-      prisma.venteManuelle.aggregate({
-        where: {
-          userId,
-          date: { gte: startOfYear, lte: endOfYear },
-          OR: [
-            { auto: { not: true } },
-            { auto: true, sourceType: 'commande_boutique' },
-          ],
-        },
-        _sum: { montant: true },
-        _count: true,
-      }),
-
-      // Ventes manuelles par categorie (même périmètre que l'agrégat ci-dessus)
+      // Ventes manuelles par categorie (graphique par catégorie). Miroirs auto
+      // exclus (leur source brute est lue plus haut), sauf les ventes boutique
+      // (QA cmswtznh2 : aucune table brute ne les reprend).
       prisma.venteManuelle.groupBy({
         by: ['categorie'],
         where: {
@@ -493,20 +446,14 @@ export async function GET(request: NextRequest) {
       0
     )
 
-    // Ventes manuelles attribuées au potager (categorie legumes OU module potager)
-    const ventesManuellesPotager = ventesManuellesParCategorie
-      .filter(v => v.categorie === 'legumes')
-      .reduce((sum, v) => sum + (v._sum.montant || 0), 0)
-
-    // Totaux
-    const revenus = {
-      elevage: (ventesElevage._sum.prixTotal || 0)
-        + (venteAbattage._sum.prixVente || 0)
-        + (ventesElevageAutoSpeciales._sum.montant || 0),
-      verger: revenusFruits + (venteBois._sum.prixVente || 0),
-      potager: revenusPotager + ventesManuellesPotager,
-      autre: (ventesManuelles._sum.montant || 0) - ventesManuellesPotager,
-    }
+    // Ticket cmvflua2x — revenus par module = ventilation de la SSOT, sur les
+    // mêmes ventes et factures que la carte Revenus (src/lib/kpi/compta.ts).
+    // Avant, ils relisaient les tables brutes : une facture saisie sans vente
+    // métier, un avoir ou une vente datée après le jour faisaient diverger la
+    // somme des modules du total, sans que le bandeau puisse dire d'où venait
+    // l'écart.
+    const ventilationRevenus = kpiCompta.revenusParModuleYtd
+    const revenus = ventilationRevenus.parModule
     const totalRevenus = revenus.elevage + revenus.verger + revenus.potager + revenus.autre
 
     // Ticket cmsx69cuc — les charges manuelles sont ventilées sur LEUR module
@@ -897,20 +844,11 @@ export async function GET(request: NextRequest) {
     // bandeau d'alerte. Pas de masquage silencieux.
     const sumRevenusModules = totalRevenus
     const sumDepensesModules = totalDepenses
-    // QA cmsw9dcrd (2026-08-16) — l'écart structurel connu entre SSOT (nette
-    // d'avoirs) et ventilation par module (factures brutes) est exposé pour
-    // que le bandeau d'alerte puisse le nommer au lieu de le laisser passer
-    // pour une anomalie (convention déjà tranchée EVOLUTION_PRODUIT le
-    // 2026-08-10 : « avoir non affiché en liste »).
-    const avoirsAgg = await prisma.facture.aggregate({
-      where: {
-        userId,
-        type: 'avoir',
-        date: { gte: startOfYear, lte: endOfYear },
-        statut: { notIn: ['annulee', 'brouillon'] },
-      },
-      _sum: { totalTTC: true },
-    })
+    // QA cmsw9dcrd (2026-08-16) puis ticket cmvflua2x (2026-10-19) — les
+    // avoirs ne creusent plus d'écart : ils sont déduits du module de leur
+    // facture d'origine. La composition du total (ventes, factures rattachées,
+    // factures sans vente, avoirs) est exposée pour que le bandeau nomme les
+    // sources si un écart réapparaissait.
     // Ticket cmsx69cuc — l'écart résiduel entre le total comptable et la
     // ventilation par module est, par construction, la VALORISATION INTERNE :
     // soins, consommations d'aliments et fertilisations sont des coûts
@@ -926,7 +864,8 @@ export async function GET(request: NextRequest) {
       depensesSsot: kpiCompta.depensesYtd,
       depensesSommeModules: Math.round(sumDepensesModules * 100) / 100,
       depensesEcart: Math.round((kpiCompta.depensesYtd - sumDepensesModules) * 100) / 100,
-      avoirsExercice: Math.round((avoirsAgg._sum.totalTTC ?? 0) * 100) / 100,
+      avoirsExercice: Math.abs(ventilationRevenus.composition.avoirs),
+      revenusComposition: ventilationRevenus.composition,
       depensesAnalytiques,
     }
 
@@ -947,10 +886,10 @@ export async function GET(request: NextRequest) {
         nbRevenusNonPayes: kpiCompta.nbRevenusNonPayes,
         // BUG #2 — diagnostic de cohérence pour bannière UI éventuelle.
         coherenceCheck,
-        // Ventilations par module : conservées pour les graphiques. Leur somme
-        // peut, transitoirement, ne pas correspondre exactement au total
-        // ci-dessus si une vente est saisie hors VenteManuelle/Facture — c'est
-        // la SSOT (revenus, depenses) qui fait foi.
+        // Ventilations par module. Revenus : ventilation de la SSOT, leur
+        // somme est `revenus` au centime (ticket cmvflua2x). Dépenses :
+        // ventilation analytique, l'écart au total comptable est nommé par
+        // `coherenceCheck.depensesAnalytiques`.
         revenusParModule: revenus,
         depensesParModule: depenses,
         // YTD vs YTD année dernière (et non plus année N-1 complète qui

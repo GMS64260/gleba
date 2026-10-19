@@ -31,6 +31,7 @@ export const factureStructuree = (): DonneesFactureStructuree => ({
   exonerationTva: null,
   factureOrigine: null,
   conditionsPaiement: '30 jours fin de mois',
+  noteLibre: null,
   optionTvaDebits: false,
   dateLivraison: new Date('2026-07-21T10:00:00Z'),
   adresseLivraison: null,

@@ -56,6 +56,10 @@ const TAUX_TVA_ADMIS = [0, 0.9, 1.05, 1.75, 2.1, 5.5, 7, 8.5, 9.2, 9.6, 10, 13, 
 
 function xml(value: unknown): string {
   return String(value ?? '')
+    // Caractères de contrôle interdits en XML 1.0 (collés depuis un traitement
+    // de texte dans les notes, par exemple) : ils rendraient le CII/UBL invalide.
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -253,9 +257,11 @@ export function buildUblInvoice(d: DonneesFactureStructuree): string {
     .map((line) => `<cac:${ligne}><cbc:ID>${xml(line.id)}</cbc:ID><cbc:${quantite} unitCode="${unitCode(line.unit)}">${quantity(line.quantity)}</cbc:${quantite}><cbc:LineExtensionAmount currencyID="${xml(currency)}">${amount(line.netAmount)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${xml(line.description)}</cbc:Name><cac:ClassifiedTaxCategory>${taxCategoryXml(line.vatRate, d.exonerationTva, false)}</cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="${xml(currency)}">${unitPrice(line.unitPrice)}</cbc:PriceAmount></cac:Price></cac:${ligne}>`)
     .join('')
 
-  // Notes (BG-1) : objet libre, mentions codifiées #CODE# (BT-21), traitement BAR.
+  // Notes (BG-1) : objet libre, conditions et notes saisies (BT-22, ticket
+  // cmvflhyyu), mentions codifiées #CODE# (BT-21), traitement BAR.
   const notes =
     (d.notes ? `<cbc:Note>${xml(d.notes)}</cbc:Note>` : '') +
+    (d.noteLibre ? `<cbc:Note>${xml(d.noteLibre)}</cbc:Note>` : '') +
     d.mentions.map((m) => `<cbc:Note>#${m.code}#${xml(m.texte)}</cbc:Note>`).join('') +
     `<cbc:Note>#BAR#${d.traitement}</cbc:Note>`
   // BT-8 : option TVA d'après les débits = exigibilité à la date de facture (UNTDID 2005 : 3).
