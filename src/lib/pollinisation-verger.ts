@@ -10,15 +10,14 @@
  */
 
 import prisma from '@/lib/prisma'
-import {
-  libellePeriodeSemainesCourt,
-  periodeDepuisSemaines,
-  periodesSeChevauchent,
-} from '@/lib/semaines-lisibles'
+import { periodeDepuisSemaines } from '@/lib/semaines-lisibles'
 import {
   doitSignalerSansPollinisateur,
   isAutofertileFallback,
 } from '@/lib/pollinisation'
+import { compatibiliteFloraison, type FloraisonVariete } from '@/lib/verger/compatibilite-floraison'
+import { choisirVarieteArbre, whereVarietesCandidates } from '@/lib/verger/variete-arbre'
+import { TYPES_ARBRE_FRUITIERS } from '@/lib/verger/types-arbre'
 
 export type PollinisationVerger = Awaited<ReturnType<typeof computePollinisationVerger>>
 
@@ -30,7 +29,8 @@ export type PollinisationVerger = Awaited<ReturnType<typeof computePollinisation
  *   - 'meme_variete' : deux arbres de la même variété sont des clones,
  *     le pollen est auto-incompatible ;
  *   - 'triploide'    : un pollinisateur triploïde a un pollen stérile.
- * `variete` est l'id du référentiel Variete porté par Arbre.variete.
+ * `variete` est la variété du référentiel désignée par Arbre.variete (son id
+ * quand elle est résolue, voir `src/lib/verger/variete-arbre.ts`).
  */
 export function raisonExclusionPollinisateur(params: {
   varietePollinise: string | null
@@ -55,12 +55,15 @@ export async function computePollinisationVerger(userId: string) {
   const arbres = await prisma.arbre.findMany({
     where: {
       userId,
-      type: { in: ["fruitier", "petit_fruit"] },
+      // Types qui produisent des fruits, lianes comprises (kiwi dioïque :
+      // un pied mâle est indispensable) — liste unique, QA 2026-10-19.
+      type: { in: [...TYPES_ARBRE_FRUITIERS] },
     },
     select: {
       id: true,
       nom: true,
       espece: true,
+      especeId: true,
       variete: true,
       floraison: true,
       groupePollinisation: true,
@@ -88,35 +91,39 @@ export async function computePollinisationVerger(userId: string) {
   // saisie. Critères :
   //   - même espèce (Pommier × Pommier)
   //   - variété distincte (Golden ≠ Reinette grise)
-  //   - groupes de floraison adjacents (A↔B, B↔C, C↔D) ou égaux
-  //     (info Variete.groupePollinisation), tolérant si donnée absente
+  //   - floraisons compatibles : `compatibiliteFloraison`
+  //     (src/lib/verger/compatibilite-floraison.ts), périodes saisies sur la
+  //     variété d'abord, groupes A-D ensuite, présomption si rien n'est connu
   //   - on ne propose pas un arbre triploïde comme pollinisateur
-  const groupeAdjacent = (g1: string | null, g2: string | null): boolean => {
-    if (!g1 || !g2) return true // données partielles → on ne bloque pas
-    const order = ["A", "B", "C", "D", "E"]
-    const i1 = order.indexOf(g1.toUpperCase())
-    const i2 = order.indexOf(g2.toUpperCase())
-    if (i1 < 0 || i2 < 0) return g1 === g2
-    return Math.abs(i1 - i2) <= 1
-  }
 
-  // Récupérer ploïdie/groupe par variété (référentiel) pour qualifier.
-  const varieteIds = [
-    ...new Set(arbres.map((a) => a.variete).filter((v): v is string => !!v)),
-  ]
-  const varietes = varieteIds.length
-    ? await prisma.variete.findMany({
-        where: { id: { in: varieteIds } },
-        select: {
-          id: true,
-          ploidie: true,
-          groupePollinisation: true,
-          semaineFloraison: true,
-          dureeFloraison: true,
-        },
-      })
-    : []
-  const varieteMap = new Map(varietes.map((v) => [v.id, v]))
+  // Variété du référentiel de chaque arbre (ploïdie, groupe, floraison).
+  // QA 2026-10-19 — résolue par id OU par libellé dans l'espèce de l'arbre :
+  // une variété personnelle (id = cuid) affectée par son nom n'était jamais
+  // retrouvée, ses semaines de floraison restaient donc ignorées.
+  const varietesCandidates = await prisma.variete.findMany({
+    where: whereVarietesCandidates(arbres, userId),
+    select: {
+      id: true,
+      nom: true,
+      nomNormalise: true,
+      especeId: true,
+      userId: true,
+      ploidie: true,
+      groupePollinisation: true,
+      semaineFloraison: true,
+      dureeFloraison: true,
+    },
+  })
+  const varieteMap = new Map(
+    arbres.map((a) => [a.id, choisirVarieteArbre(a, varietesCandidates, userId)] as const),
+  )
+  const floraisonDe = (a: typeof arbres[number]): FloraisonVariete => {
+    const v = varieteMap.get(a.id) ?? null
+    return {
+      periode: periodeDepuisSemaines(v?.semaineFloraison, v?.dureeFloraison),
+      groupe: a.groupePollinisation ?? v?.groupePollinisation ?? null,
+    }
+  }
 
   const compatibilitesDerivees = new Map<number, Array<{
     id: number
@@ -125,10 +132,10 @@ export async function computePollinisationVerger(userId: string) {
     variete: string | null
     raison: string
     /**
-     * QA cmsw9e88e (2026-08-16) — 'verifiee' quand les DEUX groupes de
-     * floraison sont connus et adjacents ; 'presumee' quand la donnée manque
-     * (groupeAdjacent tolère l'absence). Une présomption ne doit plus être
-     * affichée comme « groupes compatibles ».
+     * QA cmsw9e88e (2026-08-16) — 'verifiee' quand les floraisons des DEUX
+     * variétés sont connues (périodes saisies, à défaut groupes) et
+     * compatibles ; 'presumee' quand la donnée manque. Une présomption ne doit
+     * plus être affichée comme une compatibilité prouvée.
      */
     certitude: 'verifiee' | 'presumee'
   }>>()
@@ -152,53 +159,35 @@ export async function computePollinisationVerger(userId: string) {
   for (const a of arbres) {
     if (estAutofertile(a)) continue
     if (!a.espece) continue
-    const va = a.variete ? varieteMap.get(a.variete) : null
+    const va = varieteMap.get(a.id) ?? null
+    const floraisonA = floraisonDe(a)
     const candidats: Array<{ id: number; nom: string; espece: string | null; variete: string | null; raison: string; certitude: 'verifiee' | 'presumee' }> = []
     for (const b of arbres) {
       if (b.id === a.id) continue
       if (b.espece !== a.espece) continue
-      const vb = b.variete ? varieteMap.get(b.variete) : null
+      const vb = varieteMap.get(b.id) ?? null
       // même clone ou triploïde (pollen stérile) — règle partagée avec la
       // garde serveur de POST /api/arbres/pollinisation (QA cmsoeyth0)
       if (
         raisonExclusionPollinisateur({
-          varietePollinise: a.variete,
-          varietePollinisateur: b.variete,
+          varietePollinise: va?.id ?? a.variete,
+          varietePollinisateur: vb?.id ?? b.variete,
           ploidiePollinisateur: vb?.ploidie,
         })
       ) continue
       // Périodes de floraison saisies sur les variétés (2026-10-07) : quand les
-      // deux sont connues, elles priment sur le groupe du catalogue — deux
-      // floraisons sans semaine commune ne se pollinisent pas, quel que soit
-      // le groupe ; deux floraisons simultanées sont une compatibilité vérifiée.
-      const fa = periodeDepuisSemaines(va?.semaineFloraison, va?.dureeFloraison)
-      const fb = periodeDepuisSemaines(vb?.semaineFloraison, vb?.dureeFloraison)
-      if (fa && fb) {
-        if (!periodesSeChevauchent(fa, fb)) continue
-        candidats.push({
-          id: b.id,
-          nom: b.nom,
-          espece: b.espece,
-          variete: b.variete,
-          raison: `Même espèce, floraisons simultanées (${libellePeriodeSemainesCourt(fa.debut, fa.duree)} / ${libellePeriodeSemainesCourt(fb.debut, fb.duree)})`,
-          certitude: 'verifiee',
-        })
-        continue
-      }
-      const ga = a.groupePollinisation ?? va?.groupePollinisation ?? null
-      const gb = b.groupePollinisation ?? vb?.groupePollinisation ?? null
-      if (!groupeAdjacent(ga, gb)) continue
+      // deux sont connues, elles priment sur le groupe du catalogue. QA
+      // cmsw9e88e — une présomption (donnée manquante) n'est jamais affichée
+      // comme une compatibilité vérifiée.
+      const compat = compatibiliteFloraison(floraisonA, floraisonDe(b))
+      if (!compat.compatible) continue
       candidats.push({
         id: b.id,
         nom: b.nom,
         espece: b.espece,
         variete: b.variete,
-        // QA cmsw9e88e — quand un groupe manque, ne plus affirmer une
-        // « floraison compatible » jamais vérifiée : le dire.
-        raison: ga && gb
-          ? `Même espèce, groupes ${ga}/${gb}`
-          : "Même espèce, variété différente — groupe de floraison non renseigné, compatibilité non vérifiée",
-        certitude: ga && gb ? 'verifiee' : 'presumee',
+        raison: `Même espèce, ${compat.raison}`,
+        certitude: compat.certitude,
       })
     }
     if (candidats.length) compatibilitesDerivees.set(a.id, candidats)
@@ -278,7 +267,11 @@ export async function computePollinisationVerger(userId: string) {
   // Le groupe propre à l'arbre reste prioritaire (une migration de 2026-05 a
   // rempli des valeurs qui peuvent différer du référentiel).
   const arbresEnrichis = arbres.map((a) => {
-    const groupeReferentiel = varieteMap.get(a.variete ?? '')?.groupePollinisation ?? null
+    const varieteReferentiel = varieteMap.get(a.id) ?? null
+    const groupeReferentiel = varieteReferentiel?.groupePollinisation ?? null
+    // QA 2026-10-19 — la colonne Floraison ne lisait que le champ de l'arbre :
+    // la période saisie sur la variété est exposée et prime à l'affichage.
+    const periodeFloraison = floraisonDe(a).periode
     const groupeEffectif = a.groupePollinisation ?? groupeReferentiel
     // QA cmsw9e88e — distinguer les dérivations prouvées (deux groupes
     // connus) des présomptions (donnée manquante) pour que l'UI n'affiche
@@ -304,7 +297,11 @@ export async function computePollinisationVerger(userId: string) {
       // (exclusion des triploïdes comme pollinisateurs) mais jamais
       // exposée : impossible de savoir à l'écran qu'un Jonagold est
       // triploïde et exige deux pollinisateurs diploïdes.
-      ploidie: varieteMap.get(a.variete ?? '')?.ploidie ?? null,
+      ploidie: varieteReferentiel?.ploidie ?? null,
+      /** Id de la variété du référentiel désignée par l'arbre, ou null. */
+      varieteId: varieteReferentiel?.id ?? null,
+      /** Période de floraison saisie sur la variété (semaine ISO + durée), ou null. */
+      periodeFloraison,
     }
   })
   return {

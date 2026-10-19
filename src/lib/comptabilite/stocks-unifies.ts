@@ -33,6 +33,7 @@ import {
   type UniteProduitRuche,
   typeVenteVersProduitRuche,
 } from '@/lib/elevage/produits-ruche'
+import { TYPES_ARBRE } from '@/lib/verger/types-arbre'
 
 export interface StockUnifieItem {
   id: string
@@ -567,20 +568,14 @@ export async function computeStocksUnifies(userId: string) {
 
   // === VERGER ===
 
-  // Arbres par type
-  const typeLabels: Record<string, string> = {
-    fruitier: 'Fruitiers',
-    petit_fruit: 'Petits fruits',
-    forestier: 'Forestiers',
-    ornement: 'Ornementaux',
-    haie: 'Haies',
-  }
+  // Arbres par type : libellés de la liste unique des types d'arbre
+  // (src/lib/verger/types-arbre.ts, lianes fruitières comprises).
   arbresActifs.forEach(a => {
     stocks.push({
       id: `arbres-${a.type}`,
       module: 'verger',
       categorie: 'Arbres',
-      nom: typeLabels[a.type] || a.type,
+      nom: TYPES_ARBRE.find((t) => t.value === a.type)?.labelPluriel ?? a.type,
       stock: a._count,
       unite: 'arbres',
       stockMin: null,

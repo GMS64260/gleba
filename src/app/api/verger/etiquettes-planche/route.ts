@@ -12,8 +12,8 @@
  *   - QR code lien profond vers /verger/[id]
  *   - URL en clair sous le QR pour saisie manuelle d'urgence
  *
- * Si `ids` absent, génère pour tous les arbres fruitiers + petits fruits
- * de l'utilisateur (limite 60 pour éviter les PDF trop gros).
+ * Si `ids` absent, génère pour tous les arbres fruitiers, petits fruits et
+ * lianes fruitières de l'utilisateur (limite 60 pour éviter les PDF trop gros).
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -22,6 +22,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import PDFDocument from "pdfkit"
 import QRCode from "qrcode"
+import { TYPES_ARBRE_FRUITIERS } from "@/lib/verger/types-arbre"
 
 const ROWS = 3
 const COLS = 2
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
   if (ids.length > 0) {
     where.id = { in: ids.slice(0, MAX_ARBRES) }
   } else {
-    where.type = { in: ["fruitier", "petit_fruit"] }
+    where.type = { in: [...TYPES_ARBRE_FRUITIERS] }
   }
 
   const arbres = await prisma.arbre.findMany({

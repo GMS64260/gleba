@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { NextRequest } from "next/server"
 
 const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
   arbreFindFirst: vi.fn(),
   operationCreate: vi.fn(),
+  operationFindMany: vi.fn(),
   createDepense: vi.fn(),
 }))
 
@@ -11,14 +13,15 @@ vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
     arbre: { findFirst: mocks.arbreFindFirst },
-    operationArbre: { create: mocks.operationCreate },
+    operationArbre: { create: mocks.operationCreate, findMany: mocks.operationFindMany },
   },
 }))
 vi.mock("@/lib/auto-compta", () => ({
   createDepenseFromOperationArbre: mocks.createDepense,
 }))
 
-import { POST } from "./route"
+import { GET, POST } from "./route"
+import { whereOperationsArbreAnnee } from "@/lib/verger/annee-operation"
 
 const request = (body: unknown) =>
   new Request("http://localhost/api/arbres/operations", {
@@ -71,5 +74,40 @@ describe("POST /api/arbres/operations", () => {
         datePrevue: new Date("2026-08-18"),
       }),
     }))
+  })
+})
+
+describe("GET /api/arbres/operations — année (QA 2026-10-19)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({
+      error: null,
+      session: { user: { id: "user-1" } },
+    })
+    mocks.operationFindMany.mockResolvedValue([])
+  })
+
+  const get = (query: string) =>
+    GET(new NextRequest(`http://localhost/api/arbres/operations${query}`))
+
+  it("filtre l'année demandée par l'onglet Opérations, avec la règle partagée", async () => {
+    // L'écran envoie exactement ce paramètre (OperationsTab).
+    const response = await get("?annee=2025")
+    expect(response.status).toBe(200)
+    expect(mocks.operationFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: "user-1", AND: [whereOperationsArbreAnnee(2025)] },
+    }))
+  })
+
+  it("garde l'alias historique ?year= du calendrier", async () => {
+    await get("?year=2027")
+    expect(mocks.operationFindMany.mock.calls[0][0].where.AND).toEqual([whereOperationsArbreAnnee(2027)])
+  })
+
+  it("sans année, ou avec annee=all, rend toutes les années (Calendrier à faire, registre phyto)", async () => {
+    await get("?fait=false")
+    expect(mocks.operationFindMany.mock.calls[0][0].where).toEqual({ userId: "user-1", fait: false })
+    await get("?annee=all")
+    expect(mocks.operationFindMany.mock.calls[1][0].where).toEqual({ userId: "user-1" })
   })
 })

@@ -377,3 +377,50 @@ describe("DELETE /api/arbres/[id]", () => {
     expect(mocks.txArbreDelete).not.toHaveBeenCalled()
   })
 })
+
+describe("PUT /api/arbres/[id] — type d'arbre (QA 2026-10-19)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({
+      error: null,
+      session: { user: { id: "user-1" } },
+    })
+    mocks.arbreFindUnique.mockResolvedValue({
+      id: 42,
+      userId: "user-1",
+      type: "petit_fruit",
+      espece: "Kiwi",
+      parcelleGeoId: null,
+    })
+    mocks.parcelleFindMany.mockResolvedValue([])
+    mocks.lotArbresFindFirst.mockResolvedValue(null)
+    mocks.arbreUpdate.mockResolvedValue({ id: 42, nom: "Kiwi", type: "liane" })
+  })
+
+  it("reclasse un kiwi saisi en petit fruit en « Liane fruitière »", async () => {
+    const response = await PUT(request({ type: "liane" }) as never, params)
+    expect(response.status).toBe(200)
+    expect(mocks.arbreUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: "liane" }) })
+    )
+  })
+
+  it("refuse un nouveau type hors liste", async () => {
+    const response = await PUT(request({ type: "grimpante" }) as never, params)
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toContain("Type d'arbre inconnu")
+    expect(mocks.arbreUpdate).not.toHaveBeenCalled()
+  })
+
+  it("laisse modifiable une fiche historique dont le type est hors liste", async () => {
+    mocks.arbreFindUnique.mockResolvedValue({
+      id: 42,
+      userId: "user-1",
+      type: "vivace",
+      espece: "Kiwi",
+      parcelleGeoId: null,
+    })
+    const response = await PUT(request({ type: "vivace", nom: "Kiwi" }) as never, params)
+    expect(response.status).toBe(200)
+  })
+})

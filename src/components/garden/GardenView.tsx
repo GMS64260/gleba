@@ -4,6 +4,7 @@ import * as React from "react"
 
 import { formatDistance } from "@/lib/plan-fond-utils"
 import { couleurObjet, typeObjet } from "@/lib/jardin/objets-plan"
+import { COULEURS_TYPES_ARBRE } from "@/lib/verger/types-arbre"
 
 export interface SelectionItem {
   type: 'planche' | 'objet' | 'arbre'
@@ -77,13 +78,9 @@ function envergureProjetee(arbre: Arbre): number | null {
 // Les couleurs par défaut des objets viennent du catalogue partagé
 // (@/lib/jardin/objets-plan) : 2D, 3D et écran d'édition doivent s'accorder.
 
-// Couleurs par défaut pour les types d'arbres
-const ARBRE_COLORS: Record<string, string> = {
-  fruitier: "#22c55e",    // Vert
-  petit_fruit: "#ef4444", // Rouge
-  ornement: "#a855f7",    // Violet
-  haie: "#84cc16"         // Vert lime
-}
+// Couleurs par défaut pour les types d'arbres : liste unique
+// (src/lib/verger/types-arbre.ts), lianes et forestiers compris.
+const ARBRE_COLORS: Record<string, string> = COULEURS_TYPES_ARBRE
 
 interface BackgroundImageSettings {
   image: string | null // Data URL ou URL

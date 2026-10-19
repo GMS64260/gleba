@@ -43,7 +43,9 @@ import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { ExportPhytoButton } from "@/components/phyto/ExportPhytoButton"
 import { CuivreCounterCard } from "@/components/phyto/CuivreCounterCard"
 import { todayLocalISO } from '@/lib/format-utils'
-import { doitSignalerSansPollinisateur, groupesCompatibles } from "@/lib/pollinisation"
+import { doitSignalerSansPollinisateur } from "@/lib/pollinisation"
+import { compatibiliteFloraison, type FloraisonVariete } from "@/lib/verger/compatibilite-floraison"
+import { libellePeriodeSemaines, libellePeriodeSemainesCourt } from "@/lib/semaines-lisibles"
 import { arbreSupprimeDansNotes } from "@/lib/verger/preserver-traces-phyto"
 
 interface Arbre {
@@ -92,6 +94,11 @@ interface PollinisationData {
     // QA cmsoeyth0 — ploïdie du référentiel variétal : un triploïde a un
     // pollen stérile et ne peut pas servir de pollinisateur.
     ploidie?: string | null
+    // QA 2026-10-19 — période de floraison saisie sur la variété (semaine ISO
+    // de début + durée), résolue par le serveur ; prime sur `floraison`.
+    periodeFloraison?: { debut: number; duree: number } | null
+    // Id de la variété du référentiel désignée par l'arbre (résolue par le serveur).
+    varieteId?: string | null
     autofertile: boolean
     pollinisateursCompat: { id: number; arbrePollinisateur: { id: number; nom: string; espece: string | null; variete: string | null } }[]
   }[]
@@ -1705,20 +1712,35 @@ function PollinisationSubTab() {
   const arbrePollinise = data?.arbres.find((a) => a.id.toString() === formData.arbrePolliniseId) ?? null
   const groupeDe = (a: { groupePollinisation: string | null; groupePollinisationEffectif?: string | null }) =>
     a.groupePollinisationEffectif ?? a.groupePollinisation
+  // QA 2026-10-19 — même entrée que la dérivation serveur
+  // (computePollinisationVerger) : période saisie sur la variété, puis groupe.
+  const floraisonDe = (a: {
+    groupePollinisation: string | null
+    groupePollinisationEffectif?: string | null
+    periodeFloraison?: { debut: number; duree: number } | null
+  }): FloraisonVariete => ({ periode: a.periodeFloraison ?? null, groupe: groupeDe(a) })
   // QA cmsoeyth0 — un triploïde a un pollen stérile : jamais pollinisateur.
   const estTriploidePollinisateur = (a: { ploidie?: string | null }) =>
     (a.ploidie ?? "").toLowerCase().startsWith("tripl")
   // QA cmswu5y82 — un arbre sans espèce ni groupe n'est pas vérifiable : la
   // dérivation serveur (computePollinisationVerger) l'exclut déjà, le
   // sélecteur manuel était plus permissif que le moteur qui l'alimente.
-  const donneesIncompletes = (a: { espece: string | null; groupePollinisation: string | null; groupePollinisationEffectif?: string | null }) =>
-    !a.espece || !groupeDe(a)
+  const donneesIncompletes = (a: {
+    espece: string | null
+    groupePollinisation: string | null
+    groupePollinisationEffectif?: string | null
+    periodeFloraison?: { debut: number; duree: number } | null
+  }) => !a.espece || (!groupeDe(a) && !a.periodeFloraison)
   const candidatsPollinisateurs = (data?.arbres ?? [])
     .filter((a) => {
       if (a.id.toString() === formData.arbrePolliniseId) return false
       // QA cmsoeyth0 — même variété = clone : pollen auto-incompatible, on
       // l'exclut des candidats (le serveur le refuse aussi en 422).
-      if (arbrePollinise?.variete && a.variete && a.variete === arbrePollinise.variete) return false
+      // QA 2026-10-19 — variété résolue par le serveur (id, à défaut libellé),
+      // comme la garde de POST /api/arbres/pollinisation.
+      const varieteCible = arbrePollinise ? arbrePollinise.varieteId ?? arbrePollinise.variete : null
+      const varieteCandidat = a.varieteId ?? a.variete
+      if (varieteCible && varieteCandidat && varieteCandidat === varieteCible) return false
       // QA cmswu5y82 — cible d'espèce connue : un candidat SANS espèce n'est
       // plus assimilé à un compatible, il est exclu comme sur le serveur.
       if (arbrePollinise?.espece && !a.espece) return false
@@ -1728,18 +1750,21 @@ function PollinisationSubTab() {
     // QA cmswu5y82 — candidats vérifiables d'abord, données incomplètes en
     // dernier (l'option nue « Pommier » arrivait en tête par tri alphabétique).
     .sort((a, b) => Number(donneesIncompletes(a)) - Number(donneesIncompletes(b)))
-  const suggererCompatibilite = (pollinisateur: { groupePollinisation: string | null; groupePollinisationEffectif?: string | null; ploidie?: string | null }) => {
+  const suggererCompatibilite = (pollinisateur: {
+    groupePollinisation: string | null
+    groupePollinisationEffectif?: string | null
+    periodeFloraison?: { debut: number; duree: number } | null
+    ploidie?: string | null
+  }) => {
     // QA cmsoeyth0 — la suggestion ne comparait que les groupes de floraison :
     // un Jonagold (triploïde, pollen stérile) ressortait « excellente ».
     if (estTriploidePollinisateur(pollinisateur)) return "incompatible"
-    // QA cmswu5y82 — sans groupe connu, ne rien affirmer : « partielle »,
+    // QA cmswu5y82 — sans floraison connue, ne rien affirmer : « partielle »,
     // cohérent avec la requalification vérifiée/présumée du 16/08.
     if (!arbrePollinise) return "partielle"
-    const g1 = groupeDe(arbrePollinise)
-    const g2 = groupeDe(pollinisateur)
-    if (!g1 || !g2) return "partielle"
-    if (g1 === g2) return "excellente"
-    return groupesCompatibles(g1, g2) ? "bonne" : "partielle"
+    // QA 2026-10-19 — même règle que la matrice (compatibiliteFloraison) :
+    // périodes saisies sur les variétés d'abord, groupes ensuite.
+    return compatibiliteFloraison(floraisonDe(arbrePollinise), floraisonDe(pollinisateur)).niveau
   }
   const pollinisateurChoisi = data?.arbres.find((a) => a.id.toString() === formData.arbrePollinisateurId) ?? null
   const pollinisateurTriploide = pollinisateurChoisi ? estTriploidePollinisateur(pollinisateurChoisi) : false
@@ -1922,7 +1947,18 @@ function PollinisationSubTab() {
                     <TableCell className="font-medium">{arbre.nom}</TableCell>
                     <TableCell className="text-sm">{arbre.espece || "-"}</TableCell>
                     <TableCell>
-                      {arbre.floraison ? (
+                      {/* QA 2026-10-19 — la période saisie sur la variété
+                          (fiche espèce > Variétés) prime sur le champ libre
+                          de l'arbre, qui reste le repli. */}
+                      {arbre.periodeFloraison ? (
+                        <Badge
+                          variant="outline"
+                          className="text-xs"
+                          title={`Floraison saisie sur la variété : ${libellePeriodeSemaines(arbre.periodeFloraison.debut, arbre.periodeFloraison.duree) ?? ""}`}
+                        >
+                          {libellePeriodeSemainesCourt(arbre.periodeFloraison.debut, arbre.periodeFloraison.duree)}
+                        </Badge>
+                      ) : arbre.floraison ? (
                         <Badge variant="outline" className="capitalize text-xs">{arbre.floraison.replace(/_/g, " ")}</Badge>
                       ) : "-"}
                     </TableCell>
@@ -1995,13 +2031,13 @@ function PollinisationSubTab() {
                       ) : isAutofertile ? (
                         <span className="text-sm text-muted-foreground">-</span>
                       ) : hasDerive && deriveVerifie ? (
-                        <span className="text-xs text-amber-600" title="Pollinisateur dérivé automatiquement (même espèce, groupes compatibles)">À associer (auto)</span>
+                        <span className="text-xs text-amber-600" title="Pollinisateur dérivé automatiquement (même espèce, floraisons compatibles : périodes saisies sur les variétés, à défaut groupes de floraison)">À associer (auto)</span>
                       ) : hasDerive ? (
                         <span
                           className="text-xs text-amber-600"
-                          title="Même espèce et variété différente présentes au verger, mais le groupe de floraison n'est renseigné ni sur l'arbre ni sur la variété au référentiel : compatibilité non vérifiée."
+                          title="Même espèce et variété différente présentes au verger, mais la floraison n'est connue que d'un côté, ou d'aucun (ni période saisie sur la variété, ni groupe de floraison) : compatibilité non vérifiée."
                         >
-                          À vérifier (groupe de floraison inconnu)
+                          À vérifier (floraison inconnue)
                         </span>
                       ) : (
                         <span className="text-sm text-red-500">Aucun !</span>
@@ -2016,8 +2052,9 @@ function PollinisationSubTab() {
           {/* QA cmsqn5lh4 (c) — l'astérisque des badges (« B * », « Oui * »)
               n'était expliqué nulle part sur la page. */}
           <p className="mt-2 text-xs text-muted-foreground">
-            * : information déduite de la variété au référentiel Gleba (groupe de
-            floraison ou autofertilité non saisis sur l&apos;arbre).
+            * : information déduite de la variété au référentiel (groupe de
+            floraison ou autofertilité non saisis sur l&apos;arbre). La floraison
+            affichée en dates est la période saisie sur la variété.
           </p>
         </CardContent>
       </Card>
@@ -2071,12 +2108,15 @@ function PollinisationSubTab() {
                 <option value="" disabled>— Sélectionner le pollinisateur —</option>
                 {candidatsPollinisateurs.map((a) => {
                   const g = groupeDe(a)
+                  const periode = a.periodeFloraison
+                    ? libellePeriodeSemainesCourt(a.periodeFloraison.debut, a.periodeFloraison.duree)
+                    : null
                   return (
                     <option key={a.id} value={a.id.toString()}>
                       {[
-                        `${a.nom}${a.espece ? ` (${a.espece})` : ""}${g ? ` — Gr.${g}` : ""}`,
-                        estTriploidePollinisateur(a) ? " — ⚠ triploïde (pollen stérile)" : "",
-                        donneesIncompletes(a) ? " — données incomplètes, à vérifier" : "",
+                        `${a.nom}${a.espece ? ` (${a.espece})` : ""}${periode ? ` · floraison ${periode}` : g ? ` · Gr.${g}` : ""}`,
+                        estTriploidePollinisateur(a) ? " · ⚠ triploïde (pollen stérile)" : "",
+                        donneesIncompletes(a) ? " · données incomplètes, à vérifier" : "",
                       ].join("")}
                     </option>
                   )
@@ -2114,7 +2154,9 @@ function PollinisationSubTab() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
-                Pré-remplie depuis les groupes de floraison (même groupe = excellente, adjacent = bonne).
+                Pré-remplie depuis les floraisons des variétés : périodes saisies sur la variété (recouvrement
+                large = excellente, partiel = bonne, aucune semaine commune = partielle), à défaut groupes
+                de floraison (même groupe = excellente, adjacent = bonne).
               </p>
             </div>
             <div>

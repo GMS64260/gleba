@@ -22,6 +22,8 @@ import { roundCoord } from "@/lib/geolocation"
 import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
 import { CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-constants"
 import { labelStatutRecolteArbre } from "@/lib/verger/statut-recolte-arbre"
+import { TYPES_ARBRE, categoriesEspecePourTypeArbre, estTypeArbre, libelleTypeArbre } from "@/lib/verger/types-arbre"
+import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
 
 interface Arbre {
   id: number
@@ -77,6 +79,7 @@ interface EspeceRef {
 
 interface VarieteRef {
   id: string
+  nom?: string | null
   especeId: string
 }
 
@@ -84,20 +87,16 @@ interface FournisseurRef {
   id?: string | null
 }
 
-// Types d'espèce du référentiel proposés selon la conduite de l'arbre ; une
-// liane (kiwi, vigne) se conduit en fruitier ou en petit fruit (2026-10-08).
-const TYPE_TO_REF: Record<string, readonly string[]> = {
-  fruitier: ["arbre_fruitier", "liane"],
-  petit_fruit: ["petit_fruit", "liane"],
+// Types d'arbre et catégories d'espèce proposées par type : liste unique
+// (src/lib/verger/types-arbre.ts), partagée avec l'onglet Arbres et le plan.
+// Une valeur héritée hors liste reste affichée, pour ne pas vider le champ.
+function optionsTypesArbre(typeCourant: string | null | undefined) {
+  const options: Array<{ value: string; label: string }> = TYPES_ARBRE.map((t) => ({ value: t.value, label: t.label }))
+  if (typeCourant && !estTypeArbre(typeCourant)) {
+    options.push({ value: typeCourant, label: libelleTypeArbre(typeCourant) })
+  }
+  return options
 }
-
-const TYPES_ARBRES = [
-  { value: "fruitier", label: "Fruitier" },
-  { value: "petit_fruit", label: "Petit fruit" },
-  { value: "forestier", label: "Forestier" },
-  { value: "ornement", label: "Ornement" },
-  { value: "haie", label: "Haie" },
-]
 
 
 export default function DetailArbrePage() {
@@ -161,7 +160,7 @@ export default function DetailArbrePage() {
         (Array.isArray(varietesRes?.data) ? varietesRes.data : []) as VarieteRef[]
       )
         .filter((v) => especesIds.has(v.especeId))
-        .map((v) => ({ id: v.id, especeId: v.especeId }))
+        .map((v) => ({ id: v.id, nom: v.nom ?? null, especeId: v.especeId }))
       setVarietesRef(varietes)
       const fournisseurs = (
         (Array.isArray(fournisseursRes?.data) ? fournisseursRes.data : []) as FournisseurRef[]
@@ -183,7 +182,7 @@ export default function DetailArbrePage() {
   }, [id])
 
   const especeOptions = React.useMemo(() => {
-    const refTypes = arbre ? TYPE_TO_REF[arbre.type] : null
+    const refTypes = arbre ? categoriesEspecePourTypeArbre(arbre.type) : null
     const refEspeces = refTypes
       ? especesRef.filter(e => refTypes.includes(e.type)).map(e => e.id)
       : especesRef.map(e => e.id)
@@ -193,9 +192,11 @@ export default function DetailArbrePage() {
   }, [especesRef, suggestions.especes, arbre])
 
   const varieteOptions = React.useMemo(() => {
+    // QA 2026-10-19 — une variété personnelle se propose sous son nom, pas
+    // sous son id technique (voir src/lib/verger/variete-arbre.ts).
     const refVarietes = arbre?.espece
-      ? varietesRef.filter(v => v.especeId === arbre.espece).map(v => v.id)
-      : varietesRef.map(v => v.id)
+      ? varietesRef.filter(v => v.especeId === arbre.espece).map(libelleVarieteOption)
+      : varietesRef.map(libelleVarieteOption)
     return [...new Set([...refVarietes, ...suggestions.varietes])]
       .sort()
       .map(v => ({ value: v, label: v }))
@@ -407,7 +408,7 @@ export default function DetailArbrePage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {TYPES_ARBRES.map((t) => (
+                        {optionsTypesArbre(arbre.type).map((t) => (
                           <SelectItem key={t.value} value={t.value}>
                             {t.label}
                           </SelectItem>

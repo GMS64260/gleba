@@ -30,6 +30,12 @@ import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/p
 import { MaterielFieldset } from "@/components/phyto/MaterielFieldset"
 import { libelleOperationArbre } from "@/lib/verger/operation-label"
 import { statutOperationArbre } from "@/lib/operation-arbre-statut"
+import {
+  anneeOperationArbre,
+  dateReferenceOperationArbre,
+  operationArbreDansAnnee,
+  resumeCoutOperations,
+} from "@/lib/verger/annee-operation"
 
 const FILTER_STATES = [
   { value: "all", label: "Toutes", icon: Wrench },
@@ -114,9 +120,11 @@ function createColumns(
         // partagée. Une opération générée dont la fenêtre est ouverte n'est pas
         // en retard, et une fenêtre refermée est un rendez-vous manqué pour la
         // saison, pas un retard qui s'aggrave chaque jour.
+        // QA 2026-10-19 — même date que celle qui range l'opération dans une
+        // année (src/lib/verger/annee-operation.ts).
         const op = row.original
-        const effective = !op.fait && op.datePrevue ? op.datePrevue : op.date
-        const label = new Date(effective).toLocaleDateString("fr-FR")
+        const effective = dateReferenceOperationArbre(op)
+        const label = effective ? effective.toLocaleDateString("fr-FR") : "-"
         const statut = statutOperationArbre(op)
         return (
           <span className={!op.fait ? "text-slate-600" : ""}>
@@ -192,7 +200,12 @@ function createColumns(
   ]
 }
 
-export function OperationsTab() {
+interface OperationsTabProps {
+  /** Année du sélecteur du verger (URL `?annee=`, voir useAnneeModule). */
+  annee: number
+}
+
+export function OperationsTab({ annee }: OperationsTabProps) {
   const { toast } = useToast()
   const [data, setData] = React.useState<OperationArbre[]>([])
   const [arbres, setArbres] = React.useState<Arbre[]>([])
@@ -223,8 +236,10 @@ export function OperationsTab() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
+      // QA 2026-10-19 — la liste et le coût suivent l'année du sélecteur du
+      // verger : la route filtre par la règle partagée (annee-operation.ts).
       const [opsRes, arbresRes] = await Promise.all([
-        fetch("/api/arbres/operations"),
+        fetch(`/api/arbres/operations?annee=${annee}`),
         fetch("/api/arbres"),
       ])
       // QA cmsnnybbg — un GET en échec laissait la table sur « Aucune
@@ -240,7 +255,7 @@ export function OperationsTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, annee])
 
   React.useEffect(() => {
     fetchData()
@@ -252,7 +267,7 @@ export function OperationsTab() {
     return data
   }, [data, filterFait])
 
-  const totalCout = data.reduce((sum, o) => sum + (o.cout || 0), 0)
+  const coutAnnee = resumeCoutOperations(data)
 
   const handleToggleFait = React.useCallback(
     async (op: OperationArbre) => {
@@ -285,17 +300,27 @@ export function OperationsTab() {
           return
         }
         const updated = (await res.json().catch(() => null)) as OperationArbre | null
+        const suivante: OperationArbre = { ...op, ...(updated ?? {}), fait: updated?.fait ?? nextFait }
+        // QA 2026-10-19 — réalisée aujourd'hui, une opération prévue une autre
+        // année change d'exercice : elle quitte la liste, et on le dit.
+        const anneeSuivante = anneeOperationArbre(suivante)
         setData((prev) =>
-          prev.map((o) =>
-            o.id === op.id ? { ...o, ...(updated ?? {}), fait: updated?.fait ?? nextFait } : o
-          )
+          prev
+            .map((o) => (o.id === op.id ? suivante : o))
+            .filter((o) => o.id !== op.id || operationArbreDansAnnee(o, annee))
         )
-        toast({ title: nextFait ? "Fait !" : "Annulé" })
+        toast({
+          title: nextFait ? "Fait !" : "Annulé",
+          description:
+            anneeSuivante !== null && anneeSuivante !== annee
+              ? `Opération désormais rangée en ${anneeSuivante} : choisissez cette année pour la retrouver.`
+              : undefined,
+        })
       } catch {
         toast({ variant: "destructive", title: "Erreur" })
       }
     },
-    [toast]
+    [toast, annee]
   )
 
   const columns = React.useMemo(() => createColumns(handleToggleFait), [handleToggleFait])
@@ -403,9 +428,22 @@ export function OperationsTab() {
       })
 
       if (res.ok) {
+        // QA 2026-10-19 — une opération d'une autre année que celle affichée
+        // n'apparaît pas dans la liste : le dire plutôt que la laisser « disparaître ».
+        const anneeCreee = anneeOperationArbre({
+          fait: newOperation.fait,
+          date: newOperation.fait ? date || null : datePrevue || null,
+          datePrevue: datePrevue || null,
+        })
         setShowDialog(false)
         resetForm()
-        toast({ title: "Opération enregistrée" })
+        toast({
+          title: "Opération enregistrée",
+          description:
+            anneeCreee !== null && anneeCreee !== annee
+              ? `Rangée en ${anneeCreee} : choisissez cette année dans le sélecteur pour la voir.`
+              : undefined,
+        })
         fetchData()
       } else {
         const data = await res.json().catch(() => ({}))
@@ -420,13 +458,23 @@ export function OperationsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Stats cout total */}
+      {/* Stats cout de l'année (QA 2026-10-19 : suit le sélecteur d'année) */}
       <Card>
         <CardContent className="pt-4 pb-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Coût total des opérations</p>
-            <p className="text-xl font-bold">{totalCout.toFixed(2)} €</p>
+            <p className="text-sm text-muted-foreground">Coût des opérations {annee}</p>
+            <p className="text-xl font-bold" data-testid="cout-operations-annee">{coutAnnee.total.toFixed(2)} €</p>
           </div>
+          {coutAnnee.prevu > 0 && (
+            <p className="text-xs text-muted-foreground text-right">
+              dont {coutAnnee.realise.toFixed(2)} € réalisés et {coutAnnee.prevu.toFixed(2)} € prévus
+            </p>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">
+            Année {annee} : opérations réalisées en {annee}, et opérations à faire prévues en {annee}.
+            Une opération à faire d&apos;une autre année reste rangée sous son année ; le Calendrier
+            regroupe tout ce qui reste à faire.
+          </p>
         </CardContent>
       </Card>
 

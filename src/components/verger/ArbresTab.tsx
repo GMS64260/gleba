@@ -8,7 +8,7 @@ import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, CalendarPlus, Copy, Map as MapIcon, MapPin } from "lucide-react"
+import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, Grape, CalendarPlus, Copy, Map as MapIcon, MapPin, type LucideIcon } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,6 +32,16 @@ import { ReleveGpsDialog } from "@/components/verger/ReleveGpsDialog"
 import { roundCoord } from "@/lib/geolocation"
 import { adequationEspece } from "@/lib/adequation-zone"
 import { CONDUITES_ARBRE } from "@/lib/verger/arbre-constants"
+import {
+  TYPES_ARBRE,
+  categoriesEspecePourTypeArbre,
+  estTypeArbreFruitier,
+  libelleTypeArbre,
+  typeArbrePourCategorieEspece,
+  type TypeArbre,
+} from "@/lib/verger/types-arbre"
+import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
+import { normalizeReferentielKey } from "@/lib/normalize"
 import type { ZoneClimat } from "@/lib/terroir"
 import { Snowflake } from "lucide-react"
 
@@ -46,21 +56,20 @@ const AVERTISSEMENT_SUPPRESSION_ARBRE =
   "Tous les traitements phytosanitaires restent au registre (détachés de l'arbre, nom snapshoté), comme les lots de bois. " +
   "Préférez « Archiver » pour conserver toute la traçabilité."
 
-const TYPES_ARBRES = [
-  { value: "all", label: "Tous", icon: TreeDeciduous },
-  { value: "fruitier", label: "Fruitiers", icon: Cherry },
-  { value: "petit_fruit", label: "Petits fruits", icon: Shrub },
-  { value: "forestier", label: "Forestiers", icon: Leaf },
-  { value: "ornement", label: "Ornementaux", icon: Flower2 },
-  { value: "haie", label: "Haies", icon: Fence },
-] as const
+// Types d'arbre : liste unique dans src/lib/verger/types-arbre.ts (QA
+// 2026-10-19, les lianes fruitières manquaient à la création et aux onglets).
+const ICONES_TYPES_ARBRE: Record<TypeArbre, LucideIcon> = {
+  fruitier: Cherry,
+  petit_fruit: Shrub,
+  liane: Grape,
+  forestier: Leaf,
+  ornement: Flower2,
+  haie: Fence,
+}
 
-const TYPES_ARBRES_FORM = [
-  { value: "fruitier", label: "Fruitier" },
-  { value: "petit_fruit", label: "Petit fruit" },
-  { value: "forestier", label: "Forestier" },
-  { value: "ornement", label: "Ornemental" },
-  { value: "haie", label: "Haie" },
+const TYPES_ARBRES: ReadonlyArray<{ value: string; label: string; icon: LucideIcon }> = [
+  { value: "all", label: "Tous", icon: TreeDeciduous },
+  ...TYPES_ARBRE.map((t) => ({ value: t.value, label: t.labelPluriel, icon: ICONES_TYPES_ARBRE[t.value] })),
 ]
 
 const ETATS_ARBRE = [
@@ -69,14 +78,6 @@ const ETATS_ARBRE = [
   { value: "moyen", label: "Moyen" },
   { value: "mauvais", label: "Mauvais" },
 ]
-
-const TYPE_LABELS: Record<string, string> = {
-  fruitier: "Fruitier",
-  petit_fruit: "Petit fruit",
-  forestier: "Forestier",
-  ornement: "Ornemental",
-  haie: "Haie",
-}
 
 const etatColors: Record<string, string> = {
   excellent: "bg-green-100 text-green-700",
@@ -142,13 +143,9 @@ interface EspeceRef {
 
 interface VarieteRef {
   id: string
+  /** Libellé proposé : le nom affiché (une variété personnelle a un cuid pour id). */
+  libelle: string
   especeId: string
-}
-
-// Map du type d'arbre (form) vers le type d'espece (referentiel)
-const TYPE_TO_REF: Record<string, string> = {
-  fruitier: "arbre_fruitier",
-  petit_fruit: "petit_fruit",
 }
 
 function makeColumns(
@@ -178,7 +175,7 @@ function makeColumns(
         const type = getValue() as string
         return (
           <Badge variant="outline" className="text-xs">
-            {TYPE_LABELS[type] || type}
+            {libelleTypeArbre(type)}
           </Badge>
         )
       },
@@ -531,7 +528,7 @@ export function ArbresTab() {
       const especesIds = new Set(especes.map((e: any) => e.id))
       const varietes = (varietesRes?.data || [])
         .filter((v: any) => especesIds.has(v.especeId))
-        .map((v: any) => ({ id: v.id, especeId: v.especeId }))
+        .map((v: any) => ({ id: v.id, libelle: libelleVarieteOption(v), especeId: v.especeId }))
       setVarietesRef(varietes)
       const fournisseurs = (fournisseursRes?.data || [])
         .map((f: any) => f.id)
@@ -572,9 +569,12 @@ export function ArbresTab() {
   }, [newArbre.espece])
 
   const especeOptions = React.useMemo(() => {
-    const refType = TYPE_TO_REF[newArbre.type]
-    const refEspeces = refType
-      ? especesRef.filter(e => e.type === refType).map(e => e.id)
+    // Même table type d'arbre → catégories d'espèce que la fiche arbre : une
+    // liane (kiwi, vigne) est proposée sous « Liane fruitière », et toujours
+    // sous Fruitier et Petit fruit pour les arbres déjà saisis ainsi.
+    const categories = categoriesEspecePourTypeArbre(newArbre.type)
+    const refEspeces = categories
+      ? especesRef.filter(e => categories.includes(e.type)).map(e => e.id)
       : especesRef.map(e => e.id)
     const userEspeces = data.map(a => a.espece).filter(Boolean) as string[]
     const unique = [...new Set([...refEspeces, ...userEspeces])]
@@ -582,9 +582,12 @@ export function ArbresTab() {
   }, [data, especesRef, newArbre.type])
 
   const varieteOptions = React.useMemo(() => {
+    // QA 2026-10-19 — une variété personnelle était proposée sous son id
+    // technique (cuid) : on propose son nom, que la matrice de pollinisation
+    // sait relier à la variété (src/lib/verger/variete-arbre.ts).
     const refVarietes = newArbre.espece
-      ? varietesRef.filter(v => v.especeId === newArbre.espece).map(v => v.id)
-      : varietesRef.map(v => v.id)
+      ? varietesRef.filter(v => v.especeId === newArbre.espece).map(v => v.libelle)
+      : varietesRef.map(v => v.libelle)
     const userVarietes = data.map(a => a.variete).filter(Boolean) as string[]
     const unique = [...new Set([...refVarietes, ...userVarietes])]
     return unique.sort().map(v => ({ value: v, label: v }))
@@ -604,6 +607,20 @@ export function ArbresTab() {
     })
     return statut === 'peu_adaptee' ? raison : null
   }, [newArbre.espece, especesRef, userZone])
+
+  // QA 2026-10-19 — un kiwi saisi sous « Petit fruit » restait classé ainsi
+  // sans que rien ne signale sa catégorie au référentiel (liane fruitière).
+  // Seulement entre types fruitiers : un châtaignier planté en forestier ou un
+  // cognassier en haie sont des choix délibérés.
+  const typeConseille = React.useMemo(() => {
+    if (!newArbre.espece || !estTypeArbreFruitier(newArbre.type)) return null
+    // Saisie libre comprise (« kiwi ») : même comparaison que le rattachement
+    // au catalogue côté serveur (casse, accents et tirets ignorés).
+    const cle = normalizeReferentielKey(newArbre.espece)
+    const ref = especesRef.find(e => normalizeReferentielKey(e.id) === cle)
+    const conseille = typeArbrePourCategorieEspece(ref?.type)
+    return conseille && conseille !== newArbre.type ? conseille : null
+  }, [newArbre.espece, newArbre.type, especesRef])
 
   const fournisseurOptions = React.useMemo(() => {
     const userFournisseurs = data.map((a: any) => a.fournisseur).filter(Boolean) as string[]
@@ -1074,7 +1091,7 @@ export function ArbresTab() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {TYPES_ARBRES_FORM.map((t) => (
+                    {TYPES_ARBRE.map((t) => (
                       <SelectItem key={t.value} value={t.value}>
                         {t.label}
                       </SelectItem>
@@ -1110,6 +1127,18 @@ export function ArbresTab() {
                   options={especeOptions}
                   placeholder="Ex : Pommier, Chêne…"
                 />
+                {typeConseille && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Au référentiel, {newArbre.espece} est classé « {libelleTypeArbre(typeConseille)} ».{" "}
+                    <button
+                      type="button"
+                      className="underline text-lime-700 hover:text-lime-800"
+                      onClick={() => setNewArbre((current) => ({ ...current, type: typeConseille ?? current.type }))}
+                    >
+                      Classer en {libelleTypeArbre(typeConseille)}
+                    </button>
+                  </p>
+                )}
                 {avertissementZone && (
                   <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
                     <Snowflake className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-amber-500" />
@@ -1188,7 +1217,7 @@ export function ArbresTab() {
             </div>
 
             {/* PROMPT 10 — Spécificités fruitier / agroforesterie */}
-            {(newArbre.type === "fruitier" || newArbre.type === "petit_fruit") && (
+            {estTypeArbreFruitier(newArbre.type) && (
               <div className="space-y-3 rounded-lg border border-rose-200 bg-rose-50/40 p-3">
                 <Label className="text-sm font-medium text-rose-900">Porte-greffe & conduite</Label>
                 <div>

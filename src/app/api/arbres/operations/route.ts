@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createDepenseFromOperationArbre } from "@/lib/auto-compta"
+import { lireAnnee } from "@/lib/api/annee"
+import { whereOperationsArbreAnnee } from "@/lib/verger/annee-operation"
 
 // Types d'opérations
 export const TYPES_OPERATIONS = [
@@ -18,7 +20,9 @@ export const TYPES_OPERATIONS = [
   { value: "autre", label: "Autre" },
 ]
 
-// GET /api/arbres/operations
+// GET /api/arbres/operations?annee=AAAA|all (alias historique : ?year=AAAA)
+// Sans paramètre d'année : toutes les années (Calendrier « à faire », registre
+// phyto, bandeau premiers pas).
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
@@ -31,7 +35,7 @@ export async function GET(request: NextRequest) {
     const arbreId = searchParams.get("arbreId")
     const type = searchParams.get("type")
     const fait = searchParams.get("fait")
-    const year = searchParams.get("year")
+    const parametreAnnee = searchParams.has("annee") ? "annee" : searchParams.has("year") ? "year" : null
 
     const where: Record<string, unknown> = { userId }
 
@@ -47,19 +51,14 @@ export async function GET(request: NextRequest) {
       where.fait = fait === "true"
     }
 
-    if (year) {
-      const yearNum = parseInt(year)
-      // Le calendrier positionne les opérations sur `datePrevue || date` :
-      // on filtre donc sur les deux champs (sinon les ops planifiées sur
-      // l'année N avec une `date` sur N-1/N+1 disparaissaient). Borne haute
-      // exclusive (`lt` 1er janvier N+1) pour ne pas exclure le 31 décembre
-      // dès qu'une heure est renseignée.
-      const start = new Date(yearNum, 0, 1)
-      const end = new Date(yearNum + 1, 0, 1)
-      where.OR = [
-        { date: { gte: start, lt: end } },
-        { datePrevue: { gte: start, lt: end } },
-      ]
+    if (parametreAnnee) {
+      // QA 2026-10-19 — une opération appartient à l'année de sa date de
+      // réalisation (faite) ou de sa date prévue (à faire), comme dans la
+      // colonne Date de l'onglet et le calendrier mensuel. Règle unique :
+      // src/lib/verger/annee-operation.ts. L'ancien filtre (date OU date
+      // prévue dans l'année) rangeait une même opération sous deux années.
+      const { annee, toutesAnnees } = lireAnnee(searchParams, parametreAnnee)
+      if (!toutesAnnees) where.AND = [whereOperationsArbreAnnee(annee)]
     }
 
     const operations = await prisma.operationArbre.findMany({

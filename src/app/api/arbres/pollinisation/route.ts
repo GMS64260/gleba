@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { computePollinisationVerger, raisonExclusionPollinisateur } from "@/lib/pollinisation-verger"
+import { choisirVarieteArbre, whereVarietesCandidates } from "@/lib/verger/variete-arbre"
 
 export async function GET() {
   const { error, session } = await requireAuthApi()
@@ -82,15 +83,18 @@ export async function POST(request: NextRequest) {
     // automatique de la matrice (src/lib/pollinisation-verger.ts).
     const pollinise = arbres.find((a) => a.id === polliniseId)!
     const pollinisateur = arbres.find((a) => a.id === pollinisateurId)!
-    const varietePollinisateur = pollinisateur.variete
-      ? await prisma.variete.findUnique({
-          where: { id: pollinisateur.variete },
-          select: { ploidie: true },
-        })
-      : null
+    // QA 2026-10-19 — variété résolue comme dans la matrice (id, à défaut
+    // libellé dans l'espèce de l'arbre) : une variété personnelle affectée
+    // par son nom n'était pas retrouvée par son seul id.
+    const varietesCandidates = await prisma.variete.findMany({
+      where: whereVarietesCandidates([pollinise, pollinisateur], session!.user.id),
+      select: { id: true, nom: true, nomNormalise: true, especeId: true, userId: true, ploidie: true },
+    })
+    const varietePollinise = choisirVarieteArbre(pollinise, varietesCandidates, session!.user.id)
+    const varietePollinisateur = choisirVarieteArbre(pollinisateur, varietesCandidates, session!.user.id)
     const exclusion = raisonExclusionPollinisateur({
-      varietePollinise: pollinise.variete,
-      varietePollinisateur: pollinisateur.variete,
+      varietePollinise: varietePollinise?.id ?? pollinise.variete,
+      varietePollinisateur: varietePollinisateur?.id ?? pollinisateur.variete,
       ploidiePollinisateur: varietePollinisateur?.ploidie,
     })
     if (exclusion === "meme_variete") {
