@@ -18,11 +18,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import {
+  UNITES_QUANTITE,
   libelleUniteQuantite,
   rendementParM2,
   uniteQuantiteRecolte,
   type UniteQuantite,
 } from "@/lib/recolte/projection"
+import { lienChezMoiEspece } from "@/lib/especes/fiche-url"
 import {
   ajouterQuantite,
   formatQuantiteParUnite,
@@ -263,6 +265,12 @@ export default function SaisieRecoltePage() {
 
       // Ajouter aux recoltes récentes
       const especeNom = cultureData.espece.nom ?? cultureData.especeId
+      // L'unité affichée est celle que le serveur a figée sur la récolte.
+      const creee = await response.json().catch(() => null)
+      const uniteEnregistree: UniteQuantite =
+        creee && typeof creee.unite === "string" && (UNITES_QUANTITE as readonly string[]).includes(creee.unite)
+          ? (creee.unite as UniteQuantite)
+          : uniteQuantiteRecolte(cultureData.espece.uniteRendement)
       setRecentRecoltes((prev) => [
         {
           especeId: cultureData.especeId,
@@ -271,14 +279,14 @@ export default function SaisieRecoltePage() {
           quantite: parseFloat(quantite),
           // L'unité voyage avec la ligne : la session peut enchaîner une carotte
           // au kilo et un dahlia à la tige.
-          unite: uniteQuantiteRecolte(cultureData.espece.uniteRendement),
+          unite: uniteEnregistree,
         },
         ...prev.slice(0, 4),
       ])
 
       toast({
         title: "Récolte enregistrée",
-        description: `${quantite} ${libelleUnite} de ${especeNom}`,
+        description: `${quantite} ${libelleUniteQuantite(uniteEnregistree, parseFloat(quantite))} de ${especeNom}`,
       })
 
       // Réinitialiser le formulaire (garder la culture sélectionnée)
@@ -455,10 +463,17 @@ export default function SaisieRecoltePage() {
                 )}
               </div>
 
-              {/* Quantité */}
+              {/* Quantité, dans l'unité de comptage de l'espèce sur la ferme.
+                  Ticket QA du 2026-10-19 : l'unité n'était ni dite ni
+                  atteignable d'ici. Elle se décide pour l'espèce entière
+                  (récoltes, stock, projections), donc sur sa fiche, pas dans
+                  ce formulaire : on la montre et on y renvoie. */}
               <div>
-                <label className="text-sm font-medium">Quantité ({libelleUnite}) *</label>
+                <label className="text-sm font-medium" htmlFor="saisie-recolte-quantite">
+                  Quantité ({libelleUnite}) *
+                </label>
                 <Input
+                  id="saisie-recolte-quantite"
                   type="number"
                   step="0.01"
                   min="0"
@@ -467,6 +482,18 @@ export default function SaisieRecoltePage() {
                   placeholder="0.00"
                   className="mt-1 text-2xl h-14 text-center"
                 />
+                {selectedCultureData && (
+                  <p className="mt-1 text-xs text-muted-foreground" data-testid="saisie-recolte-unite">
+                    Unité de comptage de l&apos;espèce {selectedCultureData.espece.nom ?? selectedCultureData.espece.id} sur
+                    votre ferme : {libelleUnite}.{" "}
+                    <Link
+                      href={lienChezMoiEspece(selectedCultureData.espece.id)}
+                      className="text-primary underline underline-offset-2"
+                    >
+                      Changer l&apos;unité sur la fiche de l&apos;espèce
+                    </Link>
+                  </p>
+                )}
                 {/* Raccourcis */}
                 <div className="flex gap-2 mt-2">
                   {quickQuantities.map((q) => (

@@ -34,9 +34,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
+import { SaisieArrosage } from "@/components/potager/SaisieArrosage"
 import { consommationHebdoTotale } from "@/lib/irrigation/consommation"
+import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
+import {
+  contexteQuantiteVersee,
+  detailArrosageNote,
+  phraseLitresPlanche,
+} from "@/lib/irrigation/quantite-versee"
+import { notifierEnregistrement } from "@/lib/notifications-ecran"
+import { confirmDialog } from "@/lib/global-dialog"
 import { libelleIrrigation } from '@/lib/planches/libelle-irrigation'
 import { formatNombre } from '@/lib/format-utils'
 
@@ -125,6 +135,9 @@ function CulturesIrriguerContent() {
   const [filtreUrgence, setFiltreUrgence] = React.useState<'all' | 'critique' | 'haute' | 'aucune' | 'jamais'>('all')
   const [filtreTypeIrrigation, setFiltreTypeIrrigation] = React.useState<string>('all')
   const [filtreBesoinEau, setFiltreBesoinEau] = React.useState<'all' | '3' | '4'>('all')
+  // Culture dont on note l'arrosage (dialogue « Noter l'arrosage »).
+  const [arrosageANoter, setArrosageANoter] = React.useState<CultureIrriguer | null>(null)
+  const [arrosageEnCours, setArrosageEnCours] = React.useState(false)
 
   const annees = React.useMemo(() => {
     const currentYear = new Date().getFullYear()
@@ -192,26 +205,42 @@ function CulturesIrriguerContent() {
     }
   }
 
-  const marquerArrosee = async (cultureId: number) => {
+  // Ticket QA du 2026-10-19 : « Marquer comme arrosé » enregistrait aussitôt
+  // un arrosage complet (réserve du sol remplie) sans rien demander, alors que
+  // « Noter » demande les litres versés partout ailleurs. Le bouton ouvre
+  // désormais le même dialogue (`SaisieArrosage`), prérempli avec la dose
+  // conseillée sur la planche, et passe par le même client (`noterArrosage`).
+  const noterArrosageCulture = async (
+    culture: CultureIrriguer,
+    litres: number | null,
+    notes: string | null,
+  ) => {
+    setArrosageEnCours(true)
     try {
-      const response = await fetch("/api/cultures/irriguer", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cultureId, marquerArrosage: true }),
-      })
-      if (!response.ok) throw new Error("Erreur")
+      const resultat = await noterArrosage([culture.id], notes, litres, "irriguer")
+      if (!resultat.ok) throw new Error(resultat.erreur)
+      setArrosageANoter(null)
       await fetchData()
 
-      toast({
-        title: "Arrosage noté",
-        description: "Dernière irrigation mise à jour",
+      // Un geste de trop s'annule : inverse exact, comme sur les Tâches.
+      notifierEnregistrement({
+        titre: "Arrosage noté",
+        // `||` : un nom de planche vide tombe sur le repli.
+        detail: detailArrosageNote(culture.planche?.nom || culture.espece?.nom || culture.especeId, litres),
+        annuler: async () => {
+          const annule = await annulerArrosage(resultat.annulation)
+          if (!annule.ok) throw new Error(annule.erreur)
+          await fetchData()
+        },
       })
-    } catch {
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de noter l'arrosage",
+        description: e instanceof Error && e.message ? e.message : "Impossible de noter l'arrosage",
       })
+    } finally {
+      setArrosageEnCours(false)
     }
   }
 
@@ -219,25 +248,38 @@ function CulturesIrriguerContent() {
     const culturesIlot = parIlot[ilot]
     if (!culturesIlot || culturesIlot.length === 0) return
 
+    // Un îlot porte plusieurs planches : une seule quantité n'y aurait pas de
+    // sens, ce geste note un arrosage complet par planche. On le dit avant.
+    const nbPlanches = new Set(culturesIlot.map(c => c.planche?.id ?? `culture:${c.id}`)).size
+    // Clé de regroupement des planches sans îlot (`irrigation-conseil.ts`).
+    const lieu = ilot === "Sans îlot" ? "sans îlot" : `de l'îlot ${ilot}`
+    const confirme = await confirmDialog(
+      `${nbPlanches > 1 ? `Les ${nbPlanches} planches` : "La planche"} ${lieu} ${nbPlanches > 1 ? "compteront comme arrosées" : "comptera comme arrosée"}, réserve du sol remplie. Pour noter les litres réellement versés, utilisez le bouton d'arrosage de chaque culture.`,
+      { title: "Noter un arrosage complet ?", confirmLabel: "Noter l'arrosage complet" },
+    )
+    if (!confirme) return
+
     try {
-      const cultureIds = culturesIlot.map(c => c.id)
-      const response = await fetch("/api/cultures/irriguer", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cultureIds, marquerArrosage: true }),
-      })
-      if (!response.ok) throw new Error("Erreur")
+      // Même client que « Noter » : événement `gleba:irrigation-updated` pour
+      // les autres vues, et annulation exacte du geste.
+      const resultat = await noterArrosage(culturesIlot.map(c => c.id), null, null, "irriguer")
+      if (!resultat.ok) throw new Error(resultat.erreur)
       await fetchData()
 
-      toast({
-        title: "Îlot arrosé",
-        description: `${culturesIlot.length} culture(s) marquée(s)`,
+      notifierEnregistrement({
+        titre: "Îlot arrosé",
+        detail: `${ilot} · arrosage complet de ${nbPlanches} planche${nbPlanches > 1 ? "s" : ""}, consigné dans les interventions.`,
+        annuler: async () => {
+          const annule = await annulerArrosage(resultat.annulation)
+          if (!annule.ok) throw new Error(annule.erreur)
+          await fetchData()
+        },
       })
-    } catch {
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de noter l'arrosage",
+        description: e instanceof Error && e.message ? e.message : "Impossible de noter l'arrosage",
       })
     }
   }
@@ -612,6 +654,10 @@ function CulturesIrriguerContent() {
                     {cultures.map((culture) => {
                       const jamais = culture.joursSansEau === null
                       const urgenceColor = getUrgenceColor(culture.urgence)
+                      // Volume conseillé pour la PLANCHE : le chiffre que le
+                      // dialogue « Noter l'arrosage » préremplit.
+                      const litresPlanche = phraseLitresPlanche(contexteQuantiteVersee(culture))
+                      const libelleNoter = `Noter l'arrosage de ${culture.espece?.nom || culture.especeId}${culture.planche ? ` (${culture.planche.nom || culture.planche.id})` : ""}`
 
                       return (
                         <div
@@ -717,9 +763,10 @@ function CulturesIrriguerContent() {
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => marquerArrosee(culture.id)}
+                                  onClick={() => setArrosageANoter(culture)}
                                   className="h-8 w-8 p-0 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50"
-                                  title="Marquer comme arrosé"
+                                  title={libelleNoter}
+                                  aria-label={libelleNoter}
                                 >
                                   <Droplet className="h-4 w-4" />
                                 </Button>
@@ -737,7 +784,7 @@ function CulturesIrriguerContent() {
                                   <>
                                     {/* Nombres à la française (QA cmv3javy4). */}
                                     {" "}Dose conseillée : {formatNombre(culture.reserve.litresParM2, 1)} L/m²
-                                    {culture.reserve.litresConseilles > 0 && `, soit ${formatNombre(culture.reserve.litresConseilles)} L pour cette culture`}
+                                    {litresPlanche && `, ${litresPlanche}`}
                                     {culture.reserve.passages >= 2 &&
                                       `, en ${culture.reserve.passages} passages d'environ ${Math.round(culture.reserve.litresParM2 / culture.reserve.passages)} L/m² espacés de quelques heures`}.
                                   </>
@@ -800,6 +847,26 @@ function CulturesIrriguerContent() {
           </Card>
         )}
       </main>
+
+      <Dialog open={arrosageANoter !== null} onOpenChange={(nextOpen) => {
+        if (!nextOpen && !arrosageEnCours) setArrosageANoter(null)
+      }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[430px]">
+          {arrosageANoter && (
+            <SaisieArrosage
+              key={arrosageANoter.id}
+              arrosage={contexteQuantiteVersee(arrosageANoter)}
+              libelle={[
+                arrosageANoter.planche ? arrosageANoter.planche.nom || arrosageANoter.planche.id : null,
+                arrosageANoter.espece?.nom ?? arrosageANoter.especeId,
+              ].filter(Boolean).join(" · ")}
+              enCours={arrosageEnCours}
+              onNoter={(litres, notes) => noterArrosageCulture(arrosageANoter, litres, notes)}
+              onRetour={() => setArrosageANoter(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

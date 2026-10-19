@@ -53,6 +53,21 @@ describe('PATCH /api/cultures/irriguer : quantité versée', () => {
     expect(mocks.enregistrerArrosageCultures).not.toHaveBeenCalled()
   })
 
+  // Ticket QA du 2026-10-19 : « Marquer comme arrosé » de la page Irriguer
+  // passe par le même dialogue et le même client ; corps d'un apport partiel.
+  it('page Irriguer : une culture, apport partiel, observation transmise', async () => {
+    mocks.enregistrerArrosageMesure.mockResolvedValue({ ok: true, interventionId: 502, cultureIds: [42], plancheId: 'a3' })
+    const res = await PATCH(patch({ cultureIds: [42], marquerArrosage: true, notes: 'Apport partiel', litres: 200 }))
+    expect(res.status).toBe(200)
+    expect(mocks.enregistrerArrosageMesure).toHaveBeenCalledWith({
+      userId: 'u1',
+      cultureIds: [42],
+      litres: 200,
+      notes: 'Apport partiel',
+    })
+    expect(mocks.enregistrerArrosageCultures).not.toHaveBeenCalled()
+  })
+
   it('« Quantité inconnue » (sans litres) : arrosage complet, comme avant', async () => {
     mocks.enregistrerArrosageCultures.mockResolvedValue({ dateEffective: new Date(), derniereIrrigationAvant: {} })
     const res = await PATCH(patch({ cultureIds: [7, 8], marquerArrosage: true, notes: null }))
