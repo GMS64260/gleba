@@ -21,12 +21,14 @@ export function OnboardingRedirect() {
   const [checked, setChecked] = React.useState(false)
 
   React.useEffect(() => {
-    if (checked || status === "loading") return
-    // Visiteur sans session : la route répondrait 401, rien à vérifier.
-    if (status !== "authenticated" || EXEMPTS.some((p) => pathname?.startsWith(p))) {
-      setChecked(true)
-      return
-    }
+    if (checked) return
+    // Sans session (la route répondrait 401) ou sur une page exemptée, on
+    // attend la page suivante SANS verrouiller. Verrouiller ici laissait passer
+    // les inscrits par mot de passe : `/login` est exemptée, puis LoginForm
+    // navigue côté client après `signIn` et ce composant, monté une seule fois
+    // dans le layout, ne revérifiait plus. 12 inscrits sur 41 par mot de passe
+    // avaient vu le parcours, contre 17 sur 19 par Google (2026-10-19).
+    if (status !== "authenticated" || EXEMPTS.some((p) => pathname?.startsWith(p))) return
     fetch("/api/onboarding", { method: "GET" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
