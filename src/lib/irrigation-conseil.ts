@@ -215,6 +215,9 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
       variete: {
         select: {
           id: true,
+          // Une variété perso a un cuid pour id et son libellé dans `nom` : sans
+          // lui, /maraichage/cultures/irriguer et l'assistant affichaient le cuid.
+          nom: true,
         },
       },
     },
