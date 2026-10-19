@@ -228,6 +228,7 @@ interface LotStockOeufs {
   limiteVente: string
   dcr: string
   statut: "commercialisable" | "a_consumer" | "perime" | "bloque_attente_veto"
+  finAttenteVeto: string | null
   remiseEnVente: string | null
   mouvements: MouvementStockOeufs[]
 }
@@ -667,7 +668,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     commercialisable: { label: "Vente autorisée", className: "bg-green-100 text-green-800" },
     a_consumer: { label: "À consommer", className: "bg-amber-100 text-amber-800" },
     perime: { label: "DCR dépassée", className: "bg-red-100 text-red-800" },
-    bloque_attente_veto: { label: "Délai véto", className: "bg-red-100 text-red-800" },
+    bloque_attente_veto: { label: "Écartés (délai véto)", className: "bg-red-100 text-red-800" },
   } as const
 
   return (
@@ -683,7 +684,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             <CardContent className="pb-3 px-4">
               <p className="text-xs text-white/80">
                 {stockTrace
-                  ? `${stockTrace.stats.stockPhysique} en stock physique${(stockTrace.stats.bloquesVeto ?? 0) > 0 ? ` · ${stockTrace.stats.bloquesVeto} bloqués (délai véto)` : ""}`
+                  ? `${stockTrace.stats.stockPhysique} en stock physique${(stockTrace.stats.bloquesVeto ?? 0) > 0 ? ` · ${stockTrace.stats.bloquesVeto} écartés (délai véto)` : ""}`
                   : "œufs disponibles"}
               </p>
             </CardContent>
@@ -960,10 +961,15 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+            {/* Les écartés (délai véto) ont leur tuile : sans elle, les tuiles
+                ne faisaient pas le stock physique (ticket cmv9dy2ow). */}
+            <div className={`grid grid-cols-2 gap-2 text-sm ${(stockTrace.stats.bloquesVeto ?? 0) > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
               <div className="rounded-md border p-2"><strong>{stockTrace.stats.commercialisables}</strong><br /><span className="text-muted-foreground">commercialisables</span></div>
               <div className="rounded-md border p-2"><strong>{stockTrace.stats.aConsommer}</strong><br /><span className="text-muted-foreground">à consommer</span></div>
               <div className="rounded-md border p-2"><strong>{stockTrace.stats.perimes}</strong><br /><span className="text-muted-foreground">DCR dépassée</span></div>
+              {(stockTrace.stats.bloquesVeto ?? 0) > 0 && (
+                <div className="rounded-md border p-2"><strong>{stockTrace.stats.bloquesVeto}</strong><br /><span className="text-muted-foreground">écartés (délai véto)</span></div>
+              )}
               <div className="rounded-md border p-2"><strong>{stockTrace.stats.stockPhysique}</strong><br /><span className="text-muted-foreground">stock physique</span></div>
             </div>
             <div className="overflow-x-auto">
@@ -984,13 +990,17 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                       <TableCell>{new Date(lot.datePonte).toLocaleDateString("fr-FR")}</TableCell>
                       <TableCell>{lot.lot?.nom || `Collecte #${lot.id}`}</TableCell>
                       <TableCell className="text-right font-semibold">{lot.restant}</TableCell>
-                      <TableCell>{new Date(lot.limiteVente).toLocaleDateString("fr-FR")}</TableCell>
+                      <TableCell>{lot.statut === "bloque_attente_veto" ? "-" : new Date(lot.limiteVente).toLocaleDateString("fr-FR")}</TableCell>
                       <TableCell>{new Date(lot.dcr).toLocaleDateString("fr-FR")}</TableCell>
                       <TableCell>
                         <Badge className={statutStock[lot.statut].className}>{statutStock[lot.statut].label}</Badge>
-                        {lot.statut === "bloque_attente_veto" && lot.remiseEnVente && (
+                        {/* Ticket cmv9dy2ow — « vendables dès le 14/10 » sur des
+                            œufs pondus pendant le délai, donc jamais vendables :
+                            la remise en vente ne vaut que pour les pontes
+                            suivantes. On nomme la fin du délai qui les écarte. */}
+                        {lot.statut === "bloque_attente_veto" && lot.finAttenteVeto && (
                           <p className="mt-0.5 text-xs text-muted-foreground">
-                            vendables dès le {new Date(lot.remiseEnVente).toLocaleDateString("fr-FR")}
+                            Pondus pendant le délai d&apos;attente (fin le {new Date(lot.finAttenteVeto).toLocaleDateString("fr-FR", { timeZone: "UTC" })}) : jamais vendables.
                           </p>
                         )}
                       </TableCell>
