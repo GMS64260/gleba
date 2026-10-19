@@ -1,20 +1,10 @@
 import { z } from 'zod'
+import { TYPES_SOIN as TYPES_SOIN_ECRAN } from '@/lib/elevage/types-soin'
 
-// PROMPT 19B — Types de soin étendus (vaccination, parage, prophylaxie, ...)
-export const TYPES_SOIN = [
-  'Vaccination',
-  'Vermifuge',
-  'Traitement vétérinaire',
-  'Tonte',
-  'Parage onglons',
-  'Castration',
-  'Identification',
-  'Prophylaxie obligatoire',
-  'Coproscopie',
-  'Mise en lutte',
-  'Tarissement',
-  'Autre',
-] as const
+// Types de soin : liste unique `src/lib/elevage/types-soin.ts` (écran, assistant,
+// carnet sanitaire). Cette constante n'en est qu'une vue, pour ne pas tenir
+// deux listes (QA 2026-10-19).
+export const TYPES_SOIN: readonly string[] = TYPES_SOIN_ECRAN.map((t) => t.valeur)
 
 export const VOIES_ADMIN = ['IM', 'SC', 'IV', 'PO', 'Local', 'IN', 'Vaginal', 'Intra-mamm.', 'Pour-on', 'Autre'] as const
 

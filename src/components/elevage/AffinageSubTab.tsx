@@ -28,7 +28,10 @@ type LotCave = {
   nbPiecesInitial: number
   stockPieces: number
   stockKg: number
-  prixMoyenKg: number | null
+  // Prix moyen constaté des ventes du lot, dans leur unité (règle :
+  // src/lib/elevage/cave-fromage.ts).
+  prixConstate: number | null
+  unitePrixConstate: "piece" | "kg" | null
   valorisation: number | null
 }
 const ETAT_BADGE: Record<string, string> = {
@@ -47,7 +50,7 @@ const TYPES_SORTIE = [
 export function AffinageSubTab() {
   const { toast } = useToast()
   const [lots, setLots] = React.useState<LotCave[]>([])
-  const [stats, setStats] = React.useState<{ nbLots: number; stockPiecesTotal: number; stockKgTotal: number; valorisationTotale: number; nbAlerteDlc: number } | null>(null)
+  const [stats, setStats] = React.useState<{ nbLots: number; nbLotsMasques?: number; stockPiecesTotal: number; stockKgTotal: number; valorisationTotale: number; nbAlerteDlc: number } | null>(null)
   const [inclureEcoules, setInclureEcoules] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [sortie, setSortie] = React.useState<LotCave | null>(null)
@@ -125,10 +128,17 @@ export function AffinageSubTab() {
             <CardTitle className="flex items-center gap-2"><Warehouse className="h-5 w-5 text-amber-700" />Cave d'affinage</CardTitle>
             <CardDescription>Inventaire des lots : stock restant, échéance DLC/DLUO, valorisation et sorties.</CardDescription>
           </div>
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <input type="checkbox" checked={inclureEcoules} onChange={(e) => setInclureEcoules(e.target.checked)} />
-            Inclure les lots écoulés
-          </label>
+          <div className="flex items-center gap-3 flex-wrap">
+            {!inclureEcoules && (stats?.nbLotsMasques ?? 0) > 0 && (
+              <span className="text-xs text-slate-500" data-testid="lots-masques">
+                {stats?.nbLotsMasques} lot(s) écoulé(s) ou épuisé(s) masqué(s)
+              </span>
+            )}
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              <input type="checkbox" checked={inclureEcoules} onChange={(e) => setInclureEcoules(e.target.checked)} />
+              Inclure les lots écoulés
+            </label>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -181,7 +191,14 @@ export function AffinageSubTab() {
                         </span>
                       ) : "—"}
                     </td>
-                    <td className="p-2 text-right">{l.valorisation != null ? `${l.valorisation.toLocaleString("fr-FR")} €` : "—"}</td>
+                    <td className="p-2 text-right">
+                      {l.valorisation != null ? `${l.valorisation.toLocaleString("fr-FR")} €` : "—"}
+                      {l.prixConstate != null && l.unitePrixConstate && (
+                        <span className="block text-xs text-slate-500" data-testid="prix-constate">
+                          {l.prixConstate.toLocaleString("fr-FR")} €/{l.unitePrixConstate === "piece" ? "pièce" : "kg"}
+                        </span>
+                      )}
+                    </td>
                     <td className="p-2 text-right">
                       <Button variant="outline" size="sm" onClick={() => setSortie(l)} disabled={l.stockPieces <= 0 && l.stockKg <= 0}>
                         <ArrowDownToLine className="h-4 w-4 mr-1" />Sortie
@@ -191,7 +208,7 @@ export function AffinageSubTab() {
                 ))}
               </tbody>
             </table>
-            <p className="text-xs text-slate-400 mt-2">Stock = pièces fabriquées − sorties. Valorisation au prix de vente moyen constaté du lot. DLC pour le frais, DLUO sinon.</p>
+            <p className="text-xs text-slate-400 mt-2">Stock = fabrication − sorties ; une sortie à la pièce sans pesée retire le poids moyen d'une pièce. Valorisation au prix de vente moyen constaté du lot, dans son unité (pièce ou kg). DLC pour le frais, DLUO sinon.</p>
           </div>
         )}
       </CardContent>

@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { UserMenu } from "@/components/auth/UserMenu"
 import { libelleTypeIntervention } from "@/lib/interventions/types"
+import { libelleTypeSoin, optionsFiltreTypeSoin } from "@/lib/elevage/types-soin"
 import {
   Sprout,
   TreeDeciduous,
@@ -1037,6 +1038,13 @@ function CultureTab({
 // TAB 3 - CARNET SANITAIRE
 // ============================================================
 
+// Couleur de pastille par clé de type de soin (`cleTypeSoin`).
+const COULEUR_TYPE_SOIN: Record<string, string> = {
+  Vaccination: "bg-blue-100 text-blue-700",
+  Vermifuge: "bg-purple-100 text-purple-700",
+  "Traitement vétérinaire": "bg-red-100 text-red-700",
+}
+
 function SanitaireTab({
   data,
   loading,
@@ -1075,8 +1083,16 @@ function SanitaireTab({
     )
   }
 
+  // `type` est la clé de `cleTypeSoin` (API) : filtre, résumé et colonne
+  // partagent la table unique des types de soin (`src/lib/elevage/types-soin.ts`).
   const filteredEntries =
     filter === "all" ? data.carnet : data.carnet.filter((e) => e.type === filter)
+  // Le type filtré reste proposé même absent de l'année affichée : sinon le
+  // sélecteur afficherait « Tous les types » sur une liste filtrée et vide.
+  const optionsType = optionsFiltreTypeSoin([
+    ...data.carnet.map((e) => e.type),
+    ...(filter !== "all" ? [filter] : []),
+  ])
 
   return (
     <div className="space-y-4">
@@ -1121,14 +1137,7 @@ function SanitaireTab({
                   key={type}
                   className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700"
                 >
-                  {type === "vaccination"
-                    ? "Vacc."
-                    : type === "vermifuge"
-                    ? "Verm."
-                    : type === "traitement"
-                    ? "Trait."
-                    : type}
-                  : {count}
+                  {libelleTypeSoin(type)} : {count}
                 </span>
               ))}
             </div>
@@ -1147,15 +1156,15 @@ function SanitaireTab({
             <div className="flex items-center gap-2 no-print">
               <Filter className="h-4 w-4 text-slate-400" />
               <select
+                aria-label="Filtrer par type de soin"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 className="text-sm border rounded-md px-2 py-1 bg-white"
               >
                 <option value="all">Tous les types</option>
-                <option value="vaccination">Vaccination</option>
-                <option value="vermifuge">Vermifuge</option>
-                <option value="traitement">Traitement</option>
-                <option value="autre">Autre</option>
+                {optionsType.map((type) => (
+                  <option key={type} value={type}>{libelleTypeSoin(type)}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -1164,7 +1173,7 @@ function SanitaireTab({
             {data.stats.periodeFin ? formatDate(data.stats.periodeFin) : "-"}
             {filter !== "all" && (
               <span className="ml-2 text-indigo-600">
-                (filtre: {filter} - {filteredEntries.length} résultat{filteredEntries.length > 1 ? "s" : ""})
+                (filtre : {libelleTypeSoin(filter)}, {filteredEntries.length} résultat{filteredEntries.length > 1 ? "s" : ""})
               </span>
             )}
           </CardDescription>
@@ -1196,13 +1205,7 @@ function SanitaireTab({
                   <td className="p-2">
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        entry.type === "vaccination"
-                          ? "bg-blue-100 text-blue-700"
-                          : entry.type === "vermifuge"
-                          ? "bg-purple-100 text-purple-700"
-                          : entry.type === "traitement"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-slate-100 text-slate-700"
+                        COULEUR_TYPE_SOIN[entry.type] ?? "bg-slate-100 text-slate-700"
                       }`}
                     >
                       {entry.typeLabel}

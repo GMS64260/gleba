@@ -9,7 +9,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { lireAnnee } from '@/lib/api/annee'
-import { StockFromageError, verrouillerEtVerifierStockFromage } from '@/lib/elevage/stock-fromage'
+import {
+  StockFromageError,
+  recalerEtatLotFromage,
+  refusStockFromage,
+  stockDuLotFromage,
+  verrouillerEtVerifierStockFromage,
+} from '@/lib/elevage/stock-fromage'
+import { sortieCaveDepuisVente } from '@/lib/elevage/cave-fromage'
 import { createVenteFromVenteProduit, deleteAutoEntry } from '@/lib/auto-compta'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { venteProduitSchema, venteProduitTypeSchema } from '@/lib/validations/elevage-vente'
@@ -167,13 +174,22 @@ export async function POST(request: NextRequest) {
     // Review caprin 2026-07-21 — vente de fromage : une action unique doit
     // décrémenter le stock de cave ET enregistrer la recette ET tracer le lot.
     // On valide l'appartenance du lot + le stock disponible AVANT la transaction.
-    // La sortie de cave est dérivée de l'unité de vente : kg → poids, sinon pièces.
+    // La sortie de cave est dérivée de l'unité de vente (`sortieCaveDepuisVente`,
+    // règle partagée avec la valorisation de la cave) : kg ou g → poids, pièce
+    // ou unité → pièces ; toute autre unité est refusée en nommant le champ.
     let fromageSortie: { lotFromageId: string; nbPieces: number; poidsKg: number } | null = null
     if (type === 'fromage') {
       const lotFromageId = parsed.data.lotFromageId
       if (!lotFromageId) {
         return NextResponse.json(
           { error: 'Pour une vente de fromage, sélectionnez le lot de fabrication (traçabilité + stock de cave).' },
+          { status: 400 }
+        )
+      }
+      const sortie = sortieCaveDepuisVente(quantite, unite)
+      if (!sortie.ok) {
+        return NextResponse.json(
+          { error: sortie.message, details: { fieldErrors: { [sortie.champ]: [sortie.message] } } },
           { status: 400 }
         )
       }
@@ -184,27 +200,11 @@ export async function POST(request: NextRequest) {
       if (!lot) {
         return NextResponse.json({ error: 'Lot de fromage introuvable dans votre cave.' }, { status: 400 })
       }
-      const enKg = (unite || '').toLowerCase().startsWith('kg')
-      const nbPieces = enKg ? 0 : Math.round(quantite)
-      const poidsKg = enKg ? quantite : 0
-
-      const dejaSortiPieces = lot.mouvements.reduce((s, m) => s + m.nbPieces, 0)
-      const dejaSortiKg = lot.mouvements.reduce((s, m) => s + (Number(m.poidsKg) || 0), 0)
-      const restantPieces = lot.nbPieces - dejaSortiPieces
-      const restantKg = Number(lot.poidsTotalKg) - dejaSortiKg
-      if (nbPieces > restantPieces) {
-        return NextResponse.json(
-          { error: `Stock insuffisant : ${restantPieces} pièce(s) en cave, ${nbPieces} vendue(s).` },
-          { status: 409 }
-        )
+      const refus = refusStockFromage(stockDuLotFromage(lot), sortie.nbPieces, sortie.poidsKg)
+      if (refus) {
+        return NextResponse.json({ error: refus }, { status: 409 })
       }
-      if (poidsKg > restantKg + 1e-6) {
-        return NextResponse.json(
-          { error: `Stock insuffisant : ${Math.max(0, Math.round(restantKg * 1000) / 1000)} kg en cave, ${poidsKg} vendu(s).` },
-          { status: 409 }
-        )
-      }
-      fromageSortie = { lotFromageId, nbPieces, poidsKg }
+      fromageSortie = { lotFromageId, nbPieces: sortie.nbPieces, poidsKg: sortie.poidsKg }
     }
 
     // Bug cmp8rzcjc (Marc 2026-05-16) — pour une vente d'animal vivant,
@@ -327,8 +327,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Vente de fromage : sortie de cave liée (décrément de stock) + passage
-      // du lot à 'ecoule' dès qu'une des deux dimensions (pièces OU kg) est
-      // épuisée — même logique que POST /mouvements-fromage.
+      // du lot à 'ecoule' dès qu'il n'a plus de pièce en cave — même règle que
+      // POST /mouvements-fromage (`recalerEtatLotFromage`).
       if (fromageSortie) {
         await tx.mouvementFromage.create({
           data: {
@@ -342,20 +342,7 @@ export async function POST(request: NextRequest) {
             notes: client ? `Vente ${client}` : null,
           },
         })
-        const lot = await tx.lotFromage.findUnique({
-          where: { id: fromageSortie.lotFromageId },
-          include: { mouvements: { select: { nbPieces: true, poidsKg: true } } },
-        })
-        if (lot) {
-          const sortiesPieces = lot.mouvements.reduce((s, m) => s + m.nbPieces, 0)
-          const sortiesKg = lot.mouvements.reduce((s, m) => s + (Number(m.poidsKg) || 0), 0)
-          if (
-            lot.etat !== 'ecoule' &&
-            (sortiesPieces >= lot.nbPieces || sortiesKg >= Number(lot.poidsTotalKg) - 1e-6)
-          ) {
-            await tx.lotFromage.update({ where: { id: lot.id }, data: { etat: 'ecoule' } })
-          }
-        }
+        await recalerEtatLotFromage(tx, session.user.id, fromageSortie.lotFromageId, 'sortie')
       }
 
       await createVenteFromVenteProduit(session.user.id, {
@@ -485,17 +472,7 @@ export async function DELETE(request: NextRequest) {
         await tx.mouvementFromage.deleteMany({
           where: { venteProduitId: existing.id, userId: session.user.id },
         })
-        const lot = await tx.lotFromage.findUnique({
-          where: { id: existing.lotFromageId },
-          include: { mouvements: { select: { nbPieces: true, poidsKg: true } } },
-        })
-        if (lot && lot.etat === 'ecoule') {
-          const sortiesPieces = lot.mouvements.reduce((s, m) => s + m.nbPieces, 0)
-          const sortiesKg = lot.mouvements.reduce((s, m) => s + (Number(m.poidsKg) || 0), 0)
-          if (sortiesPieces < lot.nbPieces && sortiesKg < Number(lot.poidsTotalKg) - 1e-6) {
-            await tx.lotFromage.update({ where: { id: lot.id }, data: { etat: 'pret' } })
-          }
-        }
+        await recalerEtatLotFromage(tx, session.user.id, existing.lotFromageId, 'retour')
       }
       return { ok: true as const }
     })

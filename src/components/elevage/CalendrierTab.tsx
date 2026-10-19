@@ -30,6 +30,7 @@ import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { useFiliereSelection, capacitesSelection } from "@/lib/elevage/filiere-context"
 import { formatRemisesEnVente } from "@/lib/elevage/remise-vente-label"
 import { SoinDetailDialog } from "@/components/elevage/SoinDetailDialog"
+import { libelleTypeSoin } from "@/lib/elevage/types-soin"
 import { LigneRegistre } from "@/components/accueil/LigneRegistre"
 import { PastilleEtat } from "@/components/accueil/PastilleEtat"
 import { etatEcheance } from "@/lib/accueil/elevage"
@@ -125,14 +126,6 @@ type AttenteActive = {
   // QA 2026-09-28 — un lot de pondeuses sous vermifuge était listé sans date :
   // l'API renvoyait bien le délai œufs, l'écran ne le lisait pas.
   oeufs?: { remiseVente: string } | null
-}
-
-const SOIN_TYPE_LABELS: Record<string, string> = {
-  vaccination: "Vaccination",
-  vermifuge: "Vermifuge",
-  traitement: "Traitement",
-  naissance_prevue: "Naissance prévue",
-  autre: "Autre",
 }
 
 const JOURS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
@@ -687,7 +680,7 @@ export function CalendrierTab() {
                           <span className="break-words [overflow-wrap:anywhere]">
                             {soin.numeroInjection
                               ? `Injection ${soin.numeroInjection}/${soin.nombreInjections ?? "?"}`
-                              : SOIN_TYPE_LABELS[soin.type] || soin.type}
+                              : libelleTypeSoin(soin.type)}
                             {soin.produit ? ` · ${soin.produit}` : ""}
                           </span>
                         </div>
@@ -800,7 +793,7 @@ export function CalendrierTab() {
                         etat={etat}
                         titre={libelleCibleSoin(soin)}
                         meta={[
-                          SOIN_TYPE_LABELS[soin.type] || soin.type,
+                          libelleTypeSoin(soin.type),
                           soin.produit || soin.description || "",
                           libelleDatePrevue(soin.date),
                           libelleRetard(retard),
@@ -820,7 +813,6 @@ export function CalendrierTab() {
       <SoinDetailDialog
         soin={soinDetail}
         onClose={() => setSoinDetail(null)}
-        typeLabels={SOIN_TYPE_LABELS}
         onMarquerFait={async (s) => { await toggleInjection(s as SoinTask, false); setSoinDetail(null) }}
         onRouvrir={async (s) => { await toggleInjection(s as SoinTask, true); setSoinDetail(null) }}
       />

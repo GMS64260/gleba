@@ -12,6 +12,12 @@ import { effectifsPondeursLots, estEspecePondeuse } from '@/lib/elevage/pondeuse
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
 import { sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
+import {
+  compterEcheancesSoins,
+  echeanceSoinAFaire,
+  jourCivil,
+  trierParEcheanceSoin,
+} from '@/lib/elevage/echeances-soins'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -245,6 +251,16 @@ export async function GET(request: NextRequest) {
       soinsSansInjections.filter((s) => s.fait).length +
       injectionsActives.filter((i) => i.statut === 'realisee').length
     const soinsTotal = soinsSansInjections.length + injectionsActives.length
+    // QA 2026-10-19 — retards et échéances à venir des MÊMES lignes à faire que
+    // la liste « Soins à faire » du dashboard : la tuile « Soins à planifier »
+    // et le bandeau les lisent ici au lieu de recompter à part (`/stats`).
+    const echeancesSoins = compterEcheancesSoins(
+      [
+        ...soinsSansInjections.filter((s) => !s.fait).map((s) => echeanceSoinAFaire(s)),
+        ...injectionsActives.filter((i) => i.statut !== 'realisee').map((i) => i.datePrevue),
+      ],
+      jourCivil(now) ?? '',
+    )
     const totalOeufs = productions.reduce((s, p) => s + p.quantite, 0)
     const totalConsoKg = consommations.reduce((s, c) => s + c.quantite, 0)
 
@@ -331,7 +347,9 @@ export async function GET(request: NextRequest) {
         date: r.date,
         femelle: r.femelle,
       })),
-      soins: [
+      // Revue 2026-10-19 : un seul ordre, par échéance (plus en retard d'abord),
+      // soins et injections mêlés, avant toute troncature côté écran.
+      soins: trierParEcheanceSoin([
         ...soinsSansInjections
           .map(s => ({
         id: s.id,
@@ -376,7 +394,7 @@ export async function GET(request: NextRequest) {
           animal: i.animalId ? { id: i.animalId, nom: i.animalNom, identifiant: i.animalIdentifiant } : null,
           lot: i.lotId ? { id: i.lotId, nom: i.lotNom } : null,
         })),
-      ],
+      ]),
       productions: productions.map(p => ({
         id: p.id,
         date: p.date,
@@ -395,6 +413,7 @@ export async function GET(request: NextRequest) {
         soinsTotal,
         soinsFaits,
         soinsRestants: soinsTotal - soinsFaits,
+        echeancesSoins,
         totalOeufs,
         totalConsoKg: Math.round(totalConsoKg * 10) / 10,
         estimationOeufsJour: Math.round(estimationOeufsJour),

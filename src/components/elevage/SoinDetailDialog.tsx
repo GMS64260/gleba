@@ -21,6 +21,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { libelleTypeSoin } from "@/lib/elevage/types-soin"
 
 export interface SoinDetailItem {
   id: number
@@ -60,13 +61,11 @@ export function SoinDetailDialog({
   onClose,
   onMarquerFait,
   onRouvrir,
-  typeLabels,
 }: {
   soin: SoinDetailItem | null
   onClose: () => void
   onMarquerFait: (soin: SoinDetailItem) => void | Promise<void>
   onRouvrir?: (soin: SoinDetailItem) => void | Promise<void>
-  typeLabels?: Record<string, string>
 }) {
   const [submitting, setSubmitting] = React.useState(false)
 
@@ -77,7 +76,7 @@ export function SoinDetailDialog({
     : soin.lot
       ? soin.lot.nom || `Lot #${soin.lot.id}`
       : "—"
-  const typeLabel = (typeLabels && typeLabels[soin.type]) || soin.type
+  const typeLabel = libelleTypeSoin(soin.type)
   const rappel = soin.datePrevue ? new Date(soin.datePrevue) : null
 
   const handleFait = async () => {

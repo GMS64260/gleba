@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { cleTypeSoin, libelleTypeSoin } from '@/lib/elevage/types-soin'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi(request)
@@ -75,15 +76,11 @@ export async function GET(request: NextRequest) {
         espece: especeNom,
         animalId: soin.animalId,
         lotId: soin.lotId,
-        type: soin.type,
-        typeLabel:
-          soin.type === 'vaccination'
-            ? 'Vaccination'
-            : soin.type === 'vermifuge'
-            ? 'Vermifuge'
-            : soin.type === 'traitement'
-            ? 'Traitement'
-            : 'Autre',
+        // Clé et libellé du type : table unique `types-soin.ts`, partagée avec
+        // l'Élevage. Le résumé `parType` et le filtre de l'écran comparent
+        // cette même clé (QA 2026-10-19 : tout s'affichait « Autre »).
+        type: cleTypeSoin(soin.type),
+        typeLabel: libelleTypeSoin(soin.type),
         description: soin.description || null,
         produit: soin.produit || null,
         quantite: soin.quantite || null,
