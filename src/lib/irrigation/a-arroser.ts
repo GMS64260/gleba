@@ -14,7 +14,7 @@
  */
 
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
-import { surfaceCultureM2 } from '@/lib/culture-surface'
+import { contexteQuantiteVersee } from '@/lib/irrigation/quantite-versee'
 
 /** Urgences qui font une ligne « à arroser » ; « moyenne » et « faible » se surveillent. */
 export const URGENCES_A_ARROSER = ['critique', 'haute'] as const
@@ -103,6 +103,10 @@ export function arrosagesDuJour(cultures: CultureConseil[]): ArrosageDuJour[] {
     const especes = Array.from(
       new Set(groupe.map((c) => c.espece?.nom).filter((n): n is string => Boolean(n))),
     ).join(' + ')
+    // Même surface que le chargeur des arrosages saisis (`arrosages-saisis.ts`) ;
+    // sans planche, inconnue (0) : l'arrosage compte comme complet. Règle
+    // partagée avec la page Irriguer (`contexteQuantiteVersee`).
+    const { litresParM2, surfaceM2 } = contexteQuantiteVersee(tete)
     return {
       cle,
       plancheRefId: tete.planche?.id ?? null,
@@ -113,10 +117,8 @@ export function arrosagesDuJour(cultures: CultureConseil[]): ArrosageDuJour[] {
       urgence: tete.urgence as UrgenceAArroser,
       raison: tete.raisonUrgence,
       sousAbri: groupe.some((c) => c.sousAbri),
-      litresParM2: tete.reserve ? tete.reserve.litresParM2 : null,
-      // Même surface que le chargeur des arrosages saisis (`arrosages-saisis.ts`) ;
-      // sans planche, inconnue (0) : l'arrosage compte comme complet.
-      surfaceM2: tete.planche ? surfaceCultureM2({ planche: tete.planche }) : 0,
+      litresParM2,
+      surfaceM2,
     }
   })
 

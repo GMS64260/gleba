@@ -57,6 +57,11 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import {
+  ANCRE_CHEZ_MOI,
+  estOngletFicheEspece,
+  type OngletFicheEspece,
+} from "@/lib/especes/fiche-url"
+import {
   updateEspeceSchema,
   type UpdateEspeceInput,
   ESPECE_CATEGORIES,
@@ -138,6 +143,33 @@ export default function EditEspecePage() {
   const [familles, setFamilles] = React.useState<{ id: string }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+
+  // L'URL porte l'onglet (`?tab=`, lu au montage, réécrit par
+  // history.replaceState pour ne pas remonter la page par le routeur) ; la
+  // saisie de récolte ouvre la carte « Chez moi » (`lienChezMoiEspece`).
+  const [onglet, setOnglet] = React.useState<OngletFicheEspece>("general")
+  const ancreTraitee = React.useRef(false)
+  React.useEffect(() => {
+    const demande = new URLSearchParams(window.location.search).get("tab")
+    if (estOngletFicheEspece(demande)) setOnglet(demande)
+  }, [])
+  React.useEffect(() => {
+    if (isLoading || ancreTraitee.current) return
+    if (window.location.hash !== `#${ANCRE_CHEZ_MOI}` || onglet !== "recolte") return
+    ancreTraitee.current = true
+    requestAnimationFrame(() => {
+      document.getElementById(ANCRE_CHEZ_MOI)?.scrollIntoView({ block: "start" })
+    })
+  }, [isLoading, onglet])
+  const changerOnglet = (valeur: string) => {
+    if (!estOngletFicheEspece(valeur)) return
+    setOnglet(valeur)
+    const url = new URL(window.location.href)
+    if (valeur === "general") url.searchParams.delete("tab")
+    else url.searchParams.set("tab", valeur)
+    url.hash = ""
+    window.history.replaceState(window.history.state, "", url.toString())
+  }
 
   // Variétés
   const [varietes, setVarietes] = React.useState<Variete[]>([])
@@ -620,7 +652,7 @@ export default function EditEspecePage() {
       <main className="container mx-auto px-4 py-6 max-w-4xl">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <Tabs defaultValue="general" className="w-full">
+            <Tabs value={onglet} onValueChange={changerOnglet} className="w-full">
               <TabsList className="grid w-full grid-cols-7">
                 <TabsTrigger value="general">Général</TabsTrigger>
                 <TabsTrigger value="culture">Culture</TabsTrigger>
@@ -1289,7 +1321,7 @@ export default function EditEspecePage() {
                   et de la conduite. C'est aussi le seul chemin d'accès aux
                   unités en tiges, pièces ou bottes pour une espèce officielle.
                 */}
-                <Card className="mt-6 border-emerald-200">
+                <Card id={ANCRE_CHEZ_MOI} className="mt-6 border-emerald-200 scroll-mt-24">
                   <CardHeader>
                     <CardTitle className="text-base">Chez moi</CardTitle>
                     <p className="text-sm text-slate-500">

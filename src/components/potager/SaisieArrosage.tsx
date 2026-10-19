@@ -2,9 +2,10 @@
 
 /**
  * Noter l'arrosage d'une planche « à arroser aujourd'hui » depuis la page
- * Tâches et l'onglet Calendrier, avec la quantité versée (ticket QA
- * cmv3japsf, étendu à ces deux écrans le 2026-10-11) : même préremplissage
- * et mêmes mots que le conseiller d'irrigation (`quantite-versee.ts`).
+ * Tâches, l'onglet Calendrier et la page Irriguer, avec la quantité versée
+ * (ticket QA cmv3japsf, étendu à Tâches et Calendrier le 2026-10-11, à la
+ * page Irriguer le 2026-10-19) : même préremplissage et mêmes mots que le
+ * conseiller d'irrigation (`quantite-versee.ts`).
  * Contenu d'une boîte de dialogue ; l'écran garde la main sur l'envoi.
  */
 import * as React from "react"
@@ -15,8 +16,12 @@ import { DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/di
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import type { ArrosageDuJour } from "@/lib/irrigation/a-arroser"
-import { aideQuantite, lireLitres, litresConseilles } from "@/lib/irrigation/quantite-versee"
+import {
+  aideQuantite,
+  lireLitres,
+  litresConseilles,
+  type ContexteQuantiteVersee,
+} from "@/lib/irrigation/quantite-versee"
 
 export function SaisieArrosage({
   arrosage,
@@ -25,7 +30,8 @@ export function SaisieArrosage({
   onNoter,
   onRetour,
 }: {
-  arrosage: ArrosageDuJour
+  /** Une ligne « à arroser » (`ArrosageDuJour`) ou une culture (`contexteQuantiteVersee`). */
+  arrosage: ContexteQuantiteVersee
   libelle: string
   enCours: boolean
   /** `litres` null : « Quantité inconnue », l'arrosage compte comme complet. */

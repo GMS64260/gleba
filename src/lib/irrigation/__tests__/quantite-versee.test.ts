@@ -4,7 +4,14 @@
  */
 import { describe, expect, it } from "vitest"
 
-import { aideQuantite, detailArrosageNote, lireLitres, litresConseilles } from "../quantite-versee"
+import {
+  aideQuantite,
+  contexteQuantiteVersee,
+  detailArrosageNote,
+  lireLitres,
+  litresConseilles,
+  phraseLitresPlanche,
+} from "../quantite-versee"
 
 // Espace insécable fine d'Intl fr-FR entre les milliers.
 const fr = (s: string) => s.replace(/[  ]/g, " ")
@@ -41,5 +48,49 @@ describe("quantité versée", () => {
   it("le toast dit la quantité, ou l'arrosage complet", () => {
     expect(detailArrosageNote("A3", 20)).toBe("A3 · 20 L versés, consigné dans les interventions.")
     expect(detailArrosageNote("A3", null)).toBe("A3 · arrosage complet, consigné dans les interventions.")
+  })
+
+  // Ticket QA du 2026-10-19 : la page Irriguer notait un plein sans demander
+  // les litres. Son dialogue part du même contexte que les Tâches.
+  it("contexte de saisie d'une culture : dose conseillée et surface de la PLANCHE entière", () => {
+    const culture = {
+      longueur: 5, // la culture n'occupe que 5 m de la planche
+      reserve: { litresParM2: 29.9 },
+      planche: { nom: "A3", largeur: 1.2, longueur: 15, surface: null },
+    }
+    const contexte = contexteQuantiteVersee(culture)
+    expect(contexte).toEqual({ litresParM2: 29.9, surfaceM2: 18, plancheNom: "A3" })
+    // Prérempli du dialogue : 29,9 L/m² × 18 m².
+    expect(litresConseilles(contexte.litresParM2, contexte.surfaceM2)).toBe(538)
+  })
+
+  it("sans météo ni planche : rien à préremplir, l'aide le dit", () => {
+    expect(contexteQuantiteVersee({ reserve: null, planche: null })).toEqual({
+      litresParM2: null,
+      surfaceM2: 0,
+      plancheNom: null,
+    })
+    expect(contexteQuantiteVersee({ planche: { nom: "B2", surface: 12 } })).toEqual({
+      litresParM2: null,
+      surfaceM2: 12,
+      plancheNom: "B2",
+    })
+  })
+
+  it("un nom de planche vide n'est pas un nom", () => {
+    expect(contexteQuantiteVersee({ planche: { nom: "", surface: 12 } }).plancheNom).toBeNull()
+  })
+
+  // Revue du 2026-10-19 : la ligne de la page Irriguer annonçait le volume de
+  // la portion cultivée (179 L), le dialogue préremplissait la planche (538 L).
+  it("la ligne annonce le chiffre que le dialogue préremplit, pour la planche", () => {
+    const contexte = contexteQuantiteVersee({
+      reserve: { litresParM2: 29.9 },
+      planche: { nom: "A3", largeur: 1.2, longueur: 15, surface: null },
+    })
+    expect(phraseLitresPlanche(contexte)).toBe("soit 538 L pour la planche A3")
+    expect(phraseLitresPlanche({ ...contexte, plancheNom: null })).toBe("soit 538 L pour la planche")
+    expect(phraseLitresPlanche({ litresParM2: 29.9, surfaceM2: 0, plancheNom: null })).toBeNull()
+    expect(phraseLitresPlanche({ litresParM2: null, surfaceM2: 18, plancheNom: "A3" })).toBeNull()
   })
 })

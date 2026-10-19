@@ -54,6 +54,9 @@ export function uniteQuantiteRecolte(
   return UNITE_QUANTITE_PAR_RENDEMENT[(uniteRendement ?? 'kg_m2') as UniteRendement] ?? 'kg'
 }
 
+/** Unités de quantité connues (valeurs de `Recolte.unite`). */
+export const UNITES_QUANTITE: readonly UniteQuantite[] = ['kg', 'tige', 'piece', 'botte']
+
 /** Libellé d'une unité de quantité, accordé au nombre. */
 export function libelleUniteQuantite(unite: UniteQuantite, nombre = 2): string {
   const libelle = LIBELLE_QUANTITE[unite] ?? LIBELLE_QUANTITE.kg

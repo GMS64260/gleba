@@ -71,8 +71,8 @@ import {
   typeObjet,
 } from "@/lib/jardin/objets-plan"
 
-/** Garde-fou sur la duplication en lot (une requête par copie). */
-const MAX_COPIES_PLANCHE = 20
+// Garde-fou de la duplication en lot, planches et objets : borne de la route.
+import { MAX_COPIES_PLANCHE } from "@/lib/planches/copie"
 
 // Palier 4 (perf) : dialogs lourds chargés à la demande, hors du bundle
 // initial de l'éditeur (le plus gros écran client de l'app).
@@ -93,6 +93,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
 import { parcelleAutoSelectionnee } from "@/lib/jardin/auto-selection"
 import { CONDUITES_ARBRE, ETATS_ARBRE } from "@/lib/verger/arbre-constants"
+import { TYPES_ARBRE, couleurTypeArbre } from "@/lib/verger/types-arbre"
+import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
 
 interface PlancheWithCulture {
   id: string
@@ -226,12 +228,9 @@ function SelectTypeObjet({
   )
 }
 
-const TYPES_ARBRES = [
-  { value: "fruitier", label: "Arbre fruitier", color: "#22c55e" },
-  { value: "petit_fruit", label: "Petit fruit", color: "#ef4444" },
-  { value: "ornement", label: "Ornement", color: "#a855f7" },
-  { value: "haie", label: "Haie", color: "#84cc16" },
-]
+// Types d'arbre du plan : liste unique (src/lib/verger/types-arbre.ts),
+// identique à l'onglet Arbres du verger (lianes et forestiers compris).
+const TYPES_ARBRES = TYPES_ARBRE.map((t) => ({ value: t.value, label: t.label, color: couleurTypeArbre(t.value) }))
 
 interface ParcelleOption {
   id: string
@@ -718,9 +717,11 @@ function JardinContent() {
       const especes = (especesRes?.data || []).map((e: any) => e.id).filter(Boolean)
       setArbreEspecesRef(especes)
       const especesSet = new Set(especes)
+      // QA 2026-10-19 — une variété personnelle se propose sous son nom,
+      // pas sous son id technique (voir src/lib/verger/variete-arbre.ts).
       const varietes = (varietesRes?.data || [])
         .filter((v: any) => especesSet.has(v.especeId))
-        .map((v: any) => v.id)
+        .map((v: any) => libelleVarieteOption(v))
         .filter(Boolean)
       setArbreVarietesRef(varietes)
       const fournisseurs = (fournisseursRes?.data || []).map((f: any) => f.id).filter(Boolean)
@@ -1555,55 +1556,48 @@ function JardinContent() {
   // reprenait le nom déjà suffixé de la précédente → « 4-copie-copie-copie… ».
   // On numérote désormais à partir du nom de base, et on aligne les copies le
   // long de la largeur au lieu de les décaler en diagonale d'un mètre.
+  //
+  // Ticket QA du 2026-10-19 : l'écran recopiait lui-même les seules colonnes
+  // chargées pour dessiner le plan ; îlot, type, sol, rétention et rotation
+  // étaient perdus. Noms, positions et terrain sont désormais décidés par la
+  // route, qui relit la source en base (`src/lib/planches/copie.ts`), comme
+  // pour les arbres. La sauvegarde en attente est d'abord écrite pour que les
+  // copies partent de la position affichée.
   const handleDuplicatePlanche = async (nombre = 1) => {
     if (!selectedPlanche) return
     const source = planches.find(p => p.id === selectedPlanche)
     if (!source) return
-
-    const copies = Math.max(1, Math.min(nombre, MAX_COPIES_PLANCHE))
-    const noms = nomsCopiesEnLot(
-      source.nom || source.id,
-      planches.map(p => p.nom || p.id),
-      copies
-    )
-    const pas = (source.largeur || 1) + 0.4
-
     try {
-      let dernierId: string | null = null
-      for (const [index, nom] of noms.entries()) {
-        const response = await fetch("/api/planches", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nom,
-            largeur: source.largeur,
-            longueur: source.longueur,
-            surface: (source.largeur || 0) * (source.longueur || 0),
-            posX: Math.round(((source.posX ?? 0) + pas * (index + 1)) * 10) / 10,
-            posY: source.posY ?? 0,
-            rotation2D: source.rotation2D,
-            parcelleGeoId: selectedParcelleId || undefined,
-          })
-        })
-
-        if (!response.ok) {
-          const err = await response.json()
-          throw new Error(err.error || "Erreur duplication")
+      // La route part de la position EN BASE. Une source déplacée, ou ancienne
+      // sans coordonnées et posée automatiquement à l'écran (sans armer
+      // `hasChanges`), est d'abord écrite ; sinon les copies tomberaient loin
+      // d'elle. `handleSave` n'avance l'état sauvé qu'en cas de succès : on le
+      // relit avant d'appeler la route.
+      const sourceNonSauvee = () =>
+        entitesModifiees([source], planchesSauveesRef.current, empreintePlanche).length > 0
+      if (hasChanges || sourceNonSauvee()) {
+        await handleSave()
+        if (sourceNonSauvee()) {
+          throw new Error("La position de la planche n'a pas pu être enregistrée : duplication annulée.")
         }
-
-        const created = await response.json()
-        dernierId = created.id
       }
+      const response = await fetch(`/api/planches/${encodeURIComponent(selectedPlanche)}/dupliquer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: Math.max(1, Math.min(nombre, MAX_COPIES_PLANCHE)) }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Erreur duplication")
+      const creees: { id: string; nom: string }[] = data?.planches ?? []
 
       toast({
-        title: copies > 1 ? `${copies} planches créées` : "Planche dupliquée",
-        description: noms.join(", "),
+        title: creees.length > 1 ? `${creees.length} planches créées` : "Planche dupliquée",
+        description: creees.map(p => p.nom).join(", "),
       })
-      await fetchPlanches()
-      if (dernierId) setSelection([{ type: 'planche', id: dernierId }])
+      await Promise.all([fetchPlanches(), fetchPlanchesSansParcelle()])
+      const derniere = creees[creees.length - 1]
+      if (derniere) setSelection([{ type: 'planche', id: derniere.id }])
     } catch (error) {
-      // Les copies déjà créées avant l'échec sont conservées : on rafraîchit
-      // pour que le plan reflète l'état réel plutôt qu'un compte optimiste.
       await fetchPlanches()
       toast({
         variant: "destructive",

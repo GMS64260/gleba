@@ -34,6 +34,12 @@ import { libelleCulture } from "@/lib/cultures/label"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { todayLocalISO } from '@/lib/format-utils'
 import { TYPES_INTERVENTION, libelleTypeIntervention } from "@/lib/interventions/types"
+import {
+  libellesEmplacement,
+  termesRecherche,
+  texteContientTermes,
+  texteRechercheIntervention,
+} from "@/lib/interventions/recherche"
 import { EVENEMENT_NOUVELLE_INTERVENTION } from "@/lib/accueil/evenements"
 import {
   Sprout,
@@ -725,20 +731,36 @@ export default function InterventionsPage() {
   // Filtered interventions (client-side text search)
   // ============================================================
 
+  const culturesParId = React.useMemo(
+    () => new Map(cultures.map((c) => [c.id, c])),
+    [cultures],
+  )
+
+  // Ticket QA du 2026-10-19 : la recherche ignorait la colonne « Culture /
+  // Planche » (« Courge » ne retrouvait pas les arrosages de la courge). Elle
+  // porte désormais sur ce que la ligne affiche, sans casse ni accents
+  // (`src/lib/interventions/recherche.ts`). Elle filtre ce que l'API a
+  // renvoyé pour l'année et les filtres de type, dates et statut : au plus
+  // 500 interventions saisies (les plus récentes) plus les lignes dérivées.
+  // Le texte replié de chaque ligne est calculé une fois par chargement.
+  const lignesRecherche = React.useMemo(
+    () =>
+      interventions.map((intervention) => ({
+        intervention,
+        texte: texteRechercheIntervention(
+          intervention,
+          intervention.cultureId ? culturesParId.get(intervention.cultureId) : null,
+        ),
+      })),
+    [interventions, culturesParId],
+  )
   const filteredInterventions = React.useMemo(() => {
-    if (!searchText) return interventions
-    const lower = searchText.toLowerCase()
-    return interventions.filter((i) => {
-      const typeLabel = libelleTypeIntervention(i.type)
-      return (
-        typeLabel.toLowerCase().includes(lower) ||
-        (i.description && i.description.toLowerCase().includes(lower)) ||
-        (i.plancheId && i.plancheId.toLowerCase().includes(lower)) ||
-        (i.intrantNom && i.intrantNom.toLowerCase().includes(lower)) ||
-        (i.notes && i.notes.toLowerCase().includes(lower))
-      )
-    })
-  }, [interventions, searchText])
+    const termes = termesRecherche(searchText)
+    if (termes.length === 0) return interventions
+    return lignesRecherche
+      .filter((ligne) => texteContientTermes(ligne.texte, termes))
+      .map((ligne) => ligne.intervention)
+  }, [interventions, lignesRecherche, searchText])
 
   // ============================================================
   // Render
@@ -1453,11 +1475,11 @@ export default function InterventionsPage() {
                       // Try to find culture name
                       const isVirtual = intervention.source !== 'intervention'
                       const culture = intervention.cultureId
-                        ? cultures.find((c) => c.id === intervention.cultureId)
+                        ? culturesParId.get(intervention.cultureId)
                         : null
-                      const cultureLabel = intervention.cultureNom
-                        || (culture ? libelleCulture(culture) : null)
-                      const plancheLabel = intervention.plancheNom || intervention.plancheId || null
+                      // Mêmes libellés que la recherche (`libellesEmplacement`).
+                      const { culture: cultureLabel, planche: plancheLabel } =
+                        libellesEmplacement(intervention, culture)
 
                       return (
                         <React.Fragment key={intervention.id}>

@@ -13,13 +13,16 @@ const mocks = vi.hoisted(() => ({
   cultureFindUnique: vi.fn(),
   cultureUpdate: vi.fn(),
   recolteCreate: vi.fn(),
+  chargerSurcharges: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
-vi.mock("@/lib/recolte/rendement-effectif", () => ({
-  chargerSurchargesRendement: vi.fn(async () => new Map()),
-  rendementEffectif: (espece: { uniteRendement?: string | null }) => ({ uniteRendement: espece.uniteRendement ?? null }),
+// Règle réelle du rendement effectif ; seule la lecture des surcharges de la
+// ferme est simulée.
+vi.mock("@/lib/recolte/rendement-effectif", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/recolte/rendement-effectif")>()),
+  chargerSurchargesRendement: mocks.chargerSurcharges,
 }))
 vi.mock("@/lib/prisma", () => {
   const tx = {
@@ -78,6 +81,7 @@ describe("POST /api/recoltes — date de récolte et cycle de la culture", () =>
     mocks.cultureFindUnique.mockResolvedValue(ZINNIA)
     mocks.recolteCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
     mocks.cultureUpdate.mockResolvedValue({})
+    mocks.chargerSurcharges.mockResolvedValue(new Map())
   })
 
   it("refuse une récolte avant la plantation prévue, sans rien écrire", async () => {
@@ -106,5 +110,72 @@ describe("POST /api/recoltes — date de récolte et cycle de la culture", () =>
   it("la culture est relue dans le compte connecté", async () => {
     await enregistrer("2027-01-17")
     expect(mocks.cultureFindUnique.mock.calls[0][0].where).toEqual({ id: 1174, userId: "u1" })
+  })
+})
+
+/**
+ * Ticket QA du 2026-10-19 : la saisie ne proposait que des kilos. L'unité se
+ * décide pour l'ESPÈCE chez la ferme (carte « Chez moi » de sa fiche, PUT
+ * mon-rendement), et l'écran envoie le même corps qu'avant : la route dérive
+ * l'unité de la récolte de cette surcharge et ignore toute unité reçue.
+ */
+describe("POST /api/recoltes — unité de la récolte", () => {
+  const BASILIC = {
+    id: 501,
+    userId: "u1",
+    especeId: "Basilic",
+    dateSemis: new Date("2026-04-01T22:00:00.000Z"),
+    datePlantation: new Date("2026-05-10T22:00:00.000Z"),
+    dateRecolte: new Date("2026-07-01T22:00:00.000Z"),
+    semisFait: true,
+    plantationFaite: true,
+    recolteFaite: false,
+    espece: { id: "Basilic", rendement: 1.5, uniteRendement: "kg_m2" },
+    planche: null,
+  }
+
+  // Corps de `/maraichage/recoltes/saisie`, plus une unité qu'un client
+  // pourrait glisser : elle ne doit rien décider.
+  const enregistrerBasilic = () =>
+    POST(
+      new Request("http://localhost/api/recoltes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          especeId: "Basilic",
+          cultureId: 501,
+          quantite: 10,
+          date: new Date("2026-10-19"),
+          datePeremption: null,
+          notes: null,
+          unite: "kg",
+        }),
+      }) as never
+    )
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
+    mocks.cultureFindUnique.mockResolvedValue(BASILIC)
+    mocks.recolteCreate.mockImplementation(async ({ data }) => ({ id: 2, ...data }))
+    mocks.cultureUpdate.mockResolvedValue({})
+  })
+
+  it("compte en bottes une espèce que la ferme compte en bottes", async () => {
+    mocks.chargerSurcharges.mockResolvedValue(
+      new Map([["Basilic", { rendement: null, uniteRendement: "bottes_m2" }]]),
+    )
+    const res = await enregistrerBasilic()
+    expect(res.status).toBe(201)
+    expect(mocks.chargerSurcharges).toHaveBeenCalledWith("u1", ["Basilic"])
+    expect(mocks.recolteCreate.mock.calls[0][0].data).toMatchObject({ quantite: 10, unite: "botte" })
+    expect((await res.json()).unite).toBe("botte")
+  })
+
+  it("sans unité déclarée par la ferme, l'unité du catalogue", async () => {
+    mocks.chargerSurcharges.mockResolvedValue(new Map())
+    const res = await enregistrerBasilic()
+    expect(res.status).toBe(201)
+    expect(mocks.recolteCreate.mock.calls[0][0].data.unite).toBe("kg")
   })
 })
