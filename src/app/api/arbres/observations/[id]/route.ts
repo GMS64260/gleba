@@ -7,6 +7,12 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { MESSAGE_AMM_INVALIDE, numAMMValide } from "@/lib/tracabilite/amm"
+import { resoudreOperateurExploitation } from "@/lib/tracabilite/operateur-exploitation"
+import {
+  MESSAGE_CHAMPS_REGLEMENTAIRES,
+  champsManquantsObservationPhyto,
+  type ObservationPhyto,
+} from "@/lib/tracabilite/conformite-observation-phyto"
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error, session } = await requireAuthApi()
@@ -73,19 +79,28 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.epiPortes !== undefined) data.epiPortes = Array.isArray(body.epiPortes) ? body.epiPortes : []
     if (body.zntRespectee !== undefined) data.zntRespectee = body.zntRespectee == null ? null : Boolean(body.zntRespectee)
     if (body.zntDistanceM !== undefined) data.zntDistanceM = body.zntDistanceM == null ? null : parseInt(body.zntDistanceM)
-    if (body.parcelleId !== undefined) data.parcelleId = body.parcelleId || null
-    if (body.operateurId !== undefined) {
-      // FK vers User : ignorer toute valeur qui n'y correspond pas
-      // (le front a historiquement envoyé du texte libre).
-      if (body.operateurId) {
-        const op = await prisma.user.findUnique({
-          where: { id: String(body.operateurId) },
+    if (body.parcelleId !== undefined) {
+      // Clé étrangère revalidée en appartenance (son nom sort au registre phyto).
+      const parcelleId = body.parcelleId ? String(body.parcelleId) : null
+      if (parcelleId) {
+        const parcelle = await prisma.parcelleGeo.findFirst({
+          where: { id: parcelleId, userId: session!.user.id },
           select: { id: true },
         })
-        data.operateurId = op?.id ?? null
-      } else {
-        data.operateurId = null
+        if (!parcelle) {
+          return NextResponse.json({ error: "Données invalides — parcelleId : parcelle non trouvée." }, { status: 400 })
+        }
       }
+      data.parcelleId = parcelleId
+    }
+    if (body.operateurId !== undefined) {
+      // Revue cmvgeltj1 — titulaire ou membre de l'exploitation seulement
+      // (l'opérateur sort en Applicateur au registre), sinon refus nommé.
+      const operateur = await resoudreOperateurExploitation(session!.user.id, body.operateurId)
+      if ("refus" in operateur) {
+        return NextResponse.json({ error: operateur.refus }, { status: 400 })
+      }
+      data.operateurId = operateur.operateurId
     }
     if (body.certiphytoNum !== undefined) data.certiphytoNum = body.certiphytoNum || null
     if (body.resolu !== undefined) {
@@ -98,53 +113,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // DEV3 audit fix — Validation PUT : si la méthode finale (post-merge) est
-    // chimique, vérifier que les champs réglementaires obligatoires ne sont
-    // pas vidés. Évite un trou de conformité phyto (arrêté du 4 mai 2017) où on créerait
-    // en règle puis on viderait via PATCH.
-    const methodeFinale = data.methodeTraitement ?? existing.methodeTraitement
     // QA cmv2962ey — même règle de forme que les interventions : sept chiffres ou vide.
     if (data.numAMM && !numAMMValide(String(data.numAMM))) {
       return NextResponse.json({ error: MESSAGE_AMM_INVALIDE }, { status: 400 })
     }
-    const isChimique =
-      methodeFinale === "chimique_conventionnel" ||
-      methodeFinale === "chimique_cuivre" ||
-      methodeFinale === "chimique"
-    if (isChimique) {
-      const get = (k: string, oldVal: unknown) =>
-        k in data ? (data as Record<string, unknown>)[k] : oldVal
-      const numAMMFinal = get("numAMM", existing.numAMM)
-      const surfaceFinal = get("surfaceTraiteeHa", existing.surfaceTraiteeHa)
-      const volumeFinal = get("volumeBouillieLHa", existing.volumeBouillieLHa) ?? get("volumeBouillieLTotal", existing.volumeBouillieLTotal)
-      const tempFinal = get("temperatureC", existing.temperatureC)
-      const ventFinal = get("ventKmh", existing.ventKmh)
-      const hygroFinal = get("hygrometriePct", existing.hygrometriePct)
-      const pluieFinal = get("pluie24h", existing.pluie24h)
-      const certiFinal = get("certiphytoNum", existing.certiphytoNum)
-      const zntFinal = get("zntRespectee", existing.zntRespectee)
-
-      const manquants: string[] = []
-      if (!numAMMFinal) manquants.push("N° AMM")
-      if (surfaceFinal == null) manquants.push("Surface traitée (ha)")
-      if (volumeFinal == null) manquants.push("Volume de bouillie")
-      if (tempFinal == null) manquants.push("Température (°C)")
-      if (ventFinal == null) manquants.push("Vent (km/h)")
-      if (hygroFinal == null) manquants.push("Hygrométrie (%)")
-      if (pluieFinal == null) manquants.push("Pluie ±24h")
-      if (!certiFinal) manquants.push("N° Certiphyto opérateur")
-      if (zntFinal == null) manquants.push("ZNT cours d'eau")
-      if (manquants.length > 0) {
-        return NextResponse.json(
-          {
-            error:
-              "Champs réglementaires manquants (arrêté du 4 mai 2017 modifié) : " +
-              manquants.join(", "),
-            manquants,
-          },
-          { status: 400 }
-        )
-      }
+    // DEV3 audit fix, revue cmvgeltj1 (2026-10-20) — une modification ne vide
+    // pas un champ réglementaire (même liste que la saisie et le registre),
+    // et passer une ligne en méthode chimique exige ses champs. Un champ déjà
+    // manquant ne bloque pas : la ligne non conforme reste corrigeable champ
+    // par champ depuis le dialogue d'édition du registre Verger.
+    const manquantsAvant = new Set(
+      champsManquantsObservationPhyto(existing).map((champ) => champ.cle),
+    )
+    const apres: ObservationPhyto = Object.assign({}, existing, data)
+    const manquants = champsManquantsObservationPhyto(apres)
+      .filter((champ) => !manquantsAvant.has(champ.cle))
+      .map((champ) => champ.libelle)
+    if (manquants.length > 0) {
+      return NextResponse.json(
+        { error: MESSAGE_CHAMPS_REGLEMENTAIRES + manquants.join(", "), manquants },
+        { status: 400 },
+      )
     }
 
     const observation = await prisma.observationSante.update({

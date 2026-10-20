@@ -7,6 +7,13 @@
  * - Sans `especeId` (Bug #4) : retourne tous les porte-greffes avec leurs
  *   espèces compatibles, pour l'onglet Référentiel.
  *
+ * QA cmvgddn3l (2026-10-20) — `especeId` est la saisie du formulaire : « prunier »
+ * en minuscules ne trouvait aucun porte-greffe (la liaison porte l'id
+ * canonique « Prunier ») alors que la sauvegarde de l'arbre, elle, reliait bien
+ * la saisie au catalogue. L'espèce est donc résolue par le même helper que
+ * POST/PUT /api/arbres (`resoudreEspeceArbre`, casse, accents et tirets
+ * ignorés) ; hors catalogue, la saisie brute sert de clé comme avant.
+ *
  * Dans les deux cas la visibilité communautaire s'applique : Gleba officiel
  * (userId null) + communauté (partagé) + perso courant (cf.
  * src/lib/referentiel-communaute.ts).
@@ -23,7 +30,9 @@ import type { Prisma } from "@prisma/client"
 import {
   visibiliteReferentiel,
   attributionCreation,
+  masquerProprietaire,
 } from "@/lib/referentiel-communaute"
+import { resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -36,8 +45,10 @@ export async function GET(request: NextRequest) {
   const vis = visibiliteReferentiel(session!.user.id)
 
   if (especeId) {
+    const resolue = await resoudreEspeceArbre(prisma, session!.user.id, especeId)
+    const especeCle = resolue.especeId ?? especeId
     const where: Prisma.PorteGreffeWhereInput = {
-      AND: [{ especes: { some: { especeId } } }, vis],
+      AND: [{ especes: { some: { especeId: especeCle } } }, vis],
     }
     const portesGreffe = await prisma.porteGreffe.findMany({
       where,
@@ -49,12 +60,11 @@ export async function GET(request: NextRequest) {
         sensibilites: true,
         drageonnement: true,
         notes: true,
-        userId: true,
         partageCommunaute: true,
       },
       orderBy: { vigueur: "asc" },
     })
-    return NextResponse.json({ data: portesGreffe, count: portesGreffe.length })
+    return NextResponse.json({ data: portesGreffe, count: portesGreffe.length, especeId: especeCle })
   }
 
   // Bug #4 — Référentiel global avec les espèces compatibles incluses.
@@ -77,8 +87,14 @@ export async function GET(request: NextRequest) {
   const statsMap = includeAvis
     ? await statsAvisPourRefs(prisma, 'PORTE_GREFFE', all.map((pg) => pg.id))
     : null
-  const flat = all.map((pg) => ({
+  // Revue du 2026-10-20 (cmvgeltj1) — l'id du compte qui a proposé une entrée
+  // communautaire n'a rien à faire côté client (il servait d'`operateurId`
+  // pour faire sortir un nom tiers au registre phyto). L'écran n'a besoin que
+  // de l'origine : null = Gleba, l'id du compte courant = perso, sinon un
+  // marqueur non identifiant (« Communauté »).
+  const flat = all.map(({ userId, ...pg }) => ({
     ...pg,
+    userId: masquerProprietaire(userId, session!.user.id),
     especesCompatibles: pg.especes.map((e) => e.especeId),
     ...(statsMap ? { avisStats: statsMap.get(pg.id) } : {}),
   }))

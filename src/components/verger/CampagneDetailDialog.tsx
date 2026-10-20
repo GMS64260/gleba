@@ -39,6 +39,7 @@ import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { getAidesByType, NIVEAU_LIBELLE } from "@/data/aides-plantation"
 import { nomEssenceCampagne } from "@/lib/verger/essence-campagne"
+import { formatMontantDevise } from "@/lib/format-utils"
 
 const ETAPE_LIBELLES: Record<string, string> = {
   preparation_sol: "Préparation du sol",
@@ -417,9 +418,9 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                   <Info label="Localisation" value={campagne.parcelleGeo?.nom || campagne.zoneVerger?.nom || "—"} />
                   <Info label="Protection" value={campagne.protectionType || "—"} />
                   <Info label="Objectifs" value={campagne.objectifs || "—"} />
-                  <Info label="Budget prévu" value={campagne.budgetPrevu ? `${campagne.budgetPrevu.toFixed(2)} €` : "—"} />
-                  <Info label="Coût réel" value={campagne.coutReel ? `${campagne.coutReel.toFixed(2)} €` : "—"} />
-                  <Info label="Aides perçues" value={campagne.montantAides ? `${campagne.montantAides.toFixed(2)} €` : "—"} />
+                  <Info label="Budget prévu" value={campagne.budgetPrevu ? formatMontantDevise(campagne.budgetPrevu) : "—"} />
+                  <Info label="Coût réel" value={campagne.coutReel ? formatMontantDevise(campagne.coutReel) : "—"} />
+                  <Info label="Aides perçues" value={campagne.montantAides ? formatMontantDevise(campagne.montantAides) : "—"} />
                 </CardContent>
               </Card>
               {/* Contexte de la replantation (si applicable) */}
@@ -498,7 +499,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                             {etape.dateRealisation && (
                               <span>✓ Réalisée : {new Date(etape.dateRealisation).toLocaleDateString("fr-FR")}</span>
                             )}
-                            {etape.cout != null && <span>{etape.cout.toFixed(2)} €</span>}
+                            {etape.cout != null && <span>{formatMontantDevise(etape.cout)}</span>}
                           </div>
                           {/* Bug feedback testeur 2026-05-25 (cmplk4f5x) —
                               alerte quand dateRealisation < datePrevue, signe

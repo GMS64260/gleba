@@ -7,6 +7,7 @@
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
 import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, Grape, CalendarPlus, Copy, Map as MapIcon, MapPin, type LucideIcon } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -41,7 +42,7 @@ import {
   type TypeArbre,
 } from "@/lib/verger/types-arbre"
 import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
-import { normalizeReferentielKey } from "@/lib/normalize"
+import { choisirEspeceArbre } from "@/lib/verger/espece-arbre"
 import type { ZoneClimat } from "@/lib/terroir"
 import { Snowflake } from "lucide-react"
 
@@ -135,6 +136,9 @@ interface LotArbres {
 
 interface EspeceRef {
   id: string
+  /** Libellé d'une espèce perso (son id est un cuid) ; null pour le catalogue. */
+  nom: string | null
+  userId: string | null
   type: string
   // Référentiel géographique : adéquation à la zone climatique.
   zonesAdaptees?: string | null
@@ -312,6 +316,7 @@ function makeColumns(
 export function ArbresTab() {
   const router = useRouter()
   const { toast } = useToast()
+  const { data: session } = useSession()
   const [data, setData] = React.useState<Arbre[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedType, setSelectedType] = React.useState("all")
@@ -524,7 +529,7 @@ export function ArbresTab() {
       fetch("/api/carte").then(r => r.json()).catch(() => []),
     ]).then(([especesRes, varietesRes, fournisseursRes, parcellesRes]) => {
       const especes = especesRes?.data || []
-      setEspecesRef(especes.map((e: any) => ({ id: e.id, type: e.type, zonesAdaptees: e.zonesAdaptees, besoinFroid: e.besoinFroid })))
+      setEspecesRef(especes.map((e: any) => ({ id: e.id, nom: e.nom ?? null, userId: e.userId ?? null, type: e.type, zonesAdaptees: e.zonesAdaptees, besoinFroid: e.besoinFroid })))
       const especesIds = new Set(especes.map((e: any) => e.id))
       const varietes = (varietesRes?.data || [])
         .filter((v: any) => especesIds.has(v.especeId))
@@ -556,17 +561,29 @@ export function ArbresTab() {
     return filtered
   }, [selectedType, data, filtreCompletude])
 
+  // QA cmvgddn3l (2026-10-20) — « prunier » en minuscules n'ouvrait que
+  // « Aucun » porte-greffe : la liste, les variétés et l'avertissement de zone
+  // se résolvaient sur le libellé brut alors que la sauvegarde relie la saisie
+  // au catalogue sans tenir compte de la casse ni des accents. Même helper que
+  // POST /api/arbres (`choisirEspeceArbre`), une seule clé pour tout le formulaire.
+  const especeSaisie = newArbre.espece.trim()
+  const especeCle = React.useMemo(() => {
+    if (!especeSaisie) return ""
+    return choisirEspeceArbre(especeSaisie, especesRef, session?.user?.id ?? "").especeId ?? especeSaisie
+  }, [especeSaisie, especesRef, session?.user?.id])
+
   // PROMPT 10 — Charger les porte-greffes adaptés à l'espèce courante du formulaire.
+  // La route résout aussi la saisie (filet pour un référentiel pas encore chargé).
   React.useEffect(() => {
-    if (!newArbre.espece) {
+    if (!especeCle) {
       setPortesGreffeOptions([])
       return
     }
-    fetch(`/api/verger/porte-greffes?especeId=${encodeURIComponent(newArbre.espece)}`)
+    fetch(`/api/verger/porte-greffes?especeId=${encodeURIComponent(especeCle)}`)
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((d) => setPortesGreffeOptions(d.data || []))
       .catch(() => setPortesGreffeOptions([]))
-  }, [newArbre.espece])
+  }, [especeCle])
 
   const especeOptions = React.useMemo(() => {
     // Même table type d'arbre → catégories d'espèce que la fiche arbre : une
@@ -585,20 +602,20 @@ export function ArbresTab() {
     // QA 2026-10-19 — une variété personnelle était proposée sous son id
     // technique (cuid) : on propose son nom, que la matrice de pollinisation
     // sait relier à la variété (src/lib/verger/variete-arbre.ts).
-    const refVarietes = newArbre.espece
-      ? varietesRef.filter(v => v.especeId === newArbre.espece).map(v => v.libelle)
+    const refVarietes = especeCle
+      ? varietesRef.filter(v => v.especeId === especeCle).map(v => v.libelle)
       : varietesRef.map(v => v.libelle)
     const userVarietes = data.map(a => a.variete).filter(Boolean) as string[]
     const unique = [...new Set([...refVarietes, ...userVarietes])]
     return unique.sort().map(v => ({ value: v, label: v }))
-  }, [data, varietesRef, newArbre.espece])
+  }, [data, varietesRef, especeCle])
 
   // Avertissement d'adéquation : l'espèce sélectionnée est-elle peu adaptée à la
   // zone de l'utilisateur ? (ex : fruitier à besoin de froid en climat tropical).
   // Non bloquant — le membre peut planter quand même (microclimat d'altitude…).
   const avertissementZone = React.useMemo(() => {
-    if (!newArbre.espece || !userZone) return null
-    const ref = especesRef.find(e => e.id === newArbre.espece)
+    if (!especeCle || !userZone) return null
+    const ref = especesRef.find(e => e.id === especeCle)
     if (!ref) return null
     const { statut, raison } = adequationEspece({
       zonesAdaptees: ref.zonesAdaptees,
@@ -606,21 +623,20 @@ export function ArbresTab() {
       userZone,
     })
     return statut === 'peu_adaptee' ? raison : null
-  }, [newArbre.espece, especesRef, userZone])
+  }, [especeCle, especesRef, userZone])
 
   // QA 2026-10-19 — un kiwi saisi sous « Petit fruit » restait classé ainsi
   // sans que rien ne signale sa catégorie au référentiel (liane fruitière).
   // Seulement entre types fruitiers : un châtaignier planté en forestier ou un
   // cognassier en haie sont des choix délibérés.
   const typeConseille = React.useMemo(() => {
-    if (!newArbre.espece || !estTypeArbreFruitier(newArbre.type)) return null
-    // Saisie libre comprise (« kiwi ») : même comparaison que le rattachement
-    // au catalogue côté serveur (casse, accents et tirets ignorés).
-    const cle = normalizeReferentielKey(newArbre.espece)
-    const ref = especesRef.find(e => normalizeReferentielKey(e.id) === cle)
+    if (!especeCle || !estTypeArbreFruitier(newArbre.type)) return null
+    // Saisie libre comprise (« kiwi ») : clé résolue comme le rattachement au
+    // catalogue côté serveur (casse, accents et tirets ignorés).
+    const ref = especesRef.find(e => e.id === especeCle)
     const conseille = typeArbrePourCategorieEspece(ref?.type)
     return conseille && conseille !== newArbre.type ? conseille : null
-  }, [newArbre.espece, newArbre.type, especesRef])
+  }, [especeCle, newArbre.type, especesRef])
 
   const fournisseurOptions = React.useMemo(() => {
     const userFournisseurs = data.map((a: any) => a.fournisseur).filter(Boolean) as string[]
