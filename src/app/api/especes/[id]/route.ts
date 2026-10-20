@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateEspeceSchema } from '@/lib/validations'
 import { nomEtCleReferentiel } from '@/lib/normalize'
-import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
 import {
   masquerEntree,
   peutEditerReferentiel,
@@ -19,6 +19,7 @@ import {
 import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { type UniteQuantite } from '@/lib/recolte/projection'
 import { arrondirQuantites, ajouterQuantite, type QuantiteParUnite } from '@/lib/recolte/quantites'
+import { calculerStocksNet } from '@/lib/stocks-helpers'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -82,10 +83,17 @@ export async function GET(
     // fixer — la fiche du catalogue lui est refusée en écriture (403 du PUT).
     // La fiche affiche les deux : la référence, et « chez moi ».
     const annee = new Date().getFullYear()
-    const [monRendement, recoltesAnnee] = await Promise.all([
+    const [ligneCompte, recoltesAnnee, stocksNet] = await Promise.all([
       prisma.userStockEspece.findUnique({
         where: { userId_especeId: { userId, especeId: espece.id } },
-        select: { rendement: true, uniteRendement: true, objectifAnnuel: true, prixKg: true },
+        select: {
+          rendement: true,
+          uniteRendement: true,
+          objectifAnnuel: true,
+          prixKg: true,
+          inventaire: true,
+          dateInventaire: true,
+        },
       }),
       // Réalisé de l'année pour CE compte et CETTE espèce, ventilé par unité.
       // Sans lui, un objectif annuel était un champ qu'on saisissait sans jamais
@@ -99,7 +107,24 @@ export async function GET(
         },
         _sum: { quantite: true },
       }),
+      // Stock de récolte du compte pour cette espèce, par la même fonction que
+      // Stocks > Récoltes (baseline datée + récoltes en stock − sorties). La
+      // fiche écrivait `Espece.inventaire`, colonne partagée que rien ne lit
+      // (revue QA du 2026-10-20) : elle sert désormais le stock DU COMPTE.
+      calculerStocksNet(userId, espece.id),
     ])
+    const { inventaire, dateInventaire, ...monRendement } = ligneCompte ?? {
+      rendement: null,
+      uniteRendement: null,
+      objectifAnnuel: null,
+      prixKg: null,
+      inventaire: null,
+      dateInventaire: null,
+    }
+    // `null` tant que le compte n'a ni comptage, ni récolte, ni sortie pour
+    // cette espèce : la carte « Chez moi » le dit plutôt que d'afficher 0.
+    const stockNet = stocksNet[espece.id]
+    const monStock = stockNet ? { ...stockNet, inventaire, dateInventaire } : null
 
     const realiseParUnite = arrondirQuantites(
       recoltesAnnee.reduce<QuantiteParUnite>(
@@ -114,8 +139,9 @@ export async function GET(
       ...masquerEntree(espece, userId),
       varietes: espece.varietes.map((v) => masquerEntree(v, userId)),
       itps: espece.itps.map((i) => masquerEntree(i, userId)),
-      monRendement: monRendement ?? null,
+      monRendement: ligneCompte ? monRendement : null,
       rendementEffectif: rendementEffectif(espece, monRendement),
+      monStock,
       realiseAnnee: { annee, parUnite: realiseParUnite },
     })
   } catch (err) {

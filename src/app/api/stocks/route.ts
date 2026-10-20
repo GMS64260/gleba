@@ -10,6 +10,7 @@ import prisma from '@/lib/prisma'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { enregistrerStockVariete, stockVarieteSchema } from '@/lib/stocks/stock-variete'
+import { enregistrerInventaireEspece, inventaireEspeceSchema } from '@/lib/stocks/inventaire-espece'
 import { ESPECE_TYPES_MARAICHAGE, ESPECE_TYPES_VERGER } from '@/lib/validations/espece'
 
 // Ticket FB-PMWX8O — le filtre « légumes » énumérait le triplet historique en
@@ -83,13 +84,30 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ success: true, data: userStock })
       }
 
+      // Comptage manuel du stock de récolte d'une espèce (Stocks > Récoltes et
+      // carte « Chez moi » de la fiche espèce) : espèce visible du compte,
+      // quantité dans l'unité du stock, règle unique dans
+      // `enregistrerInventaireEspece` (revue QA du 2026-10-20).
       case 'recolte': {
-        const userStock = await prisma.userStockEspece.upsert({
-          where: { userId_especeId: { userId, especeId: id } },
-          create: { userId, especeId: id, inventaire: stock, dateInventaire: date },
-          update: { inventaire: stock, dateInventaire: date },
+        const saisie = inventaireEspeceSchema.safeParse({
+          stock: stock ?? null,
+          ...(dateStock ? { dateStock } : {}),
         })
-        return NextResponse.json({ success: true, data: userStock })
+        if (!saisie.success) {
+          const premiere = saisie.error.issues[0]
+          return NextResponse.json(
+            { error: `Stock invalide — ${premiere?.path.join('.') ?? 'stock'} : ${premiere?.message ?? ''}` },
+            { status: 400 },
+          )
+        }
+        const resultat = await enregistrerInventaireEspece(userId, String(id), saisie.data)
+        if (!resultat.ok) {
+          return NextResponse.json({ error: resultat.error }, { status: resultat.status })
+        }
+        return NextResponse.json({
+          success: true,
+          data: { ...resultat.ligne, especeId: resultat.especeId, unite: resultat.unite },
+        })
       }
 
       default:

@@ -401,8 +401,11 @@ export const baseEspeceSchema = z.object({
   besoinP: z.number().min(0).max(5).nullable().optional(),
   besoinK: z.number().min(0).max(5).nullable().optional(),
   besoinEau: z.number().min(0).max(5).nullable().optional(),
-  dateInventaire: z.union([z.string(), z.date()]).nullable().optional(),
-  inventaire: z.number().min(0).nullable().optional(),
+  // `Espece.inventaire` / `dateInventaire` ne sont plus acceptés : ces colonnes
+  // du référentiel PARTAGÉ ne sont lues par rien. Le stock d'un compte vit
+  // dans `UserStockEspece` (`PATCH /api/stocks`, type `recolte`), le seul que
+  // Stocks > Récoltes et `calculerStocksNet` connaissent (2026-10-20, même
+  // famille que le stock de graines porté par la variété, cmv29j6q7).
   aPlanifier: z.boolean(),
   couleur: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Format couleur invalide (#RRGGBB)").nullable().optional(),
   description: z.string().max(5000).nullable().optional(),
