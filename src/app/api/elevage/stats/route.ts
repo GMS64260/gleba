@@ -8,7 +8,6 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
-import { tauxPonteSaisonnalise } from '@/lib/lait'
 import { fenetrePonteGlissante, tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { calculerTetesNonPondeuses, effectifPondeuses } from '@/lib/elevage/pondeuses'
@@ -376,13 +375,11 @@ export async function GET(request: NextRequest) {
     const tauxPonte = nbPondeuses > 0 ? Math.round(tauxObserve7j * 10) / 10 : null
 
     // Compat : `tauxPonteRatio` (observé / attendu) reste utile pour les
-    // anciens écrans qui comparent ratio plutôt qu'écart. On garde aussi
-    // `ponteSais` pour la rétro-compat des consommateurs API existants.
+    // anciens écrans qui comparent ratio plutôt qu'écart.
     const tauxPonteRatio =
       tauxPonte !== null && tauxPonteAttendu && tauxPonteAttendu > 0
         ? Math.round((tauxPonte / tauxPonteAttendu) * 100) / 100
         : null
-    const ponteSais = tauxPonteSaisonnalise(nbOeufsAnnee, nbPondeuses, startOfYear, periodEnd)
 
     // FCR = kg aliment / kg carcasse
     const fcr = poidsCarcasseTotal > 0 ? consoAlimentsKg / poidsCarcasseTotal : null

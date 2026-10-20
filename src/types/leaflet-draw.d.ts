@@ -12,13 +12,16 @@ declare module 'leaflet' {
       edit?: EditOptions
     }
 
+    /** Options d'un outil de dessin (`false` le désactive). */
+    type OutilDessin = object | false
+
     interface DrawOptions {
-      polyline?: any
-      polygon?: any
-      rectangle?: any
-      circle?: any
-      marker?: any
-      circlemarker?: any
+      polyline?: OutilDessin
+      polygon?: OutilDessin
+      rectangle?: OutilDessin
+      circle?: OutilDessin
+      marker?: OutilDessin
+      circlemarker?: OutilDessin
     }
 
     interface EditOptions {
@@ -36,31 +39,31 @@ declare module 'leaflet' {
     }
 
     class Polygon {
-      constructor(map: Map, options?: any)
+      constructor(map: Map, options?: object)
       enable(): void
       disable(): void
     }
 
     class Polyline {
-      constructor(map: Map, options?: any)
+      constructor(map: Map, options?: object)
       enable(): void
       disable(): void
     }
 
     class Rectangle {
-      constructor(map: Map, options?: any)
+      constructor(map: Map, options?: object)
       enable(): void
       disable(): void
     }
 
     class Circle {
-      constructor(map: Map, options?: any)
+      constructor(map: Map, options?: object)
       enable(): void
       disable(): void
     }
 
     class Marker {
-      constructor(map: Map, options?: any)
+      constructor(map: Map, options?: object)
       enable(): void
       disable(): void
     }

@@ -9,7 +9,6 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PlancheHistory, RotationAdvice } from '@/components/planche'
 import { PlancheInfoTable } from '@/components/planches/PlancheInfoTable'
-import { alertDialog } from '@/lib/global-dialog'
 import { etapeCycleRotation } from '@/lib/rotation/etape-cycle'
 
 interface Planche {
@@ -46,11 +45,6 @@ interface Planche {
   parcelleGeoId: string | null
   parcelleGeo: { id: string; nom: string; surface: number | null; centroidLat: number | null; centroidLng: number | null } | null
 }
-
-const PLANCHE_TYPES = ['Serre', 'Plein champ', 'Tunnel', 'Chassis']
-const PLANCHE_IRRIGATION = ['Goutte-a-goutte', 'Aspersion', 'Manuel', 'Aucun']
-const TYPES_SOL = ['Argileux', 'Limoneux', 'Sableux', 'Mixte']
-const RETENTION_EAU = ['Faible', 'Moyenne', 'Élevée']
 
 interface PageProps {
   params: Promise<{ id: string }>

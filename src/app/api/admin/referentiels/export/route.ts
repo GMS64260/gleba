@@ -8,14 +8,14 @@ import prisma from '@/lib/prisma'
 import { requireAdminApi } from '@/lib/auth-utils'
 
 export async function GET(request: NextRequest) {
-  const { error, session } = await requireAdminApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || 'all'
 
-    let data: any = {}
+    let data: Record<string, unknown> = {}
 
     // Fonction helper pour récupérer un referentiel
     const getRef = async (refType: string) => {

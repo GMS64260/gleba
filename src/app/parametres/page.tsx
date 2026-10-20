@@ -591,7 +591,7 @@ export default function ParametresPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-slate-600" />
-              Identité de l'exploitation
+              Identité de l&apos;exploitation
             </CardTitle>
             <CardDescription>
               Raison sociale, SIRET, régime fiscal, coordonnées bancaires. Apparaissent sur factures, devis et exports comptables.
@@ -601,7 +601,7 @@ export default function ParametresPage() {
             <Link href="/parametres/exploitation">
               <Button variant="outline">
                 <Building2 className="h-4 w-4 mr-2" />
-                Configurer l'exploitation
+                Configurer l&apos;exploitation
               </Button>
             </Link>
           </CardContent>
@@ -670,7 +670,7 @@ export default function ParametresPage() {
           <CardHeader>
             <CardTitle>Plan du jardin</CardTitle>
             <CardDescription>
-              Configurez les dimensions et l'apparence du plan 2D
+              Configurez les dimensions et l&apos;apparence du plan 2D
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -930,7 +930,7 @@ export default function ParametresPage() {
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
               <p className="text-sm text-emerald-800">
                 <strong>Migrer vers mon propre serveur :</strong> téléchargez votre sauvegarde
-                ici, installez Gleba chez vous (voir la documentation d'auto-hébergement),
+                ici, installez Gleba chez vous (voir la documentation d&apos;auto-hébergement),
                 créez votre compte sur la nouvelle instance, puis restaurez le fichier. Vous
                 récupérez tout, sans repartir de zéro.
               </p>
@@ -944,7 +944,7 @@ export default function ParametresPage() {
             <CardTitle>Export tabulaire (avancé)</CardTitle>
             <CardDescription>
               Pour tableur ou analyse. Le CSV est une archive ZIP avec un fichier par table
-              (potager, verger, élevage, gestion…). Le JSON et l'import partiel ne couvrent que
+              (potager, verger, élevage, gestion…). Le JSON et l&apos;import partiel ne couvrent que
               le potager : pour une vraie sauvegarde, utilisez « Sauvegarde complète » ci-dessus.
             </CardDescription>
           </CardHeader>
@@ -1137,13 +1137,13 @@ export default function ParametresPage() {
             {!mcpToken && (
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-sm text-blue-800">
-                  <strong>MCP (Model Context Protocol)</strong> permet à votre assistant IA d'interagir directement
+                  <strong>MCP (Model Context Protocol)</strong> permet à votre assistant IA d&apos;interagir directement
                   avec vos données Gleba. Vous pourrez par exemple dire :
                 </p>
                 <ul className="mt-2 text-sm text-blue-700 space-y-1">
-                  <li>&laquo; Qu'est-ce que je dois faire en maraîchage cette semaine ? &raquo;</li>
+                  <li>&laquo; Qu&apos;est-ce que je dois faire en maraîchage cette semaine ? &raquo;</li>
                   <li>&laquo; Enregistre 3kg de tomates récoltées sur la planche S4 &raquo;</li>
-                  <li>&laquo; Combien d'oeufs mes poules ont pondu ce mois-ci ? &raquo;</li>
+                  <li>&laquo; Combien d&apos;oeufs mes poules ont pondu ce mois-ci ? &raquo;</li>
                 </ul>
               </div>
             )}
@@ -1413,7 +1413,7 @@ function ModulesSection() {
           Modules actifs
         </CardTitle>
         <CardDescription>
-          Choisissez les modules à afficher dans votre navigation. Les modules désactivés restent accessibles par URL directe mais ne s'affichent plus dans la barre de navigation.
+          Choisissez les modules à afficher dans votre navigation. Les modules désactivés restent accessibles par URL directe mais ne s&apos;affichent plus dans la barre de navigation.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -2004,7 +2004,7 @@ function ChangePasswordSection() {
           Sécurité — Mot de passe
         </CardTitle>
         <CardDescription>
-          Changez votre mot de passe. Minimum 12 caractères, différent de l'actuel.
+          Changez votre mot de passe. Minimum 12 caractères, différent de l&apos;actuel.
         </CardDescription>
       </CardHeader>
       <CardContent>

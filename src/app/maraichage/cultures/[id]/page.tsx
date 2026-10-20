@@ -863,7 +863,7 @@ export default function EditCulturePage() {
                           />
                         </FormControl>
                         {nbRangsDepuisITP && (
-                          <p className="text-xs text-blue-600">depuis l'ITP</p>
+                          <p className="text-xs text-blue-600">depuis l&apos;ITP</p>
                         )}
                         <FormMessage />
                       </FormItem>
@@ -892,7 +892,7 @@ export default function EditCulturePage() {
                           />
                         </FormControl>
                         {espacementDepuisITP && (
-                          <p className="text-xs text-blue-600">depuis l'ITP</p>
+                          <p className="text-xs text-blue-600">depuis l&apos;ITP</p>
                         )}
                         <FormMessage />
                       </FormItem>

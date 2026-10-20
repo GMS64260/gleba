@@ -211,7 +211,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       const aIrriguer = especeRef ? necesiteIrrigation(especeRef) : false
 
       // Convertir les dates de maniere robuste (string ou Date)
-      const toISO = (d: any) => {
+      const toISO = (d: unknown) => {
         if (!d) return null
         if (d instanceof Date) return d.toISOString()
         if (typeof d === 'string') return new Date(d).toISOString()

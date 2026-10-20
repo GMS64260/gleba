@@ -9,7 +9,7 @@ import { determinerTypeSol, calculerRetentionEau } from '@/lib/soil-quality'
  * Résolution 250m, couche 0-5cm
  */
 export async function GET(request: NextRequest) {
-  const { error, session } = await requireAuthApi()
+  const { error } = await requireAuthApi()
   if (error) return error
 
   try {

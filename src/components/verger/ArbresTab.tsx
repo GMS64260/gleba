@@ -152,6 +152,11 @@ interface VarieteRef {
   especeId: string
 }
 
+/** Espèce telle que renvoyée par `/api/especes` (champs utilisés ici). */
+type EspeceApi = Pick<EspeceRef, "id" | "type" | "zonesAdaptees" | "besoinFroid"> & { nom?: string | null; userId?: string | null }
+/** Variété telle que renvoyée par `/api/varietes` (champs utilisés ici). */
+type VarieteApi = { id: string; nom?: string | null; especeId: string }
+
 function makeColumns(
   onGenererCalendrier: (arbre: Arbre) => void,
   onDupliquer: (arbre: Arbre, nombre: number) => void,
@@ -528,15 +533,15 @@ export function ArbresTab() {
       fetch("/api/comptabilite/fournisseurs?actif=true").then(r => r.json()).catch(() => null),
       fetch("/api/carte").then(r => r.json()).catch(() => []),
     ]).then(([especesRes, varietesRes, fournisseursRes, parcellesRes]) => {
-      const especes = especesRes?.data || []
-      setEspecesRef(especes.map((e: any) => ({ id: e.id, nom: e.nom ?? null, userId: e.userId ?? null, type: e.type, zonesAdaptees: e.zonesAdaptees, besoinFroid: e.besoinFroid })))
-      const especesIds = new Set(especes.map((e: any) => e.id))
-      const varietes = (varietesRes?.data || [])
-        .filter((v: any) => especesIds.has(v.especeId))
-        .map((v: any) => ({ id: v.id, libelle: libelleVarieteOption(v), especeId: v.especeId }))
+      const especes = (especesRes?.data || []) as EspeceApi[]
+      setEspecesRef(especes.map((e) => ({ id: e.id, nom: e.nom ?? null, userId: e.userId ?? null, type: e.type, zonesAdaptees: e.zonesAdaptees, besoinFroid: e.besoinFroid })))
+      const especesIds = new Set(especes.map((e) => e.id))
+      const varietes = ((varietesRes?.data || []) as VarieteApi[])
+        .filter((v) => especesIds.has(v.especeId))
+        .map((v) => ({ id: v.id, libelle: libelleVarieteOption(v), especeId: v.especeId }))
       setVarietesRef(varietes)
-      const fournisseurs = (fournisseursRes?.data || [])
-        .map((f: any) => f.id)
+      const fournisseurs = ((fournisseursRes?.data || []) as { id: string }[])
+        .map((f) => f.id)
         .filter(Boolean)
       setFournisseursRef(fournisseurs)
       setParcelles((Array.isArray(parcellesRes) ? parcellesRes : []).map((p: ParcelleVerger) => ({ id: p.id, nom: p.nom, usage: p.usage, couches: p.couches ?? [] })))
@@ -639,7 +644,7 @@ export function ArbresTab() {
   }, [especeCle, newArbre.type, especesRef])
 
   const fournisseurOptions = React.useMemo(() => {
-    const userFournisseurs = data.map((a: any) => a.fournisseur).filter(Boolean) as string[]
+    const userFournisseurs = data.map((a) => a.fournisseur).filter(Boolean) as string[]
     const unique = [...new Set([...fournisseursRef, ...userFournisseurs])]
     return unique.sort().map(v => ({ value: v, label: v }))
   }, [data, fournisseursRef])
@@ -1183,7 +1188,7 @@ export function ArbresTab() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Date d'achat</Label>
+                <Label>Date d&apos;achat</Label>
                 <Input
                   type="date"
                   name="dateAchat"
@@ -1199,7 +1204,7 @@ export function ArbresTab() {
                 />
               </div>
               <div>
-                <Label>Prix d'achat (EUR)</Label>
+                <Label>Prix d&apos;achat (EUR)</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -1418,7 +1423,7 @@ export function ArbresTab() {
               {batchMode && (
                 <>
                   <p className="text-xs text-muted-foreground">
-                    Le champ « Nom » sera ignoré au profit d'un nommage automatique
+                    Le champ « Nom » sera ignoré au profit d&apos;un nommage automatique
                     {' '}<code className="text-[10px]">prefix-01</code>, <code className="text-[10px]">prefix-02</code>…
                   </p>
                   <div className="grid grid-cols-2 gap-3">

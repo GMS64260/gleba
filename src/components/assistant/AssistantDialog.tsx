@@ -24,7 +24,7 @@ import {
   RotateCcw,
 } from "lucide-react"
 
-import { AssistantStepEmplacement } from "./AssistantStepEmplacement"
+import { AssistantStepEmplacement, type PlancheOption } from "./AssistantStepEmplacement"
 import { AssistantStepPlante } from "./AssistantStepPlante"
 import { AssistantStepDates } from "./AssistantStepDates"
 import { AssistantStepRecap } from "./AssistantStepRecap"
@@ -174,16 +174,20 @@ interface AssistantDialogProps {
 // Dates are serialised as ISO strings by JSON.stringify; we need to
 // revive them when restoring from localStorage.
 
-function reviveDates(state: any): AssistantState {
+function reviveDates(raw: unknown): AssistantState {
   const dateFields: (keyof CultureData)[] = ['dateSemis', 'datePlantation', 'dateRecolte']
-  if (state.culture) {
+  const state = raw as AssistantState
+  // Lecture brute du localStorage : les dates y sont des chaînes ISO.
+  const culture = state.culture as unknown as Record<string, unknown> | undefined
+  if (culture) {
     for (const field of dateFields) {
-      if (typeof state.culture[field] === 'string') {
-        state.culture[field] = new Date(state.culture[field])
+      const valeur = culture[field]
+      if (typeof valeur === 'string') {
+        culture[field] = new Date(valeur)
       }
     }
   }
-  return state as AssistantState
+  return state
 }
 
 // ---- Component ----
@@ -194,7 +198,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
 
   // Data fetched on mount
   const [especes, setEspeces] = React.useState<EspeceData[]>([])
-  const [planches, setPlanches] = React.useState<any[]>([])
+  const [planches, setPlanches] = React.useState<PlancheOption[]>([])
 
   // ---- Data fetching ----
 
@@ -202,12 +206,12 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
     if (!open) return
 
     // Fetch especes and planches in parallel
-    const fetchEspeces = fetch('/api/especes?pageSize=500')
+    fetch('/api/especes?pageSize=500')
       .then(res => res.ok ? res.json() : { data: [] })
       .then(data => setEspeces(data.data || []))
       .catch(() => setEspeces([]))
 
-    const fetchPlanches = fetch('/api/planches?pageSize=200')
+    fetch('/api/planches?pageSize=200')
       .then(res => res.ok ? res.json() : { data: [] })
       .then(data => setPlanches(data.data || []))
       .catch(() => setPlanches([]))

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { createClientSchema, updateClientSchema } from '@/lib/validations/client'
 import { compterVentesParClient } from '@/lib/comptabilite/ventes-client'
 
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id
 
-    const where: any = { userId }
+    const where: Prisma.ClientWhereInput = { userId }
     if (type) where.type = type
     if (actif !== null && actif !== '') where.actif = actif === 'true'
     if (search) {
@@ -187,7 +188,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Client non trouvé' }, { status: 404 })
     }
 
-    const updateData: any = {}
+    const updateData: Prisma.ClientUncheckedUpdateInput = {}
     if (updates.nom !== undefined) updateData.nom = updates.nom
     if (updates.type !== undefined) updateData.type = updates.type
     if (updates.email !== undefined) updateData.email = updates.email

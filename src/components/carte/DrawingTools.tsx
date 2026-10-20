@@ -16,15 +16,18 @@ interface DrawingToolsProps {
  * Utilise l'API Leaflet Draw en mode programmatique (sans le Control.Draw par defaut).
  * Active/desactive le handler polygon en fonction de la prop isDrawing.
  */
-export default function DrawingTools({ isDrawing, onDrawComplete, onCancel }: DrawingToolsProps) {
+/** Événement `draw:created` de Leaflet.Draw : la couche dessinée et son type. */
+type EvenementDessinCree = L.LeafletEvent & { layer: L.Layer; layerType: string }
+
+export default function DrawingTools({ isDrawing, onDrawComplete }: DrawingToolsProps) {
   const map = useMap()
   const handlerRef = useRef<L.Draw.Polygon | null>(null)
-  const listenerRef = useRef<((e: any) => void) | null>(null)
+  const listenerRef = useRef<L.LeafletEventHandlerFn | null>(null)
 
   // Callback stable pour gerer la fin du dessin
-  const handleCreated = useCallback((e: any) => {
+  const handleCreated = useCallback((e: EvenementDessinCree) => {
     const layer = e.layer as L.Polygon
-    const geojson = (layer as any).toGeoJSON().geometry
+    const geojson = layer.toGeoJSON().geometry
     onDrawComplete(JSON.stringify(geojson))
   }, [onDrawComplete])
 
@@ -46,8 +49,8 @@ export default function DrawingTools({ isDrawing, onDrawComplete, onCancel }: Dr
       handlerRef.current = handler
 
       // Ecouter l'evenement de creation
-      const onCreated = (e: any) => {
-        handleCreated(e)
+      const onCreated: L.LeafletEventHandlerFn = (e) => {
+        handleCreated(e as EvenementDessinCree)
       }
       listenerRef.current = onCreated
       map.on(L.Draw.Event.CREATED, onCreated)

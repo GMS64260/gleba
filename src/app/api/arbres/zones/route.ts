@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const { error, session } = await requireAuthApi()
   if (error) return error
 

@@ -6,7 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { createFournisseurSchema, updateFournisseurSchema } from '@/lib/validations'
+import { sansChamps } from '@/lib/sans-champs'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -18,7 +20,7 @@ export async function GET(request: NextRequest) {
     const actif = searchParams.get('actif')
     const search = searchParams.get('search')
 
-    const where: any = {}
+    const where: Prisma.FournisseurWhereInput = {}
     if (type) where.type = type
     if (actif !== null && actif !== '') where.actif = actif === 'true'
     if (search) {
@@ -45,7 +47,7 @@ export async function GET(request: NextRequest) {
     const isAdmin = session!.user.role === 'ADMIN'
     const fournisseurs = isAdmin
       ? fournisseursRaw
-      : fournisseursRaw.map(({ iban, bic, ribCle, ...rest }) => rest)
+      : fournisseursRaw.map((f) => sansChamps(f, 'iban', 'bic', 'ribCle'))
 
     // Stats
     const stats = await prisma.fournisseur.groupBy({
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { session, error } = await requireAdminApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -135,7 +137,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { session, error } = await requireAdminApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -199,7 +201,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { session, error } = await requireAdminApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {

@@ -114,9 +114,9 @@ export function AssistantStepSuccess({
       <div className="p-3 bg-green-50 rounded-lg border border-green-200 mt-6">
         <p className="text-xs text-green-700">
           <strong>Prochaine étape :</strong> Rendez-vous sur la fiche de la culture
-          pour marquer le semis comme effectue. L'application calculera automatiquement
+          pour marquer le semis comme effectue. L&apos;application calculera automatiquement
           les dates de plantation et de recolte a partir de ce moment.
-          Vous pouvez aussi suivre l'avancement depuis le tableau de bord.
+          Vous pouvez aussi suivre l&apos;avancement depuis le tableau de bord.
         </p>
       </div>
     </div>

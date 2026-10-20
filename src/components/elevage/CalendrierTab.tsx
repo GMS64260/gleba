@@ -208,10 +208,6 @@ function libelleCibleSoin(soin: Pick<SoinTask, 'animal' | 'lot'>): string {
   return a.nom || a.identifiant || '-'
 }
 
-function isSameDay(d1: Date, d2: Date): boolean {
-  return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate()
-}
-
 // Bug cmp8rtr5m (Marc 2026-05-16) — Off-by-one calendrier élevage.
 // `toISOString()` retourne du UTC : un dimanche local 00:00 CEST devient
 // samedi 22:00 UTC, donc split('T')[0] décale la clé d'un jour. On clé
@@ -602,9 +598,9 @@ export function CalendrierTab() {
                         <TooltipContent side="bottom" className="max-w-xs text-left text-xs">
                           <p className="font-semibold mb-1">Saisie anormale détectée</p>
                           <p>
-                            La collecte de la semaine dépasse l'attendu théorique
+                            La collecte de la semaine dépasse l&apos;attendu théorique
                             ({Math.round(attenduSem)} œufs pour cet effectif × saison).
-                            Vérifiez les dernières saisies ou l'effectif du lot.
+                            Vérifiez les dernières saisies ou l&apos;effectif du lot.
                           </p>
                         </TooltipContent>
                       </Tooltip>

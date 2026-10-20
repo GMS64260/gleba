@@ -136,7 +136,7 @@ function CulturesIrriguerContent() {
 
   const [data, setData] = React.useState<CultureIrriguer[]>([])
   const [parIlot, setParIlot] = React.useState<Record<string, CultureIrriguer[]>>({})
-  const [parTypeIrrigation, setParTypeIrrigation] = React.useState<Record<string, CultureIrriguer[]>>({})
+  const [, setParTypeIrrigation] = React.useState<Record<string, CultureIrriguer[]>>({})
   const [stats, setStats] = React.useState<Stats | null>(null)
   const [tournee, setTournee] = React.useState<Tournee | null>(null)
   const [meteoGlobal, setMeteoGlobal] = React.useState<MeteoResume | null>(null)
@@ -504,7 +504,7 @@ function CulturesIrriguerContent() {
 
         {/* Filtres */}
         <div className="mb-4 flex flex-wrap gap-2">
-          <Select value={groupBy} onValueChange={(v: any) => setGroupBy(v)}>
+          <Select value={groupBy} onValueChange={(v) => setGroupBy(v as typeof groupBy)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue />
             </SelectTrigger>
@@ -515,7 +515,7 @@ function CulturesIrriguerContent() {
             </SelectContent>
           </Select>
 
-          <Select value={filtreUrgence} onValueChange={(v: any) => setFiltreUrgence(v)}>
+          <Select value={filtreUrgence} onValueChange={(v) => setFiltreUrgence(v as typeof filtreUrgence)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Urgence" />
             </SelectTrigger>
@@ -544,7 +544,7 @@ function CulturesIrriguerContent() {
             </Select>
           )}
 
-          <Select value={filtreBesoinEau} onValueChange={(v: any) => setFiltreBesoinEau(v)}>
+          <Select value={filtreBesoinEau} onValueChange={(v) => setFiltreBesoinEau(v as typeof filtreBesoinEau)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Besoin eau" />
             </SelectTrigger>

@@ -3,13 +3,13 @@
  * DELETE /api/user/delete-data
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { getUserId, refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
 import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from '@/lib/demo-garde'
 
-export async function DELETE(request: NextRequest) {
+export async function DELETE() {
   const { error, session } = await requireAuthApi()
   if (error) return error
   // Vider l'exploitation n'est jamais le geste d'un compte invité.

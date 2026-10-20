@@ -732,6 +732,9 @@ export function checkOperationSaison(
   date: Date | string | null | undefined,
   variete?: string | null
 ): SaisonWarning | null {
+  // Paramètre de l'API publique (OperationsTab, ProductionsTab le passent) :
+  // réservé à un affinage par variété, sans effet pour l'instant.
+  void variete
   if (!espece || !type || !date) return null
   const d = typeof date === "string" ? new Date(date) : date
   if (Number.isNaN(d.getTime())) return null

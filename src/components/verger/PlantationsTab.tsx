@@ -254,7 +254,7 @@ export function PlantationsTab() {
           <CardContent className="py-12 text-center">
             <Trees className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
             <p className="text-muted-foreground mb-4">
-              Aucune campagne de plantation. Lancez votre première replantation avec l'assistant.
+              Aucune campagne de plantation. Lancez votre première replantation avec l&apos;assistant.
             </p>
             <Button onClick={() => setWizardOpen(true)} className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">
               <Plus className="h-4 w-4 mr-1" />

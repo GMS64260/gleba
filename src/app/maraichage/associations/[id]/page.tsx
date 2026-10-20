@@ -113,7 +113,7 @@ export default function EditAssociationPage() {
           description: associationData.description,
           notes: associationData.notes,
           type: associationData.type || "favorable",
-          details: associationData.details.map((d: any) => ({
+          details: associationData.details.map((d: AssociationData["details"][number]) => ({
             id: d.id,
             especeId: d.especeId,
             familleId: d.familleId,
@@ -131,7 +131,7 @@ export default function EditAssociationPage() {
           const data = await famillesRes.json()
           setFamilles(data)
         }
-      } catch (error) {
+      } catch {
         toast({
           variant: "destructive",
           title: "Erreur",
@@ -222,7 +222,7 @@ export default function EditAssociationPage() {
               <CardHeader>
                 <CardTitle>Informations générales</CardTitle>
                 <CardDescription>
-                  Nom et description de l'association
+                  Nom et description de l&apos;association
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -265,7 +265,7 @@ export default function EditAssociationPage() {
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Détermine si l'association est favorable ou à éviter
+                        Détermine si l&apos;association est favorable ou à éviter
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -298,13 +298,13 @@ export default function EditAssociationPage() {
                 <CardTitle>Plantes associées</CardTitle>
                 <CardDescription>
                   Ajoutez les espèces ou familles qui font partie de cette association.
-                  Cochez "Requise" si c'est une association nécessaire.
+                  Cochez &quot;Requise&quot; si c&apos;est une association nécessaire.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {fields.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    Aucune plante associée. Cliquez sur "Ajouter une plante" pour commencer.
+                    Aucune plante associée. Cliquez sur &quot;Ajouter une plante&quot; pour commencer.
                   </p>
                 )}
 

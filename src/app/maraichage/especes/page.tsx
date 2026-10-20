@@ -264,7 +264,7 @@ function EspecesPageContent() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
+  const currentUserId = session?.user?.id
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
@@ -354,7 +354,7 @@ function EspecesPageContent() {
       const result = await response.json()
       setData(result.data)
       setPageCount(result.totalPages)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",

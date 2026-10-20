@@ -7,6 +7,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
+import { ZodError } from "zod"
 import { requireAuthApi, requireAdminApi } from "@/lib/auth-utils"
 import { updateAssociationSchema } from "@/lib/validations/association"
 
@@ -115,17 +117,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     })
 
     return NextResponse.json(association)
-  } catch (err: any) {
+  } catch (err) {
     console.error("PUT /api/associations/[id] error:", err)
 
-    if (err.name === "ZodError") {
+    if (err instanceof ZodError) {
       return NextResponse.json(
-        { error: "Données invalides", details: err.errors },
+        { error: "Données invalides", details: err.issues },
         { status: 400 }
       )
     }
 
-    if (err.code === "P2002") {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       return NextResponse.json(
         { error: "Une association avec ce nom existe déjà" },
         { status: 409 }

@@ -616,10 +616,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <TreeDeciduous className="h-4 w-4 text-lime-600" />
-                  Pyramide d'âge des arbres
+                  Pyramide d&apos;âge des arbres
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Tranches d'âge des fruitiers, petits fruits et lianes (basé sur la date de plantation)
+                  Tranches d&apos;âge des fruitiers, petits fruits et lianes (basé sur la date de plantation)
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -637,7 +637,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                           {p.sansDate} arbre(s) sans date de plantation.
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Renseignez la date de plantation pour calculer la pyramide d'âge
+                          Renseignez la date de plantation pour calculer la pyramide d&apos;âge
                           (utile aux dossiers PCAE / HVE).
                         </p>
                         <Link
@@ -757,7 +757,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Wrench className="h-4 w-4 text-purple-600" />
-              Calendrier d'entretien par espèce
+              Calendrier d&apos;entretien par espèce
             </CardTitle>
             <CardDescription>
               Périodes recommandées de taille, traitement, fertilisation et récolte

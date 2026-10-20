@@ -10,6 +10,16 @@ import { useEffect, useRef, useCallback } from "react"
 import { useMap } from "react-leaflet"
 import L from "leaflet"
 import "leaflet-draw"
+import type { Feature, Geometry } from "geojson"
+
+/**
+ * Polygone Leaflet enrichi par Leaflet.Draw : `editing` est le handler
+ * d'édition des sommets, `_path` le nœud SVG interne (curseur de drag).
+ */
+type PolygoneEditable = L.Polygon & {
+  editing?: { enable(): void; disable(): void }
+  _path?: HTMLElement
+}
 
 interface EditingToolsProps {
   isEditing: boolean
@@ -37,7 +47,7 @@ export default function EditingTools({
   const extractGeometry = useCallback(() => {
     const polygon = polygonRef.current
     if (!polygon) return null
-    const geojson = (polygon as any).toGeoJSON()
+    const geojson = polygon.toGeoJSON()
     return JSON.stringify(geojson.geometry)
   }, [])
 
@@ -52,9 +62,9 @@ export default function EditingTools({
       }
     }
 
-    map.on("editing:confirm" as any, handler)
+    map.on("editing:confirm", handler)
     return () => {
-      map.off("editing:confirm" as any, handler)
+      map.off("editing:confirm", handler)
     }
   }, [map, isEditing, extractGeometry, onEditComplete])
 
@@ -62,7 +72,7 @@ export default function EditingTools({
   useEffect(() => {
     if (!map || !isEditing || !geometry) return
 
-    let geoObj: any
+    let geoObj: Geometry
     try {
       geoObj = JSON.parse(geometry)
     } catch {
@@ -77,8 +87,9 @@ export default function EditingTools({
 
     const color = couleur || "#16a34a"
 
+    const feature: Feature = { type: "Feature", properties: {}, geometry: geoObj }
     const geoLayer = L.geoJSON(
-      { type: "Feature", properties: {}, geometry: geoObj } as any,
+      feature,
       {
         style: {
           color: "#2563eb",
@@ -96,24 +107,26 @@ export default function EditingTools({
       return
     }
 
-    const polygon = layers[0] as L.Polygon
+    const polygon = layers[0] as PolygoneEditable
     fg.addLayer(polygon)
     polygonRef.current = polygon
 
     if (mode === "vertices") {
-      if ((polygon as any).editing) {
-        ;(polygon as any).editing.enable()
+      if (polygon.editing) {
+        polygon.editing.enable()
       }
     } else if (mode === "move") {
-      const el = (polygon as any)._path as HTMLElement | undefined
+      const el = polygon._path
       if (el) el.style.cursor = "grab"
 
       const onMouseDown = (e: L.LeafletMouseEvent) => {
-        L.DomEvent.stopPropagation(e as any)
+        // Leaflet accepte ici son propre événement (il marque `originalEvent._stopped`),
+        // mais le type déclaré n'admet qu'un Event DOM.
+        L.DomEvent.stopPropagation(e as unknown as Event)
         isDraggingRef.current = true
         dragStartRef.current = e.latlng
         map.dragging.disable()
-        const pathEl = (polygon as any)._path as HTMLElement | undefined
+        const pathEl = polygon._path
         if (pathEl) pathEl.style.cursor = "grabbing"
         map.on("mousemove", onMouseMove)
         map.on("mouseup", onMouseUp)
@@ -132,7 +145,7 @@ export default function EditingTools({
         isDraggingRef.current = false
         dragStartRef.current = null
         map.dragging.enable()
-        const pathEl = (polygon as any)._path as HTMLElement | undefined
+        const pathEl = polygon._path
         if (pathEl) pathEl.style.cursor = "grab"
         map.off("mousemove", onMouseMove)
         map.off("mouseup", onMouseUp)
@@ -147,8 +160,8 @@ export default function EditingTools({
     }
 
     return () => {
-      if (mode === "vertices" && (polygon as any).editing) {
-        ;(polygon as any).editing.disable()
+      if (mode === "vertices" && polygon.editing) {
+        polygon.editing.disable()
       }
       isDraggingRef.current = false
       map.dragging.enable()
@@ -165,8 +178,8 @@ function translateLatLngs(
   latlngs: L.LatLng[] | L.LatLng[][] | L.LatLng[][][],
   dlat: number,
   dlng: number
-): any {
-  if (Array.isArray(latlngs[0]) && Array.isArray((latlngs[0] as any)[0])) {
+): L.LatLng[] | L.LatLng[][] | L.LatLng[][][] {
+  if (Array.isArray(latlngs[0]) && Array.isArray((latlngs[0] as L.LatLng[][])[0])) {
     return (latlngs as L.LatLng[][][]).map((ring) =>
       ring.map((segment) =>
         segment.map((ll) => L.latLng(ll.lat + dlat, ll.lng + dlng))

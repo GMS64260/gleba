@@ -13,7 +13,6 @@ import { Scale, Info, Save, FolderOpen, Trash2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { besoinsMonogastrique, besoinsRuminant, bilanRation, bilanRationMonogastrique, type ProfilEspeceRation, type StadeGestation, type LigneRation } from "@/lib/elevage/ration"
@@ -372,7 +371,7 @@ export function RationSubTab() {
 
         <p className="text-xs text-slate-400">
           Repères INRA caprin indicatifs (entretien 0,033 UFL/kg PV<sup>0,75</sup>, lait 0,44 UFL + 48 g PDI/L à 35 g TB).
-          L'apport PDI d'une ration = min(PDIN, PDIE). À ajuster au troupeau et à la qualité réelle des fourrages.
+          L&apos;apport PDI d&apos;une ration = min(PDIN, PDIE). À ajuster au troupeau et à la qualité réelle des fourrages.
         </p>
       </CardContent>
     </Card>

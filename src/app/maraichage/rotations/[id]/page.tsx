@@ -12,7 +12,6 @@ import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -143,7 +142,7 @@ export default function EditRotationPage() {
             ? rotation.details.map(d => ({ annee: d.annee, itpId: d.itpId }))
             : [{ annee: 1, itpId: null }],
         })
-      } catch (error) {
+      } catch {
         toast({
           variant: "destructive",
           title: "Erreur",
@@ -471,7 +470,7 @@ export default function EditRotationPage() {
                   if (cycle && nbEtapes > 0 && cycle !== nbEtapes) {
                     return (
                       <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
-                        ⚠ Le cycle déclaré ({cycle} ans) ne correspond pas au nombre d'étapes saisies ({nbEtapes}).
+                        ⚠ Le cycle déclaré ({cycle} ans) ne correspond pas au nombre d&apos;étapes saisies ({nbEtapes}).
                         Ajoutez une étape manquante ou ajustez le cycle.
                       </div>
                     )

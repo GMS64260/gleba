@@ -11,7 +11,7 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
   ArrowLeft,
@@ -19,7 +19,6 @@ import {
   Sprout,
   Leaf,
   Apple,
-  Save,
   RefreshCw,
   Search,
   TrendingDown,
@@ -42,7 +41,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { ConsommationsTab } from "@/components/stocks/ConsommationsTab"
-import { formatStockSemantic } from "@/lib/format-utils"
 import { AlertTriangle } from "lucide-react"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 
@@ -220,7 +218,6 @@ function StockInput({
 function StocksPageContent() {
   const { toast } = useToast()
   const searchParams = useSearchParams()
-  const router = useRouter()
   const especeType = searchParams.get('especeType') // 'arbres' | 'legumes' | null
   const isArbresMode = especeType === 'arbres'
 
@@ -252,7 +249,7 @@ function StocksPageContent() {
   )
 
   const [isLoading, setIsLoading] = React.useState(true)
-  const [isSaving, setIsSaving] = React.useState(false)
+  const [, setIsSaving] = React.useState(false)
   const [data, setData] = React.useState<StockData>({
     graines: [],
     plants: [],
@@ -265,7 +262,6 @@ function StocksPageContent() {
     fertilisants: "",
     recoltes: "",
   })
-  const [pendingChanges, setPendingChanges] = React.useState<Map<string, any>>(new Map())
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -279,7 +275,7 @@ function StocksPageContent() {
       if (!response.ok) throw new Error("Erreur chargement")
       const result = await response.json()
       setData(result)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -307,7 +303,7 @@ function StocksPageContent() {
         title: "Stock mis a jour",
         description: `Le stock a été enregistré`,
       })
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -491,7 +487,7 @@ function StocksPageContent() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
                   <TreeDeciduous className="h-4 w-4 text-lime-600" />
-                  Plants d'arbres
+                  Plants d&apos;arbres
                 </CardTitle>
               </CardHeader>
               <CardContent>

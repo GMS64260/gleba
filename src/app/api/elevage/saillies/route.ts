@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { saillieSchema, updateSaillieSchema } from '@/lib/validations/saillie'
 import {
   dateMiseBasAttendue,
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
   const to = searchParams.get('to')
   const femelleId = searchParams.get('femelleId')
 
-  const where: any = { userId: session.user.id }
+  const where: Prisma.SaillieWhereInput = { userId: session.user.id }
   if (statut) where.statut = statut
   if (femelleId) where.femelleId = parseInt(femelleId, 10)
   if (from || to) {
@@ -208,7 +209,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const data: any = { ...updates }
+    const data: Prisma.SaillieUncheckedUpdateInput = { ...updates }
     if (updates.confirmationGestation && existing.statut === 'En attente') {
       data.statut = 'Gestante'
     }

@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { collecteLaitSchema, updateCollecteLaitSchema } from '@/lib/validations/lait'
 import { causesAttenteCollectes, soinCouvrantCollecte } from '@/lib/elevage/attente-lait'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
   const requestedLimit = Number.parseInt(searchParams.get('limit') || '', 10)
   const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 1000) : undefined
 
-  const where: any = { userId: session.user.id }
+  const where: Prisma.CollecteLaitWhereInput = { userId: session.user.id }
   if (from || to) {
     where.date = {}
     if (from) where.date.gte = new Date(from)

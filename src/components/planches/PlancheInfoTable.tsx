@@ -71,22 +71,22 @@ export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTa
 
   React.useEffect(() => {
     fetch("/api/planches?pageSize=500").then(r => r.json()).then(data => {
-      const planches = data.data || data || []
-      const unique = [...new Set(planches.map((p: any) => p.ilot).filter(Boolean))] as string[]
+      const planches = (data.data || data || []) as { ilot?: string | null }[]
+      const unique = [...new Set(planches.map((p) => p.ilot).filter(Boolean))] as string[]
       setIlotOptions(unique.sort().map(v => ({ value: v, label: v })))
     }).catch(() => {})
 
     fetch("/api/carte").then(r => r.json()).then(data => {
-      const list = Array.isArray(data) ? data : []
-      setParcelles(list.map((p: any) => ({ id: p.id, nom: p.nom })))
+      const list = (Array.isArray(data) ? data : []) as { id: string; nom: string }[]
+      setParcelles(list.map((p) => ({ id: p.id, nom: p.nom })))
     }).catch(() => {})
 
     // QA 2026-09-28 — l'onglet Rotation renvoyait vers « Année de départ du
     // cycle de rotation » dans Informations, qui n'existait plus (ancien
     // composant PlancheInfo). Rotation et année de départ s'éditent ici.
     fetch("/api/rotations?pageSize=200").then(r => r.json()).then(data => {
-      const list = Array.isArray(data?.data) ? data.data : []
-      setRotations(list.map((r: any) => ({ id: r.id, nbAnnees: r.nbAnnees ?? null })))
+      const list = (Array.isArray(data?.data) ? data.data : []) as { id: string; nbAnnees?: number | null }[]
+      setRotations(list.map((r) => ({ id: r.id, nbAnnees: r.nbAnnees ?? null })))
     }).catch(() => {})
   }, [])
 
@@ -111,7 +111,7 @@ export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTa
         typeSol: json.calculs.typeSol,
         retentionEau: json.calculs.retentionEau,
       })
-    } catch (e) {
+    } catch {
       await alertDialog("Impossible de récupérer les données sol pour ces coordonnées.")
     } finally {
       setSoilLoading(false)

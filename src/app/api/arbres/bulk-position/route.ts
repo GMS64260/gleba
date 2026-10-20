@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { z } from "zod"
 
 const schema = z.object({
@@ -40,7 +41,7 @@ export async function PUT(request: NextRequest) {
 
     const results = await prisma.$transaction(
       parsed.data.updates.map((u) => {
-        const data: any = {}
+        const data: Prisma.ArbreUpdateManyMutationInput = {}
         if (u.posX !== undefined) data.posX = u.posX
         if (u.posY !== undefined) data.posY = u.posY
         return prisma.arbre.updateMany({

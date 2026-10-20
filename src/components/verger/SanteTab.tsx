@@ -712,7 +712,7 @@ function ObservationsSubTab() {
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Traitement chimique ? Saisissez-le dans l'onglet Registre phyto
+                        Traitement chimique ? Saisissez-le dans l&apos;onglet Registre phyto
                         (champs réglementaires obligatoires).
                       </p>
                     </div>
@@ -1215,8 +1215,6 @@ function RegistrePhytoSubTab() {
   const mecaniques = observations.filter((o) => isMecanique(getMethode(o)))
   const complets = chimiques.filter((o) => o.numAMM && o.doseAppliquee && o.dar).length
   const incomplets = chimiques.length - complets
-  const bioComplets = biologiques.filter((o) => o.produit && o.doseAppliquee).length
-  const bioIncomplets = biologiques.length - bioComplets
 
   return (
     <div className="space-y-4">
@@ -1636,7 +1634,7 @@ function RegistrePhytoSubTab() {
                         onChange={(e) => setAddForm((f) => majBouillie({ ...f, surfaceTraiteeHa: e.target.value }))} placeholder="0.5" />
                     </div>
                     <div>
-                      <Label>Parcelle d'application</Label>
+                      <Label>Parcelle d&apos;application</Label>
                       <Select value={addForm.parcelleId} onValueChange={(v) => setAddForm({ ...addForm, parcelleId: v })}>
                         <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                         <SelectContent>

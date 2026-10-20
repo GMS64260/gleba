@@ -28,14 +28,17 @@ interface Step {
   hint?: string
 }
 
+/** Réponse brute d'une route API (`{ data: … }` ou tableau nu), `null` si l'appel a échoué. */
+type ReponseApi = { data?: unknown; [cle: string]: unknown } | null
+
 interface ModuleConfig {
   fetches: Array<{ key: string; url: string }>
-  buildSteps: (results: Record<string, any>) => Step[]
+  buildSteps: (results: Record<string, ReponseApi>) => Step[]
 }
 
 // Helper : détecte si une réponse API a des données
-const hasData = (r: any): boolean => {
-  const arr = r?.data ?? r
+const hasData = (r: unknown): boolean => {
+  const arr = (r as { data?: unknown } | null | undefined)?.data ?? r
   return Array.isArray(arr) ? arr.length > 0 : !!arr
 }
 
@@ -318,7 +321,7 @@ export function PremiersPasBanner({ module = "home" }: { module?: ModuleKey }) {
               .catch(() => null)
           )
         )
-        const map: Record<string, any> = {}
+        const map: Record<string, ReponseApi> = {}
         config.fetches.forEach((f, i) => (map[f.key] = results[i]))
         const arr = config.buildSteps(map)
         // Bug cmp8stwug (Marc 2026-05-16) — Pour le module compta, masquer

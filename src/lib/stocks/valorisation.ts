@@ -50,7 +50,7 @@ export function valoriser(
   // Tri chronologique ascendant
   const tries = [...mouvements].sort((a, b) => a.date.getTime() - b.date.getTime())
 
-  let lots: Array<{ date: Date; quantite: number; coutUnitaire: number }> = []
+  const lots: Array<{ date: Date; quantite: number; coutUnitaire: number }> = []
   let dernierCout = 0
 
   for (const m of tries) {

@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { nomEtCleReferentiel } from '@/lib/normalize'
 import { updateVarieteSchema } from '@/lib/validations'
-import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
 import {
   masquerEntree,
   peutEditerReferentiel,

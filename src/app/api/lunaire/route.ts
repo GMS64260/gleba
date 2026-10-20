@@ -10,7 +10,7 @@ import { getLunarCalendar, getMoonPhaseToday } from '@/lib/lunar'
  * Retourne uniquement la phase lunaire du jour (pour le widget)
  */
 export async function GET(request: NextRequest) {
-  const { error, session } = await requireAuthApi()
+  const { error } = await requireAuthApi()
   if (error) return error
 
   try {

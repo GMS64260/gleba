@@ -69,6 +69,18 @@ interface Stats {
   }
 }
 
+/** Ligne de GET /api/comptabilite/revenus ou /depenses, telle qu'exportée en CSV. */
+interface LigneTransaction {
+  date: string
+  module: string
+  categorie: string
+  description: string
+  montant: number
+  client?: string | null
+  fournisseur?: string | null
+  paye: boolean | null
+}
+
 interface ChartData {
   mensuel: { mois: string; revenus: number; depenses: number; benefice: number }[]
   revenusParCategorie: { categorie: string; montant: number; couleur: string }[]
@@ -196,8 +208,8 @@ export default function RapportsPage() {
     if (yearHydrated) window.localStorage.setItem("gleba_compta_year", String(selectedYear))
   }, [yearHydrated, selectedYear])
   const [charts, setCharts] = React.useState<ChartData | null>(null)
-  const [revenus, setRevenus] = React.useState<any[]>([])
-  const [depenses, setDepenses] = React.useState<any[]>([])
+  const [revenus, setRevenus] = React.useState<LigneTransaction[]>([])
+  const [depenses, setDepenses] = React.useState<LigneTransaction[]>([])
   const [tvaData, setTvaData] = React.useState<TVAData | null>(null)
   const [selectedTrimestre, setSelectedTrimestre] = React.useState<string>("all")
 
@@ -253,7 +265,7 @@ export default function RapportsPage() {
         if (seq !== fetchSeq.current) return
         setTvaData(data)
       }
-    } catch (error) {
+    } catch {
       if (seq === fetchSeq.current) {
         toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
       }
@@ -398,8 +410,8 @@ export default function RapportsPage() {
                       <p className="font-semibold">{stats.nbDepensesNonPayees} dépense(s) engagée(s) non encore payée(s)</p>
                       <p className="text-xs mt-0.5">
                         Le total dépenses ci-dessous inclut {formatEuro(stats.depensesNonPayees ?? 0)} de
-                        charges constatées (compta. d'engagement) dont le règlement reste à effectuer.
-                        Voir l'onglet Transactions pour le détail.
+                        charges constatées (compta. d&apos;engagement) dont le règlement reste à effectuer.
+                        Voir l&apos;onglet Transactions pour le détail.
                       </p>
                     </div>
                   </div>
@@ -689,7 +701,7 @@ export default function RapportsPage() {
                           {formatEuro(bilanData.totalActif)}
                         </span>
                       </CardTitle>
-                      <CardDescription>Ce que possède l'exploitation</CardDescription>
+                      <CardDescription>Ce que possède l&apos;exploitation</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <Table>
@@ -754,7 +766,7 @@ export default function RapportsPage() {
                           {formatEuro(bilanData.totalPassif)}
                         </span>
                       </CardTitle>
-                      <CardDescription>Comment l'actif est financé</CardDescription>
+                      <CardDescription>Comment l&apos;actif est financé</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <Table>
@@ -776,7 +788,7 @@ export default function RapportsPage() {
                           </TableRow>
                           <TableRow>
                             <TableCell>
-                              <div className="font-medium">Résultat de l'exercice</div>
+                              <div className="font-medium">Résultat de l&apos;exercice</div>
                               <div className="text-xs text-muted-foreground">12 · pivot Actif/Passif</div>
                             </TableCell>
                             <TableCell className={`text-right font-mono font-bold ${bilanData.passif.resultatExercice >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
@@ -804,7 +816,7 @@ export default function RapportsPage() {
                           {bilanData.passif.ecartEquilibrage !== 0 && (
                             <TableRow>
                               <TableCell>
-                                <div className="font-medium text-amber-700">Écart d'équilibrage</div>
+                                <div className="font-medium text-amber-700">Écart d&apos;équilibrage</div>
                                 <div className="text-xs text-muted-foreground">47x · à reclasser (disponibilités banque, capital…)</div>
                               </TableCell>
                               <TableCell className="text-right font-mono text-amber-700">
@@ -827,9 +839,9 @@ export default function RapportsPage() {
                     <p className="font-medium mb-1">ℹ Notes méthodologiques (MVP)</p>
                     <ul className="list-disc ml-5 text-xs space-y-1">
                       <li>Les <strong>stocks</strong> et <strong>disponibilités bancaires</strong> ne sont pas encore intégrés
-                        (à valoriser manuellement). L'écart apparaît au compte <strong>47x</strong>.</li>
+                        (à valoriser manuellement). L&apos;écart apparaît au compte <strong>47x</strong>.</li>
                       <li>Les <strong>amortissements linéaires</strong> ne sont pas appliqués sur les immobilisations
-                        (étape suivante : fiche Immobilisation + durée d'amortissement).</li>
+                        (étape suivante : fiche Immobilisation + durée d&apos;amortissement).</li>
                       <li>Le <strong>capital</strong> provient de Paramètres &gt; Exploitation. Renseignez-le pour équilibrer.</li>
                     </ul>
                   </CardContent>
@@ -1115,7 +1127,7 @@ export default function RapportsPage() {
                                 <ul className="space-y-0.5 text-xs text-muted-foreground">
                                   <li><span className="font-medium text-slate-700">{d.nbDepenses}</span> · dépenses manuelles</li>
                                   {(d.nbConsommationsAliments ?? 0) > 0 && (
-                                    <li><span className="font-medium text-slate-700">{d.nbConsommationsAliments}</span> · consommations d'aliments</li>
+                                    <li><span className="font-medium text-slate-700">{d.nbConsommationsAliments}</span> · consommations d&apos;aliments</li>
                                   )}
                                   {(d.nbFertilisations ?? 0) > 0 && (
                                     <li><span className="font-medium text-slate-700">{d.nbFertilisations}</span> · fertilisations</li>
@@ -1124,7 +1136,7 @@ export default function RapportsPage() {
                               </div>
                             </div>
                             <p className="text-xs text-muted-foreground mt-3">
-                              Périmètre TVA aligné sur l'onglet Transactions : les sources brutes
+                              Périmètre TVA aligné sur l&apos;onglet Transactions : les sources brutes
                               (élevage, récoltes, bois, abattages) sont comptées séparément des
                               ventes manuelles pour éviter le double comptage avec les
                               VenteManuelle « auto » que ces sources génèrent.

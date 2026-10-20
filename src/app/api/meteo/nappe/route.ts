@@ -13,7 +13,7 @@ function isTimeoutError(err: unknown): boolean {
  * Source : Hub'Eau (Eaufrance) — API Piézométrie
  */
 export async function GET(request: NextRequest) {
-  const { error, session } = await requireAuthApi()
+  const { error } = await requireAuthApi()
   if (error) return error
 
   try {

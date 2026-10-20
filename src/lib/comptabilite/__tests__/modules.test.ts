@@ -79,8 +79,8 @@ describe('MODULE_COMPTA_LABELS', () => {
   })
 
   it('couvre les quatre postes', () => {
-    for (const module of MODULES_COMPTA) {
-      expect(MODULE_COMPTA_LABELS[module]).toBeTruthy()
+    for (const poste of MODULES_COMPTA) {
+      expect(MODULE_COMPTA_LABELS[poste]).toBeTruthy()
     }
   })
 })

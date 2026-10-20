@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const year = searchParams.get('year') ? parseInt(searchParams.get('year')!) : new Date().getFullYear()
-    const module = searchParams.get('module')
+    const moduleDemande = searchParams.get('module')
     const limit = parseInt(searchParams.get('limit') || '200')
 
     const userId = session.user.id
@@ -434,11 +434,11 @@ export async function GET(request: NextRequest) {
     // carte annoncerait un montant que le filtre ne sait pas montrer. Un
     // module hors des quatre postes (ex. `boutique`) reste filtré à l'exact.
     let filtered = expenses
-    if (module) {
-      const demande = module.trim().toLowerCase()
+    if (moduleDemande) {
+      const demande = moduleDemande.trim().toLowerCase()
       filtered = (MODULES_COMPTA as readonly string[]).includes(demande)
         ? expenses.filter(e => bucketModuleCompta(e.module) === demande)
-        : expenses.filter(e => e.module === module)
+        : expenses.filter(e => e.module === moduleDemande)
     }
 
     // Trier par date décroissante
@@ -471,7 +471,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: limited,
       stats,
-      meta: { year, module, total: filtered.length },
+      meta: { year, module: moduleDemande, total: filtered.length },
     })
   } catch (error) {
     console.error('GET /api/comptabilite/depenses error:', error)

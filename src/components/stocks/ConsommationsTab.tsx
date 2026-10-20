@@ -206,7 +206,7 @@ export function ConsommationsTab() {
 
       toast({ title: "Sortie supprimée" })
       fetchData()
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -367,7 +367,7 @@ export function ConsommationsTab() {
         <div className="text-center py-12 text-muted-foreground">
           <TrendingDown className="h-12 w-12 mx-auto mb-3 opacity-50" />
           <p>Aucune sortie de stock enregistrée</p>
-          <p className="text-sm mt-1">Cliquez sur "Nouvelle sortie" pour commencer</p>
+          <p className="text-sm mt-1">Cliquez sur &quot;Nouvelle sortie&quot; pour commencer</p>
         </div>
       ) : (
         <div className="space-y-2">

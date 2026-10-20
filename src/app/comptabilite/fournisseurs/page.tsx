@@ -47,6 +47,13 @@ const TYPE_LABELS: Record<string, string> = {
   mixte: "Mixte",
 }
 
+/** Compteurs renvoyés par GET /api/comptabilite/fournisseurs. */
+interface FournisseursStats {
+  total: number
+  actifs: number
+  parType: Record<string, number>
+}
+
 export default function FournisseursPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
@@ -59,7 +66,7 @@ export default function FournisseursPage() {
   const peutModifier = session?.user?.role === "ADMIN"
   const [isLoading, setIsLoading] = React.useState(true)
   const [fournisseurs, setFournisseurs] = React.useState<Fournisseur[]>([])
-  const [stats, setStats] = React.useState<any>(null)
+  const [stats, setStats] = React.useState<FournisseursStats | null>(null)
   const [search, setSearch] = React.useState("")
   const [showInactifs, setShowInactifs] = React.useState(false)
   const [dialogOpen, setDialogOpen] = React.useState(false)
@@ -94,7 +101,7 @@ export default function FournisseursPage() {
         setFournisseurs(result.data)
         setStats(result.stats)
       }
-    } catch (error) {
+    } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les fournisseurs" })
     } finally {
       setIsLoading(false)
@@ -166,8 +173,8 @@ export default function FournisseursPage() {
         const err = await response.json()
         throw new Error(err.error)
       }
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "Erreur", description: error.message || "Impossible d'enregistrer" })
+    } catch (error) {
+      toast({ variant: "destructive", title: "Erreur", description: (error instanceof Error && error.message) || "Impossible d'enregistrer" })
     } finally {
       setIsSubmitting(false)
     }

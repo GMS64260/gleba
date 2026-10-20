@@ -116,8 +116,8 @@ export default function AidesPage() {
               <div className="text-sm">
                 <p className="font-medium mb-1">Comment financer votre plantation ?</p>
                 <p className="text-muted-foreground">
-                  Catalogue des principaux dispositifs d'aide à la plantation forestière, agroforestière, bocagère et fruitière en France.
-                  Les conditions évoluent régulièrement : consultez toujours le site de l'organisme avant de monter un dossier.
+                  Catalogue des principaux dispositifs d&apos;aide à la plantation forestière, agroforestière, bocagère et fruitière en France.
+                  Les conditions évoluent régulièrement : consultez toujours le site de l&apos;organisme avant de monter un dossier.
                   De nombreuses aides sont cumulables (national + régional).
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
@@ -245,7 +245,7 @@ export default function AidesPage() {
                       <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-1">
                         {aide.tauxAide && (
                           <p className="text-sm">
-                            <span className="font-medium">Taux d'aide :</span> {aide.tauxAide}
+                            <span className="font-medium">Taux d&apos;aide :</span> {aide.tauxAide}
                           </p>
                         )}
                         {aide.plafond && (
@@ -309,7 +309,7 @@ export default function AidesPage() {
               <li><a href="https://www.cnpf.fr/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">CNPF</a> — Centre National de la Propriété Forestière (conseil aux propriétaires)</li>
               <li><a href="https://www.onf.fr/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">ONF</a> — Office National des Forêts</li>
               <li><a href="https://afac-agroforesteries.fr/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">AFAC-Agroforesteries</a> — Réseau plantation et gestion bocage</li>
-              <li><a href="https://www.vegetal-local.fr/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Végétal Local</a> — Plants d'origine locale labellisés</li>
+              <li><a href="https://www.vegetal-local.fr/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Végétal Local</a> — Plants d&apos;origine locale labellisés</li>
             </ul>
           </CardContent>
         </Card>

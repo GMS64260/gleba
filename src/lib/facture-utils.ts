@@ -10,7 +10,7 @@
  * production-bois, recoltes-arbres.
  */
 
-import type { Exploitation, PrismaClient } from '@prisma/client'
+import type { Exploitation, Prisma, PrismaClient } from '@prisma/client'
 import { adresseDeFiche, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
 import { factureSansTaxe } from '@/lib/territoires'
 
@@ -405,7 +405,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
   let lignes = params.lignes
   let totalHT = params.totalHT
   let totalTVA = params.totalTVA
-  let totalTTC = params.totalTTC
+  const totalTTC = params.totalTTC
   if (sansTva) {
     lignes = params.lignes.map((l) => ({
       ...l,
@@ -435,7 +435,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       totalHT,
       totalTVA,
       totalTTC,
-      totauxParTauxTva: totaux as any,
+      totauxParTauxTva: totaux,
       statut,
       modePaiement: params.modePaiement || null,
       datePaiement: params.datePaiement || null,
@@ -443,7 +443,8 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       mentionsLegales: params.mentionsLegales || null,
       conditionsPaiement: params.conditionsPaiement ?? null,
       mentionsSpecifiques: mentions,
-      emetteurSnapshot: emetteur as any,
+      // Json? : `null` (pas d'exploitation) est passé tel quel, comme avant.
+      emetteurSnapshot: emetteur as unknown as Prisma.InputJsonValue,
       clientSiret,
       clientSiren,
       clientTvaIntra,

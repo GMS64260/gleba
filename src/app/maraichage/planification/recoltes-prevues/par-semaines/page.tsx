@@ -7,7 +7,6 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { useAnneePlanification } from "@/hooks/use-annee-planification"
 import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
 import { ArrowLeft, CalendarRange } from "lucide-react"
@@ -49,7 +48,6 @@ interface RecoltePrevue {
 }
 
 function RecoltesPrevuesParSemainesContent() {
-  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [data, setData] = React.useState<RecoltePrevue[]>([])
@@ -58,7 +56,7 @@ function RecoltesPrevuesParSemainesContent() {
   // (incluant des cultures dérivées de rotation) alors que le KPI utilise
   // l'agrégat unifié `getRecoltesAnneeAggregat`. On affiche désormais la MÊME
   // valeur (`stats.projectionKg`) que la cartouche « Récoltes attendues ».
-  const [projectionKg, setProjectionKg] = React.useState<number | null>(null)
+  const [, setProjectionKg] = React.useState<number | null>(null)
   // Même valeur, toutes unités : une projection en tiges laissait le bandeau à
   // « 0,0 kg restants » alors que le tableau était plein (2026-08-20).
   const [projectionParUnite, setProjectionParUnite] = React.useState<QuantiteParUnite | null>(null)
@@ -77,7 +75,7 @@ function RecoltesPrevuesParSemainesContent() {
       setData(result.data)
       setProjectionKg(typeof result.stats?.projectionKg === "number" ? result.stats.projectionKg : null)
       setProjectionParUnite(result.stats?.projectionParUnite ?? null)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -100,9 +98,6 @@ function RecoltesPrevuesParSemainesContent() {
   // a un totalKg à zéro. On regarde la ventilation.
   const remplie = (r: RecoltePrevue) => quantitesNonNulles(r.totalParUnite ?? {}).length > 0
   const semainesAvecRecoltes = data.filter(remplie)
-  // Bug #3 — « restant » unifié avec le KPI (projection de l'agrégat). Fallback
-  // sur la somme détaillée si l'agrégat n'est pas disponible.
-  const totalAnnee = projectionKg ?? data.reduce((sum, r) => sum + r.totalKg, 0)
 
   return (
     <div>

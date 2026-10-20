@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromProductionBois, deleteAutoEntry } from "@/lib/auto-compta"
 import { creerFacture, annulerFactureLiee } from "@/lib/facture-utils"
@@ -148,7 +149,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const userId = session!.user.id
 
     // Préparer les données de mise à jour
-    const updateData: any = {}
+    const updateData: Prisma.ProductionBoisUncheckedUpdateInput = {}
     if (body.statut !== undefined) {
       // Valider le statut
       const validStatuts = ["en_stock", "vendu", "utilise"]

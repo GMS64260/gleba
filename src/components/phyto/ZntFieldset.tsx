@@ -36,7 +36,7 @@ export function ZntFieldset({ distanceM, respectee, onChange, zntProduitM, requi
     <fieldset className="rounded-md border bg-slate-50/60 p-3">
       <legend className="px-2 text-xs font-semibold text-slate-700 flex items-center gap-1">
         <Waves className="h-3 w-3 text-cyan-600" />
-        ZNT cours d'eau
+        ZNT cours d&apos;eau
         {required && <span className="text-red-600">*</span>}
       </legend>
       <div className="grid grid-cols-2 gap-3">
@@ -102,7 +102,7 @@ export function ZntFieldset({ distanceM, respectee, onChange, zntProduitM, requi
       </div>
       {zntProduitM != null && (
         <p className="mt-2 text-[10px] text-slate-500 italic">
-          ZNT imposée par l'AMM produit : <strong>{zntProduitM} m</strong>.
+          ZNT imposée par l&apos;AMM produit : <strong>{zntProduitM} m</strong>.
         </p>
       )}
       {effectif === false && (

@@ -7,7 +7,6 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { useAnneePlanification } from "@/hooks/use-annee-planification"
 import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
 import { ColumnDef } from "@tanstack/react-table"
@@ -133,7 +132,6 @@ const columns: ColumnDef<BesoinPlant>[] = [
 ]
 
 function PlantsContent() {
-  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [data, setData] = React.useState<BesoinPlant[]>([])

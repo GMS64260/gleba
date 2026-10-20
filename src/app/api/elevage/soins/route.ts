@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
+import { Prisma, type SoinAnimal } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromSoinAnimal } from '@/lib/auto-compta'
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     // tous les soins planifiés non réalisés, y compris un retard de l'année
     // précédente ou une échéance de l'année suivante. Le GET historique garde
     // son filtre annuel et sa pagination existants.
-    const where: any = rappels
+    const where: Prisma.SoinAnimalWhereInput = rappels
       ? { userId: session.user.id, fait: false, datePrevue: { not: null } }
       : toutesAnnees
         ? { userId: session.user.id }
@@ -507,7 +507,9 @@ export async function PATCH(request: NextRequest) {
     })
     if (!existing) return NextResponse.json({ error: 'Soin non trouvé' }, { status: 404 })
 
-    const updateData: any = {}
+    // Les champs sont relus (dates, délais, injections) : valeurs scalaires du
+    // modèle, pas des opérations Prisma.
+    const updateData: Partial<SoinAnimal> = {}
     // Bug cmp8rwths (Marc 2026-05-16) — valider un soin "en retard" écrasait
     // sa date prévue par la date du jour, on perdait l'historique du retard
     // d'application (critique en élevage AB). Désormais, à la validation

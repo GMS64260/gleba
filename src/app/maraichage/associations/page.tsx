@@ -9,7 +9,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Heart, Leaf, Users } from "lucide-react"
+import { ArrowLeft, Heart, Users } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -137,7 +137,7 @@ export default function AssociationsPage() {
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -178,7 +178,7 @@ export default function AssociationsPage() {
         description: `L'association "${row.nom}" a été supprimée`,
       })
       fetchData()
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -239,7 +239,7 @@ export default function AssociationsPage() {
               <p className="font-medium">Compagnonnage</p>
               <p className="mt-1 text-pink-700">
                 Les associations de plantes (compagnonnage) définissent quelles espèces ou familles
-                se bénéficient mutuellement lorsqu'elles sont cultivées à proximité.
+                se bénéficient mutuellement lorsqu&apos;elles sont cultivées à proximité.
                 Une association <strong>requise</strong> (★) indique une dépendance forte ;
                 un badge <strong>rouge</strong> signale une association incompatible à éviter.
               </p>

@@ -95,9 +95,9 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ data: result }, { status: 201 })
-  } catch (err: any) {
+  } catch (err) {
     console.error('POST /api/elevage/lots-fromage error:', err)
-    return NextResponse.json({ error: err.message || 'Erreur interne du serveur' }, { status: 400 })
+    return NextResponse.json({ error: (err instanceof Error && err.message) || 'Erreur interne du serveur' }, { status: 400 })
   }
 }
 

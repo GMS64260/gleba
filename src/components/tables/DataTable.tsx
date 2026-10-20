@@ -32,7 +32,6 @@ declare module "@tanstack/react-table" {
 import {
   ArrowUpDown,
   ChevronDown,
-  MoreHorizontal,
   Plus,
   Search,
   Download,
@@ -47,9 +46,6 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {

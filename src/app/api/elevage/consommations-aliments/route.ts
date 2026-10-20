@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromConsommationAliment, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
@@ -30,15 +31,16 @@ export async function GET(request: NextRequest) {
     // Revue 2026-09-28 : `annee=all` pour la liste de gestion d'un historique.
     const { annee, bornes } = lireAnnee(searchParams)
 
-    const where: any = { userId }
+    const where: Prisma.ConsommationAlimentWhereInput = { userId }
     if (bornes) where.date = { ...bornes }
     if (alimentId) where.alimentId = alimentId
     if (lotId) where.lotId = parseInt(lotId)
     if (animalId) where.animalId = parseInt(animalId)
     if (dateDebut || dateFin) {
-      where.date = where.date ?? {}
-      if (dateDebut) where.date.gte = new Date(dateDebut)
-      if (dateFin) where.date.lte = new Date(dateFin)
+      const date: Prisma.DateTimeFilter = { ...bornes }
+      if (dateDebut) date.gte = new Date(dateDebut)
+      if (dateFin) date.lte = new Date(dateFin)
+      where.date = date
     }
 
     const consommations = await prisma.consommationAliment.findMany({

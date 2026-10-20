@@ -31,8 +31,6 @@ import {
   Package,
   ArrowRight,
   Compass,
-  Wind,
-  Mountain,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"

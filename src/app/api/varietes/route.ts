@@ -8,8 +8,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createVarieteSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
-import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
 import { displayReferentielName, normalizeVarieteName } from '@/lib/normalize'
+import { sansChamps } from '@/lib/sans-champs'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { visibiliteReferentiel, attributionCreation, masquerEntree } from '@/lib/referentiel-communaute'
 import { enregistrerStockVariete, separerStockVariete, serialiserVariete } from '@/lib/stocks/stock-variete'
@@ -236,7 +237,7 @@ export async function POST(request: NextRequest) {
 
     // Création : officiel → id = nom lisible ; perso → id omis → cuid (@default).
     // Le stock saisi avec la variété est celui de l'appelant (ticket cmv29j6q7).
-    const { id: _nomBrut, ...donneesSaisies } = data
+    const donneesSaisies = sansChamps(data, 'id')
     const { catalogue: rest, stock } = separerStockVariete(donneesSaisies)
     const variete = await prisma.$transaction(async (tx) => {
       const creee = await tx.variete.create({

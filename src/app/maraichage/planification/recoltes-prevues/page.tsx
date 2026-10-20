@@ -7,7 +7,6 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { useAnneePlanification } from "@/hooks/use-annee-planification"
 import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
 import { ArrowLeft, BarChart3 } from "lucide-react"
@@ -80,7 +79,6 @@ interface Stats {
 }
 
 function RecoltesPrevuesContent() {
-  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [data, setData] = React.useState<RecoltePrevue[]>([])
@@ -99,7 +97,7 @@ function RecoltesPrevuesContent() {
       const result = await response.json()
       setData(result.data)
       setStats(result.stats)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",

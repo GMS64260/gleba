@@ -44,7 +44,7 @@ export function UnsubscribeClient({
       <div className="mx-auto max-w-xl">
         <div className="rounded-2xl bg-white p-10 shadow-sm ring-1 ring-slate-200 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Préférences d'emails Gleba
+            Préférences d&apos;emails Gleba
           </h1>
           <p className="mt-2 text-sm text-slate-500 break-all">{email}</p>
 
@@ -61,7 +61,7 @@ export function UnsubscribeClient({
               </p>
               <p className="mt-2 text-sm text-slate-500">
                 Vous continuerez à recevoir les emails indispensables liés à votre compte
-                (vérification d'adresse, réinitialisation de mot de passe).
+                (vérification d&apos;adresse, réinitialisation de mot de passe).
               </p>
               <button
                 onClick={() => call("resubscribe")}
@@ -79,7 +79,7 @@ export function UnsubscribeClient({
                 </svg>
               </div>
               <p className="text-slate-600">
-                C'est noté, vous êtes de nouveau <strong>abonné·e</strong>. Merci&nbsp;!
+                C&apos;est noté, vous êtes de nouveau <strong>abonné·e</strong>. Merci&nbsp;!
               </p>
               <button
                 onClick={() => call("unsubscribe")}
@@ -96,8 +96,8 @@ export function UnsubscribeClient({
                 (campagnes, invitations à donner votre avis)&nbsp;?
               </p>
               <p className="mt-2 text-sm text-slate-500">
-                Les emails indispensables liés à votre compte (vérification d'adresse,
-                réinitialisation de mot de passe) continueront d'être envoyés.
+                Les emails indispensables liés à votre compte (vérification d&apos;adresse,
+                réinitialisation de mot de passe) continueront d&apos;être envoyés.
               </p>
               <button
                 onClick={() => call("unsubscribe")}

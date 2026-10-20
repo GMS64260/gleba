@@ -12,7 +12,7 @@ import { COMMUNAUTE_USER_ID } from "@/lib/account-lifecycle"
 
 // GET /api/admin/users
 export async function GET() {
-  const { error, session } = await requireAdminApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {

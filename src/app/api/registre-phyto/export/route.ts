@@ -233,11 +233,7 @@ type Exploitation = {
 // CSV — UTF-8 avec BOM, séparateur `;` (Excel FR)
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Ligne = ReturnType<typeof slugRow>
-function slugRow(_x: unknown) {
-  // Utilitaire de typage uniquement.
-  return {} as Record<string, string | number | boolean | null>
-}
+type Ligne = Record<string, string | number | boolean | null>
 
 function escapeCsv(value: unknown): string {
   if (value === null || value === undefined) return ""
@@ -582,8 +578,6 @@ async function buildPdf(
   })
 }
 
-// Évite un warning ESLint "_x defined but never used" sur slugRow.
-void slugRow
 
 // Type util pour le tooling.
 export type RegistrePhytoLigne = Ligne

@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromRecolteArbre, deleteAutoEntry } from "@/lib/auto-compta"
 import { creerFacture, annulerFactureLiee } from "@/lib/facture-utils"
@@ -264,7 +265,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const body = await request.json()
 
     // Préparer les données de mise à jour
-    const updateData: any = {}
+    const updateData: Prisma.RecolteArbreUncheckedUpdateInput = {}
     if (body.statut !== undefined) updateData.statut = body.statut
     if (body.dateVente !== undefined) updateData.dateVente = body.dateVente ? new Date(body.dateVente) : null
     if (body.prixKg !== undefined) updateData.prixKg = body.prixKg

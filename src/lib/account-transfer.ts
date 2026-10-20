@@ -94,6 +94,22 @@ export const EXPORT_FORMAT_VERSION = "2.0"
 
 type Row = Record<string, unknown>
 
+/**
+ * Délégué Prisma atteint par son nom (`prisma.culture`, `tx.recolte`…) : le
+ * moteur est piloté par le DMMF, pas par une liste de modèles typée, d'où ce
+ * contrat minimal commun à tous les délégués.
+ */
+interface DelegueDynamique {
+  findMany: (args?: { where?: Row }) => Promise<Row[]>
+  create: (args: { data: Row }) => Promise<Row>
+  upsert: (args: { where: Row; create: Row; update: Row }) => Promise<Row>
+  update: (args: { where: Row; data: Row }) => Promise<Row>
+}
+
+function delegue(client: unknown, nom: string): DelegueDynamique {
+  return (client as Record<string, DelegueDynamique>)[nom]
+}
+
 type ModelClass = "referential" | "owned" | "child" | "excluded"
 
 interface RelMeta {
@@ -236,9 +252,9 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
   for (const meta of manifest.values()) {
     if (meta.klass !== "referential") continue
     const where = meta.estCommunautaire ? visibiliteReferentiel(userId) : undefined
-    const rows = (await (prisma as any)[meta.delegate].findMany(
+    const rows = await delegue(prisma, meta.delegate).findMany(
       where ? { where } : undefined
-    )) as Row[]
+    )
     data[meta.name] = rows
     stats[meta.name] = rows.length
   }
@@ -248,9 +264,9 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
   const ownedIds = new Map<string, Set<unknown>>() // model → set des PK exportées
   for (const meta of manifest.values()) {
     if (meta.klass !== "owned") continue
-    const rows = (await (prisma as any)[meta.delegate].findMany({
+    const rows = await delegue(prisma, meta.delegate).findMany({
       where: { userId },
-    })) as Row[]
+    })
     data[meta.name] = rows
     stats[meta.name] = rows.length
     if (meta.pkField) {
@@ -288,7 +304,7 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
       )
       if (waitingOnChild) continue
 
-      const allRows = (await (prisma as any)[meta.delegate].findMany()) as Row[]
+      const allRows = await delegue(prisma, meta.delegate).findMany()
       const kept = allRows.filter((row) => {
         // garder la ligne si, pour chaque FK propriétaire non nulle, l'id
         // référencé fait partie des données exportées de l'utilisateur
@@ -490,12 +506,12 @@ export async function importAccount(
       for (const row of rows) {
         const pk = row[meta.pkField]
         if (pk === null || pk === undefined) continue
-        const createData = buildScalarData(meta, row, userId)
+        const createData = buildScalarData(meta, row)
         const updateData = { ...createData }
         delete (updateData as Row)[meta.pkField]
         try {
           await tx.$executeRawUnsafe("SAVEPOINT sp_ref")
-          await (tx as any)[meta.delegate].upsert({
+          await delegue(tx, meta.delegate).upsert({
             where: { [meta.pkField]: pk },
             create: createData,
             update: updateData,
@@ -531,7 +547,7 @@ export async function importAccount(
 
       for (const row of rows) {
         const oldPk = row[meta.pkField]
-        const createData = buildScalarData(meta, row, userId)
+        const createData = buildScalarData(meta, row)
         // PK : on retire l'entière (autoincrement) ; on garde la string (cuid).
         if (meta.pkIsInt) {
           delete createData[meta.pkField]
@@ -583,9 +599,9 @@ export async function importAccount(
           // transaction et les créations suivantes échouent en silence tandis
           // que la fonction renvoyait quand même « N importés » (audit #50).
           await tx.$executeRawUnsafe("SAVEPOINT sp_row")
-          const created = (await (tx as any)[meta.delegate].create({
+          const created = await delegue(tx, meta.delegate).create({
             data: createData,
-          })) as Row
+          })
           await tx.$executeRawUnsafe("RELEASE SAVEPOINT sp_row")
           const newPk = created[meta.pkField]
           if (oldPk !== null && oldPk !== undefined) map.set(oldPk, newPk)
@@ -622,7 +638,7 @@ export async function importAccount(
       if (newFk === undefined) continue // cible jamais importée → reste null
       try {
         await tx.$executeRawUnsafe("SAVEPOINT sp_patch")
-        await (tx as any)[p.delegate].update({
+        await delegue(tx, p.delegate).update({
           where: { [p.pkField]: p.newPk },
           data: { [p.fkField]: newFk },
         })
@@ -652,7 +668,7 @@ export async function importAccount(
 }
 
 /** Construit l'objet de données scalaires (typage Date/Decimal géré). */
-function buildScalarData(meta: ModelMeta, row: Row, _userId: string): Row {
+function buildScalarData(meta: ModelMeta, row: Row): Row {
   const out: Row = {}
   for (const f of meta.scalarFields) {
     if (!(f.name in row)) continue

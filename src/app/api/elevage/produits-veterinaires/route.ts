@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { resoudreDelaisVeterinaires } from '@/lib/elevage/delais-veterinaires'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   const autoriseAb = searchParams.get('autoriseAb')
   const especeId = searchParams.get('especeId')
 
-  const where: any = {}
+  const where: Prisma.ProduitVeterinaireWhereInput = {}
   if (search) {
     where.OR = [
       { nom: { contains: search, mode: 'insensitive' } },

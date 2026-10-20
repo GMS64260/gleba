@@ -150,7 +150,7 @@ function CartePageContent() {
           : geo.coordinates[0]
 
       const latlngs = coords.map((c: [number, number]) => [c[1], c[0]] as [number, number])
-      const bounds = (window as any).L.latLngBounds(latlngs)
+      const bounds = (window as unknown as { L: typeof L }).L.latLngBounds(latlngs)
       // fitBounds et non flyToBounds : voir handleFlyTo (QA cmv2ek8t6).
       mapRef.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 })
       setSelectedParcelle(target)
@@ -364,7 +364,7 @@ function CartePageContent() {
   const handleEditConfirm = useCallback(() => {
     // Fire l'event custom sur la map pour récupérer la géométrie
     if (mapRef) {
-      mapRef.fire("editing:confirm" as any)
+      mapRef.fire("editing:confirm")
     }
   }, [mapRef])
 
@@ -414,7 +414,7 @@ function CartePageContent() {
 
       // Construire les bornes a partir des coordonnees [lng, lat]
       const latlngs = coords.map((c: [number, number]) => [c[1], c[0]] as [number, number])
-      const bounds = (window as any).L.latLngBounds(latlngs)
+      const bounds = (window as unknown as { L: typeof L }).L.latLngBounds(latlngs)
 
       // QA cmv2ek8t6 — fitBounds, jamais flyToBounds : pendant un vol de
       // plusieurs niveaux, Leaflet étire le SVG des contours sans les
