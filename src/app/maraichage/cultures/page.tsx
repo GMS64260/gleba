@@ -58,7 +58,7 @@ interface CultureWithRelations {
     famille: { id: string; couleur: string | null } | null
   }
   variete: { id: string; nom: string | null; isPlaceholder?: boolean } | null
-  planche: { id: string } | null
+  planche: { id: string; nom?: string | null } | null
   // Présent au runtime (GET /api/cultures inclut l'ITP) — cf. CulturesTab.
   itp?: { semainePlantation: number | null } | null
   quantite: number | null
@@ -279,6 +279,19 @@ function CulturesPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const varieteId = searchParams.get("variete")
+  // QA cmvgdp9fn — le refus de suppression d'une planche renvoie ici, filtré
+  // sur la planche (identifiant) et, s'il n'y en a qu'une, l'année des cultures.
+  const plancheFiltre = searchParams.get("planche")
+  const anneeParam = Number.parseInt(searchParams.get("annee") ?? "", 10)
+  const anneeFiltre = Number.isInteger(anneeParam) ? anneeParam : null
+  // Retirer un filtre garde les autres (revue du 2026-10-20 : « Afficher
+  // toutes les cultures » du filtre planche effaçait aussi la variété).
+  const urlSans = (...cles: string[]) => {
+    const parametres = new URLSearchParams(searchParams.toString())
+    for (const cle of cles) parametres.delete(cle)
+    const requete = parametres.toString()
+    return requete ? `/maraichage/cultures?${requete}` : "/maraichage/cultures"
+  }
   const { toast } = useToast()
   const [data, setData] = React.useState<CultureWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -365,6 +378,12 @@ function CulturesPageInner() {
       if (varieteId) {
         url += `&variete=${encodeURIComponent(varieteId)}`
       }
+      if (plancheFiltre) {
+        url += `&plancheId=${encodeURIComponent(plancheFiltre)}`
+      }
+      if (anneeFiltre !== null) {
+        url += `&annee=${anneeFiltre}`
+      }
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
@@ -379,7 +398,7 @@ function CulturesPageInner() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, selectedEtat, toast, varieteId])
+  }, [pageIndex, selectedEtat, toast, varieteId, plancheFiltre, anneeFiltre])
 
   React.useEffect(() => {
     fetchData()
@@ -387,7 +406,7 @@ function CulturesPageInner() {
 
   React.useEffect(() => {
     setPageIndex(0)
-  }, [varieteId])
+  }, [varieteId, plancheFiltre, anneeFiltre])
 
   // Reset page when etat changes
   const handleEtatChange = (etat: string) => {
@@ -484,6 +503,30 @@ function CulturesPageInner() {
         </div>
       </PageToolbar>
 
+      {(plancheFiltre || anneeFiltre !== null) && (
+        <div className="container mx-auto max-w-[1600px] px-4 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            <span>
+              {plancheFiltre && (
+                <>
+                  Filtre planche :{" "}
+                  <strong>{data.find((c) => c.planche?.id === plancheFiltre)?.planche?.nom ?? plancheFiltre}</strong>
+                </>
+              )}
+              {plancheFiltre && anneeFiltre !== null && " · "}
+              {anneeFiltre !== null && (
+                <>
+                  Année : <strong>{anneeFiltre}</strong>
+                </>
+              )}
+            </span>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={urlSans("planche", "annee")}>Retirer ce filtre</Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
       {varieteId && (
         <div className="container mx-auto max-w-[1600px] px-4 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
@@ -491,7 +534,7 @@ function CulturesPageInner() {
               Filtre variété : <strong>{varieteId}</strong>
             </span>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/maraichage/cultures">Afficher toutes les cultures</Link>
+              <Link href={urlSans("variete")}>Retirer ce filtre</Link>
             </Button>
           </div>
         </div>

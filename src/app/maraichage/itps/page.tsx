@@ -307,16 +307,10 @@ export default function ITPsPage() {
     router.push(`/maraichage/itps/${encodeURIComponent(row.id)}`)
   }
 
+  // La route porte le refus (cultures de tous les comptes, étapes de rotation)
+  // et son message, qui nomme années et rotations ; l'écran l'affiche tel
+  // quel. Sa garde locale refusait seule, sans accents ni repères (2026-10-20).
   const handleDelete = async (row: ITPWithRelations) => {
-    if (row._count.cultures > 0 || row._count.rotationsDetails > 0) {
-      toast({
-        variant: "destructive",
-        title: "Impossible de supprimer",
-        description: `${formatItpLabel(row)} est utilise dans ${row._count.cultures} culture(s) et ${row._count.rotationsDetails} rotation(s)`,
-      })
-      return
-    }
-
     if (!(await confirmDialog(`Supprimer l'ITP "${formatItpLabel(row)}" ?`))) return
 
     try {
@@ -325,7 +319,7 @@ export default function ITPsPage() {
       })
       if (response.ok) {
         toast({
-          title: "ITP supprime",
+          title: "ITP supprimé",
           description: `L'ITP "${formatItpLabel(row)}" a été supprimé`,
         })
         fetchData()
@@ -333,7 +327,7 @@ export default function ITPsPage() {
         const p = await response.json().catch(() => null)
         toast({
           variant: "destructive",
-          title: "Erreur",
+          title: response.status === 409 ? "Impossible de supprimer" : "Erreur",
           description: p?.error || "Impossible de supprimer l'ITP",
         })
       }

@@ -49,6 +49,7 @@ import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { confirmDialog } from "@/lib/global-dialog"
 import { libelleIrrigation } from '@/lib/planches/libelle-irrigation'
 import { formatNombre } from '@/lib/format-utils'
+import { phraseExcluesTournee, phraseHorsTournee, type CultureHorsTournee } from '@/lib/irrigation/hors-tournee'
 
 interface MeteoResume {
   pluie48h: number
@@ -107,6 +108,17 @@ interface CultureIrriguer {
   } | null
 }
 
+/**
+ * Tournée du jour servie par la route (`tourneeDuJour`, même règle que la page
+ * Tâches) : passages, cultures cochées, et cultures en urgence qu'elle écarte
+ * faute d'être cochées « à irriguer » (QA cmvge3o5z).
+ */
+interface Tournee {
+  lignes: { cle: string }[]
+  nbCultures: number
+  horsTournee: CultureHorsTournee[]
+}
+
 interface Stats {
   total: number
   nbIlots: number
@@ -126,6 +138,7 @@ function CulturesIrriguerContent() {
   const [parIlot, setParIlot] = React.useState<Record<string, CultureIrriguer[]>>({})
   const [parTypeIrrigation, setParTypeIrrigation] = React.useState<Record<string, CultureIrriguer[]>>({})
   const [stats, setStats] = React.useState<Stats | null>(null)
+  const [tournee, setTournee] = React.useState<Tournee | null>(null)
   const [meteoGlobal, setMeteoGlobal] = React.useState<MeteoResume | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [annee, setAnnee] = React.useState(
@@ -144,8 +157,9 @@ function CulturesIrriguerContent() {
     return Array.from({ length: 6 }, (_, i) => currentYear - 3 + i)
   }, [])
 
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
+  // `silencieux` : relecture après un changement de coche, sans squelette.
+  const fetchData = React.useCallback(async (silencieux = false) => {
+    if (!silencieux) setIsLoading(true)
     try {
       const response = await fetch(`/api/cultures/irriguer?annee=${annee}`)
       if (!response.ok) throw new Error("Erreur lors du chargement")
@@ -154,6 +168,7 @@ function CulturesIrriguerContent() {
       setParIlot(result.parIlot)
       setParTypeIrrigation(result.parTypeIrrigation || {})
       setStats(result.stats)
+      setTournee(result.tournee ?? null)
       setMeteoGlobal(result.meteo || null)
     } catch {
       toast({
@@ -196,6 +211,8 @@ function CulturesIrriguerContent() {
         title: "Mis à jour",
         description: currentValue ? "Irrigation désactivée" : "Irrigation activée",
       })
+      // La tournée du jour dépend de la coche : on la relit du serveur.
+      fetchData(true)
     } catch {
       toast({
         variant: "destructive",
@@ -311,6 +328,16 @@ function CulturesIrriguerContent() {
     return <Badge variant="secondary">Faible</Badge>
   }
 
+  // Cultures en urgence jamais cochées que la tournée écarte (identifiants
+  // servis par la route) ; une culture décochée exprès n'appelle pas d'invitation.
+  const horsTournee = React.useMemo(
+    () =>
+      new Set(
+        (tournee?.horsTournee ?? []).filter((c) => c.motif !== "exclue").map((c) => c.cultureId),
+      ),
+    [tournee],
+  )
+
   const filteredData = React.useMemo(() => {
     let filtered = data
 
@@ -400,7 +427,7 @@ function CulturesIrriguerContent() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={fetchData}>
+          <Button variant="outline" size="sm" onClick={() => fetchData()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Actualiser
           </Button>
@@ -575,12 +602,28 @@ function CulturesIrriguerContent() {
                 <CardTitle className="text-sm text-muted-foreground">À arroser aujourd&apos;hui</CardTitle>
               </CardHeader>
               <CardContent>
-                {/* Refonte du 2026-10-10 : plus de passages planifiés d'avance ; le
-                    besoin du jour vient de l'urgence du bilan hydrique. */}
-                <p className="text-2xl font-bold text-blue-600">{stats.critique + stats.haute}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  culture{stats.critique + stats.haute > 1 ? 's' : ''} en urgence critique ou haute
-                </p>
+                {/* QA cmvge3o5z — même tournée que la page Tâches (cultures
+                    cochées « à irriguer » en urgence critique ou haute, un
+                    passage par planche) ; les urgences non cochées sont
+                    nommées au lieu d'être comptées en silence. */}
+                {tournee ? (
+                  <>
+                    <p className="text-2xl font-bold text-blue-600">{tournee.lignes.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {tournee.lignes.length > 1 ? "passages" : "passage"} de la tournée du jour (page Tâches)
+                      {tournee.nbCultures > 0 &&
+                        ` · ${tournee.nbCultures} culture${tournee.nbCultures > 1 ? "s" : ""} cochée${tournee.nbCultures > 1 ? "s" : ""}`}
+                    </p>
+                    {phraseHorsTournee(tournee.horsTournee) && (
+                      <p className="text-xs text-orange-700 mt-1">{phraseHorsTournee(tournee.horsTournee)}</p>
+                    )}
+                    {phraseExcluesTournee(tournee.horsTournee) && (
+                      <p className="text-xs text-muted-foreground mt-1">{phraseExcluesTournee(tournee.horsTournee)}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-2xl font-bold text-blue-600">—</p>
+                )}
               </CardContent>
             </Card>
             <Card>
@@ -717,6 +760,11 @@ function CulturesIrriguerContent() {
                                     <span>~{Math.round(culture.consommationEauSemaine)}L/sem</span>
                                   )}
                                 </div>
+                                {horsTournee.has(culture.id) && (
+                                  <p className="mt-1 text-xs text-orange-700">
+                                    Hors de la tournée du jour : cochez « à irriguer » pour l&apos;ajouter aux tâches.
+                                  </p>
+                                )}
                               </div>
                             </div>
 

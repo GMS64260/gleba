@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
+import { supprimerPlancheVerifiee } from "@/components/planches/suppression-planche"
 import { associationDetailTitle } from "@/lib/association-display"
 
 // ============================================================
@@ -255,27 +256,9 @@ function PlanchesSubTab() {
         onRowEdit={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.id)}`)}
         rowEditLabel="Voir et modifier"
         onRowDelete={async (row) => {
-          if (row._count.cultures > 0) {
-            toast({
-              variant: "destructive",
-              title: "Impossible",
-              description: `${row.nom} a ${row._count.cultures} culture(s)`,
-            })
-            return
-          }
-          if (!(await confirmDialog(`Supprimer "${row.nom}" ?`))) return
-          try {
-            const res = await fetch(`/api/planches/${encodeURIComponent(row.nom)}`, { method: "DELETE" })
-            if (res.ok) {
-              toast({ title: "Planche supprimée" })
-              fetchData()
-            } else {
-              const p = await res.json().catch(() => null)
-              toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de supprimer la planche" })
-            }
-          } catch {
-            toast({ variant: "destructive", title: "Erreur" })
-          }
+          // QA cmvgdp9fn (revue du 2026-10-20) — même parcours que la page
+          // Planches : refus du serveur (années, lien), suppression par id.
+          if (await supprimerPlancheVerifiee(row, (href) => router.push(href))) fetchData()
         }}
         searchPlaceholder="Rechercher une planche..."
         emptyMessage="Aucune planche trouvée."

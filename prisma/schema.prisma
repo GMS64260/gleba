@@ -1475,7 +1475,7 @@ model Consommation {
   destinationId String?      @map("destination")
   destination   Destination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
   date          DateTime     @default(now()) @map("date")
-  quantite      Float        @map("quantite") // kg
+  quantite      Float        @map("quantite") // dans l'unité du stock de l'espèce (kg, tiges, pièces, bottes) : src/lib/stocks/sortie-stock.ts
   prix          Float?       @map("prix") // € total
   notes         String?      @map("notes")
   createdAt     DateTime     @default(now()) @map("created_at")

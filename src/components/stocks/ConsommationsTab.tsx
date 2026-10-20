@@ -36,17 +36,24 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
+import { formatQuantite } from "@/lib/recolte/quantites"
+import { uniteSortieAffichee } from "@/lib/stocks/unite-sortie"
+import { formatMontantDevise } from "@/lib/format-utils"
 
 interface Consommation {
   id: number
   date: string
   especeId: string
   quantite: number
+  /** Unité du stock de l'espèce, servie par la route (QA cmvgef6ou). */
+  unite?: UniteQuantite
   prix: number | null
   destinationId: string | null
   notes: string | null
   espece: {
     id: string
+    nom?: string | null
     couleur: string | null
     prixKg: number | null
   }
@@ -58,6 +65,8 @@ interface Consommation {
 
 interface StockNetData {
   stockNet: number
+  /** Unité du stock (kg, tige, pièce, botte) : celle de l'espèce pour la ferme. */
+  unite?: UniteQuantite
   detail: {
     inventaire: number
     recoltes: number
@@ -69,7 +78,11 @@ export function ConsommationsTab() {
   const { toast } = useToast()
   const [consommations, setConsommations] = React.useState<Consommation[]>([])
   const [stocksNet, setStocksNet] = React.useState<Record<string, StockNetData>>({})
-  const [especes, setEspeces] = React.useState<{ id: string; prixKg: number | null }[]>([])
+  // `uniteRendement` : unité effective pour la ferme (surcharge comprise),
+  // servie par /api/especes.
+  const [especes, setEspeces] = React.useState<
+    { id: string; nom?: string | null; prixKg: number | null; uniteRendement?: string | null }[]
+  >([])
   const [destinations, setDestinations] = React.useState<{ id: string; description: string | null }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
@@ -83,6 +96,15 @@ export function ConsommationsTab() {
     destinationId: '',
     notes: '',
   })
+
+  // QA cmvgef6ou — l'unité de la sortie est celle du stock de l'espèce,
+  // servie par la route (`calculerStocksNet`) : 19 tiges de dahlia étaient
+  // proposées « 19.0 kg » avec un champ « Quantité (kg) ». Sans stock (espèce
+  // jamais récoltée), l'unité effective de l'espèce (revue du 2026-10-20).
+  const uniteEspece = (especeId: string): UniteQuantite =>
+    uniteSortieAffichee(stocksNet[especeId], especes.find((e) => e.id === especeId))
+  const nomEspece = (especeId: string) => especes.find((e) => e.id === especeId)?.nom ?? especeId
+  const uniteSaisie = formData.especeId ? uniteEspece(formData.especeId) : "kg"
 
   // Charger données
   const fetchData = React.useCallback(async () => {
@@ -142,6 +164,8 @@ export function ConsommationsTab() {
         body: JSON.stringify({
           especeId: formData.especeId,
           quantite: parseFloat(formData.quantite),
+          // L'unité affichée : la route la confronte à celle du stock.
+          unite: uniteSaisie,
           prix: formData.prix ? parseFloat(formData.prix) : undefined,
           destinationId: formData.destinationId || undefined,
           notes: formData.notes || undefined,
@@ -155,7 +179,7 @@ export function ConsommationsTab() {
 
       toast({
         title: "Sortie enregistrée",
-        description: `${formData.quantite} kg de ${formData.especeId}`,
+        description: `${formatQuantite(parseFloat(formData.quantite), uniteSaisie)} de ${nomEspece(formData.especeId)}`,
       })
 
       setDialogOpen(false)
@@ -208,12 +232,11 @@ export function ConsommationsTab() {
           {topStocks.map(([especeId, stock]) => (
             <Card key={especeId}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium truncate">{especeId}</CardTitle>
+                <CardTitle className="text-sm font-medium truncate">{nomEspece(especeId)}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {stock.stockNet.toFixed(1)}
-                  <span className="text-sm font-normal text-muted-foreground ml-1">kg</span>
+                  {formatQuantite(stock.stockNet, stock.unite ?? "kg")}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">
                   Stock net actuel
@@ -262,8 +285,10 @@ export function ConsommationsTab() {
                     <option value="">Choisir une espèce</option>
                     {especes.map(e => (
                       <option key={e.id} value={e.id}>
-                        {e.id}
-                        {stocksNet[e.id] ? ` (stock: ${stocksNet[e.id].stockNet.toFixed(1)} kg)` : ""}
+                        {e.nom ?? e.id}
+                        {stocksNet[e.id]
+                          ? ` (stock : ${formatQuantite(stocksNet[e.id].stockNet, uniteEspece(e.id))})`
+                          : ""}
                       </option>
                     ))}
                   </SelectNatif>
@@ -271,12 +296,14 @@ export function ConsommationsTab() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="quantite">Quantité (kg) *</Label>
+                    <Label htmlFor="quantite">Quantité ({libelleUniteQuantite(uniteSaisie, 2)}) *</Label>
+                    {/* Une tige, une pièce ou une botte se compte : la route
+                        refuse un nombre décimal, l'écran ne le propose pas. */}
                     <Input
                       id="quantite"
                       type="number"
-                      step="0.1"
-                      min="0.1"
+                      step={uniteSaisie === "kg" ? "0.1" : "1"}
+                      min={uniteSaisie === "kg" ? "0.1" : "1"}
                       value={formData.quantite}
                       onChange={(e) => setFormData(prev => ({ ...prev, quantite: e.target.value }))}
                       required
@@ -359,23 +386,23 @@ export function ConsommationsTab() {
                         style={{ backgroundColor: conso.espece.couleur }}
                       />
                     )}
-                    <span className="font-medium break-words">{conso.especeId}</span>
+                    <span className="font-medium break-words">{conso.espece.nom ?? conso.especeId}</span>
                     <Badge variant="secondary" className="text-xs">
                       {format(new Date(conso.date), "dd MMM yyyy", { locale: fr })}
                     </Badge>
                   </div>
 
                   <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                    <span className="font-medium text-red-600">- {conso.quantite} kg</span>
+                    <span className="font-medium text-red-600">- {formatQuantite(conso.quantite, conso.unite ?? "kg")}</span>
                     {conso.prix && (
-                      <span className="text-green-600">{conso.prix.toFixed(2)} €</span>
+                      <span className="text-green-600">{formatMontantDevise(conso.prix)}</span>
                     )}
                     {conso.destination && (
                       <span>{conso.destination.id}</span>
                     )}
                     {stockNet && (
                       <span className="text-xs">
-                        Stock: {stockNet.stockNet.toFixed(1)} kg
+                        Stock : {formatQuantite(stockNet.stockNet, stockNet.unite ?? "kg")}
                       </span>
                     )}
                   </div>

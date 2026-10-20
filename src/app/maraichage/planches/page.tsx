@@ -14,7 +14,7 @@ import { AssistantDialog, AssistantButton } from "@/components/assistant"
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { confirmDialog } from "@/lib/global-dialog"
+import { supprimerPlancheVerifiee } from "@/components/planches/suppression-planche"
 import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
 import { CompleterTerrainDialog } from "@/components/planches/CompleterTerrainDialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
@@ -194,54 +194,11 @@ export default function PlanchesPage() {
     router.push(`/maraichage/planches/${encodeURIComponent(row.id)}`)
   }
 
+  // QA cmvgdp9fn — un seul message de refus, celui du serveur (années des
+  // cultures et des interventions, lien vers la liste filtrée) : parcours
+  // commun avec l'onglet Terrain (`supprimerPlancheVerifiee`).
   const handleDelete = async (row: PlancheWithRelations) => {
-    if (row._count.cultures > 0) {
-      toast({
-        variant: "destructive",
-        title: "Impossible de supprimer",
-        description: `${row.nom} a ${row._count.cultures} culture(s) associée(s)`,
-      })
-      return
-    }
-
-    // Les fertilisations (import Potaléger) partent avec la planche : aucun
-    // écran ne les gère, on le dit avant de confirmer (QA cmv29i9ad).
-    const fertilisations = row._count.fertilisations ?? 0
-    const avertissement =
-      fertilisations > 1
-        ? ` Ses ${fertilisations} fertilisations importées seront supprimées avec elle.`
-        : fertilisations === 1
-          ? " Sa fertilisation importée sera supprimée avec elle."
-          : ""
-    if (!(await confirmDialog(`Supprimer la planche "${row.nom}" ?${avertissement}`))) return
-
-    try {
-      const response = await fetch(`/api/planches/${encodeURIComponent(row.id)}`, {
-        method: "DELETE",
-      })
-      if (!response.ok) {
-        // QA cmv29i9ad — le refus serveur dit ce qui retient la planche
-        // (interventions, fertilisations) : on l'affiche tel quel.
-        const corps = (await response.json().catch(() => null)) as { error?: string } | null
-        toast({
-          variant: "destructive",
-          title: "Impossible de supprimer",
-          description: corps?.error || "Impossible de supprimer la planche",
-        })
-        return
-      }
-      toast({
-        title: "Planche supprimée",
-        description: `La planche "${row.nom}" a été supprimée`,
-      })
-      fetchData()
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de supprimer la planche",
-      })
-    }
+    if (await supprimerPlancheVerifiee(row, (href) => router.push(href))) fetchData()
   }
 
   // Calcul des stats

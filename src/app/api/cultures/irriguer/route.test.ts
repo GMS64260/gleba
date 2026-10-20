@@ -24,7 +24,8 @@ vi.mock('@/lib/irrigation-recording', () => ({
   supprimerArrosageNote: vi.fn(),
 }))
 
-import { PATCH } from './route'
+import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
+import { GET, PATCH } from './route'
 
 const patch = (body: object) =>
   new NextRequest('http://localhost/api/cultures/irriguer', {
@@ -89,5 +90,49 @@ describe('PATCH /api/cultures/irriguer : quantité versée', () => {
     expect(res.status).toBe(200)
     expect(mocks.annulerArrosageMesure).toHaveBeenCalledWith({ userId: 'u1', interventionId: 501 })
     expect(mocks.annulerArrosageCultures).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * QA cmvge3o5z — « À arroser aujourd'hui » de la page Irriguer lit la même
+ * tournée que la page Tâches (cultures cochées), et nomme l'urgence écartée.
+ */
+describe('GET /api/cultures/irriguer : tournée du jour', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'u1' } } })
+  })
+
+  it('compte la tournée des tâches et nomme le poireau non coché', async () => {
+    const base = { raisonUrgence: 'Déficit', sousAbri: false, reserve: null }
+    vi.mocked(computeConseilIrrigation).mockResolvedValue({
+      data: [
+        { ...base, id: 985, aIrriguer: true, urgence: 'haute', espece: { nom: 'Radis' }, planche: null },
+        { ...base, id: 827, aIrriguer: true, urgence: 'haute', espece: { nom: 'Potimarron' }, planche: { id: 'c1', nom: 'C1', ilot: 'C' } },
+        {
+          ...base,
+          id: 829,
+          aIrriguer: null,
+          urgence: 'critique',
+          espece: { nom: 'Poireau' },
+          variete: { id: 'Poireau Bleu de Solaise', nom: null },
+          planche: { id: 'c2', nom: 'C2', ilot: 'C' },
+        },
+      ],
+      stats: { critique: 1, haute: 2 },
+    } as never)
+
+    const res = await GET(new NextRequest('http://localhost/api/cultures/irriguer'))
+
+    expect(res.status).toBe(200)
+    const corps = await res.json()
+    // Le conseil garde ses urgences (information) ...
+    expect(corps.stats).toEqual({ critique: 1, haute: 2 })
+    // ... mais « à arroser aujourd'hui » est la tournée de la page Tâches.
+    expect(corps.tournee.lignes).toHaveLength(2)
+    expect(corps.tournee.nbCultures).toBe(2)
+    expect(corps.tournee.horsTournee).toEqual([
+      { cultureId: 829, libelle: 'Poireau Bleu de Solaise', plancheNom: 'C2', urgence: 'critique', motif: 'non_cochee' },
+    ])
   })
 })

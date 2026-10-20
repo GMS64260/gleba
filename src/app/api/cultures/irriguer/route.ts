@@ -20,6 +20,7 @@ import {
   supprimerArrosageNote,
 } from '@/lib/irrigation-recording'
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
+import { tourneeDuJour } from '@/lib/irrigation/a-arroser'
 
 // ── GET ─────────────────────────────────────────────────────
 
@@ -33,7 +34,10 @@ export async function GET(request: NextRequest) {
     const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
 
     const payload = await computeConseilIrrigation(userId, annee)
-    return NextResponse.json(payload)
+    // QA cmvge3o5z — « À arroser aujourd'hui » comptait toutes les urgences,
+    // cultures non cochées « à irriguer » comprises, quand la page Tâches n'en
+    // retient que les cochées : même tournée ici, avec ce qu'elle écarte.
+    return NextResponse.json({ ...payload, tournee: tourneeDuJour(payload.data, annee) })
   } catch (error) {
     console.error('GET /api/cultures/irriguer error:', error)
     return NextResponse.json(
