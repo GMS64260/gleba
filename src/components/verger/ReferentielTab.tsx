@@ -20,7 +20,6 @@ import {
   makeOrigineColumn,
   FiltreOrigine,
   filtrerParOrigine,
-  type EntreeCommunaute,
   type FiltreOrigineValue,
 } from "@/components/referentiel/catalogue-communaute"
 import { AjoutReferentielDialog } from "@/components/referentiel/AjoutReferentielDialog"
@@ -310,7 +309,7 @@ export function ReferentielTab() {
 function EspecesReferentiel() {
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
+  const currentUserId = session?.user?.id
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [filteredData, setFilteredData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -641,7 +640,7 @@ type PorteGreffeRow = {
 function PorteGreffesReferentiel() {
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
+  const currentUserId = session?.user?.id
   const [data, setData] = React.useState<PorteGreffeRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
@@ -832,7 +831,7 @@ type EssenceBocageRow = {
 function EssencesReferentiel() {
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
+  const currentUserId = session?.user?.id
   const [data, setData] = React.useState<EssenceBocageRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
@@ -934,7 +933,7 @@ type EssenceForestiereRow = {
 function EssencesForestieresReferentiel() {
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
+  const currentUserId = session?.user?.id
   const [data, setData] = React.useState<EssenceForestiereRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")

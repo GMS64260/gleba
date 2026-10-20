@@ -9,7 +9,7 @@
  * compte les pollinisateurs diploïdes compatibles.
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import {
@@ -20,7 +20,7 @@ import {
 } from "@/lib/pollinisation"
 import { choisirVarieteArbre, whereVarietesCandidates } from "@/lib/verger/variete-arbre"
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   const { session, error } = await requireAuthApi()
   if (error) return error
 

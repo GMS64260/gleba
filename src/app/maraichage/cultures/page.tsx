@@ -389,7 +389,7 @@ function CulturesPageInner() {
       const result = await response.json()
       setData(result.data)
       setPageCount(result.totalPages)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import { creerFacture } from '@/lib/facture-utils'
 import { invalidateKpi } from '@/lib/kpi'
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id
 
-    const where: any = { userId }
+    const where: Prisma.FactureWhereInput = { userId }
     if (bornes) where.date = { ...bornes }
     if (statut) where.statut = statut
     if (type) where.type = type
@@ -369,7 +370,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const facture = await prisma.$transaction(async (tx) => {
-      const data: any = { ...mentions }
+      const data: Prisma.FactureUncheckedUpdateInput = { ...(mentions as Prisma.FactureUncheckedUpdateInput) }
       if (updateData.statut !== undefined) {
         data.statut = updateData.statut
         if (updateData.statut === 'payee') data.datePaiement = new Date()
@@ -390,7 +391,8 @@ export async function PATCH(request: NextRequest) {
         const { numero } = await reserverProchainNumeroForEmission(tx, session.user.id, exercice, typeSeq)
         data.numero = numero
         data.date = dateEmission
-        data.emetteurSnapshot = (await snapshotEmetteurForEmission(tx, session.user.id)) as any
+        // Json? : `null` (pas d'exploitation) est passé tel quel, comme avant.
+        data.emetteurSnapshot = (await snapshotEmetteurForEmission(tx, session.user.id)) as unknown as Prisma.InputJsonValue
         // L'identité de l'acheteur est figée au même moment que celle de l'émetteur.
         if (existing.clientId) {
           const client = await tx.client.findFirst({ where: { id: existing.clientId, userId: session.user.id } })

@@ -7,14 +7,12 @@
 import * as React from "react"
 import { useSession } from "next-auth/react"
 import {
-  Settings,
   Plus,
   RefreshCw,
   Pencil,
   Trash2,
   Bird,
   ArrowRight,
-  Calculator,
   BarChart3,
 } from "lucide-react"
 
@@ -126,8 +124,8 @@ function normaliserIdentifiantEspece(valeur: string): string {
 export function EspecesTab() {
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
-  const isAdmin = (session?.user as any)?.role === "ADMIN"
+  const currentUserId = session?.user?.id
+  const isAdmin = session?.user?.role === "ADMIN"
   const [isLoading, setIsLoading] = React.useState(true)
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [filteredEspeces, setFilteredEspeces] = React.useState<EspeceAnimale[]>([])
@@ -248,7 +246,7 @@ export function EspecesTab() {
     }
     setIsSavingEspece(true)
     try {
-      const payload: any = {
+      const payload = {
         id: normaliserIdentifiantEspece(formData.id),
         nom: formData.nom, type: formData.type, filiere: formData.filiere,
         production: capacites((formData.filiere || 'rente') as Filiere).productionRente ? formData.production : 'compagnie',
@@ -284,8 +282,8 @@ export function EspecesTab() {
       setFormData(emptyForm)
       setEditingId(null)
       fetchData()
-    } catch (error: any) {
-      const message = error.message || "Impossible de sauvegarder"
+    } catch (error) {
+      const message = (error instanceof Error && error.message) || "Impossible de sauvegarder"
       // Le message reste dans le formulaire : un toast seul disparaît et laisse
       // croire à une saisie perdue.
       setEspeceSubmitError(message)
@@ -578,7 +576,7 @@ export function EspecesTab() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               {prodRente && <div className="space-y-2"><Label>Conso/jour (kg)</Label><Input type="number" min="0" step="any" value={formData.consommationJour} onChange={(e) => setFormData(f => ({ ...f, consommationJour: e.target.value }))} placeholder="0.12" /></div>}
-              <div className="space-y-2"><Label>Prix d'achat (&euro;)</Label><Input type="number" min="0" step="any" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} placeholder="15" /></div>
+              <div className="space-y-2"><Label>Prix d&apos;achat (&euro;)</Label><Input type="number" min="0" step="any" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} placeholder="15" /></div>
             </div>
             {!isAdmin ? (
               <label className="flex items-center gap-2 text-sm text-slate-600">

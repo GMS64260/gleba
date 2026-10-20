@@ -11,7 +11,6 @@
 
 import * as React from "react"
 import { ShieldAlert } from "lucide-react"
-import { Label } from "@/components/ui/label"
 import { ARRETE_PHYTO } from "@/lib/phyto/mentions-legales"
 
 export const EPI_OPTIONS = [

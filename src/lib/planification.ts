@@ -238,23 +238,6 @@ export interface AssociationCulture {
 // FONCTIONS UTILITAIRES
 // ============================================================
 
-/**
- * Calcule l'annee reelle a partir de l'annee de base et de l'annee dans le cycle
- */
-function calculerAnneeReelle(anneeBase: number, anneeCycle: number, nbAnneesCycle: number): number {
-  // anneeCycle est 1-indexed (1, 2, 3...)
-  // On utilise modulo pour gerer les cycles
-  return anneeBase + (anneeCycle - 1)
-}
-
-/**
- * Calcule l'annee du cycle pour une annee donnee
- */
-function calculerAnneeCycle(annee: number, anneeBase: number, nbAnneesCycle: number): number {
-  if (nbAnneesCycle <= 0) return 1
-  const diff = annee - anneeBase
-  return ((diff % nbAnneesCycle) + nbAnneesCycle) % nbAnneesCycle + 1
-}
 
 /**
  * Calcule le nombre de plants pour une planche/ITP donne

@@ -108,7 +108,7 @@ export function EconomieLaitSubTab({ year }: { year?: number } = {}) {
           {aucuneDonnee ? (
             <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">
               Aucune donnée laitière pour {data.annee}. Saisissez des collectes de lait, des fabrications de fromage et
-              leurs ventes pour activer l'analyse économique.
+              leurs ventes pour activer l&apos;analyse économique.
             </div>
           ) : (
             <>

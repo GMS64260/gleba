@@ -241,7 +241,7 @@ export default function NewRotationPage() {
               <CardHeader>
                 <CardTitle>Plan de rotation</CardTitle>
                 <CardDescription>
-                  Définissez l'ITP pour chaque année du cycle
+                  Définissez l&apos;ITP pour chaque année du cycle
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">

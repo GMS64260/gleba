@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const year = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
-    const module = searchParams.get('module') || 'all'
+    const moduleDemande = searchParams.get('module') || 'all'
 
     const couts = await computeCoutsProduction(session.user.id, year)
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       ...couts,
       meta: {
         annee: year,
-        module,
+        module: moduleDemande,
         generatedAt: new Date().toISOString(),
       },
     })

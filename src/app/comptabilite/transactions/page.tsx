@@ -55,6 +55,16 @@ interface SourceBreakdown {
   montant: number
 }
 
+/** Agrégats renvoyés par GET /api/comptabilite/revenus et /depenses. */
+interface StatsTransactions {
+  total: number
+  count: number
+  totalComptable?: number
+  totalAnalytique?: number
+  parModule: Record<string, number>
+  parCategorie: { categorie: string; montant: number }[]
+}
+
 interface Transaction {
   id: string
   source: string
@@ -219,8 +229,8 @@ function TransactionsPageInner() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [revenus, setRevenus] = React.useState<Transaction[]>([])
   const [depenses, setDepenses] = React.useState<Transaction[]>([])
-  const [statsRevenus, setStatsRevenus] = React.useState<any>(null)
-  const [statsDepenses, setStatsDepenses] = React.useState<any>(null)
+  const [statsRevenus, setStatsRevenus] = React.useState<StatsTransactions | null>(null)
+  const [statsDepenses, setStatsDepenses] = React.useState<StatsTransactions | null>(null)
   const [sourcesBreakdown, setSourcesBreakdown] = React.useState<SourceBreakdown[]>([])
   const [sourcesOpen, setSourcesOpen] = React.useState(false)
   // Bug R2 : l'année choisie sur le dashboard Compta se propage aux sous-pages
@@ -591,7 +601,7 @@ function TransactionsPageInner() {
         const result = await srcRes.json()
         setSourcesBreakdown(result.sources || [])
       }
-    } catch (error) {
+    } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
@@ -807,7 +817,7 @@ function TransactionsPageInner() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Info className="h-5 w-5 text-blue-600" />
-                    <CardTitle className="text-base">D'où viennent ces chiffres ?</CardTitle>
+                    <CardTitle className="text-base">D&apos;où viennent ces chiffres ?</CardTitle>
                   </div>
                   {sourcesOpen ? (
                     <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -819,8 +829,8 @@ function TransactionsPageInner() {
               {sourcesOpen && (
                 <CardContent className="space-y-4 text-sm">
                   <p className="text-muted-foreground">
-                    Ce total agrège toutes vos ventes, qu'elles proviennent du potager,
-                    du verger, de l'elevage, de la boutique en ligne ou de saisies manuelles.
+                    Ce total agrège toutes vos ventes, qu&apos;elles proviennent du potager,
+                    du verger, de l&apos;elevage, de la boutique en ligne ou de saisies manuelles.
                   </p>
 
                   <div className="grid gap-2 md:grid-cols-2">
@@ -830,7 +840,7 @@ function TransactionsPageInner() {
                     </div>
                     <div className="flex items-start gap-2">
                       <TreeDeciduous className="h-4 w-4 text-lime-600 mt-0.5 flex-shrink-0" />
-                      <span><strong>Verger (fruits)</strong> — récoltes d'arbres au statut « vendu ».</span>
+                      <span><strong>Verger (fruits)</strong> — récoltes d&apos;arbres au statut « vendu ».</span>
                     </div>
                     <div className="flex items-start gap-2">
                       <TreeDeciduous className="h-4 w-4 text-amber-800 mt-0.5 flex-shrink-0" />
@@ -850,7 +860,7 @@ function TransactionsPageInner() {
                     </div>
                     <div className="flex items-start gap-2 md:col-span-2">
                       <Receipt className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                      <span><strong>Saisies manuelles</strong> — ventes ajoutées via l'onglet Saisie (hors automatiques).</span>
+                      <span><strong>Saisies manuelles</strong> — ventes ajoutées via l&apos;onglet Saisie (hors automatiques).</span>
                     </div>
                   </div>
 

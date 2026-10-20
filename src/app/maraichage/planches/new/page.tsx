@@ -49,7 +49,7 @@ export default function NewPlanchePage() {
       fetch("/api/carte").then(r => r.json()),
     ]).then(([planchesData, parcellesData]) => {
       const planches = planchesData.data || planchesData || []
-      const unique = [...new Set(planches.map((p: any) => p.ilot).filter(Boolean))] as string[]
+      const unique = [...new Set(planches.map((p: { ilot?: string | null }) => p.ilot).filter(Boolean))] as string[]
       setIlotOptions(unique.sort().map(v => ({ value: v, label: v })))
       setParcelles(Array.isArray(parcellesData) ? parcellesData : [])
     }).catch(() => {})

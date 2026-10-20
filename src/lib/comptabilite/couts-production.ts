@@ -367,7 +367,7 @@ export async function computeCoutsProduction(userId: string, year: number) {
   const vergerProduction = recoltesArbres.reduce((sum, r) => sum + r.quantite, 0)
   const vergerCouts = opsArbres.reduce((sum, o) => sum + (o.cout || 0), 0)
     + depensesVerger.reduce((sum, d) => sum + d.montant, 0)
-  const vergerHeures = opsArbres.reduce((sum, o) => sum + ((o as any).dureeMinutes || 0), 0) / 60
+  const vergerHeures = opsArbres.reduce((sum, o) => sum + (o.dureeMinutes || 0), 0) / 60
 
   // ============================================================
   // 3. ELEVAGE : Ventes produits + Abattages + Coûts alimentation + Soins

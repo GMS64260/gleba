@@ -542,7 +542,7 @@ function AssociationsSubTab() {
             <ul className="mt-2 text-xs text-pink-700 space-y-0.5">
               <li>
                 <Badge variant="default" className="text-[10px] mr-1">★ requise</Badge>
-                association indispensable (à respecter pour avoir l'effet bénéfique)
+                association indispensable (à respecter pour avoir l&apos;effet bénéfique)
               </li>
               <li>
                 <Badge variant="outline" className="text-[10px] mr-1">contour seul</Badge>

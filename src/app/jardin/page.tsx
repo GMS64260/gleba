@@ -232,6 +232,16 @@ function SelectTypeObjet({
 // identique à l'onglet Arbres du verger (lianes et forestiers compris).
 const TYPES_ARBRES = TYPES_ARBRE.map((t) => ({ value: t.value, label: t.label, color: couleurTypeArbre(t.value) }))
 
+/** Ligne de GET /api/carte, limitée aux champs lus par fetchParcelles. */
+interface ParcelleApi {
+  id: string
+  nom: string
+  usage: string | null
+  couches?: string[] | null
+  geometry: string
+  _count?: { planches?: number; arbres?: number }
+}
+
 interface ParcelleOption {
   id: string
   nom: string
@@ -315,7 +325,7 @@ function JardinContent() {
   const planchesSauveesRef = React.useRef<Map<string | number, string>>(new Map())
   const objetsSauvesRef = React.useRef<Map<string | number, string>>(new Map())
   const arbresSauvesRef = React.useRef<Map<string | number, string>>(new Map())
-  const [especes, setEspeces] = React.useState<Espece[]>([])
+  const [, setEspeces] = React.useState<Espece[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [scale, setScale] = React.useState(16)
   const [isPlanFullscreen, setIsPlanFullscreen] = React.useState(false)
@@ -450,12 +460,10 @@ function JardinContent() {
       planchesSauveesRef.current = indexerEtatSauve(data, empreintePlanche)
 
       // Auto-positionner les planches sans position
-      let needsPositioning = false
       const positioned = data.filter(p => p.posX !== null && p.posY !== null)
       const unpositioned = data.filter(p => p.posX === null || p.posY === null)
 
       if (unpositioned.length > 0) {
-        needsPositioning = true
         // Trouver la prochaine position libre
         let maxY = 0
         positioned.forEach(p => {
@@ -478,7 +486,7 @@ function JardinContent() {
       // Désormais, le positionnement auto est idempotent et n'est
       // persisté qu'au prochain mouvement réel (handleSave).
       // if (needsPositioning) marquerChangement()
-    } catch (error) {
+    } catch {
       toastRef.current({
         variant: "destructive",
         title: "Erreur",
@@ -499,7 +507,7 @@ function JardinContent() {
       const rows: ObjetJardin[] = data || []
       objetsSauvesRef.current = indexerEtatSauve(rows, empreinteObjet)
       setObjets(rows)
-    } catch (error) {
+    } catch {
       // Ignorer
     }
   }, [selectedParcelleId])
@@ -527,7 +535,7 @@ function JardinContent() {
       if (!response.ok) return
       const data = await response.json()
       setEspeces(data.data || [])
-    } catch (error) {
+    } catch {
       // Ignorer
     }
   }, [])
@@ -558,7 +566,7 @@ function JardinContent() {
           : rows.filter((a: { parcelleGeoId?: string | null }) => a.parcelleGeoId === selectedParcelleId)
       arbresSauvesRef.current = indexerEtatSauve(filtered, empreinteArbre)
       setArbres(filtered)
-    } catch (error) {
+    } catch {
       // Ignorer
     }
   }, [selectedParcelleId])
@@ -569,7 +577,7 @@ function JardinContent() {
       const response = await fetch("/api/carte")
       if (!response.ok) return
       const data = await response.json()
-      setParcelles(data.map((p: any) => ({
+      setParcelles((data as ParcelleApi[]).map((p) => ({
         id: p.id,
         nom: p.nom,
         usage: p.usage,
@@ -714,17 +722,17 @@ function JardinContent() {
       fetch("/api/varietes?pageSize=1000").then(r => r.json()).catch(() => null),
       fetch("/api/comptabilite/fournisseurs?actif=true").then(r => r.json()).catch(() => null),
     ]).then(([especesRes, varietesRes, fournisseursRes]) => {
-      const especes = (especesRes?.data || []).map((e: any) => e.id).filter(Boolean)
+      const especes: string[] = (especesRes?.data || []).map((e: { id: string }) => e.id).filter(Boolean)
       setArbreEspecesRef(especes)
       const especesSet = new Set(especes)
       // QA 2026-10-19 — une variété personnelle se propose sous son nom,
       // pas sous son id technique (voir src/lib/verger/variete-arbre.ts).
       const varietes = (varietesRes?.data || [])
-        .filter((v: any) => especesSet.has(v.especeId))
-        .map((v: any) => libelleVarieteOption(v))
+        .filter((v: { especeId: string }) => especesSet.has(v.especeId))
+        .map((v: { id: string; nom?: string | null }) => libelleVarieteOption(v))
         .filter(Boolean)
       setArbreVarietesRef(varietes)
-      const fournisseurs = (fournisseursRes?.data || []).map((f: any) => f.id).filter(Boolean)
+      const fournisseurs: string[] = (fournisseursRes?.data || []).map((f: { id: string }) => f.id).filter(Boolean)
       setArbreFournisseursRef(fournisseurs)
     })
   }, [])
@@ -1338,7 +1346,7 @@ function JardinContent() {
           description: "Certaines positions n'ont pas pu être enregistrées"
         })
       }
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -3913,7 +3921,7 @@ function JardinContent() {
               </div>
             </div>
             <div>
-              <Label htmlFor="arbre-fournisseur">Fournisseur / Lieu d'achat</Label>
+              <Label htmlFor="arbre-fournisseur">Fournisseur / Lieu d&apos;achat</Label>
               <Combobox
                 value={newArbre.fournisseur}
                 onValueChange={v => setNewArbre(a => ({ ...a, fournisseur: v }))}

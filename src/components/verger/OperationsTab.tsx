@@ -742,8 +742,8 @@ export function OperationsTab({ annee }: OperationsTabProps) {
                 <p className="font-semibold text-amber-800 mb-1">⚠ Type Traitement</p>
                 <p className="text-amber-700">
                   Pour saisir un traitement phytosanitaire complet (Certiphyto, ZNT, EPI),
-                  utilisez plutôt l'onglet <strong>Santé &amp; Phyto</strong> qui ouvre le
-                  formulaire conforme à l'arrêté du 4 mai 2017 modifié.
+                  utilisez plutôt l&apos;onglet <strong>Santé &amp; Phyto</strong> qui ouvre le
+                  formulaire conforme à l&apos;arrêté du 4 mai 2017 modifié.
                 </p>
               </div>
             )}

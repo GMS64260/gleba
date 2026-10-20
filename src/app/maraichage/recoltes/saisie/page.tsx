@@ -6,8 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { ArrowLeft, BarChart3, Save, Plus } from "lucide-react"
+import { ArrowLeft, BarChart3, Save } from "lucide-react"
 import { format, differenceInDays } from "date-fns"
 import { fr } from "date-fns/locale"
 
@@ -80,7 +79,6 @@ function libelleCulture(culture: Culture): string {
 }
 
 export default function SaisieRecoltePage() {
-  const router = useRouter()
   const { toast } = useToast()
   const [cultures, setCultures] = React.useState<Culture[]>([])
   const [selectedCulture, setSelectedCulture] = React.useState<string>("")

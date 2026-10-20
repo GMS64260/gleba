@@ -100,7 +100,7 @@ export default function AidePage() {
           </Link>
           <div className="flex items-center gap-2">
             <HelpCircle className="h-6 w-6 text-slate-600" />
-            <h1 className="text-xl font-bold">Centre d'aide</h1>
+            <h1 className="text-xl font-bold">Centre d&apos;aide</h1>
           </div>
         </div>
       </header>

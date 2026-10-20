@@ -1060,9 +1060,9 @@ export async function createDepenseFromIntervention(
   }
 
   // Determiner le module selon le contexte
-  let module = 'potager'
+  let moduleCible = 'potager'
   if (intervention.arbreId) {
-    module = 'verger'
+    moduleCible = 'verger'
   }
 
   const { montantHT, montantTVA } = calculTVA(montantTTC, tauxTVA)
@@ -1085,7 +1085,7 @@ export async function createDepenseFromIntervention(
         montantHT,
         montantTVA,
         montant: montantTTC,
-        module,
+        module: moduleCible,
         paye: true,
         sourceType: 'intervention',
         sourceId: intervention.id,

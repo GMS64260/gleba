@@ -12,6 +12,7 @@
  */
 
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 
 /**
  * POSTREVIEW Sprint 7 — Limite stale-while-error : on accepte de servir
@@ -141,8 +142,8 @@ async function chargerEtPersister<T>(
   const expiresAt = new Date(Date.now() + ttlMs)
   await prisma.genericCache.upsert({
     where: { key },
-    create: { key, data: value as any, expiresAt },
-    update: { data: value as any, expiresAt },
+    create: { key, data: value as unknown as Prisma.InputJsonValue, expiresAt },
+    update: { data: value as unknown as Prisma.InputJsonValue, expiresAt },
   })
   return value
 }

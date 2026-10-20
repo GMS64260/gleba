@@ -17,7 +17,6 @@
 import {
   COMPTES_BILAN,
   COMPTES_VENTES,
-  COMPTES_ACHATS,
   JOURNAUX,
   compteTresorerie,
   compteVente,

@@ -160,14 +160,14 @@ describe('GET /api/verger/triploides', () => {
   it("la ploïdie d'une variété privée d'un autre compte homonyme ne compte pas", async () => {
     mocks.db.arbre = { findMany: vi.fn(async () => [arbre]) }
     mocks.db.variete = delegueMemoire([variete(AUTRE, false)])
-    const res = await TRIPLOIDES(requete('GET', '/api/verger/triploides'))
+    const res = await TRIPLOIDES()
     expect((await res.json()).alertes).toEqual([])
   })
 
   it('la variété du compte, elle, déclenche l’alerte', async () => {
     mocks.db.arbre = { findMany: vi.fn(async () => [arbre]) }
     mocks.db.variete = delegueMemoire([variete(AUTRE, false), variete(MOI, false)])
-    const res = await TRIPLOIDES(requete('GET', '/api/verger/triploides'))
+    const res = await TRIPLOIDES()
     const { alertes } = await res.json()
     expect(alertes.map((a: { arbre: { id: number } }) => a.arbre.id)).toEqual([1])
   })

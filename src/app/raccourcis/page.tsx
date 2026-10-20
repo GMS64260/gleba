@@ -112,7 +112,7 @@ export default function RaccourcisPage() {
             <CardTitle>Recherche globale</CardTitle>
             <CardDescription>
               <kbd className="bg-slate-100 px-1 rounded text-xs">⌘ K</kbd> ouvre une palette de
-              recherche. Tapez 2 caractères pour interroger l'ensemble du domaine.
+              recherche. Tapez 2 caractères pour interroger l&apos;ensemble du domaine.
             </CardDescription>
           </CardHeader>
           <CardContent>

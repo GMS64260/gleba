@@ -154,7 +154,7 @@ export default function NewAssociationPage() {
               <CardHeader>
                 <CardTitle>Informations générales</CardTitle>
                 <CardDescription>
-                  Nom et description de l'association
+                  Nom et description de l&apos;association
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -197,7 +197,7 @@ export default function NewAssociationPage() {
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Détermine si l'association est favorable ou à éviter
+                        Détermine si l&apos;association est favorable ou à éviter
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -230,7 +230,7 @@ export default function NewAssociationPage() {
                 <CardTitle>Plantes associées</CardTitle>
                 <CardDescription>
                   Ajoutez les espèces ou familles qui font partie de cette association.
-                  Cochez "Requise" si c'est une association nécessaire.
+                  Cochez &quot;Requise&quot; si c&apos;est une association nécessaire.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">

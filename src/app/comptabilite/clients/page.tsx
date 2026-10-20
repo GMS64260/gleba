@@ -56,11 +56,19 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   amap: <ShoppingBag className="h-4 w-4" />,
 }
 
+/** Compteurs renvoyés par GET /api/comptabilite/clients. */
+interface ClientsStats {
+  total: number
+  actifs: number
+  inactifs: number
+  parType: Record<string, number>
+}
+
 export default function ClientsPage() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [clients, setClients] = React.useState<Client[]>([])
-  const [stats, setStats] = React.useState<any>(null)
+  const [stats, setStats] = React.useState<ClientsStats | null>(null)
   const [search, setSearch] = React.useState("")
   const [showInactifs, setShowInactifs] = React.useState(false)
   const [dialogOpen, setDialogOpen] = React.useState(false)

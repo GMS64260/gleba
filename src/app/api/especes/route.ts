@@ -10,8 +10,9 @@ import prisma from '@/lib/prisma'
 import { createEspeceSchema } from '@/lib/validations'
 import { visibiliteReferentiel, attributionCreation, masquerEntree } from '@/lib/referentiel-communaute'
 import { Prisma } from '@prisma/client'
-import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
 import { displayReferentielName, normalizeReferentielKey } from '@/lib/normalize'
+import { sansChamps } from '@/lib/sans-champs'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { appliquerSurcharges, chargerSurchargesRendement } from '@/lib/recolte/rendement-effectif'
 import { isAvisFiltre, retenuParAvis, whereZoneCultivable } from '@/lib/especes/filtres'
@@ -293,7 +294,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Création : officiel → id = nom lisible ; perso → id omis → cuid (@default).
-    const { id: _nomBrut, ...rest } = data
+    const rest = sansChamps(data, 'id')
     const espece = await prisma.espece.create({
       data: {
         ...rest,

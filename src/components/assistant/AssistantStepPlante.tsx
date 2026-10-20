@@ -28,7 +28,6 @@ import {
   AlertCircle,
   RefreshCw,
   Check,
-  ChevronDown,
   Sparkles,
   Trees,
   CalendarDays,
@@ -43,7 +42,6 @@ import {
   CATEGORIES_ESPECES,
   NIVEAUX_DIFFICULTE,
   formatSemaine,
-  getSemaineDepuisDate,
 } from "@/lib/assistant-helpers"
 import type { EspeceData, ITPData, VarieteData, CultureData } from "./AssistantDialog"
 import { nomAffichableItp } from "@/lib/itp-label"
@@ -445,12 +443,6 @@ export function AssistantStepPlante({
       varieteId: selected.id,
       variete: selected,
     })
-  }
-
-  const handleVarieteClear = () => {
-    setAutoSelectedVariete(false)
-    onVarieteChange(null)
-    onCultureChange({ varieteId: null, variete: null })
   }
 
   const handleSkipChange = (checked: boolean) => {
@@ -983,7 +975,7 @@ export function AssistantStepPlante({
             <div className="p-3 bg-muted/50 rounded-lg">
               <p className="text-xs text-muted-foreground">
                 <strong>Conseil :</strong> Choisir une variete permet de suivre
-                votre stock de semences. Si vous n'avez pas encore décidé, vous
+                votre stock de semences. Si vous n&apos;avez pas encore décidé, vous
                 pourrez modifier ce choix plus tard.
               </p>
             </div>

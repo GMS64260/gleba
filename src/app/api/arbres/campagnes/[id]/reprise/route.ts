@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { z } from "zod"
 
 interface Params {
@@ -50,7 +51,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const taux = Math.round((nbPlantsReprise / campagne.nombrePlants) * 1000) / 10
-    const data: any = {
+    // `tauxReprise` est relu pour la garde de regarnissage : un nombre, pas une
+    // opération Prisma (`increment`…).
+    const data: Prisma.CampagnePlantationUpdateInput & { tauxReprise?: number | null } = {
       mortaliteCauses: causes,
       dateDernObservation: new Date(),
     }

@@ -12,7 +12,6 @@ import {
   findTreeCareProfile,
   getMonthlyCalendar,
   type TreeCareProfile,
-  type TreeCareOperation,
 } from "@/lib/tree-care-calendar"
 
 const TYPE_COLORS: Record<string, string> = {
@@ -108,7 +107,7 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground py-4">
-          Aucune espèce d'arbre saisie pour l'instant.
+          Aucune espèce d&apos;arbre saisie pour l&apos;instant.
         </p>
         <button
           onClick={() => setScope("all")}

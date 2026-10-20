@@ -91,8 +91,8 @@ export default function ExportPage() {
         {exploitationOk === false && (
           <Card className="border-amber-200 bg-amber-50">
             <CardContent className="p-4 text-sm text-amber-900">
-              ⚠ Identité légale non configurée. L'export FEC requiert le SIRET et le SIREN
-              de l'exploitation pour respecter la nomenclature du fichier (
+              ⚠ Identité légale non configurée. L&apos;export FEC requiert le SIRET et le SIREN
+              de l&apos;exploitation pour respecter la nomenclature du fichier (
               <code className="bg-amber-100 px-1 rounded text-xs">&lt;SIREN&gt;FECAAAAMMJJ.txt</code>).{' '}
               <Link href="/parametres/exploitation" className="underline font-medium">
                 Configurer maintenant →
@@ -106,7 +106,7 @@ export default function ExportPage() {
             <CardTitle>Fichier des Écritures Comptables (FEC)</CardTitle>
             <CardDescription>
               Génère le FEC de votre exercice au format normalisé (arrêté du 29/07/2013).
-              Ce fichier est l'élément central d'un contrôle fiscal (art. L47 A-I LPF) pour les
+              Ce fichier est l&apos;élément central d&apos;un contrôle fiscal (art. L47 A-I LPF) pour les
               entreprises au réel.
             </CardDescription>
           </CardHeader>
@@ -127,7 +127,7 @@ export default function ExportPage() {
               </div>
               <Button onClick={lancerCheck} disabled={loading} variant="outline">
                 {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                Vérifier l'équilibre
+                Vérifier l&apos;équilibre
               </Button>
               <Button onClick={telecharger} disabled={exploitationOk === false}>
                 <Download className="h-4 w-4 mr-2" />
@@ -192,8 +192,8 @@ export default function ExportPage() {
           </CardHeader>
           <CardContent className="text-sm text-blue-900 space-y-2">
             <p>
-              <strong>Cet export FEC est généré à des fins d'aide.</strong> Le contrôle de
-              conformité reste de la responsabilité de l'expert-comptable. Vérifiez l'équilibre
+              <strong>Cet export FEC est généré à des fins d&apos;aide.</strong> Le contrôle de
+              conformité reste de la responsabilité de l&apos;expert-comptable. Vérifiez l&apos;équilibre
               Débit = Crédit avant transmission, et faites valider le mapping du plan comptable
               avec votre comptable.
             </p>

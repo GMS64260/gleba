@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { todayLocalISO } from "@/lib/format-utils"
@@ -125,7 +124,7 @@ export function AffinageSubTab() {
       <CardHeader>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <CardTitle className="flex items-center gap-2"><Warehouse className="h-5 w-5 text-amber-700" />Cave d'affinage</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Warehouse className="h-5 w-5 text-amber-700" />Cave d&apos;affinage</CardTitle>
             <CardDescription>Inventaire des lots : stock restant, échéance DLC/DLUO, valorisation et sorties.</CardDescription>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -154,7 +153,7 @@ export function AffinageSubTab() {
         {loading ? (
           <div className="text-sm text-slate-500">Chargement…</div>
         ) : lots.length === 0 ? (
-          <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">Aucun lot en cave. Les fabrications (onglet Fabrications) alimentent l'inventaire.</div>
+          <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">Aucun lot en cave. Les fabrications (onglet Fabrications) alimentent l&apos;inventaire.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -208,7 +207,7 @@ export function AffinageSubTab() {
                 ))}
               </tbody>
             </table>
-            <p className="text-xs text-slate-400 mt-2">Stock = fabrication − sorties ; une sortie à la pièce sans pesée retire le poids moyen d'une pièce. Valorisation au prix de vente moyen constaté du lot, dans son unité (pièce ou kg). DLC pour le frais, DLUO sinon.</p>
+            <p className="text-xs text-slate-400 mt-2">Stock = fabrication − sorties ; une sortie à la pièce sans pesée retire le poids moyen d&apos;une pièce. Valorisation au prix de vente moyen constaté du lot, dans son unité (pièce ou kg). DLC pour le frais, DLUO sinon.</p>
           </div>
         )}
       </CardContent>

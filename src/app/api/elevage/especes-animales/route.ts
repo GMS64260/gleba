@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { visibiliteReferentiel, attributionCreation, masquerEntree } from '@/lib/referentiel-communaute'
 import { coerceFiliere } from '@/lib/elevage/filiere'
 import { rendementCarcasseEnRatio, validerRendementCarcasseApi } from '@/lib/elevage/rendement-carcasse'
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     const production = searchParams.get('production') // oeufs, viande, mixte
     const filiere = searchParams.get('filiere') // rente, compagnie, equin, nac
 
-    const where: any = {}
+    const where: Prisma.EspeceAnimaleWhereInput = {}
     if (type) where.type = type
     if (production) where.production = production
     if (filiere) where.filiere = filiere
@@ -171,9 +172,9 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ data: espece }, { status: 201 })
-  } catch (error: any) {
+  } catch (error) {
     console.error('POST /api/elevage/especes-animales error:', error)
-    if (error.code === 'P2002') {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return NextResponse.json(
         { error: 'Une espèce avec cet ID existe déjà' },
         { status: 409 }

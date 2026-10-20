@@ -5,6 +5,7 @@ import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
 import { Pencil, Trash2, Move } from "lucide-react"
 import { calculateSurfaceHa } from "@/lib/geo-utils"
+import type { Feature, Geometry } from "geojson"
 
 const MapContainer = dynamic(
   () => import("@/components/carte/MapContainer"),
@@ -54,9 +55,10 @@ export function ParcelleFormMap({ geometry, onGeometryChange }: ParcelleFormMapP
       import("leaflet").then((L) => {
         if (cancelled) return
         try {
-          const geoObj = JSON.parse(geometry)
+          const geoObj = JSON.parse(geometry) as Geometry
+          const feature: Feature = { type: "Feature", properties: {}, geometry: geoObj }
           const layer = L.geoJSON(
-            { type: "Feature", properties: {}, geometry: geoObj } as any,
+            feature,
             {
               style: {
                 color: "#7c3aed",

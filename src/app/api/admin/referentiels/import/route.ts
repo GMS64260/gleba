@@ -9,8 +9,23 @@ import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { requireAdminApi } from '@/lib/auth-utils'
 
+/**
+ * Contenu du fichier produit par `GET /api/admin/referentiels/export` : les
+ * lignes brutes de chaque référentiel, passées telles quelles à Prisma.
+ */
+type DonneesImport = {
+  familles?: Prisma.FamilleUncheckedCreateInput[]
+  fournisseurs?: Prisma.FournisseurUncheckedCreateInput[]
+  especes?: Prisma.EspeceUncheckedCreateInput[]
+  varietes?: Prisma.VarieteUncheckedCreateInput[]
+  itps?: Prisma.ITPUncheckedCreateInput[]
+  fertilisants?: Prisma.FertilisantUncheckedCreateInput[]
+  associations?: Array<Prisma.AssociationUncheckedCreateInput & { details?: Prisma.AssociationDetailUncheckedCreateInput[] }>
+  rotations?: Array<Prisma.RotationUncheckedCreateInput & { details?: Prisma.RotationDetailUncheckedCreateInput[] }>
+}
+
 export async function POST(request: NextRequest) {
-  const { error, session } = await requireAdminApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -32,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     const text = await file.text()
-    let data: any
+    let data: DonneesImport
 
     try {
       data = JSON.parse(text)

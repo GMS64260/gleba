@@ -41,14 +41,12 @@ import {
   Package,
   Receipt,
   ShoppingCart,
-  AlertCircle,
   Download,
   FileText,
   Euro,
   AlertTriangle,
   Users,
   Truck,
-  Percent,
   BarChart3,
   Hammer,
   Shield,
@@ -56,7 +54,6 @@ import {
   MapPin,
 } from "lucide-react"
 import { ChatPanel } from "@/components/chat/ChatPanel"
-import { formatEuroSemantic, formatPercentSemantic } from "@/lib/format-utils"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 // Modules du dashboard comptabilité (rationalisé)
 const modulesCompta = [

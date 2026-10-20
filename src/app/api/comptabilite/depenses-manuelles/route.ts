@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { createDepenseManuelleSchema, updateDepenseManuelleSchema } from '@/lib/validations/depense-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
 import { champsEnvoyes, refusModificationDerivee } from '@/lib/comptabilite/ecriture-derivee'
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id
 
-    const where: any = { userId }
+    const where: Prisma.DepenseManuelleWhereInput = { userId }
 
     if (categorie) where.categorie = categorie
     if (paye !== null && paye !== '') where.paye = paye === 'true'
@@ -169,7 +170,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(refus, { status: 400 })
     }
 
-    const updateData: any = {}
+    // Montant et taux sont relus pour recalculer HT/TVA : des nombres, pas des
+    // opérations Prisma (`increment`…).
+    const updateData: Prisma.DepenseManuelleUncheckedUpdateInput & {
+      montant?: number
+      tauxTVA?: number | null
+    } = {}
     if (envoyes.has('paye') && updates.paye !== undefined) updateData.paye = updates.paye
     if (updates.date !== undefined) updateData.date = updates.date
     if (updates.categorie !== undefined) updateData.categorie = updates.categorie

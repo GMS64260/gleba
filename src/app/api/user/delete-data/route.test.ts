@@ -26,9 +26,6 @@ vi.mock("@/lib/prisma", () => ({
 import { DELETE } from "./route"
 
 // L'écran Paramètres envoie un DELETE sans corps.
-const requete = () =>
-  new Request("http://localhost/api/user/delete-data", { method: "DELETE" }) as never
-
 const compteur = () => ({ deleteMany: vi.fn().mockResolvedValue({ count: 2 }) })
 
 beforeEach(() => {
@@ -56,7 +53,7 @@ describe("DELETE /api/user/delete-data — compte de démonstration", () => {
   it("refuse en 403 avec un message qui explique, et ne supprime RIEN", async () => {
     mocks.userFindUnique.mockResolvedValue({ email: "demo@gleba.fr" })
 
-    const res = await DELETE(requete())
+    const res = await DELETE()
 
     expect(res.status).toBe(403)
     const json = await res.json()
@@ -73,7 +70,7 @@ describe("DELETE /api/user/delete-data — compte de démonstration", () => {
   it("refuse quelle que soit la casse de l'adresse", async () => {
     mocks.userFindUnique.mockResolvedValue({ email: " Demo@Gleba.FR " })
 
-    const res = await DELETE(requete())
+    const res = await DELETE()
 
     expect(res.status).toBe(403)
     expect(mocks.transaction).not.toHaveBeenCalled()
@@ -84,7 +81,7 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
   it("vide les données comme avant", async () => {
     mocks.userFindUnique.mockResolvedValue({ email: "maraicher@example.com" })
 
-    const res = await DELETE(requete())
+    const res = await DELETE()
 
     expect(res.status).toBe(200)
     const json = await res.json()
@@ -99,7 +96,7 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
       session: { user: { id: "u1", role: "USER", estProprietaireExploitation: false } },
     })
 
-    const res = await DELETE(requete())
+    const res = await DELETE()
 
     expect(res.status).toBe(403)
     expect(mocks.userFindUnique).not.toHaveBeenCalled()

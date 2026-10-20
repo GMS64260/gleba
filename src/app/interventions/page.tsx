@@ -913,9 +913,9 @@ export default function InterventionsPage() {
                       est déclenchée depuis une observation santé verger. */}
                   {form.observationLieeId && (
                     <div className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm text-orange-900">
-                      <p className="font-medium">🔗 Lié à l'observation santé #{form.observationLieeId}</p>
+                      <p className="font-medium">🔗 Lié à l&apos;observation santé #{form.observationLieeId}</p>
                       <p className="text-xs mt-1">
-                        L'arbre cible et la justification sont pré-remplis. Vous pouvez les ajuster avant validation.
+                        L&apos;arbre cible et la justification sont pré-remplis. Vous pouvez les ajuster avant validation.
                       </p>
                     </div>
                   )}
@@ -1619,7 +1619,7 @@ export default function InterventionsPage() {
                                     </p>
                                     {intervention.coutMainOeuvre !== null && (
                                       <p>
-                                        <span className="text-muted-foreground">Coût main d'œuvre :</span>{" "}
+                                        <span className="text-muted-foreground">Coût main d&apos;œuvre :</span>{" "}
                                         {formatEuro(intervention.coutMainOeuvre)}
                                       </p>
                                     )}

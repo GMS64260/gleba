@@ -18,7 +18,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Plus,
-  Map,
   Zap,
   ChevronDown,
   ChevronUp,
@@ -41,7 +40,7 @@ import type { PlancheData } from "./AssistantDialog"
 
 // ---------- Types ----------
 
-interface PlancheOption {
+export interface PlancheOption {
   id: string
   nom: string
   ilot: string | null
@@ -57,7 +56,7 @@ interface AssistantStepEmplacementProps {
   mode: "new-planche" | "existing-planche" | "add-culture"
   planche: PlancheData
   selectedPlancheId: string | null
-  planches: any[]
+  planches: PlancheOption[]
   onModeChange: (mode: string) => void
   onPlancheChange: (data: Partial<PlancheData>) => void
   onSelectedPlancheIdChange: (id: string | null) => void
@@ -101,7 +100,6 @@ export function AssistantStepEmplacement({
   mode,
   planche,
   selectedPlancheId,
-  planches: externalPlanches,
   onModeChange,
   onPlancheChange,
   onSelectedPlancheIdChange,

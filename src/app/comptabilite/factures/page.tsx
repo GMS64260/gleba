@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { factureSansTaxe } from '@/lib/territoires'
-import { construireImpayees, type Impayee } from '@/lib/comptabilite/impayees'
+import { construireImpayees, type FactureImpayee, type Impayee } from '@/lib/comptabilite/impayees'
 import { adresseDeFiche, clientDesigneParNom } from '@/lib/comptabilite/rattachement-client'
 import { formatSiren, formatSiret } from '@/lib/siret'
 
@@ -47,19 +47,6 @@ interface LigneFacture {
   montantHT: number
   montantTVA: number
   montantTTC: number
-}
-
-// Taux TVA présélectionné par catégorie (PROMPT 14C §10)
-const TAUX_TVA_PAR_CATEGORIE: Record<string, number> = {
-  legumes: 5.5,
-  fruits: 5.5,
-  oeufs: 5.5,
-  produits_transformes: 5.5,
-  animaux_vivants: 10,
-  aliments_animaux: 10,
-  bois: 20,
-  service: 20,
-  main_oeuvre: 0,
 }
 
 /** Fiche client proposée par le formulaire (GET /api/comptabilite/clients). */
@@ -246,7 +233,7 @@ export default function FacturesPage() {
         fetch(`/api/comptabilite/factures?year=all`),
       ])
 
-      let factures: any[] = []
+      let factures: FactureImpayee[] = []
       if (facturesRes.ok) {
         const facturesData = await facturesRes.json()
         factures = Array.isArray(facturesData)
@@ -262,7 +249,7 @@ export default function FacturesPage() {
       const { items, total: totalImpayees } = construireImpayees({ factures, ventes, ventesManuelles })
       setImpayees(items)
       setTotal(totalImpayees)
-    } catch (error) {
+    } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
@@ -426,10 +413,12 @@ export default function FacturesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sansTaxe])
 
-  const updateLigne = (id: string, field: keyof LigneFacture, value: any) => {
+  const updateLigne = <K extends keyof LigneFacture>(id: string, field: K, value: LigneFacture[K]) => {
     setLignes(lignes.map(l => {
       if (l.id !== id) return l
-      const updated = field === 'tauxTVA' ? { ...l, tauxTVA: value, tauxChoisi: value } : { ...l, [field]: value }
+      const updated: LigneFacture = field === 'tauxTVA'
+        ? { ...l, tauxTVA: value as number, tauxChoisi: value as number }
+        : { ...l, [field]: value }
       if (field === 'quantite' || field === 'prixUnitaire' || field === 'tauxTVA') {
         return recalcLigne(updated)
       }
@@ -1284,7 +1273,7 @@ export default function FacturesPage() {
               <CardContent className="space-y-4">
                 {/* DEV1 #7 — Sélecteur facture d'origine + recopie client */}
                 <div>
-                  <Label>Facture d'origine *</Label>
+                  <Label>Facture d&apos;origine *</Label>
                   <Select
                     value={avoirData.factureOrigineId}
                     onValueChange={(v) => setAvoirData({ ...avoirData, factureOrigineId: v })}
@@ -1353,7 +1342,7 @@ export default function FacturesPage() {
                 </div>
 
                 <div>
-                  <Label>Motif de l'avoir *</Label>
+                  <Label>Motif de l&apos;avoir *</Label>
                   <Textarea
                     value={avoirData.motif}
                     onChange={(e) => setAvoirData({ ...avoirData, motif: e.target.value })}
@@ -1364,7 +1353,7 @@ export default function FacturesPage() {
 
                 <p className="text-xs text-muted-foreground">
                   Le numéro AV-{new Date().getFullYear()}-XXXX est généré automatiquement par le serveur
-                  (séquence comptable continue). La facture d'origine ne pourra plus être supprimée
+                  (séquence comptable continue). La facture d&apos;origine ne pourra plus être supprimée
                   tant que cet avoir existe (Art. 289 CGI).
                 </p>
 

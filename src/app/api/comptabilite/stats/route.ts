@@ -49,8 +49,7 @@ export async function GET(request: NextRequest) {
     const userId = session.user.id
     const startOfYear = new Date(year, 0, 1)
     const endOfYear = new Date(year, 11, 31, 23, 59, 59)
-    const startOfPrevYear = new Date(year - 1, 0, 1)
-    const endOfPrevYear = new Date(year - 1, 11, 31, 23, 59, 59)
+
     const asOf = new Date()
 
     // Source unique de vérité : revenus, dépenses, bénéfice, N-1 YTD.
@@ -71,7 +70,6 @@ export async function GET(request: NextRequest) {
     const [
       // Ventes elevage (VenteProduit)
       ventesElevageParType,
-      ventesElevagePrevYear,
 
       // Fruits vendus (RecolteArbre avec prixKg)
       recoltesArbresPrix,
@@ -144,11 +142,6 @@ export async function GET(request: NextRequest) {
         _sum: { prixTotal: true },
       }),
 
-      // Ventes elevage annee précédente
-      prisma.venteProduit.aggregate({
-        where: { userId, date: { gte: startOfPrevYear, lte: endOfPrevYear }, annule: false },
-        _sum: { prixTotal: true },
-      }),
 
       // Récoltes arbres avec prix (vendues uniquement)
       prisma.recolteArbre.findMany({
@@ -481,12 +474,6 @@ export async function GET(request: NextRequest) {
       autre: depensesManuellesVentilees.autre + interventionsVentilees.autre,
     }
     const totalDepenses = depenses.elevage + depenses.verger + depenses.potager + depenses.autre
-
-    const benefice = totalRevenus - totalDepenses
-    const margePercent = totalRevenus > 0 ? (benefice / totalRevenus) * 100 : 0
-
-    // Année précédente pour comparaison
-    const revenusPrevYear = ventesElevagePrevYear._sum.prixTotal || 0
 
     // ========================================
     // GRAPHIQUES

@@ -6,6 +6,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
+import { ZodError } from "zod"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createAssociationSchema } from "@/lib/validations/association"
 
@@ -28,7 +30,7 @@ export async function GET(request: NextRequest) {
     const especeId = searchParams.get("especeId")
     const familleId = searchParams.get("familleId")
 
-    const where: any = {}
+    const where: Prisma.AssociationWhereInput = {}
 
     if (search) {
       where.OR = [
@@ -111,17 +113,17 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(association, { status: 201 })
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST /api/associations error:", err)
 
-    if (err.name === "ZodError") {
+    if (err instanceof ZodError) {
       return NextResponse.json(
-        { error: "Données invalides", details: err.errors },
+        { error: "Données invalides", details: err.issues },
         { status: 400 }
       )
     }
 
-    if (err.code === "P2002") {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       return NextResponse.json(
         { error: "Une association avec ce nom existe déjà" },
         { status: 409 }

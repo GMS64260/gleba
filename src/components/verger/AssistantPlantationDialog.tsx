@@ -471,7 +471,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                 />
               </div>
               <div>
-                <Label>Nature de l'opération <span className="text-red-500">*</span></Label>
+                <Label>Nature de l&apos;opération <span className="text-red-500">*</span></Label>
                 <Select value={state.nature} onValueChange={(v) => update({ nature: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1033,7 +1033,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                       {aides.length > 4 && <li className="text-muted-foreground">+ {aides.length - 4} autres</li>}
                     </ul>
                     <p className="text-xs mt-2 text-amber-800">
-                      → Consulter le catalogue complet depuis la page "Aides à la plantation".
+                      → Consulter le catalogue complet depuis la page &quot;Aides à la plantation&quot;.
                     </p>
                   </CardContent>
                 </Card>

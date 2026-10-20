@@ -55,7 +55,7 @@ export function AssociationsEspeceTab({ especeId }: { especeId: string }) {
         </CardTitle>
         <CardDescription>
           Compagnons et incompatibilités issus du module Associations. Les sources sont
-          précisées dans les notes — révisez si l'observation terrain diffère.
+          précisées dans les notes — révisez si l&apos;observation terrain diffère.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">

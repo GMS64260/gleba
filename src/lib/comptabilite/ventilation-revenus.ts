@@ -75,8 +75,8 @@ function round2(n: number): number {
  * le reste en « Autre », comme le faisait la ventilation précédente.
  */
 export function moduleDeVente(vente: Pick<VenteAVentiler, 'module' | 'categorie'>): ModuleCompta {
-  const module = bucketModuleCompta(vente.module)
-  if (module !== 'autre') return module
+  const moduleMetier = bucketModuleCompta(vente.module)
+  if (moduleMetier !== 'autre') return moduleMetier
   return (vente.categorie ?? '').trim().toLowerCase() === 'legumes' ? 'potager' : 'autre'
 }
 

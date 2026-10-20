@@ -6,8 +6,6 @@
  */
 
 import * as React from "react"
-import { format, getDaysInMonth } from "date-fns"
-import { fr } from "date-fns/locale"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Sprout, Leaf, Package, Droplets } from "lucide-react"
@@ -28,7 +26,7 @@ interface YearViewProps {
   onMonthClick: (month: number) => void
 }
 
-export function YearView({ year, events, onMonthClick }: YearViewProps) {
+export function YearView({ events, onMonthClick }: YearViewProps) {
   // Grouper événements par mois (0-11)
   const eventsByMonth = React.useMemo(() => {
     const months: Record<number, CalendarEvent[]> = {}

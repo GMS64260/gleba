@@ -16,14 +16,12 @@ import {
   Upload,
   Database,
   Loader2,
-  CheckCircle,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { Skeleton } from "@/components/ui/skeleton"
 import { todayLocalISO } from '@/lib/format-utils'
 
 const REFERENTIELS = [
@@ -91,7 +89,7 @@ export default function ReferentielsAdminPage() {
         title: "Export réussi",
         description: `${type} exporté`,
       })
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -194,7 +192,7 @@ export default function ReferentielsAdminPage() {
         <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
           <p className="text-sm text-yellow-800">
             <strong>⚠️ Attention :</strong> Ces référentiels sont partagés entre TOUS les utilisateurs.
-            Les modifications affecteront l'ensemble de l'application.
+            Les modifications affecteront l&apos;ensemble de l&apos;application.
           </p>
         </div>
 

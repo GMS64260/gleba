@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 import { z } from "zod"
 
 const schema = z.object({
@@ -41,7 +42,7 @@ export async function PUT(request: NextRequest) {
     // Une seule transaction pour atomicité multi-updates
     const results = await prisma.$transaction(
       parsed.data.updates.map((u) => {
-        const data: any = {}
+        const data: Prisma.PlancheUpdateManyMutationInput = {}
         if (u.posX !== undefined) data.posX = u.posX
         if (u.posY !== undefined) data.posY = u.posY
         if (u.rotation2D !== undefined) data.rotation2D = u.rotation2D

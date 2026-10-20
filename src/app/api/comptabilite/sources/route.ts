@@ -92,14 +92,14 @@ export async function GET(request: NextRequest) {
       add(vente.module || 'autre', vente.auto ? (vente.sourceType || 'auto') : 'manuel', vente.montant)
     }
     for (const facture of factures) {
-      const module = facture.ventesProduits.length || facture.abattages.length
+      const moduleFacture = facture.ventesProduits.length || facture.abattages.length
         ? 'elevage'
         : facture.recoltesArbres.length || facture.productionsBois.length
           ? 'verger'
           : facture.commandesBoutique.length
             ? 'boutique'
             : 'autre'
-      add(module, 'facture', facture.type === 'avoir' ? -facture.totalTTC : facture.totalTTC)
+      add(moduleFacture, 'facture', facture.type === 'avoir' ? -facture.totalTTC : facture.totalTTC)
     }
     const sources = [...grouped.values()].sort((a, b) => b.montant - a.montant)
 

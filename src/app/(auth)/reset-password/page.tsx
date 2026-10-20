@@ -115,7 +115,7 @@ function ResetPasswordInner() {
                     Nouveau mot de passe
                   </h2>
                   <p className="text-sm text-slate-400 mt-1.5">
-                    Choisissez un mot de passe d'au moins 12 caractères.
+                    Choisissez un mot de passe d&apos;au moins 12 caractères.
                   </p>
                 </div>
 

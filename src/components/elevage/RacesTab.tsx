@@ -65,8 +65,8 @@ interface Race {
 export function RacesTab() {
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
-  const isAdmin = (session?.user as any)?.role === "ADMIN"
+  const currentUserId = session?.user?.id
+  const isAdmin = session?.user?.role === "ADMIN"
   const { filieres } = useElevageModes()
   const filiereSel = useFiliereSelection()
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])

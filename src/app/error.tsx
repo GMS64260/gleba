@@ -35,7 +35,7 @@ export default function Error({
               onClick={() => (window.location.href = "/")}
               variant="outline"
             >
-              Retour à l'accueil
+              Retour à l&apos;accueil
             </Button>
           </div>
         </CardContent>

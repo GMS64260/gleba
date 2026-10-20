@@ -151,7 +151,7 @@ export default function PlanchesPage() {
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -258,7 +258,7 @@ export default function PlanchesPage() {
                 Votre terrain est incomplet ({planchesCompletes}/{totalPlanches} planches renseignées)
               </p>
               <p className="mt-1 text-amber-800">
-                Sans Type / Sol / Rétention, les rotations, les recommandations d'irrigation et
+                Sans Type / Sol / Rétention, les rotations, les recommandations d&apos;irrigation et
                 les ITPs sol-spécifiques ne peuvent pas fonctionner correctement.
               </p>
               <Button

@@ -234,7 +234,6 @@ export default function CoutsProductionPage() {
   }, [yearHydrated, selectedYear])
 
   // QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
-  const currentYear = new Date().getFullYear()
   const availableYears = getAvailableYears()
 
   // Fetch data

@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 
 const mouvementSchema = z
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
   const from = searchParams.get('from')
   const to = searchParams.get('to')
 
-  const where: any = { userId: session.user.id }
+  const where: Prisma.MouvementCheptelWhereInput = { userId: session.user.id }
   if (animalId) where.animalId = parseInt(animalId, 10)
   if (lotId) where.lotId = parseInt(lotId, 10)
   if (from || to) {

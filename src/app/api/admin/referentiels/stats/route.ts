@@ -3,12 +3,12 @@
  * GET /api/admin/referentiels/stats
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAdminApi } from '@/lib/auth-utils'
 
-export async function GET(request: NextRequest) {
-  const { error, session } = await requireAdminApi()
+export async function GET() {
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {

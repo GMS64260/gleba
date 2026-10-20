@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma, type VenteProduit } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import {
   StockFromageError,
@@ -49,13 +50,14 @@ export async function GET(request: NextRequest) {
     // Revue 2026-09-28 : `annee=all` pour la liste de gestion d'un historique.
     const { annee, bornes } = lireAnnee(searchParams)
 
-    const where: any = { userId: session.user.id, annule: { not: true } }
+    const where: Prisma.VenteProduitWhereInput = { userId: session.user.id, annule: { not: true } }
     if (bornes) where.date = { ...bornes }
     if (type) where.type = type
     if (dateDebut || dateFin) {
-      where.date = where.date ?? {}
-      if (dateDebut) where.date.gte = new Date(dateDebut)
-      if (dateFin) where.date.lte = new Date(dateFin)
+      const date: Prisma.DateTimeFilter = { ...bornes }
+      if (dateDebut) date.gte = new Date(dateDebut)
+      if (dateFin) date.lte = new Date(dateFin)
+      where.date = date
     }
     // Filtre par statut de paiement
     const payeParam = searchParams.get('paye')
@@ -544,7 +546,9 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const updateData: any = {}
+    // Les champs sont relus (recalcul du total, facture sur les valeurs
+    // finales) : valeurs scalaires du modèle, pas des opérations Prisma.
+    const updateData: Partial<VenteProduit> = {}
     if (paye !== undefined) updateData.paye = paye
     if (client !== undefined) updateData.client = client
     if (notes !== undefined) updateData.notes = notes

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
+import type { Prisma } from "@prisma/client"
 
 import { preserverTracesPhytoArbre } from "../preserver-traces-phyto"
 
@@ -38,19 +39,19 @@ const observation = {
 }
 
 const faireTx = (observations: unknown[], operations: unknown[]) => {
-  const creations: any[] = []
+  const creations: Record<string, unknown>[] = []
   return {
     creations,
     tx: {
       observationSante: { findMany: vi.fn().mockResolvedValue(observations) },
       operationArbre: { findMany: vi.fn().mockResolvedValue(operations) },
       intervention: {
-        create: vi.fn(async ({ data }: any) => {
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
           creations.push(data)
           return { id: creations.length }
         }),
       },
-    } as any,
+    } as unknown as Prisma.TransactionClient,
   }
 }
 

@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { lotSchema } from '@/lib/validations/elevage-lot'
 import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     const especeAnimaleId = searchParams.get('especeAnimaleId')
     const statut = searchParams.get('statut')
 
-    const where: any = { userId: session.user.id }
+    const where: Prisma.LotAnimauxWhereInput = { userId: session.user.id }
     if (especeAnimaleId) where.especeAnimaleId = especeAnimaleId
     if (statut) where.statut = statut
 
@@ -200,7 +201,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Lot non trouvé' }, { status: 404 })
     }
 
-    const updateData: any = {}
+    // Les quantités sont relues pour la garde de clôture : des nombres, pas des
+    // opérations Prisma (`increment`…).
+    const updateData: Prisma.LotAnimauxUncheckedUpdateInput & {
+      quantiteInitiale?: number
+      quantiteActuelle?: number
+    } = {}
     // Revue élevage 2026-07-21 — le PATCH n'appliquait qu'un sous-ensemble de
     // champs : nom / espèce / dateArrivée / quantité initiale / provenance /
     // prixAchatTotal étaient ignorés en silence (200 trompeur), et la dépense

@@ -212,7 +212,7 @@ function StocksSubTab() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [aliments, setAliments] = React.useState<Aliment[]>([])
-  const [stats, setStats] = React.useState<any>(null)
+  const [stats, setStats] = React.useState<{ total: number; stockBas: number } | null>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [editingStock, setEditingStock] = React.useState<string | null>(null)
   const [newStock, setNewStock] = React.useState("")
@@ -1589,7 +1589,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     }
     setIsSavingSoin(true)
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         date: dateSoinSoumise,
         type: formData.type,
         description: formData.description || null,

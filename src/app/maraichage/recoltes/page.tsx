@@ -6,7 +6,6 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { format, differenceInCalendarDays } from "date-fns"
 import { fr } from "date-fns/locale"
 import { ArrowLeft, BarChart3, Package, ShoppingCart, Euro, Trash2, AlertTriangle, Plus, RefreshCw, FileText, Clock, Timer } from "lucide-react"
@@ -99,7 +98,6 @@ interface Client {
 }
 
 export default function RecoltesPage() {
-  const router = useRouter()
   const { toast } = useToast()
   const [data, setData] = React.useState<RecolteWithRelations[]>([])
   const [clients, setClients] = React.useState<Client[]>([])
@@ -154,7 +152,7 @@ export default function RecoltesPage() {
         const result = await clientsRes.json()
         setClients(result.data || [])
       }
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -236,7 +234,7 @@ export default function RecoltesPage() {
           description: payload?.error || "La suppression a échoué",
         })
       }
-    } catch (error) {
+    } catch {
       toast({ variant: "destructive", title: "Erreur" })
     }
   }
@@ -333,7 +331,7 @@ export default function RecoltesPage() {
           description: payload?.error || "La vente n'a pas pu être enregistrée",
         })
       }
-    } catch (err) {
+    } catch {
       toast({ title: "Erreur", variant: "destructive" })
     } finally {
       setVenteSubmitting(false)
@@ -362,7 +360,7 @@ export default function RecoltesPage() {
           description: payload?.error || "Le changement de statut a échoué",
         })
       }
-    } catch (err) {
+    } catch {
       toast({ title: "Erreur", variant: "destructive" })
     }
   }
@@ -389,7 +387,7 @@ export default function RecoltesPage() {
           description: payload?.error || "Le changement de statut a échoué",
         })
       }
-    } catch (err) {
+    } catch {
       toast({ title: "Erreur", variant: "destructive" })
     }
   }

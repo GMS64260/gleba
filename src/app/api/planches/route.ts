@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     invalidateKpi(session!.user.id)
     return NextResponse.json(planche, { status: 201 })
-  } catch (error: any) {
+  } catch (error) {
     console.error('POST /api/planches error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création de la planche' },

@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { getKpiCompta } from '@/lib/kpi'
 import { chargerSuiviDesLignes, type SuiviDeLigne } from '@/lib/comptabilite/suivi-ecriture'
 
 export async function GET(request: NextRequest) {
@@ -17,7 +16,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const year = searchParams.get('year') ? parseInt(searchParams.get('year')!) : new Date().getFullYear()
-    const module = searchParams.get('module') // potager, verger, elevage, autre
+    const moduleDemande = searchParams.get('module') // potager, verger, elevage, autre
     const limit = parseInt(searchParams.get('limit') || '200')
 
     const userId = session.user.id
@@ -398,8 +397,8 @@ export async function GET(request: NextRequest) {
 
     // Filtrer par module si spécifié
     let filtered = revenues
-    if (module) {
-      filtered = revenues.filter(r => r.module === module)
+    if (moduleDemande) {
+      filtered = revenues.filter(r => r.module === moduleDemande)
     }
 
     // Trier par date décroissante
@@ -423,8 +422,6 @@ export async function GET(request: NextRequest) {
     // le résultat divergeait du total exposé par /api/comptabilite/stats.
     // Désormais le total = VenteManuelle + LigneFacture (factures non
     // annulées), identique sur tous les écrans.
-    const asOf = new Date()
-    const kpiCompta = !module ? await getKpiCompta(userId, year, asOf) : null
 
     const stats = {
       // Bug R27 : le total doit être la SOMME DES LIGNES affichées (sources
@@ -451,7 +448,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: limited,
       stats,
-      meta: { year, module, total: filtered.length },
+      meta: { year, module: moduleDemande, total: filtered.length },
     })
   } catch (error) {
     console.error('GET /api/comptabilite/revenus error:', error)

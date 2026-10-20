@@ -133,7 +133,7 @@ function CulturesPrevuesParIlotsContent() {
       const result = await response.json()
       setData(result.data)
       setStats(result.stats)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",

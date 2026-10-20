@@ -26,8 +26,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
     where: {
       userId: session.user.id,
       plancheId: id,
-      // Cultures encore "en place" : pas récolte effectuée, ou récolte en cours
-      OR: [{ recolteFaite: false }, { recolteFaite: null as any }],
+      // Cultures encore « en place » : récolte non effectuée. `recolteFaite`
+      // n'est pas nullable (Boolean @default(false)) : l'ancienne branche
+      // `{ recolteFaite: null }` ne pouvait rien filtrer.
+      recolteFaite: false,
     },
     select: { id: true, especeId: true, varieteId: true },
   })
