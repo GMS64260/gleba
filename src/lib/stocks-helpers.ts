@@ -79,10 +79,12 @@ export async function calculerStocksNet(
 
   // Si aucun stock per-user, chercher les especes avec des recoltes/consommations
   const especeIds = userStocks.map(us => us.especeId)
+  // `especeId` et `notIn` portent sur la même colonne : les combiner dans un
+  // seul filtre, sinon le second écrasait le premier et un calcul demandé pour
+  // UNE espèce parcourait toutes celles du compte (deux requêtes chacune).
   const additionalEspeces = await prisma.espece.findMany({
     where: {
-      ...(especeId && { id: especeId }),
-      id: { notIn: especeIds },
+      id: especeId ? { equals: especeId, notIn: especeIds } : { notIn: especeIds },
       OR: [
         { recoltes: { some: { userId } } },
         { consommations: { some: { userId } } },

@@ -26,6 +26,9 @@ vi.mock('@/lib/auth-utils', () => ({
   requireAdminApi: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ default: mocks.db }))
+// La fiche sert aussi le stock du compte (`calculerStocksNet`, 2026-10-20) :
+// hors sujet ici, et ses requêtes n'ont pas de délégué mémoire.
+vi.mock('@/lib/stocks-helpers', () => ({ calculerStocksNet: vi.fn(async () => ({})) }))
 
 import { GET as LISTE } from './route'
 import { DELETE, GET, PUT } from './[id]/route'

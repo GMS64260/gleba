@@ -95,6 +95,16 @@ import {
   type FiltreOrigineValue,
 } from "@/components/referentiel/catalogue-communaute"
 
+/** Stock de récolte du compte pour l'espèce (`monStock` de la fiche). */
+interface MonStock {
+  stockNet: number
+  unite: UniteQuantite
+  detail: { inventaire: number; recoltes: number; consommations: number }
+  autresUnites: Partial<Record<UniteQuantite, number>>
+  inventaire: number | null
+  dateInventaire: string | null
+}
+
 interface Variete {
   id: string
   nom: string | null
@@ -140,7 +150,7 @@ export default function EditEspecePage() {
   const especeId = decodeURIComponent(params.id as string)
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id
   const [familles, setFamilles] = React.useState<{ id: string }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -282,8 +292,65 @@ export default function EditEspecePage() {
   const [objectifFermeSaisi, setObjectifFermeSaisi] = React.useState<string>("")
   const [enregistrementFerme, setEnregistrementFerme] = React.useState(false)
 
+  /**
+   * Stock de récolte DU COMPTE pour cette espèce (`UserStockEspece`), servi par
+   * la fiche avec `calculerStocksNet`, le même que Stocks > Récoltes. Le champ
+   * « Stock actuel » écrivait `Espece.inventaire`, colonne du référentiel
+   * partagé que rien ne lit, et ne la rechargeait jamais (revue QA du
+   * 2026-10-20) : il vit désormais ici, enregistré par `PATCH /api/stocks`
+   * comme un comptage daté du jour.
+   */
+  const [monStock, setMonStock] = React.useState<MonStock | null>(null)
+  const [stockSaisi, setStockSaisi] = React.useState<string>("")
+  const [enregistrementStock, setEnregistrementStock] = React.useState(false)
+  const stockAffiche = monStock?.stockNet != null ? String(monStock.stockNet) : ""
+
+  const enregistrerMonStock = async () => {
+    setEnregistrementStock(true)
+    try {
+      const response = await fetch("/api/stocks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "recolte",
+          id: especeId,
+          stock: stockSaisi.trim() === "" ? null : parseFloat(stockSaisi),
+        }),
+      })
+      if (!response.ok) {
+        const erreur = await response.json().catch(() => ({}))
+        throw new Error(erreur.error || "Enregistrement du stock impossible")
+      }
+      // Le stock net se relit par la fiche (même calcul que Stocks > Récoltes) :
+      // un comptage effacé rend aux récoltes antérieures leur place.
+      const fiche = await fetch(`/api/especes/${encodeURIComponent(especeId)}`)
+      const donnees = fiche.ok ? await fiche.json() : null
+      const stock: MonStock | null = donnees?.monStock ?? null
+      setMonStock(stock)
+      setStockSaisi(stock?.stockNet != null ? String(stock.stockNet) : "")
+      toast({
+        title: "Stock enregistré",
+        description:
+          stock != null
+            ? `Stocks > Récoltes affiche désormais ${formatQuantite(stock.stockNet, stock.unite)}.`
+            : "Plus de comptage manuel pour cette espèce.",
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Réessayez.",
+      })
+    } finally {
+      setEnregistrementStock(false)
+    }
+  }
+
   const uniteFermeEffective =
     uniteFermeSaisie || monRendement?.uniteRendement || uniteEffective || "kg_m2"
+  // Unité du stock : celle que le serveur a retenue pour le stock net (même
+  // dérivation que les sorties), sinon celle qui découle du rendement choisi.
+  const uniteStock: UniteQuantite = monStock?.unite ?? uniteQuantiteRecolte(uniteFermeEffective)
 
   const enregistrerMonRendement = async (remiseAZero = false) => {
     setEnregistrementFerme(true)
@@ -349,6 +416,10 @@ export default function EditEspecePage() {
         )
         setMonRendement(especeData.monRendement ?? null)
         setRealiseAnnee(especeData.realiseAnnee ?? null)
+        setMonStock(especeData.monStock ?? null)
+        setStockSaisi(
+          especeData.monStock?.stockNet != null ? String(especeData.monStock.stockNet) : ""
+        )
         setRendementFermeSaisi(
           especeData.monRendement?.rendement != null
             ? String(especeData.monRendement.rendement)
@@ -1294,28 +1365,8 @@ export default function EditEspecePage() {
                         )}
                       />
 
-                      <FormField
-                        control={form.control}
-                        name="inventaire"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Stock actuel ({libelleUniteObjectif(uniteEffective)})</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.1"
-                                placeholder="Ex: 10"
-                                {...field}
-                                value={field.value ?? ""}
-                                onChange={(e) =>
-                                  field.onChange(e.target.value ? parseFloat(e.target.value) : null)
-                                }
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                      {/* Le stock n'est pas une donnée du catalogue : il vit dans
+                          la carte « Chez moi » ci-dessous (stock du compte). */}
                     </div>
                   </CardContent>
                 </Card>
@@ -1448,6 +1499,52 @@ export default function EditEspecePage() {
                           Revenir au catalogue
                         </Button>
                       )}
+                    </div>
+
+                    {/*
+                      Stock de récolte du compte : un comptage daté, auquel
+                      Stocks > Récoltes ajoute les récoltes en stock et retranche
+                      les sorties postérieures. Enregistrer la valeur affichée
+                      pose un nouveau comptage daté du jour.
+                    */}
+                    <div className="border-t pt-4 space-y-3">
+                      <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                        <div className="space-y-2">
+                          <Label htmlFor="stock-ferme">
+                            Mon stock actuel ({libelleUniteQuantite(uniteStock, 2)})
+                          </Label>
+                          <Input
+                            id="stock-ferme"
+                            type="number"
+                            min={0}
+                            step={uniteStock === "kg" ? "0.1" : "1"}
+                            placeholder="Ex: 10"
+                            value={stockSaisi}
+                            onChange={(e) => setStockSaisi(e.target.value)}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={enregistrerMonStock}
+                          disabled={enregistrementStock || stockSaisi.trim() === stockAffiche}
+                        >
+                          <Save className="h-4 w-4 mr-2" />
+                          Enregistrer mon stock
+                        </Button>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        {monStock == null
+                          ? "Aucun stock suivi pour cette espèce chez vous : saisissez un comptage, ou enregistrez une récolte."
+                          : monStock.dateInventaire
+                            ? `Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}, puis ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés et ${formatQuantite(monStock.detail.consommations, monStock.unite)} sortis.`
+                            : `Sans comptage manuel : ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés en stock, ${formatQuantite(monStock.detail.consommations, monStock.unite)} sortis.`}{" "}
+                        Même stock que{" "}
+                        <Link href="/maraichage/stocks" className="underline">
+                          Stocks &gt; Récoltes
+                        </Link>
+                        .
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
