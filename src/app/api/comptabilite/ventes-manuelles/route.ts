@@ -190,9 +190,9 @@ export async function PATCH(request: NextRequest) {
     // commande boutique) : montant, date et périmètre ne se corrigent que là.
     // Le suivi du règlement reste ouvert — `markAsPaid` de l'écran des impayés
     // marque légitimement une vente dérivée comme payée.
-    const refus = refusModificationDerivee(existing, envoyes)
+    const refus = refusModificationDerivee(existing, envoyes, 'vente')
     if (refus) {
-      return NextResponse.json({ error: refus }, { status: 400 })
+      return NextResponse.json(refus, { status: 400 })
     }
 
     // Même contrôle d'appartenance qu'à la création : sans lui, le PATCH

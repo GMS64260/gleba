@@ -126,3 +126,71 @@ describe("POST /api/comptabilite/ventes-manuelles — clientId", () => {
     expect(mocks.venteCreate).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * Ticket cmvgdzsf7 (2026-10-20) — suivi d'une écriture dérivée depuis
+ * Comptabilité > Transactions > Revenus (« Règlement et pièce »). Corps réel de
+ * `saveSuivi` : l'id du miroir et les seuls champs modifiés parmi
+ * `CHAMPS_DE_SUIVI_SAISIS_VENTE` (vide → null).
+ */
+describe("PATCH /api/comptabilite/ventes-manuelles — écriture dérivée", () => {
+  // Miroir de la vente d'œufs « v8-Nathalie 2010 Œufs marché » (86,40 €).
+  const miroirVenteProduit = {
+    ...venteManuelle,
+    id: 909,
+    auto: true,
+    sourceType: "vente_produit",
+    sourceId: 167,
+    montant: 86.4,
+  }
+
+  beforeEach(() => {
+    mocks.venteFindFirst.mockResolvedValue(miroirVenteProduit)
+  })
+
+  it("enregistre le règlement, la pièce et les notes envoyés par l'écran", async () => {
+    const res = await PATCH(
+      requete("PATCH", { id: 909, modeReglement: "Chèque", numeroPiece: "CHQ-0042", notes: "Remis en banque" })
+    )
+
+    expect(res.status).toBe(200)
+    expect(mocks.venteFindFirst).toHaveBeenCalledWith({ where: { id: 909, userId: "u1" } })
+    expect(mocks.venteUpdate).toHaveBeenCalledWith({
+      where: { id: 909 },
+      data: { modeReglement: "Chèque", numeroPiece: "CHQ-0042", notes: "Remis en banque" },
+    })
+  })
+
+  it("efface un champ vidé (null) sans toucher au reste", async () => {
+    const res = await PATCH(requete("PATCH", { id: 909, numeroPiece: null }))
+
+    expect(res.status).toBe(200)
+    expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 909 }, data: { numeroPiece: null } })
+  })
+
+  it("refuse le montant d'une ligne dérivée, nomme le champ et dit où corriger", async () => {
+    const res = await PATCH(requete("PATCH", { id: 909, montant: 90, numeroPiece: "CHQ-0042" }))
+
+    expect(res.status).toBe(400)
+    const corps = await res.json()
+    expect(corps.champ).toBe("montant")
+    expect(corps.error).toContain("une vente de l'atelier d'élevage")
+    expect(mocks.venteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("garde « marquer comme payé » des impayés ouvert sur une ligne dérivée", async () => {
+    const res = await PATCH(requete("PATCH", { id: 909, paye: true }))
+
+    expect(res.status).toBe(200)
+    expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 909 }, data: { paye: true } })
+  })
+
+  it("nomme un mode de règlement hors liste refusé par la validation", async () => {
+    const res = await PATCH(requete("PATCH", { id: 909, modeReglement: "Troc" }))
+
+    expect(res.status).toBe(400)
+    const corps = await res.json()
+    expect(Object.keys(corps.details.fieldErrors)).toEqual(["modeReglement"])
+    expect(mocks.venteUpdate).not.toHaveBeenCalled()
+  })
+})

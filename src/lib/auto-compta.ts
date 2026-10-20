@@ -12,6 +12,7 @@ import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { formatQuantite } from '@/lib/recolte/quantites'
+import { selectSuiviConserve, suiviConserve, type SuiviVente } from '@/lib/comptabilite/ecriture-derivee'
 
 // ============================================================
 // HELPERS
@@ -24,6 +25,24 @@ function inAutoComptaTransaction<T>(
   operation: (db: AutoComptaTx) => Promise<T>,
 ): Promise<T> {
   return tx ? operation(tx) : prisma.$transaction(operation)
+}
+
+/**
+ * Suivi (règlement, pièce, journal, justificatif, notes) saisi sur le miroir
+ * qu'une source va régénérer, à reporter sur le nouveau (ticket cmvgdzsf7,
+ * 2026-10-20). Les fonctions ci-dessous suppriment puis recréent le miroir à
+ * chaque modification de la source : la pièce saisie dans Comptabilité >
+ * Transactions aurait disparu à la modification suivante de la vente.
+ */
+async function suiviDuMiroirVente(
+  db: AutoComptaTx,
+  where: Prisma.VenteManuelleWhereInput,
+): Promise<SuiviVente> {
+  const ancienne = await db.venteManuelle.findFirst({
+    where,
+    select: selectSuiviConserve() as Prisma.VenteManuelleSelect,
+  })
+  return suiviConserve(ancienne)
 }
 
 /**
@@ -137,9 +156,10 @@ export async function createVenteFromRecolte(
 
   // Transaction atomique : supprimer l'ancien + creer le nouveau
   return prisma.$transaction(async (tx) => {
-    await tx.venteManuelle.deleteMany({
-      where: { sourceType: 'recolte', sourceId: recolte.id, auto: true },
-    })
+    // Scopé au compte, comme la lecture du suivi (revue du 2026-10-20).
+    const miroir = { userId, sourceType: 'recolte', sourceId: recolte.id, auto: true }
+    const suivi = await suiviDuMiroirVente(tx, miroir)
+    await tx.venteManuelle.deleteMany({ where: miroir })
 
     return tx.venteManuelle.create({
       data: {
@@ -161,6 +181,7 @@ export async function createVenteFromRecolte(
         sourceType: 'recolte',
         sourceId: recolte.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -244,9 +265,10 @@ export async function createVenteFromRecolteArbre(
   const especeNom = recolteArbre.arbre?.espece || ''
 
   return prisma.$transaction(async (tx) => {
-    await tx.venteManuelle.deleteMany({
-      where: { sourceType: 'recolte_arbre', sourceId: recolteArbre.id, auto: true },
-    })
+    // Scopé au compte, comme la lecture du suivi (revue du 2026-10-20).
+    const miroir = { userId, sourceType: 'recolte_arbre', sourceId: recolteArbre.id, auto: true }
+    const suivi = await suiviDuMiroirVente(tx, miroir)
+    await tx.venteManuelle.deleteMany({ where: miroir })
 
     return tx.venteManuelle.create({
       data: {
@@ -268,6 +290,7 @@ export async function createVenteFromRecolteArbre(
         sourceType: 'recolte_arbre',
         sourceId: recolteArbre.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -324,6 +347,7 @@ export async function createVenteFromVenteProduit(
   }
 
   return inAutoComptaTransaction(tx, async (db) => {
+    const suivi = await suiviDuMiroirVente(db, { userId, sourceType: 'vente_produit', sourceId: venteProduit.id, auto: true })
     await db.venteManuelle.deleteMany({
       where: { userId, sourceType: 'vente_produit', sourceId: venteProduit.id, auto: true },
     })
@@ -347,6 +371,7 @@ export async function createVenteFromVenteProduit(
         sourceType: 'vente_produit',
         sourceId: venteProduit.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -417,6 +442,7 @@ export async function upsertVenteFromPaieLait(
   const moisLabel = `${String(paie.mois).padStart(2, '0')}/${paie.annee}`
 
   // Scopé userId : sourceId (annee*100+mois) est commun à tous les tenants.
+  const suivi = await suiviDuMiroirVente(tx, { sourceType: 'paie_lait', sourceId, auto: true, userId })
   await tx.venteManuelle.deleteMany({
     where: { sourceType: 'paie_lait', sourceId, auto: true, userId },
   })
@@ -444,6 +470,7 @@ export async function upsertVenteFromPaieLait(
         sourceType: 'paie_lait',
         sourceId,
         auto: true,
+        ...suivi,
     },
   })
 }
@@ -487,6 +514,7 @@ export async function createVenteFromAbattage(
   const animalInfo = abattage.animal?.nom || abattage.lot?.nom || 'Abattage'
 
   return inAutoComptaTransaction(tx, async (db) => {
+    const suivi = await suiviDuMiroirVente(db, { userId, sourceType: 'abattage', sourceId: abattage.id, auto: true })
     await db.venteManuelle.deleteMany({
       where: { userId, sourceType: 'abattage', sourceId: abattage.id, auto: true },
     })
@@ -508,6 +536,7 @@ export async function createVenteFromAbattage(
         sourceType: 'abattage',
         sourceId: abattage.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -548,9 +577,10 @@ export async function createVenteFromProductionBois(
   const descParts = [`Vente bois - ${typeLabel}`, arbreNom, volumeInfo].filter(Boolean)
 
   return prisma.$transaction(async (tx) => {
-    await tx.venteManuelle.deleteMany({
-      where: { sourceType: 'production_bois', sourceId: productionBois.id, auto: true },
-    })
+    // Scopé au compte, comme la lecture du suivi (revue du 2026-10-20).
+    const miroir = { userId, sourceType: 'production_bois', sourceId: productionBois.id, auto: true }
+    const suivi = await suiviDuMiroirVente(tx, miroir)
+    await tx.venteManuelle.deleteMany({ where: miroir })
 
     return tx.venteManuelle.create({
       data: {
@@ -571,6 +601,7 @@ export async function createVenteFromProductionBois(
         sourceType: 'production_bois',
         sourceId: productionBois.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -849,11 +880,19 @@ export async function upsertVenteFromReservationElevage(
   userId: string,
   reservation: ReservationComptaInput,
 ) {
+  const refs = [`${reservation.id}:acompte`, `${reservation.id}:solde`]
+  const suiviParRef = new Map<string, SuiviVente>()
+  for (const sourceRef of refs) {
+    suiviParRef.set(
+      sourceRef,
+      await suiviDuMiroirVente(tx, { userId, sourceType: 'reservation_elevage', sourceRef, auto: true }),
+    )
+  }
   await tx.venteManuelle.deleteMany({
     where: {
       userId,
       sourceType: 'reservation_elevage',
-      sourceRef: { in: [`${reservation.id}:acompte`, `${reservation.id}:solde`] },
+      sourceRef: { in: refs },
       auto: true,
     },
   })
@@ -912,6 +951,7 @@ export async function upsertVenteFromReservationElevage(
         sourceType: 'reservation_elevage',
         sourceRef: row.sourceRef,
         auto: true,
+        ...suiviParRef.get(row.sourceRef),
       },
     }))
   }

@@ -164,9 +164,9 @@ export async function PATCH(request: NextRequest) {
     // Une dépense dérivée appartient à sa source : son montant, sa date et son
     // périmètre ne se corrigent que là. Le suivi du règlement reste ouvert
     // (l'écran des impayés marque légitimement `paye` sur une ligne dérivée).
-    const refus = refusModificationDerivee(existing, envoyes)
+    const refus = refusModificationDerivee(existing, envoyes, 'depense')
     if (refus) {
-      return NextResponse.json({ error: refus }, { status: 400 })
+      return NextResponse.json(refus, { status: 400 })
     }
 
     const updateData: any = {}

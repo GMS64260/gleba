@@ -38,7 +38,8 @@ interface Client {
   exonererTVA: boolean
   notes: string | null
   actif: boolean
-  _count?: { ventesManuelles: number; factures: number }
+  /** Ventes rattachées à la fiche (écritures et factures), calculé par l'API. */
+  nbVentes?: number
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -541,7 +542,7 @@ export default function ClientsPage() {
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-muted-foreground">
-                          {client._count?.ventesManuelles || 0} ventes
+                          {client.nbVentes ?? 0} vente{(client.nbVentes ?? 0) > 1 ? "s" : ""}
                         </span>
                       </TableCell>
                       <TableCell>

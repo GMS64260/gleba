@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { getKpiCompta } from '@/lib/kpi'
+import { chargerSuiviDesLignes, type SuiviDeLigne } from '@/lib/comptabilite/suivi-ecriture'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -163,6 +164,8 @@ export async function GET(request: NextRequest) {
       client: string | null
       paye: boolean | null
       categorie: string
+      /** Facture qui porte la vente source (ticket cmvgdzsf7). */
+      factureId?: number | null
     }
 
     const revenues: UnifiedRevenue[] = []
@@ -182,6 +185,7 @@ export async function GET(request: NextRequest) {
         montant: v.prixTotal,
         client: v.client,
         paye: v.paye,
+        factureId: v.factureId,
         categorie: v.type === 'oeufs' ? 'Oeufs' :
                    v.type === 'viande' ? 'Viande' :
                    v.type === 'animal_vivant' ? 'Animal vivant' :
@@ -212,6 +216,7 @@ export async function GET(request: NextRequest) {
         client: null,
         paye: null, // Pas de tracking paiement
         categorie: 'Fruits',
+        factureId: r.factureId,
       })
     })
 
@@ -239,6 +244,7 @@ export async function GET(request: NextRequest) {
         // considère la transaction payée. Sinon, statut "à régler".
         paye: facturee,
         categorie: 'Bois',
+        factureId: b.factureId,
       })
     })
 
@@ -260,6 +266,7 @@ export async function GET(request: NextRequest) {
         client: null,
         paye: null,
         categorie: 'Viande',
+        factureId: a.factureId,
       })
     })
 
@@ -279,6 +286,7 @@ export async function GET(request: NextRequest) {
         client: r.clientNom,
         paye: true, // statut='vendu' implique payé
         categorie: 'Légumes',
+        factureId: r.factureId,
       })
     })
 
@@ -398,7 +406,15 @@ export async function GET(request: NextRequest) {
     filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     // Limiter
-    const limited = filtered.slice(0, limit)
+    // Ticket cmvgdzsf7 (2026-10-20) — chaque ligne dérivée porte son écriture
+    // comptable (suivi modifiable : règlement, pièce, notes) ou la facture qui
+    // la porte : sans elles, l'écran n'offrait rien sur une ligne générée.
+    const page = filtered.slice(0, limit)
+    const suiviParLigne = await chargerSuiviDesLignes(userId, page)
+    const limited: Array<UnifiedRevenue & Partial<SuiviDeLigne>> = page.map((r) => ({
+      ...r,
+      ...suiviParLigne.get(r.id),
+    }))
 
     // Total agrégé : on s'aligne sur la source unique de vérité (getKpiCompta).
     // L'ancien `filtered.reduce(...)` agrégeait les "sources brutes" potager

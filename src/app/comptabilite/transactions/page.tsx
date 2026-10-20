@@ -8,7 +8,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Receipt, RefreshCw, Filter, Plus, Sprout, TreeDeciduous, Bird, TrendingUp, TrendingDown, Store, Info, ChevronDown, ChevronUp, Pencil, Trash2, Loader2 } from "lucide-react"
+import { ArrowLeft, Receipt, RefreshCw, Filter, Plus, Sprout, TreeDeciduous, Bird, TrendingUp, TrendingDown, Store, Info, ChevronDown, ChevronUp, Pencil, Trash2, Loader2, FileText } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,8 +22,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
+import { SelectNatif } from "@/components/ui/select-natif"
 import { useToast } from "@/hooks/use-toast"
 import { MODULE_COMPTA_LABELS } from "@/lib/comptabilite/modules"
+import { CHAMPS_DE_SUIVI_SAISIS_VENTE, type ChampSuiviSaisiVente } from "@/lib/comptabilite/ecriture-derivee"
 import {
   compteVente,
   compteAchat,
@@ -77,6 +79,23 @@ interface Transaction {
    * réservation) et porter malgré tout le nom de source `VenteManuelle`.
    */
   corrigeable?: boolean
+  /**
+   * Écriture comptable d'une ligne dérivée (ticket cmvgdzsf7, 2026-10-20) :
+   * son suivi (règlement, pièce, notes) se modifie ici, montant et date non.
+   * Calculé par l'API (`chargerSuiviDesLignes`).
+   */
+  ecriture?: { id: number; suivi: Record<ChampSuiviVente, string | null> } | null
+  /** Facture qui porte une vente dérivée facturée : le règlement s'y suit. */
+  facture?: { id: number; numero: string } | null
+}
+
+/** Champs du formulaire « Règlement et pièce » : la liste blanche du serveur, pas une copie. */
+type ChampSuiviVente = ChampSuiviSaisiVente
+
+const LIBELLE_CHAMP_SUIVI: Record<ChampSuiviVente, string> = {
+  modeReglement: "Mode de règlement",
+  numeroPiece: "N° de pièce",
+  notes: "Notes",
 }
 
 /**
@@ -99,6 +118,8 @@ const ECRAN_SOURCE: Record<string, string> = {
   Abattage: "l'abattage, dans Élevage",
   ProductionBois: "la production, dans Verger > Bois",
   VenteManuelle: "sa source (commande boutique ou réservation)",
+  CommandeBoutique: "la commande, dans Boutique",
+  PaieLait: "la paie, dans Élevage > Production",
   SoinAnimal: "le soin, dans Élevage > Alimentation & Soins",
   ConsommationAliment: "la consommation, dans Élevage > Alimentation & Soins",
   Fertilisation: "l'intervention, dans Interventions",
@@ -107,6 +128,16 @@ const ECRAN_SOURCE: Record<string, string> = {
   LotAnimaux: "le prix d'achat du lot, dans Élevage > Animaux & Lots",
   Animal: "le prix d'achat de l'animal, sur sa fiche",
   Arbre: "l'arbre, sur sa fiche",
+}
+
+/** Écran de la source d'une ligne dérivée, quand il a une adresse fixe. */
+const LIEN_SOURCE: Record<string, string> = {
+  Recolte: "/maraichage/recoltes",
+  RecolteArbre: "/verger?tab=productions",
+  ProductionBois: "/verger?tab=productions",
+  VenteProduit: "/elevage?tab=production",
+  PaieLait: "/elevage?tab=production",
+  Abattage: "/elevage?tab=animaux",
 }
 
 const CATEGORIES_VENTE = [
@@ -274,6 +305,16 @@ function TransactionsPageInner() {
   const [isSavingEdit, setIsSavingEdit] = React.useState(false)
   const [deleting, setDeleting] = React.useState<Transaction | null>(null)
 
+  // Ticket cmvgdzsf7 (2026-10-20) — une ligne dérivée n'offrait rien : ni
+  // bouton ni formulaire, alors que le serveur accepte son suivi (règlement,
+  // pièce, notes). Le formulaire ne porte que les champs de la liste blanche
+  // (`CHAMPS_DE_SUIVI_SAISIS_VENTE`) ; montant, date et client restent à la source.
+  const suiviVide = Object.fromEntries(CHAMPS_DE_SUIVI_SAISIS_VENTE.map((c) => [c, ""])) as Record<ChampSuiviVente, string>
+  const [suivant, setSuivant] = React.useState<Transaction | null>(null)
+  const [suiviForm, setSuiviForm] = React.useState<Record<ChampSuiviVente, string>>(suiviVide)
+  const [erreurSuivi, setErreurSuivi] = React.useState<string | null>(null)
+  const [isSavingSuivi, setIsSavingSuivi] = React.useState(false)
+
   const endpointFor = (t: Transaction) =>
     t.source === "VenteManuelle"
       ? "/api/comptabilite/ventes-manuelles"
@@ -364,7 +405,65 @@ function TransactionsPageInner() {
     fetchData()
   }
 
-  /** Cellule d'actions : corriger/supprimer, ou dire où corriger. */
+  const openSuivi = (t: Transaction) => {
+    if (!t.ecriture) return
+    const valeurs = t.ecriture.suivi
+    setSuiviForm(
+      Object.fromEntries(CHAMPS_DE_SUIVI_SAISIS_VENTE.map((c) => [c, valeurs[c] ?? ""])) as Record<ChampSuiviVente, string>,
+    )
+    setErreurSuivi(null)
+    setSuivant(t)
+  }
+
+  const changerSuivi = (champ: ChampSuiviVente, valeur: string) => {
+    // Un message d'erreur appartient à un essai : il s'efface à la modification.
+    setErreurSuivi(null)
+    setSuiviForm((prev) => ({ ...prev, [champ]: valeur }))
+  }
+
+  const saveSuivi = async () => {
+    if (!suivant?.ecriture || isSavingSuivi) return
+    // Seuls les champs modifiés partent : une valeur stockée hors de la liste
+    // des modes (ancienne saisie) n'est pas renvoyée telle qu'affichée.
+    const body: Record<string, unknown> = { id: suivant.ecriture.id }
+    for (const champ of CHAMPS_DE_SUIVI_SAISIS_VENTE) {
+      const saisi = suiviForm[champ].trim()
+      if (saisi !== (suivant.ecriture.suivi[champ] ?? "")) body[champ] = saisi || null
+    }
+    if (Object.keys(body).length === 1) {
+      setSuivant(null)
+      return
+    }
+    setIsSavingSuivi(true)
+    setErreurSuivi(null)
+    try {
+      const res = await fetch("/api/comptabilite/ventes-manuelles", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const champsInvalides = data?.details?.fieldErrors as Record<string, string[]> | undefined
+        const premier = champsInvalides ? Object.keys(champsInvalides)[0] : undefined
+        setErreurSuivi(
+          premier
+            ? `Données invalides — ${LIBELLE_CHAMP_SUIVI[premier as ChampSuiviVente] ?? premier} : ${champsInvalides?.[premier]?.[0] ?? "valeur refusée"}`
+            : data.error || "Enregistrement refusé",
+        )
+        return
+      }
+      toast({ title: "Règlement et pièce enregistrés", description: suivant.description })
+      setSuivant(null)
+      fetchData()
+    } catch (err) {
+      setErreurSuivi(err instanceof Error ? err.message : "Enregistrement impossible")
+    } finally {
+      setIsSavingSuivi(false)
+    }
+  }
+
+  /** Cellule d'actions : corriger/supprimer, suivi d'une ligne dérivée, ou dire où corriger. */
   const cellulActions = (t: Transaction) =>
     t.corrigeable ? (
       <div className="flex justify-end gap-1">
@@ -375,6 +474,36 @@ function TransactionsPageInner() {
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
+    ) : t.ecriture ? (
+      <div className="flex flex-col items-end gap-0.5">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8"
+          title="Mode de règlement, numéro de pièce et notes de l'écriture"
+          onClick={() => openSuivi(t)}
+        >
+          <FileText className="h-4 w-4 mr-1" />
+          Règlement et pièce
+        </Button>
+        <span className="text-[11px] text-muted-foreground text-right">
+          Générée · montant et date : {ECRAN_SOURCE[t.source] ?? "sa source"}
+        </span>
+      </div>
+    ) : t.facture ? (
+      <span className="text-xs text-muted-foreground" title="Une vente facturée se règle sur sa facture.">
+        Facturée ·{" "}
+        <a
+          href={`/api/comptabilite/factures/${t.facture.id}/pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline"
+          title={`Ouvrir la facture ${t.facture.numero}`}
+        >
+          {t.facture.numero}
+        </a>
+        {" "}: règlement dans <Link href="/comptabilite/factures" className="underline">Factures</Link>
+      </span>
     ) : (
       <span className="text-xs text-muted-foreground" title={`Écriture générée par Gleba : corrigez ${ECRAN_SOURCE[t.source] ?? "sa source"}.`}>
         Générée · corriger {ECRAN_SOURCE[t.source] ?? "sa source"}
@@ -1366,6 +1495,88 @@ function TransactionsPageInner() {
             <Button onClick={saveEdit} disabled={isSavingEdit}>
               {isSavingEdit && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {isSavingEdit ? "Enregistrement..." : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Suivi d'une écriture dérivée (ticket cmvgdzsf7) : seuls les champs que
+          le serveur accepte sur une ligne générée (CHAMPS_DE_SUIVI_SAISIS_VENTE). */}
+      <Dialog open={suivant !== null} onOpenChange={(open) => !open && setSuivant(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Règlement et pièce</DialogTitle>
+            <DialogDescription>
+              Écriture générée par Gleba. Le montant, la date et le client appartiennent à la
+              source : corrigez {suivant ? ECRAN_SOURCE[suivant.source] ?? "sa source" : "sa source"}, l&apos;écriture suivra.
+            </DialogDescription>
+          </DialogHeader>
+          {suivant && (
+            <div className="space-y-3">
+              <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 rounded-md border bg-slate-50 p-3 text-sm">
+                <dt className="text-muted-foreground">Date</dt>
+                <dd>{new Date(suivant.date).toLocaleDateString("fr-FR")}</dd>
+                <dt className="text-muted-foreground">Libellé</dt>
+                <dd className="break-words">{suivant.description}</dd>
+                <dt className="text-muted-foreground">Montant</dt>
+                <dd className="font-semibold">{formatEuro(suivant.montant)}</dd>
+                <dt className="text-muted-foreground">Client</dt>
+                <dd className="break-words">{suivant.client || "—"}</dd>
+              </dl>
+              {LIEN_SOURCE[suivant.source] && (
+                <Link href={LIEN_SOURCE[suivant.source]} className="inline-block text-sm text-teal-700 underline">
+                  Ouvrir la source
+                </Link>
+              )}
+              {CHAMPS_DE_SUIVI_SAISIS_VENTE.map((champ) => (
+                <div key={champ}>
+                  <Label htmlFor={`suivi-${champ}`}>{LIBELLE_CHAMP_SUIVI[champ]}</Label>
+                  {champ === "modeReglement" ? (
+                    <SelectNatif
+                      id={`suivi-${champ}`}
+                      name={champ}
+                      value={suiviForm[champ]}
+                      onChange={(e) => changerSuivi(champ, e.target.value)}
+                    >
+                      <option value="">Non renseigné</option>
+                      {MODES_REGLEMENT.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                      {/* Valeur ancienne hors liste : affichée telle quelle, jamais renvoyée sans changement. */}
+                      {suiviForm[champ] && !MODES_REGLEMENT.some((m) => m.value === suiviForm[champ]) && (
+                        <option value={suiviForm[champ]}>{suiviForm[champ]}</option>
+                      )}
+                    </SelectNatif>
+                  ) : champ === "notes" ? (
+                    <Textarea
+                      id={`suivi-${champ}`}
+                      name={champ}
+                      rows={3}
+                      maxLength={5000}
+                      value={suiviForm[champ]}
+                      onChange={(e) => changerSuivi(champ, e.target.value)}
+                    />
+                  ) : (
+                    <Input
+                      id={`suivi-${champ}`}
+                      name={champ}
+                      maxLength={50}
+                      value={suiviForm[champ]}
+                      onChange={(e) => changerSuivi(champ, e.target.value)}
+                    />
+                  )}
+                </div>
+              ))}
+              {erreurSuivi && (
+                <p role="alert" className="text-sm text-red-600">{erreurSuivi}</p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSuivant(null)} disabled={isSavingSuivi}>Annuler</Button>
+            <Button onClick={saveSuivi} disabled={isSavingSuivi}>
+              {isSavingSuivi && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {isSavingSuivi ? "Enregistrement..." : "Enregistrer"}
             </Button>
           </DialogFooter>
         </DialogContent>

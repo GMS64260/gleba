@@ -41,9 +41,15 @@ export function whereVentesRevenus(userId: string, debut: Date, fin: Date): Pris
   return { userId, date: { gte: debut, lte: fin } }
 }
 
+/**
+ * Statuts d'une facture qui n'est pas (ou plus) une vente : ni comptée dans les
+ * revenus, ni au compteur de ventes d'un client (`compterVentesParClient`).
+ */
+export const STATUTS_FACTURE_HORS_VENTES = ['annulee', 'brouillon']
+
 /** Factures comptées dans les revenus : ni brouillon ni annulée ; un avoir se déduit. */
 export function whereFacturesRevenus(userId: string, debut: Date, fin: Date): Prisma.FactureWhereInput {
-  return { userId, date: { gte: debut, lte: fin }, statut: { notIn: ['annulee', 'brouillon'] } }
+  return { userId, date: { gte: debut, lte: fin }, statut: { notIn: STATUTS_FACTURE_HORS_VENTES } }
 }
 
 export async function getKpiCompta(
