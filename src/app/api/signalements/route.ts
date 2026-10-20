@@ -7,9 +7,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { getActeurId } from '@/lib/exploitation/garde-session'
+import { getActeurId, getUserId } from '@/lib/exploitation/garde-session'
 import { AVIS_REF_TYPES, type AvisRefType } from '@/lib/avis/types'
 import { resolveEntreesSignalees } from '@/lib/signalements'
+import { estVisibleReferentiel } from '@/lib/referentiel-communaute'
 
 export async function POST(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -34,8 +35,10 @@ export async function POST(request: NextRequest) {
     // AUTRE membre : on ne signale ni le catalogue officiel Gleba, ni sa propre
     // entrée, ni une entrée inexistante/privée (sinon création d'entrées bidon
     // et contournement de l'idempotence — review #7/#8).
+    // L'entrée privée d'un autre compte répond comme une entrée inexistante :
+    // le 400 « pas partagée » confirmait son existence.
     const cible = (await resolveEntreesSignalees(refType, [refId])).get(refId)
-    if (!cible) {
+    if (!cible || !estVisibleReferentiel(cible, getUserId(session))) {
       return NextResponse.json({ error: 'Entrée introuvable.' }, { status: 404 })
     }
     if (cible.userId === null) {

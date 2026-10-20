@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { peutEditerReferentiel } from '@/lib/referentiel-communaute'
+import { masquerEntree, peutEditerReferentiel, whereReferentielCible } from '@/lib/referentiel-communaute'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -25,7 +25,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
     const body = await request.json()
 
-    const existing = await prisma.raceAnimale.findUnique({ where: { id } })
+    // Race privée d'un autre compte = race inexistante (404), jamais 403.
+    const existing = await prisma.raceAnimale.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
+    })
     if (!existing) {
       return NextResponse.json({ error: `Race "${id}" non trouvée` }, { status: 404 })
     }
@@ -51,7 +54,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const race = await prisma.raceAnimale.update({ where: { id }, data })
-    return NextResponse.json({ data: race })
+    return NextResponse.json({ data: masquerEntree(race, session!.user.id) })
   } catch (err: unknown) {
     if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
       return NextResponse.json({ error: 'Cette race existe déjà pour cette espèce' }, { status: 409 })
@@ -73,8 +76,8 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
 
-    const existing = await prisma.raceAnimale.findUnique({
-      where: { id },
+    const existing = await prisma.raceAnimale.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
       include: { _count: { select: { animaux: true } } },
     })
     if (!existing) {

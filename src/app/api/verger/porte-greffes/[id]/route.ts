@@ -10,7 +10,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
-import { peutEditerReferentiel } from "@/lib/referentiel-communaute"
+import {
+  masquerEntree,
+  peutEditerReferentiel,
+  whereReferentielCible,
+} from "@/lib/referentiel-communaute"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -24,7 +28,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
     const body = await request.json()
 
-    const existing = await prisma.porteGreffe.findUnique({ where: { id } })
+    // Entrée privée d'un autre compte = entrée inexistante (404), jamais 403.
+    const existing = await prisma.porteGreffe.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
+    })
     if (!existing) {
       return NextResponse.json(
         { error: `Porte-greffe "${id}" non trouvé` },
@@ -67,7 +74,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const porteGreffe = await prisma.porteGreffe.update({ where: { id }, data })
-    return NextResponse.json(porteGreffe)
+    return NextResponse.json(masquerEntree(porteGreffe, session!.user.id))
   } catch (err) {
     console.error("PUT /api/verger/porte-greffes/[id] error:", err)
     return NextResponse.json(
@@ -86,7 +93,10 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
 
-    const existing = await prisma.porteGreffe.findUnique({ where: { id } })
+    // Entrée privée d'un autre compte = entrée inexistante (404), jamais 403.
+    const existing = await prisma.porteGreffe.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
+    })
     if (!existing) {
       return NextResponse.json(
         { error: `Porte-greffe "${id}" non trouvé` },

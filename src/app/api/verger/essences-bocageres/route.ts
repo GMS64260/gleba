@@ -16,6 +16,7 @@ import type { Prisma } from "@prisma/client"
 import {
   visibiliteReferentiel,
   attributionCreation,
+  masquerEntree,
 } from "@/lib/referentiel-communaute"
 
 export async function GET(request: NextRequest) {
@@ -35,7 +36,9 @@ export async function GET(request: NextRequest) {
     orderBy: [{ nomCommun: "asc" }],
   })
 
-  return NextResponse.json({ data: essences, count: essences.length })
+  // Jamais l'id d'un autre compte : null (Gleba), le mien (perso) ou le marqueur.
+  const data = essences.map((e) => masquerEntree(e, session!.user.id))
+  return NextResponse.json({ data, count: data.length })
 }
 
 // POST — création (admin → Gleba officiel ; user → perso proposé/privé).

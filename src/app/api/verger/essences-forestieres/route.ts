@@ -15,6 +15,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import {
   visibiliteReferentiel,
   attributionCreation,
+  masquerEntree,
 } from "@/lib/referentiel-communaute"
 
 // GET — liste visible.
@@ -27,7 +28,9 @@ export async function GET() {
       where: visibiliteReferentiel(session!.user.id),
       orderBy: [{ nom: "asc" }],
     })
-    return NextResponse.json({ data: essences, count: essences.length })
+    // Jamais l'id d'un autre compte : null (Gleba), le mien (perso) ou le marqueur.
+    const data = essences.map((e) => masquerEntree(e, session!.user.id))
+    return NextResponse.json({ data, count: data.length })
   } catch (err) {
     console.error("GET /api/verger/essences-forestieres error:", err)
     return NextResponse.json(

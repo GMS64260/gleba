@@ -15,6 +15,8 @@ import {
   visibiliteReferentiel,
   attributionCreation,
   peutEditerReferentiel,
+  masquerEntree,
+  whereReferentielCible,
 } from '@/lib/referentiel-communaute'
 
 export async function GET(request: NextRequest) {
@@ -28,11 +30,14 @@ export async function GET(request: NextRequest) {
 
   // Visibilité catalogue communautaire : Gleba officiel (userId null) +
   // communauté (partagé) + mes propres races perso. On combine avec le filtre
-  // d'espèce existant via AND.
+  // d'espèce existant via AND. La règle cascade sur l'espèce parente, comme
+  // pour les variétés : une race dont l'espèce m'est invisible ne m'est pas
+  // visible (la réponse embarque le nom de l'espèce).
   const where = {
     AND: [
       especeAnimaleId ? { especeAnimaleId } : {},
       visibiliteReferentiel(userId),
+      { especeAnimale: visibiliteReferentiel(userId) },
     ],
   }
 
@@ -43,7 +48,11 @@ export async function GET(request: NextRequest) {
   })
 
   const statsMap = includeAvis ? await statsAvisPourRefs(prisma, 'RACE', races.map((r) => r.id)) : null
-  const data = statsMap ? races.map((r) => ({ ...r, avisStats: statsMap.get(r.id) })) : races
+  // Jamais l'id d'un autre compte : null (Gleba), le mien (perso) ou le marqueur.
+  const data = races.map((r) => ({
+    ...masquerEntree(r, userId),
+    ...(statsMap ? { avisStats: statsMap.get(r.id) } : {}),
+  }))
 
   return NextResponse.json({ data })
 }
@@ -100,8 +109,9 @@ export async function DELETE(request: NextRequest) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
 
-  const existing = await prisma.raceAnimale.findUnique({
-    where: { id },
+  // Race privée d'un autre compte = race inexistante (404), jamais 403.
+  const existing = await prisma.raceAnimale.findFirst({
+    where: whereReferentielCible(id, session!.user.id, isAdmin),
     include: { _count: { select: { animaux: true } } },
   })
   if (!existing) return NextResponse.json({ error: 'Race non trouvée' }, { status: 404 })

@@ -18,6 +18,7 @@ import { AVIS_REF_TYPES, type AvisRefType, type AvisNotable } from '@/lib/avis/t
 import { criteresKeys } from '@/lib/avis/criteres'
 import { calculerStats, moyenneGlobaleNotes, dispersionParTerroir, avisSchema } from '@/lib/avis/stats'
 import { rendementReel, badgeTerrain } from '@/lib/avis/data-driven'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 type RouteParams = { params: Promise<{ refType: string; refId: string }> }
 
@@ -25,19 +26,25 @@ function parseRefType(raw: string): AvisRefType | null {
   return (AVIS_REF_TYPES as string[]).includes(raw) ? (raw as AvisRefType) : null
 }
 
-/** Vérifie que l'objet noté existe (par type). RACE : Phase C. */
-async function refExiste(refType: AvisRefType, refId: string): Promise<boolean> {
+/**
+ * Vrai si l'objet noté existe ET que le compte le voit (catalogue Gleba,
+ * partagé, ou à lui). L'entrée privée d'un autre compte répond comme une
+ * entrée inexistante : ni ses avis ne sortent, ni on ne peut la noter.
+ */
+async function refVisible(refType: AvisRefType, refId: string, userId: string): Promise<boolean> {
+  const where = { id: refId, AND: [visibiliteReferentiel(userId)] }
+  const select = { id: true }
   switch (refType) {
     case 'VARIETE':
-      return !!(await prisma.variete.findUnique({ where: { id: refId }, select: { id: true } }))
+      return !!(await prisma.variete.findFirst({ where, select }))
     case 'PORTE_GREFFE':
-      return !!(await prisma.porteGreffe.findUnique({ where: { id: refId }, select: { id: true } }))
+      return !!(await prisma.porteGreffe.findFirst({ where, select }))
     case 'ESPECE':
-      return !!(await prisma.espece.findUnique({ where: { id: refId }, select: { id: true } }))
+      return !!(await prisma.espece.findFirst({ where, select }))
     case 'RACE':
-      return !!(await prisma.raceAnimale.findUnique({ where: { id: refId }, select: { id: true } }))
+      return !!(await prisma.raceAnimale.findFirst({ where, select }))
     case 'ITP':
-      return !!(await prisma.iTP.findUnique({ where: { id: refId }, select: { id: true } }))
+      return !!(await prisma.iTP.findFirst({ where, select }))
   }
 }
 
@@ -60,16 +67,21 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     const refId = decodeURIComponent(rawId)
     const userId = getActeurId(session)
 
-    const avis = await prisma.avis.findMany({
-      where: { refType, refId },
-      include: { user: { select: { id: true, name: true } } },
-      orderBy: { updatedAt: 'desc' },
-    })
+    // Entrée invisible du compte (privée d'un autre) : même réponse qu'une
+    // entrée sans avis, sans lire ses avis ni sa production réelle.
+    const visible = await refVisible(refType, refId, getUserId(session))
+    const avis = visible
+      ? await prisma.avis.findMany({
+          where: { refType, refId },
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { updatedAt: 'desc' },
+        })
+      : []
 
     const notables = avis.map(toNotable)
     const stats = calculerStats(notables, moyenneGlobaleNotes(notables), criteresKeys(refType))
     const dispersionTerroir = dispersionParTerroir(notables)
-    const reel = (await rendementReel(prisma, refType, [refId])).get(refId)
+    const reel = visible ? (await rendementReel(prisma, refType, [refId])).get(refId) : undefined
 
     const avisPublics = avis.map((a) => ({
       id: a.id,
@@ -115,7 +127,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const userId = getActeurId(session)
     const tenantId = getUserId(session)
 
-    if (!(await refExiste(refType, refId))) {
+    if (!(await refVisible(refType, refId, tenantId))) {
       return NextResponse.json({ error: 'Objet introuvable' }, { status: 404 })
     }
 

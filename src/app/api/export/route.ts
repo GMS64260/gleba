@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { masquerEntree, visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
 import { exporterDonneesTabulaires } from '@/lib/export-tabulaire'
 
@@ -105,9 +105,11 @@ export async function GET(request: NextRequest) {
       // Référentiels globaux
       familles,
       fournisseurs,
-      especes,
-      varietes,
-      itps,
+      // Revue 2026-10-20 — l'auteur d'une entrée partagée par un autre compte
+      // sort sous le marqueur « communaute », jamais son id.
+      especes: especes.map((e) => masquerEntree(e, userId)),
+      varietes: varietes.map((v) => masquerEntree(v, userId)),
+      itps: itps.map((i) => masquerEntree(i, userId)),
       rotations,
       rotationDetails,
       fertilisants,
