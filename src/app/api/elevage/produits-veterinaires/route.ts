@@ -8,9 +8,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { resoudreDelaisVeterinaires } from '@/lib/elevage/delais-veterinaires'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 export async function GET(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
 
   const { searchParams } = new URL(request.url)
@@ -29,23 +30,25 @@ export async function GET(request: NextRequest) {
   if (codeEspece) where.especesCibles = { has: codeEspece }
   if (autoriseAb !== null && autoriseAb !== '') where.autoriseAB = autoriseAb === 'true'
 
+  // Espèce visible du compte seulement : le profil privé d'un autre compte
+  // répond comme un id inconnu (délais du produit, `meta.especeId` null).
+  const espece = especeId
+    ? await prisma.especeAnimale.findFirst({
+        where: { id: especeId, AND: [visibiliteReferentiel(session!.user.id)] },
+        select: { id: true, nom: true, categorieReglementaire: true },
+      })
+    : null
+
   const produits = await prisma.produitVeterinaire.findMany({
     where,
     orderBy: { nom: 'asc' },
     take: 200,
     include: {
-      delaisParEspece: especeId
-        ? { where: { especeAnimaleId: especeId } }
+      delaisParEspece: espece
+        ? { where: { especeAnimaleId: espece.id } }
         : false,
     },
   })
-
-  const espece = especeId
-    ? await prisma.especeAnimale.findUnique({
-        where: { id: especeId },
-        select: { id: true, nom: true, categorieReglementaire: true },
-      })
-    : null
 
   return NextResponse.json({
     data: produits.map((produit) => {

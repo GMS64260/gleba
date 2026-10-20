@@ -9,7 +9,12 @@ import prisma from '@/lib/prisma'
 import { nomEtCleReferentiel } from '@/lib/normalize'
 import { updateVarieteSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
-import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import {
+  masquerEntree,
+  peutEditerReferentiel,
+  visibiliteReferentiel,
+  whereReferentielCible,
+} from '@/lib/referentiel-communaute'
 import { enregistrerStockVariete, separerStockVariete, serialiserVariete } from '@/lib/stocks/stock-variete'
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -36,9 +41,10 @@ export async function PUT(
       )
     }
 
-    // Vérifier existence
-    const existing = await prisma.variete.findUnique({
-      where: { id },
+    // Vérifier existence : la variété privée d'un autre compte répond comme
+    // une variété inexistante (404), jamais 403.
+    const existing = await prisma.variete.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
     })
 
     if (!existing) {
@@ -49,7 +55,7 @@ export async function PUT(
     }
 
     // Seul l'auteur d'une variété perso (ou un admin) peut la modifier.
-    if (!isAdmin && existing.userId !== session!.user.id) {
+    if (!peutEditerReferentiel(existing, session!.user.id, isAdmin)) {
       return NextResponse.json(
         { error: 'Vous ne pouvez modifier que vos propres variétés.' },
         { status: 403 }
@@ -151,7 +157,13 @@ export async function PUT(
       })
       // Rend le stock de l'appelant tel qu'il est après l'appel, écrit ou non.
       const userStock = await enregistrerStockVariete(tx, session!.user.id, id, stock)
-      return serialiserVariete(maj, userStock)
+      return serialiserVariete(
+        {
+          ...masquerEntree(maj, session!.user.id),
+          espece: masquerEntree(maj.espece, session!.user.id),
+        },
+        userStock,
+      )
     })
 
     return NextResponse.json(variete)
@@ -176,9 +188,9 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    // Vérifier existence et dépendances
-    const variete = await prisma.variete.findUnique({
-      where: { id },
+    // Vérifier existence et dépendances (variété privée d'un autre compte = 404)
+    const variete = await prisma.variete.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
       include: {
         _count: {
           select: {
@@ -196,7 +208,7 @@ export async function DELETE(
     }
 
     // Seul l'auteur d'une variété perso (ou un admin) peut la supprimer.
-    if (!isAdmin && variete.userId !== session!.user.id) {
+    if (!peutEditerReferentiel(variete, session!.user.id, isAdmin)) {
       return NextResponse.json(
         { error: 'Vous ne pouvez supprimer que vos propres variétés.' },
         { status: 403 }

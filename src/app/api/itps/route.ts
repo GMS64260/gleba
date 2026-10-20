@@ -10,7 +10,7 @@ import { createITPSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
-import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
+import { visibiliteReferentiel, attributionCreation, masquerEntree } from '@/lib/referentiel-communaute'
 import { normalizeReferentielKey } from '@/lib/normalize'
 import {
   conflitNomItp,
@@ -194,8 +194,13 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Le calage ci-dessus lit l'auteur réel ; la réponse, elle, ne porte
+    // jamais l'id d'un autre compte (ni sur l'ITP ni sur son espèce).
     return NextResponse.json({
-      data,
+      data: data.map((itp) => ({
+        ...masquerEntree(itp, userId),
+        espece: itp.espece ? masquerEntree(itp.espece, userId) : itp.espece,
+      })),
       total,
       page,
       pageSize,
@@ -329,6 +334,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ...itp,
+        espece: itp.espece ? masquerEntree(itp.espece, session!.user.id) : itp.espece,
         ...(doublon
           ? { doublonPotentiel: { id: doublon.id, nom: doublon.nom ?? doublon.id } }
           : {}),

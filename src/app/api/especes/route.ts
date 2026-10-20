@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ESPECE_TYPES_VERGER } from '@/lib/validations/espece'
 import prisma from '@/lib/prisma'
 import { createEspeceSchema } from '@/lib/validations'
-import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
+import { visibiliteReferentiel, attributionCreation, masquerEntree } from '@/lib/referentiel-communaute'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { displayReferentielName, normalizeReferentielKey } from '@/lib/normalize'
@@ -168,7 +168,9 @@ export async function GET(request: NextRequest) {
           famille: true,
           _count: {
             select: {
-              varietes: true,
+              // Variétés que le compte voit : le total brut comptait aussi les
+              // variétés privées des autres comptes.
+              varietes: { where: visibiliteReferentiel(me) },
               cultures: { where: cultureCountWhere },
             },
           },
@@ -197,7 +199,7 @@ export async function GET(request: NextRequest) {
     const data = appliquerSurcharges(
       avecAvis,
       await chargerSurchargesRendement(me, avecAvis.map((e) => e.id)),
-    )
+    ).map((e) => masquerEntree(e, me))
 
     return NextResponse.json({
       data,

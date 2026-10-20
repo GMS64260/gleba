@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { ESPECE_TYPES_VERGER } from "@/lib/validations/espece"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 
 type Onglet = "especes" | "porte-greffes" | "bioagresseurs" | "essences"
 
@@ -27,8 +28,12 @@ function toCsv(headers: string[], rows: unknown[][]): string {
 }
 
 export async function GET(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
+  // Revue 2026-10-20 — l'export ne sort que ce que l'onglet Référentiel montre
+  // (catalogue Gleba, communauté, entrées du compte) : il listait aussi les
+  // entrées privées des autres comptes, notes comprises.
+  const vis = visibiliteReferentiel(session!.user.id)
 
   const onglet = (request.nextUrl.searchParams.get("onglet") || "especes") as Onglet
 
@@ -37,7 +42,7 @@ export async function GET(request: NextRequest) {
 
   if (onglet === "especes") {
     const data = await prisma.espece.findMany({
-      where: { type: { in: [...ESPECE_TYPES_VERGER] } },
+      where: { AND: [{ type: { in: [...ESPECE_TYPES_VERGER] } }, vis] },
       select: { id: true, type: true, familleId: true, nomLatin: true, rendement: true, uniteRendement: true, besoinEau: true, vivace: true },
       orderBy: { id: "asc" },
     })
@@ -60,6 +65,7 @@ export async function GET(request: NextRequest) {
     filename = "referentiel-especes-verger.csv"
   } else if (onglet === "porte-greffes") {
     const data = await prisma.porteGreffe.findMany({
+      where: vis,
       select: {
         nom: true,
         vigueur: true,
@@ -67,7 +73,7 @@ export async function GET(request: NextRequest) {
         sensibilites: true,
         drageonnement: true,
         notes: true,
-        especes: { select: { especeId: true } },
+        especes: { where: { espece: vis }, select: { especeId: true } },
       },
       orderBy: { nom: "asc" },
     })
@@ -116,6 +122,7 @@ export async function GET(request: NextRequest) {
     filename = "referentiel-bioagresseurs.csv"
   } else if (onglet === "essences") {
     const data = await prisma.essenceBocagere.findMany({
+      where: vis,
       orderBy: { nomCommun: "asc" },
     })
     csv = toCsv(

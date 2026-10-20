@@ -7,6 +7,7 @@ import prisma from '@/lib/prisma'
 import { getISOWeek, getISOWeekYear } from 'date-fns'
 import { calculerDateDepuisSemaine, dateSemaineChrono } from './assistant-helpers'
 import { whereItpUtilisable } from './itp-acces'
+import { visibiliteReferentiel } from './referentiel-communaute'
 import { alertesAssociations } from './associations-alertes'
 import { appliquerDecalageItp, decalageItpPourLecteur } from './calendrier-climat'
 import { moisDepuisSemaine, semaineSemisEffective } from './cultures/dates-itp'
@@ -1038,11 +1039,14 @@ export async function getBesoinsSemences(
   const especeIdsForFallback = [
     ...new Set(culturesPrevues.map(c => c.especeId).filter(Boolean) as string[]),
   ]
+  // Revue 2026-10-20 — ITP visibles du compte seulement : l'itinéraire privé
+  // d'un autre compte ne prête pas ses rangs à ce calcul.
   const itpsForFallback = await prisma.iTP.findMany({
     where: {
       especeId: { in: especeIdsForFallback },
       nbRangs: { not: null },
       espacement: { not: null },
+      AND: [visibiliteReferentiel(userId)],
     },
     select: { especeId: true, nbRangs: true, espacement: true },
     orderBy: { dureeCulture: 'desc' },
@@ -1259,7 +1263,13 @@ export async function getBesoinsPlants(
   // tombait à 0 plants alors qu'elle a 9,6 m² × densité 2/m² = 19).
   const especeIds = [...new Set(culturesAvecPlantation.map(c => c.especeId!).filter(Boolean))]
   const itpsParEspece = await prisma.iTP.findMany({
-    where: { especeId: { in: especeIds }, nbRangs: { not: null }, espacement: { not: null } },
+    where: {
+      especeId: { in: especeIds },
+      nbRangs: { not: null },
+      espacement: { not: null },
+      // ITP visibles du compte seulement (revue 2026-10-20).
+      AND: [visibiliteReferentiel(userId)],
+    },
     select: { especeId: true, nbRangs: true, espacement: true },
     orderBy: { dureeCulture: 'desc' }, // ITP le plus long = plus représentatif
   })

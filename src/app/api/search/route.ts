@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 const TAKE = 8
 
@@ -46,8 +47,16 @@ export async function GET(request: NextRequest) {
       orderBy: { id: 'desc' },
       select: { id: true, especeId: true, varieteId: true, plancheId: true, annee: true, espece: { select: { nom: true } }, variete: { select: { nom: true } } },
     }),
+    // Variétés que le compte voit, comme GET /api/varietes (règle cascadée sur
+    // l'espèce) : la recherche listait les variétés privées des autres comptes.
     prisma.variete.findMany({
-      where: { OR: [{ id: like }, { nomNormalise: like }] },
+      where: {
+        AND: [
+          { OR: [{ id: like }, { nomNormalise: like }] },
+          visibiliteReferentiel(userId),
+          { espece: visibiliteReferentiel(userId) },
+        ],
+      },
       take: TAKE,
       orderBy: { id: 'asc' },
       select: { id: true, nom: true, nomNormalise: true, especeId: true },

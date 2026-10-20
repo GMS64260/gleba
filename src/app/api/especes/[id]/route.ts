@@ -10,7 +10,12 @@ import prisma from '@/lib/prisma'
 import { updateEspeceSchema } from '@/lib/validations'
 import { nomEtCleReferentiel } from '@/lib/normalize'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
-import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import {
+  masquerEntree,
+  peutEditerReferentiel,
+  visibiliteReferentiel,
+  whereReferentielCible,
+} from '@/lib/referentiel-communaute'
 import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { type UniteQuantite } from '@/lib/recolte/projection'
 import { arrondirQuantites, ajouterQuantite, type QuantiteParUnite } from '@/lib/recolte/quantites'
@@ -54,10 +59,12 @@ export async function GET(
           },
         },
         itps: { where: visibiliteReferentiel(userId) },
+        // Compteurs du compte : le total brut agrégeait les cultures et les
+        // récoltes de tous les comptes (« Cultures » de la fiche verger).
         _count: {
           select: {
-            cultures: true,
-            recoltes: true,
+            cultures: { where: { userId } },
+            recoltes: { where: { userId } },
           },
         },
       },
@@ -102,8 +109,11 @@ export async function GET(
       ),
     )
 
+    // Aucun id d'un autre compte ne sort (espèce, variétés, itinéraires).
     return NextResponse.json({
-      ...espece,
+      ...masquerEntree(espece, userId),
+      varietes: espece.varietes.map((v) => masquerEntree(v, userId)),
+      itps: espece.itps.map((i) => masquerEntree(i, userId)),
       monRendement: monRendement ?? null,
       rendementEffectif: rendementEffectif(espece, monRendement),
       realiseAnnee: { annee, parUnite: realiseParUnite },
@@ -142,9 +152,10 @@ export async function PUT(
       )
     }
 
-    // Vérifier existence
-    const existing = await prisma.espece.findUnique({
-      where: { id },
+    // Vérifier existence : l'espèce privée d'un autre compte répond comme une
+    // espèce inexistante (404), jamais 403.
+    const existing = await prisma.espece.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
     })
 
     if (!existing) {
@@ -155,7 +166,7 @@ export async function PUT(
     }
 
     // Seul l'auteur d'une espèce perso (ou un admin) peut la modifier.
-    if (!isAdmin && existing.userId !== session!.user.id) {
+    if (!peutEditerReferentiel(existing, session!.user.id, isAdmin)) {
       return NextResponse.json(
         { error: 'Vous ne pouvez modifier que vos propres espèces.' },
         { status: 403 }
@@ -222,7 +233,7 @@ export async function PUT(
       },
     })
 
-    return NextResponse.json(espece)
+    return NextResponse.json(masquerEntree(espece, session!.user.id))
   } catch (error) {
     console.error('PUT /api/especes/[id] error:', error)
     return NextResponse.json(
@@ -244,9 +255,9 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    // Vérifier existence et dépendances
-    const espece = await prisma.espece.findUnique({
-      where: { id },
+    // Vérifier existence et dépendances (espèce privée d'un autre compte = 404)
+    const espece = await prisma.espece.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
       include: {
         _count: {
           select: {
@@ -273,7 +284,7 @@ export async function DELETE(
     }
 
     // Seul l'auteur d'une espèce perso (ou un admin) peut la supprimer.
-    if (!isAdmin && espece.userId !== session!.user.id) {
+    if (!peutEditerReferentiel(espece, session!.user.id, isAdmin)) {
       return NextResponse.json(
         { error: 'Vous ne pouvez supprimer que vos propres espèces.' },
         { status: 403 }

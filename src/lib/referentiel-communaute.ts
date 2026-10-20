@@ -27,6 +27,50 @@ export function visibiliteReferentiel(userId: string) {
   return { OR: [{ userId: null }, { partageCommunaute: true }, { userId }] }
 }
 
+/**
+ * Miroir en mémoire de `visibiliteReferentiel`, pour une entrée déjà lue par
+ * un chemin qui ne peut pas filtrer en base (résolution partagée avec
+ * l'administration, par exemple).
+ */
+export function estVisibleReferentiel(entree: EntreeReferentiel, userId: string): boolean {
+  return entree.userId == null || entree.partageCommunaute === true || entree.userId === userId
+}
+
+/**
+ * Fragment `where` d'une entrée visée par son id pour la modifier ou la
+ * supprimer. Un membre n'atteint que ce qu'il voit : l'entrée privée d'un
+ * autre compte répond comme une entrée inexistante (404), jamais 403, qui
+ * confirmerait son existence. Un admin atteint toute entrée (modération des
+ * signalements). Le droit d'écrire reste `peutEditerReferentiel`.
+ */
+export function whereReferentielCible(id: string, userId: string, isAdmin: boolean) {
+  return isAdmin ? { id } : { id, AND: [visibiliteReferentiel(userId)] }
+}
+
+/**
+ * Marqueur d'origine d'une entrée créée par un AUTRE compte. Aucune réponse
+ * d'API ne porte l'id d'un autre compte (revue du 2026-10-20 : l'id de
+ * l'auteur d'un porte-greffe communautaire servait d'`operateurId` pour faire
+ * sortir un nom tiers au registre phyto). Les écrans n'ont besoin que de
+ * l'origine, que `origineReferentiel` lit aussi bien sur le marqueur.
+ */
+export const PROPRIETAIRE_COMMUNAUTE = 'communaute'
+
+/** `userId` d'une entrée tel qu'il sort d'une API : null (Gleba), l'id du compte courant (perso), sinon le marqueur. */
+export function masquerProprietaire(
+  userId: string | null | undefined,
+  currentUserId: string
+): string | null {
+  if (userId == null) return null
+  return userId === currentUserId ? userId : PROPRIETAIRE_COMMUNAUTE
+}
+
+/** Copie de l'entrée dont le `userId` ne nomme jamais un autre compte. */
+export function masquerEntree<T extends { userId?: string | null }>(entree: T, currentUserId: string): T {
+  if (!('userId' in entree)) return entree
+  return { ...entree, userId: masquerProprietaire(entree.userId, currentUserId) }
+}
+
 /** Origine d'une entrée vis-à-vis de l'utilisateur courant. */
 export function origineReferentiel(
   entree: EntreeReferentiel,

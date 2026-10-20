@@ -18,7 +18,7 @@ import {
   distanceMetres,
   DISTANCE_MAX_POLLINISATION_M,
 } from "@/lib/pollinisation"
-import { normalizeVarieteName } from "@/lib/normalize"
+import { choisirVarieteArbre, whereVarietesCandidates } from "@/lib/verger/variete-arbre"
 
 export async function GET(_request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -32,6 +32,7 @@ export async function GET(_request: NextRequest) {
       id: true,
       nom: true,
       espece: true,
+      especeId: true,
       variete: true,
       gpsLat: true,
       gpsLng: true,
@@ -40,24 +41,30 @@ export async function GET(_request: NextRequest) {
     },
   })
 
-  // Hydrater chaque variété via la table Variete (par nomNormalise approximatif)
-  // Pour rester simple, on indexe en mémoire par nom normalisé en lowercase.
-  // `nomNormalise` est désaccentué et sans tirets : il faut requêter et
-  // indexer avec la même normalisation (normalizeVarieteName), sinon les
-  // variétés accentuées ou à tirets ne matchent jamais.
-  const noms = Array.from(new Set(arbres.map((a) => a.variete).filter(Boolean) as string[]))
-  const varietes = noms.length
+  // Variété du référentiel de chaque arbre (ploïdie, groupe) : même
+  // résolution que la matrice de pollinisation (`variete-arbre.ts`), id ou
+  // libellé dans l'espèce de l'arbre, parmi les variétés VISIBLES du compte.
+  // Revue 2026-10-20 — la lecture par seul nom normalisé, sans visibilité,
+  // prêtait à un arbre la ploïdie d'une variété privée d'un autre compte.
+  const candidates = arbres.some((a) => a.variete?.trim())
     ? await prisma.variete.findMany({
-        where: { nomNormalise: { in: noms.map((n) => normalizeVarieteName(n)) } },
-        select: { nomNormalise: true, ploidie: true, groupePollinisation: true },
+        where: whereVarietesCandidates(arbres, session.user.id),
+        select: {
+          id: true,
+          nom: true,
+          nomNormalise: true,
+          especeId: true,
+          userId: true,
+          ploidie: true,
+          groupePollinisation: true,
+        },
       })
     : []
-  const idxVar = new Map(varietes.map((v) => [v.nomNormalise, v]))
 
   // Enrichir chaque arbre avec ploidie/groupe
   type EnrichedArbre = (typeof arbres)[number] & { ploidie: string | null; groupePollinisation: string | null }
   const enriched: EnrichedArbre[] = arbres.map((a) => {
-    const v = a.variete ? idxVar.get(normalizeVarieteName(a.variete)) : undefined
+    const v = choisirVarieteArbre(a, candidates, session.user.id)
     return { ...a, ploidie: v?.ploidie ?? null, groupePollinisation: v?.groupePollinisation ?? null }
   })
 
