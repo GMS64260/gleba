@@ -10,11 +10,25 @@
  * observations Santé du verger + opérations d'arbres de type traitement
  * (QA cmsoghh2b — le registre verger les affiche, le registre global les
  * omettait).
+ *
+ * QA cmvgeltj1 (2026-10-20) — surface, ZNT, météo et applicateur sont projetés
+ * depuis les colonnes que chaque formulaire écrit réellement
+ * (`projection-phyto.ts`), et la conformité suit une seule règle pour les
+ * interventions et opérations d'arbre (`champsManquantsRegistre`), et les
+ * observations santé selon la règle de leur saisie
+ * (`champsManquantsObservationPhyto`).
  */
 
 import prisma from '@/lib/prisma'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
 import { numAMMValide } from '@/lib/tracabilite/amm'
+import { champsManquantsObservationPhyto } from '@/lib/tracabilite/conformite-observation-phyto'
+import {
+  applicateurPhyto,
+  libelleMeteoPhyto,
+  operateurPhyto,
+  surfaceRegistreM2,
+} from '@/lib/tracabilite/projection-phyto'
 
 /**
  * Conformité du numéro d'AMM au registre : absent → « numAMM » manquant ;
@@ -24,6 +38,29 @@ import { numAMMValide } from '@/lib/tracabilite/amm'
 function controlerNumAMM(numAMM: string | null | undefined, champsMissing: string[]) {
   if (!numAMM) champsMissing.push('numAMM')
   else if (!numAMMValide(numAMM)) champsMissing.push('numAMM invalide')
+}
+
+/**
+ * Champs obligatoires manquants d'une intervention ou d'une opération d'arbre.
+ * Les observations santé du verger suivent la règle de leur saisie
+ * (`champsManquantsObservationPhyto`, conformite-observation-phyto.ts).
+ */
+function champsManquantsRegistre(ligne: {
+  produit: string | null | undefined
+  numAMM: string | null | undefined
+  doseAppliquee: number | null | undefined
+  surfaceM2: number | null
+  dar: number | null | undefined
+  localise: boolean
+}): string[] {
+  const champsMissing: string[] = []
+  if (!ligne.produit) champsMissing.push('produitPhyto')
+  controlerNumAMM(ligne.numAMM, champsMissing)
+  if (!ligne.doseAppliquee) champsMissing.push('doseAppliquee')
+  if (!ligne.surfaceM2) champsMissing.push('surfaceTraitee')
+  if (ligne.dar === null || ligne.dar === undefined) champsMissing.push('dar')
+  if (!ligne.localise) champsMissing.push('culture/parcelle')
+  return champsMissing
 }
 
 /**
@@ -156,13 +193,15 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       const numAMMRetenu = ref?.amm || intervention.numAMM || null
 
       // Detecter les champs manquants obligatoires
-      const champsMissing: string[] = []
-      if (!intervention.produitPhyto) champsMissing.push('produitPhyto')
-      controlerNumAMM(numAMMRetenu, champsMissing)
-      if (!intervention.doseAppliquee) champsMissing.push('doseAppliquee')
-      if (!intervention.surfaceTraitee) champsMissing.push('surfaceTraitee')
-      if (intervention.dar === null || intervention.dar === undefined) champsMissing.push('dar')
-      if (!cultureNom && !plancheNom) champsMissing.push('culture/parcelle')
+      const surfaceM2 = surfaceRegistreM2(intervention)
+      const champsMissing = champsManquantsRegistre({
+        produit: intervention.produitPhyto,
+        numAMM: numAMMRetenu,
+        doseAppliquee: intervention.doseAppliquee,
+        surfaceM2,
+        dar: intervention.dar,
+        localise: Boolean(cultureNom || plancheNom),
+      })
 
       const produitNom = ref?.nomCommercial ?? intervention.produitPhyto ?? null
       const classification = ref?.classification ?? classifierProduitHeuristique(produitNom)
@@ -184,7 +223,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         numAMM: numAMMRetenu,
         doseAppliquee: intervention.doseAppliquee || null,
         uniteDose: intervention.uniteDose || null,
-        surfaceTraitee: intervention.surfaceTraitee || null,
+        surfaceTraitee: surfaceM2,
         volumeBouillieLHa: intervention.volumeBouillieLHa ?? null,
         temperatureC: intervention.temperatureC ?? null,
         ventKmh: intervention.ventKmh ?? null,
@@ -195,9 +234,9 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         // stockée, mais n'était pas restituée à l'écran (seulement à l'export).
         zntDistanceM: intervention.zntDistanceM ?? null,
         zntRespectee: intervention.zntRespectee ?? null,
-        conditionsMeteo: intervention.conditionsMeteo || null,
-        applicateur: intervention.user.name || intervention.user.email,
-        operateurNom: intervention.operateur?.name || intervention.operateur?.email || null,
+        conditionsMeteo: libelleMeteoPhyto(intervention),
+        applicateur: applicateurPhyto(intervention),
+        operateurNom: operateurPhyto(intervention),
         certiphytoNum: intervention.certiphytoNum ?? null,
         certiphytoValidite: intervention.certiphytoValidite?.toISOString() ?? null,
         justification: intervention.justification ?? null,
@@ -234,10 +273,13 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
   })
   for (const o of observations) {
     const produitNom = o.produit ?? null
-    const champsMissing: string[] = []
-    if (!o.produit) champsMissing.push('produitPhyto')
-    controlerNumAMM(o.numAMM, champsMissing)
-    if (o.doseAppliquee == null) champsMissing.push('doseAppliquee')
+    // QA cmvgeltj1 — le formulaire du verger saisit la surface en hectares.
+    const surfaceM2 = surfaceRegistreM2(o)
+    // Revue du 2026-10-20 — même exigence que la saisie (POST/PUT
+    // /api/arbres/observations) : champs réglementaires d'une méthode
+    // chimique ; ailleurs, seule la forme d'une AMM saisie est contrôlée.
+    const champsMissing = champsManquantsObservationPhyto(o).map((champ) => champ.cle)
+    if (o.numAMM && !numAMMValide(o.numAMM)) champsMissing.push('numAMM invalide')
     entries.push({
       id: 1_000_000_000 + o.id, // évite la collision d'id avec les interventions
       date: o.date.toISOString(),
@@ -254,18 +296,18 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       numAMM: o.numAMM || null,
       doseAppliquee: o.doseAppliquee || null,
       uniteDose: o.uniteDose || null,
-      surfaceTraitee: null, // observations en ha — non additionnées au total m²
+      surfaceTraitee: surfaceM2,
       volumeBouillieLHa: o.volumeBouillieLHa ?? null,
       temperatureC: o.temperatureC ?? null,
       ventKmh: o.ventKmh ?? null,
       hygrometriePct: o.hygrometriePct ?? null,
       dar: o.dar ?? null,
       delaiReentree: null,
-      zntDistanceM: null,
-      zntRespectee: null,
-      conditionsMeteo: null,
-      applicateur: o.user.name || o.user.email,
-      operateurNom: o.operateur?.name || o.operateur?.email || null,
+      zntDistanceM: o.zntDistanceM ?? null,
+      zntRespectee: o.zntRespectee ?? null,
+      conditionsMeteo: libelleMeteoPhyto(o),
+      applicateur: applicateurPhyto(o),
+      operateurNom: operateurPhyto(o),
       certiphytoNum: o.certiphytoNum ?? null,
       certiphytoValidite: null,
       justification: o.traitement ?? null,
@@ -302,10 +344,15 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
   })
   for (const op of operations) {
     const produitNom = op.produit ?? null
-    const champsMissing: string[] = []
-    if (!op.produit) champsMissing.push('produitPhyto')
-    champsMissing.push('numAMM') // champ absent du modèle OperationArbre
-    if (op.quantite == null) champsMissing.push('doseAppliquee')
+    // AMM, surface et DAR sont absents du modèle OperationArbre : toujours manquants.
+    const champsMissing = champsManquantsRegistre({
+      produit: op.produit,
+      numAMM: null,
+      doseAppliquee: op.quantite,
+      surfaceM2: null,
+      dar: null,
+      localise: Boolean(op.arbre?.nom),
+    })
     entries.push({
       id: 2_000_000_000 + op.id, // évite la collision d'id avec interventions et observations
       date: op.date.toISOString(),
@@ -331,9 +378,9 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       delaiReentree: null,
       zntDistanceM: null,
       zntRespectee: null,
-      conditionsMeteo: null,
-      applicateur: op.user.name || op.user.email,
-      operateurNom: op.operateur?.name || op.operateur?.email || null,
+      conditionsMeteo: libelleMeteoPhyto(op),
+      applicateur: applicateurPhyto(op),
+      operateurNom: operateurPhyto(op),
       certiphytoNum: null,
       certiphytoValidite: null,
       justification: null,

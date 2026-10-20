@@ -8,6 +8,12 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { listerObservationsSante } from "@/lib/observations-sante"
 import { MESSAGE_AMM_INVALIDE, numAMMValide } from "@/lib/tracabilite/amm"
+import { notesAvecOperateur } from "@/lib/tracabilite/projection-phyto"
+import { resoudreOperateurExploitation } from "@/lib/tracabilite/operateur-exploitation"
+import {
+  MESSAGE_CHAMPS_REGLEMENTAIRES,
+  champsManquantsObservationPhyto,
+} from "@/lib/tracabilite/conformite-observation-phyto"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -61,46 +67,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: MESSAGE_AMM_INVALIDE }, { status: 400 })
     }
 
-    // DEV3 audit Marc — Bloquant #1
-    // Validation des champs réglementaires obligatoires pour méthodes
-    // chimiques (chimique_conventionnel, chimique_cuivre).
-    const isChimique =
-      body.methodeTraitement === "chimique_conventionnel" ||
-      body.methodeTraitement === "chimique_cuivre" ||
-      body.methodeTraitement === "chimique"
-    if (isChimique) {
-      const manquants: string[] = []
-      if (!body.numAMM) manquants.push("N° AMM")
-      if (body.surfaceTraiteeHa == null) manquants.push("Surface traitée (ha)")
-      if (body.volumeBouillieLHa == null && body.volumeBouillieLTotal == null)
-        manquants.push("Volume de bouillie")
-      if (body.temperatureC == null) manquants.push("Température (°C)")
-      if (body.ventKmh == null) manquants.push("Vent (km/h)")
-      if (body.hygrometriePct == null) manquants.push("Hygrométrie (%)")
-      if (body.pluie24h == null) manquants.push("Pluie ±24h")
-      if (!body.certiphytoNum) manquants.push("N° Certiphyto opérateur")
-      if (body.zntRespectee == null) manquants.push("ZNT cours d'eau")
-      if (manquants.length > 0) {
-        return NextResponse.json(
-          {
-            error:
-              "Champs réglementaires manquants (arrêté du 4 mai 2017 modifié) : " +
-              manquants.join(", "),
-            manquants,
-          },
-          { status: 400 }
-        )
+    // DEV3 audit Marc — Bloquant #1, revue cmvgeltj1 (2026-10-20) : champs
+    // réglementaires d'une méthode chimique, même liste que la conformité de
+    // la ligne au registre général (conformite-observation-phyto.ts).
+    const manquants = champsManquantsObservationPhyto(body).map((champ) => champ.libelle)
+    if (manquants.length > 0) {
+      return NextResponse.json(
+        { error: MESSAGE_CHAMPS_REGLEMENTAIRES + manquants.join(", "), manquants },
+        { status: 400 },
+      )
+    }
+
+    // Parcelle du traitement : clé étrangère revalidée en appartenance (son nom
+    // sort au registre phytosanitaire).
+    const parcelleId = body.parcelleId ? String(body.parcelleId) : null
+    if (parcelleId) {
+      const parcelle = await prisma.parcelleGeo.findFirst({
+        where: { id: parcelleId, userId: session!.user.id },
+        select: { id: true },
+      })
+      if (!parcelle) {
+        return NextResponse.json({ error: "Données invalides — parcelleId : parcelle non trouvée." }, { status: 400 })
       }
     }
 
-    let operateurId: string | null = null
-    if (body.operateurId) {
-      const op = await prisma.user.findUnique({
-        where: { id: String(body.operateurId) },
-        select: { id: true },
-      })
-      operateurId = op?.id ?? null
+    // Revue cmvgeltj1 — l'opérateur désigné sort en Applicateur au registre :
+    // titulaire ou membre de l'exploitation seulement, sinon refus nommé.
+    const operateur = await resoudreOperateurExploitation(session!.user.id, body.operateurId)
+    if ("refus" in operateur) {
+      return NextResponse.json({ error: operateur.refus }, { status: 400 })
     }
+    const operateurId = operateur.operateurId
 
     const observation = await prisma.observationSante.create({
       data: {
@@ -121,7 +118,13 @@ export async function POST(request: NextRequest) {
         numAMM: body.numAMM || null,
         resolu: body.resolu || false,
         dateResolution: body.dateResolution ? new Date(body.dateResolution) : null,
-        notes: body.notes || null,
+        // QA cmvgeltj1 — l'opérateur est saisi en texte libre (`operateurNom`) ;
+        // `operateurId` est une clé étrangère vers un compte. Le nom est conservé
+        // dans les notes au format relu par le registre général et l'export.
+        notes: notesAvecOperateur(
+          typeof body.notes === "string" ? body.notes : null,
+          typeof body.operateurNom === "string" ? body.operateurNom : null,
+        ),
         // PROMPT 11 LOT D — PBI
         stadeBBCH: body.stadeBBCH || null,
         pctOrganesTouches: body.pctOrganesTouches != null ? parseInt(body.pctOrganesTouches) : null,
@@ -138,7 +141,7 @@ export async function POST(request: NextRequest) {
         epiPortes: Array.isArray(body.epiPortes) ? body.epiPortes : [],
         zntRespectee: body.zntRespectee != null ? Boolean(body.zntRespectee) : null,
         zntDistanceM: body.zntDistanceM != null ? parseInt(body.zntDistanceM) : null,
-        parcelleId: body.parcelleId || null,
+        parcelleId,
         // `operateurId` est une FK vers User : toute autre valeur (le front a
         // historiquement envoyé du texte libre) provoquerait une violation FK.
         operateurId: operateurId,

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   operationCreate: vi.fn(),
   operationFindMany: vi.fn(),
   createDepense: vi.fn(),
+  membreFindFirst: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -14,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({
   default: {
     arbre: { findFirst: mocks.arbreFindFirst },
     operationArbre: { create: mocks.operationCreate, findMany: mocks.operationFindMany },
+    membreExploitation: { findFirst: mocks.membreFindFirst },
   },
 }))
 vi.mock("@/lib/auto-compta", () => ({
@@ -74,6 +76,25 @@ describe("POST /api/arbres/operations", () => {
         datePrevue: new Date("2026-08-18"),
       }),
     }))
+  })
+
+  // Revue du 2026-10-20 (cmvgeltj1) — l'opérateur désigné sort en Applicateur
+  // au registre phyto : `body.operateurId` était écrit sans aucun contrôle.
+  it("refuse un operateurId qui n'est ni le titulaire ni un membre de l'exploitation", async () => {
+    mocks.membreFindFirst.mockResolvedValue(null)
+    const response = await POST(request({ arbreId: 42, type: "traitement", operateurId: "user-tiers" }) as never)
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toContain("operateurId")
+    expect(mocks.operationCreate).not.toHaveBeenCalled()
+  })
+
+  it("enregistre un membre actif de l'exploitation comme opérateur", async () => {
+    mocks.membreFindFirst.mockResolvedValue({ id: "adhesion-1" })
+    const response = await POST(request({ arbreId: 42, type: "traitement", operateurId: "user-membre" }) as never)
+
+    expect(response.status).toBe(201)
+    expect(mocks.operationCreate.mock.calls[0][0].data.operateurId).toBe("user-membre")
   })
 })
 

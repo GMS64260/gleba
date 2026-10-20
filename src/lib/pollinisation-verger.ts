@@ -10,12 +10,16 @@
  */
 
 import prisma from '@/lib/prisma'
-import { periodeDepuisSemaines } from '@/lib/semaines-lisibles'
 import {
   doitSignalerSansPollinisateur,
   isAutofertileFallback,
 } from '@/lib/pollinisation'
-import { compatibiliteFloraison, type FloraisonVariete } from '@/lib/verger/compatibilite-floraison'
+import {
+  compatibiliteFloraison,
+  floraisonArbre,
+  refusPollinisateurFloraison,
+  type FloraisonVariete,
+} from '@/lib/verger/compatibilite-floraison'
 import { choisirVarieteArbre, whereVarietesCandidates } from '@/lib/verger/variete-arbre'
 import { TYPES_ARBRE_FRUITIERS } from '@/lib/verger/types-arbre'
 
@@ -117,13 +121,9 @@ export async function computePollinisationVerger(userId: string) {
   const varieteMap = new Map(
     arbres.map((a) => [a.id, choisirVarieteArbre(a, varietesCandidates, userId)] as const),
   )
-  const floraisonDe = (a: typeof arbres[number]): FloraisonVariete => {
-    const v = varieteMap.get(a.id) ?? null
-    return {
-      periode: periodeDepuisSemaines(v?.semaineFloraison, v?.dureeFloraison),
-      groupe: a.groupePollinisation ?? v?.groupePollinisation ?? null,
-    }
-  }
+  // Même lecture que la garde de POST /api/arbres/pollinisation (QA cmvgee5s9).
+  const floraisonDe = (a: typeof arbres[number]): FloraisonVariete =>
+    floraisonArbre(a, varieteMap.get(a.id) ?? null)
 
   const compatibilitesDerivees = new Map<number, Array<{
     id: number
@@ -193,6 +193,20 @@ export async function computePollinisationVerger(userId: string) {
     if (candidats.length) compatibilitesDerivees.set(a.id, candidats)
   }
 
+  // QA cmvgee5s9 (2026-10-20) — une association enregistrée puis démentie par
+  // les floraisons (période d'une variété modifiée ensuite : S14-S16 face à
+  // S23-S25) comptait encore comme pollinisateur explicite et éteignait
+  // l'alerte. Même règle que la garde de POST /api/arbres/pollinisation ; un
+  // pollinisateur hors de la liste (autre type d'arbre) n'est pas jugé.
+  const arbreParId = new Map(arbres.map((a) => [a.id, a] as const))
+  const motifAssociationDementie = (a: typeof arbres[number], pollinisateurId: number): string | null => {
+    const pollinisateur = arbreParId.get(pollinisateurId)
+    if (!pollinisateur) return null
+    return refusPollinisateurFloraison(compatibiliteFloraison(floraisonDe(a), floraisonDe(pollinisateur)))
+  }
+  const pollinisateursExplicitesValides = (a: typeof arbres[number]) =>
+    a.pollinisateursCompat.filter((p) => !motifAssociationDementie(a, p.arbrePollinisateurId)).length
+
   // Bug cms67gg8m (2026-07-29) — « anémophile » décrit le transport
   // du pollen, pas la présence d'une variété compatible. Les noyers
   // Franquette sans autre variété doivent donc apparaître dans ce KPI.
@@ -201,7 +215,7 @@ export async function computePollinisationVerger(userId: string) {
       (a) =>
         doitSignalerSansPollinisateur({
           autofertile: estAutofertile(a),
-          nombrePollinisateursExplicites: a.pollinisateursCompat.length,
+          nombrePollinisateursExplicites: pollinisateursExplicitesValides(a),
           hasPollinisateurDerive: compatibilitesDerivees.has(a.id),
           modePollinisation: estAnemophile(a) ? "anémophile" : null,
         })
@@ -284,6 +298,13 @@ export async function computePollinisationVerger(userId: string) {
       : null
     return {
       ...a,
+      // Chaque association porte le motif qui la dément, ou null.
+      pollinisateursCompat: a.pollinisateursCompat.map((p) => ({
+        ...p,
+        floraisonIncompatible: motifAssociationDementie(a, p.arbrePollinisateurId),
+      })),
+      /** Associations explicites que les floraisons ne démentent pas. */
+      nombrePollinisateursValides: pollinisateursExplicitesValides(a),
       autofertileEffectif: estAutofertile(a),
       hasPollinisateurDerive: compatibilitesDerivees.has(a.id),
       pollinisateurDeriveCertitude: certitudeDerive,

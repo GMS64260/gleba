@@ -10,6 +10,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { createDepenseFromOperationArbre } from "@/lib/auto-compta"
 import { lireAnnee } from "@/lib/api/annee"
 import { whereOperationsArbreAnnee } from "@/lib/verger/annee-operation"
+import { resoudreOperateurExploitation } from "@/lib/tracabilite/operateur-exploitation"
 
 // Types d'opérations
 export const TYPES_OPERATIONS = [
@@ -126,6 +127,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Revue cmvgeltj1 — l'opérateur désigné sort en Applicateur au registre
+    // phyto : titulaire ou membre de l'exploitation seulement.
+    const operateur = await resoudreOperateurExploitation(userId, body.operateurId)
+    if ("refus" in operateur) {
+      return NextResponse.json({ error: operateur.refus }, { status: 400 })
+    }
+
     const fait = body.fait !== undefined ? Boolean(body.fait) : true
     const datePrevue = body.datePrevue ? new Date(body.datePrevue) : null
     if (datePrevue && Number.isNaN(datePrevue.getTime())) {
@@ -165,7 +173,7 @@ export async function POST(request: NextRequest) {
         recurrence: body.recurrence || null,
         saisonRecommandee: body.saisonRecommandee || null,
         // DEV3 #6 — opérateur, temps, météo, matériel
-        operateurId: body.operateurId || null,
+        operateurId: operateur.operateurId,
         tempsHeures: body.tempsHeures != null ? parseFloat(body.tempsHeures) : null,
         temperatureC: body.temperatureC != null ? parseFloat(body.temperatureC) : null,
         ventKmh: body.ventKmh != null ? parseFloat(body.ventKmh) : null,

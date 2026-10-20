@@ -9,6 +9,12 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { computePollinisationVerger, raisonExclusionPollinisateur } from "@/lib/pollinisation-verger"
 import { choisirVarieteArbre, whereVarietesCandidates } from "@/lib/verger/variete-arbre"
+import {
+  NIVEAUX_ASSOCIATION,
+  compatibiliteFloraison,
+  floraisonArbre,
+  refusPollinisateurFloraison,
+} from "@/lib/verger/compatibilite-floraison"
 
 export async function GET() {
   const { error, session } = await requireAuthApi()
@@ -88,7 +94,17 @@ export async function POST(request: NextRequest) {
     // par son nom n'était pas retrouvée par son seul id.
     const varietesCandidates = await prisma.variete.findMany({
       where: whereVarietesCandidates([pollinise, pollinisateur], session!.user.id),
-      select: { id: true, nom: true, nomNormalise: true, especeId: true, userId: true, ploidie: true },
+      select: {
+        id: true,
+        nom: true,
+        nomNormalise: true,
+        especeId: true,
+        userId: true,
+        ploidie: true,
+        groupePollinisation: true,
+        semaineFloraison: true,
+        dureeFloraison: true,
+      },
     })
     const varietePollinise = choisirVarieteArbre(pollinise, varietesCandidates, session!.user.id)
     const varietePollinisateur = choisirVarieteArbre(pollinisateur, varietesCandidates, session!.user.id)
@@ -110,11 +126,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // QA cmvgee5s9 — deux floraisons sans semaine commune (S14-S16 / S23-S25)
+    // étaient enregistrées « partielle » : le pollinisateur absent pendant la
+    // floraison comptait comme pollinisateur explicite et éteignait l'alerte.
+    // Même règle que la matrice et la suggestion du dialogue.
+    const refusFloraison = refusPollinisateurFloraison(
+      compatibiliteFloraison(
+        floraisonArbre(pollinise, varietePollinise),
+        floraisonArbre(pollinisateur, varietePollinisateur),
+      ),
+    )
+    if (refusFloraison) {
+      return NextResponse.json({ error: refusFloraison }, { status: 422 })
+    }
+
+    // QA cmvgee5s9 — « incompatible » n'est pas un niveau d'association : il
+    // désigne un pollinisateur exclu (floraisons disjointes, pollen stérile),
+    // refusé plus haut avec son motif propre.
+    const compatibilite = body.compatibilite == null || body.compatibilite === "" ? "bonne" : body.compatibilite
+    if (!(NIVEAUX_ASSOCIATION as readonly string[]).includes(compatibilite)) {
+      return NextResponse.json(
+        { error: `Données invalides — compatibilite : valeur attendue ${NIVEAUX_ASSOCIATION.join(", ")}.` },
+        { status: 400 },
+      )
+    }
+
     const association = await prisma.pollinisationArbre.create({
       data: {
         arbrePolliniseId: polliniseId,
         arbrePollinisateurId: pollinisateurId,
-        compatibilite: body.compatibilite || "bonne",
+        compatibilite,
         notes: body.notes || null,
       },
       include: {

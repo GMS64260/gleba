@@ -44,9 +44,15 @@ import { ExportPhytoButton } from "@/components/phyto/ExportPhytoButton"
 import { CuivreCounterCard } from "@/components/phyto/CuivreCounterCard"
 import { todayLocalISO } from '@/lib/format-utils'
 import { doitSignalerSansPollinisateur } from "@/lib/pollinisation"
-import { compatibiliteFloraison, type FloraisonVariete } from "@/lib/verger/compatibilite-floraison"
+import {
+  AIDE_COMPATIBILITE_FLORAISON,
+  compatibiliteFloraison,
+  refusPollinisateurFloraison,
+  type FloraisonVariete,
+} from "@/lib/verger/compatibilite-floraison"
 import { libellePeriodeSemaines, libellePeriodeSemainesCourt } from "@/lib/semaines-lisibles"
 import { arbreSupprimeDansNotes } from "@/lib/verger/preserver-traces-phyto"
+import { champObligatoireObservation } from "@/lib/tracabilite/conformite-observation-phyto"
 
 interface Arbre {
   id: number
@@ -75,6 +81,8 @@ interface Observation {
   // aussi être visible dans le registre à l'écran.
   zntRespectee: boolean | null
   zntDistanceM: number | null
+  // Surface traitée en ha (formulaire du registre Verger), corrigeable à l'édition.
+  surfaceTraiteeHa?: number | null
   resolu: boolean
   dateResolution: string | null
   notes: string | null
@@ -100,7 +108,14 @@ interface PollinisationData {
     // Id de la variété du référentiel désignée par l'arbre (résolue par le serveur).
     varieteId?: string | null
     autofertile: boolean
-    pollinisateursCompat: { id: number; arbrePollinisateur: { id: number; nom: string; espece: string | null; variete: string | null } }[]
+    pollinisateursCompat: {
+      id: number
+      arbrePollinisateur: { id: number; nom: string; espece: string | null; variete: string | null }
+      // QA cmvgee5s9 — motif quand les floraisons démentent l'association, sinon null.
+      floraisonIncompatible?: string | null
+    }[]
+    // Associations que les floraisons ne démentent pas (calculé par le serveur).
+    nombrePollinisateursValides?: number
   }[]
   alertes: { id: number; nom: string; espece: string | null; floraison: string | null; groupePollinisation: string | null }[]
   alertesAnemophiles?: { id: number; nom: string; espece: string | null; variete: string | null; raison: string }[]
@@ -788,6 +803,9 @@ function RegistrePhytoSubTab() {
     doseAppliquee: "",
     uniteDose: "",
     dar: "",
+    // Revue cmvgeltj1 — une ligne « Non conforme » faute de surface doit
+    // pouvoir être corrigée ici (le PUT l'accepte).
+    surfaceTraiteeHa: "",
     traitement: "",
     methodeTraitement: "",
   })
@@ -1029,6 +1047,7 @@ function RegistrePhytoSubTab() {
       doseAppliquee: obs.doseAppliquee?.toString() || "",
       uniteDose: obs.uniteDose || "",
       dar: obs.dar?.toString() || "",
+      surfaceTraiteeHa: obs.surfaceTraiteeHa?.toString() || "",
       traitement: obs.traitement || "",
       methodeTraitement: obs.methodeTraitement || (obs.produit ? "chimique_conventionnel" : "mecanique_manuel"),
     })
@@ -1050,6 +1069,7 @@ function RegistrePhytoSubTab() {
           doseAppliquee: editForm.doseAppliquee || null,
           uniteDose: editForm.uniteDose || null,
           dar: editForm.dar || null,
+          surfaceTraiteeHa: editForm.surfaceTraiteeHa || null,
           traitement: editForm.traitement || null,
           methodeTraitement: editForm.methodeTraitement || null,
         }),
@@ -1101,13 +1121,11 @@ function RegistrePhytoSubTab() {
           certiphytoNum: addForm.certiphytoNum || null,
           parcelleId: addForm.parcelleId || null,
           // `operateurId` est une FK vers User : le nom saisi en texte libre
-          // partait dedans et provoquait une violation FK (500). On le range
-          // dans les notes en attendant un vrai champ dédié.
+          // part dans `operateurNom`, que la route conserve au format relu par
+          // le registre général (QA cmvgeltj1, src/lib/tracabilite/projection-phyto.ts).
           operateurId: null,
-          notes:
-            [addForm.notes, addForm.operateurNom.trim() ? `Opérateur : ${addForm.operateurNom.trim()}` : ""]
-              .filter(Boolean)
-              .join("\n") || null,
+          operateurNom: addForm.operateurNom.trim() || null,
+          notes: addForm.notes.trim() || null,
           zntDistanceM: addForm.zntDistanceM || null,
           zntRespectee: addForm.zntRespectee,
           temperatureC: addWeather.temperatureC,
@@ -1423,7 +1441,7 @@ function RegistrePhytoSubTab() {
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Produit</Label>
+                    <Label>Produit{champObligatoireObservation(editForm.methodeTraitement, "produitPhyto") && <span className="text-red-600"> *</span>}</Label>
                     <Input value={editForm.produit} onChange={(e) => setEditForm({ ...editForm, produit: e.target.value })} placeholder="Nom commercial" />
                   </div>
                   {methodeExigeCertiphyto(editForm.methodeTraitement) && (
@@ -1435,7 +1453,7 @@ function RegistrePhytoSubTab() {
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <Label>Dose</Label>
+                    <Label>Dose{champObligatoireObservation(editForm.methodeTraitement, "doseAppliquee") && <span className="text-red-600"> *</span>}</Label>
                     <Input type="number" step="0.01" value={editForm.doseAppliquee} onChange={(e) => setEditForm({ ...editForm, doseAppliquee: e.target.value })} />
                   </div>
                   <div>
@@ -1451,8 +1469,25 @@ function RegistrePhytoSubTab() {
                     </Select>
                   </div>
                   <div>
-                    <Label>DAR (jours)</Label>
+                    <Label>DAR (jours){champObligatoireObservation(editForm.methodeTraitement, "dar") && <span className="text-red-600"> *</span>}</Label>
                     <Input type="number" value={editForm.dar} onChange={(e) => setEditForm({ ...editForm, dar: e.target.value })} placeholder="Délai avant récolte" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="edition-surface-ha">
+                      Surface traitée (ha)
+                      {champObligatoireObservation(editForm.methodeTraitement, "surfaceTraitee") && <span className="text-red-600"> *</span>}
+                    </Label>
+                    <Input
+                      id="edition-surface-ha"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editForm.surfaceTraiteeHa}
+                      onChange={(e) => setEditForm({ ...editForm, surfaceTraiteeHa: e.target.value })}
+                      placeholder="0.5"
+                    />
                   </div>
                 </div>
               </>
@@ -1546,7 +1581,7 @@ function RegistrePhytoSubTab() {
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>Produit</Label>
+                        <Label>Produit{champObligatoireObservation(addForm.methodeTraitement, "produitPhyto") && <span className="text-red-600"> *</span>}</Label>
                         <Input value={addForm.produit} onChange={(e) => setAddForm({ ...addForm, produit: e.target.value })} placeholder="Nom commercial" />
                       </div>
                       {methodeExigeCertiphyto(addForm.methodeTraitement) && (
@@ -1558,7 +1593,7 @@ function RegistrePhytoSubTab() {
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <Label>Dose</Label>
+                        <Label>Dose{champObligatoireObservation(addForm.methodeTraitement, "doseAppliquee") && <span className="text-red-600"> *</span>}</Label>
                         <Input type="number" step="0.01" value={addForm.doseAppliquee} onChange={(e) => setAddForm({ ...addForm, doseAppliquee: e.target.value })} />
                       </div>
                       <div>
@@ -1574,7 +1609,7 @@ function RegistrePhytoSubTab() {
                         </Select>
                       </div>
                       <div>
-                        <Label>DAR (jours)</Label>
+                        <Label>DAR (jours){champObligatoireObservation(addForm.methodeTraitement, "dar") && <span className="text-red-600"> *</span>}</Label>
                         <Input type="number" value={addForm.dar} onChange={(e) => setAddForm({ ...addForm, dar: e.target.value })} placeholder="Délai avant récolte" />
                       </div>
                     </div>
@@ -1768,6 +1803,14 @@ function PollinisationSubTab() {
   }
   const pollinisateurChoisi = data?.arbres.find((a) => a.id.toString() === formData.arbrePollinisateurId) ?? null
   const pollinisateurTriploide = pollinisateurChoisi ? estTriploidePollinisateur(pollinisateurChoisi) : false
+  // QA cmvgee5s9 — floraisons sans semaine commune (ou groupes trop écartés) :
+  // pré-remplie « incompatible », annoncée et refusée, comme le 422 serveur.
+  const floraisonIncompatible = (pollinisateur: Parameters<typeof floraisonDe>[0]) =>
+    arbrePollinise ? !compatibiliteFloraison(floraisonDe(arbrePollinise), floraisonDe(pollinisateur)).compatible : false
+  const refusFloraison =
+    arbrePollinise && pollinisateurChoisi && !pollinisateurTriploide
+      ? refusPollinisateurFloraison(compatibiliteFloraison(floraisonDe(arbrePollinise), floraisonDe(pollinisateurChoisi)))
+      : null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1789,6 +1832,10 @@ function PollinisationSubTab() {
         description: "Un pollinisateur triploïde a un pollen stérile : choisissez un pollinisateur diploïde.",
         variant: "destructive",
       })
+      return
+    }
+    if (refusFloraison) {
+      toast({ title: "Pollinisateur incompatible", description: refusFloraison, variant: "destructive" })
       return
     }
     setIsSubmitting(true)
@@ -1938,7 +1985,7 @@ function PollinisationSubTab() {
                   const isAnemophile = estAnemophileEspece(arbre.espece)
                   const sansPolli = doitSignalerSansPollinisateur({
                     autofertile: isAutofertile,
-                    nombrePollinisateursExplicites: arbre.pollinisateursCompat.length,
+                    nombrePollinisateursExplicites: arbre.nombrePollinisateursValides ?? arbre.pollinisateursCompat.length,
                     hasPollinisateurDerive: hasDerive,
                     modePollinisation: isAnemophile ? "anémophile" : null,
                   })
@@ -2011,8 +2058,15 @@ function PollinisationSubTab() {
                       {arbre.pollinisateursCompat.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {arbre.pollinisateursCompat.map((p) => (
-                            <Badge key={p.arbrePollinisateur.id} variant="outline" className="text-xs">
+                            <Badge
+                              key={p.arbrePollinisateur.id}
+                              variant="outline"
+                              className={`text-xs ${p.floraisonIncompatible ? "border-red-300 text-red-700" : ""}`}
+                              title={p.floraisonIncompatible ?? undefined}
+                            >
+                              {p.floraisonIncompatible ? "⚠ " : ""}
                               {p.arbrePollinisateur.nom}
+                              {p.floraisonIncompatible ? " (floraison incompatible)" : ""}
                               <button
                                 type="button"
                                 className="ml-1 text-muted-foreground hover:text-red-600"
@@ -2116,6 +2170,7 @@ function PollinisationSubTab() {
                       {[
                         `${a.nom}${a.espece ? ` (${a.espece})` : ""}${periode ? ` · floraison ${periode}` : g ? ` · Gr.${g}` : ""}`,
                         estTriploidePollinisateur(a) ? " · ⚠ triploïde (pollen stérile)" : "",
+                        floraisonIncompatible(a) ? " · ⚠ floraison incompatible" : "",
                         donneesIncompletes(a) ? " · données incomplètes, à vérifier" : "",
                       ].join("")}
                     </option>
@@ -2127,6 +2182,12 @@ function PollinisationSubTab() {
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                   <AlertTriangle className="h-3 w-3 shrink-0" />
                   Un pollinisateur triploïde a un pollen stérile : cette association est incompatible.
+                </p>
+              )}
+              {refusFloraison && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  {refusFloraison}
                 </p>
               )}
               {formData.arbrePolliniseId && candidatsPollinisateurs.length === 0 && (
@@ -2148,16 +2209,13 @@ function PollinisationSubTab() {
                   <SelectItem value="excellente">Excellente</SelectItem>
                   <SelectItem value="bonne">Bonne</SelectItem>
                   <SelectItem value="partielle">Partielle</SelectItem>
-                  {/* QA cmsoeyth0 — valeur suggérée pour un triploïde (pollen
-                      stérile) : visible mais non sélectionnable à la main. */}
-                  <SelectItem value="incompatible" disabled>Incompatible (pollen stérile)</SelectItem>
+                  {/* QA cmsoeyth0, cmvgee5s9 — valeur suggérée pour un pollinisateur
+                      exclu (pollen stérile, floraisons disjointes) : visible mais
+                      non sélectionnable à la main, l'association est refusée. */}
+                  <SelectItem value="incompatible" disabled>Incompatible (association refusée)</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                Pré-remplie depuis les floraisons des variétés : périodes saisies sur la variété (recouvrement
-                large = excellente, partiel = bonne, aucune semaine commune = partielle), à défaut groupes
-                de floraison (même groupe = excellente, adjacent = bonne).
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">{AIDE_COMPATIBILITE_FLORAISON}</p>
             </div>
             <div>
               <Label>Notes</Label>

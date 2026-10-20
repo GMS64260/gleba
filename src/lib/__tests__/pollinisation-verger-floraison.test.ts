@@ -96,6 +96,70 @@ describe("computePollinisationVerger — floraisons des variétés personnelles"
     expect(resultat.stats.sansPollinisateur).toBe(2)
   })
 
+  it("QA cmvgee5s9 — association enregistrée puis démentie par les floraisons (S14-S16 / S23-S25) : signalée et non comptée", async () => {
+    const association = (id: number, pollinisateurId: number) => ({
+      id,
+      arbrePollinisateurId: pollinisateurId,
+      arbrePollinisateur: { id: pollinisateurId, nom: `Prunier ${pollinisateurId}`, espece: "Prunier", variete: null },
+    })
+    mocks.arbreFindMany.mockResolvedValue([
+      arbre(835, "Prunier A", "Prune A", { pollinisateursCompat: [association(25, 836)] }),
+      arbre(836, "Prunier B", "Prune B"),
+    ])
+    mocks.varieteFindMany.mockResolvedValue([
+      variete("ckpersoa", "Prune A", 14, 3),
+      variete("ckpersob", "Prune B", 23, 3),
+    ])
+
+    const resultat = await computePollinisationVerger(USER)
+    const a835 = resultat.arbres.find((a) => a.id === 835)!
+
+    expect(a835.nombrePollinisateursValides).toBe(0)
+    expect(a835.pollinisateursCompat[0].floraisonIncompatible).toContain("sans semaine commune")
+    expect(resultat.alertes.map((a) => a.id)).toContain(835)
+  })
+
+  it("association entre groupes hors de l'échelle A-E (« précoce » / « mi-saison ») : rien n'est vérifié, elle compte", async () => {
+    mocks.arbreFindMany.mockResolvedValue([
+      arbre(835, "Prunier A", "Prune A", {
+        groupePollinisation: "précoce",
+        pollinisateursCompat: [{ id: 25, arbrePollinisateurId: 836, arbrePollinisateur: { id: 836, nom: "Prunier B", espece: "Prunier", variete: null } }],
+      }),
+      arbre(836, "Prunier B", "Prune B", { groupePollinisation: "mi-saison" }),
+    ])
+    mocks.varieteFindMany.mockResolvedValue([
+      variete("ckpersoa", "Prune A", null, null),
+      variete("ckpersob", "Prune B", null, null),
+    ])
+
+    const resultat = await computePollinisationVerger(USER)
+    const a835 = resultat.arbres.find((a) => a.id === 835)!
+
+    expect(a835.nombrePollinisateursValides).toBe(1)
+    expect(a835.pollinisateursCompat[0].floraisonIncompatible).toBeNull()
+    expect(resultat.alertes.map((a) => a.id)).not.toContain(835)
+  })
+
+  it("association dont les floraisons se recouvrent : comptée, sans motif", async () => {
+    mocks.arbreFindMany.mockResolvedValue([
+      arbre(835, "Prunier A", "Prune A", {
+        pollinisateursCompat: [{ id: 25, arbrePollinisateurId: 836, arbrePollinisateur: { id: 836, nom: "Prunier B", espece: "Prunier", variete: null } }],
+      }),
+      arbre(836, "Prunier B", "Prune B"),
+    ])
+    mocks.varieteFindMany.mockResolvedValue([
+      variete("ckpersoa", "Prune A", 14, 3),
+      variete("ckpersob", "Prune B", 14, 3),
+    ])
+
+    const resultat = await computePollinisationVerger(USER)
+    const a835 = resultat.arbres.find((a) => a.id === 835)!
+
+    expect(a835.nombrePollinisateursValides).toBe(1)
+    expect(a835.pollinisateursCompat[0].floraisonIncompatible).toBeNull()
+    expect(resultat.alertes.map((a) => a.id)).not.toContain(835)
+  })
+
   it("une seule floraison connue : compatibilité présumée, jamais affirmée", async () => {
     mocks.arbreFindMany.mockResolvedValue([
       arbre(1, "Prunier un", "Avec floraison"),

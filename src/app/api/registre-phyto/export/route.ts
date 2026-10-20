@@ -13,6 +13,7 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
 import { identifiantLegalAffichage } from "@/lib/territoires"
+import { applicateurPhyto } from "@/lib/tracabilite/projection-phyto"
 
 type Format = "pdf" | "csv"
 
@@ -165,7 +166,8 @@ export async function GET(request: NextRequest) {
       epiPortes: i.epiPortes,
       zntRespectee: i.zntRespectee,
       zntDistanceM: i.zntDistanceM ?? null,
-      operateur: i.operateur?.name || i.operateur?.email || i.user.name || i.user.email,
+      // QA cmvgeltj1 — opérateur saisi en texte libre (notes) avant le titulaire du compte.
+      operateur: applicateurPhyto(i),
       certiphytoNum: i.certiphytoNum ?? null,
       certiphytoValidite: i.certiphytoValidite?.toISOString().slice(0, 10) ?? null,
       justification: i.justification ?? null,
@@ -198,7 +200,7 @@ export async function GET(request: NextRequest) {
     epiPortes: o.epiPortes,
     zntRespectee: o.zntRespectee,
     zntDistanceM: o.zntDistanceM ?? null,
-    operateur: o.operateur?.name || o.operateur?.email || o.user.name || o.user.email,
+    operateur: applicateurPhyto(o),
     certiphytoNum: o.certiphytoNum ?? null,
     certiphytoValidite: null as string | null,
     justification: o.traitement ?? null,

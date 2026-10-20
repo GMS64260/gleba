@@ -188,3 +188,133 @@ describe('genererRegistrePhyto — 3ᵉ source operations_arbres', () => {
     expect(stats.totalTraitements).toBe(3)
   })
 })
+
+/**
+ * QA cmvgeltj1 (2026-10-20) — traitement saisi depuis Verger > Santé & Phyto >
+ * Registre phyto (ligne `observations_sante` relue en base : surface 0,01 ha,
+ * ZNT 20 m respectée, 15 °C / vent 5 / hygro 70 / sans pluie, opérateur dans
+ * les notes) : le registre général affichait Surface « Manquant », ZNT « - »,
+ * Météo « - » et le nom de l'exploitation pour applicateur.
+ */
+describe('genererRegistrePhyto — traitement du registre Verger (observation santé)', () => {
+  const compte = { name: 'Ferme test', email: 'ferme@example.test' }
+
+  function fakeObservationVerger(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 70,
+      date: new Date('2026-10-20T00:00:00.000Z'),
+      type: 'ravageur',
+      methodeTraitement: 'chimique_conventionnel',
+      produit: 'v8 produit fictif',
+      numAMM: '9999999',
+      doseAppliquee: 0.5,
+      uniteDose: 'L/ha',
+      dar: 7,
+      surfaceTraiteeHa: 0.01,
+      volumeBouillieLHa: 500,
+      volumeBouillieLTotal: 5,
+      temperatureC: 15,
+      ventKmh: 5,
+      hygrometriePct: 70,
+      pluie24h: false,
+      pluie24hMm: null,
+      epiPortes: ['gants'],
+      zntRespectee: true,
+      zntDistanceM: 20,
+      certiphytoNum: 'TEST-1',
+      operateurId: null,
+      notes: 'Opérateur : v8-Hélène',
+      diagnostic: null,
+      symptome: null,
+      traitement: null,
+      arbre: { nom: 'v8 prunier (5)', espece: 'Prunier', variete: null },
+      parcelle: { nom: 'Demo-V' },
+      operateur: null,
+      user: compte,
+      ...overrides,
+    }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.interventionFindMany.mockResolvedValue([])
+    mocks.observationFindMany.mockResolvedValue([])
+    mocks.operationFindMany.mockResolvedValue([])
+  })
+
+  it('projette surface (m²), ZNT, météo et opérateur saisis', async () => {
+    mocks.observationFindMany.mockResolvedValue([fakeObservationVerger()])
+
+    const { registre, stats } = await genererRegistrePhyto('user-1', 2026)
+    const ligne = registre[0]
+
+    expect(ligne.surfaceTraitee).toBe(100)
+    expect(ligne.zntDistanceM).toBe(20)
+    expect(ligne.zntRespectee).toBe(true)
+    expect(ligne.conditionsMeteo).toBe('15 °C · vent 5 km/h · hygrométrie 70 % · sans pluie ±24 h')
+    expect(ligne.applicateur).toBe('v8-Hélène')
+    expect(ligne.operateurNom).toBe('v8-Hélène')
+    // Déjà repris avant le correctif : inchangé.
+    expect(ligne).toMatchObject({ culture: 'v8 prunier (5)', parcelle: 'Demo-V', numAMM: '9999999', doseAppliquee: 0.5, dar: 7 })
+    expect(ligne.champsManquants).toEqual([])
+    expect(ligne.complet).toBe(true)
+    expect(stats.surfaceTotalTraitee).toBe(100)
+  })
+
+  it('méthode chimique : même exigence que la saisie, surface et DAR absents sont manquants', async () => {
+    mocks.observationFindMany.mockResolvedValue([fakeObservationVerger({ surfaceTraiteeHa: null, dar: null })])
+
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+
+    expect(registre[0].champsManquants).toEqual(['surfaceTraitee', 'dar'])
+    expect(registre[0].complet).toBe(false)
+  })
+
+  it("revue : biocontrôle sans AMM, surface ni DAR reste conforme (la saisie ne les exige pas)", async () => {
+    mocks.observationFindMany.mockResolvedValue([
+      fakeObservationVerger({
+        methodeTraitement: 'biocontrole',
+        numAMM: null,
+        surfaceTraiteeHa: null,
+        dar: null,
+        temperatureC: null,
+        certiphytoNum: null,
+        zntRespectee: null,
+      }),
+    ])
+
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+
+    expect(registre[0].champsManquants).toEqual([])
+    expect(registre[0].complet).toBe(true)
+  })
+
+  it('une AMM saisie mal formée reste signalée, quelle que soit la méthode', async () => {
+    mocks.observationFindMany.mockResolvedValue([fakeObservationVerger({ methodeTraitement: 'biocontrole', numAMM: 'ABC' })])
+
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+
+    expect(registre[0].champsManquants).toEqual(['numAMM invalide'])
+  })
+
+  it('intervention : météo structurée et opérateur relus aussi (trace détachée d’un arbre supprimé)', async () => {
+    mocks.interventionFindMany.mockResolvedValue([
+      fakeIntervention({
+        surfaceTraitee: null,
+        surfaceTraiteeHa: 0.01,
+        temperatureC: 15,
+        ventKmh: 5,
+        hygrometriePct: 70,
+        pluie24h: false,
+        notes: '[Arbre supprimé : v8 prunier (Prunier)]\nOpérateur : v8-Hélène',
+        user: compte,
+      }),
+    ])
+
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+
+    expect(registre[0].surfaceTraitee).toBe(100)
+    expect(registre[0].conditionsMeteo).toContain('15 °C')
+    expect(registre[0].applicateur).toBe('v8-Hélène')
+  })
+})

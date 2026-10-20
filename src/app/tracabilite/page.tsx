@@ -564,7 +564,7 @@ function TraçabilitéContent() {
         description={
           <span>
             {phytoData?.stats.nbIncomplets ?? 0} traitement(s) ont des champs obligatoires
-            manquants (N° AMM, dose ou DAR). Un registre incomplet n&apos;est{" "}
+            manquants (N° AMM, dose, surface ou DAR). Un registre incomplet n&apos;est{" "}
             <strong>pas opposable</strong> lors d&apos;un contrôle (HVE, AB, DDPP). Complétez les
             fiches signalées « Non conforme » avant l&apos;export, ou exportez quand même pour un
             usage interne.
@@ -743,18 +743,22 @@ function PhytoTab({
                   <td className="p-2">
                     {entry.nuisibleCible || <MissingFieldOptional />}
                   </td>
+                  {/* Revue cmvgeltj1 — « Manquant » en rouge seulement quand la
+                      règle de conformité de la ligne exige le champ (un
+                      traitement de biocontrôle du verger n'exige ni AMM ni
+                      surface) ; sinon « - ». */}
                   <td className="p-2">
                     {entry.produit ? (
                       <span className="font-medium">{entry.produit}</span>
                     ) : (
-                      <MissingField />
+                      <ChampAbsent requis={entry.champsManquants.includes("produitPhyto")} />
                     )}
                   </td>
                   <td className="p-2">
                     {entry.numAMM ? (
                       <code className="text-xs bg-slate-100 px-1 rounded">{entry.numAMM}</code>
                     ) : (
-                      <MissingField />
+                      <ChampAbsent requis={entry.champsManquants.includes("numAMM")} />
                     )}
                   </td>
                   <td className="p-2 whitespace-nowrap">
@@ -763,7 +767,7 @@ function PhytoTab({
                         {entry.doseAppliquee} {entry.uniteDose || ""}
                       </>
                     ) : (
-                      <MissingField />
+                      <ChampAbsent requis={entry.champsManquants.includes("doseAppliquee")} />
                     )}
                   </td>
                   <td className="p-2 whitespace-nowrap">
@@ -779,14 +783,14 @@ function PhytoTab({
                             })} m²`}
                       </>
                     ) : (
-                      <MissingField />
+                      <ChampAbsent requis={entry.champsManquants.includes("surfaceTraitee")} />
                     )}
                   </td>
                   <td className="p-2">
                     {entry.dar !== null ? (
                       <span>{entry.dar} j</span>
                     ) : (
-                      <MissingField />
+                      <ChampAbsent requis={entry.champsManquants.includes("dar")} />
                     )}
                   </td>
                   <td className="p-2 whitespace-nowrap">
@@ -826,6 +830,11 @@ function MissingField() {
 
 function MissingFieldOptional() {
   return <span className="text-slate-400 text-xs">-</span>
+}
+
+/** Champ vide : « Manquant » s'il est exigé de cette ligne, sinon « - ». */
+function ChampAbsent({ requis }: { requis: boolean }) {
+  return requis ? <MissingField /> : <MissingFieldOptional />
 }
 
 // ============================================================

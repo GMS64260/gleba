@@ -36,6 +36,7 @@ import {
   operationArbreDansAnnee,
   resumeCoutOperations,
 } from "@/lib/verger/annee-operation"
+import { formatMontantDevise } from "@/lib/format-utils"
 
 const FILTER_STATES = [
   { value: "all", label: "Toutes", icon: Wrench },
@@ -463,11 +464,11 @@ export function OperationsTab({ annee }: OperationsTabProps) {
         <CardContent className="pt-4 pb-3">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Coût des opérations {annee}</p>
-            <p className="text-xl font-bold" data-testid="cout-operations-annee">{coutAnnee.total.toFixed(2)} €</p>
+            <p className="text-xl font-bold" data-testid="cout-operations-annee">{formatMontantDevise(coutAnnee.total)}</p>
           </div>
           {coutAnnee.prevu > 0 && (
             <p className="text-xs text-muted-foreground text-right">
-              dont {coutAnnee.realise.toFixed(2)} € réalisés et {coutAnnee.prevu.toFixed(2)} € prévus
+              dont {formatMontantDevise(coutAnnee.realise)} réalisés et {formatMontantDevise(coutAnnee.prevu)} prévus
             </p>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
