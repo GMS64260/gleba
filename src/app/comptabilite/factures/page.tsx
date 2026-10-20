@@ -25,7 +25,7 @@ import { CATEGORIES_OPERATION, LABELS_CATEGORIE_OPERATION } from "@/lib/facture-
 import { getAvailableYears } from "@/components/year-selector"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
-import { todayLocalISO } from '@/lib/format-utils'
+import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { factureSansTaxe } from '@/lib/territoires'
 import { construireImpayees, type Impayee } from '@/lib/comptabilite/impayees'
 import { adresseDeFiche, clientDesigneParNom } from '@/lib/comptabilite/rattachement-client'
@@ -605,7 +605,7 @@ export default function FacturesPage() {
       const created = json.data ?? json
       toast({
         title: "Avoir créé",
-        description: `${created.numero} — ${montantTTC.toFixed(2)} €`,
+        description: `${created.numero} — ${formatMontantDevise(montantTTC)}`,
       })
       // Reset form
       setAvoirData({
@@ -1297,7 +1297,7 @@ export default function FacturesPage() {
                         .filter((f: { type?: string }) => f.type !== "avoir")
                         .map((f: { id: number; numero: string; clientNom?: string; totalTTC?: number; date?: string }) => (
                           <SelectItem key={f.id} value={String(f.id)}>
-                            {f.numero} · {f.clientNom || "—"} · {(f.totalTTC ?? 0).toFixed(2)} €
+                            {f.numero} · {f.clientNom || "—"} · {formatMontantDevise(f.totalTTC ?? 0)}
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -1310,7 +1310,7 @@ export default function FacturesPage() {
                     return (
                       <p className="text-[11px] text-muted-foreground mt-1">
                         Client recopié : <span className="font-medium">{String(origine.clientNom ?? "—")}</span> ·
-                        Montant origine TTC : <span className="font-medium">{Number(origine.totalTTC ?? 0).toFixed(2)} €</span>
+                        Montant origine TTC : <span className="font-medium">{formatMontantDevise(Number(origine.totalTTC ?? 0))}</span>
                       </p>
                     )
                   })()}

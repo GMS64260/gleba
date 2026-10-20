@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   venteDeleteMany: vi.fn(),
   venteCreate: vi.fn(),
+  venteFindFirst: vi.fn(),
   depenseDeleteMany: vi.fn(),
   depenseCreate: vi.fn(),
   alimentFindUnique: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock('@/lib/prisma', () => {
     venteManuelle: {
       deleteMany: mocks.venteDeleteMany,
       create: mocks.venteCreate,
+      findFirst: mocks.venteFindFirst,
     },
     depenseManuelle: {
       deleteMany: mocks.depenseDeleteMany,
@@ -31,6 +33,9 @@ vi.mock('@/lib/prisma', () => {
 import {
   createDepenseFromAchatAnimal,
   createDepenseFromConsommationAliment,
+  createVenteFromProductionBois,
+  createVenteFromRecolte,
+  createVenteFromRecolteArbre,
   createVenteFromVenteProduit,
   upsertVenteFromReservationElevage,
 } from '@/lib/auto-compta'
@@ -39,6 +44,7 @@ describe('invariants auto-compta élevage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.venteCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
+    mocks.venteFindFirst.mockResolvedValue(null)
     mocks.depenseCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
     mocks.alimentFindUnique.mockResolvedValue({
       nom: 'Foin',
@@ -119,8 +125,9 @@ describe('invariants auto-compta élevage', () => {
       venteManuelle: {
         deleteMany: mocks.venteDeleteMany,
         create: mocks.venteCreate,
+        findFirst: mocks.venteFindFirst,
       },
-    } as Parameters<typeof upsertVenteFromReservationElevage>[0]
+    } as unknown as Parameters<typeof upsertVenteFromReservationElevage>[0]
 
     await upsertVenteFromReservationElevage(tx, 'user-1', {
       id: 'reservation-1',
@@ -137,5 +144,91 @@ describe('invariants auto-compta élevage', () => {
     expect(rows.map((row) => row.montant)).toEqual([300, 1100])
     expect(rows.map((row) => row.paye)).toEqual([true, false])
     expect(rows.reduce((sum, row) => sum + row.montant, 0)).toBe(1400)
+  })
+
+  // Ticket cmvgdzsf7 (2026-10-20) — le miroir est supprimé puis recréé à chaque
+  // modification de la source : la pièce saisie dans Transactions (règlement,
+  // numéro de pièce, notes) doit survivre à la régénération.
+  it('reporte le suivi saisi sur l’ancien miroir, pas le statut payé', async () => {
+    mocks.venteFindFirst.mockResolvedValue({
+      modeReglement: 'Chèque',
+      numeroPiece: 'CHQ-0042',
+      journal: 'VE',
+      pjUrl: null,
+      notes: 'Remis en banque le 21/10',
+    })
+
+    await createVenteFromVenteProduit('user-1', {
+      id: 167,
+      type: 'oeufs',
+      prixTotal: 86.4,
+      tauxTVA: 5.5,
+      paye: false,
+    })
+
+    // L'ancien miroir est lu avec la même portée que celle qu'on supprime.
+    expect(mocks.venteFindFirst).toHaveBeenCalledWith({
+      where: { userId: 'user-1', sourceType: 'vente_produit', sourceId: 167, auto: true },
+      select: { modeReglement: true, numeroPiece: true, journal: true, pjUrl: true, notes: true },
+    })
+    const data = mocks.venteCreate.mock.calls[0][0].data
+    expect(data).toMatchObject({
+      modeReglement: 'Chèque',
+      numeroPiece: 'CHQ-0042',
+      journal: 'VE',
+      notes: 'Remis en banque le 21/10',
+      // `paye` reste celui de la source.
+      paye: false,
+      montant: 86.4,
+    })
+    expect(data).not.toHaveProperty('pjUrl')
+  })
+
+  it('reporte le suivi de chaque ligne d’une réservation sur la ligne de même référence', async () => {
+    mocks.venteFindFirst.mockImplementation(async ({ where }) =>
+      where.sourceRef === 'reservation-1:acompte' ? { numeroPiece: 'VIR-7', notes: null } : null,
+    )
+    const tx = {
+      venteManuelle: {
+        deleteMany: mocks.venteDeleteMany,
+        create: mocks.venteCreate,
+        findFirst: mocks.venteFindFirst,
+      },
+    } as unknown as Parameters<typeof upsertVenteFromReservationElevage>[0]
+
+    await upsertVenteFromReservationElevage(tx, 'user-1', {
+      id: 'reservation-1',
+      statut: 'livree',
+      acompte: 300,
+      montant: 1400,
+      dateReservation: new Date('2026-07-01'),
+      dateLivraison: new Date('2026-08-01'),
+    })
+
+    const rows = mocks.venteCreate.mock.calls.map((call) => call[0].data)
+    expect(rows.map((row) => row.numeroPiece)).toEqual(['VIR-7', undefined])
+  })
+
+  // Revue du 2026-10-20 : la lecture du suivi et la suppression de l'ancien
+  // miroir sont scopées au compte, pour chaque source (pas seulement l'élevage).
+  it.each([
+    ['recolte', () => createVenteFromRecolte('user-1', { id: 1177, especeId: 'Dahlia', quantite: 40, unite: 'tige', prixKg: 1.2, prixTotal: 48 })],
+    ['recolte_arbre', () => createVenteFromRecolteArbre('user-1', { id: 51, quantite: 10, prixKg: 3, prixTotal: 30 })],
+    ['production_bois', () => createVenteFromProductionBois('user-1', { id: 34, type: 'elagage', volumeM3: 3, prixVente: 450 })],
+  ])('reprend le suivi du miroir %s dans le seul compte de la source', async (sourceType, regenerer) => {
+    mocks.venteFindFirst.mockResolvedValue({ numeroPiece: 'PC-7', modeReglement: 'Virement', notes: null })
+
+    await regenerer()
+
+    const sourceId = { recolte: 1177, recolte_arbre: 51, production_bois: 34 }[sourceType as string]
+    const where = { userId: 'user-1', sourceType, sourceId, auto: true }
+    expect(mocks.venteFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where }))
+    expect(mocks.venteDeleteMany).toHaveBeenCalledWith({ where })
+    expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({
+      userId: 'user-1',
+      sourceType,
+      numeroPiece: 'PC-7',
+      modeReglement: 'Virement',
+    })
   })
 })

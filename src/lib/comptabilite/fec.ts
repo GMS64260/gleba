@@ -96,6 +96,33 @@ export interface FecInputDepense {
   paye: boolean
 }
 
+/**
+ * Contrepartie d'une vente ou d'une dépense : trésorerie (512 banque, 531
+ * caisse) seulement si elle est RÉGLÉE, sinon le tiers (411 client, 401
+ * fournisseur). Revue du 2026-10-20 (ticket cmvgdzsf7) : le compte suivait le
+ * seul mode de règlement, si bien que choisir « Virement » sur un solde de
+ * réservation impayé déplaçait la créance en banque. Le journal suit le compte :
+ * une écriture sans mouvement de trésorerie part au journal des ventes ou des
+ * achats, pas en banque.
+ */
+export function contrepartieReglement(
+  paye: boolean,
+  modeReglement: string | null,
+  sens: 'vente' | 'depense',
+): { compteNum: string; compteLib: string; journal: string } {
+  const tresorerie = paye ? compteTresorerie(modeReglement) : null
+  if (tresorerie === COMPTES_BILAN.caisse) return { compteNum: tresorerie, compteLib: 'Caisse', journal: 'CA' }
+  if (tresorerie === COMPTES_BILAN.banque) return { compteNum: tresorerie, compteLib: 'Banque', journal: 'BQ' }
+  const tiers =
+    sens === 'vente'
+      ? { compteNum: COMPTES_BILAN.clients, compteLib: 'Créances clients', journal: 'VE' }
+      : { compteNum: COMPTES_BILAN.fournisseurs, compteLib: 'Dettes fournisseurs', journal: 'AC' }
+  // Réglée sans mode connu : contrepartie tiers, journal historique (banque)
+  // conservé tant que le mode n'est pas « À crédit ».
+  if (paye && modeReglement !== 'À crédit') return { ...tiers, journal: 'BQ' }
+  return tiers
+}
+
 function ymd(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -308,23 +335,17 @@ export function genererFec(input: {
 
   // ============ VENTES MANUELLES (non auto) ============
   for (const v of input.ventes) {
-    const journal = v.modeReglement === 'Espèces' ? 'CA' : v.modeReglement === 'À crédit' ? 'VE' : 'BQ'
+    const { compteNum: compteTreso, compteLib: libTreso, journal } = contrepartieReglement(v.paye, v.modeReglement, 'vente')
     const pieceRef = v.numeroPiece || `VM-${v.id}`
     const libelle = `${v.description}${v.clientNom ? ' — ' + v.clientNom : ''}`
 
-    const compteTreso = compteTresorerie(v.modeReglement) || COMPTES_BILAN.clients
     const compteV = compteVente(v.categorie)
     const ht = sansTva ? v.montant : (v.montantHT ?? (v.montant / (1 + v.tauxTVA / 100)))
     const tva = sansTva ? 0 : (v.montantTVA ?? (v.montant - ht))
 
     const lignes: LigneTmp[] = []
     // Débit trésorerie (ou client si à crédit) = TTC
-    lignes.push({
-      compteNum: compteTreso,
-      compteLib: compteTreso === COMPTES_BILAN.caisse ? 'Caisse' : compteTreso === COMPTES_BILAN.banque ? 'Banque' : 'Créances clients',
-      debit: v.montant,
-      credit: 0,
-    })
+    lignes.push({ compteNum: compteTreso, compteLib: libTreso, debit: v.montant, credit: 0 })
     // Crédit vente HT
     if (ht !== 0) lignes.push({ compteNum: compteV.num, compteLib: compteV.lib, debit: 0, credit: ht })
     // Crédit TVA collectée
@@ -335,11 +356,10 @@ export function genererFec(input: {
 
   // ============ DÉPENSES MANUELLES (auto incluses — SSOT dépenses) ============
   for (const d of input.depenses) {
-    const journal = d.modeReglement === 'Espèces' ? 'CA' : d.modeReglement === 'À crédit' ? 'AC' : 'BQ'
+    const { compteNum: compteTreso, compteLib: libTreso, journal } = contrepartieReglement(d.paye, d.modeReglement, 'depense')
     const pieceRef = d.numeroPiece || `DM-${d.id}`
     const libelle = `${d.description}${d.fournisseurNom ? ' — ' + d.fournisseurNom : ''}`
 
-    const compteTreso = compteTresorerie(d.modeReglement) || COMPTES_BILAN.fournisseurs
     const compteA = compteAchat(d.categorie)
     const ht = sansTva ? d.montant : (d.montantHT ?? (d.montant / (1 + d.tauxTVA / 100)))
     const tva = sansTva ? 0 : (d.montantTVA ?? (d.montant - ht))
@@ -350,12 +370,7 @@ export function genererFec(input: {
     // Débit TVA déductible
     if (tva !== 0) lignes.push({ compteNum: COMPTES_BILAN.tvaDeductibleBiens, compteLib: 'TVA déductible', debit: tva, credit: 0 })
     // Crédit trésorerie (ou fournisseur si à crédit)
-    lignes.push({
-      compteNum: compteTreso,
-      compteLib: compteTreso === COMPTES_BILAN.caisse ? 'Caisse' : compteTreso === COMPTES_BILAN.banque ? 'Banque' : 'Dettes fournisseurs',
-      debit: 0,
-      credit: d.montant,
-    })
+    lignes.push({ compteNum: compteTreso, compteLib: libTreso, debit: 0, credit: d.montant })
 
     ecritures.push({ journal, date: d.date, pieceRef, libelle, lignes })
   }

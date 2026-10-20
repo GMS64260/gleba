@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createClientSchema, updateClientSchema } from '@/lib/validations/client'
+import { compterVentesParClient } from '@/lib/comptabilite/ventes-client'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -31,15 +32,17 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    const clients = await prisma.client.findMany({
+    const fiches = await prisma.client.findMany({
       where,
       orderBy: { nom: 'asc' },
-      include: {
-        _count: {
-          select: { ventesManuelles: true, factures: true }
-        }
-      }
     })
+
+    // Ticket cmvgeecem (2026-10-20) — `nbVentes` compte toutes les ventes
+    // rattachées par `clientId` (écritures et factures, dont une vente de
+    // récolte facturée, qui n'a pas d'écriture) ; `_count.ventesManuelles`
+    // laissait à « 0 ventes » le client d'une vente facturée.
+    const ventesParClient = await compterVentesParClient(userId, fiches.map((c) => c.id))
+    const clients = fiches.map((c) => ({ ...c, nbVentes: ventesParClient.get(c.id) ?? 0 }))
 
     // Ticket cmsx64vcw (QA 2026-08-17) — les cartes de tête mélangeaient deux
     // périmètres : « Total clients » comptait la liste FILTRÉE tandis que la

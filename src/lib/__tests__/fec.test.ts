@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { genererFec, serialiserFec, validerEquilibre } from "../comptabilite/fec"
+import { contrepartieReglement, genererFec, serialiserFec, validerEquilibre } from "../comptabilite/fec"
 
 describe("fec", () => {
   it("génère une écriture équilibrée pour une vente manuelle en espèces", () => {
@@ -320,5 +320,47 @@ describe("fec", () => {
     const ecrituresUniques = new Set(lignes.map((l) => l.EcritureNum))
     expect(ecrituresUniques.size).toBe(1)
     expect(lignes.some((l) => l.CompteNum === "701820")).toBe(true)
+  })
+
+  // Revue du 2026-10-20 (ticket cmvgdzsf7) : le compte de contrepartie suivait
+  // le seul mode de règlement. « Virement » choisi sur un solde de réservation
+  // impayé déplaçait la créance en banque.
+  describe("contrepartie selon le règlement", () => {
+    const vente = (paye: boolean, modeReglement: string | null) => ({
+      id: 7, date: new Date("2026-10-20"), description: "Solde cession animal", categorie: "animaux_vivants",
+      modeReglement, numeroPiece: null, tauxTVA: 5.5, montant: 1100, montantHT: 1042.65, montantTVA: 57.35,
+      clientNom: null, paye,
+    })
+    const depense = (paye: boolean, modeReglement: string | null) => ({
+      id: 8, date: new Date("2026-10-20"), description: "Aliment", categorie: "autre",
+      modeReglement, numeroPiece: null, tauxTVA: 20, montant: 120, montantHT: 100, montantTVA: 20,
+      fournisseurNom: null, paye,
+    })
+
+    it("une vente impayée reste en 411 au journal des ventes, même avec un mode bancaire", () => {
+      const lignes = genererFec({ ventes: [vente(false, "Virement")], depenses: [], factures: [] })
+      expect(lignes.find((l) => l.Debit !== "0,00")?.CompteNum).toBe("411000")
+      expect(lignes.every((l) => l.CompteNum !== "512100")).toBe(true)
+      expect(lignes[0].JournalCode).toBe("VE")
+      expect(validerEquilibre(lignes).equilibre).toBe(true)
+    })
+
+    it("une vente réglée par virement passe en banque, en espèces en caisse", () => {
+      expect(genererFec({ ventes: [vente(true, "Virement")], depenses: [], factures: [] })[0]).toMatchObject({ CompteNum: "512100", JournalCode: "BQ" })
+      expect(genererFec({ ventes: [vente(true, "Espèces")], depenses: [], factures: [] })[0]).toMatchObject({ CompteNum: "530100", JournalCode: "CA" })
+    })
+
+    it("une dépense impayée reste en 401 au journal des achats", () => {
+      const lignes = genererFec({ ventes: [], depenses: [depense(false, "Chèque")], factures: [] })
+      expect(lignes.find((l) => l.Credit !== "0,00")?.CompteNum).toBe("401000")
+      expect(lignes[0].JournalCode).toBe("AC")
+      expect(validerEquilibre(lignes).equilibre).toBe(true)
+    })
+
+    it("garde le comportement antérieur d'une écriture réglée sans mode connu", () => {
+      expect(contrepartieReglement(true, null, "vente")).toEqual({ compteNum: "411000", compteLib: "Créances clients", journal: "BQ" })
+      expect(contrepartieReglement(true, "À crédit", "vente")).toEqual({ compteNum: "411000", compteLib: "Créances clients", journal: "VE" })
+      expect(contrepartieReglement(true, "À crédit", "depense")).toEqual({ compteNum: "401000", compteLib: "Dettes fournisseurs", journal: "AC" })
+    })
   })
 })
