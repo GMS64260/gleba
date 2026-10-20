@@ -13,7 +13,7 @@
  */
 
 import prisma from '@/lib/prisma'
-import { chargerArrosagesDuJour, type ArrosageDuJour } from '@/lib/irrigation/a-arroser'
+import { chargerTourneeDuJour, type TourneeDuJour } from '@/lib/irrigation/a-arroser'
 import { uniteQuantiteRecolte } from '@/lib/recolte/projection'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
@@ -156,9 +156,14 @@ export async function getTachesPotager(
   // à arroser quand le bilan hydrique d'une de ses cultures l'exige
   // AUJOURD'HUI. Une semaine qui ne contient pas aujourd'hui n'en a pas : ni
   // passage futur prévu d'office, ni retard à rattraper.
+  // QA cmvge3o5z : la tournée nomme aussi les cultures en urgence non cochées
+  // « à irriguer » qu'elle écarte, comme la page Irriguer (même helper).
   const finAujourdhui = new Date(aujourdhui.getTime() + 86_400_000 - 1)
-  const irrigation: ArrosageDuJour[] =
-    start <= finAujourdhui && end >= aujourdhui ? await chargerArrosagesDuJour(userId, annee) : []
+  const tournee: TourneeDuJour =
+    start <= finAujourdhui && end >= aujourdhui
+      ? await chargerTourneeDuJour(userId, annee)
+      : { lignes: [], nbCultures: 0, horsTournee: [] }
+  const irrigation = tournee.lignes
 
   // ── Formatter ──
 
@@ -251,6 +256,7 @@ export async function getTachesPotager(
     plantations,
     recoltes,
     irrigation,
+    irrigationHorsTournee: tournee.horsTournee,
     stats: {
       semisPrevus: semis.length,
       semisFaits: semis.filter(s => s.fait).length,

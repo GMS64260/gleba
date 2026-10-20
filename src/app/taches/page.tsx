@@ -37,6 +37,7 @@ import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projecti
 import type { ArrosageDuJour } from "@/lib/irrigation/a-arroser"
 import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
 import { detailArrosageNote } from "@/lib/irrigation/quantite-versee"
+import { phraseExcluesTournee, phraseHorsTournee, type CultureHorsTournee } from "@/lib/irrigation/hors-tournee"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { LigneArrosage, LigneTache } from "@/components/potager/LigneTache"
 import { SaisieArrosage } from "@/components/potager/SaisieArrosage"
@@ -62,6 +63,8 @@ interface TachesData {
   plantations: TacheItem[]
   recoltes: TacheItem[]
   irrigation: ArrosageDuJour[]
+  /** Cultures en urgence non cochées « à irriguer », hors tournée (QA cmvge3o5z). */
+  irrigationHorsTournee?: CultureHorsTournee[]
   stats: {
     semisPrevus: number
     semisFaits: number
@@ -661,6 +664,22 @@ function TachesContent() {
                       />
                     ))}
                   </div>
+                )}
+                {/* QA cmvge3o5z — la page Irriguer comptait ces cultures « à
+                    arroser » ; ici elles étaient écartées sans un mot. */}
+                {phraseHorsTournee(data.irrigationHorsTournee ?? []) && (
+                  <p className="mt-3 text-xs text-orange-700">
+                    {phraseHorsTournee(data.irrigationHorsTournee ?? [])}{" "}
+                    <Link href="/maraichage/cultures/irriguer" className="underline underline-offset-2">
+                      Cocher sur la page Irriguer
+                    </Link>
+                  </p>
+                )}
+                {/* Décochée exprès (goutte-à-goutte…) : dit, sans alerte. */}
+                {phraseExcluesTournee(data.irrigationHorsTournee ?? []) && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {phraseExcluesTournee(data.irrigationHorsTournee ?? [])}
+                  </p>
                 )}
               </CardContent>
             </Card>

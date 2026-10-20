@@ -79,6 +79,7 @@ import {
 } from "@/lib/validations/espece"
 import {
   libelleUniteObjectif,
+  libelleUniteQuantite,
   uniteQuantiteRecolte,
   type UniteQuantite,
 } from "@/lib/recolte/projection"
@@ -1270,7 +1271,12 @@ export default function EditEspecePage() {
                         name="prixKg"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Prix de vente (euro/kg)</FormLabel>
+                            {/* `prixKg` est un prix PAR UNITÉ de l'espèce
+                                (stocks-unifies.ts) : « €/kg » en dur était faux
+                                pour une espèce comptée en tiges (2026-10-20). */}
+                            <FormLabel>
+                              Prix de vente (€/{libelleUniteQuantite(uniteQuantiteRecolte(uniteEffective), 1)})
+                            </FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -1293,7 +1299,7 @@ export default function EditEspecePage() {
                         name="inventaire"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Stock actuel (kg)</FormLabel>
+                            <FormLabel>Stock actuel ({libelleUniteObjectif(uniteEffective)})</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"

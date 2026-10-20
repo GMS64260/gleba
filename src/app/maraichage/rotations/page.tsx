@@ -202,16 +202,10 @@ export default function RotationsPage() {
     router.push(`/maraichage/rotations/${encodeURIComponent(row.id)}`)
   }
 
+  // La route porte le refus (planches de TOUS les comptes, rotation globale)
+  // et son message ; l'écran l'affiche tel quel. Sa garde locale comptait les
+  // seules planches du compte et taisait le refus du serveur (2026-10-20).
   const handleDelete = async (row: RotationWithRelations) => {
-    if (row._count.planches > 0) {
-      toast({
-        variant: "destructive",
-        title: "Impossible de supprimer",
-        description: `${row.id} est utilisee par ${row._count.planches} planche(s)`,
-      })
-      return
-    }
-
     if (!(await confirmDialog(`Supprimer la rotation "${row.id}" ?`))) return
 
     try {
@@ -219,8 +213,13 @@ export default function RotationsPage() {
         method: "DELETE",
       })
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}))
-        throw new Error(payload.error || "Erreur lors de la suppression")
+        const payload = await response.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: response.status === 409 ? "Impossible de supprimer" : "Erreur",
+          description: payload?.error || "Impossible de supprimer la rotation",
+        })
+        return
       }
       toast({
         title: "Rotation supprimée",
@@ -231,7 +230,7 @@ export default function RotationsPage() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de supprimer la rotation",
+        description: "Erreur réseau : la rotation n'a pas été supprimée.",
       })
     }
   }

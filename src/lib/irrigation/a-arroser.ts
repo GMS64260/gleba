@@ -15,6 +15,7 @@
 
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
 import { contexteQuantiteVersee } from '@/lib/irrigation/quantite-versee'
+import type { CultureHorsTournee } from '@/lib/irrigation/hors-tournee'
 
 /** Urgences qui font une ligne « à arroser » ; « moyenne » et « faible » se surveillent. */
 export const URGENCES_A_ARROSER = ['critique', 'haute'] as const
@@ -35,6 +36,8 @@ export interface CultureConseil {
   raisonUrgence: string
   sousAbri: boolean
   espece: { nom: string | null } | null
+  /** Variété (nom perso, sinon identifiant lisible du catalogue). */
+  variete?: { id: string; nom: string | null } | null
   planche: {
     id: string
     nom: string | null
@@ -130,12 +133,87 @@ export function arrosagesDuJour(cultures: CultureConseil[]): ArrosageDuJour[] {
   )
 }
 
+/** « Poireau Bleu de Solaise » : la variété la nomme souvent déjà avec l'espèce. */
+function libelleCulture(c: CultureConseil): string {
+  const espece = c.espece?.nom ?? ''
+  const variete = c.variete ? (c.variete.nom ?? c.variete.id) : null
+  if (!variete) return espece || `Culture #${c.id}`
+  if (!espece || variete.toLocaleLowerCase('fr').includes(espece.toLocaleLowerCase('fr'))) return variete
+  return `${espece} ${variete}`
+}
+
+/**
+ * Cultures en urgence critique ou haute que l'opt-in « à irriguer » écarte de
+ * la tournée. Elles ne font ni ligne ni courriel (décision du 2026-10-10),
+ * mais on les nomme : un filtre qui écarte une ligne doit la dire (QA
+ * cmvge3o5z). Revue du 2026-10-20 :
+ * - jamais cochée (`null`) : invitation à la cocher ; décochée (`false`,
+ *   goutte-à-goutte programmé par exemple) : exclusion volontaire, dite sans
+ *   ton d'alerte (on propose sans imposer) ;
+ * - une culture dont la planche est déjà dans la tournée n'en est pas
+ *   écartée : le passage arrose toute la planche.
+ * Pur.
+ */
+export function culturesHorsTournee(cultures: CultureConseil[]): CultureHorsTournee[] {
+  const planchesDeLaTournee = new Set(
+    cultures
+      .filter((c) => c.aIrriguer === true && estAArroser(c.urgence) && c.planche)
+      .map((c) => c.planche!.id),
+  )
+  return cultures
+    .filter((c): c is CultureConseil & { urgence: UrgenceAArroser } => c.aIrriguer !== true && estAArroser(c.urgence))
+    .filter((c) => !(c.planche && planchesDeLaTournee.has(c.planche.id)))
+    .sort((a, b) => RANG[a.urgence] - RANG[b.urgence])
+    .map((c) => ({
+      cultureId: c.id,
+      libelle: libelleCulture(c),
+      plancheNom: c.planche?.nom ?? null,
+      urgence: c.urgence,
+      motif: c.aIrriguer === false ? ('exclue' as const) : ('non_cochee' as const),
+    }))
+}
+
+/** La tournée du jour : ses lignes, et les cultures en urgence qu'elle écarte. */
+export interface TourneeDuJour {
+  lignes: ArrosageDuJour[]
+  /** Cultures notées par la tournée (cochées, en urgence critique ou haute). */
+  nbCultures: number
+  horsTournee: CultureHorsTournee[]
+}
+
+const TOURNEE_VIDE: TourneeDuJour = { lignes: [], nbCultures: 0, horsTournee: [] }
+
+/**
+ * Seule règle de la tournée du jour, pour la page Tâches (et tous les lecteurs
+ * de `chargerArrosagesDuJour`) comme pour la page Irriguer, qui comptait de son
+ * côté toutes les urgences (QA cmvge3o5z). Le conseil ne vaut que pour la
+ * saison en cours : une autre année n'a pas de tournée. Pur.
+ */
+export function tourneeDuJour(
+  cultures: CultureConseil[],
+  annee: number,
+  maintenant: Date = new Date(),
+): TourneeDuJour {
+  if (annee !== maintenant.getFullYear()) return TOURNEE_VIDE
+  const lignes = arrosagesDuJour(cultures)
+  return {
+    lignes,
+    nbCultures: lignes.reduce((total, l) => total + l.cultureIds.length, 0),
+    horsTournee: culturesHorsTournee(cultures),
+  }
+}
+
+/** Tournée du jour d'un compte, en lecture seule. */
+export async function chargerTourneeDuJour(userId: string, annee: number): Promise<TourneeDuJour> {
+  if (annee !== new Date().getFullYear()) return TOURNEE_VIDE
+  const conseil = await computeConseilIrrigation(userId, annee)
+  return tourneeDuJour(conseil.data, annee)
+}
+
 /**
  * Lignes « à arroser » du jour d'un compte, en lecture seule. Le conseil ne
  * vaut que pour la saison en cours : une autre année ne rend rien.
  */
 export async function chargerArrosagesDuJour(userId: string, annee: number): Promise<ArrosageDuJour[]> {
-  if (annee !== new Date().getFullYear()) return []
-  const conseil = await computeConseilIrrigation(userId, annee)
-  return arrosagesDuJour(conseil.data)
+  return (await chargerTourneeDuJour(userId, annee)).lignes
 }

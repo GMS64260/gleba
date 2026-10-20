@@ -126,7 +126,7 @@ export default function EditRotationPage() {
         }
 
         if (!rotationRes.ok) {
-          throw new Error("Rotation non trouvee")
+          throw new Error("Rotation introuvable")
         }
 
         const rotation: RotationData = await rotationRes.json()
@@ -232,15 +232,9 @@ export default function EditRotationPage() {
   const handleDelete = async () => {
     if (!rotationData) return
 
-    if (rotationData._count.planches > 0) {
-      toast({
-        variant: "destructive",
-        title: "Impossible de supprimer",
-        description: `Cette rotation est utilisee par ${rotationData._count.planches} planche(s)`,
-      })
-      return
-    }
-
+    // La route porte le refus (planches de TOUS les comptes, rotation globale)
+    // et son message ; la fiche l'affiche tel quel (2026-10-20 : elle refusait
+    // seule d'après les planches du compte et taisait le refus du serveur).
     if (!(await confirmDialog(`Supprimer la rotation "${id}" ?`))) return
 
     try {
@@ -249,7 +243,13 @@ export default function EditRotationPage() {
       })
 
       if (!response.ok) {
-        throw new Error("Erreur lors de la suppression")
+        const payload = await response.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: response.status === 409 ? "Impossible de supprimer" : "Erreur",
+          description: payload?.error || "Impossible de supprimer la rotation",
+        })
+        return
       }
 
       toast({
@@ -257,11 +257,11 @@ export default function EditRotationPage() {
         description: `La rotation "${id}" a été supprimée`,
       })
       router.push("/maraichage/rotations")
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de supprimer la rotation",
+        description: "Erreur réseau : la rotation n'a pas été supprimée.",
       })
     }
   }
@@ -560,7 +560,8 @@ export default function EditRotationPage() {
                 type="button"
                 variant="destructive"
                 onClick={handleDelete}
-                disabled={!rotationData || rotationData._count.planches > 0}
+                /* Pas de bouton grisé muet : le refus vient de la route. */
+                disabled={!rotationData}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Supprimer

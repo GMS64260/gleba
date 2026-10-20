@@ -17,6 +17,7 @@ import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projecti
 import {
   ajouterQuantite,
   arrondirQuantites,
+  fusionnerQuantites,
   partKg,
   type QuantiteParUnite,
 } from '@/lib/recolte/quantites'
@@ -86,6 +87,18 @@ export interface EspeceAgg {
 }
 
 function round2(n: number) { return Math.round(n * 100) / 100 }
+
+/**
+ * Production de la ferme ventilée par unité : celle des espèces du potager
+ * (déjà ventilée) plus la récolte du verger, en kilos. Jamais un nombre seul :
+ * des tiges ne s'additionnent pas à des kilos (QA cmvge3bqj).
+ */
+export function productionTotaleParUnite(
+  productionEspeces: QuantiteParUnite,
+  vergerKg: number,
+): QuantiteParUnite {
+  return arrondirQuantites(fusionnerQuantites(productionEspeces, { kg: vergerKg }))
+}
 
 export type CoutsProduction = Awaited<ReturnType<typeof computeCoutsProduction>>
 
@@ -564,6 +577,13 @@ export async function computeCoutsProduction(userId: string, year: number) {
     nbCultures: cultureCosts.length,
   }
 
+  // QA cmvge3bqj (2026-10-20) — le total ferme additionnait les productions de
+  // toutes les espèces et du verger : 60 tiges de dahlia comptaient 60 kg
+  // (14 241,5 « kg » pour 14 181,49 kg et 60 tiges). Même ventilation que la
+  // carte Maraîchage : les masses ensemble, les autres unités à part. Le verger
+  // se pèse (`RecolteArbre.quantite` en kg).
+  const productionFermeParUnite = productionTotaleParUnite(productionEspecesParUnite, vergerProduction)
+
   return {
     parEspece,
     parCulture: cultureCosts,
@@ -617,7 +637,11 @@ export async function computeCoutsProduction(userId: string, year: number) {
       coutsGeneraux: round2(coutsGeneraux),
       margeBrute: round2(totalMarge),
       margePercent: Math.round(totalMargePercent * 10) / 10,
-      production: round2(parEspece.reduce((s, e) => s + e.production, 0) + vergerProduction),
+      // Part en kilos seulement ; la ventilation complète est à côté.
+      production: partKg(productionFermeParUnite),
+      productionParUnite: productionFermeParUnite,
+      // Ligne « Non affecté aux espèces » du tableau : la récolte du verger.
+      productionHorsEspecesParUnite: productionTotaleParUnite({}, vergerProduction),
       surface: round2(parEspece.reduce((s, e) => s + e.surface, 0)),
       heuresTravaillees: Math.round((parEspece.reduce((s, e) => s + e.minutesTravaillees, 0) / 60 + vergerHeures) * 10) / 10,
       nbEspeces: parEspece.length,

@@ -231,16 +231,13 @@ export default function EditITPPage() {
   const handleDelete = async () => {
     if (!itpData) return
 
-    if (itpData._count.cultures > 0 || itpData._count.rotationsDetails > 0) {
-      toast({
-        variant: "destructive",
-        title: "Impossible de supprimer",
-        description: `Cet ITP est utilise dans ${itpData._count.cultures} culture(s) et ${itpData._count.rotationsDetails} rotation(s)`,
-      })
-      return
-    }
-
-    if (!(await confirmDialog(`Supprimer l'ITP "${id}" ?`))) return
+    // La route porte le refus (cultures de tous les comptes, étapes de
+    // rotation) et son message, qui nomme années et rotations ; la fiche
+    // l'affiche tel quel. Sa garde locale refusait seule, d'après le seul
+    // compteur du compte (2026-10-20). L'ITP est nommé par son libellé, pas
+    // par son identifiant technique.
+    const libelle = nomAffichableItp(itpData)
+    if (!(await confirmDialog(`Supprimer l'ITP "${libelle}" ?`))) return
 
     try {
       const response = await fetch(`/api/itps/${encodeURIComponent(id)}`, {
@@ -248,19 +245,25 @@ export default function EditITPPage() {
       })
 
       if (!response.ok) {
-        throw new Error("Erreur lors de la suppression")
+        const payload = await response.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: response.status === 409 ? "Impossible de supprimer" : "Erreur",
+          description: payload?.error || "Impossible de supprimer l'ITP",
+        })
+        return
       }
 
       toast({
-        title: "ITP supprime",
-        description: `L'ITP "${id}" a été supprimé`,
+        title: "ITP supprimé",
+        description: `L'ITP "${libelle}" a été supprimé`,
       })
       router.push("/maraichage/itps")
     } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de supprimer l'ITP",
+        description: "Erreur réseau : l'ITP n'a pas été supprimé.",
       })
     }
   }
@@ -976,7 +979,8 @@ export default function EditITPPage() {
                   type="button"
                   variant="destructive"
                   onClick={handleDelete}
-                  disabled={!itpData || itpData._count.cultures > 0 || itpData._count.rotationsDetails > 0}
+                  /* Pas de bouton grisé muet : le refus vient de la route. */
+                  disabled={!itpData}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
                   Supprimer

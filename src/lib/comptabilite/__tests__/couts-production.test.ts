@@ -53,6 +53,7 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('@/lib/kpi', () => ({ getKpiCompta: mocks.getKpiCompta }))
 
 import { computeCoutsProduction } from '../couts-production'
+import { formatQuantiteParUnite } from '@/lib/recolte/quantites'
 
 const YEAR = 2026
 const arbre = { nom: 'Cerisier A', espece: 'Cerisier', especeId: 'cerisier' }
@@ -208,5 +209,46 @@ describe('computeCoutsProduction — unité des quantités et des ratios', () =>
 
     expect(dahlia?.unite).toBe('tige')
     expect(dahlia?.production).toBe(100) // et non 103
+  })
+
+  // QA cmvge3bqj — KPI « 14 241,5 kg » = 11 696,49 kg + 2 485 kg + 60 tiges
+  // comptées comme 60 kg. Le total ferme ventile comme la carte Maraîchage.
+  it('le total ferme somme les masses seules et présente les tiges à part', async () => {
+    mocks.cultureFindMany.mockResolvedValue([
+      {
+        id: 10,
+        especeId: 'Tomate',
+        plancheId: 'p1',
+        longueur: null,
+        espece: { id: 'Tomate', nom: 'Tomate', rendement: 4, uniteRendement: 'kg_m2' },
+        variete: null,
+        planche,
+        recoltes: [{ quantite: 11696.49, unite: 'kg', statut: 'en_stock', prixKg: null, prixTotal: null }],
+      },
+      {
+        id: 1220,
+        especeId: 'Dahlia',
+        plancheId: 'p1',
+        longueur: null,
+        espece: { id: 'Dahlia', nom: 'Dahlia', rendement: 20, uniteRendement: 'tiges_m2' },
+        variete: null,
+        planche,
+        recoltes: [{ quantite: 60, unite: 'tige', statut: 'en_stock', prixKg: null, prixTotal: null }],
+      },
+    ])
+    mocks.recolteArbreFindMany.mockResolvedValue([
+      { statut: 'en_stock', prixTotal: null, prixKg: null, quantite: 2485, arbre },
+    ])
+
+    const res = await computeCoutsProduction('user-1', YEAR)
+
+    // Carte Maraîchage (inchangée) : 11 696,49 kg + 60 tiges.
+    expect(res.parModule.potager.productionParUnite).toEqual({ kg: 11696.49, tige: 60 })
+    // KPI et pied de tableau : 14 181,49 kg, et 60 tiges à part.
+    expect(res.totaux.production).toBe(14181.49)
+    expect(res.totaux.productionParUnite).toEqual({ kg: 14181.49, tige: 60 })
+    expect(formatQuantiteParUnite(res.totaux.productionParUnite)).toBe('14\u202f181,49 kg + 60 tiges')
+    // Ligne « Non affecté aux espèces » : le verger seul.
+    expect(res.totaux.productionHorsEspecesParUnite).toEqual({ kg: 2485 })
   })
 })

@@ -118,8 +118,11 @@ interface Totaux {
   coutMainOeuvre: number
   margeBrute: number
   margePercent: number
+  /** Part en kilos seulement : afficher `productionParUnite` (QA cmvge3bqj). */
   production: number
   productionParUnite?: QuantiteParUnite
+  /** Production hors espèces du potager (verger), ventilée par unité. */
+  productionHorsEspecesParUnite?: QuantiteParUnite
   surface: number
   heuresTravaillees: number
   nbEspeces: number
@@ -757,7 +760,11 @@ export default function CoutsProductionPage() {
                         <span className="text-xs text-muted-foreground ml-2 font-normal">({data.totauxEspeces.nbCultures} cultures)</span>
                       </TableCell>
                       <TableCell className="text-right">{formatNumber(data.totauxEspeces.surface)}</TableCell>
-                      <TableCell className="text-right">{formatNumber(data.totauxEspeces.production)}</TableCell>
+                      <TableCell className="text-right">
+                        {data.totauxEspeces.productionParUnite
+                          ? formatQuantiteParUnite(data.totauxEspeces.productionParUnite)
+                          : formatNumber(data.totauxEspeces.production)}
+                      </TableCell>
                       <TableCell className="text-right">
                         {data.totauxEspeces.surface > 0 ? formatNumber(data.totauxEspeces.production / data.totauxEspeces.surface, 2) : "-"}
                       </TableCell>
@@ -792,7 +799,9 @@ export default function CoutsProductionPage() {
                       </TableCell>
                       <TableCell className="text-right">-</TableCell>
                       <TableCell className="text-right">
-                        {formatNumber(Math.round((data.totaux.production - data.totauxEspeces.production) * 100) / 100)}
+                        {data.totaux.productionHorsEspecesParUnite
+                          ? formatQuantiteParUnite(data.totaux.productionHorsEspecesParUnite)
+                          : formatNumber(Math.round((data.totaux.production - data.totauxEspeces.production) * 100) / 100)}
                       </TableCell>
                       <TableCell className="text-right">-</TableCell>
                       <TableCell className="text-right">
@@ -833,7 +842,12 @@ export default function CoutsProductionPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">{formatNumber(data.totaux.surface)}</TableCell>
-                      <TableCell className="text-right">{formatNumber(data.totaux.production)}</TableCell>
+                      {/* QA cmvge3bqj — les tiges ne s'additionnent pas aux kilos. */}
+                      <TableCell className="text-right">
+                        {data.totaux.productionParUnite
+                          ? formatQuantiteParUnite(data.totaux.productionParUnite)
+                          : formatNumber(data.totaux.production)}
+                      </TableCell>
                       <TableCell className="text-right">-</TableCell>
                       <TableCell className="text-right text-green-600">{formatEuro(data.totaux.revenus)}</TableCell>
                       <TableCell className="text-right text-red-600">{formatEuro(data.totaux.coutTotal)}</TableCell>

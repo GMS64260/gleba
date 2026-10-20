@@ -9,11 +9,19 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { z } from 'zod'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
+import { preparerSortieStock } from '@/lib/stocks/sortie-stock'
+import { UNITES_QUANTITE, type UniteQuantite } from '@/lib/recolte/projection'
 
 const consommationSchema = z.object({
   date: z.string().datetime().optional(),
   especeId: z.string().min(1),
   quantite: z.number().positive(),
+  /**
+   * Unité AFFICHÉE par l'écran (QA cmvgef6ou) : contrôlée contre celle du
+   * stock, jamais écrite (une consommation se compte dans l'unité du stock
+   * de son espèce, cf. `src/lib/stocks/sortie-stock.ts`).
+   */
+  unite: z.enum(UNITES_QUANTITE as [UniteQuantite, ...UniteQuantite[]]).optional(),
   prix: z.number().min(0).optional(),
   destinationId: z.string().optional(),
   notes: z.string().max(1000).optional(),
@@ -40,7 +48,7 @@ export async function GET(request: NextRequest) {
       },
       include: {
         espece: {
-          select: { id: true, couleur: true, prixKg: true }
+          select: { id: true, nom: true, couleur: true, prixKg: true }
         },
         destination: {
           select: { id: true, description: true }
@@ -52,8 +60,13 @@ export async function GET(request: NextRequest) {
     // Calculer stocks nets
     const stocksNet = await calculerStocksNet(session!.user.id, especeId || undefined)
 
+    // Chaque sortie dans l'unité du stock de son espèce (QA cmvgef6ou) : celle
+    // que le stock net lui retranche. L'écran n'a rien à deviner.
     return NextResponse.json({
-      consommations,
+      consommations: consommations.map((c) => ({
+        ...c,
+        unite: stocksNet[c.especeId]?.unite ?? 'kg',
+      })),
       stocksNet,
     })
   } catch (error) {
@@ -76,36 +89,41 @@ export async function POST(request: NextRequest) {
     // Validation
     const validated = consommationSchema.safeParse(body)
     if (!validated.success) {
+      // Un refus de validation nomme son champ.
+      const premiere = validated.error.issues[0]
       return NextResponse.json(
-        { error: 'Données invalides', details: validated.error.flatten() },
+        {
+          error: `Données invalides — ${premiere?.path.join('.') || 'corps'} : ${premiere?.message ?? 'valeur invalide'}`,
+          details: validated.error.flatten(),
+        },
         { status: 400 }
       )
     }
 
-    const data = validated.data
+    const { unite: uniteAffichee, ...data } = validated.data
 
-    // Vérifier que l'espece existe
-    const espece = await prisma.espece.findUnique({
-      where: { id: data.especeId }
+    // Espèce visible du compte, unité du stock, quantité entière pour des
+    // tiges, pièces ou bottes : règle commune avec l'assistant.
+    const sortie = await preparerSortieStock(session!.user.id, {
+      especeId: data.especeId,
+      quantite: data.quantite,
+      unite: uniteAffichee,
     })
-
-    if (!espece) {
-      return NextResponse.json(
-        { error: `Espèce "${data.especeId}" introuvable` },
-        { status: 404 }
-      )
+    if (!sortie.ok) {
+      return NextResponse.json({ error: sortie.error }, { status: sortie.status })
     }
 
     // Créer la consommation
     const consommation = await prisma.consommation.create({
       data: {
         ...data,
+        especeId: sortie.especeId,
         date: data.date ? new Date(data.date) : new Date(),
         userId: session!.user.id,
       },
       include: {
         espece: {
-          select: { id: true, couleur: true, prixKg: true }
+          select: { id: true, nom: true, couleur: true, prixKg: true }
         },
         destination: {
           select: { id: true, description: true }
@@ -113,7 +131,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json(consommation, { status: 201 })
+    return NextResponse.json({ ...consommation, unite: sortie.unite }, { status: 201 })
   } catch (error) {
     console.error('POST /api/consommations error:', error)
     return NextResponse.json(

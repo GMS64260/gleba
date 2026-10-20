@@ -44,6 +44,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
+import { formatMontantDevise } from "@/lib/format-utils"
 import {
   ajouterQuantite,
   formatQuantite,
@@ -468,7 +469,7 @@ export default function RecoltesPage() {
               <p className="text-2xl font-bold text-green-800">
                 {formatQuantiteParUnite(stockParUnite)}
               </p>
-              <p className="text-xs text-green-600">Valeur: {stockValeur.toFixed(2)} €</p>
+              <p className="text-xs text-green-600">Valeur : {formatMontantDevise(stockValeur)}</p>
               {(perimesCount > 0 || bientotPerimesCount > 0) && (
                 <div className="mt-1 flex gap-2 text-xs">
                   {perimesCount > 0 && (
@@ -499,7 +500,7 @@ export default function RecoltesPage() {
                 <Euro className="h-4 w-4 text-emerald-600" />
                 <p className="text-sm text-emerald-700">CA Ventes</p>
               </div>
-              <p className="text-2xl font-bold text-emerald-800">{totalVentes.toFixed(2)} €</p>
+              <p className="text-2xl font-bold text-emerald-800">{formatMontantDevise(totalVentes)}</p>
             </CardContent>
           </Card>
           <Card className="border-orange-200 bg-orange-50">
@@ -618,7 +619,7 @@ export default function RecoltesPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-right text-blue-600">
-                              {r.espece?.prixKg ? `${(r.quantite * r.espece.prixKg).toFixed(2)} €` : "-"}
+                              {r.espece?.prixKg ? formatMontantDevise(r.quantite * r.espece.prixKg) : "-"}
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
@@ -688,10 +689,10 @@ export default function RecoltesPage() {
                             {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                           </TableCell>
                           <TableCell className="text-right">
-                            {r.prixKg ? `${r.prixKg.toFixed(2)} € / ${libelleUniteQuantite(uniteRecolte(r.unite), 1)}` : "-"}
+                            {r.prixKg ? `${formatMontantDevise(r.prixKg)} / ${libelleUniteQuantite(uniteRecolte(r.unite), 1)}` : "-"}
                           </TableCell>
                           <TableCell className="text-right font-medium text-green-600">
-                            {r.prixTotal ? `${r.prixTotal.toFixed(2)} €` : "-"}
+                            {r.prixTotal ? formatMontantDevise(r.prixTotal) : "-"}
                           </TableCell>
                           <TableCell>{r.clientNom || "-"}</TableCell>
                           <TableCell>
@@ -816,7 +817,7 @@ export default function RecoltesPage() {
                   <div className="p-3 bg-blue-50 rounded-lg">
                     <p className="text-sm text-blue-700">
                       Total: <span className="font-bold">
-                        {(parseFloat(venteData.prixKg) * parseFloat(venteData.quantiteVendue)).toFixed(2)} €
+                        {formatMontantDevise(parseFloat(venteData.prixKg) * parseFloat(venteData.quantiteVendue))}
                       </span>
                     </p>
                   </div>

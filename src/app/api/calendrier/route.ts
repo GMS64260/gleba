@@ -13,6 +13,8 @@ import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
 import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
+import { uniteQuantiteRecolte } from '@/lib/recolte/projection'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest) {
           dateRecolte: true,
           recolteFaite: true,
           espece: {
-            select: { couleur: true, nom: true },
+            select: { couleur: true, nom: true, rendement: true, uniteRendement: true },
           },
           variete: {
             select: { nom: true },
@@ -148,6 +150,14 @@ export async function GET(request: NextRequest) {
         },
       }),
     ])
+
+    // Unité de saisie d'une récolte (kg, tige, pièce, botte), surcharge de la
+    // ferme comprise : la même que `POST /api/recoltes` figera sur la ligne.
+    // Le dialogue du calendrier affichait « kg » en dur (2026-10-20).
+    const surchargesRendement = await chargerSurchargesRendement(
+      userId,
+      Array.from(new Set(culturesAvecRecolte.map((c) => c.especeId))),
+    )
 
     // Un passage arrose toute la planche : un événement par planche et par jour.
     const parPlancheJour = new Map<string, typeof irrigationsPlanifiees>()
@@ -217,6 +227,9 @@ export async function GET(request: NextRequest) {
         couleur: c.espece?.couleur || null,
         especeNom: c.espece?.nom ?? c.especeId,
         varieteNom: c.variete?.nom ?? c.varieteId ?? null,
+        unite: uniteQuantiteRecolte(
+          rendementEffectif(c.espece, surchargesRendement.get(c.especeId)).uniteRendement,
+        ),
       })),
       ...irrigationEvents,
     ]

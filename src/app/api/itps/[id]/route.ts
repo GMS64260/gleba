@@ -9,7 +9,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateITPSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { peutEditerReferentiel, visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import {
+  masquerEntree,
+  peutEditerReferentiel,
+  visibiliteReferentiel,
+  whereReferentielCible,
+} from '@/lib/referentiel-communaute'
 import {
   conflitNomItp,
   doublonVisibleItp,
@@ -19,6 +24,7 @@ import {
   messageConflitPeriodeItp,
   nomItpDepuisSaisie,
 } from '@/lib/itp-nom'
+import { messageRefusSuppressionItp } from '@/lib/itp-suppression'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -80,7 +86,11 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(itp)
+    // Aucun id d'un autre compte ne sort (ITP communautaire, espèce parente).
+    return NextResponse.json({
+      ...masquerEntree(itp, userId),
+      espece: itp.espece ? masquerEntree(itp.espece, userId) : itp.espece,
+    })
   } catch (error) {
     console.error('GET /api/itps/[id] error:', error)
     return NextResponse.json(
@@ -112,9 +122,10 @@ export async function PUT(
       )
     }
 
-    // Vérifier existence
-    const existing = await prisma.iTP.findUnique({
-      where: { id },
+    // Vérifier existence : l'ITP privé d'un autre compte répond comme un ITP
+    // inexistant (404), jamais 403 ni le 409 des références sourcées.
+    const existing = await prisma.iTP.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
     })
 
     if (!existing) {
@@ -165,8 +176,10 @@ export async function PUT(
     // interne du seul typeCultureSemis — aucune donnée d'espèce n'est renvoyée ici.
     const especeIdEffectif = data.especeId ?? existing.especeId
     if (especeIdEffectif && data.semainePlantation != null) {
-      const espece = await prisma.espece.findUnique({
-        where: { id: especeIdEffectif },
+      // Espèce visible seulement : l'espèce d'origine de l'ITP a pu redevenir
+      // privée chez son auteur depuis le rattachement.
+      const espece = await prisma.espece.findFirst({
+        where: { AND: [{ id: especeIdEffectif }, visibiliteReferentiel(session!.user.id)] },
         select: { typeCultureSemis: true },
       })
       if (espece?.typeCultureSemis === 'semis_direct') {
@@ -240,7 +253,8 @@ export async function PUT(
       : null
 
     return NextResponse.json({
-      ...itp,
+      ...masquerEntree(itp, session!.user.id),
+      espece: itp.espece ? masquerEntree(itp.espece, session!.user.id) : itp.espece,
       ...(doublon
         ? { doublonPotentiel: { id: doublon.id, nom: doublon.nom ?? doublon.id } }
         : {}),
@@ -293,8 +307,8 @@ export async function DELETE(
     // compteur du compte courant. Un refus « car il est utilisé » sur un
     // écran qui affiche « 0 culture » est incompréhensible : on distingue donc
     // les deux dans le message.
-    const itp = await prisma.iTP.findUnique({
-      where: { id },
+    const itp = await prisma.iTP.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
       include: {
         _count: {
           select: {
@@ -304,10 +318,6 @@ export async function DELETE(
         },
       },
     })
-    const culturesDuCompte = itp
-      ? await prisma.culture.count({ where: { itpId: id, userId: session!.user.id } })
-      : 0
-
     if (!itp) {
       return NextResponse.json(
         { error: `ITP "${id}" non trouvé` },
@@ -330,21 +340,41 @@ export async function DELETE(
       )
     }
 
-    // Vérifier si des cultures ou rotations sont liées
+    // Vérifier si des cultures ou rotations sont liées. La route porte la
+    // règle et son message ; la liste et la fiche des ITP l'affichent tel quel
+    // (2026-10-20 : elles refusaient seules, d'après leur propre compteur). Le
+    // refus nomme les années des cultures du compte et les rotations.
     if (itp._count.cultures > 0 || itp._count.rotationsDetails > 0) {
-      const culturesAilleurs = itp._count.cultures - culturesDuCompte
-      const parties = [
-        culturesDuCompte > 0 ? `${culturesDuCompte} de vos cultures` : null,
-        culturesAilleurs > 0
-          ? `${culturesAilleurs} culture(s) d'autres membres de la communauté`
-          : null,
-        itp._count.rotationsDetails > 0
-          ? `${itp._count.rotationsDetails} étape(s) de rotation`
-          : null,
-      ].filter(Boolean)
+      const [culturesParAnnee, etapes] = await Promise.all([
+        prisma.culture.groupBy({
+          by: ['annee'],
+          where: { itpId: itp.id, userId: session!.user.id },
+          _count: { _all: true },
+        }),
+        prisma.rotationDetail.findMany({
+          where: { itpId: itp.id },
+          select: { rotationId: true },
+          distinct: ['rotationId'],
+          orderBy: { rotationId: 'asc' },
+        }),
+      ])
+      const culturesDuCompte = culturesParAnnee.reduce((n, l) => n + l._count._all, 0)
+      const culturesAilleurs = Math.max(0, itp._count.cultures - culturesDuCompte)
+      const message = messageRefusSuppressionItp({
+        culturesDuCompte,
+        anneesCulturesDuCompte: culturesParAnnee
+          .map((l) => l.annee)
+          .filter((a): a is number => typeof a === 'number'),
+        culturesDuCompteSansAnnee: culturesParAnnee
+          .filter((l) => typeof l.annee !== 'number')
+          .reduce((n, l) => n + l._count._all, 0),
+        culturesAutresMembres: culturesAilleurs,
+        etapesRotation: itp._count.rotationsDetails,
+        rotations: etapes.map((e) => e.rotationId),
+      })
       return NextResponse.json(
         {
-          error: `Impossible de supprimer cet itinéraire : il est utilisé par ${parties.join(', ')}.`,
+          error: message,
           details: {
             cultures: itp._count.cultures,
             culturesDuCompte,

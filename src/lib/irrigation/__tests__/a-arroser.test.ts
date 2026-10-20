@@ -7,7 +7,16 @@ import { describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/irrigation-conseil", () => ({ computeConseilIrrigation: vi.fn() }))
 
-import { arrosagesDuJour, type CultureConseil } from "../a-arroser"
+import { computeConseilIrrigation } from "@/lib/irrigation-conseil"
+import {
+  arrosagesDuJour,
+  chargerArrosagesDuJour,
+  chargerTourneeDuJour,
+  culturesHorsTournee,
+  tourneeDuJour,
+  type CultureConseil,
+} from "../a-arroser"
+import { phraseExcluesTournee, phraseHorsTournee } from "../hors-tournee"
 
 function culture(id: number, urgence: string, planche: CultureConseil["planche"], espece = "Tomate"): CultureConseil {
   return {
@@ -111,5 +120,86 @@ describe("quantité conseillée d'une ligne", () => {
     expect(arrosagesDuJour([culture(1, "haute", A3)])[0]).toMatchObject({ litresParM2: null, surfaceM2: 0 })
     const seule = { ...culture(7, "haute", null), reserve: { litresParM2: 5 } }
     expect(arrosagesDuJour([seule])[0]).toMatchObject({ litresParM2: 5, surfaceM2: 0 })
+  })
+})
+
+/**
+ * QA cmvge3o5z (démo, 2026-10-20) : Irriguer annonçait 3 cultures à arroser,
+ * Tâches 2. Le Poireau Bleu de Solaise de C2 (urgence critique) n'était pas
+ * coché « à irriguer » : la page Irriguer le comptait, la tournée l'écartait
+ * sans le dire. Une seule tournée, qui nomme ce qu'elle écarte.
+ */
+describe("tourneeDuJour", () => {
+  const C1 = { id: "p-c1", nom: "C1", ilot: "C" }
+  const C2 = { id: "p-c2", nom: "C2", ilot: "C" }
+  const demo: CultureConseil[] = [
+    { ...culture(985, "haute", null, "Radis") },
+    { ...culture(827, "haute", C1, "Potimarron") },
+    {
+      ...culture(829, "critique", C2, "Poireau"),
+      aIrriguer: null,
+      variete: { id: "Poireau Bleu de Solaise", nom: null },
+    },
+    { ...culture(900, "moyenne", C2, "Carotte"), aIrriguer: null },
+  ]
+  const ANNEE = new Date().getFullYear()
+
+  it("rend les lignes de la page Tâches et nomme la culture urgente non cochée", () => {
+    const tournee = tourneeDuJour(demo, ANNEE)
+
+    expect(tournee.lignes).toEqual(arrosagesDuJour(demo))
+    expect(tournee.lignes.map((l) => l.cle).sort()).toEqual(["culture:985", "planche:p-c1"])
+    expect(tournee.nbCultures).toBe(2)
+    expect(tournee.horsTournee).toEqual([
+      { cultureId: 829, libelle: "Poireau Bleu de Solaise", plancheNom: "C2", urgence: "critique", motif: "non_cochee" },
+    ])
+    expect(phraseHorsTournee(tournee.horsTournee)).toBe(
+      "1 culture en urgence n'est pas cochée « à irriguer » et reste hors de la tournée : Poireau Bleu de Solaise (C2)."
+    )
+    expect(phraseExcluesTournee(tournee.horsTournee)).toBeNull()
+  })
+
+  // Revue du 2026-10-20 : décocher (goutte-à-goutte programmé) est un choix,
+  // on le dit sans alerte ; jamais coché appelle l'invitation.
+  it("une culture décochée exprès est mentionnée sans invitation à la cocher", () => {
+    const decochee = { ...culture(829, "critique", C2, "Poireau"), aIrriguer: false }
+    const tournee = tourneeDuJour([decochee], ANNEE)
+
+    expect(tournee.horsTournee).toEqual([
+      { cultureId: 829, libelle: "Poireau", plancheNom: "C2", urgence: "critique", motif: "exclue" },
+    ])
+    expect(phraseHorsTournee(tournee.horsTournee)).toBeNull()
+    expect(phraseExcluesTournee(tournee.horsTournee)).toBe(
+      "Exclue volontairement de la tournée (décochée « à irriguer ») : Poireau (C2)."
+    )
+  })
+
+  it("une culture non cochée dont la planche est déjà dans la tournée n'en est pas écartée", () => {
+    const voisine = { ...culture(830, "critique", C1, "Basilic"), aIrriguer: null }
+    const tournee = tourneeDuJour([...demo, voisine], ANNEE)
+
+    // Le passage sur C1 (Potimarron coché) arrose aussi le basilic.
+    expect(tournee.horsTournee.map((c) => c.cultureId)).toEqual([829])
+  })
+
+  it("une urgence moyenne non cochée n'est pas signalée ; une variété perso garde son espèce", () => {
+    const perso = { ...culture(1, "haute", null, "Tomate"), aIrriguer: false, variete: { id: "cm123", nom: "Cœur de bœuf" } }
+    expect(culturesHorsTournee([perso, ...demo.slice(3)])).toEqual([
+      { cultureId: 1, libelle: "Tomate Cœur de bœuf", plancheNom: null, urgence: "haute", motif: "exclue" },
+    ])
+    expect(phraseHorsTournee([])).toBeNull()
+  })
+
+  it("hors de la saison en cours, pas de tournée", () => {
+    expect(tourneeDuJour(demo, ANNEE + 1)).toEqual({ lignes: [], nbCultures: 0, horsTournee: [] })
+  })
+
+  it("le chargeur des tâches et celui des autres lecteurs servent les mêmes lignes", async () => {
+    vi.mocked(computeConseilIrrigation).mockResolvedValue({ data: demo } as never)
+
+    const tournee = await chargerTourneeDuJour("u1", ANNEE)
+    expect(tournee.lignes).toHaveLength(2)
+    expect(tournee.horsTournee.map((c) => c.cultureId)).toEqual([829])
+    expect(await chargerArrosagesDuJour("u1", ANNEE)).toEqual(tournee.lignes)
   })
 })

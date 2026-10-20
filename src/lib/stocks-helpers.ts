@@ -5,9 +5,9 @@
 
 import prisma from '@/lib/prisma'
 import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
-import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
+import type { UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, arrondirQuantites, type QuantiteParUnite } from '@/lib/recolte/quantites'
-import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import { chargerUnitesStock } from '@/lib/stocks/sortie-stock'
 import { computeStockOeufsParLots, type StockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 
 /**
@@ -105,20 +105,9 @@ export async function calculerStocksNet(
   ]
 
   // Unité de chaque espèce : celle déclarée par la ferme si elle l'a fait,
-  // celle du catalogue sinon.
-  const [especesUnite, surcharges] = await Promise.all([
-    prisma.espece.findMany({
-      where: { id: { in: allEspeces.map(e => e.id) } },
-      select: { id: true, rendement: true, uniteRendement: true },
-    }),
-    chargerSurchargesRendement(userId, allEspeces.map(e => e.id)),
-  ])
-  const uniteParEspece = new Map(
-    especesUnite.map(e => [
-      e.id,
-      uniteQuantiteRecolte(rendementEffectif(e, surcharges.get(e.id)).uniteRendement),
-    ]),
-  )
+  // celle du catalogue sinon. Même source que la route des sorties de stock
+  // (QA cmvgef6ou) : une consommation se compte dans cette unité.
+  const uniteParEspece = await chargerUnitesStock(userId, allEspeces.map(e => e.id))
 
   // Audit 2026-07 (#51) : une récolte « mise en vente » dans la boutique (liée
   // à un ProduitBoutique actif) est committée à la boutique — son stock est

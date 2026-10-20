@@ -24,6 +24,18 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Sprout, Leaf, Package, Droplets, ExternalLink, Loader2, MapPin } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import {
+  libelleUniteQuantite,
+  UNITES_QUANTITE,
+  type UniteQuantite,
+} from "@/lib/recolte/projection"
+
+/** Unité servie par la route ; une valeur absente ou inconnue compte des kilos. */
+function uniteConnue(valeur: unknown): UniteQuantite | null {
+  return typeof valeur === "string" && (UNITES_QUANTITE as readonly string[]).includes(valeur)
+    ? (valeur as UniteQuantite)
+    : null
+}
 
 interface CalendarEvent {
   id: number
@@ -39,6 +51,8 @@ interface CalendarEvent {
   couleur: string | null
   cultureId?: number // Pour les irrigations, ID de la culture liée
   cultureCount?: number
+  /** Récolte : unité de saisie de l'espèce sur la ferme (`/api/calendrier`). */
+  unite?: UniteQuantite | null
 }
 
 interface EventDialogProps {
@@ -142,6 +156,10 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
           const p = await responseRecolte.json().catch(() => null)
           throw new Error(p?.error || "Impossible d'enregistrer la récolte")
         }
+        // L'unité est celle que le serveur a figée sur la récolte (comme la
+        // page de saisie) : « kg » en dur annonçait 19 kg pour 19 tiges.
+        const creee = await responseRecolte.json().catch(() => null)
+        const uniteEnregistree = uniteConnue(creee?.unite) ?? uniteConnue(event.unite) ?? "kg"
 
         // Marquer la culture comme récoltée
         await fetch(`/api/cultures/${event.id}`, {
@@ -152,7 +170,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
         toast({
           title: "Récolte enregistrée",
-          description: `${parsedQuantite} kg de ${event.especeNom ?? event.especeId}`,
+          description: `${parsedQuantite} ${libelleUniteQuantite(uniteEnregistree, parsedQuantite)} de ${event.especeNom ?? event.especeId}`,
         })
 
         onUpdate()
@@ -309,9 +327,11 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
                       if (e.key === "Enter") handleToggle()
                     }}
                     placeholder="0,00"
-                    className="h-11 pr-12 text-base"
+                    className="h-11 pr-16 text-base"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">kg</span>
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">
+                    {libelleUniteQuantite(uniteConnue(event.unite) ?? "kg")}
+                  </span>
                 </div>
               </div>
             </div>
