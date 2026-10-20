@@ -21,13 +21,14 @@ import { reconstituerEffectifsLots } from "../effectif"
  * filtres différents (fiches actives vs sorties, abattages du lot vs abattages
  * déjà rattachés à une fiche). Les mocks répondent donc selon le `where`.
  */
+type GroupByArgs = { where?: { statut?: { not?: string }; animalId?: unknown } }
 const mockAnimaux = ({ actifs = [] as unknown[], sorties = [] as unknown[] } = {}) => {
-  mocks.animalGroupBy.mockImplementation(async (args: any) =>
+  mocks.animalGroupBy.mockImplementation(async (args: GroupByArgs) =>
     args?.where?.statut?.not === "actif" ? sorties : actifs,
   )
 }
 const mockAbattages = ({ lot = [] as unknown[], nominatifs = [] as unknown[] } = {}) => {
-  mocks.abattageGroupBy.mockImplementation(async (args: any) =>
+  mocks.abattageGroupBy.mockImplementation(async (args: GroupByArgs) =>
     args?.where?.animalId ? nominatifs : lot,
   )
 }

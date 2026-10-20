@@ -15,6 +15,81 @@ import { invalidateKpi } from '@/lib/kpi'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { abattageSchema } from '@/lib/validations/elevage-abattage'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { Prisma } from '@prisma/client'
+
+const LOT_ABATTAGE_SELECT = {
+  id: true,
+  quantiteActuelle: true,
+  quantiteInitiale: true,
+  statut: true,
+  nom: true,
+} satisfies Prisma.LotAnimauxSelect
+type LotAbattage = Prisma.LotAnimauxGetPayload<{ select: typeof LOT_ABATTAGE_SELECT }>
+
+/** Champs scalaires d'un abattage modifiables par le PATCH. */
+type AbattageModif = {
+  date?: Date
+  quantite?: number
+  poidsVif?: number | null
+  poidsCarcasse?: number | null
+  destination?: string
+  prixVente?: number | null
+  lieu?: string | null
+  nEtablissementDestination?: string | null
+  notes?: string | null
+  factureId?: number | null
+}
+
+/**
+ * Part collective reconstituée d'un lot (`effectifCollectif` : effectif de
+ * l'écran Lots moins les fiches actives rattachées) et nombre de ces fiches.
+ * Revue 2026-10-20 — c'est elle qu'un abattage de lot entame, et non le
+ * compteur stocké `quantiteActuelle`, qui dérive (la mort d'une fiche rattachée
+ * ne le décrémente pas : lot démo 71, 5 contre 4). Une fiche s'abat par son
+ * propre parcours (`animalId`), que les appelants ne plafonnent pas.
+ */
+async function partCollectiveLot(
+  userId: string,
+  lot: LotAbattage,
+): Promise<{ collectif: number; fiches: number }> {
+  const effectif = (await reconstituerEffectifsLots(userId, [lot])).get(lot.id)
+  return {
+    collectif: effectif?.effectifCollectif ?? lot.quantiteActuelle,
+    fiches: effectif?.nominatifsActifs ?? 0,
+  }
+}
+
+/**
+ * Refus 422 `ABATTAGE_OVER_EFFECTIF` : `quantite` dépasse les `collectif` têtes
+ * disponibles pour cet abattage. Corps unique du POST et du PATCH (feedback
+ * Marc 2026-05-16, V3 Bug 6 : 500 poules abattues sur un lot de 30).
+ */
+function refusAbattageHorsEffectif(
+  lot: LotAbattage,
+  quantite: number,
+  collectif: number,
+  fiches: number,
+): NextResponse {
+  const tetes = `${collectif} tête${collectif > 1 ? 's' : ''} collective${collectif > 1 ? 's' : ''} présente${collectif > 1 ? 's' : ''} dans le lot`
+  const nomLot = lot.nom || `Lot #${lot.id}`
+  return NextResponse.json(
+    {
+      error: 'Abattage incohérent',
+      code: 'ABATTAGE_OVER_EFFECTIF',
+      details: {
+        quantite,
+        effectifActuel: collectif,
+        effectifCollectif: collectif,
+        nominatifsActifs: fiches,
+        effectifInitial: lot.quantiteInitiale,
+        lotNom: lot.nom,
+        statut: lot.statut,
+        message: `${tetes} « ${nomLot} »${lot.statut === 'termine' ? ' (statut terminé)' : ''} : impossible d'en abattre ${quantite}.${fiches > 1 ? ` Les ${fiches} fiches nominatives rattachées au lot s'abattent depuis leur fiche.` : fiches === 1 ? " La fiche nominative rattachée au lot s'abat depuis sa fiche." : ''}`,
+      },
+    },
+    { status: 422 }
+  )
+}
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -29,14 +104,14 @@ export async function GET(request: NextRequest) {
     // Revue 2026-09-28 : `annee=all` pour la liste de gestion d'un historique.
     const { annee, bornes } = lireAnnee(searchParams)
 
-    const where: any = { userId: session.user.id, annule: { not: true } }
-    if (bornes) where.date = { ...bornes }
-    if (destination) where.destination = destination
-    if (dateDebut || dateFin) {
-      where.date = where.date ?? {}
-      if (dateDebut) where.date.gte = new Date(dateDebut)
-      if (dateFin) where.date.lte = new Date(dateFin)
+    const where: Prisma.AbattageWhereInput = { userId: session.user.id, annule: { not: true } }
+    if (bornes || dateDebut || dateFin) {
+      const date: Prisma.DateTimeFilter = bornes ? { ...bornes } : {}
+      if (dateDebut) date.gte = new Date(dateDebut)
+      if (dateFin) date.lte = new Date(dateFin)
+      where.date = date
     }
+    if (destination) where.destination = destination
 
     const abattages = await prisma.abattage.findMany({
       where,
@@ -97,48 +172,20 @@ export async function POST(request: NextRequest) {
     const dateAbattage = date || new Date()
     const overrideCoherence = (body as { overrideCoherence?: boolean })?.overrideCoherence === true
 
-    // Feedback Marc 2026-05-16 — V3 Bug 6 : on autorisait l'abattage
-    // de 500 poules sur un lot qui en comptait 30. On bloque désormais
-    // toute saisie dépassant l'effectif actuel (avec override possible).
-    // Revue 2026-10-20 — le plafond est la part collective reconstituée du lot
-    // (`effectifCollectif` : effectif de l'écran Lots moins les fiches actives
-    // rattachées), et non plus le compteur stocké `quantiteActuelle`, qui dérive (la
-    // mort d'une fiche rattachée ne le décrémente pas : lot démo 71, 5 contre
-    // 4). Un abattage de lot entame les têtes anonymes ; une fiche s'abat par
-    // son propre parcours (`animalId`), qui n'est donc pas plafonné ici.
+    // Garde d'un abattage de lot : la quantité ne dépasse pas la part
+    // collective reconstituée (voir `partCollectiveLot`), sauf override. Une
+    // fiche (`animalId`) n'est pas plafonnée ici.
     if (lotId && quantite) {
       const lot = await prisma.lotAnimaux.findFirst({
         where: { id: lotId, userId: session.user.id },
-        select: { id: true, quantiteActuelle: true, quantiteInitiale: true, statut: true, nom: true },
+        select: LOT_ABATTAGE_SELECT,
       })
       if (!lot) {
         return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
       }
       if (!overrideCoherence && !animalId) {
-        const effectif = (await reconstituerEffectifsLots(session.user.id, [lot])).get(lot.id)
-        const collectif = effectif?.effectifCollectif ?? lot.quantiteActuelle
-        const fiches = effectif?.nominatifsActifs ?? 0
-        if (quantite > collectif) {
-          const tetes = `${collectif} tête${collectif > 1 ? 's' : ''} collective${collectif > 1 ? 's' : ''} présente${collectif > 1 ? 's' : ''} dans le lot`
-          const nomLot = lot.nom || `Lot #${lot.id}`
-          return NextResponse.json(
-            {
-              error: 'Abattage incohérent',
-              code: 'ABATTAGE_OVER_EFFECTIF',
-              details: {
-                quantite,
-                effectifActuel: collectif,
-                effectifCollectif: collectif,
-                nominatifsActifs: fiches,
-                effectifInitial: lot.quantiteInitiale,
-                lotNom: lot.nom,
-                statut: lot.statut,
-                message: `${tetes} « ${nomLot} »${lot.statut === 'termine' ? ' (statut terminé)' : ''} : impossible d'en abattre ${quantite}.${fiches > 1 ? ` Les ${fiches} fiches nominatives rattachées au lot s'abattent depuis leur fiche.` : fiches === 1 ? " La fiche nominative rattachée au lot s'abat depuis sa fiche." : ''}`,
-              },
-            },
-            { status: 422 }
-          )
-        }
+        const { collectif, fiches } = await partCollectiveLot(session.user.id, lot)
+        if (quantite > collectif) return refusAbattageHorsEffectif(lot, quantite, collectif, fiches)
       }
     }
 
@@ -159,7 +206,7 @@ export async function POST(request: NextRequest) {
     // POSTREVIEW Sprint 5 — Filtre `fait: true` ajouté : un soin prévu mais
     // non administré ne devrait pas bloquer ; le calcul `finAttenteViande`
     // n'est valide que pour les soins effectivement réalisés.
-    const cibleFilters: any[] = []
+    const cibleFilters: Prisma.SoinAnimalWhereInput[] = []
     if (animalId) cibleFilters.push({ animalId })
     if (lotId) cibleFilters.push({ lotId })
     const soinsAttenteViande = cibleFilters.length === 0 ? [] : await prisma.soinAnimal.findMany({
@@ -276,6 +323,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
     const { id, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, lieu, nEtablissementDestination, notes } = body
+    const overrideCoherence = (body as { overrideCoherence?: boolean })?.overrideCoherence === true
     const userId = session.user.id
 
     if (!id) {
@@ -304,7 +352,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Audit #94 : gardes NaN / date invalide (le PATCH n'était pas validé).
-    const updateData: any = {}
+    const updateData: AbattageModif = {}
     if (date !== undefined) {
       const d = new Date(date)
       if (Number.isNaN(d.getTime())) return NextResponse.json({ error: 'Date invalide' }, { status: 400 })
@@ -326,6 +374,31 @@ export async function PATCH(request: NextRequest) {
         typeof nEtablissementDestination === 'string' ? nEtablissementDestination.trim() || null : null
     }
     if (notes !== undefined) updateData.notes = notes
+
+    // Revue 2026-10-20 — même garde que le POST (`ABATTAGE_OVER_EFFECTIF`) : la
+    // quantité modifiée d'un abattage de lot ne peut dépasser la part collective
+    // reconstituée plus les têtes que cet abattage retire déjà (elles reviennent
+    // dans le disponible). Une fiche (`animalId`) s'abat par son propre
+    // parcours : pas de plafond. Diminuer la quantité ne reconstitue rien.
+    if (
+      !overrideCoherence &&
+      updateData.quantite !== undefined &&
+      updateData.quantite > existing.quantite &&
+      existing.lotId &&
+      !existing.animalId
+    ) {
+      const lot = await prisma.lotAnimaux.findFirst({
+        where: { id: existing.lotId, userId },
+        select: LOT_ABATTAGE_SELECT,
+      })
+      if (lot) {
+        const { collectif, fiches } = await partCollectiveLot(userId, lot)
+        const disponible = collectif + existing.quantite
+        if (updateData.quantite > disponible) {
+          return refusAbattageHorsEffectif(lot, updateData.quantite, disponible, fiches)
+        }
+      }
+    }
 
     const doitAnnulerFacture =
       existing.factureId &&
@@ -354,8 +427,8 @@ export async function PATCH(request: NextRequest) {
       }
 
       // Créer une facture si demandé et si prixVente existe
-      if (body.creerFacture && (updateData.prixVente || existing.prixVente)) {
-        const prixTotalTTC = updateData.prixVente || existing.prixVente
+      const prixTotalTTC = updateData.prixVente || existing.prixVente
+      if (body.creerFacture && prixTotalTTC) {
         const tva = body.tauxTVA ? parseFloat(body.tauxTVA) : 5.5
         const totalHT = prixTotalTTC / (1 + tva / 100)
         const totalTVA = prixTotalTTC - totalHT

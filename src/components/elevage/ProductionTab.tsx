@@ -15,13 +15,9 @@ import {
   Pencil,
   RefreshCw,
   Package,
-  TrendingUp,
-  Calendar,
-  Trash2,
   Filter,
   X,
   Milk,
-  Wheat,
   Euro,
   Flower2,
 } from "lucide-react"
@@ -399,10 +395,25 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   // un 422 COLLECTE_OVER_SEUIL.
   // QA 2026-05-15 — étendu pour supporter le mode édition (PATCH) :
   // si `editingId` est passé, on appelle PATCH au lieu de POST.
+  // Corps d'un refus de la route tel que l'écran le lit (422 nommés, sinon
+  // `error` seul : 400 « Données invalides », 404…).
+  type RefusProduction =
+    | {
+        code: 'COLLECTE_OVER_SEUIL'
+        error: string
+        details: { quantite: number; seuilMax: number; effectif: number; espece: string | null; lotNom: string | null; message: string }
+      }
+    | {
+        code: 'DOUBLON_DATE_LOT'
+        error: string
+        details: { idExistant: number; quantiteExistante: number; dateLue: string; message: string }
+      }
+    | { code: 'LOT_TERMINE'; error: string; details: { lotNom: string | null; statut: string; message: string } }
+    | { code?: undefined; error?: string; details?: unknown }
   const postProduction = async (
     payload: Record<string, unknown>,
     options: { override?: boolean; editingId?: number | null } = {}
-  ): Promise<{ ok: true } | { ok: false; status: number; body: any }> => {
+  ): Promise<{ ok: true } | { ok: false; status: number; body: RefusProduction }> => {
     const isEdit = options.editingId != null
     const finalPayload = options.override
       ? { ...payload, overrideCoherence: true }
@@ -525,7 +536,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               <span>
                 Le lot <strong>« {result.body.details.lotNom} »</strong> est{' '}
                 <strong>{result.body.details.statut}</strong>. Réactivez-le (statut « actif »)
-                avant d'enregistrer une nouvelle collecte, ou forcez la saisie si le statut est
+                avant d&apos;enregistrer une nouvelle collecte, ou forcez la saisie si le statut est
                 erroné.
               </span>
             ),
@@ -557,14 +568,17 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
 
   const handleOverrideConfirm = async () => {
     if (!overrideState) return
-    const result = await postProduction(overrideState.payload, { override: true })
+    // Revue 2026-10-20 — en mode édition, la saisie forcée rejoue le PATCH de la
+    // collecte (qui applique désormais le même plafond que le POST) ; sans
+    // `editingId`, elle créait une seconde collecte au lieu de corriger.
+    const result = await postProduction(overrideState.payload, { editingId, override: true })
     if (result.ok) {
       toast({
         title: "Saisie forcée enregistrée",
         description: `${overrideState.quantite} œufs — au-delà du plafond plausible (${overrideState.seuilMax}).`,
       })
       setIsDialogOpen(false)
-      setFormData({ lotId: formData.lotId, date: todayLocalISO(), quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
+      resetForm()
       fetchData()
     } else {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer (override refusé)" })
@@ -797,7 +811,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   <Input name="date" type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Nombre d'œufs *</Label>
+                  <Label>Nombre d&apos;œufs *</Label>
                   <Input name="quantite" type="number" min="0" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} placeholder="0" className="text-2xl font-bold text-center" />
                 </div>
               </div>
@@ -880,7 +894,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Sortie du stock d'œufs</DialogTitle>
+              <DialogTitle>Sortie du stock d&apos;œufs</DialogTitle>
               <DialogDescription>Déduire une vente, consommation ou perte du lot de ponte exact.</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSortieSubmit} className="space-y-4">
@@ -957,7 +971,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
           <CardHeader>
             <CardTitle className="text-sm">Traçabilité du stock</CardTitle>
             <CardDescription>
-              Vente jusqu'à J+21 · consommation jusqu'à la DCR J+28 · les plus urgents sont affichés en premier.
+              Vente jusqu&apos;à J+21 · consommation jusqu&apos;à la DCR J+28 · les plus urgents sont affichés en premier.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -1095,7 +1109,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               peuvent pas pondre <strong>{overrideState.quantite} œufs</strong> en 1 jour
               (plafond plausible ≈ <strong>{overrideState.seuilMax}</strong>).
               <br />
-              Si c'est une saisie de rattrapage (2 jours d'un coup), confirmez pour forcer.
+              Si c&apos;est une saisie de rattrapage (2 jours d&apos;un coup), confirmez pour forcer.
               Sinon, corrigez la quantité.
             </span>
           ) : null
@@ -1174,7 +1188,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
   const anneeExercice = year ?? new Date().getFullYear()
   const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   const [ventes, setVentes] = React.useState<Vente[]>([])
-  const [stats, setStats] = React.useState<any>(null)
+  const [stats, setStats] = React.useState<{ totalVentes: number; nbVentes: number } | null>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingId, setEditingId] = React.useState<number | null>(null)
@@ -1381,7 +1395,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
             <CardHeader className="pb-1 pt-3 px-4">
-              <CardDescription className="text-emerald-100 text-xs">Chiffre d'affaires</CardDescription>
+              <CardDescription className="text-emerald-100 text-xs">Chiffre d&apos;affaires</CardDescription>
               <CardTitle className="text-2xl">{formatMontantDevise(stats.totalVentes)}</CardTitle>
             </CardHeader>
           </Card>
@@ -1509,7 +1523,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                     emptyLabel="— Sélectionner un animal —"
                   />
                   <p className="text-xs text-muted-foreground">
-                    L'animal passera au statut « vendu » à l'enregistrement.
+                    L&apos;animal passera au statut « vendu » à l&apos;enregistrement.
                   </p>
                 </div>
               )}
@@ -1661,7 +1675,6 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
   const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   const [abattages, setAbattages] = React.useState<Abattage[]>([])
   const [lots, setLots] = React.useState<LotActif[]>([])
-  const [stats, setStats] = React.useState<any>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [especeFilter, setEspeceFilter] = React.useState<Set<string>>(new Set())
   // QA 2026-05-15 — édition par ligne
@@ -1703,7 +1716,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
         fetch(`/api/elevage/abattages?limit=500&${parametreAnnee(periode, anneeExercice)}`),
         fetch('/api/elevage/lots?statut=actif'),
       ])
-      if (abatRes.ok) { const r = await abatRes.json(); setAbattages(r.data); setStats(r.stats) }
+      if (abatRes.ok) { const r = await abatRes.json(); setAbattages(r.data) }
       if (lotsRes.ok) setLots((await lotsRes.json()).data)
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
