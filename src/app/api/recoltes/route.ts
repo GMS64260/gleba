@@ -16,6 +16,7 @@ import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projecti
 import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
@@ -124,8 +125,10 @@ export async function GET(request: NextRequest) {
       ),
     )
 
+    // Espèce et variété embarquées : jamais l'id de l'auteur d'une entrée
+    // partagée par un autre compte (revue 2026-10-20).
     return NextResponse.json({
-      data: recoltes,
+      data: masquerReferentielsEmbarques(recoltes, session!.user.id),
       total,
       page,
       pageSize,
@@ -276,7 +279,7 @@ export async function POST(request: NextRequest) {
     })
 
     invalidateKpi(session!.user.id)
-    return NextResponse.json(recolte, { status: 201 })
+    return NextResponse.json(masquerReferentielsEmbarques(recolte, session!.user.id), { status: 201 })
   } catch (error) {
     console.error('POST /api/recoltes error:', error)
     return NextResponse.json(

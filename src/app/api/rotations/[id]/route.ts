@@ -11,6 +11,7 @@ import { updateRotationSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { etapesRotationInvalides, messageEtapesInvalides } from '@/lib/rotations/itp-etapes'
 import { messageRefusSuppressionRotation } from '@/lib/rotations/suppression'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -70,7 +71,9 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(rotation)
+    // ITP et espèce de chaque étape : jamais l'id de l'auteur d'une entrée
+    // partagée par un autre compte (revue 2026-10-20).
+    return NextResponse.json(masquerReferentielsEmbarques(rotation, userId))
   } catch (error) {
     console.error('GET /api/rotations/[id] error:', error)
     return NextResponse.json(
@@ -204,7 +207,7 @@ export async function PUT(
       })
     })
 
-    return NextResponse.json(rotation)
+    return NextResponse.json(masquerReferentielsEmbarques(rotation, session!.user.id))
   } catch (error) {
     console.error('PUT /api/rotations/[id] error:', error)
     return NextResponse.json(

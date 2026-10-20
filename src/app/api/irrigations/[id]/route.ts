@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { enregistrerArrosageCultures } from '@/lib/irrigation-recording'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import type { Prisma } from '@prisma/client'
 
 // GET /api/irrigations/[id]
@@ -42,7 +43,9 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(irrigation)
+    // Espèce embarquée : jamais l'id de l'auteur d'une entrée partagée par un
+    // autre compte (revue 2026-10-20).
+    return NextResponse.json(masquerReferentielsEmbarques(irrigation, userId))
   } catch (error) {
     console.error('GET /api/irrigations/[id] error:', error)
     return NextResponse.json(
@@ -167,7 +170,7 @@ export async function PATCH(
       : null
 
     return NextResponse.json({
-      ...irrigation,
+      ...masquerReferentielsEmbarques(irrigation, userId),
       irrigationIds,
       impactArrosage,
     })

@@ -21,6 +21,7 @@ import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 // Motif partagé avec la garde de suppression, qui ne compte pas ce mouvement automatique.
 import { MOTIF_AFFECTATION_INITIALE } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 /** JJ/MM/AAAA déterministe (sans dépendre de l'ICU du runtime). */
 const formatDateFr = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/')
@@ -322,9 +323,11 @@ export async function POST(request: NextRequest) {
         : null,
     ].filter((message): message is string => Boolean(message))
 
+    // Espèce animale embarquée : jamais l'id de l'auteur d'un profil partagé
+    // par un autre compte (revue 2026-10-20).
     return NextResponse.json(
       {
-        data: animal,
+        data: masquerReferentielsEmbarques(animal, session.user.id),
         warning: avertissements.length ? avertissements.join(' ') : null,
       },
       { status: 201 },

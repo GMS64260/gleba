@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
+import type { Prisma } from '@prisma/client'
 
 // GET /api/irrigations
 export async function GET(request: NextRequest) {
@@ -22,7 +24,7 @@ export async function GET(request: NextRequest) {
     const end = searchParams.get('end')
     const fait = searchParams.get('fait')
 
-    const where: any = { userId }
+    const where: Prisma.IrrigationPlanifieeWhereInput = { userId }
 
     if (cultureId) {
       where.cultureId = parseInt(cultureId)
@@ -113,7 +115,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(irrigation, { status: 201 })
+    // Espèce embarquée : jamais l'id de l'auteur d'une entrée partagée par un
+    // autre compte (revue 2026-10-20).
+    return NextResponse.json(masquerReferentielsEmbarques(irrigation, userId), { status: 201 })
   } catch (error) {
     console.error('POST /api/irrigations error:', error)
     return NextResponse.json(

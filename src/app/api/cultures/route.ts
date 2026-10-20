@@ -21,6 +21,7 @@ import { whereItpUtilisable } from '@/lib/itp-acces'
 import { avertissementItpPlanche, verdictItpPlanche } from '@/lib/cultures/itp-planche'
 import { nomAffichableItp } from '@/lib/itp-label'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
 import { type UniteQuantite } from '@/lib/recolte/projection'
@@ -163,8 +164,10 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // Espèce, variété et ITP embarqués : jamais l'id de l'auteur d'une entrée
+    // partagée par un autre compte (revue 2026-10-20).
     return NextResponse.json({
-      data: culturesWithComputed,
+      data: masquerReferentielsEmbarques(culturesWithComputed, session!.user.id),
       total,
       page,
       pageSize,
@@ -589,8 +592,9 @@ export async function POST(request: NextRequest) {
     invalidateKpi(session!.user.id)
 
     // Audit Marc 2026-05-14 — Bug 04 : warnings remontés non bloquants
+    const reponse = masquerReferentielsEmbarques(culture, session!.user.id)
     return NextResponse.json(
-      dateWarnings.length > 0 ? { ...culture, warnings: dateWarnings } : culture,
+      dateWarnings.length > 0 ? { ...reponse, warnings: dateWarnings } : reponse,
       { status: 201 }
     )
   } catch (error) {

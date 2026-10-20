@@ -17,6 +17,7 @@ import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
+import type { Prisma } from '@prisma/client'
 import type { ZodError } from 'zod'
 
 /**
@@ -42,6 +43,31 @@ function libellePlancheIntrouvable(plancheId: string | null): string | null {
   return /^c[a-z0-9]{24}$/.test(plancheId) ? 'Planche supprimée' : plancheId
 }
 
+/**
+ * Ligne du registre fusionné, quelle que soit sa source (intervention saisie,
+ * étape de culture, arrosage noté, fertilisation, opération d'arbre, soin).
+ * Seuls les champs que le tri, les filtres et les statistiques lisent sont
+ * nommés ; le reste est rendu tel quel.
+ */
+type EntreeRegistre = Record<string, unknown> & {
+  id: number
+  date: Date
+  type: string
+  fait: boolean
+  cultureId: number | null
+  dureeMinutes: number | null
+  nbPersonnes: number | null
+  coutTotal: number | null
+  source: string
+}
+
+/**
+ * Espèce et variété d'une culture, réduites à ce que le registre affiche :
+ * la ligne complète portait l'id de l'auteur d'une entrée partagée par un
+ * autre compte (revue 2026-10-20).
+ */
+const SELECT_LIBELLE_REFERENTIEL = { select: { id: true, nom: true } } as const
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -60,15 +86,16 @@ export async function GET(request: NextRequest) {
     const yearEnd = bornes?.lte ?? new Date(annee, 11, 31, 23, 59, 59)
 
     // Build where clause for manual interventions
-    const where: any = { userId }
+    const where: Prisma.InterventionWhereInput = { userId }
     if (type) where.type = type
     if (fait === 'true') where.fait = true
     else if (fait === 'false') where.fait = false
 
     if (dateFrom || dateTo) {
-      where.date = {}
-      if (dateFrom) where.date.gte = new Date(dateFrom)
-      if (dateTo) where.date.lte = new Date(dateTo + 'T23:59:59')
+      where.date = {
+        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+        ...(dateTo ? { lte: new Date(dateTo + 'T23:59:59') } : {}),
+      }
     } else if (bornes) {
       where.date = { gte: yearStart, lte: yearEnd }
     }
@@ -88,7 +115,7 @@ export async function GET(request: NextRequest) {
     const [refCultures, refPlanches, refArbres] = await Promise.all([
       manualCultureIds.length > 0 ? prisma.culture.findMany({
         where: { id: { in: manualCultureIds } },
-        include: { espece: true, variete: true, planche: true },
+        include: { espece: SELECT_LIBELLE_REFERENTIEL, variete: SELECT_LIBELLE_REFERENTIEL, planche: true },
       }) : [],
       // `plancheId` historique : id OU nom de planche (cf. registre phyto).
       manualPlancheIds.length > 0 ? prisma.planche.findMany({
@@ -108,7 +135,7 @@ export async function GET(request: NextRequest) {
     const arbreMap = new Map(refArbres.map(a => [a.id, a]))
 
     // Format manual interventions with source marker and resolved names
-    const formattedManual = manualInterventions.map((i: any) => {
+    const formattedManual = manualInterventions.map((i) => {
       const cult = i.cultureId ? cultureMap.get(i.cultureId) : null
       const planche = i.plancheId ? plancheMap.get(i.plancheId) : null
       const arbre = i.arbreId ? arbreMap.get(i.arbreId) : null
@@ -117,7 +144,7 @@ export async function GET(request: NextRequest) {
         source: 'intervention' as const,
         sourceLabel: null as string | null,
         cultureNom: cult ? `${cult.espece?.nom ?? cult.espece?.id ?? '?'}${cult.variete ? ' - ' + (cult.variete.nom ?? cult.variete.id) : ''}` : (arbre ? arbre.nom : null),
-        plancheNom: planche?.nom || (cult?.planche as any)?.nom || libellePlancheIntrouvable(i.plancheId),
+        plancheNom: planche?.nom || cult?.planche?.nom || libellePlancheIntrouvable(i.plancheId),
       }
     })
 
@@ -128,13 +155,13 @@ export async function GET(request: NextRequest) {
         annee,
       },
       include: {
-        espece: true,
-        variete: true,
+        espece: SELECT_LIBELLE_REFERENTIEL,
+        variete: SELECT_LIBELLE_REFERENTIEL,
         planche: true,
       },
     })
 
-    const cultureEntries: any[] = []
+    const cultureEntries: EntreeRegistre[] = []
     for (const c of cultures) {
       const cultureLabel = `${c.espece?.nom ?? c.espece?.id ?? '?'}${c.variete ? ' - ' + (c.variete.nom ?? c.variete.id) : ''}`
       const plancheLabel = c.planche?.nom || null
@@ -247,11 +274,11 @@ export async function GET(request: NextRequest) {
         AND: [whereArrosageNote(), { datePrevue: { gte: yearStart, lte: yearEnd } }],
       },
       include: {
-        culture: { include: { espece: true, planche: true } },
+        culture: { include: { espece: { select: { id: true } }, planche: true } },
       },
     })
 
-    const irrigationEntries = irrigations.map((ir: any) => ({
+    const irrigationEntries = irrigations.map((ir) => ({
       id: ir.id * 100000 + 10,
       date: ir.dateEffective || ir.datePrevue,
       type: 'arrosage',
@@ -297,7 +324,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const fertilisationEntries = fertilisations.map((f: any) => ({
+    const fertilisationEntries = fertilisations.map((f) => ({
       id: f.id * 100000 + 20,
       date: f.date,
       type: 'fertilisation',
@@ -337,7 +364,7 @@ export async function GET(request: NextRequest) {
       include: { arbre: true },
     })
 
-    const arbreEntries = opsArbres.map((op: any) => ({
+    const arbreEntries = opsArbres.map((op) => ({
       id: op.id * 100000 + 30,
       date: op.date,
       type: op.type === 'traitement' ? 'traitement_phyto' : op.type === 'taille' ? 'taille' : op.type === 'fertilisation' ? 'fertilisation' : 'autre',
@@ -382,7 +409,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    const soinEntries = soins.map((s: any) => ({
+    const soinEntries = soins.map((s) => ({
       id: s.id * 100000 + 40,
       date: s.date,
       type: 'autre',
@@ -414,7 +441,7 @@ export async function GET(request: NextRequest) {
     }))
 
     // === Merge all sources ===
-    let allEntries = [
+    let allEntries: EntreeRegistre[] = [
       ...formattedManual,
       ...cultureEntries,
       ...irrigationEntries,
@@ -426,10 +453,10 @@ export async function GET(request: NextRequest) {
     // Deduplicate: if a manual intervention has cultureId + type matching a culture entry, keep only the manual one
     const manualKeys = new Set(
       formattedManual
-        .filter((m: any) => m.cultureId && m.type)
-        .map((m: any) => `${m.cultureId}-${m.type}`)
+        .filter((m) => m.cultureId && m.type)
+        .map((m) => `${m.cultureId}-${m.type}`)
     )
-    allEntries = allEntries.filter((e: any) => {
+    allEntries = allEntries.filter((e) => {
       if (e.source !== 'culture') return true
       const key = `${e.cultureId}-${e.type}`
       return !manualKeys.has(key)
@@ -437,14 +464,14 @@ export async function GET(request: NextRequest) {
 
     // Apply type filter on merged data
     if (type) {
-      allEntries = allEntries.filter((e: any) => e.type === type)
+      allEntries = allEntries.filter((e) => e.type === type)
     }
 
     // Apply fait filter on merged data
     if (fait === 'true') {
-      allEntries = allEntries.filter((e: any) => e.fait === true)
+      allEntries = allEntries.filter((e) => e.fait === true)
     } else if (fait === 'false') {
-      allEntries = allEntries.filter((e: any) => e.fait === false)
+      allEntries = allEntries.filter((e) => e.fait === false)
     }
 
     // Filtre de période, en journées civiles LOCALES.
@@ -471,27 +498,27 @@ export async function GET(request: NextRequest) {
     if (dateFrom) {
       const from = jourLocalDepuisSaisie(dateFrom)
       if (from !== null) {
-        allEntries = allEntries.filter((e: any) => jourLocalDe(new Date(e.date)) >= from)
+        allEntries = allEntries.filter((e) => jourLocalDe(new Date(e.date)) >= from)
       }
     }
     if (dateTo) {
       const to = jourLocalDepuisSaisie(dateTo)
       if (to !== null) {
-        allEntries = allEntries.filter((e: any) => jourLocalDe(new Date(e.date)) <= to)
+        allEntries = allEntries.filter((e) => jourLocalDe(new Date(e.date)) <= to)
       }
     }
 
     // Sort by date desc
-    allEntries.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    allEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     // === Stats (all sources for the year) ===
     const stats = {
       total: allEntries.length,
       heuresTravaillees: allEntries
-        .reduce((sum: number, i: any) => sum + ((i.dureeMinutes || 0) * (i.nbPersonnes || 1)), 0) / 60,
+        .reduce((sum, i) => sum + ((i.dureeMinutes || 0) * (i.nbPersonnes || 1)), 0) / 60,
       coutTotal: allEntries
-        .reduce((sum: number, i: any) => sum + (i.coutTotal || 0), 0),
-      planifiees: allEntries.filter((i: any) => !i.fait).length,
+        .reduce((sum, i) => sum + (i.coutTotal || 0), 0),
+      planifiees: allEntries.filter((i) => !i.fait).length,
     }
 
     return NextResponse.json({ data: allEntries.slice(0, 500), stats })
@@ -681,7 +708,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Build update data
-    const data: any = {}
+    const data: Prisma.InterventionUncheckedUpdateInput = {}
     if (updates.date !== undefined) data.date = new Date(updates.date)
     if (updates.type !== undefined) data.type = updates.type
     if (updates.description !== undefined) data.description = updates.description || null
