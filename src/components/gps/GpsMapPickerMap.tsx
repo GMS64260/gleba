@@ -26,6 +26,7 @@ import { LocateFixed, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { getCurrentGpsFix } from "@/lib/geolocation"
 import { TILE_URLS, ATTRIBUTIONS } from "@/components/carte/MapContainer"
+import { CLASSES_BOUTON_CALQUES_EN_PLACE } from "@/components/carte/controle-calques"
 
 export interface GpsContextPoint {
   lat: number
@@ -137,7 +138,10 @@ export default function GpsMapPickerMap({
       center={center}
       zoom={zoom}
       maxZoom={MAX_ZOOM}
-      className="h-full w-full"
+      // QA cmvgebfkr (2026-10-20) : bouton « Layers » laissé en place menu
+      // ouvert (contrôle en topright), sinon le clic qui le vise coche la
+      // première ligne du menu (Satellite IGN ici).
+      className={`h-full w-full ${CLASSES_BOUTON_CALQUES_EN_PLACE}`}
       scrollWheelZoom
     >
       <LayersControl position="topright">

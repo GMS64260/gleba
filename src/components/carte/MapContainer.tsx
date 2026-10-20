@@ -40,6 +40,7 @@ import {
   type EtatCalques,
   type FondCarte,
 } from "@/lib/jardin/fond-carte"
+import { CLASSES_BOUTON_CALQUES_EN_PLACE } from "./controle-calques"
 
 import "leaflet/dist/leaflet.css"
 import "leaflet-draw/dist/leaflet.draw.css"
@@ -265,7 +266,10 @@ function SynchroCalques({
         // Leaflet 1.9.4 (`preventDefault` sur la liste, le radio revient sur
         // l'ancien fond). Hors tactile, où la garde a un sens, on le rejoue
         // une fois, la garde levée (sa temporisation précède la nôtre) ; le
-        // clic rejoué repasse ici et synchronise lui-même.
+        // clic rejoué repasse ici et synchronise lui-même. Le clic qui OUVRE
+        // le contrôle n'arrive jamais ici : il tombe sur le bouton « Layers »,
+        // laissé en place (QA cmvgebfkr, ./controle-calques.ts) ; sans cela il
+        // tombait sur le libellé OpenStreetMap et ce rejeu le cochait.
         if (!estRejeu && event.type === "click" && event.defaultPrevented && !estPointeurTactile(event)) {
           rejeuEnCoursRef.current = true
           try {
@@ -346,8 +350,11 @@ export default function MapContainer({
     [onMapReady]
   )
 
+  // QA cmvgebfkr (2026-10-20) : le bouton « Layers » reste à sa place menu
+  // ouvert ; sinon le clic qui le vise coche OpenStreetMap (voir
+  // ./controle-calques.ts).
   return (
-    <div className="relative h-full w-full z-0">
+    <div className={`relative h-full w-full z-0 ${CLASSES_BOUTON_CALQUES_EN_PLACE}`}>
       <LeafletMapContainer
         center={center}
         zoom={zoom}
