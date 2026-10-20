@@ -96,15 +96,16 @@ export async function GET(request: NextRequest) {
     // lot (5 chèvres comptées 9). Même source de vérité que la fiche du lot et
     // le dashboard : effectif reconstitué du lot, dont on retire les
     // nominatives présentes, comptées une fois chacune sur leur propre espèce.
-    const effectifsLots = await reconstituerEffectifsLots(
-      userId,
-      lots.filter((l) => l.statut === 'actif'),
-    )
+    // Revue 2026-10-20 — reconstitué pour tous les lots : la ligne par lot
+    // (`data`) sert le même effectif que l'écran Lots, actif ou non.
+    const effectifsLots = await reconstituerEffectifsLots(userId, lots)
+    const effectifLot = (lot: { id: number; quantiteActuelle: number }) =>
+      effectifsLots.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
     for (const lot of lots) {
       const a = getAtelier(lot.especeAnimale.id, lot.especeAnimale.nom)
       if (lot.statut === 'actif') {
         const e = effectifsLots.get(lot.id)
-        a.effectif += e ? Math.max(0, e.effectifCalcule - e.nominatifsActifs) : lot.quantiteActuelle
+        a.effectif += e ? e.effectifCollectif : lot.quantiteActuelle
       }
       if (lot.dateArrivee && lot.dateArrivee >= start && lot.dateArrivee <= end) a.couts.achat += lot.prixAchatTotal || 0
     }
@@ -208,7 +209,11 @@ export async function GET(request: NextRequest) {
       const revenus = lotAbattages.reduce((sum, a) => sum + (a.prixVente || 0), 0)
       const total = coutAchat + coutSoins + coutAlimentation
       const totalOeufs = productionsOeufs.filter(p => p.lotId === lot.id).reduce((sum, p) => sum + p.quantite, 0)
-      return { lotId: lot.id, lotNom: lot.nom || `Lot #${lot.id}`, espece: lot.especeAnimale.nom, quantiteActuelle: lot.quantiteActuelle, quantiteInitiale: lot.quantiteInitiale, statut: lot.statut, couts: { achat: round(coutAchat), soins: round(coutSoins), alimentation: round(coutAlimentation), total: round(total) }, revenus: { ventes: round(revenus) }, marge: round(revenus - total), metriques: { coutParAnimal: round(lot.quantiteActuelle ? total / lot.quantiteActuelle : 0), coutParOeuf: totalOeufs ? round(total / totalOeufs) : null, totalOeufs, totalConsoKg: round(lotConso.reduce((sum, c) => sum + c.quantite, 0)), poidsCarcasse: round(lotAbattages.reduce((sum, a) => sum + (a.poidsCarcasse || 0), 0)), nbAbattages: lotAbattages.reduce((sum, a) => sum + a.quantite, 0), nbSoins: lotSoins.length } }
+      // Revue 2026-10-20 — une seule valeur par lot : l'effectif reconstitué
+      // (champ historique `quantiteActuelle` conservé), aussi pour le coût par
+      // animal, au lieu du compteur stocké qui dérive.
+      const effectif = effectifLot(lot)
+      return { lotId: lot.id, lotNom: lot.nom || `Lot #${lot.id}`, espece: lot.especeAnimale.nom, quantiteActuelle: effectif, quantiteInitiale: lot.quantiteInitiale, statut: lot.statut, couts: { achat: round(coutAchat), soins: round(coutSoins), alimentation: round(coutAlimentation), total: round(total) }, revenus: { ventes: round(revenus) }, marge: round(revenus - total), metriques: { coutParAnimal: round(effectif ? total / effectif : 0), coutParOeuf: totalOeufs ? round(total / totalOeufs) : null, totalOeufs, totalConsoKg: round(lotConso.reduce((sum, c) => sum + c.quantite, 0)), poidsCarcasse: round(lotAbattages.reduce((sum, a) => sum + (a.poidsCarcasse || 0), 0)), nbAbattages: lotAbattages.reduce((sum, a) => sum + a.quantite, 0), nbSoins: lotSoins.length } }
     })
     const atelierList = [...ateliers.values()].filter(a => a.effectif || a.couts.total || a.revenus.total || a.production.oeufs || a.production.litresLivres || a.production.kgCarcasse || a.production.kgMiel)
     const totalCouts = atelierList.reduce((sum, a) => sum + a.couts.total, 0)

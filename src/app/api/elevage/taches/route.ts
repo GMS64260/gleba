@@ -8,7 +8,13 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { oeufsAttendusJour } from '@/lib/elevage/taux-ponte'
-import { effectifsPondeursLots, estEspecePondeuse } from '@/lib/elevage/pondeuses'
+import {
+  calculerTetesNonPondeuses,
+  effectifPondeuses,
+  effectifsPondeursLots,
+  estEspecePondeuse,
+} from '@/lib/elevage/pondeuses'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
 import { sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
@@ -46,7 +52,7 @@ export async function GET(request: NextRequest) {
       : []
     const lotFiliere = filiere ? { lot: { especeAnimale: { filiere } } } : {}
 
-    const [soins, productions, consommations, lotsActifs, animauxPondeurs] = await Promise.all([
+    const [soins, productions, consommations, lotsTous, animauxPondeurs] = await Promise.all([
       // Soins prevus ou faits dans la periode
       prisma.soinAnimal.findMany({
         where: {
@@ -102,12 +108,13 @@ export async function GET(request: NextRequest) {
       // uniquement, donc un lot "Pondeuses 2026" mal réformé (statut=termine
       // mais cheptel non transféré) sortait du calcul et le taux de ponte
       // tombait à 0/jour → "Taux collecte sem. —". On inclut tout lot dont
-      // quantiteActuelle > 0 quel que soit le statut.
+      // l'effectif est > 0 quel que soit le statut.
+      // Revue 2026-10-20 — « effectif » = effectif reconstitué, filtré plus bas
+      // après reconstitution : le compteur stocké `quantiteActuelle` dérive
+      // dans les deux sens (lot à 0 dont les têtes sont des fiches nominatives
+      // rattachées ; fiche morte qui ne le décrémente pas).
       prisma.lotAnimaux.findMany({
-        where: {
-          userId,
-          quantiteActuelle: { gt: 0 },
-        },
+        where: { userId },
         include: {
           especeAnimale: {
             select: { ponteAnnuelle: true, production: true, nom: true, dureeElevage: true },
@@ -127,6 +134,11 @@ export async function GET(request: NextRequest) {
         },
       }),
     ])
+
+    const effectifsLots = await reconstituerEffectifsLots(userId, lotsTous)
+    const effectifLot = (lot: { id: number; quantiteActuelle: number }) =>
+      effectifsLots.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
+    const lotsActifs = lotsTous.filter((lot) => effectifLot(lot) > 0)
 
     // QA caprin cms1vevyb — mises-bas prévues et tarissements des saillies
     // gestantes dans la fenêtre affichée : le toast « alertes activées »
@@ -274,16 +286,15 @@ export async function GET(request: NextRequest) {
     // QA cmv5jfsol — même effectif pondeur que /stats et /lots : effectif
     // reconstitué du lot (et non plus `quantiteActuelle` brut, qui ignore les
     // fiches nominatives rattachées) moins les jeunes nés dans le lot et les
-    // fiches mâles ou trop jeunes.
-    const effectifsPondeurs = await effectifsPondeursLots(
-      userId,
-      lotsActifs.filter(l => estEspecePondeuse(l.especeAnimale.production)),
+    // fiches mâles ou trop jeunes. L'effectif reconstitué est celui déjà
+    // calculé pour retenir les lots vivants.
+    const lotsPondeurs = lotsActifs.filter(l => estEspecePondeuse(l.especeAnimale.production))
+    const tetesNonPondeuses = await calculerTetesNonPondeuses(userId, lotsPondeurs, refDate)
+    let estimationOeufsJour = lotsPondeurs.reduce((sum, lot) => sum + oeufsAttendusJour(
+      effectifPondeuses(effectifLot(lot), tetesNonPondeuses.get(lot.id)),
+      lot.especeAnimale.nom,
       refDate,
-    )
-    let estimationOeufsJour = lotsActifs.reduce((sum, lot) => {
-      const e = effectifsPondeurs.get(lot.id)
-      return e ? sum + oeufsAttendusJour(e.effectifPondeuses, lot.especeAnimale.nom, refDate) : sum
-    }, 0)
+    ), 0)
 
     // Bug #9 — Si on dispose d'un historique significatif (>= 14 jours
     // avec ponte), on pondère 50/50 avec la moyenne observée pour ne pas

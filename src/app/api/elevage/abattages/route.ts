@@ -14,6 +14,7 @@ import { createVenteFromAbattage, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { abattageSchema } from '@/lib/validations/elevage-abattage'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -99,30 +100,45 @@ export async function POST(request: NextRequest) {
     // Feedback Marc 2026-05-16 — V3 Bug 6 : on autorisait l'abattage
     // de 500 poules sur un lot qui en comptait 30. On bloque désormais
     // toute saisie dépassant l'effectif actuel (avec override possible).
+    // Revue 2026-10-20 — le plafond est la part collective reconstituée du lot
+    // (`effectifCollectif` : effectif de l'écran Lots moins les fiches actives
+    // rattachées), et non plus le compteur stocké `quantiteActuelle`, qui dérive (la
+    // mort d'une fiche rattachée ne le décrémente pas : lot démo 71, 5 contre
+    // 4). Un abattage de lot entame les têtes anonymes ; une fiche s'abat par
+    // son propre parcours (`animalId`), qui n'est donc pas plafonné ici.
     if (lotId && quantite) {
       const lot = await prisma.lotAnimaux.findFirst({
         where: { id: lotId, userId: session.user.id },
-        select: { quantiteActuelle: true, quantiteInitiale: true, statut: true, nom: true },
+        select: { id: true, quantiteActuelle: true, quantiteInitiale: true, statut: true, nom: true },
       })
       if (!lot) {
         return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
       }
-      if (!overrideCoherence && quantite > lot.quantiteActuelle) {
-        return NextResponse.json(
-          {
-            error: 'Abattage incohérent',
-            code: 'ABATTAGE_OVER_EFFECTIF',
-            details: {
-              quantite,
-              effectifActuel: lot.quantiteActuelle,
-              effectifInitial: lot.quantiteInitiale,
-              lotNom: lot.nom,
-              statut: lot.statut,
-              message: `Le lot « ${lot.nom} » compte ${lot.quantiteActuelle} animaux ${lot.statut === 'termine' ? '(statut terminé)' : ''} — impossible d'abattre ${quantite}. Cochez « forcer » pour corriger l'historique.`,
+      if (!overrideCoherence && !animalId) {
+        const effectif = (await reconstituerEffectifsLots(session.user.id, [lot])).get(lot.id)
+        const collectif = effectif?.effectifCollectif ?? lot.quantiteActuelle
+        const fiches = effectif?.nominatifsActifs ?? 0
+        if (quantite > collectif) {
+          const tetes = `${collectif} tête${collectif > 1 ? 's' : ''} collective${collectif > 1 ? 's' : ''} présente${collectif > 1 ? 's' : ''} dans le lot`
+          const nomLot = lot.nom || `Lot #${lot.id}`
+          return NextResponse.json(
+            {
+              error: 'Abattage incohérent',
+              code: 'ABATTAGE_OVER_EFFECTIF',
+              details: {
+                quantite,
+                effectifActuel: collectif,
+                effectifCollectif: collectif,
+                nominatifsActifs: fiches,
+                effectifInitial: lot.quantiteInitiale,
+                lotNom: lot.nom,
+                statut: lot.statut,
+                message: `${tetes} « ${nomLot} »${lot.statut === 'termine' ? ' (statut terminé)' : ''} : impossible d'en abattre ${quantite}.${fiches > 1 ? ` Les ${fiches} fiches nominatives rattachées au lot s'abattent depuis leur fiche.` : fiches === 1 ? " La fiche nominative rattachée au lot s'abat depuis sa fiche." : ''}`,
+              },
             },
-          },
-          { status: 422 }
-        )
+            { status: 422 }
+          )
+        }
       }
     }
 

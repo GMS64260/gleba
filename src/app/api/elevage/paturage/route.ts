@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 const patchSchema = z.object({
   parcelleId: z.string().min(1),
@@ -22,15 +23,22 @@ export async function GET() {
   const { session, error } = await requireAuthApi()
   if (error) return error
   const userId = session.user.id
-  const [parcelles, lots, mouvements] = await Promise.all([
+  const [parcelles, lotsBruts, mouvements] = await Promise.all([
     prisma.parcelleGeo.findMany({
       where: { userId, OR: [{ couches: { has: 'PATURAGE' } }, { usage: { contains: 'prairie', mode: 'insensitive' } }, { lotsAnimaux: { some: {} } }] },
       select: { id: true, nom: true, surface: true, disponibiliteFourragereKgMsHa: true, eauDisponible: true, etatCloture: true },
       orderBy: { nom: 'asc' },
     }),
-    prisma.lotAnimaux.findMany({ where: { userId, statut: 'actif' }, select: { id: true, nom: true, quantiteActuelle: true, parcelleGeoId: true, especeAnimale: { select: { nom: true } } } }),
+    prisma.lotAnimaux.findMany({ where: { userId, statut: 'actif' }, select: { id: true, nom: true, quantiteInitiale: true, quantiteActuelle: true, parcelleGeoId: true, especeAnimale: { select: { nom: true } } } }),
     prisma.mouvementCheptel.findMany({ where: { userId, lotId: { not: null } }, select: { lotId: true, parcelleAvantId: true, parcelleApresId: true, date: true }, orderBy: { date: 'asc' } }),
   ])
+  // Revue 2026-10-20 — têtes et UGB sur l'effectif reconstitué (écran Lots),
+  // pas sur le compteur stocké qui dérive (champ `quantiteActuelle` conservé).
+  const effectifs = await reconstituerEffectifsLots(userId, lotsBruts)
+  const lots = lotsBruts.map((l) => ({
+    ...l,
+    quantiteActuelle: effectifs.get(l.id)?.effectifCalcule ?? l.quantiteActuelle,
+  }))
   const now = new Date()
   const jours = (d: Date) => Math.max(0, Math.floor((now.getTime() - d.getTime()) / 86_400_000))
   const data = parcelles.map(p => {

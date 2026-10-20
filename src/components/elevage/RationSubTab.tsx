@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { besoinsMonogastrique, besoinsRuminant, bilanRation, bilanRationMonogastrique, type ProfilEspeceRation, type StadeGestation, type LigneRation } from "@/lib/elevage/ration"
+import { formatMontantDevise } from "@/lib/format-utils"
 
 type Aliment = {
   id: string
@@ -338,11 +339,11 @@ export function RationSubTab() {
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-xs text-slate-500">Coût ration / jour</div>
-            <div className="text-lg font-semibold">{bilan.cout.toFixed(2)} €</div>
+            <div className="text-lg font-semibold">{formatMontantDevise(bilan.cout)}</div>
             <div className="text-xs text-slate-400">{bilan.uel > 0 ? `${bilan.uel} UEL` : ""}</div>
           </div>
         </div>}
-        {bilanMono && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Ingestion</div><div className="text-lg font-semibold">{bilanMono.ingestionKg} kg</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Énergie</div><div className="text-lg font-semibold">{bilanMono.energieKcal} kcal</div><div className={couvClass(bilanMono.couvertureEnergie)}>{bilanMono.couvertureEnergie}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Protéines</div><div className="text-lg font-semibold">{bilanMono.proteinesG} g</div><div className={couvClass(bilanMono.couvertureProteines)}>{bilanMono.couvertureProteines}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Coût/jour</div><div className="text-lg font-semibold">{bilanMono.cout.toFixed(2)} €</div></div></div>}
+        {bilanMono && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Ingestion</div><div className="text-lg font-semibold">{bilanMono.ingestionKg} kg</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Énergie</div><div className="text-lg font-semibold">{bilanMono.energieKcal} kcal</div><div className={couvClass(bilanMono.couvertureEnergie)}>{bilanMono.couvertureEnergie}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Protéines</div><div className="text-lg font-semibold">{bilanMono.proteinesG} g</div><div className={couvClass(bilanMono.couvertureProteines)}>{bilanMono.couvertureProteines}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Coût/jour</div><div className="text-lg font-semibold">{formatMontantDevise(bilanMono.cout)}</div></div></div>}
 
         {/* Enregistrer le plan */}
         <div className="rounded-lg border p-3 space-y-2">

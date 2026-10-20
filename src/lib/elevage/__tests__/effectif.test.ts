@@ -143,4 +143,25 @@ describe("reconstituerEffectifsLots", () => {
     ])
     expect(result.get(58)?.effectifCalcule).toBe(4)
   })
+
+  // 2026-10-20 — part collective (têtes anonymes) : c'est elle qu'un abattage
+  // de lot entame, les fiches rattachées s'abattant par leur propre parcours.
+  it("expose la part collective : effectif reconstitué moins les fiches actives", async () => {
+    mocks.naissanceFindMany.mockResolvedValue([{ lotId: 71, nombreVivants: 3 }])
+    mockAnimaux({
+      actifs: [{ lotId: 58, _count: { _all: 4 } }, { lotId: 73, _count: { _all: 1 } }],
+      sorties: [{ lotId: 71, _count: { _all: 1 } }, { lotId: 58, _count: { _all: 1 } }],
+    })
+    const result = await reconstituerEffectifsLots("u1", [
+      // Lot démo 71 : compteur 5, effectif 4, aucune fiche active.
+      { id: 71, quantiteInitiale: 2, quantiteActuelle: 5 },
+      // Toutes les têtes sont des fiches : rien à abattre en collectif.
+      { id: 58, quantiteInitiale: 4, quantiteActuelle: 4 },
+      // Trois anonymes et une fiche.
+      { id: 73, quantiteInitiale: 4, quantiteActuelle: 3 },
+    ])
+    expect(result.get(71)).toMatchObject({ effectifCalcule: 4, nominatifsActifs: 0, effectifCollectif: 4 })
+    expect(result.get(58)).toMatchObject({ effectifCalcule: 4, nominatifsActifs: 4, effectifCollectif: 0 })
+    expect(result.get(73)).toMatchObject({ effectifCalcule: 4, nominatifsActifs: 1, effectifCollectif: 3 })
+  })
 })
