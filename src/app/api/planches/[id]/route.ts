@@ -13,6 +13,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
 import { compterTracesPlanches, refusSuppressionPlanche } from '@/lib/planches/traces'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -72,7 +73,9 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(planche)
+    // ITP des étapes de rotation, espèce et variété des cultures : jamais l'id
+    // de l'auteur d'une entrée partagée par un autre compte (revue 2026-10-20).
+    return NextResponse.json(masquerReferentielsEmbarques(planche, session!.user.id))
   } catch (error) {
     console.error('GET /api/planches/[id] error:', error)
     return NextResponse.json(

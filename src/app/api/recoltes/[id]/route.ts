@@ -15,6 +15,7 @@ import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { jourCivilLocal } from '@/lib/cultures/execution'
 import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -69,7 +70,9 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(recolte)
+    // Espèce, variété et ITP embarqués : jamais l'id de l'auteur d'une entrée
+    // partagée par un autre compte (revue 2026-10-20).
+    return NextResponse.json(masquerReferentielsEmbarques(recolte, session!.user.id))
   } catch (error) {
     console.error('GET /api/recoltes/[id] error:', error)
     return NextResponse.json(
@@ -177,7 +180,7 @@ export async function PUT(
     })
 
     invalidateKpi(session!.user.id)
-    return NextResponse.json(recolte)
+    return NextResponse.json(masquerReferentielsEmbarques(recolte, session!.user.id))
   } catch (error) {
     console.error('PUT /api/recoltes/[id] error:', error)
     return NextResponse.json(
@@ -457,7 +460,7 @@ export async function PATCH(
     }
 
     invalidateKpi(userId)
-    return NextResponse.json(recolte)
+    return NextResponse.json(masquerReferentielsEmbarques(recolte, userId))
   } catch (error) {
     console.error('PATCH /api/recoltes/[id] error:', error)
     return NextResponse.json(

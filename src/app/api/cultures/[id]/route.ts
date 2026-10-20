@@ -27,6 +27,7 @@ import {
 import type { ChampDateEtape, ChampEtape } from '@/lib/cultures/execution'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
 import { aDesVentes, compterVentesRecoltesCulture, messageSuppressionCultureRefusee } from '@/lib/cultures/suppression'
@@ -62,7 +63,9 @@ export async function GET(
           include: { famille: true },
         },
         variete: {
-          include: { fournisseur: true },
+          // Aucun écran ne lit le fournisseur de la variété ; la ligne
+          // complète emportait ses coordonnées et son bloc bancaire.
+          include: { fournisseur: { select: { id: true } } },
         },
         itp: true,
         planche: {
@@ -108,7 +111,9 @@ export async function GET(
       totalRecolteParUnite: arrondirQuantites(recolteParUnite),
     }
 
-    return NextResponse.json(cultureWithComputed)
+    // Espèce, variété et ITP embarqués : jamais l'id de l'auteur d'une entrée
+    // partagée par un autre compte (revue 2026-10-20).
+    return NextResponse.json(masquerReferentielsEmbarques(cultureWithComputed, session!.user.id))
   } catch (error) {
     console.error('GET /api/cultures/[id] error:', error)
     return NextResponse.json(
@@ -366,8 +371,9 @@ export async function PUT(
 
     invalidateKpi(session!.user.id)
 
+    const reponse = masquerReferentielsEmbarques(culture, session!.user.id)
     return NextResponse.json(
-      dateWarnings.length > 0 ? { ...culture, warnings: dateWarnings } : culture
+      dateWarnings.length > 0 ? { ...reponse, warnings: dateWarnings } : reponse
     )
   } catch (error) {
     console.error('PUT /api/cultures/[id] error:', error)

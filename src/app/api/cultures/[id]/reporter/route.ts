@@ -16,6 +16,7 @@ import { refusSiLectureSeule } from '@/lib/exploitation/garde-session'
 import { SELECT_ETAPES } from '@/lib/cultures/execution'
 import { ecrituresReport } from '@/lib/cultures/report'
 import { invalidateKpi } from '@/lib/kpi'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -80,7 +81,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     invalidateKpi(session!.user.id)
 
-    return NextResponse.json({ culture: maj, decalages: resultat.decalages })
+    return NextResponse.json({
+      culture: masquerReferentielsEmbarques(maj, session!.user.id),
+      decalages: resultat.decalages,
+    })
   } catch (error) {
     console.error('POST /api/cultures/[id]/reporter error:', error)
     return NextResponse.json(

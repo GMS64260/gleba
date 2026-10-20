@@ -18,6 +18,7 @@ import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 import { aDesTracesAnimal, compterTracesAnimal, messageSuppressionAnimalRefusee } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
+import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 export async function GET(
   request: NextRequest,
@@ -128,7 +129,11 @@ export async function GET(
         .sort((a, b) => b.date.getTime() - a.date.getTime())
     }
 
-    return NextResponse.json({ data: { ...animal, soins } })
+    // Espèce animale embarquée : jamais l'id de l'auteur d'un profil partagé
+    // par un autre compte (revue 2026-10-20).
+    return NextResponse.json({
+      data: masquerReferentielsEmbarques({ ...animal, soins }, session.user.id),
+    })
   } catch (error) {
     console.error('GET /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(
@@ -180,7 +185,7 @@ export async function PATCH(
       include: { especeAnimale: true, lot: true },
     })
 
-    return NextResponse.json({ data: animal })
+    return NextResponse.json({ data: masquerReferentielsEmbarques(animal, session.user.id) })
   } catch (error) {
     console.error('PATCH /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(
@@ -432,7 +437,7 @@ export async function PUT(
     })
     invalidateKpi(session.user.id)
 
-    return NextResponse.json({ data: animal })
+    return NextResponse.json({ data: masquerReferentielsEmbarques(animal, session.user.id) })
   } catch (error) {
     console.error('PUT /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(
