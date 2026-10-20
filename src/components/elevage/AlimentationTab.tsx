@@ -48,7 +48,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { confirmDialog } from "@/lib/global-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
-import { todayLocalISO } from '@/lib/format-utils'
+import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 import { SelecteurPeriodeExercice, parametreAnnee, type PeriodeListe } from "./SelecteurPeriodeExercice"
 import { stockMedicamentEstDisponible } from "@/lib/elevage/stock-medicament"
@@ -450,7 +450,7 @@ function StocksSubTab() {
                           </div>
                         ) : (
                         <div className="flex items-center justify-end gap-1.5">
-                          {a.prix ? `${a.prix.toFixed(2)} \u20ac` : '-'}
+                          {a.prix ? formatMontantDevise(a.prix) : '-'}
                           {prixHorsNorme && (
                             <button
                               type="button"
@@ -2343,7 +2343,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                       })()}
                     </TableCell>
                     )}
-                    <TableCell className="text-right">{soin.cout ? `${soin.cout.toFixed(2)} \u20ac` : '-'}</TableCell>
+                    <TableCell className="text-right">{soin.cout ? formatMontantDevise(soin.cout) : '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{soin.notes || '-'}</TableCell>
                   </TableRow>
                   )
@@ -2407,7 +2407,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                       <span className="text-muted-foreground">{new Date(dateAffichee).toLocaleDateString("fr-FR")}</span>
                       {enRetard && <span className="font-medium text-red-700 uppercase tracking-wide">En retard</span>}
-                      {soin.cout ? <span className="text-muted-foreground">{soin.cout.toFixed(2)} €</span> : null}
+                      {soin.cout ? <span className="text-muted-foreground">{formatMontantDevise(soin.cout)}</span> : null}
                       {rvLait && <span className={rvLait > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Lait : {rvLait.toLocaleDateString("fr-FR")}</span>}
                       {rvOeufs && <span className={rvOeufs > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Œufs : {rvOeufs.toLocaleDateString("fr-FR")}</span>}
                       {rvViande && <span className={rvViande > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Viande : {rvViande.toLocaleDateString("fr-FR")}</span>}

@@ -87,11 +87,11 @@ BEGIN
   INSERT INTO especes_animales (espece_animale, nom, type, production, duree_couvaison, duree_elevage, poids_adulte, rendement_carcasse, ponte_annuelle, conso_jour, prix_achat, couleur, description)
   VALUES
     ('poule_pondeuse', 'Poule pondeuse', 'volaille', 'oeufs', 21, 150, 2.5, NULL, 280, 0.12, 15, '#d4a017', 'Poule pondeuse rousse'),
-    ('poulet_chair', 'Poulet de chair', 'volaille', 'viande', 21, 90, 3.5, 70, NULL, 0.15, 5, '#d4a574', 'Poulet fermier label'),
-    ('canard_barbarie', 'Canard de Barbarie', 'volaille', 'viande', 35, 120, 4.5, 65, NULL, 0.18, 8, '#5d4037', 'Canard rustique'),
-    ('lapin_chair', 'Lapin de chair', 'mammifere_petit', 'viande', NULL, 90, 4, 55, NULL, 0.15, 12, '#8d6e63', 'Lapin fermier'),
+    ('poulet_chair', 'Poulet de chair', 'volaille', 'viande', 21, 90, 3.5, 0.70, NULL, 0.15, 5, '#d4a574', 'Poulet fermier label'),
+    ('canard_barbarie', 'Canard de Barbarie', 'volaille', 'viande', 35, 120, 4.5, 0.65, NULL, 0.18, 8, '#5d4037', 'Canard rustique'),
+    ('lapin_chair', 'Lapin de chair', 'mammifere_petit', 'viande', NULL, 90, 4, 0.55, NULL, 0.15, 12, '#8d6e63', 'Lapin fermier'),
     ('chevre_laitiere', 'Chèvre laitière', 'mammifere_grand', 'lait', NULL, 365, 55, NULL, NULL, 2.0, 250, '#f5f5dc', 'Chèvre Alpine'),
-    ('mouton_viande', 'Mouton', 'mammifere_grand', 'viande', NULL, 180, 80, 45, NULL, 2.5, 200, '#e0e0e0', 'Mouton Suffolk')
+    ('mouton_viande', 'Mouton', 'mammifere_grand', 'viande', NULL, 180, 80, 0.45, NULL, 2.5, 200, '#e0e0e0', 'Mouton Suffolk')
   ON CONFLICT (espece_animale) DO NOTHING;
   UPDATE especes_animales SET duree_gestation = 31 WHERE espece_animale = 'lapin_chair' AND duree_gestation IS NULL;
   UPDATE especes_animales SET duree_gestation = 150 WHERE espece_animale = 'chevre_laitiere' AND duree_gestation IS NULL;

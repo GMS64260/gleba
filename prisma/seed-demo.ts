@@ -173,10 +173,10 @@ async function ensurePrefs() {
 async function ensureEspecesAnimales() {
   const data = [
     { id: "poule_marans", nom: "Poule Marans", type: "volaille", production: "oeufs", categorieReglementaire: "Volaille de ponte", productions: ["Œufs"], dureeCouvaison: 21, poidsAdulte: 3.0, ponteAnnuelle: 180, consommationJour: 0.13, prixAchat: 18, couleur: "#3f3a1f", description: "Pondeuse rustique noire cuivrée" },
-    { id: "brebis_solognote", nom: "Brebis Solognote", type: "mammifere_grand", production: "viande", categorieReglementaire: "Ovin", productions: ["Viande", "Laine"], dureeGestation: 150, poidsAdulte: 55, rendementCarcasse: 45, prixAchat: 220, couleur: "#8b6f3e", description: "Race rustique solognote" },
+    { id: "brebis_solognote", nom: "Brebis Solognote", type: "mammifere_grand", production: "viande", categorieReglementaire: "Ovin", productions: ["Viande", "Laine"], dureeGestation: 150, poidsAdulte: 55, rendementCarcasse: 0.45, prixAchat: 220, couleur: "#8b6f3e", description: "Race rustique solognote" },
     { id: "chevre_alpine", nom: "Chèvre Alpine chamoisée", type: "mammifere_grand", production: "lait", categorieReglementaire: "Caprin", productions: ["Lait", "Saillie"], dureeGestation: 150, poidsAdulte: 65, prixAchat: 350, couleur: "#a07050", description: "Chèvre laitière (~ 700 L/lactation)" },
-    { id: "cochon_gascon", nom: "Cochon Gascon", type: "mammifere_grand", production: "viande", categorieReglementaire: "Porcin", productions: ["Viande"], dureeGestation: 114, poidsAdulte: 250, rendementCarcasse: 75, prixAchat: 200, couleur: "#1a1a1a", description: "Race rustique noire" },
-    { id: "lapin_geant", nom: "Lapin Géant des Flandres", type: "mammifere_petit", production: "viande", categorieReglementaire: "Cuniculture", productions: ["Viande"], dureeGestation: 31, poidsAdulte: 7, rendementCarcasse: 60, prixAchat: 35, couleur: "#a89070", description: "Grande race, élevage familial" },
+    { id: "cochon_gascon", nom: "Cochon Gascon", type: "mammifere_grand", production: "viande", categorieReglementaire: "Porcin", productions: ["Viande"], dureeGestation: 114, poidsAdulte: 250, rendementCarcasse: 0.75, prixAchat: 200, couleur: "#1a1a1a", description: "Race rustique noire" },
+    { id: "lapin_geant", nom: "Lapin Géant des Flandres", type: "mammifere_petit", production: "viande", categorieReglementaire: "Cuniculture", productions: ["Viande"], dureeGestation: 31, poidsAdulte: 7, rendementCarcasse: 0.6, prixAchat: 35, couleur: "#a89070", description: "Grande race, élevage familial" },
   ]
   for (const e of data) {
     // upsert sans écraser une éventuelle version communautaire officielle

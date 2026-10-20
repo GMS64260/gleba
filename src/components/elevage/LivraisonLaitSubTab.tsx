@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
-import { todayLocalISO } from "@/lib/format-utils"
+import { formatMontantDevise, todayLocalISO } from "@/lib/format-utils"
 import { estimePrimeQualite, montantPaie } from "@/lib/elevage/paie-lait"
 
 const MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
@@ -152,7 +152,7 @@ export function LivraisonLaitSubTab() {
                       <td className="p-2 text-right">{Number(p.prixBaseMille).toFixed(0)} €</td>
                       <td className="p-2 text-right text-emerald-700">{Number(p.primeQualite) > 0 ? `+${Number(p.primeQualite).toFixed(0)}` : Number(p.primeQualite).toFixed(0)}</td>
                       <td className="p-2 text-right text-red-700">{Number(p.penalite) > 0 ? `−${Number(p.penalite).toFixed(0)}` : "0"}</td>
-                      <td className="p-2 text-right font-semibold">{Number(p.montantHT).toFixed(2)} €</td>
+                      <td className="p-2 text-right font-semibold">{formatMontantDevise(Number(p.montantHT))}</td>
                       <td className="p-2 text-right"><Button variant="ghost" size="sm" onClick={() => delPaie(p)}><Trash2 className="h-4 w-4" /></Button></td>
                     </tr>
                   ))}

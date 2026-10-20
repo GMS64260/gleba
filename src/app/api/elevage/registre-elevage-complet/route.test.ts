@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   writeFile: vi.fn(),
   unlink: vi.fn(),
   transaction: vi.fn(),
+  reconstituerEffectifsLots: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -54,8 +55,15 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/elevage/declarations-reglementaires.server", () => ({
   chargerDeclarationsReglementaires: mocks.chargerDeclarations,
 }))
+vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: mocks.reconstituerEffectifsLots }))
+// Empreinte réelle, espionnée pour relire les mouvements (le PDF est compressé).
+vi.mock("@/lib/elevage/declarations-reglementaires", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/elevage/declarations-reglementaires")>()
+  return { ...actual, empreinteDeclaration: vi.fn(actual.empreinteDeclaration) }
+})
 
 import { GET } from "./route"
+import { empreinteDeclaration } from "@/lib/elevage/declarations-reglementaires"
 
 describe("registre d'élevage complet", () => {
   beforeEach(() => {
@@ -67,6 +75,7 @@ describe("registre d'élevage complet", () => {
     mocks.exploitationFindUnique.mockResolvedValue(null)
     mocks.animalFindMany.mockResolvedValue([])
     mocks.lotFindMany.mockResolvedValue([])
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map())
     mocks.naissanceFindMany.mockResolvedValue([])
     mocks.abattageFindMany.mockResolvedValue([])
     mocks.soinFindMany.mockResolvedValue([])
@@ -366,5 +375,52 @@ describe("registre d'élevage complet", () => {
     expect(mocks.unlink).toHaveBeenCalledWith(
       expect.stringMatching(/storage\/registres\/user-1\/.+\.zip$/),
     )
+  })
+
+  // Revue 2026-10-20 — l'inventaire retenait les lots sur le compteur stocké
+  // `quantiteActuelle > 0` et la sortie d'un lot réformé inscrivait ce
+  // compteur, qui dérive. Les deux suivent l'effectif reconstitué.
+  it("retient les lots et chiffre les réformes sur l'effectif reconstitué", async () => {
+    const espece = { nom: "Pintade perle" }
+    const lot = (id: number, nom: string, quantiteActuelle: number, statut: string, dateReforme: Date | null) => ({
+      id, nom, quantiteInitiale: 2, quantiteActuelle, statut, dateReforme,
+      dateArrivee: new Date("2025-08-17T00:00:00.000Z"), provenance: null,
+      updatedAt: new Date("2026-10-20T00:00:00.000Z"), especeAnimale: espece,
+    })
+    const pintades = lot(71, "Pintades perle A3 1708", 5, "actif", null) // compteur 5, effectif 4
+    const fiches = lot(90, "Lot de fiches", 0, "actif", null) // compteur 0, 2 fiches rattachées
+    const fantome = lot(91, "Lot vidé", 1, "actif", null) // compteur 1, effectif 0
+    const fantome2 = lot(94, "Lot vidé 2", 2, "actif", null) // compteur 2, effectif 0
+    const reformeForcee = lot(92, "Canards 2025", 6, "reforme", new Date("2026-06-01T00:00:00.000Z")) // réforme forcée avec 5 têtes
+    const reformeSolde = lot(93, "Lapins 2025", 1, "reforme", new Date("2026-07-01T00:00:00.000Z")) // soldé, compteur dérivé
+    mocks.lotFindMany.mockResolvedValue([pintades, fiches, fantome, fantome2, reformeForcee, reformeSolde])
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([
+      [71, { effectifCalcule: 4, nominatifsActifs: 0, effectifCollectif: 4 }],
+      [90, { effectifCalcule: 2, nominatifsActifs: 2, effectifCollectif: 0 }],
+      [91, { effectifCalcule: 0, nominatifsActifs: 0, effectifCollectif: 0 }],
+      [94, { effectifCalcule: 0, nominatifsActifs: 0, effectifCollectif: 0 }],
+      [92, { effectifCalcule: 5, nominatifsActifs: 0, effectifCollectif: 5 }],
+      [93, { effectifCalcule: 0, nominatifsActifs: 0, effectifCollectif: 0 }],
+    ]))
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/elevage/registre-elevage-complet?year=2026",
+    ))
+    expect(response.status).toBe(200)
+
+    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith(
+      "user-1", [pintades, fiches, fantome, fantome2, reformeForcee, reformeSolde],
+    )
+    // Lots présents : 71 et 90 (le compteur retenait 71, 91 et 94).
+    expect(mocks.auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ metadata: expect.objectContaining({ lots: 2 }) }),
+    })
+    const { mouvements } = vi.mocked(empreinteDeclaration).mock.calls[0][0] as {
+      mouvements: Array<{ type: string; cible: string; motif: string }>
+    }
+    expect(mouvements.filter((m) => m.type === "Sortie lot").map((m) => [m.cible, m.motif])).toEqual([
+      ["Canards 2025 ×5", "Réforme / fin de lot"],
+      ["Lapins 2025 (soldé)", "Réforme / fin de lot, têtes déjà sorties"],
+    ])
   })
 })

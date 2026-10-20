@@ -16,6 +16,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { collecteLaitSchema, updateCollecteLaitSchema } from '@/lib/validations/lait'
 import { causesAttenteCollectes, soinCouvrantCollecte } from '@/lib/elevage/attente-lait'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import {
   estAnimalCollectableLait,
   estLotCollectableLait,
@@ -146,6 +147,7 @@ export async function POST(request: NextRequest) {
         where: { id: data.lotId, userId: session.user.id },
         select: {
           id: true,
+          quantiteInitiale: true,
           quantiteActuelle: true,
           especeAnimale: {
             select: { nom: true, production: true, productions: true },
@@ -159,10 +161,13 @@ export async function POST(request: NextRequest) {
           { status: 422 },
         )
       }
+      // Revue 2026-10-20 — plafond sur l'effectif reconstitué (celui de
+      // l'écran Lots), pas sur le compteur stocké qui dérive.
+      const effectifs = await reconstituerEffectifsLots(session.user.id, [l])
       cible = {
         type: 'lot',
         nomEspece: l.especeAnimale.nom,
-        effectif: Math.max(1, l.quantiteActuelle),
+        effectif: Math.max(1, effectifs.get(l.id)?.effectifCalcule ?? l.quantiteActuelle),
       }
     }
 

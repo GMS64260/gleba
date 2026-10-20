@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   consommationFindMany: vi.fn(),
   soinFindMany: vi.fn(),
   paieFindMany: vi.fn(),
+  reconstituerEffectifsLots: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -27,7 +28,16 @@ vi.mock("@/lib/prisma", () => ({
   },
 }))
 
+vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: mocks.reconstituerEffectifsLots }))
+
 import { GET } from "./route"
+
+type LotMock = { id: number; quantiteActuelle: number }
+/** Effectif reconstitué : le compteur stocké, sauf surcharge par lot. */
+const effectifs = (surcharges: Record<number, number> = {}) =>
+  mocks.reconstituerEffectifsLots.mockImplementation(async (_userId: string, lots: LotMock[]) =>
+    new Map(lots.map((l) => [l.id, { effectifCalcule: surcharges[l.id] ?? l.quantiteActuelle }])),
+  )
 
 const especeLait = { production: "lait", productions: ["Lait"] }
 const especeViande = { production: "viande", productions: ["Viande"] }
@@ -47,6 +57,24 @@ describe("GET /api/elevage/economie-lait", () => {
     mocks.consommationFindMany.mockResolvedValue([])
     mocks.soinFindMany.mockResolvedValue([])
     mocks.paieFindMany.mockResolvedValue([])
+    effectifs()
+  })
+
+  // Revue 2026-10-20 — le prorata des têtes laitières lit l'effectif
+  // reconstitué (écran Lots), pas le compteur stocké qui dérive.
+  it("compte les lots à leur effectif reconstitué, pas au compteur stocké", async () => {
+    mocks.lotAnimauxFindMany.mockResolvedValue([
+      { id: 58, quantiteInitiale: 2, quantiteActuelle: 5, especeAnimale: especeLait },
+      { id: 59, quantiteInitiale: 6, quantiteActuelle: 6, especeAnimale: especeViande },
+    ])
+    effectifs({ 58: 4 })
+
+    const response = await GET(new NextRequest("http://localhost/api/elevage/economie-lait?annee=2026"))
+    const json = await response.json()
+
+    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith("user-1", expect.any(Array))
+    expect(json.methode.tetesLaitieres).toBe(4)
+    expect(json.methode.tetesTotales).toBe(10)
   })
 
   // Ticket cmsoga3zp — les animaux nominatifs rattachés à un lot étaient

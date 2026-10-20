@@ -144,7 +144,15 @@ interface Lot {
   parcelleGeo: { id: string; nom: string } | null
   especeAnimale: { id: string; nom: string; type: string; filiere: string | null; couleur: string | null }
   _count: { animaux: number; productionsOeufs: number; soins: number }
+  /** Servis par GET /api/elevage/lots (effectif reconstitué). */
+  effectifCalcule?: number
+  nominatifsActifs?: number
+  /** Têtes anonymes présentes : plafond d'un abattage de lot (même valeur que la route). */
+  effectifCollectif?: number
 }
+
+/** Part collective servie par la route, repli sur le compteur stocké pour un lot non enrichi. */
+const partCollectiveLot = (lot: Lot) => lot.effectifCollectif ?? lot.quantiteActuelle
 
 interface Parcelle {
   id: string
@@ -2015,7 +2023,15 @@ function LotsSubTab() {
           notes: abatLotForm.notes || null,
         }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) {
+        // Revue 2026-10-20 — le refus de la route (plafond des têtes
+        // collectives, temps d'attente…) se lit tel quel au lieu d'un
+        // « Impossible d'enregistrer » muet.
+        const p = await res.json().catch(() => null)
+        const detail = p?.details?.message ?? (typeof p?.details === 'string' ? p.details : null) ?? p?.error
+        toast({ variant: "destructive", title: "Abattage refusé", description: detail || "Impossible d'enregistrer l'abattage" })
+        return
+      }
       toast({ title: "Abattage enregistré", description: `${abatLotForm.quantite} animal(aux) du lot ${abatLotDialog.nom || `#${abatLotDialog.id}`}` })
       setAbatLotDialog(null)
       setAbatLotForm({ date: todayLocalISO(), quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "", nEtablissementDestination: "" })
@@ -2527,7 +2543,7 @@ function LotsSubTab() {
                               <TooltipContent>Ajouter / retirer des animaux</TooltipContent>
                             </Tooltip>
                           )}
-                          {lot.statut === 'actif' && lot.quantiteActuelle > 0 && capacites(coerceFiliere(lot.especeAnimale.filiere)).abattage && (
+                          {lot.statut === 'actif' && partCollectiveLot(lot) > 0 && capacites(coerceFiliere(lot.especeAnimale.filiere)).abattage && (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
@@ -2625,7 +2641,23 @@ function LotsSubTab() {
               Abattage depuis un lot
             </DialogTitle>
             <DialogDescription>
-              {abatLotDialog?.nom || `Lot #${abatLotDialog?.id}`} — {abatLotDialog?.especeAnimale.nom} ({abatLotDialog?.quantiteActuelle} restants)
+              {abatLotDialog?.nom || `Lot #${abatLotDialog?.id}`} — {abatLotDialog?.especeAnimale.nom}
+              {abatLotDialog && (() => {
+                const collectif = partCollectiveLot(abatLotDialog)
+                const fiches = abatLotDialog.nominatifsActifs ?? 0
+                return (
+                  <>
+                    {` (${collectif} tête${collectif > 1 ? "s" : ""} collective${collectif > 1 ? "s" : ""} présente${collectif > 1 ? "s" : ""})`}
+                    {fiches > 0 && (
+                      <span className="block">
+                        {fiches > 1
+                          ? `Les ${fiches} fiches nominatives rattachées s'abattent depuis leur fiche.`
+                          : "La fiche nominative rattachée s'abat depuis sa fiche."}
+                      </span>
+                    )}
+                  </>
+                )
+              })()}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAbatLotSubmit} className="space-y-4">
@@ -2636,7 +2668,7 @@ function LotsSubTab() {
               </div>
               <div className="space-y-2">
                 <Label>Quantité *</Label>
-                <Input type="number" min="1" max={abatLotDialog?.quantiteActuelle || 999} value={abatLotForm.quantite} onChange={(e) => setAbatLotForm(f => ({ ...f, quantite: e.target.value }))} />
+                <Input type="number" min="1" max={abatLotDialog ? partCollectiveLot(abatLotDialog) || undefined : undefined} value={abatLotForm.quantite} onChange={(e) => setAbatLotForm(f => ({ ...f, quantite: e.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label>Destination *</Label>

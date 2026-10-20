@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { cleTypeSoin, libelleTypeSoin } from '@/lib/elevage/types-soin'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi(request)
@@ -44,6 +45,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             nom: true,
+            quantiteInitiale: true,
             quantiteActuelle: true,
             especeAnimale: { select: { nom: true } },
           },
@@ -51,6 +53,14 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { date: 'asc' },
     })
+
+    // Revue 2026-10-20 — l'effectif affiché derrière un lot est l'effectif
+    // reconstitué (écran Lots), pas le compteur stocké `quantiteActuelle`, qui
+    // dérive (la mort d'une fiche rattachée ne le décrémente pas). Comme lui,
+    // c'est l'effectif d'aujourd'hui, pas celui du jour du soin (non daté).
+    const lotsSoignes = new Map<number, { id: number; quantiteInitiale: number; quantiteActuelle: number }>()
+    for (const soin of soins) if (soin.lot) lotsSoignes.set(soin.lot.id, soin.lot)
+    const effectifsLots = await reconstituerEffectifsLots(userId, [...lotsSoignes.values()])
 
     const entries = soins.map((soin) => {
       // Determiner l'animal ou le lot concerne
@@ -63,7 +73,10 @@ export async function GET(request: NextRequest) {
         especeNom = soin.animal.especeAnimale.nom
       } else if (soin.lot) {
         animalLot = soin.lot.nom || `Lot #${soin.lot.id}`
-        animalLot += ` (${soin.lot.quantiteActuelle} animaux)`
+        // Un lot vidé depuis (abattu, réformé) n'affiche pas « (0 animaux) »
+        // derrière un soin qui a bien traité des animaux.
+        const effectif = effectifsLots.get(soin.lot.id)?.effectifCalcule ?? soin.lot.quantiteActuelle
+        if (effectif > 0) animalLot += ` (${effectif} ${effectif > 1 ? 'animaux' : 'animal'})`
         especeNom = soin.lot.especeAnimale.nom
       } else {
         animalLot = 'Non renseigné'

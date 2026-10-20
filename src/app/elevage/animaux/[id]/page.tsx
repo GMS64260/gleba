@@ -38,6 +38,7 @@ import { StatutsSanitairesAnimal } from "@/components/elevage/StatutsSanitairesA
 import { capacites } from "@/lib/elevage/filiere-ui"
 import { coerceFiliere } from "@/lib/elevage/filiere"
 import { libelleTypeSoin } from "@/lib/elevage/types-soin"
+import { formatMontantDevise } from "@/lib/format-utils"
 
 const STATUT_COLORS: Record<string, string> = {
   actif: "bg-green-100 text-green-800",
@@ -239,7 +240,7 @@ export default function AnimalDetailPage() {
           s.dose,
           s.motif,
           s.description,
-          s.cout ? `${s.cout.toFixed(2)} €` : null,
+          s.cout ? formatMontantDevise(s.cout) : null,
           s.fait ? null : `prévu le ${new Date(s.datePrevue ?? s.date).toLocaleDateString("fr-FR")}`,
           s.viaLot ? "soin de lot" : null,
         ].filter(Boolean).join(" - "),

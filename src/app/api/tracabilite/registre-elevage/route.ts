@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 interface RegistreEntry {
   date: string
@@ -157,23 +158,38 @@ export async function GET(request: NextRequest) {
           type: 'entree',
           animal: l.nom || `Lot #${l.id}`,
           espece: l.especeAnimale.nom,
-          identifiant: `Lot ${l.quantiteInitiale} tetes`,
+          identifiant: `Lot ${l.quantiteInitiale} tête${l.quantiteInitiale > 1 ? 's' : ''}`,
           detail: `Provenance : ${l.provenance || 'inconnue'}${l.prixAchatTotal ? ` - ${l.prixAchatTotal}\u20ac` : ''}`,
           lot: l.nom || `Lot #${l.id}`,
         })
       }
     })
 
-    // Sorties par lot réformé
+    // Sorties par lot réformé.
+    // Revue 2026-10-20 — têtes sorties à la réforme = effectif reconstitué du
+    // lot (même règle que la déclaration de sortie,
+    // `declarations-reglementaires.server.ts`), pas le compteur stocké
+    // `quantiteActuelle`, qui dérive (la mort d'une fiche rattachée ne le
+    // décrémente pas : il inscrivait une tête fantôme). L'effectif n'est pas
+    // daté, mais un lot ne se réforme qu'une fois son effectif reconstitué
+    // soldé (409 LOT_NON_SOLDE de PATCH /api/elevage/lots, sauf forçage) : il
+    // vaut donc les têtes restées au lot le jour de la réforme. À 0, les têtes
+    // sont sorties par leurs propres mouvements, déjà inscrits : la ligne
+    // garde la réforme sans annoncer « 0 tête ».
+    const effectifsReformes = await reconstituerEffectifsLots(userId, lotsReformes)
     lotsReformes.forEach(l => {
       if (l.dateReforme) {
+        const tetes = effectifsReformes.get(l.id)?.effectifCalcule ?? l.quantiteActuelle
+        const libelleTetes = `${tetes} tête${tetes > 1 ? 's' : ''}`
         entries.push({
           date: l.dateReforme.toISOString(),
           type: 'sortie',
           animal: l.nom || `Lot #${l.id}`,
           espece: l.especeAnimale.nom,
-          identifiant: `Lot ${l.quantiteActuelle} tetes`,
-          detail: `Réforme du lot (${l.quantiteActuelle} tête${l.quantiteActuelle > 1 ? 's' : ''})`,
+          identifiant: tetes > 0 ? `Lot ${libelleTetes}` : 'Lot soldé',
+          detail: tetes > 0
+            ? `Réforme du lot (${libelleTetes})`
+            : 'Réforme du lot : aucune tête restante, sorties inscrites par leurs propres mouvements',
           lot: l.nom || `Lot #${l.id}`,
         })
       }

@@ -12,13 +12,14 @@ const mocks = vi.hoisted(() => ({
   productionRucheFindMany: vi.fn(),
   livraisonFindMany: vi.fn(),
   paieFindMany: vi.fn(),
+  reconstituerEffectifsLots: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 // QA 2026-09-28 — l'effectif des lots passe par la reconstitution partagée
 // (naissances, abattages, nominatifs) ; ici sans base, la route retombe sur
 // `quantiteActuelle` quand le lot n'est pas dans la Map.
-vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: vi.fn(async () => new Map()) }))
+vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: mocks.reconstituerEffectifsLots }))
 vi.mock("@/lib/prisma", () => ({
   default: {
     lotAnimaux: { findMany: mocks.lotFindMany },
@@ -57,6 +58,7 @@ describe("GET /api/elevage/analyse-couts — coûts unitaires par atelier", () =
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map())
     mocks.lotFindMany.mockResolvedValue([
       { id: 1, userId: "user-1", nom: "Pondeuses", quantiteActuelle: 10, quantiteInitiale: 10, statut: "actif", dateArrivee: null, prixAchatTotal: null, especeAnimaleId: "poule", especeAnimale: { id: "poule", nom: "Poule" } },
     ])
@@ -177,5 +179,33 @@ describe("GET /api/elevage/analyse-couts — coûts unitaires par atelier", () =
     expect(poule?.couts.alimentation).toBe(0)
     expect(payload.methode.affectation).toContain("« Non affecté », sans répartition")
     expect(payload.methode.affectation).toContain("« Ventes <type> » par type")
+  })
+
+  // Revue 2026-10-20 — la ligne par lot servait le compteur stocké (5) et en
+  // tirait le coût par animal, alors que l'atelier comptait l'effectif
+  // reconstitué (4) : une seule valeur par lot, celle de l'écran Lots.
+  it("sert l'effectif reconstitué du lot et en tire le coût par animal", async () => {
+    const pintades = { id: 71, userId: "user-1", nom: "Pintades perle A3 1708", quantiteActuelle: 5, quantiteInitiale: 2, statut: "actif", dateArrivee: null, prixAchatTotal: null, especeAnimaleId: "pintade", especeAnimale: { id: "pintade", nom: "Pintade perle" } }
+    const lotTermine = { id: 72, userId: "user-1", nom: "Ancien lot", quantiteActuelle: 3, quantiteInitiale: 3, statut: "termine", dateArrivee: null, prixAchatTotal: null, especeAnimaleId: "pintade", especeAnimale: { id: "pintade", nom: "Pintade perle" } }
+    mocks.lotFindMany.mockResolvedValue([pintades, lotTermine])
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([
+      [71, { effectifCalcule: 4, nominatifsActifs: 0, effectifCollectif: 4, naissancesVivantes: 3, abattagesTotal: 0, sortiesNominatives: 1 }],
+      [72, { effectifCalcule: 0, nominatifsActifs: 0, effectifCollectif: 0, naissancesVivantes: 0, abattagesTotal: 3, sortiesNominatives: 0 }],
+    ]))
+    mocks.soinFindMany.mockResolvedValue([{ lotId: 71, animalId: null, cout: 20 }, { lotId: 72, animalId: null, cout: 9 }])
+    mocks.productionOeufFindMany.mockResolvedValue([])
+
+    const payload = await (await GET(request())).json()
+    const ligne = (id: number) => payload.data.find((l: { lotId: number }) => l.lotId === id)
+
+    // Tous les lots sont reconstitués, pas seulement les actifs.
+    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith("user-1", [pintades, lotTermine])
+    expect(ligne(71).quantiteActuelle).toBe(4)
+    // 20 € / 4 pintades = 5 € (le compteur stocké donnait 4 €).
+    expect(ligne(71).metriques.coutParAnimal).toBe(5)
+    expect(ligne(72).quantiteActuelle).toBe(0)
+    expect(ligne(72).metriques.coutParAnimal).toBe(0)
+    // L'atelier compte la même valeur (lot actif seulement).
+    expect(atelierDe(payload, "pintade")).toMatchObject({ effectif: 4 })
   })
 })

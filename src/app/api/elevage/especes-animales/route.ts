@@ -11,8 +11,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
+import { visibiliteReferentiel, attributionCreation, masquerEntree } from '@/lib/referentiel-communaute'
 import { coerceFiliere } from '@/lib/elevage/filiere'
+import { rendementCarcasseEnRatio, validerRendementCarcasseApi } from '@/lib/elevage/rendement-carcasse'
+import { chargerCheptelEnStock } from '@/lib/elevage/stock-cheptel'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -44,40 +46,40 @@ export async function GET(request: NextRequest) {
     // animaux (tous users + tous statuts), donnant 15 individuels et 6 lots
     // alors que le Dashboard comptait 33 (4 individus actifs + 29 en lots).
     // On scope par utilisateur connecté et on filtre sur statut actif.
-    // Pour les lots, on remonte effectifReel = somme(quantiteActuelle).
     const especeIds = especes.map((e) => e.id)
 
-    const [animauxParEspece, lotsParEspece] = await Promise.all([
+    // Revue 2026-10-20 — l'effectif des lots est l'effectif reconstitué
+    // (écran Lots, fiches rattachées comprises), partitionné comme Stocks :
+    // `effectifTotal` = fiches actives hors lot actif + effectif des lots.
+    const [animauxParEspece, cheptel] = await Promise.all([
       prisma.animal.groupBy({
         by: ['especeAnimaleId'],
         where: { userId, statut: 'actif', especeAnimaleId: { in: especeIds } },
         _count: true,
       }),
-      prisma.lotAnimaux.groupBy({
-        by: ['especeAnimaleId'],
-        where: { userId, statut: 'actif', especeAnimaleId: { in: especeIds } },
-        _count: true,
-        _sum: { quantiteActuelle: true },
-      }),
+      chargerCheptelEnStock(userId),
     ])
     const animauxMap = new Map(animauxParEspece.map((a) => [a.especeAnimaleId, a._count]))
-    const lotsMap = new Map(
-      lotsParEspece.map((l) => [
-        l.especeAnimaleId,
-        { count: l._count, effectif: l._sum.quantiteActuelle ?? 0 },
-      ])
-    )
+    const horsLotMap = new Map(cheptel.individuels.map((i) => [i.especeAnimaleId, i.tetes]))
+    const lotsMap = new Map<string, { count: number; effectif: number }>()
+    for (const l of cheptel.lots) {
+      const courant = lotsMap.get(l.especeAnimaleId) ?? { count: 0, effectif: 0 }
+      lotsMap.set(l.especeAnimaleId, { count: courant.count + 1, effectif: courant.effectif + l.tetes })
+    }
 
     const data = especes.map((e) => {
       const lots = lotsMap.get(e.id) ?? { count: 0, effectif: 0 }
       return {
-        ...e,
+        // Revue 2026-10-20 — jamais l'id d'un autre compte (marqueur d'origine).
+        ...masquerEntree(e, userId),
+        // QA cmvgeif10 — toujours un ratio, même pour une ancienne entrée en %.
+        rendementCarcasse: rendementCarcasseEnRatio(e.rendementCarcasse),
         _count: {
           animaux: animauxMap.get(e.id) ?? 0,
           lots: lots.count,
         },
         // Bonus pour les écrans qui veulent l'effectif réel (individus + lots)
-        effectifTotal: (animauxMap.get(e.id) ?? 0) + lots.effectif,
+        effectifTotal: (horsLotMap.get(e.id) ?? 0) + lots.effectif,
       }
     })
 
@@ -125,6 +127,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // QA cmvgeif10 — le rendement carcasse est un ratio du poids vif ; un
+    // pourcentage (65) est refusé en nommant le champ et l'unité.
+    const rendement = validerRendementCarcasseApi(rendementCarcasse)
+    if (!rendement.ok) {
+      return NextResponse.json({ error: rendement.erreur, champ: 'rendementCarcasse' }, { status: 400 })
+    }
+
     // Phase 0 « modes d'élevage » : la production est une donnée de rente.
     // Hors rente (compagnie/équin/NAC) elle est facultative → valeur neutre.
     const filiereVal = coerceFiliere(filiere)
@@ -151,7 +160,7 @@ export async function POST(request: NextRequest) {
         dureeCouvaison,
         dureeElevage,
         poidsAdulte,
-        rendementCarcasse,
+        rendementCarcasse: rendement.ratio,
         ponteAnnuelle,
         consommationJour,
         prixAchat,

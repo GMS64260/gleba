@@ -11,8 +11,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { peutEditerReferentiel } from '@/lib/referentiel-communaute'
+import { masquerEntree, peutEditerReferentiel, whereReferentielCible } from '@/lib/referentiel-communaute'
 import { coerceFiliere } from '@/lib/elevage/filiere'
+import { validerRendementCarcasseApi } from '@/lib/elevage/rendement-carcasse'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -26,7 +27,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const { id } = await params
     const body = await request.json()
 
-    const existing = await prisma.especeAnimale.findUnique({ where: { id } })
+    // Profil privé d'un autre compte = profil inexistant (404), jamais 403.
+    const existing = await prisma.especeAnimale.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
+    })
     if (!existing) {
       return NextResponse.json({ error: `Espèce "${id}" non trouvée` }, { status: 404 })
     }
@@ -36,6 +40,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         { error: 'Vous ne pouvez modifier que vos propres espèces.' },
         { status: 403 }
       )
+    }
+
+    // QA cmvgeif10 — ratio du poids vif, même règle qu'à la création.
+    const rendement = validerRendementCarcasseApi(body.rendementCarcasse)
+    if (!rendement.ok) {
+      return NextResponse.json({ error: rendement.erreur, champ: 'rendementCarcasse' }, { status: 400 })
     }
 
     const data: Record<string, unknown> = {}
@@ -51,7 +61,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (body.dureeCouvaison !== undefined) data.dureeCouvaison = body.dureeCouvaison
     if (body.dureeElevage !== undefined) data.dureeElevage = body.dureeElevage
     if (body.poidsAdulte !== undefined) data.poidsAdulte = body.poidsAdulte
-    if (body.rendementCarcasse !== undefined) data.rendementCarcasse = body.rendementCarcasse
+    if (rendement.ratio !== undefined) data.rendementCarcasse = rendement.ratio
     if (body.ponteAnnuelle !== undefined) data.ponteAnnuelle = body.ponteAnnuelle
     if (body.consommationJour !== undefined) data.consommationJour = body.consommationJour
     if (body.prixAchat !== undefined) data.prixAchat = body.prixAchat
@@ -64,7 +74,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const espece = await prisma.especeAnimale.update({ where: { id }, data })
-    return NextResponse.json({ data: espece })
+    return NextResponse.json({ data: masquerEntree(espece, session!.user.id) })
   } catch (error) {
     console.error('PUT /api/elevage/especes-animales/[id] error:', error)
     return NextResponse.json(
@@ -83,8 +93,8 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
 
-    const existing = await prisma.especeAnimale.findUnique({
-      where: { id },
+    const existing = await prisma.especeAnimale.findFirst({
+      where: whereReferentielCible(id, session!.user.id, isAdmin),
       include: { _count: { select: { animaux: true, lots: true } } },
     })
 

@@ -247,13 +247,19 @@ export async function GET(request: NextRequest) {
   ])
 
   const inventaireAnimaux = animaux.filter((animal) => animal.statut === "actif")
-  const inventaireLots = lots.filter((lot) => lot.statut === "actif" && lot.quantiteActuelle > 0)
+  // Revue 2026-10-20 — effectif reconstitué de chaque lot lu (écran Lots), pas
+  // le compteur stocké `quantiteActuelle`, qui dérive dans les deux sens (lot
+  // à 0 dont les têtes sont des fiches rattachées ; fiche morte qui ne le
+  // décrémente pas) : il retient les lots présents et chiffre leurs réformes.
+  const effectifsRegistre = await reconstituerEffectifsLots(userId, lots)
+  const effectifLot = (lot: { id: number; quantiteActuelle: number }) =>
+    effectifsRegistre.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
+  const inventaireLots = lots.filter((lot) => lot.statut === "actif" && effectifLot(lot) > 0)
   // QA caprin cms1v227a — les fiches nominatives rattachees a un lot sont deja
   // listees individuellement : le lot n'affiche que sa part collective.
-  const effectifsRegistre = await reconstituerEffectifsLots(userId, inventaireLots)
   const partCollective = (lot: { id: number; quantiteActuelle: number }) => {
     const eff = effectifsRegistre.get(lot.id)
-    return eff ? Math.max(0, eff.effectifCalcule - eff.nominatifsActifs) : lot.quantiteActuelle
+    return eff ? eff.effectifCollectif : lot.quantiteActuelle
   }
   const lieuxPeriode = (exploitation?.lieuxDetentionElevage ?? []).filter((lieu) =>
     lieu.createdAt < fin && (!lieu.archivedAt || lieu.archivedAt >= debut),
@@ -346,14 +352,19 @@ export async function GET(request: NextRequest) {
       })
     }
     if (lot.dateReforme && lot.dateReforme >= debut && lot.dateReforme < fin) {
+      // Têtes sorties à la réforme = effectif reconstitué (même règle que la
+      // déclaration de sortie). Non daté, mais un lot ne se réforme qu'une fois
+      // son effectif soldé (409 LOT_NON_SOLDE, sauf forçage) : à 0, ses têtes
+      // sont sorties par leurs propres mouvements, déjà listés, pas de « ×0 ».
+      const tetes = effectifLot(lot)
       mouvements.push({
         date: lot.dateReforme,
         type: "Sortie lot",
         espece: lot.especeAnimale.nom,
-        cible: `${lot.nom || `Lot #${lot.id}`} ×${lot.quantiteActuelle}`,
+        cible: `${lot.nom || `Lot #${lot.id}`} ${tetes > 0 ? `×${tetes}` : "(soldé)"}`,
         origine: "",
         destination: "",
-        motif: "Réforme / fin de lot",
+        motif: tetes > 0 ? "Réforme / fin de lot" : "Réforme / fin de lot, têtes déjà sorties",
       })
     }
   }

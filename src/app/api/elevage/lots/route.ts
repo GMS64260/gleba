@@ -84,6 +84,11 @@ export async function GET(request: NextRequest) {
         abattagesTotal: e?.abattagesTotal ?? 0,
         // Effectif reconstitué pour corriger les compteurs historiques dérivés.
         effectifCalcule: e?.effectifCalcule ?? l.quantiteActuelle,
+        // Revue 2026-10-20 — fiches actives rattachées et part collective
+        // (têtes anonymes, plafond d'un abattage de lot) : l'écran les lit ici
+        // au lieu de recalculer.
+        nominatifsActifs: e?.nominatifsActifs ?? 0,
+        effectifCollectif: e?.effectifCollectif ?? l.quantiteActuelle,
       }
     })
 

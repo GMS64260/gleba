@@ -149,4 +149,40 @@ describe("API inventaire daté du cheptel", () => {
     expect(response.headers.get("content-type")).toBe("application/pdf")
     expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe("%PDF")
   })
+
+  // Revue 2026-10-20 — un lot était retenu sur le compteur stocké
+  // `quantiteActuelle > 0`, qui dérive dans les deux sens. Il l'est désormais
+  // sur l'effectif reconstitué (helper réel, lectures simulées).
+  it("retient les lots dont l'effectif reconstitué est > 0, quel que soit le compteur stocké", async () => {
+    const espece = { nom: "Pintade perle", categorieReglementaire: "Volaille" }
+    const lot = (id: number, nom: string, quantiteInitiale: number, quantiteActuelle: number) => ({
+      id, nom, quantiteInitiale, quantiteActuelle, statut: "actif", dateReforme: null,
+      dateArrivee: new Date("2026-08-17T00:00:00.000Z"), createdAt: new Date("2026-08-17T00:00:00.000Z"),
+      especeAnimale: espece,
+    })
+    mocks.animauxFindMany.mockResolvedValue([])
+    mocks.lotsFindMany.mockResolvedValue([
+      lot(71, "Pintades perle A3 1708", 2, 5), // + 3 nées, 1 fiche morte : effectif 4
+      lot(90, "Lot de fiches", 2, 0), // 2 fiches actives rattachées : effectif 2
+      lot(91, "Lot vidé", 1, 1), // sa seule tête, une fiche, est morte : effectif 0
+    ])
+    mocks.naissancesFindMany.mockResolvedValue([{ lotId: 71, nombreVivants: 3 }])
+    mocks.animauxGroupBy.mockImplementation(async ({ where }: { where: { statut: unknown } }) =>
+      where.statut === "actif"
+        ? [{ lotId: 90, _count: { _all: 2 } }]
+        : [{ lotId: 71, _count: { _all: 1 } }, { lotId: 91, _count: { _all: 1 } }],
+    )
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/elevage/inventaire-cheptel?date=2026-10-19&format=csv",
+    ))
+    const lignesLots = (await response.text()).split("\r\n").filter((l) => l.startsWith('"LOT_COLLECTIF"'))
+
+    expect(response.status).toBe(200)
+    expect(lignesLots).toEqual([
+      '"LOT_COLLECTIF";"Pintade perle";"Volaille";"lot:71";"Pintades perle A3 1708";"";"";"";"";"4"',
+      // Ses deux têtes sont listées en INDIVIDU : part collective nulle.
+      '"LOT_COLLECTIF";"Pintade perle";"Volaille";"lot:90";"Lot de fiches";"";"";"";"";"0"',
+    ])
+  })
 })

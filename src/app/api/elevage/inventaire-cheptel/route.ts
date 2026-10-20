@@ -117,9 +117,9 @@ export async function GET(request: NextRequest) {
     return entree <= situationAu && (!animal.dateSortie || animal.dateSortie > situationAu)
   })
   const estDateCourante = parsed.data.date === dateCouranteUtc()
-  const lotsPresents = lotsBruts.filter((lot) => {
+  const lotsCandidats = lotsBruts.filter((lot) => {
     const entree = lot.dateArrivee ?? lot.createdAt
-    if (entree > situationAu || lot.quantiteActuelle <= 0) return false
+    if (entree > situationAu) return false
     if (lot.dateReforme && lot.dateReforme <= situationAu) return false
     if (estDateCourante && lot.statut !== "actif") return false
     return true
@@ -127,10 +127,17 @@ export async function GET(request: NextRequest) {
   // QA caprin cms1v227a — les fiches nominatives rattachées à un lot sont déjà
   // listées en lignes INDIVIDU : la quantité du lot ne doit compter que la part
   // collective (effectif reconstitué − nominatifs), sinon double comptage.
-  const effectifsInventaire = await reconstituerEffectifsLots(userId, lotsPresents)
+  // Revue 2026-10-20 — un lot est présent si son effectif reconstitué est > 0,
+  // filtré après reconstitution : le compteur stocké `quantiteActuelle` dérive
+  // dans les deux sens (lot à 0 dont les têtes sont des fiches rattachées ;
+  // fiche morte qui ne le décrémente pas).
+  const effectifsInventaire = await reconstituerEffectifsLots(userId, lotsCandidats)
+  const lotsPresents = lotsCandidats.filter(
+    (lot) => (effectifsInventaire.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle) > 0,
+  )
   const quantiteCollective = (lotId: number, fallback: number) => {
     const eff = effectifsInventaire.get(lotId)
-    return eff ? Math.max(0, eff.effectifCalcule - eff.nominatifsActifs) : fallback
+    return eff ? eff.effectifCollectif : fallback
   }
   const lots = lotsPresents.map((lot) => ({
     ...lot,

@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { createParcelleSchema } from '@/lib/validations/parcelle'
 import { calculateCentroid, calculateSurfaceHa } from '@/lib/geo-utils'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 // GET /api/carte - Liste des parcelles de l'utilisateur
 export async function GET() {
@@ -58,13 +59,23 @@ export async function GET() {
     const [lots, animauxIndiv] = await Promise.all([
       prisma.lotAnimaux.findMany({
         where: { userId, parcelleGeoId: { not: null }, statut: 'actif' },
-        select: { id: true, nom: true, parcelleGeoId: true, quantiteActuelle: true, especeAnimale: { select: { nom: true } } },
+        select: { id: true, nom: true, parcelleGeoId: true, quantiteInitiale: true, quantiteActuelle: true, especeAnimale: { select: { nom: true } } },
       }),
       prisma.animal.findMany({
         where: { userId, parcelleGeoId: { not: null }, statut: 'actif' },
-        select: { id: true, nom: true, identifiant: true, parcelleGeoId: true, especeAnimale: { select: { nom: true } } },
+        select: { id: true, nom: true, identifiant: true, parcelleGeoId: true, lotId: true, especeAnimale: { select: { nom: true } } },
       }),
     ])
+
+    // Revue 2026-10-20 — un lot compte son effectif reconstitué (celui de
+    // l'écran Lots, fiches rattachées comprises), pas le compteur stocké qui
+    // dérive. Une fiche du lot posée sur la carte est déjà comptée en
+    // individuel : elle est retirée de la part du lot dans les totaux.
+    const effectifsLots = await reconstituerEffectifsLots(userId, lots)
+    const fichesCarteParLot = new Map<number, number>()
+    for (const an of animauxIndiv) {
+      if (an.lotId != null) fichesCarteParLot.set(an.lotId, (fichesCarteParLot.get(an.lotId) ?? 0) + 1)
+    }
 
     type Agg = {
       totalTetes: number
@@ -82,9 +93,11 @@ export async function GET() {
     for (const l of lots) {
       if (!l.parcelleGeoId) continue
       const a = ensure(l.parcelleGeoId)
-      a.lots.push({ id: l.id, nom: l.nom, espece: l.especeAnimale.nom, quantiteActuelle: l.quantiteActuelle })
-      a.totalTetes += l.quantiteActuelle
-      a.parEspece[l.especeAnimale.nom] = (a.parEspece[l.especeAnimale.nom] ?? 0) + l.quantiteActuelle
+      const effectif = effectifsLots.get(l.id)?.effectifCalcule ?? l.quantiteActuelle
+      const tetesDuLot = Math.max(0, effectif - (fichesCarteParLot.get(l.id) ?? 0))
+      a.lots.push({ id: l.id, nom: l.nom, espece: l.especeAnimale.nom, quantiteActuelle: effectif })
+      a.totalTetes += tetesDuLot
+      a.parEspece[l.especeAnimale.nom] = (a.parEspece[l.especeAnimale.nom] ?? 0) + tetesDuLot
     }
     for (const an of animauxIndiv) {
       if (!an.parcelleGeoId) continue

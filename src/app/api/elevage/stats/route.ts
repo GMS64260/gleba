@@ -56,7 +56,6 @@ export async function GET(request: NextRequest) {
       mortaliteAnnee,
       animauxPondeursActifs,
       lotsPondeusesDetail,
-      lotsParType,
       totalConsommationAliments,
     ] = await Promise.all([
       // Animaux actifs
@@ -84,7 +83,7 @@ export async function GET(request: NextRequest) {
       // non décrémentés, cf. bug cmpmr3837). Voir reconstituerEffectifsLots.
       prisma.lotAnimaux.findMany({
         where: { userId, statut: 'actif' },
-        select: { id: true, quantiteInitiale: true, quantiteActuelle: true },
+        select: { id: true, especeAnimaleId: true, quantiteInitiale: true, quantiteActuelle: true },
       }),
 
       // Production œufs annee
@@ -229,17 +228,6 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // BUG #7 — Lots actifs groupés par espèce pour merger dans
-      // `animauxParType` (PieChart « Répartition par espèce »). Avant,
-      // seuls les animaux individuels étaient comptés, donc l'éleveur
-      // qui gérait son troupeau exclusivement en LotAnimaux voyait un
-      // PieChart vide.
-      prisma.lotAnimaux.groupBy({
-        by: ['especeAnimaleId'],
-        where: { userId, statut: 'actif' },
-        _sum: { quantiteActuelle: true },
-      }),
-
       // Total consommation aliments annee (kg)
       prisma.consommationAliment.aggregate({
         where: {
@@ -250,13 +238,21 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    // QA cmsp5lzye — l'effectif des pondeuses lisait `quantiteActuelle` brut
+    // alors que l'écran Lots affiche l'effectif reconstitué (fiches nominatives
+    // rattachées incluses) : « 29 pondeuses » au dénominateur du taux de ponte
+    // contre « Actuel 30 » dans les lots. Un seul appel au helper sert les
+    // usages (répartition par espèce, total en lots, pondeuses), les lots
+    // pondeurs actifs étant un sous-ensemble des lots actifs.
+    const effectifsLots = await reconstituerEffectifsLots(userId, lotsActifs)
+
     // Récupérer les noms des especes pour les stats — on inclut les ids
     // venant des LOTS aussi (BUG #7) pour ne pas perdre l'étiquette des
     // espèces présentes uniquement en lot.
     const especeIds = Array.from(
       new Set([
         ...animauxParType.map(a => a.especeAnimaleId),
-        ...lotsParType.map(l => l.especeAnimaleId),
+        ...lotsActifs.map(l => l.especeAnimaleId),
       ])
     )
     const especes = await prisma.especeAnimale.findMany({
@@ -271,8 +267,17 @@ export async function GET(request: NextRequest) {
     for (const a of animauxParType) {
       animauxParTypeMerged.set(a.especeAnimaleId, (animauxParTypeMerged.get(a.especeAnimaleId) ?? 0) + a._count)
     }
-    for (const l of lotsParType) {
-      const n = l._sum.quantiteActuelle ?? 0
+    // BUG #7 — les lots actifs entrent dans la répartition (PieChart
+    // « Répartition par espèce »), sinon un troupeau tenu en lots la laissait
+    // vide. Revue 2026-10-20 — pour leur part collective reconstituée
+    // (effectif de l'écran Lots moins les fiches rattachées, déjà comptées
+    // ci-dessus sur leur propre espèce), comme les ateliers de
+    // /api/elevage/analyse-couts, et non plus au compteur stocké
+    // `quantiteActuelle`, qui dérive (la mort d'une fiche rattachée ne le
+    // décrémente pas).
+    for (const l of lotsActifs) {
+      const e = effectifsLots.get(l.id)
+      const n = e ? e.effectifCollectif : l.quantiteActuelle
       if (n > 0) {
         animauxParTypeMerged.set(l.especeAnimaleId, (animauxParTypeMerged.get(l.especeAnimaleId) ?? 0) + n)
       }
@@ -296,13 +301,7 @@ export async function GET(request: NextRequest) {
       if (prods.some((p) => p.includes('viande'))) profil.viande = true
     }
 
-    // Métriques calculées
-    // QA cmsp5lzye — l'effectif des pondeuses lisait `quantiteActuelle` brut
-    // alors que l'écran Lots affiche l'effectif reconstitué (fiches nominatives
-    // rattachées incluses) : « 29 pondeuses » au dénominateur du taux de ponte
-    // contre « Actuel 30 » dans les lots. Un seul appel au helper sert les deux
-    // usages, les lots pondeurs actifs étant un sous-ensemble des lots actifs.
-    const effectifsLots = await reconstituerEffectifsLots(userId, lotsActifs)
+    // Métriques calculées (effectif reconstitué : `effectifsLots` plus haut).
     // QA cmv5jfsol — les poussins nés dans le lot (et les fiches mâles ou trop
     // jeunes) ne pondent pas : retranchés de l'effectif pondeur, donc du taux
     // observé et de l'attendu (helper partagé avec /lots et /taches).
@@ -482,8 +481,8 @@ export async function GET(request: NextRequest) {
         // Profil du cheptel (pour l'UI : onglet Production par défaut, etc.)
         profil,
       },
-      // BUG #7 : la répartition par espèce additionne désormais les
-      // animaux individuels + ceux comptés en LotAnimaux.quantiteActuelle.
+      // BUG #7 : la répartition par espèce additionne les fiches actives (sur
+      // leur espèce) et la part collective reconstituée des lots actifs.
       animauxParType: Array.from(animauxParTypeMerged.entries()).map(([especeAnimaleId, count]) => ({
         especeAnimaleId,
         nom: especeMap.get(especeAnimaleId)?.nom || especeAnimaleId,

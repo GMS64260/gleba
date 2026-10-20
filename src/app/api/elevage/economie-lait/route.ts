@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { indicateursEconomieLait } from '@/lib/elevage/economie-lait'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 const estLaitier = (production?: string | null, productions?: string[] | null): boolean => {
   const p = (production || '').toLowerCase()
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
         where: { userId, statut: 'actif' },
         select: {
           id: true,
+          quantiteInitiale: true,
           quantiteActuelle: true,
           especeAnimale: { select: { production: true, productions: true } },
         },
@@ -100,12 +102,17 @@ export async function GET(request: NextRequest) {
     // dans quantiteActuelle du lot : seuls les animaux hors lot s'ajoutent ici,
     // sinon chaque tête rattachée est comptée deux fois (ex: « 8/102 » au lieu
     // de 4/98 pour 4 chèvres du lot laitier).
+    // Revue 2026-10-20 — effectif reconstitué du lot (écran Lots, fiches
+    // rattachées comprises), pas le compteur stocké qui dérive.
+    const effectifsLots = await reconstituerEffectifsLots(userId, lots)
+    const effectifLot = (l: { id: number; quantiteActuelle: number }) =>
+      effectifsLots.get(l.id)?.effectifCalcule ?? (l.quantiteActuelle || 0)
     const animauxHorsLot = animaux.filter((a) => a.lotId == null)
     const tetesLaitieres =
       animauxHorsLot.filter((a) => animauxLaitiers.has(a.id)).length +
-      lots.filter((l) => lotsLaitiers.has(l.id)).reduce((s, l) => s + (l.quantiteActuelle || 0), 0)
+      lots.filter((l) => lotsLaitiers.has(l.id)).reduce((s, l) => s + effectifLot(l), 0)
     const tetesTotales =
-      animauxHorsLot.length + lots.reduce((s, l) => s + (l.quantiteActuelle || 0), 0)
+      animauxHorsLot.length + lots.reduce((s, l) => s + effectifLot(l), 0)
     const partGlobaleLaitiere = tetesTotales > 0 ? tetesLaitieres / tetesTotales : 0
 
     // Production

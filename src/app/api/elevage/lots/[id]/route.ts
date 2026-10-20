@@ -122,14 +122,17 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     // compteur du lot par `animauxActifs` (TIN-52).
     const animauxActifs = lot.animaux.filter((a) => a.statut === 'actif').length
     const effectifs = await reconstituerEffectifsLots(session.user.id, [lot])
-    const effectifReel = effectifs.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
+    const effectif = effectifs.get(lot.id)
+    const effectifReel = effectif?.effectifCalcule ?? lot.quantiteActuelle
 
     return NextResponse.json({
       data: {
         ...lot,
         effectifReel,
         animauxNominatifsActifs: animauxActifs,
-        effectifCollectif: Math.max(0, effectifReel - animauxActifs),
+        // Part collective : même valeur que GET /api/elevage/lots et le plafond
+        // d'abattage de lot (`effectifCollectif` du helper, 2026-10-20).
+        effectifCollectif: effectif?.effectifCollectif ?? Math.max(0, effectifReel - animauxActifs),
         prixAchatParAnimal:
           lot.prixAchatTotal != null && lot.quantiteInitiale > 0
             ? lot.prixAchatTotal / lot.quantiteInitiale

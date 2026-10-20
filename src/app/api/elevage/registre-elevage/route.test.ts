@@ -9,9 +9,16 @@ const mocks = vi.hoisted(() => ({
   naissanceFindMany: vi.fn(),
   exploitationFindUnique: vi.fn(),
   auditCreate: vi.fn(),
+  reconstituerEffectifsLots: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
+vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: mocks.reconstituerEffectifsLots }))
+// Empreinte réelle, espionnée pour relire les lignes du registre (le PDF est compressé).
+vi.mock("@/lib/elevage/declarations-reglementaires", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/elevage/declarations-reglementaires")>()
+  return { ...actual, empreinteDeclaration: vi.fn(actual.empreinteDeclaration) }
+})
 vi.mock("@/lib/prisma", () => ({
   default: {
     animal: { findMany: mocks.animalFindMany },
@@ -24,6 +31,7 @@ vi.mock("@/lib/prisma", () => ({
 }))
 
 import { GET } from "./route"
+import { empreinteDeclaration } from "@/lib/elevage/declarations-reglementaires"
 
 describe("registre des mouvements PDF", () => {
   beforeEach(() => {
@@ -38,6 +46,7 @@ describe("registre des mouvements PDF", () => {
     mocks.naissanceFindMany.mockResolvedValue([])
     mocks.exploitationFindUnique.mockResolvedValue(null)
     mocks.auditCreate.mockResolvedValue({ id: "audit-1" })
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map())
   })
 
   it("génère un PDF paginé et journalise son empreinte", async () => {
@@ -113,5 +122,27 @@ describe("registre des mouvements PDF", () => {
         metadata: expect.objectContaining({ mouvements: 1 }),
       }),
     })
+  })
+
+  // Revue 2026-10-20 — la sortie d'un lot réformé inscrivait le compteur
+  // stocké (×5 pour le lot démo 71) au lieu de l'effectif reconstitué (×4),
+  // et « ×1 » fantôme pour un lot soldé dont le compteur avait dérivé.
+  it("inscrit à la réforme l'effectif reconstitué du lot, sans « ×0 » pour un lot soldé", async () => {
+    const espece = { nom: "Pintade perle" }
+    const pintades = { id: 71, nom: "Pintades perle A3 1708", quantiteInitiale: 2, quantiteActuelle: 5, dateReforme: new Date("2026-10-20T00:00:00Z"), createdAt: new Date("2026-08-17T00:00:00Z"), especeAnimale: espece }
+    const solde = { id: 80, nom: "Lapins 2025", quantiteInitiale: 3, quantiteActuelle: 1, dateReforme: new Date("2026-09-01T00:00:00Z"), createdAt: new Date("2025-03-01T00:00:00Z"), especeAnimale: espece }
+    // Premier appel : lots arrivés dans l'année ; second : lots réformés.
+    mocks.lotFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([solde, pintades])
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([[71, { effectifCalcule: 4 }], [80, { effectifCalcule: 0 }]]))
+
+    const response = await GET(new NextRequest("http://localhost/api/elevage/registre-elevage?year=2026"))
+    expect(response.status).toBe(200)
+
+    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith("user-1", [solde, pintades])
+    const { lignes } = vi.mocked(empreinteDeclaration).mock.calls[0][0] as { lignes: Array<{ ident: string; motif: string }> }
+    expect(lignes.map((l) => [l.ident, l.motif])).toEqual([
+      ["Lot #80 (soldé)", "Réforme, têtes déjà sorties"],
+      ["Lot #71 (×4)", "Réforme"],
+    ])
   })
 })

@@ -29,6 +29,12 @@ export interface LotEffectifResult {
   effectifCalcule: number
   /** Fiches nominatives actives rattachées au lot (incluses dans effectifCalcule). */
   nominatifsActifs: number
+  /**
+   * Part collective (têtes anonymes) : effectif reconstitué moins les fiches
+   * actives rattachées, jamais négative. C'est elle qu'un abattage de lot
+   * entame ; une fiche s'abat par son propre parcours (2026-10-20).
+   */
+  effectifCollectif: number
   /** Fiches nominatives sorties (mortes, vendues, abattues) rattachées au lot. */
   sortiesNominatives: number
 }
@@ -143,6 +149,7 @@ export async function reconstituerEffectifsLots(
       abattagesTotal: abattagesL,
       effectifCalcule,
       nominatifsActifs: nominatifsL,
+      effectifCollectif: Math.max(0, effectifCalcule - nominatifsL),
       sortiesNominatives: sortiesL,
     })
   }

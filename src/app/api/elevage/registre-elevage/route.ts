@@ -23,6 +23,7 @@ import {
   journaliserEvenementReglementaire,
 } from '@/lib/elevage/audit-reglementaire'
 import { animalNeSurExploitation, empreinteDeclaration } from '@/lib/elevage/declarations-reglementaires'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import {
   dessinerEnteteTableauPdf,
   dessinerLigneTableauPdf,
@@ -182,16 +183,25 @@ export async function GET(request: NextRequest) {
       motif: '',
     })
   }
+  // Revue 2026-10-20 — têtes sorties à la réforme = effectif reconstitué du
+  // lot (même règle que la déclaration de sortie), pas le compteur stocké
+  // `quantiteActuelle`, qui dérive (la mort d'une fiche rattachée ne le
+  // décrémente pas). Non daté, mais un lot ne se réforme qu'une fois son
+  // effectif soldé (409 LOT_NON_SOLDE, sauf forçage) : il vaut les têtes
+  // restées au lot ce jour-là. À 0, ses têtes sont sorties par leurs propres
+  // lignes (abattages, sorties individuelles) : pas de « ×0 ».
+  const effectifsReformes = await reconstituerEffectifsLots(userId, lotsTermine)
   for (const l of lotsTermine) {
+    const tetes = effectifsReformes.get(l.id)?.effectifCalcule ?? l.quantiteActuelle
     lignes.push({
       date: l.dateReforme!,
       sens: 'Sortie',
       espece: l.especeAnimale?.nom || '—',
-      ident: `Lot #${l.id} (×${l.quantiteActuelle})`,
+      ident: tetes > 0 ? `Lot #${l.id} (×${tetes})` : `Lot #${l.id} (soldé)`,
       lot: l.nom || `Lot #${l.id}`,
       origine: '',
       destination: '',
-      motif: 'Réforme',
+      motif: tetes > 0 ? 'Réforme' : 'Réforme, têtes déjà sorties',
     })
   }
   for (const a of abattagesLots) {

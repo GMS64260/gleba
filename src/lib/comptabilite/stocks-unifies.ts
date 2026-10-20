@@ -34,6 +34,7 @@ import {
   typeVenteVersProduitRuche,
 } from '@/lib/elevage/produits-ruche'
 import { TYPES_ARBRE } from '@/lib/verger/types-arbre'
+import { chargerCheptelEnStock } from '@/lib/elevage/stock-cheptel'
 
 export interface StockUnifieItem {
   id: string
@@ -62,8 +63,7 @@ export async function computeStocksUnifies(userId: string) {
     culturesActives,
     // Élevage (per-user)
     userAliments,
-    animauxActifs,
-    lotsActifs,
+    cheptel,
     // Élevage oeufs
     stockOeufs,
     // Produits de la ruche : récoltes moins sorties
@@ -150,20 +150,9 @@ export async function computeStocksUnifies(userId: string) {
       orderBy: { aliment: { nom: 'asc' } },
     }),
 
-    // Animaux actifs
-    prisma.animal.groupBy({
-      by: ['especeAnimaleId'],
-      where: { userId, statut: 'actif' },
-      _count: true,
-    }),
-
-    // Lots actifs avec quantité
-    prisma.lotAnimaux.findMany({
-      where: { userId, statut: 'actif' },
-      include: {
-        especeAnimale: { select: { nom: true } },
-      },
-    }),
+    // Animaux hors lot actif et lots actifs à leur effectif reconstitué, le
+    // même que celui d'Élevage > Lots (QA cmvgdo90z, `stock-cheptel.ts`).
+    chargerCheptelEnStock(userId),
 
     // Stock œufs calculé
     calculerStockOeufs(userId),
@@ -289,7 +278,7 @@ export async function computeStocksUnifies(userId: string) {
   }
 
   // Récupérer les noms des especes animales
-  const especeAnimaleIds = animauxActifs.map(a => a.especeAnimaleId)
+  const especeAnimaleIds = cheptel.individuels.map(a => a.especeAnimaleId)
   const especesAnimales = await prisma.especeAnimale.findMany({
     where: { id: { in: especeAnimaleIds } },
     select: { id: true, nom: true },
@@ -499,13 +488,13 @@ export async function computeStocksUnifies(userId: string) {
   })
 
   // Animaux individuels par espece
-  animauxActifs.forEach(a => {
+  cheptel.individuels.forEach(a => {
     stocks.push({
       id: `animaux-${a.especeAnimaleId}`,
       module: 'elevage',
       categorie: 'Animaux individuels',
       nom: especeAnimaleMap.get(a.especeAnimaleId) || a.especeAnimaleId,
-      stock: a._count,
+      stock: a.tetes,
       unite: 'têtes',
       stockMin: null,
       alerteBas: false,
@@ -514,13 +503,13 @@ export async function computeStocksUnifies(userId: string) {
   })
 
   // Lots d'animaux
-  lotsActifs.forEach(l => {
+  cheptel.lots.forEach(l => {
     stocks.push({
       id: `lot-${l.id}`,
       module: 'elevage',
       categorie: 'Lots animaux',
-      nom: l.nom || l.especeAnimale.nom,
-      stock: l.quantiteActuelle,
+      nom: l.nom,
+      stock: l.tetes,
       unite: 'têtes',
       stockMin: null,
       alerteBas: false,

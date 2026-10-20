@@ -10,6 +10,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { productionOeufsSchema } from '@/lib/validations/elevage-production-oeufs'
 import { seuilCollecteMaxJour } from '@/lib/elevage/taux-ponte'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -112,6 +113,8 @@ export async function POST(request: NextRequest) {
       const lot = await prisma.lotAnimaux.findFirst({
         where: { id: lotId, userId: session.user.id },
         select: {
+          id: true,
+          quantiteInitiale: true,
           quantiteActuelle: true,
           statut: true,
           nom: true,
@@ -143,8 +146,15 @@ export async function POST(request: NextRequest) {
           { status: 422 }
         )
       }
-      if (!overrideCoherence && lot.quantiteActuelle > 0) {
-        const seuil = seuilCollecteMaxJour(lot.quantiteActuelle, lot.especeAnimale?.nom ?? null)
+      // Revue 2026-10-20 — le plafond se calcule sur l'effectif reconstitué du
+      // lot (celui de l'écran Lots et de l'aide à la saisie), pas sur le
+      // compteur stocké `quantiteActuelle`, qui dérive : la mort d'une fiche
+      // nominative rattachée ne le décrémente pas (lot démo 71 : 5 contre 4).
+      // `seuilCollecteMaxJour` rend null pour un effectif nul : pas de plafond.
+      if (!overrideCoherence) {
+        const effectifs = await reconstituerEffectifsLots(session.user.id, [lot])
+        const effectif = effectifs.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
+        const seuil = seuilCollecteMaxJour(effectif, lot.especeAnimale?.nom ?? null)
         if (seuil != null && quantite > seuil) {
           return NextResponse.json(
             {
@@ -153,10 +163,10 @@ export async function POST(request: NextRequest) {
               details: {
                 quantite,
                 seuilMax: seuil,
-                effectif: lot.quantiteActuelle,
+                effectif,
                 espece: lot.especeAnimale?.nom ?? null,
                 lotNom: lot.nom,
-                message: `${lot.quantiteActuelle} ${lot.especeAnimale?.nom ?? 'pondeuse(s)'} ne peuvent pas pondre ${quantite} œufs en 1 jour (plafond plausible ≈ ${seuil}). Confirmer pour forcer la saisie.`,
+                message: `${effectif} ${lot.especeAnimale?.nom ?? 'pondeuse(s)'} ne peuvent pas pondre ${quantite} œufs en 1 jour (plafond plausible ≈ ${seuil}). Confirmer pour forcer la saisie.`,
               },
             },
             { status: 422 }

@@ -55,7 +55,7 @@ import { useToast } from "@/hooks/use-toast"
 import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
 import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
 import { confirmDialog } from "@/lib/global-dialog"
-import { todayLocalISO } from '@/lib/format-utils'
+import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { tauxTvaVenteProduitParDefaut } from '@/lib/elevage/produits-ruche'
 
 // ============================================================
@@ -1342,7 +1342,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
       const total = parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)
       toast({
         title: "Vente enregistrée",
-        description: formData.cessionGratuite ? "Cession à titre gratuit" : `${total.toFixed(2)} €`,
+        description: formData.cessionGratuite ? "Cession à titre gratuit" : formatMontantDevise(total),
       })
       // Review caprin 2026-07-22 — alerte délai d'attente lait sur vente de lait cru.
       if (json?.warning) toast({ variant: "destructive", title: "Attention lait", description: json.warning })
@@ -1382,7 +1382,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
           <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-emerald-100 text-xs">Chiffre d'affaires</CardDescription>
-              <CardTitle className="text-2xl">{stats.totalVentes.toFixed(2)} &euro;</CardTitle>
+              <CardTitle className="text-2xl">{formatMontantDevise(stats.totalVentes)}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
@@ -1394,7 +1394,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-xs">Panier moyen</CardDescription>
-              <CardTitle className="text-2xl">{stats.nbVentes > 0 ? (stats.totalVentes / stats.nbVentes).toFixed(2) : 0} &euro;</CardTitle>
+              <CardTitle className="text-2xl">{formatMontantDevise(stats.nbVentes > 0 ? stats.totalVentes / stats.nbVentes : 0)}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -1535,7 +1535,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                 <div className="text-center py-2 bg-green-50 rounded-lg">
                   <span className="text-sm text-muted-foreground">Total: </span>
                   <span className="text-xl font-bold text-green-700">
-                    {(parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)).toFixed(2)} &euro;
+                    {formatMontantDevise(parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire))}
                   </span>
                 </div>
               )}
@@ -1587,8 +1587,8 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                     <TableCell><Badge variant="outline">{TYPE_LABELS[vente.type] || vente.type}</Badge></TableCell>
                     <TableCell>{vente.description || '-'}</TableCell>
                     <TableCell className="text-right">{vente.quantite} {labelUnite(vente.unite)}</TableCell>
-                    <TableCell className="text-right">{vente.prixUnitaire.toFixed(2)} &euro;</TableCell>
-                    <TableCell className="text-right font-bold text-green-600">{vente.prixTotal.toFixed(2)} &euro;</TableCell>
+                    <TableCell className="text-right">{formatMontantDevise(vente.prixUnitaire)}</TableCell>
+                    <TableCell className="text-right font-bold text-green-600">{formatMontantDevise(vente.prixTotal)}</TableCell>
                     <TableCell>{vente.client || '-'}</TableCell>
                     <TableCell>
                       <Badge className={vente.paye ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
@@ -1636,7 +1636,10 @@ interface Abattage {
   lot: { id: number; nom: string; especeAnimale: { id: string; nom: string; couleur: string | null } } | null
 }
 
-interface LotActif { id: number; nom: string | null; quantiteActuelle: number; especeAnimale: { nom: string } }
+// `effectifCollectif` (têtes anonymes, plafond d'un abattage de lot) est servi
+// par GET /api/elevage/lots ; repli sur le compteur stocké pour un lot non enrichi.
+interface LotActif { id: number; nom: string | null; quantiteActuelle: number; effectifCollectif?: number; especeAnimale: { nom: string } }
+const partCollectiveLotActif = (lot: LotActif) => lot.effectifCollectif ?? lot.quantiteActuelle
 
 const DEST_LABELS: Record<string, string> = {
   auto_consommation: "Auto-consommation",
@@ -1790,7 +1793,14 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!response.ok) throw new Error('Erreur')
+      if (!response.ok) {
+        // Revue 2026-10-20 — le refus de la route (plafond des têtes
+        // collectives, temps d'attente…) se lit tel quel, comme dans AnimauxTab.
+        const p = await response.json().catch(() => null)
+        const detail = p?.details?.message ?? (typeof p?.details === 'string' ? p.details : null) ?? p?.error
+        toast({ variant: "destructive", title: "Abattage refusé", description: detail || "Impossible d'enregistrer" })
+        return
+      }
       toast({ title: isEdit ? "Abattage mis à jour" : "Abattage enregistré" })
       setIsDialogOpen(false)
       resetForm()
@@ -1834,7 +1844,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
           <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-emerald-100 text-xs">Revenus vente</CardDescription>
-              <CardTitle className="text-2xl">{revenusVente.toFixed(2)} &euro;</CardTitle>
+              <CardTitle className="text-2xl">{formatMontantDevise(revenusVente)}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -1893,13 +1903,21 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
                   <SelectTrigger><SelectValue placeholder="— Sélectionner un lot —" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value={LOT_NON_CHOISI}>— Sélectionner un lot —</SelectItem>
-                    {lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.quantiteActuelle} {l.especeAnimale.nom})</SelectItem>)}
+                    {lots.map(l => {
+                      const collectif = partCollectiveLotActif(l)
+                      return <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} — {l.especeAnimale.nom} ({collectif} tête{collectif > 1 ? "s" : ""} collective{collectif > 1 ? "s" : ""})</SelectItem>
+                    })}
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Date</Label><Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} /></div>
-                <div className="space-y-2"><Label>Quantité</Label><Input type="number" min="1" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
+                <div className="space-y-2"><Label>Quantité</Label><Input type="number" min="1" max={(() => {
+                  // Plafond de la route (POST) : part collective du lot choisi. Une
+                  // modification (PATCH) n'est pas plafonnée par la route.
+                  const lot = editingId === null ? lots.find((l) => l.id.toString() === formData.lotId) : undefined
+                  return lot ? partCollectiveLotActif(lot) || undefined : undefined
+                })()} value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Poids vif (kg)</Label><Input type="number" step="0.1" value={formData.poidsVif} onChange={(e) => setFormData(f => ({ ...f, poidsVif: e.target.value }))} /></div>
@@ -1984,7 +2002,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
                     <TableCell className="text-right">{a.poidsVif ? `${a.poidsVif} kg` : '-'}</TableCell>
                     <TableCell className="text-right">{a.poidsCarcasse ? `${a.poidsCarcasse} kg` : '-'}</TableCell>
                     <TableCell><Badge variant="outline">{DEST_LABELS[a.destination] || a.destination}</Badge></TableCell>
-                    <TableCell className="text-right text-green-600">{a.prixVente ? `${a.prixVente.toFixed(2)} €` : '-'}</TableCell>
+                    <TableCell className="text-right text-green-600">{a.prixVente ? formatMontantDevise(a.prixVente) : '-'}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(a)} title="Modifier" className="text-slate-600 hover:text-slate-900">
                         <Pencil className="h-3.5 w-3.5" />
