@@ -86,6 +86,12 @@ export function ChampPorteGreffe({
     portGreffe ??
     null
 
+  // Dernier porte-greffe du référentiel connu pour cet arbre : le Combobox
+  // remonte chaque frappe, la première efface l'id ; retaper le libellé exact
+  // doit le retrouver (revue du 2026-10-23).
+  const refConnue = React.useRef<{ porteGreffeId: string; libelle: string } | null>(null)
+  if (porteGreffeId && libelle) refConnue.current = { porteGreffeId, libelle }
+
   if (catalogue === null) {
     return <Input id={id} value={libelle ?? ""} readOnly disabled placeholder="Chargement…" className={className} />
   }
@@ -94,7 +100,14 @@ export function ChampPorteGreffe({
     return (
       <Combobox
         value={libelle ?? ""}
-        onValueChange={(v) => onChange(valeurDepuisSaisieLibre(v, { porteGreffeId, libelle }))}
+        onValueChange={(v) =>
+          onChange(
+            valeurDepuisSaisieLibre(
+              v,
+              refConnue.current ?? { porteGreffeId, libelle },
+            ),
+          )
+        }
         options={[...new Set([...suggestions, ...(libelle ? [libelle] : [])])]
           .sort()
           .map((v) => ({ value: v, label: v }))}

@@ -22,7 +22,6 @@ import {
   SEMAINES_PAR_AN,
   libellePeriodeSemaines,
   normaliserSemaine,
-  numeroSemaine,
   periodeDepuisSemaines,
   semainesDePeriode,
 } from "@/lib/semaines-lisibles"
@@ -38,13 +37,29 @@ export interface PeriodeRecolteVariete {
   dureeRecolte: number | null
 }
 
-/** « 2026-07-10 » (jour civil, sans fuseau) ou Date → Date locale ; null si illisible. */
-function lireDate(date: Date | string | null | undefined): Date | null {
-  if (!date) return null
+/**
+ * « 2026-07-10 » (jour civil, sans fuseau), horodatage ISO, nombre ou Date →
+ * Date locale ; null si illisible. Le corps d'une requête n'est pas typé : un
+ * client de l'API peut envoyer un nombre (revue du 2026-10-23, 500 sur le POST).
+ */
+function lireDate(date: unknown): Date | null {
   if (date instanceof Date) return Number.isNaN(date.getTime()) ? null : date
-  const jour = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.slice(0, 10))
+  if (typeof date === "number") return Number.isFinite(date) ? new Date(date) : null
+  if (typeof date !== "string" || !date) return null
+  const jour = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
   const d = jour ? new Date(Number(jour[1]), Number(jour[2]) - 1, Number(jour[3])) : new Date(date)
   return Number.isNaN(d.getTime()) ? null : d
+}
+
+/**
+ * Notes d'une récolte sans la mention « ⚠️ Hors saison : … » que l'ancien POST
+ * y recopiait (feedback cmpky7zmy). Figée à la création, elle restait quand la
+ * date était corrigée ; l'alerte se calcule désormais à l'affichage.
+ */
+export function retirerMarqueSaison(notes: string | null | undefined): string | null {
+  if (notes == null) return null
+  const nettoyees = notes.replace(/^⚠️ Hors saison : [^\n]*(\n|$)/, "").trim()
+  return nettoyees || null
 }
 
 /** Écart circulaire entre deux semaines ISO (S52 et S01 sont voisines). */
@@ -56,7 +71,7 @@ function ecartSemaines(a: number, b: number): number {
 export function alerteSaisonRecolteArbre(params: {
   espece: string | null | undefined
   variete: PeriodeRecolteVariete | null | undefined
-  date: Date | string | null | undefined
+  date: unknown
 }): SaisonWarning | null {
   const d = lireDate(params.date)
   if (!d) return null
@@ -75,7 +90,7 @@ export function alerteSaisonRecolteArbre(params: {
         periode.debut,
         periode.duree,
         d.getFullYear(),
-      )}. La date saisie (${jourLisible}, ${numeroSemaine(semaine)}) est hors de cette période.`,
+      )}. La date saisie (${jourLisible}, S${String(semaine).padStart(2, "0")}) est hors de cette période.`,
     }
   }
 

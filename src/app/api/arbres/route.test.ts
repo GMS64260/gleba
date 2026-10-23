@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   especeFindMany: vi.fn(),
   zoneFindFirst: vi.fn(),
   genererCalendrierEntretien: vi.fn(),
+  porteGreffeFindFirst: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -30,6 +31,7 @@ vi.mock("@/lib/prisma", () => ({
     lotArbres: { findFirst: mocks.lotArbresFindFirst },
     espece: { findFirst: mocks.especeFindFirst, findMany: mocks.especeFindMany },
     zoneVerger: { findFirst: mocks.zoneFindFirst },
+    porteGreffe: { findFirst: mocks.porteGreffeFindFirst },
   },
 }))
 vi.mock("@/lib/verger/creation-arbre", () => ({
@@ -183,5 +185,30 @@ describe("POST /api/arbres — type d'arbre (QA 2026-10-19, lianes fruitières)"
     expect(error).toContain("Type d'arbre inconnu")
     expect(error).toContain("grimpante")
     expect(mocks.arbreCreate).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Revue du 2026-10-23 — `porteGreffeId` était écrit tel que reçu : l'entrée
+ * privée d'un autre compte devenait lisible (nom, vigueur) par la liste.
+ */
+describe("POST /api/arbres — porte-greffe visible du compte", () => {
+  it("refuse un porte-greffe que le compte ne voit pas", async () => {
+    mocks.porteGreffeFindFirst.mockResolvedValue(null)
+    const res = await POST(request({ ...arbreValide, porteGreffeId: "pg-prive-autre-compte" }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).champ).toBe("porteGreffeId")
+    expect(mocks.porteGreffeFindFirst).toHaveBeenCalledWith({
+      where: { id: "pg-prive-autre-compte", AND: [{ OR: [{ userId: null }, { partageCommunaute: true }, { userId: "user-1" }] }] },
+      select: { id: true },
+    })
+    expect(mocks.arbreCreate).not.toHaveBeenCalled()
+  })
+
+  it("accepte un porte-greffe du catalogue", async () => {
+    mocks.porteGreffeFindFirst.mockResolvedValue({ id: "pg-prunier-saint-julien" })
+    const res = await POST(request({ ...arbreValide, porteGreffeId: "pg-prunier-saint-julien" }))
+    expect(res.status).toBe(201)
+    expect(mocks.arbreCreate.mock.calls[0][0].data.porteGreffeId).toBe("pg-prunier-saint-julien")
   })
 })

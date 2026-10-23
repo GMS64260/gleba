@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, vi } from "vitest"
 
-import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes } from "../saison-recolte-arbre"
+import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes, retirerMarqueSaison } from "../saison-recolte-arbre"
 
 const MIRABELLE = { nom: "Mirabelle de Nancy", semaineRecolte: 33, dureeRecolte: 2 }
 
@@ -41,6 +41,19 @@ describe("alerteSaisonRecolteArbre", () => {
     expect(alerteSaisonRecolteArbre({ espece: "Prunier", variete: null, date: "2026-01-15" })?.message).toContain("prunier")
   })
 
+  it("dit la période sans redite et la semaine ISO réelle", () => {
+    const alerte = alerteSaisonRecolteArbre({ espece: "Prunier", variete: MIRABELLE, date: "2026-07-10" })
+    expect(alerte?.message).toContain("se fait habituellement mi-août (S33 → S34)")
+    expect(alerte?.message).toContain("S28")
+    // 28/12/2026 : semaine ISO 53, pas « S01 ».
+    expect(alerteSaisonRecolteArbre({ espece: "Prunier", variete: MIRABELLE, date: "2026-12-28" })?.message).toContain("S53")
+  })
+
+  it("accepte un horodatage numérique (corps d'API non typé)", () => {
+    expect(alerteSaisonRecolteArbre({ espece: "Prunier", variete: MIRABELLE, date: new Date(2026, 6, 10).getTime() })).not.toBeNull()
+    expect(alerteSaisonRecolteArbre({ espece: "Prunier", variete: MIRABELLE, date: { pas: "une date" } })).toBeNull()
+  })
+
   it("ignore une date illisible ou absente", () => {
     expect(alerteSaisonRecolteArbre({ espece: "Prunier", variete: MIRABELLE, date: "" })).toBeNull()
     expect(alerteSaisonRecolteArbre({ espece: "Prunier", variete: MIRABELLE, date: "pas une date" })).toBeNull()
@@ -66,5 +79,17 @@ describe("chargerPeriodesRecolteVarietes", () => {
     const periodes = await chargerPeriodesRecolteVarietes({ variete: { findMany } } as never, "u1", [a])
     expect(findMany).not.toHaveBeenCalled()
     expect(periodes.get(a)).toBeNull()
+  })
+})
+
+describe("retirerMarqueSaison", () => {
+  it("retire la mention figée par l'ancienne création et garde la note de l'utilisateur", () => {
+    expect(retirerMarqueSaison("⚠️ Hors saison : Pommier Golden se récolte normalement semaines 38-42 (saisie semaine 20).\nGrêle la veille")).toBe("Grêle la veille")
+    expect(retirerMarqueSaison("⚠️ Hors saison : Pommier Golden se récolte normalement semaines 38-42 (saisie semaine 20).")).toBeNull()
+  })
+
+  it("ne touche pas aux autres notes", () => {
+    expect(retirerMarqueSaison("Récolte précoce ⚠️ Hors saison : à vérifier")).toBe("Récolte précoce ⚠️ Hors saison : à vérifier")
+    expect(retirerMarqueSaison(null)).toBeNull()
   })
 })

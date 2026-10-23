@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { porteGreffeAccessible } from "@/lib/verger/porte-greffe-accessible"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { doitInfererParcelle, trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
@@ -94,6 +95,16 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json()
+
+    // Revue du 2026-10-23 : seul un CHANGEMENT de porte-greffe est contrôlé
+    // (l'écran renvoie l'id en place) ; il doit être visible du compte.
+    if (
+      body.porteGreffeId &&
+      body.porteGreffeId !== existing.porteGreffeId &&
+      !(await porteGreffeAccessible(session!.user.id, String(body.porteGreffeId)))
+    ) {
+      return NextResponse.json({ error: "Porte-greffe introuvable", champ: "porteGreffeId" }, { status: 400 })
+    }
 
     // Liste unique des types (QA 2026-10-19). Seul un CHANGEMENT de type est
     // contrôlé : une fiche historique au type hors liste reste modifiable.

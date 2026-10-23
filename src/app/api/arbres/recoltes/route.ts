@@ -204,14 +204,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Feedback testeur cmpky7zmy — Si récolte hors saison, on persiste
-    // l'avertissement dans le champ notes pour qu'il reste visible sur
-    // la fiche/liste, et pas seulement dans le toast éphémère lors de
-    // la création (le testeur n'avait aucun indice visuel a posteriori
-    // qu'une Belle de Boskoop avait été récoltée 5 mois trop tôt).
-    const notesAvecWarning = recolteWarnings.length > 0
-      ? `⚠️ ${recolteWarnings.join(' ')}${body.notes ? `\n${body.notes}` : ''}`
-      : body.notes || null
+    // Feedback testeur cmpky7zmy — l'alerte doit rester visible après coup,
+    // pas seulement dans le toast de création. Elle était recopiée dans les
+    // notes, où elle restait figée quand la date était corrigée (revue du
+    // 2026-10-23) : la liste la calcule désormais à l'affichage
+    // (`alerteSaisonRecolteArbre`), les notes restent celles de l'utilisateur.
 
     const recolte = await prisma.recolteArbre.create({
       data: {
@@ -223,7 +220,7 @@ export async function POST(request: NextRequest) {
         prixKg: body.prixKg || null,
         statut: "en_stock",
         datePeremption: body.datePeremption ? new Date(body.datePeremption) : null,
-        notes: notesAvecWarning,
+        notes: body.notes || null,
         statutBioSnapshot,
         // DEV3 #4
         parcelleId,

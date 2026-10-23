@@ -31,6 +31,10 @@ describe("semaines lisibles", () => {
     expect(libellePeriodeSemaines(27, null, 2026)).toBe("début juillet (S27)")
     expect(libellePeriodeSemaines(null, 4, 2026)).toBeNull()
     expect(libellePeriodeSemainesCourt(48, 10, 2026)).toBe("fin novembre → fin janvier") // S05 : jeudi 29/01
+    // Revue du 2026-10-23 : Mirabelle de Nancy (S33, 2 semaines) se lisait
+    // « de mi-août à mi-août ».
+    expect(libellePeriodeSemaines(33, 2, 2026)).toBe("mi-août (S33 → S34)")
+    expect(libellePeriodeSemainesCourt(33, 2, 2026)).toBe("mi-août")
   })
 
   it("détecte le chevauchement de deux floraisons, y compris autour du nouvel an", () => {
