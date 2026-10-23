@@ -95,6 +95,7 @@ import { parcelleAutoSelectionnee } from "@/lib/jardin/auto-selection"
 import { CONDUITES_ARBRE, ETATS_ARBRE } from "@/lib/verger/arbre-constants"
 import { TYPES_ARBRE, couleurTypeArbre } from "@/lib/verger/types-arbre"
 import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
+import { ChampPorteGreffe } from "@/components/verger/ChampPorteGreffe"
 
 interface PlancheWithCulture {
   id: string
@@ -162,6 +163,7 @@ interface Arbre {
   variete: string | null
   portGreffe: string | null
   porteGreffeId: string | null
+  porteGreffeRef?: { id: string; nom: string } | null
   formeTaille: string | null
   circonferenceCm: number | null
   fournisseur: string | null
@@ -759,8 +761,8 @@ function JardinContent() {
   }, [arbres, arbreFournisseursRef])
 
   const arbrePortGreffeOptions = React.useMemo(() => {
-    const valeurs = arbres.map(a => a.portGreffe).filter(Boolean) as string[]
-    return [...new Set(valeurs)].sort().map(v => ({ value: v, label: v }))
+    const valeurs = arbres.map(a => a.porteGreffeRef?.nom ?? a.portGreffe).filter(Boolean) as string[]
+    return [...new Set(valeurs)].sort()
   }, [arbres])
 
   // Charger planches et objets quand la parcelle change
@@ -3014,7 +3016,7 @@ function JardinContent() {
                               marquerChangement()
                             }}
                           >
-                            Par defaut
+                            Par défaut
                           </Button>
                         </div>
                       </div>
@@ -3151,17 +3153,31 @@ function JardinContent() {
                       {/* Porte-greffe & conduite */}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-xs text-muted-foreground">Porte-greffe</Label>
-                          <Combobox
-                            value={selectedArbreData.portGreffe || ""}
-                            onValueChange={(v) => {
+                          <Label htmlFor="inspecteur-porte-greffe" className="text-xs text-muted-foreground">Porte-greffe</Label>
+                          {/* QA cmvkp3kqc (2026-10-23) — même champ que la fiche :
+                              le libellé du référentiel (`porteGreffeRef`) s'affiche
+                              quand la colonne texte est vide, et l'id n'est plus
+                              effacé par une simple réouverture. */}
+                          <ChampPorteGreffe
+                            key={selectedArbreData.id}
+                            id="inspecteur-porte-greffe"
+                            espece={selectedArbreData.espece}
+                            porteGreffeId={selectedArbreData.porteGreffeId}
+                            portGreffe={selectedArbreData.portGreffe}
+                            porteGreffeNom={selectedArbreData.porteGreffeRef?.nom ?? null}
+                            suggestions={arbrePortGreffeOptions}
+                            onChange={(v) => {
                               setArbres(prev => prev.map(a =>
-                                a.id === selectedArbre ? { ...a, portGreffe: v || null, porteGreffeId: null } : a
+                                a.id === selectedArbre
+                                  ? {
+                                      ...a,
+                                      ...v,
+                                      porteGreffeRef: v.porteGreffeId && v.portGreffe ? { id: v.porteGreffeId, nom: v.portGreffe } : null,
+                                    }
+                                  : a
                               ))
                               marquerChangement()
                             }}
-                            options={arbrePortGreffeOptions}
-                            placeholder="Ex: M26"
                             className="h-8 text-sm"
                           />
                         </div>
@@ -3518,7 +3534,7 @@ function JardinContent() {
                               marquerChangement()
                             }}
                           >
-                            Par defaut
+                            Par défaut
                           </Button>
                         </div>
                       </div>

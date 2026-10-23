@@ -13,6 +13,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromRecolteArbre, deleteAutoEntry } from "@/lib/auto-compta"
 import { creerFacture, annulerFactureLiee } from "@/lib/facture-utils"
 import { estNumeroLotAuto, genererNumeroLot } from "@/lib/recolte/lot"
+import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes } from "@/lib/verger/saison-recolte-arbre"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -219,13 +220,27 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
       include: {
         arbre: {
-          select: { id: true, nom: true, type: true, espece: true },
+          select: { id: true, nom: true, type: true, espece: true, especeId: true, variete: true },
         },
         parcelle: { select: { id: true, nom: true } },
       },
     })
 
-    return NextResponse.json(recolte)
+    // QA cmvkoxe5o (2026-10-23) — la modification ne contrôlait pas la saison :
+    // une récolte de Mirabelle (mi-août) déplacée au 10 juillet passait sans
+    // un mot. Même règle que la création, sur l'arbre et la date finaux.
+    const warnings: string[] = []
+    if ((nouvelleDate !== undefined || nouvelArbre) && recolte.arbre) {
+      const periodes = await chargerPeriodesRecolteVarietes(prisma, userId, [recolte.arbre])
+      const alerte = alerteSaisonRecolteArbre({
+        espece: recolte.arbre.espece,
+        variete: periodes.get(recolte.arbre),
+        date: recolte.date,
+      })
+      if (alerte) warnings.push(alerte.message)
+    }
+
+    return NextResponse.json(warnings.length > 0 ? { ...recolte, warnings } : recolte)
   } catch (err) {
     console.error("PUT /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(

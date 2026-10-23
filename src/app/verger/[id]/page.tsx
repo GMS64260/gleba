@@ -24,6 +24,7 @@ import { CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-consta
 import { labelStatutRecolteArbre } from "@/lib/verger/statut-recolte-arbre"
 import { TYPES_ARBRE, categoriesEspecePourTypeArbre, estTypeArbre, libelleTypeArbre } from "@/lib/verger/types-arbre"
 import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
+import { ChampPorteGreffe } from "@/components/verger/ChampPorteGreffe"
 
 interface Arbre {
   id: number
@@ -34,6 +35,7 @@ interface Arbre {
   portGreffe: string | null
   // Bug #1 — Champs saisis à la création mais non restitués sur la fiche détail.
   porteGreffeId: string | null
+  porteGreffeRef?: { id: string; nom: string } | null
   circonferenceCm: number | null
   gpsLat: number | null
   gpsLng: number | null
@@ -113,8 +115,6 @@ export default function DetailArbrePage() {
   const [fournisseursRef, setFournisseursRef] = React.useState<string[]>([])
   const [parcelles, setParcelles] = React.useState<ParcelleVerger[]>([])
   const [parcellesLoading, setParcellesLoading] = React.useState(true)
-  // Bug #1 — Référentiel des porte-greffes compatibles avec l'espèce.
-  const [portesGreffesRef, setPortesGreffesRef] = React.useState<Array<{ id: string; nom: string; vigueur: number | null; precocite: number | null }>>([])
   // Feedback LVBB40430 — saisie GPS assistée (géoloc directe + carte)
   const [gpsPickerOpen, setGpsPickerOpen] = React.useState(false)
   const [gpsAccuracy, setGpsAccuracy] = React.useState<number | null>(null)
@@ -254,19 +254,6 @@ export default function DetailArbrePage() {
       .catch(() => setRecoltesArbre([]))
       .finally(() => setRecoltesLoading(false))
   }, [session?.user, id])
-
-  // Bug #1 — Recharger la liste des porte-greffes quand l'espèce change.
-  // L'API filtre par especeId via la table porte_greffe_especes.
-  React.useEffect(() => {
-    if (!arbre?.espece) {
-      setPortesGreffesRef([])
-      return
-    }
-    fetch(`/api/verger/porte-greffes?especeId=${encodeURIComponent(arbre.espece)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((res) => setPortesGreffesRef(res?.data || []))
-      .catch(() => setPortesGreffesRef([]))
-  }, [arbre?.espece])
 
   const handleSave = async () => {
     if (!arbre) return
@@ -438,51 +425,24 @@ export default function DetailArbrePage() {
                     />
                   </div>
                   <div>
-                    <Label>Porte-greffe</Label>
-                    {/* Bug #1 — Select sur le référentiel (M9/M26/MM106…) avec
-                        fallback Combobox texte libre si aucune correspondance
-                        pour l'espèce. portGreffe texte libre conservé pour
-                        rétro-compat. */}
-                    {portesGreffesRef.length > 0 ? (
-                      <Select
-                        value={arbre.porteGreffeId || "_none"}
-                        onValueChange={(v) =>
-                          setArbre({
-                            ...arbre,
-                            porteGreffeId: v === "_none" ? null : v,
-                            // Reflet texte libre pour rétro-compat affichage.
-                            portGreffe:
-                              v === "_none"
-                                ? null
-                                : portesGreffesRef.find((p) => p.id === v)?.nom ?? null,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionner" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_none">— Aucun</SelectItem>
-                          {portesGreffesRef.map((pg) => (
-                            <SelectItem key={pg.id} value={pg.id}>
-                              {pg.nom}
-                              {pg.vigueur != null && (
-                                <span className="text-muted-foreground text-xs ml-2">
-                                  vigueur {pg.vigueur}/5
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Combobox
-                        value={arbre.portGreffe || ""}
-                        onValueChange={(v) => setArbre({ ...arbre, portGreffe: v })}
-                        options={suggestions.portGreffes.map((v) => ({ value: v, label: v }))}
-                        placeholder="Ex: M26"
-                      />
-                    )}
+                    <Label htmlFor="arbre-porte-greffe">Porte-greffe</Label>
+                    {/* Référentiel compatible avec l'espèce, texte libre à défaut :
+                        même champ que l'inspecteur du plan (QA cmvkp3kqc). */}
+                    <ChampPorteGreffe
+                      id="arbre-porte-greffe"
+                      espece={arbre.espece}
+                      porteGreffeId={arbre.porteGreffeId}
+                      portGreffe={arbre.portGreffe}
+                      porteGreffeNom={arbre.porteGreffeRef?.nom ?? null}
+                      suggestions={suggestions.portGreffes}
+                      onChange={(v) =>
+                        setArbre({
+                          ...arbre,
+                          ...v,
+                          porteGreffeRef: v.porteGreffeId && v.portGreffe ? { id: v.porteGreffeId, nom: v.portGreffe } : null,
+                        })
+                      }
+                    />
                   </div>
                 </div>
 

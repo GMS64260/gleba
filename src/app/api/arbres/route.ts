@@ -16,6 +16,7 @@ import { trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
 import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
 import { parcelleParDefautArbre, resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
+import { chargerPeriodesRecolteVarietes } from "@/lib/verger/saison-recolte-arbre"
 import { normaliserDateApi } from "@/lib/validations/date-api"
 import { estTypeArbre, messageTypeArbreInvalide } from "@/lib/verger/types-arbre"
 
@@ -101,6 +102,12 @@ export async function GET(request: NextRequest) {
       : []
     const etalementParEspece = new Map(etalements.map((e) => [e.id, e.etalement]))
 
+    // QA cmvkoxe5o (2026-10-23) — période de récolte de la variété, pour que
+    // l'encart « hors saison » du formulaire de récolte applique la même règle
+    // que la route (`alerteSaisonRecolteArbre`) au lieu du seul calendrier de
+    // l'espèce. Une requête pour toute la liste.
+    const periodesRecolte = await chargerPeriodesRecolteVarietes(prisma, session!.user.id, arbres)
+
     return NextResponse.json(
       arbres.map((a) => ({
         ...a,
@@ -108,12 +115,13 @@ export async function GET(request: NextRequest) {
           (a.especeId ? etalementParEspece.get(a.especeId) : undefined) ??
           (a.espece ? etalementParEspece.get(a.espece) : undefined) ??
           null,
+        periodeRecolteVariete: periodesRecolte.get(a) ?? null,
       }))
     )
   } catch (err) {
     console.error("GET /api/arbres error:", err)
     return NextResponse.json(
-      { error: "Erreur lors de la recuperation des arbres" },
+      { error: "Erreur lors de la récupération des arbres" },
       { status: 500 }
     )
   }
@@ -368,7 +376,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("POST /api/arbres error:", err)
     return NextResponse.json(
-      { error: "Erreur lors de la creation de l'arbre" },
+      { error: "Erreur lors de la création de l'arbre" },
       { status: 500 }
     )
   }

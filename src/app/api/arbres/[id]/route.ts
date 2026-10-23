@@ -42,6 +42,9 @@ export async function GET(request: NextRequest, { params }: Params) {
         userId: session!.user.id,
       },
       include: {
+        // QA cmvkp3kqc (2026-10-23) — libellé du porte-greffe du référentiel,
+        // comme la liste : la création par le catalogue n'écrit que l'id.
+        porteGreffeRef: { select: { id: true, nom: true, vigueur: true } },
         _count: {
           select: {
             recoltesArbres: true,
@@ -53,14 +56,14 @@ export async function GET(request: NextRequest, { params }: Params) {
     })
 
     if (!arbre) {
-      return NextResponse.json({ error: "Arbre non trouve" }, { status: 404 })
+      return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
     }
 
     return NextResponse.json(arbre)
   } catch (err) {
     console.error("GET /api/arbres/[id] error:", err)
     return NextResponse.json(
-      { error: "Erreur lors de la recuperation de l'arbre" },
+      { error: "Erreur lors de la récupération de l'arbre" },
       { status: 500 }
     )
   }
@@ -87,7 +90,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     })
 
     if (!existing) {
-      return NextResponse.json({ error: "Arbre non trouve" }, { status: 404 })
+      return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
     }
 
     const body = await request.json()
@@ -323,7 +326,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     })
 
     if (!existing) {
-      return NextResponse.json({ error: "Arbre non trouve" }, { status: 404 })
+      return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
     }
 
     // Audit 2026-07 (#12) : la suppression cascade sur les récoltes de l'arbre,

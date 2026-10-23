@@ -732,8 +732,9 @@ export function checkOperationSaison(
   date: Date | string | null | undefined,
   variete?: string | null
 ): SaisonWarning | null {
-  // Paramètre de l'API publique (OperationsTab, ProductionsTab le passent) :
-  // réservé à un affinage par variété, sans effet pour l'instant.
+  // Paramètre de l'API publique, sans effet ici : la récolte d'un arbre se
+  // contrôle sur la période de SA variété par `alerteSaisonRecolteArbre`
+  // (`src/lib/verger/saison-recolte-arbre.ts`), qui ne retombe ici qu'à défaut.
   void variete
   if (!espece || !type || !date) return null
   const d = typeof date === "string" ? new Date(date) : date
