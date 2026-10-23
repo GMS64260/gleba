@@ -55,7 +55,23 @@ function replierSignesTypographiques(input: string): string {
  * divergence JS ↔ SQL que cette formule est censée refermer.
  */
 function sansDiacritiques(input: string): string {
-  return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[œŒæÆßẞĳĲﬀﬁﬂﬃﬄ]/g, (c) => LIGATURES[c] ?? c)
+}
+
+/**
+ * Ligatures que `unaccent` éclate et que NFD laisse intactes (2026-10-23,
+ * revue du ticket cmvkp05yy) : « Cœur de Bœuf » donnait « coeur de boeuf » en
+ * SQL et « cœur de bœuf » en JS, donc deux clés pour la même variété et une
+ * recherche normalisée muette. Valeurs mesurées sur `gleba_cle_referentiel` ;
+ * aucune ligne des référentiels ne portait de ligature ce jour-là, la formule
+ * a changé sans reprise de `nom_normalise`.
+ */
+const LIGATURES: Record<string, string> = {
+  œ: "oe", Œ: "OE", æ: "ae", Æ: "AE", ß: "ss", ẞ: "SS", ĳ: "ij", Ĳ: "IJ",
+  ﬀ: "ff", ﬁ: "fi", ﬂ: "fl", ﬃ: "ffi", ﬄ: "ffl",
 }
 
 /**

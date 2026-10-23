@@ -35,3 +35,22 @@ describe("libellé affiché vs clé de dédup", () => {
     expect(cleanReferentielName("Chou_fleur-hiver")).toBe("Chou fleur hiver")
   })
 })
+
+/**
+ * 2026-10-23 (revue du ticket cmvkp05yy) — `unaccent` éclate les ligatures, NFD
+ * non : « Cœur de Bœuf » avait deux clés, une par côté. Valeur attendue mesurée
+ * en base : `select gleba_cle_referentiel('Cœur de Bœuf — Æsop ß Œil · x ﬁn ĳ')`.
+ */
+describe("ligatures : clé JS = clé SQL", () => {
+  it("éclate œ, æ, ß et les ligatures typographiques comme gleba_cle_referentiel", () => {
+    expect(normalizeReferentielKey("Cœur de Bœuf — Æsop ß Œil · x ﬁn ĳ")).toBe("coeur de boeuf aesop ss oeil · x fin ij")
+  })
+
+  it("rapproche « Cœur de Bœuf » et « Coeur de Boeuf »", () => {
+    expect(normalizeReferentielKey("Tomate Cœur de Bœuf")).toBe(normalizeReferentielKey("tomate coeur de boeuf"))
+  })
+
+  it("ne touche pas au libellé affiché", () => {
+    expect(displayReferentielName("Cœur de Bœuf")).toBe("Cœur de Bœuf")
+  })
+})
