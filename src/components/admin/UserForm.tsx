@@ -110,7 +110,7 @@ export function UserForm({ user }: UserFormProps) {
         />
         {isEdit && (
           <p className="text-xs text-muted-foreground">
-            L&apos;email ne peut pas etre modifie
+            L&apos;email ne peut pas être modifié
           </p>
         )}
       </div>
@@ -120,7 +120,7 @@ export function UserForm({ user }: UserFormProps) {
         <Input
           id="name"
           type="text"
-          placeholder="Prenom Nom"
+          placeholder="Prénom Nom"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           disabled={loading}

@@ -173,7 +173,7 @@ export function ItpCalendarView() {
             {zoneLabel} ({decalageZone > 0 ? "+" : "−"}{Math.abs(decalageZone)} sem.)
           </span>
         )}
-        <span className="ml-auto text-muted-foreground">{itpsFiltres.length} itineraires</span>
+        <span className="ml-auto text-muted-foreground">{itpsFiltres.length} itinéraires</span>
       </div>
 
       {/* Tableau Gantt */}

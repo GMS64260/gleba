@@ -307,7 +307,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
               )}
               {planche.ilot && (
                 <div>
-                  <span className="text-muted-foreground">Ilot:</span>{' '}
+                  <span className="text-muted-foreground">Îlot :</span>{' '}
                   <span className="font-medium">{planche.ilot}</span>
                 </div>
               )}
@@ -461,7 +461,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Creation en cours...
+              Création en cours…
             </>
           ) : (
             <>

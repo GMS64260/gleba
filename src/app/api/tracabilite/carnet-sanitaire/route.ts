@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('GET /api/tracabilite/carnet-sanitaire error:', err)
     return NextResponse.json(
-      { error: 'Erreur lors de la generation du carnet sanitaire' },
+      { error: 'Erreur lors de la génération du carnet sanitaire' },
       { status: 500 }
     )
   }

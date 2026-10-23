@@ -41,14 +41,14 @@ export async function POST(request: NextRequest) {
 
     if (typeof password !== "string" || password.length < 12) {
       return NextResponse.json(
-        { error: "Le mot de passe doit contenir au moins 12 caracteres" },
+        { error: "Le mot de passe doit contenir au moins 12 caractères" },
         { status: 400 }
       )
     }
 
     if (name && (typeof name !== "string" || name.length > 100)) {
       return NextResponse.json(
-        { error: "Le nom ne doit pas depasser 100 caracteres" },
+        { error: "Le nom ne doit pas dépasser 100 caractères" },
         { status: 400 }
       )
     }
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       return NextResponse.json(
-        { error: "Un compte avec cet email existe deja" },
+        { error: "Un compte avec cet email existe déjà" },
         { status: 409 }
       )
     }
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("POST /api/auth/register error:", error)
     return NextResponse.json(
-      { error: "Erreur lors de la creation du compte" },
+      { error: "Erreur lors de la création du compte" },
       { status: 500 }
     )
   }

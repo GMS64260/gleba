@@ -263,7 +263,7 @@ export async function PUT(
   } catch (error) {
     console.error('PUT /api/especes/[id] error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la mise à jour de l\'espece' },
+      { error: 'Erreur lors de la mise à jour de l\'espèce' },
       { status: 500 }
     )
   }
@@ -352,7 +352,7 @@ export async function DELETE(
   } catch (error) {
     console.error('DELETE /api/especes/[id] error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la suppression de l\'espece' },
+      { error: 'Erreur lors de la suppression de l\'espèce' },
       { status: 500 }
     )
   }

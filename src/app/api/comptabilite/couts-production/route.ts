@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/comptabilite/couts-production error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors du calcul des couts de production', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors du calcul des coûts de production', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

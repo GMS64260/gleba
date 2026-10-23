@@ -44,7 +44,7 @@ export async function GET() {
   } catch (error) {
     console.error("GET /api/admin/users error:", error)
     return NextResponse.json(
-      { error: "Erreur lors de la recuperation des utilisateurs" },
+      { error: "Erreur lors de la récupération des utilisateurs" },
       { status: 500 }
     )
   }
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       return NextResponse.json(
-        { error: "Un utilisateur avec cet email existe deja" },
+        { error: "Un utilisateur avec cet email existe déjà" },
         { status: 409 }
       )
     }
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("POST /api/admin/users error:", error)
     return NextResponse.json(
-      { error: "Erreur lors de la creation de l'utilisateur" },
+      { error: "Erreur lors de la création de l'utilisateur" },
       { status: 500 }
     )
   }

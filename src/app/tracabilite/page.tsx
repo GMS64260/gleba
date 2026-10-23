@@ -1280,7 +1280,7 @@ function ElevageRegistreTab({
             Aucun mouvement d&apos;élevage enregistré pour {year}
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Les entrees, sorties, naissances, deces et soins apparaîtront ici automatiquement.
+            Les entrées, sorties, naissances, décès et soins apparaîtront ici automatiquement.
           </p>
         </CardContent>
       </Card>

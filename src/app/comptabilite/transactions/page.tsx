@@ -905,7 +905,7 @@ function TransactionsPageInner() {
                           {sourcesBreakdown.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={4} className="text-center py-4 text-muted-foreground text-xs">
-                                Aucune donnée pour cette annee
+                                Aucune donnée pour cette année
                               </TableCell>
                             </TableRow>
                           )}

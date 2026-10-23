@@ -288,7 +288,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
               <div className="text-sm">
                 <span className="font-medium text-teal-800">Planche : {event.plancheName}</span>
                 {event.ilot && (
-                  <span className="text-teal-600 ml-1">(Ilot {event.ilot})</span>
+                  <span className="text-teal-600 ml-1">(Îlot {event.ilot})</span>
                 )}
               </div>
             </div>

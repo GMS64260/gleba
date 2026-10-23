@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('GET /api/tracabilite/registre-phyto error:', err)
     return NextResponse.json(
-      { error: 'Erreur lors de la generation du registre phytosanitaire' },
+      { error: 'Erreur lors de la génération du registre phytosanitaire' },
       { status: 500 }
     )
   }

@@ -211,7 +211,7 @@ export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolea
 
       <div className="space-y-1.5">
         <label htmlFor="password" className="block text-sm font-medium text-slate-600 pl-1">
-          Mot de passe <span className="text-slate-400 font-normal">(12 caracteres min.)</span>
+          Mot de passe <span className="text-slate-400 font-normal">(12 caractères min.)</span>
         </label>
         <input
           id="password"
@@ -287,7 +287,7 @@ export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolea
       )}
 
       <p className="text-center text-sm text-slate-500">
-        Deja un compte ?{" "}
+        Déjà un compte ?{" "}
         <Link href="/login" className="text-emerald-600 hover:text-emerald-700 font-medium transition-colors">
           Se connecter
         </Link>

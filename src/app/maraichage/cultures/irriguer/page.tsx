@@ -888,7 +888,7 @@ function CulturesIrriguerContent() {
                     </div>
                   ))}
                 {filteredData.filter(c => c.derniereIrrigation).length === 0 && (
-                  <p className="text-sm text-muted-foreground italic">Aucun arrosage enregistre</p>
+                  <p className="text-sm text-muted-foreground italic">Aucun arrosage enregistré</p>
                 )}
               </div>
             </CardContent>

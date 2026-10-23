@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "Utilisateur non trouve" },
+        { error: "Utilisateur non trouvé" },
         { status: 404 }
       )
     }
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     console.error("GET /api/admin/users/[id] error:", error)
     return NextResponse.json(
-      { error: "Erreur lors de la recuperation de l'utilisateur" },
+      { error: "Erreur lors de la récupération de l'utilisateur" },
       { status: 500 }
     )
   }
@@ -88,7 +88,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (!existing) {
       return NextResponse.json(
-        { error: "Utilisateur non trouve" },
+        { error: "Utilisateur non trouvé" },
         { status: 404 }
       )
     }
@@ -97,7 +97,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (session!.user.id === id) {
       if (active === false) {
         return NextResponse.json(
-          { error: "Vous ne pouvez pas desactiver votre propre compte" },
+          { error: "Vous ne pouvez pas désactiver votre propre compte" },
           { status: 400 }
         )
       }
@@ -129,7 +129,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (password) {
       if (password.length < 6) {
         return NextResponse.json(
-          { error: "Le mot de passe doit contenir au moins 6 caracteres" },
+          { error: "Le mot de passe doit contenir au moins 6 caractères" },
           { status: 400 }
         )
       }
@@ -192,7 +192,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     if (!existing) {
       return NextResponse.json(
-        { error: "Utilisateur non trouve" },
+        { error: "Utilisateur non trouvé" },
         { status: 404 }
       )
     }

@@ -21,7 +21,7 @@ export default async function AdminPage() {
     prisma.bugReport.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
   ])
 
-  // Derniers utilisateurs crees
+  // Derniers utilisateurs créés
   const recentUsers = await prisma.user.findMany({
     orderBy: { createdAt: "desc" },
     take: 5,
@@ -86,7 +86,7 @@ export default async function AdminPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Systeme operationnel
+                Système opérationnel
               </p>
             </CardContent>
           </Card>
@@ -101,7 +101,7 @@ export default async function AdminPage() {
                 Gestion des utilisateurs
               </CardTitle>
               <CardDescription>
-                Gerer les comptes utilisateurs
+                Gérer les comptes utilisateurs
               </CardDescription>
             </CardHeader>
             <CardContent className="flex gap-2">
@@ -269,10 +269,10 @@ export default async function AdminPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
-                Activite recente
+                Activité récente
               </CardTitle>
               <CardDescription>
-                Derniers utilisateurs crees
+                Derniers utilisateurs créés
               </CardDescription>
             </CardHeader>
             <CardContent>

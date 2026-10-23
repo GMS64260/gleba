@@ -791,7 +791,7 @@ export default function FacturesPage() {
               <CardContent>
                 {facturesEmises.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
-                    Aucune facture émise cette annee.
+                    Aucune facture émise cette année.
                   </p>
                 ) : (
                   <Table>

@@ -663,7 +663,7 @@ export default function CoutsProductionPage() {
                             <div className="p-4">
                               <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-teal-800">
-                                  Detail des cultures - {espece.especeNom ?? espece.especeId}
+                                  Détail des cultures - {espece.especeNom ?? espece.especeId}
                                 </h3>
                                 <Button
                                   variant="ghost"

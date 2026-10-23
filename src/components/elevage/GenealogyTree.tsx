@@ -145,7 +145,7 @@ export function GenealogyTree({ animal }: { animal: AnimalForTree }) {
   if (!hasParents && !hasEnfants) {
     return (
       <div className="text-center py-4">
-        <p className="text-sm text-muted-foreground">Aucune information genealogique disponible</p>
+        <p className="text-sm text-muted-foreground">Aucune information généalogique disponible</p>
       </div>
     )
   }

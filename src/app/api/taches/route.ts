@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/taches error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des taches', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la récupération des tâches', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

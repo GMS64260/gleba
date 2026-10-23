@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/planification/associations error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des associations', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la récupération des associations', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

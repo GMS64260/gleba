@@ -412,7 +412,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('GET /api/tracabilite/registre-culture error:', err)
     return NextResponse.json(
-      { error: 'Erreur lors de la generation du registre de culture' },
+      { error: 'Erreur lors de la génération du registre de culture' },
       { status: 500 }
     )
   }

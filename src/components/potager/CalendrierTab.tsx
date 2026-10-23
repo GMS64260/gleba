@@ -460,7 +460,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 <TooltipContent side="bottom" className="max-w-xs text-left">
                   <p className="font-semibold mb-1">Récoltes de l&apos;année</p>
                   <p className="text-xs leading-relaxed">
-                    Cumul de toutes les recoltes enregistrées entre le 1<sup>er</sup> janvier
+                    Cumul de toutes les récoltes enregistrées entre le 1<sup>er</sup> janvier
                     et aujourd&apos;hui. La comparaison vs N-1 indique si la saison est meilleure
                     ou moins bonne que l&apos;an dernier à la même date.
                   </p>

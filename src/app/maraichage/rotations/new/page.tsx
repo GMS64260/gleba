@@ -172,7 +172,7 @@ export default function NewRotationPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Identification</CardTitle>
-                <CardDescription>Nom et etat de la rotation</CardDescription>
+                <CardDescription>Nom et état de la rotation</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <FormField

@@ -418,8 +418,8 @@ function NewPlancheForm({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs text-xs">
-                  Largeur de la planche en metres. Standard maraicher: 0.75m a
-                  1.20m
+                  Largeur de la planche en mètres. Standard maraîcher : 0,75 m à
+                  1,20 m
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -453,7 +453,7 @@ function NewPlancheForm({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs text-xs">
-                  Longueur de la planche en metres
+                  Longueur de la planche en mètres
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -535,7 +535,7 @@ function NewPlancheForm({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs text-xs">
-                  Type de culture: plein champ (exterieur), serre (chauffee ou
+                  Type de culture: plein champ (extérieur), serre (chauffée ou
                   non), tunnel...
                 </p>
               </TooltipContent>
@@ -567,7 +567,7 @@ function NewPlancheForm({
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs text-xs">
-                  Systeme d&apos;arrosage installe sur cette planche
+                  Système d&apos;arrosage installé sur cette planche
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -628,16 +628,16 @@ function NewPlancheForm({
                   <SelectContent>
                     <SelectItem value="Argileux">Argileux (lourd)</SelectItem>
                     <SelectItem value="Limoneux">
-                      Limoneux (equilibre)
+                      Limoneux (équilibré)
                     </SelectItem>
-                    <SelectItem value="Sableux">Sableux (leger)</SelectItem>
+                    <SelectItem value="Sableux">Sableux (léger)</SelectItem>
                     <SelectItem value="Mixte">Mixte</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="retention-eau">Retention eau</Label>
+                <Label htmlFor="retention-eau">Rétention d&apos;eau</Label>
                 <Select
                   value={planche.retentionEau || ""}
                   onValueChange={(value) =>
@@ -657,8 +657,8 @@ function NewPlancheForm({
             </div>
 
             <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
-              <strong>Astuce</strong> : Sol sableux (leger) = arrosage
-              frequent. Sol argileux (lourd) = arrosage espace.
+              <strong>Astuce</strong> : Sol sableux (léger) = arrosage
+              fréquent. Sol argileux (lourd) = arrosage espacé.
             </div>
           </div>
         )}
@@ -709,7 +709,7 @@ function ExistingPlancheSelector({
           </div>
           <Button variant="outline" size="sm" onClick={onRetry}>
             <RefreshCw className="h-4 w-4 mr-1" />
-            Reessayer
+            Réessayer
           </Button>
         </div>
       </div>
@@ -815,7 +815,7 @@ function ExistingPlancheSelector({
             ))}
             {planches.length === 0 && searchQuery && (
               <div className="px-2 py-3 text-sm text-muted-foreground text-center">
-                Aucun resultat pour &quot;{searchQuery}&quot;
+                Aucun résultat pour &quot;{searchQuery}&quot;
               </div>
             )}
           </SelectContent>
@@ -838,14 +838,14 @@ function ExistingPlancheSelector({
               {selectedPlanche.nom || selectedPlanche.id}
             </CardTitle>
             <CardDescription className="text-xs">
-              Planche selectionnee
+              Planche sélectionnée
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               {selectedPlanche.ilot && (
                 <div>
-                  <span className="text-muted-foreground">Ilot :</span>{" "}
+                  <span className="text-muted-foreground">Îlot :</span>{" "}
                   <span className="font-medium">{selectedPlanche.ilot}</span>
                 </div>
               )}
