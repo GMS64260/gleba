@@ -118,8 +118,14 @@ export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<
   current: MeteoActuelle | null
   daily: MeteoPrevision[]
 }> {
+  // 2026-10-23 (motif « un cache sans date dans sa clé sert la veille ») — la
+  // clé ne portait pas le jour : jusqu'à 30 min après minuit, les prévisions
+  // de la veille étaient servies, et les lectures qui prennent `daily[0]` pour
+  // aujourd'hui (conseil d'irrigation, tâches du potager, notifications,
+  // calendrier, widget) lisaient hier. Le jour civil local du serveur entre
+  // dans la clé ; une entrée de la veille n'est plus jamais relue.
   return getOrFetch(
-    `openmeteo:forecast:${roundCoord(lat)},${roundCoord(lng)}`,
+    `openmeteo:forecast:${roundCoord(lat)},${roundCoord(lng)}:${jourCivilLocalISO(new Date())}`,
     () => fetchOpenMeteoForecastUncached(lat, lng),
     30 * 60_000
   )
