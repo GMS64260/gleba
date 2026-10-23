@@ -133,7 +133,7 @@ export default function NewRotationPage() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Erreur lors de la creation",
+        description: error instanceof Error ? error.message : "Erreur lors de la création",
       })
     } finally {
       setIsSubmitting(false)

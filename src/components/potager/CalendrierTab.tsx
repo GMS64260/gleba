@@ -383,7 +383,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   <p className="text-xs leading-relaxed">
                     Cultures actuellement en cours sur vos planches (semées ou plantées, pas
                     encore arrachées). Permet de visualiser l&apos;activité réelle du jardin
-                    par rapport au total enregistré sur l&apos;annee.
+                    par rapport au total enregistré sur l&apos;année.
                   </p>
                 </TooltipContent>
               </Tooltip>

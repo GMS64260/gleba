@@ -107,7 +107,7 @@ export default function NewAssociationPage() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la creation")
+        throw new Error(error.error || "Erreur lors de la création")
       }
 
       toast({

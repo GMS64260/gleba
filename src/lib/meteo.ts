@@ -122,8 +122,12 @@ export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<
   // clé ne portait pas le jour : jusqu'à 30 min après minuit, les prévisions
   // de la veille étaient servies, et les lectures qui prennent `daily[0]` pour
   // aujourd'hui (conseil d'irrigation, tâches du potager, notifications,
-  // calendrier, widget) lisaient hier. Le jour civil local du serveur entre
-  // dans la clé ; une entrée de la veille n'est plus jamais relue.
+  // calendrier, widget) lisaient hier. Le jour civil local du serveur
+  // (Europe/Paris) entre dans la clé : en métropole, une entrée de la veille
+  // n'est plus relue, ni servie en période de grâce (une panne d'Open-Meteo
+  // juste après minuit rend une erreur plutôt qu'hier). Outre-mer, la réponse
+  // est datée dans le fuseau du lieu (`timezone: auto`) : la demi-heure qui
+  // suit SON minuit reste exposée, comme avant.
   return getOrFetch(
     `openmeteo:forecast:${roundCoord(lat)},${roundCoord(lng)}:${jourCivilLocalISO(new Date())}`,
     () => fetchOpenMeteoForecastUncached(lat, lng),
