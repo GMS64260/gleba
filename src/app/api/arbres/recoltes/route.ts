@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes } from "@/lib/verger/saison-recolte-arbre"
 import { snapshotStatutBio } from "@/lib/statut-bio"
 import { genererNumeroLot } from "@/lib/recolte/lot"
 
@@ -107,37 +108,18 @@ export async function POST(request: NextRequest) {
     // Feedback Marc 2026-05-16 — Bug 08 : alerte si la date de récolte
     // est hors saison agronomique de la variété (ex: Pommier Golden
     // récolté en mai alors que la récolte standard est semaine 38-42).
+    // QA cmvkoxe5o (2026-10-23) — règle unique partagée avec l'écran et la
+    // modification (`alerteSaisonRecolteArbre`) : variété résolue comme la
+    // pollinisation (variété perso comprise), espèce à défaut.
     const recolteWarnings: string[] = []
     if (arbre) {
-      const dateRecolteForCheck = body.date ? new Date(body.date) : new Date()
-      const varieteAvecRecolte = arbre.variete
-        ? await prisma.variete.findFirst({
-            where: { id: arbre.variete, especeId: arbre.espece ?? undefined },
-            select: { id: true, semaineRecolte: true, dureeRecolte: true },
-          })
-        : null
-      if (varieteAvecRecolte?.semaineRecolte) {
-        const start = new Date(dateRecolteForCheck.getFullYear(), 0, 1)
-        const diffJours = (dateRecolteForCheck.getTime() - start.getTime()) / 86_400_000
-        const semaineSaisie = Math.min(53, Math.max(1, Math.ceil((diffJours + start.getDay() + 1) / 7)))
-        const semaineDebut = varieteAvecRecolte.semaineRecolte
-        const semaineFin = semaineDebut + (varieteAvecRecolte.dureeRecolte ?? 4)
-        const toleranceSemaines = 3
-        // Fenêtre à cheval sur deux années (semaineFin > 53) : elle couvre
-        // [semaineDebut..53] ∪ [1..semaineFin-53]. La semaine saisie étant
-        // toujours ≤ 53, on teste l'appartenance aux deux segments.
-        const horsSaison =
-          semaineFin > 53
-            ? semaineSaisie < semaineDebut - toleranceSemaines &&
-              semaineSaisie > semaineFin - 53 + toleranceSemaines
-            : semaineSaisie < semaineDebut - toleranceSemaines ||
-              semaineSaisie > semaineFin + toleranceSemaines
-        if (horsSaison) {
-          recolteWarnings.push(
-            `Hors saison : ${arbre.espece ?? "espèce"} ${arbre.variete} se récolte normalement semaines ${semaineDebut}-${semaineFin} (saisie semaine ${semaineSaisie}).`
-          )
-        }
-      }
+      const periodes = await chargerPeriodesRecolteVarietes(prisma, userId, [arbre])
+      const alerte = alerteSaisonRecolteArbre({
+        espece: arbre.espece,
+        variete: periodes.get(arbre),
+        date: body.date || new Date(),
+      })
+      if (alerte) recolteWarnings.push(alerte.message)
     }
 
     if (!arbre) {

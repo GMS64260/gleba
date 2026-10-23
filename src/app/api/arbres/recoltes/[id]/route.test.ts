@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   arbreFindFirst: vi.fn(),
   parcelleFindFirst: vi.fn(),
   parcelleFindUnique: vi.fn(),
+  varieteFindMany: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -26,6 +27,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     arbre: { findFirst: mocks.arbreFindFirst },
     parcelleGeo: { findFirst: mocks.parcelleFindFirst, findUnique: mocks.parcelleFindUnique },
+    variete: { findMany: mocks.varieteFindMany },
   },
 }))
 vi.mock("@/lib/auto-compta", () => ({ createVenteFromRecolteArbre: vi.fn(), deleteAutoEntry: vi.fn() }))
@@ -144,5 +146,49 @@ describe("PUT /api/arbres/recoltes/[id] — changement d'arbre", () => {
     await modifier({ arbreId: 30, numLot: "LOT-MANUEL-1010" })
 
     expect(mocks.recolteUpdate.mock.calls[0][0].data.numLot).toBeUndefined()
+  })
+})
+
+/**
+ * QA cmvkoxe5o (2026-10-23) — la modification ne contrôlait pas la saison :
+ * une récolte de Mirabelle de Nancy (S33-S34) déplacée au 10 juillet passait
+ * sans un mot, alors que la création l'aurait signalée.
+ */
+describe("PUT /api/arbres/recoltes/[id] — saison de la variété", () => {
+  const ARBRE_MIRABELLE = { id: 10, nom: "Prunier 3", type: "fruitier", espece: "Prunier", especeId: "Prunier", variete: "Mirabelle de Nancy" }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, numLot: "LOT-MANUEL" })
+    mocks.recolteUpdate.mockImplementation(async ({ data }) => ({
+      ...RECOLTE,
+      numLot: "LOT-MANUEL",
+      date: data.date ?? RECOLTE.date,
+      arbre: ARBRE_MIRABELLE,
+    }))
+    mocks.varieteFindMany.mockResolvedValue([
+      { id: "Mirabelle de Nancy", nom: "Mirabelle de Nancy", nomNormalise: "mirabelle de nancy", especeId: "Prunier", userId: null, semaineRecolte: 33, dureeRecolte: 2 },
+    ])
+  })
+
+  it("renvoie l'alerte quand la date modifiée sort de la période de la variété", async () => {
+    // Corps réel de l'écran en modification : tout le formulaire.
+    const res = await modifier({ arbreId: 10, date: "2026-07-10", quantite: 12.5, numLot: "LOT-MANUEL", notes: null })
+    expect(res.status).toBe(200)
+    const payload = await res.json()
+    expect(payload.warnings).toHaveLength(1)
+    expect(payload.warnings[0]).toContain("Mirabelle de Nancy")
+    expect(mocks.varieteFindMany).toHaveBeenCalledTimes(1)
+  })
+
+  it("se tait dans la période de la variété", async () => {
+    const res = await modifier({ arbreId: 10, date: "2026-08-14", quantite: 12.5, numLot: "LOT-MANUEL" })
+    expect((await res.json()).warnings).toBeUndefined()
+  })
+
+  it("ne relit pas le référentiel quand ni la date ni l'arbre ne changent", async () => {
+    await modifier({ notes: "x" })
+    expect(mocks.varieteFindMany).not.toHaveBeenCalled()
   })
 })

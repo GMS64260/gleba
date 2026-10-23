@@ -10,7 +10,7 @@ import { isPast, differenceInDays } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { confirmDialog } from "@/lib/global-dialog"
-import { checkOperationSaison } from "@/lib/tree-care-calendar"
+import { alerteSaisonRecolteArbre, type PeriodeRecolteVariete } from "@/lib/verger/saison-recolte-arbre"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -51,6 +51,8 @@ interface Arbre {
   type: string
   espece?: string | null
   variete?: string | null
+  /** Période de récolte de la variété (référentiel), servie par GET /api/arbres. */
+  periodeRecolteVariete?: PeriodeRecolteVariete | null
   parcelleGeo?: { id: string; nom: string } | null
 }
 
@@ -819,11 +821,17 @@ function RecoltesFruitsSubTab() {
             {/* QA cmsqn6n46 — même contrôle de fenêtre que la taille : une
                 récolte de Golden fin mai était acceptée sans un mot et rendait
                 le graphique mensuel inexploitable (pic en mai). Non bloquant :
-                les micro-climats existent, mais l'écart est DIT. */}
+                les micro-climats existent, mais l'écart est DIT.
+                QA cmvkoxe5o (2026-10-23) — période de la VARIÉTÉ d'abord,
+                espèce à défaut : même règle que la route. */}
             {(() => {
               const arbre = arbresFruitiers.find((a) => a.id.toString() === newRecolte.arbreId)
-              const w = arbre?.espece
-                ? checkOperationSaison(arbre.espece, "recolte", newRecolte.date, arbre.variete)
+              const w = arbre
+                ? alerteSaisonRecolteArbre({
+                    espece: arbre.espece,
+                    variete: arbre.periodeRecolteVariete,
+                    date: newRecolte.date,
+                  })
                 : null
               if (!w) return null
               return (
