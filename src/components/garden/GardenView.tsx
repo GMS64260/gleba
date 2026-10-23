@@ -1587,6 +1587,8 @@ export function GardenView({
           return (
             <g
               key={`arbre-${arbre.id}`}
+              // Cible stable des sondes navigateur (sélection d'un arbre par id).
+              data-arbre-id={arbre.id}
               transform={`translate(${arbre.posX}, ${arbre.posY})`}
               onPointerDown={(e) => handleItemPointerDown(e, 'arbre', arbre.id)}
               filter="url(#garden-soft-shadow)"
