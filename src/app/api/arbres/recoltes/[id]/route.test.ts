@@ -172,9 +172,17 @@ describe("PUT /api/arbres/recoltes/[id] — saison de la variété", () => {
     ])
   })
 
+  // Corps réel de l'écran en modification (ProductionsTab) : tout le
+  // formulaire, date comprise, parcelle d'origine comprise.
+  const corpsEcran = (over: Record<string, unknown> = {}) => ({
+    arbreId: 10, date: "2026-10-10", quantite: 12.5, qualite: null, prixKg: null, datePeremption: null,
+    notes: null, statutBioSnapshot: null, numLot: "LOT-MANUEL", categorieCommerciale: null,
+    destinationCommerce: null, conditionnement: null, parcelleId: "parc-1", ...over,
+  })
+
   it("renvoie l'alerte quand la date modifiée sort de la période de la variété", async () => {
-    // Corps réel de l'écran en modification : tout le formulaire.
-    const res = await modifier({ arbreId: 10, date: "2026-07-10", quantite: 12.5, numLot: "LOT-MANUEL", notes: null })
+    mocks.parcelleFindFirst.mockResolvedValue({ id: "parc-1", nom: "Verger" })
+    const res = await modifier(corpsEcran({ date: "2026-07-10" }))
     expect(res.status).toBe(200)
     const payload = await res.json()
     expect(payload.warnings).toHaveLength(1)
@@ -182,13 +190,25 @@ describe("PUT /api/arbres/recoltes/[id] — saison de la variété", () => {
     expect(mocks.varieteFindMany).toHaveBeenCalledTimes(1)
   })
 
-  it("se tait dans la période de la variété", async () => {
-    const res = await modifier({ arbreId: 10, date: "2026-08-14", quantite: 12.5, numLot: "LOT-MANUEL" })
+  it("se tait quand la date revient dans la période de la variété", async () => {
+    mocks.parcelleFindFirst.mockResolvedValue({ id: "parc-1", nom: "Verger" })
+    const res = await modifier(corpsEcran({ date: "2026-08-14" }))
     expect((await res.json()).warnings).toBeUndefined()
   })
 
-  it("ne relit pas le référentiel quand ni la date ni l'arbre ne changent", async () => {
-    await modifier({ notes: "x" })
+  it("ne relance pas le contrôle quand seul le prix change (date renvoyée inchangée)", async () => {
+    mocks.parcelleFindFirst.mockResolvedValue({ id: "parc-1", nom: "Verger" })
+    // RECOLTE.date = 2026-10-10 à midi UTC : l'écran renvoie le jour affiché.
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, numLot: "LOT-MANUEL", date: new Date("2026-10-10") })
+    const res = await modifier(corpsEcran({ prixKg: 3.2 }))
+    expect(res.status).toBe(200)
+    expect((await res.json()).warnings).toBeUndefined()
     expect(mocks.varieteFindMany).not.toHaveBeenCalled()
+  })
+
+  it("retire des notes la mention figée par l'ancienne création", async () => {
+    mocks.parcelleFindFirst.mockResolvedValue({ id: "parc-1", nom: "Verger" })
+    await modifier(corpsEcran({ date: "2026-08-14", notes: "⚠️ Hors saison : Prunier Mirabelle de Nancy se récolte normalement semaines 33-35 (saisie semaine 28).\nCueillie à l'échelle" }))
+    expect(mocks.recolteUpdate.mock.calls[0][0].data.notes).toBe("Cueillie à l'échelle")
   })
 })

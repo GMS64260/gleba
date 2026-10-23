@@ -10,7 +10,7 @@ import { isPast, differenceInDays } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { confirmDialog } from "@/lib/global-dialog"
-import { alerteSaisonRecolteArbre, type PeriodeRecolteVariete } from "@/lib/verger/saison-recolte-arbre"
+import { alerteSaisonRecolteArbre, retirerMarqueSaison, type PeriodeRecolteVariete } from "@/lib/verger/saison-recolte-arbre"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -265,6 +265,31 @@ function RecoltesFruitsSubTab() {
 
   const arbresFruitiers = arbres.filter((a) => estTypeArbreFruitier(a.type))
 
+  // Feedback cmpky7zmy — l'alerte hors saison reste visible après coup dans la
+  // liste. Calculée à l'affichage par la même règle que le formulaire et la
+  // route (revue du 2026-10-23) : elle suit la date corrigée, au lieu d'une
+  // mention figée dans les notes.
+  const alerteSaisonDe = (r: RecolteArbre) => {
+    const arbre = arbres.find((a) => a.id === r.arbreId)
+    return arbre
+      ? alerteSaisonRecolteArbre({ espece: arbre.espece, variete: arbre.periodeRecolteVariete, date: new Date(r.date) })
+      : null
+  }
+  const celluleDate = (r: RecolteArbre) => {
+    const alerte = alerteSaisonDe(r)
+    return (
+      <span className="inline-flex items-center gap-1">
+        {new Date(r.date).toLocaleDateString("fr-FR")}
+        {alerte && (
+          <span title={alerte.message} className="inline-flex text-amber-600">
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="sr-only">Hors saison : {alerte.message}</span>
+          </span>
+        )}
+      </span>
+    )
+  }
+
   const getPeremptionBadge = (datePeremption: string | null) => {
     if (!datePeremption) return null
     const date = new Date(datePeremption)
@@ -414,7 +439,7 @@ function RecoltesFruitsSubTab() {
       qualite: r.qualite ?? "",
       prixKg: r.prixKg != null ? String(r.prixKg) : "",
       datePeremption: r.datePeremption ? r.datePeremption.slice(0, 10) : "",
-      notes: r.notes ?? "",
+      notes: retirerMarqueSaison(r.notes) ?? "",
       statutBioSnapshot: r.statutBioSnapshot ?? "",
       parcelleId: r.parcelleId ?? "",
       numLot: r.numLot ?? "",
@@ -661,7 +686,7 @@ function RecoltesFruitsSubTab() {
                 <TableBody>
                   {stockRecoltes.map((r) => (
                     <TableRow key={r.id} className={r.datePeremption && isPast(new Date(r.datePeremption)) ? "bg-red-50" : ""}>
-                      <TableCell>{new Date(r.date).toLocaleDateString("fr-FR")}</TableCell>
+                      <TableCell>{celluleDate(r)}</TableCell>
                       <TableCell className="font-medium">{r.arbre.nom}</TableCell>
                       <TableCell className="text-right">{r.quantite} kg</TableCell>
                       <TableCell className="capitalize">{r.qualite || "-"}</TableCell>
@@ -761,7 +786,7 @@ function RecoltesFruitsSubTab() {
                 <TableBody>
                   {perteRecoltes.map((r) => (
                     <TableRow key={r.id}>
-                      <TableCell>{new Date(r.date).toLocaleDateString("fr-FR")}</TableCell>
+                      <TableCell>{celluleDate(r)}</TableCell>
                       <TableCell className="font-medium">{r.arbre.nom}</TableCell>
                       <TableCell className="text-right">{r.quantite} kg</TableCell>
                       <TableCell className="capitalize">{r.qualite || "-"}</TableCell>
@@ -770,7 +795,7 @@ function RecoltesFruitsSubTab() {
                           {labelStatutRecolteArbre(r.statut)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{r.notes || "-"}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{retirerMarqueSaison(r.notes) || "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -17,6 +17,7 @@ import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
 import { parcelleParDefautArbre, resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
 import { chargerPeriodesRecolteVarietes } from "@/lib/verger/saison-recolte-arbre"
+import { porteGreffeAccessible } from "@/lib/verger/porte-greffe-accessible"
 import { normaliserDateApi } from "@/lib/validations/date-api"
 import { estTypeArbre, messageTypeArbreInvalide } from "@/lib/verger/types-arbre"
 
@@ -213,6 +214,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Zone non trouvée" }, { status: 404 })
       }
     }
+    // Revue du 2026-10-23 : un porte-greffe visé par id doit être visible du
+    // compte, sinon son nom fuitait par la liste et la fiche.
+    if (body.porteGreffeId && !(await porteGreffeAccessible(session!.user.id, String(body.porteGreffeId)))) {
+      return NextResponse.json({ error: "Porte-greffe introuvable", champ: "porteGreffeId" }, { status: 400 })
+    }
+
     // Espèce rattachée au catalogue quand la saisie le désigne (casse, accents
     // et tirets près) ; repli explicite hors catalogue — voir espece-arbre.ts.
     const especeResolue = await resoudreEspeceArbre(prisma, session!.user.id, String(body.espece))

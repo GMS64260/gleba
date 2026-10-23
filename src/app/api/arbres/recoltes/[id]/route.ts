@@ -13,7 +13,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromRecolteArbre, deleteAutoEntry } from "@/lib/auto-compta"
 import { creerFacture, annulerFactureLiee } from "@/lib/facture-utils"
 import { estNumeroLotAuto, genererNumeroLot } from "@/lib/recolte/lot"
-import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes } from "@/lib/verger/saison-recolte-arbre"
+import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes, retirerMarqueSaison } from "@/lib/verger/saison-recolte-arbre"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -210,7 +210,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         datePeremption: body.datePeremption !== undefined
           ? (body.datePeremption ? new Date(body.datePeremption) : null)
           : undefined,
-        notes: texteOuNull(body.notes),
+        notes: texteOuNull(body.notes === undefined ? undefined : retirerMarqueSaison(body.notes)),
         parcelleId: nouvelleParcelleId,
         numLot,
         categorieCommerciale: texteOuNull(body.categorieCommerciale),
@@ -229,8 +229,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
     // QA cmvkoxe5o (2026-10-23) — la modification ne contrôlait pas la saison :
     // une récolte de Mirabelle (mi-août) déplacée au 10 juillet passait sans
     // un mot. Même règle que la création, sur l'arbre et la date finaux.
+    // L'écran renvoie toujours la date : seul un changement réel (date ou
+    // arbre) relance le contrôle, sinon corriger un prix redonnait l'alerte.
     const warnings: string[] = []
-    if ((nouvelleDate !== undefined || nouvelArbre) && recolte.arbre) {
+    const dateChangee = nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime()
+    if ((dateChangee || nouvelArbre) && recolte.arbre) {
       const periodes = await chargerPeriodesRecolteVarietes(prisma, userId, [recolte.arbre])
       const alerte = alerteSaisonRecolteArbre({
         espece: recolte.arbre.espece,

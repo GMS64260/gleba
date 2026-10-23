@@ -80,7 +80,11 @@ export function libellePeriodeSemainesCourt(
   const periode = periodeDepuisSemaines(debut, duree)
   if (!periode) return null
   if (periode.duree <= 1) return libelleSemaine(periode.debut, annee)
-  return `${libelleSemaine(periode.debut, annee)} → ${libelleSemaine(semaineFin(periode.debut, periode.duree), annee)}`
+  const libelleDebut = libelleSemaine(periode.debut, annee)
+  const libelleFin = libelleSemaine(semaineFin(periode.debut, periode.duree), annee)
+  // « mi-août → mi-août » se lit comme une erreur : une période courte qui
+  // tient dans un tiers de mois se dit une fois (revue du 2026-10-23).
+  return libelleDebut === libelleFin ? libelleDebut : `${libelleDebut} → ${libelleFin}`
 }
 
 /**
@@ -98,7 +102,11 @@ export function libellePeriodeSemaines(
     return `${libelleSemaine(periode.debut, annee)} (${numeroSemaine(periode.debut)})`
   }
   const fin = semaineFin(periode.debut, periode.duree)
-  return `de ${libelleSemaine(periode.debut, annee)} à ${libelleSemaine(fin, annee)} (${numeroSemaine(periode.debut)} → ${numeroSemaine(fin)})`
+  const semaines = `(${numeroSemaine(periode.debut)} → ${numeroSemaine(fin)})`
+  const libelleDebut = libelleSemaine(periode.debut, annee)
+  const libelleFin = libelleSemaine(fin, annee)
+  if (libelleDebut === libelleFin) return `${libelleDebut} ${semaines}`
+  return `de ${libelleDebut} à ${libelleFin} ${semaines}`
 }
 
 /** Semaines ISO couvertes par une période. */
