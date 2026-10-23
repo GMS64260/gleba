@@ -19,7 +19,7 @@ import { calculerTetesNonPondeuses, effectifPondeuses, estEspecePondeuse } from 
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
-import { MOTIF_MISE_EN_PLACE_LOT, messageTracesRegistreLot } from '@/lib/elevage/traces-lot'
+import { MOTIF_MISE_EN_PLACE_LOT, MOTIF_MODIFICATION_FICHE_LOT, MOTIFS_MOUVEMENTS_AUTOMATIQUES_LOT, messageRefusSuppressionLot } from '@/lib/elevage/traces-lot'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -316,7 +316,7 @@ export async function PATCH(request: NextRequest) {
           data: {
             userId: session.user.id, lotId: existing.id,
             parcelleAvantId: existing.parcelleGeoId, parcelleApresId: updated.parcelleGeoId,
-            date: new Date(), motif: 'Modification de la fiche lot',
+            date: new Date(), motif: MOTIF_MODIFICATION_FICHE_LOT,
           },
         })
       }
@@ -412,8 +412,9 @@ export async function DELETE(request: NextRequest) {
     // et en détachant ses collectes de lait et productions de ruche : le
     // registre d'élevage perdait l'historique. Même règle que l'animal
     // (`compterTracesAnimal`) : un lot se supprime seulement s'il ne porte
-    // AUCUNE saisie ; un lot réel qui s'arrête se clôture. Ne compte pas le
-    // mouvement « Mise en place du lot » que la création écrit d'elle-même.
+    // AUCUNE saisie ; un lot réel qui s'arrête se clôture. Ne comptent pas les
+    // mouvements que la fiche du lot écrit d'elle-même (création, correction
+    // de parcelle : `MOTIFS_MOUVEMENTS_AUTOMATIQUES_LOT`).
     const deps = existing._count
     const lotIdNum = parseInt(id)
     const [animauxPresents, mouvementsTous, mouvementsAuto] = await Promise.all([
@@ -422,7 +423,7 @@ export async function DELETE(request: NextRequest) {
         : Promise.resolve(0),
       prisma.mouvementCheptel.count({ where: { userId: session.user.id, lotId: lotIdNum } }),
       prisma.mouvementCheptel.count({
-        where: { userId: session.user.id, lotId: lotIdNum, motif: MOTIF_MISE_EN_PLACE_LOT },
+        where: { userId: session.user.id, lotId: lotIdNum, motif: { in: MOTIFS_MOUVEMENTS_AUTOMATIQUES_LOT } },
       }),
     ])
     const animauxSortis = deps.animaux - animauxPresents
@@ -446,15 +447,9 @@ export async function DELETE(request: NextRequest) {
         { status: 409 }
       )
     }
-    const registre = messageTracesRegistreLot({ ...deps, mouvements })
-    if (registre) {
-      return NextResponse.json(
-        {
-          error: `Ce lot porte ${registre} : ils restent au registre d'élevage. Clôturez le lot plutôt que de le supprimer, ou supprimez d'abord ces saisies si elles sont des erreurs.`,
-          details: { ...deps, mouvements },
-        },
-        { status: 409 }
-      )
+    const refusRegistre = messageRefusSuppressionLot({ ...deps, mouvements })
+    if (refusRegistre) {
+      return NextResponse.json({ error: refusRegistre, details: { ...deps, mouvements } }, { status: 409 })
     }
     if (animauxSortis > 0 && Number(existing.prixAchatTotal || 0) > 0) {
       return NextResponse.json(

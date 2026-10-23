@@ -151,16 +151,33 @@ describe('DELETE /api/elevage/lots — lot dont tous les animaux sont sortis', (
     expect(mocks.lotDelete).not.toHaveBeenCalled()
   })
 
-  it('garde un lot qui a changé de parcelle (mouvement saisi)', async () => {
+  it('garde un lot déplacé au pâturage (mouvement saisi), sans proposer de supprimer le mouvement', async () => {
     mocks.lotFindFirst.mockResolvedValue(lot({}))
-    // 2 mouvements dont 1 « Mise en place du lot » automatique.
-    mocks.mouvementCount.mockResolvedValueOnce(2).mockResolvedValueOnce(1)
+    // 3 mouvements dont 2 écrits par la fiche (mise en place, correction de parcelle).
+    mocks.mouvementCount.mockResolvedValueOnce(3).mockResolvedValueOnce(2)
 
     const res = await supprimer()
 
     expect(res.status).toBe(409)
-    expect((await res.json()).error).toContain('1 mouvement de cheptel')
+    const erreur = (await res.json()).error
+    expect(erreur).toContain('1 mouvement de cheptel')
+    expect(erreur).not.toContain('supprimez')
+    expect(mocks.mouvementCount).toHaveBeenLastCalledWith({
+      where: { userId: 'user-1', lotId: 77, motif: { in: ['Mise en place du lot', 'Modification de la fiche lot'] } },
+    })
     expect(mocks.lotDelete).not.toHaveBeenCalled()
+  })
+
+  // Revue du 2026-10-23 : corriger la parcelle d'un lot créé par erreur écrit
+  // « Modification de la fiche lot » ; ce reflet ne doit pas le retenir.
+  it('supprime un lot créé par erreur dont la parcelle a été corrigée', async () => {
+    mocks.lotFindFirst.mockResolvedValue(lot({}))
+    mocks.mouvementCount.mockResolvedValueOnce(2).mockResolvedValueOnce(2)
+
+    const res = await supprimer()
+
+    expect(res.status).toBe(200)
+    expect(mocks.lotDelete).toHaveBeenCalled()
   })
 
   it('supprime un lot créé par erreur sur une parcelle (seule la mise en place automatique)', async () => {
