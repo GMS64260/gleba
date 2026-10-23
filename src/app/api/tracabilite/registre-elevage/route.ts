@@ -264,7 +264,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/tracabilite/registre-elevage error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la generation du registre', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la génération du registre', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

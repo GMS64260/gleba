@@ -187,7 +187,7 @@ function CulturesPrevuesParIlotsContent() {
           </Link>
           <div className="flex items-center gap-2">
             <Map className="h-6 w-6 text-amber-600" />
-            <h1 className="text-xl font-bold">Cultures prévues par ilot</h1>
+            <h1 className="text-xl font-bold">Cultures prévues par îlot</h1>
           </div>
         </div>
 
@@ -214,7 +214,7 @@ function CulturesPrevuesParIlotsContent() {
           </Link>
           <Link href={`/maraichage/planification/cultures-prevues/par-ilots?annee=${annee}`}>
             <Button variant="default" size="sm">
-              Par ilots
+              Par îlots
             </Button>
           </Link>
           <Link href={`/maraichage/planification/cultures-prevues/par-planches?annee=${annee}`}>

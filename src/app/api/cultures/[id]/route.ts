@@ -418,7 +418,7 @@ export async function PATCH(
 
     if (!existing) {
       return NextResponse.json(
-        { error: `Culture #${id} non trouvee` },
+        { error: `Culture #${id} non trouvée` },
         { status: 404 }
       )
     }
@@ -594,7 +594,7 @@ export async function PATCH(
   } catch (error) {
     console.error('PATCH /api/cultures/[id] error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la mise a jour de la culture' },
+      { error: 'Erreur lors de la mise à jour de la culture' },
       { status: 500 }
     )
   }

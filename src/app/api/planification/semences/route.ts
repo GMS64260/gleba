@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/planification/semences error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des besoins en semences', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la récupération des besoins en semences', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

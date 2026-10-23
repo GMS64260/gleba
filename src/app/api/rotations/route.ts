@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/rotations error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des rotations', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la récupération des rotations', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       return NextResponse.json(
-        { error: `La rotation "${rotationData.id}" existe deja` },
+        { error: `La rotation "${rotationData.id}" existe déjà` },
         { status: 409 }
       )
     }
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/rotations error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la creation de la rotation' },
+      { error: 'Erreur lors de la création de la rotation' },
       { status: 500 }
     )
   }

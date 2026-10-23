@@ -48,7 +48,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   } catch (err) {
     console.error("GET /api/arbres/campagnes/[id] error:", err)
     return NextResponse.json(
-      { error: "Erreur lors de la recuperation" },
+      { error: "Erreur lors de la récupération" },
       { status: 500 }
     )
   }

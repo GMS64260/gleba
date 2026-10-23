@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/elevage/mortalites error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des mortalites', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la récupération des mortalités', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

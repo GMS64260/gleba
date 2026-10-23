@@ -188,7 +188,7 @@ export function UserTable({ users }: UserTableProps) {
 
       if (!res.ok) throw new Error("Erreur")
 
-      toast({ title: "Utilisateur supprime" })
+      toast({ title: "Utilisateur supprimé" })
       router.refresh()
     } catch {
       toast({
@@ -208,9 +208,9 @@ export function UserTable({ users }: UserTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead>Utilisateur</TableHead>
-            <TableHead>Role</TableHead>
+            <TableHead>Rôle</TableHead>
             <TableHead>Statut</TableHead>
-            <TableHead className="text-center">Donnees</TableHead>
+            <TableHead className="text-center">Données</TableHead>
             <TableHead>Créé le</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
@@ -255,7 +255,7 @@ export function UserTable({ users }: UserTableProps) {
                 </div>
               </TableCell>
               <TableCell className="text-center text-sm text-muted-foreground">
-                {user._count.cultures} cultures / {user._count.planches} planches / {user._count.recoltes} recoltes
+                {user._count.cultures} cultures / {user._count.planches} planches / {user._count.recoltes} récoltes
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {new Date(user.createdAt).toLocaleDateString("fr-FR")}

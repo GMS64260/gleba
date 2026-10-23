@@ -323,7 +323,7 @@ export function ItpEditDialog({
                   <SelectItem value="Serre">Serre</SelectItem>
                   <SelectItem value="Plein champ">Plein champ</SelectItem>
                   <SelectItem value="Tunnel">Tunnel</SelectItem>
-                  <SelectItem value="Chassis">Chassis</SelectItem>
+                  <SelectItem value="Chassis">Châssis</SelectItem>
                 </SelectContent>
               </Select>
             </div>

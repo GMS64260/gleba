@@ -459,8 +459,8 @@ export function AssistantStepDates({
                       </TooltipTrigger>
                       <TooltipContent>
                         <p className="max-w-xs text-xs">
-                          Décalez les dates de quelques semaines si necessaire
-                          (étalement des recoltes, conditions météo...)
+                          Décalez les dates de quelques semaines si nécessaire
+                          (étalement des récoltes, conditions météo...)
                         </p>
                       </TooltipContent>
                     </Tooltip>

@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/elevage/naissances error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des naissances', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la récupération des naissances', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/elevage/naissances error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la creation', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
@@ -375,7 +375,7 @@ export async function DELETE(request: NextRequest) {
       where: { id: parseInt(id), userId: session.user.id },
       include: { mere: { select: { lotId: true } } },
     })
-    if (!existing) return NextResponse.json({ error: 'Naissance non trouvee' }, { status: 404 })
+    if (!existing) return NextResponse.json({ error: 'Naissance non trouvée' }, { status: 404 })
 
     // Bug cmp8rub7p — décrémenter l'effectif du lot crédité à la création
     // (POST). Le seuil min 0 évite les compteurs négatifs si l'utilisateur

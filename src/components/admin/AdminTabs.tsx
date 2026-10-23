@@ -96,7 +96,7 @@ export function AdminTabs() {
         </TabsTrigger>
         <TabsTrigger value="metrics" className="gap-2">
           <BarChart3 className="h-4 w-4" />
-          Metriques
+          Métriques
         </TabsTrigger>
       </TabsList>
 
@@ -298,7 +298,7 @@ function MetricsPanel() {
       {global && (
         <Card>
           <CardHeader>
-            <CardTitle>Metriques globales</CardTitle>
+            <CardTitle>Métriques globales</CardTitle>
             <CardDescription>
               Actifs = au moins une action dans l&apos;app ce jour-la (la session dure
               30 jours, pas besoin de reconnexion). Hors admins et compte demo.
@@ -326,9 +326,9 @@ function MetricsPanel() {
             <CardDescription>
               {demo.user && (
                 <>
-                  Cree le {formatDate(demo.user.createdAt)}
+                  Créé le {formatDate(demo.user.createdAt)}
                   {demo.activity.lastActiveDay && (
-                    <> &middot; Derniere activite : {formatDay(demo.activity.lastActiveDay)}</>
+                    <> &middot; Dernière activité : {formatDay(demo.activity.lastActiveDay)}</>
                   )}
                 </>
               )}

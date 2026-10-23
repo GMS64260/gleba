@@ -24,6 +24,10 @@
         "message": "Mot français sans accent dans le texte JSX. Corriger en ajoutant les diacritiques attendus (ex: Recolte → Récolte). Voir CONTRIBUTING.md."
       },
       {
+        "selector": "JSXText[value=/\\b(defaut|recoltes?|especes?|varietes?|annees?|deja|necessaires?|resultats?|itineraires?|parametres?|categories?|selectionnee?s?|genealogique|metres|caracteres|systeme|reessayer|apparait|ilots?)\\b/]",
+        "message": "Mot français sans accent dans le texte JSX (minuscule). Corriger les diacritiques (ex: Par defaut → Par défaut, recoltes → récoltes). Ticket cmvkpb0g9, voir CONTRIBUTING.md."
+      },
+      {
         "selector": "CallExpression[callee.property.name=/^(flyTo|flyToBounds)$/]",
         "message": "Pas de flyTo/flyToBounds Leaflet : le vol étire le SVG des contours sans les recalculer (aplat vert, contours perdus si interrompu). Utiliser setView/fitBounds (ticket cmv2ek8t6)."
       }

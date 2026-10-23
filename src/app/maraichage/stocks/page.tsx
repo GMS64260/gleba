@@ -474,7 +474,7 @@ function StocksPageContent() {
               </p>
               <p className="text-sm text-red-700 mt-1">
                 Un stock ne peut pas être négatif dans la réalité. Vérifiez les consommations
-                saisies, les recoltes enregistrées ou la valeur d&apos;inventaire initiale.
+                saisies, les récoltes enregistrées ou la valeur d&apos;inventaire initiale.
               </p>
             </div>
           </div>
@@ -769,7 +769,7 @@ function StocksPageContent() {
                     {filteredFertilisants.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                          Aucun fertilisant enregistre
+                          Aucun fertilisant enregistré
                         </TableCell>
                       </TableRow>
                     )}

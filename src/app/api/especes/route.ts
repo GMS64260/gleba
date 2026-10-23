@@ -312,7 +312,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/especes error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la création de l\'espece' },
+      { error: 'Erreur lors de la création de l\'espèce' },
       { status: 500 }
     )
   }

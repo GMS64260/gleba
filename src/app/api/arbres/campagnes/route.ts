@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error("GET /api/arbres/campagnes error:", err)
     return NextResponse.json(
-      { error: "Erreur lors de la recuperation des campagnes" },
+      { error: "Erreur lors de la récupération des campagnes" },
       { status: 500 }
     )
   }
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("POST /api/arbres/campagnes error:", err)
     return NextResponse.json(
-      { error: "Erreur lors de la creation de la campagne" },
+      { error: "Erreur lors de la création de la campagne" },
       { status: 500 }
     )
   }

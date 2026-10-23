@@ -119,7 +119,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error('PATCH /api/stocks error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la mise a jour du stock', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la mise à jour du stock', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
@@ -374,7 +374,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/stocks error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des stocks', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la récupération des stocks', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

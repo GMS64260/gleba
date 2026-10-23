@@ -607,7 +607,7 @@ export function AssistantStepPlante({
 
         {/* Summary */}
         <div className="text-xs text-muted-foreground text-center">
-          {filteredEspeces.length} espece(s){" "}
+          {filteredEspeces.length} espèce(s){" "}
           {search || typeFilter !== "all" ? "filtrée(s)" : ""}
         </div>
       </section>
@@ -858,7 +858,7 @@ export function AssistantStepPlante({
                     )}
 
                     <p className="text-sm text-muted-foreground">
-                      {varietes.length} variete(s) disponible(s).
+                      {varietes.length} variété(s) disponible(s).
                     </p>
 
                     <ScrollArea className="h-[240px] pr-4">
@@ -974,7 +974,7 @@ export function AssistantStepPlante({
             {/* Advice */}
             <div className="p-3 bg-muted/50 rounded-lg">
               <p className="text-xs text-muted-foreground">
-                <strong>Conseil :</strong> Choisir une variete permet de suivre
+                <strong>Conseil :</strong> Choisir une variété permet de suivre
                 votre stock de semences. Si vous n&apos;avez pas encore décidé, vous
                 pourrez modifier ce choix plus tard.
               </p>

@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     if (cultures.length === 0) {
       return NextResponse.json(
-        { error: 'Aucune culture a creer' },
+        { error: 'Aucune culture à créer' },
         { status: 400 }
       )
     }
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/planification/creer-cultures error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la creation des cultures', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la création des cultures', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

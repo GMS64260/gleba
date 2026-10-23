@@ -232,7 +232,7 @@ export default function ParcellesPage() {
         {/* Mobile: Cards */}
         <div className="md:hidden space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">{data.length} resultat(s)</span>
+            <span className="text-sm text-muted-foreground">{data.length} résultat(s)</span>
             <Button size="sm" onClick={handleAdd}>
               <Plus className="h-4 w-4 mr-2" />
               Ajouter

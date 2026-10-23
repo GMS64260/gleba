@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
     // Vérifier cohérence espece
     if (culture.especeId !== data.especeId) {
       return NextResponse.json(
-        { error: `L'espèce de la récolte doit correspondre à l'espece de la culture` },
+        { error: `L'espèce de la récolte doit correspondre à l'espèce de la culture` },
         { status: 400 }
       )
     }

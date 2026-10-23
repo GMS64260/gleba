@@ -844,7 +844,7 @@ function SemencesContent() {
               onRefresh={fetchData}
               onExport={handleExport}
               searchPlaceholder="Rechercher..."
-              emptyMessage="Aucune culture en caieux/bulbes planifiée."
+              emptyMessage="Aucune culture en caïeux/bulbes planifiée."
             />
           </TabsContent>
         </Tabs>
