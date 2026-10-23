@@ -617,6 +617,21 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    // Revue 2026-10-19, refus muet corrigé le 2026-10-23 — `creerFacture`
+    // ignorait en silence la fiche d'un autre compte (ou disparue) : la facture
+    // partait sans client, SIRET ni exonération, et la réponse disait « OK ».
+    // Même contrôle que les PATCH de récolte et de bois, avant la transaction.
+    if (body.creerFacture && body.clientId != null && body.clientId !== '') {
+      const clientIdFacture = Number(body.clientId)
+      const clientOk = Number.isInteger(clientIdFacture)
+        ? await prisma.client.findFirst({ where: { id: clientIdFacture, userId }, select: { id: true } })
+        : null
+      if (!clientOk) {
+        return NextResponse.json({ error: 'Client introuvable', champ: 'clientId' }, { status: 400 })
+      }
+      body.clientId = clientIdFacture
+    }
+
     // Transaction atomique : facture + update vente
     const vente = await prisma.$transaction(async (tx) => {
       // Revue élevage 2026-07-21 — la facture était construite sur les ANCIENNES
