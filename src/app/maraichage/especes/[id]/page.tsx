@@ -486,7 +486,7 @@ export default function EditEspecePage() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la mise a jour")
+        throw new Error(error.error || "Erreur lors de la mise à jour")
       }
 
       toast({

@@ -117,7 +117,7 @@ export default function NewITPPage() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la creation")
+        throw new Error(error.error || "Erreur lors de la création")
       }
 
       const cree = await response.json().catch(() => null)
@@ -148,7 +148,7 @@ export default function NewITPPage() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Erreur lors de la creation",
+        description: error instanceof Error ? error.message : "Erreur lors de la création",
       })
     } finally {
       setIsSubmitting(false)

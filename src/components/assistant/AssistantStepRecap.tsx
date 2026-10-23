@@ -198,11 +198,11 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
             const existingPlanche = await existingRes.json()
             plancheId = existingPlanche.id // cuid for FK
           } else {
-            throw new Error(`La planche "${plancheName}" existe deja`)
+            throw new Error(`La planche "${plancheName}" existe déjà`)
           }
         } else {
           const err = await plancheRes.json()
-          throw new Error(err.error || 'Erreur creation planche')
+          throw new Error(err.error || 'Erreur de création de la planche')
         }
       }
 
@@ -244,7 +244,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
 
       if (!cultureRes.ok) {
         const err = await cultureRes.json().catch(() => ({}))
-        const errorMsg = err.error || 'Erreur creation culture'
+        const errorMsg = err.error || 'Erreur de création de la culture'
         // QA cmv2r1v63 — un refus de largeur porte ses ajustements lisibles :
         // les dire plutôt que de vider l'objet `details` (largeurs brutes).
         const suggestions: string[] = Array.isArray(err.suggestions) ? err.suggestions : []
@@ -266,7 +266,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: error instanceof Error ? error.message : 'Erreur lors de la creation',
+        description: error instanceof Error ? error.message : 'Erreur lors de la création',
       })
     } finally {
       setLoading(false)
