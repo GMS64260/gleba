@@ -19,6 +19,7 @@ import { calculerTetesNonPondeuses, effectifPondeuses, estEspecePondeuse } from 
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
+import { MOTIF_MISE_EN_PLACE_LOT, messageTracesRegistreLot } from '@/lib/elevage/traces-lot'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -162,7 +163,7 @@ export async function POST(request: NextRequest) {
             parcelleAvantId: null,
             parcelleApresId: created.parcelleGeoId,
             date: created.dateArrivee ?? new Date(),
-            motif: 'Mise en place du lot',
+            motif: MOTIF_MISE_EN_PLACE_LOT,
           },
         })
       }
@@ -380,9 +381,12 @@ export async function DELETE(request: NextRequest) {
             animaux: true,
             abattages: true,
             productionsOeufs: true,
+            productionsRuche: true,
+            collectesLait: true,
             soins: true,
             consommations: true,
             naissances: true,
+            statutsSanitairesStructures: true,
           },
         },
       },
@@ -398,14 +402,31 @@ export async function DELETE(request: NextRequest) {
     // vendus ou abattus restait insupprimable (« lié à 12 animaux »), sans
     // piste pour s'en sortir. Les animaux SORTIS ne bloquent plus : ils gardent
     // leur fiche et leur historique, seul le rattachement au lot disparaît.
-    // Les animaux présents, eux, se retirent d'abord du lot ; et un lot qui
-    // porte des soins, naissances ou consommations reste au registre.
+    // Les animaux présents, eux, se retirent d'abord du lot.
+    //
+    // 2026-10-23 (motif « suppressions », ouvert depuis le 2026-10-08) : la
+    // garde des soins, naissances et consommations ne valait que pour un lot
+    // qui avait eu des fiches nominatives. Un lot collectif (volailles, cas
+    // courant) se supprimait en EFFAÇANT ses soins et consommations, en
+    // détruisant en cascade ses mouvements de pâturage et statuts sanitaires,
+    // et en détachant ses collectes de lait et productions de ruche : le
+    // registre d'élevage perdait l'historique. Même règle que l'animal
+    // (`compterTracesAnimal`) : un lot se supprime seulement s'il ne porte
+    // AUCUNE saisie ; un lot réel qui s'arrête se clôture. Ne compte pas le
+    // mouvement « Mise en place du lot » que la création écrit d'elle-même.
     const deps = existing._count
     const lotIdNum = parseInt(id)
-    const animauxPresents = deps.animaux > 0
-      ? await prisma.animal.count({ where: { userId: session.user.id, lotId: lotIdNum, statut: 'actif' } })
-      : 0
+    const [animauxPresents, mouvementsTous, mouvementsAuto] = await Promise.all([
+      deps.animaux > 0
+        ? prisma.animal.count({ where: { userId: session.user.id, lotId: lotIdNum, statut: 'actif' } })
+        : Promise.resolve(0),
+      prisma.mouvementCheptel.count({ where: { userId: session.user.id, lotId: lotIdNum } }),
+      prisma.mouvementCheptel.count({
+        where: { userId: session.user.id, lotId: lotIdNum, motif: MOTIF_MISE_EN_PLACE_LOT },
+      }),
+    ])
     const animauxSortis = deps.animaux - animauxPresents
+    const mouvements = Math.max(0, mouvementsTous - mouvementsAuto)
     if (animauxPresents > 0) {
       return NextResponse.json(
         {
@@ -415,11 +436,22 @@ export async function DELETE(request: NextRequest) {
         { status: 409 }
       )
     }
-    if (deps.abattages > 0 || deps.productionsOeufs > 0) {
+    const productions = deps.productionsOeufs + deps.productionsRuche + deps.collectesLait
+    if (deps.abattages > 0 || productions > 0) {
       return NextResponse.json(
         {
-          error: `Ce lot porte ${deps.abattages} abattage(s) et ${deps.productionsOeufs} production(s) : il reste au registre. Clôturez-le plutôt que de le supprimer.`,
+          error: `Ce lot porte ${deps.abattages} abattage(s) et ${productions} production(s) : il reste au registre. Clôturez-le plutôt que de le supprimer.`,
           details: deps,
+        },
+        { status: 409 }
+      )
+    }
+    const registre = messageTracesRegistreLot({ ...deps, mouvements })
+    if (registre) {
+      return NextResponse.json(
+        {
+          error: `Ce lot porte ${registre} : ils restent au registre d'élevage. Clôturez le lot plutôt que de le supprimer, ou supprimez d'abord ces saisies si elles sont des erreurs.`,
+          details: { ...deps, mouvements },
         },
         { status: 409 }
       )
@@ -428,15 +460,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Ce lot porte un prix d'achat : son écriture reste en comptabilité. Clôturez le lot plutôt que de le supprimer.",
-          details: deps,
-        },
-        { status: 409 }
-      )
-    }
-    if (animauxSortis > 0 && (deps.soins > 0 || deps.consommations > 0 || deps.naissances > 0)) {
-      return NextResponse.json(
-        {
-          error: `Ce lot porte ${deps.soins} soin(s), ${deps.naissances} naissance(s) et ${deps.consommations} consommation(s) d'aliment : ils restent au registre et en comptabilité. Clôturez le lot plutôt que de le supprimer.`,
           details: deps,
         },
         { status: 409 }
@@ -458,36 +481,10 @@ export async function DELETE(request: NextRequest) {
           await enregistrerChangementLot(tx, session.user.id, animal.id, lotIdNum, null, dateEffet, 'Suppression du lot')
         }
       }
-      // Auto-compta : purger les écritures auto des consommations et soins du
-      // lot AVANT leur suppression en masse (sinon les DepenseManuelle auto
-      // resteraient orphelines).
-      const [consosLot, soinsLot] = await Promise.all([
-        tx.consommationAliment.findMany({
-          where: { lotId: parseInt(id), userId: session.user.id },
-          select: { id: true },
-        }),
-        tx.soinAnimal.findMany({
-          where: { lotId: parseInt(id), userId: session.user.id },
-          select: { id: true },
-        }),
-      ])
-      if (consosLot.length > 0) {
-        await tx.depenseManuelle.deleteMany({
-          where: { userId: session.user.id, sourceType: 'consommation_aliment', sourceId: { in: consosLot.map((c) => c.id) }, auto: true },
-        })
-      }
-      if (soinsLot.length > 0) {
-        await tx.depenseManuelle.deleteMany({
-          where: { userId: session.user.id, sourceType: 'soin_animal', sourceId: { in: soinsLot.map((s) => s.id) }, auto: true },
-        })
-      }
-
-      await tx.consommationAliment.deleteMany({
-        where: { lotId: parseInt(id), userId: session.user.id },
-      })
-      await tx.soinAnimal.deleteMany({
-        where: { lotId: parseInt(id), userId: session.user.id },
-      })
+      // Soins et consommations : la garde ci-dessus refuse tout lot qui en
+      // porte. Plus de suppression en masse ici (2026-10-23) : une saisie
+      // arrivée entre la garde et la transaction se détache (`SetNull`) au
+      // lieu d'être effacée.
       // Bug R28 : supprimer l'écriture comptable auto de l'achat du lot.
       await deleteAutoEntry('achat_animal', existing.id, 'depense', session.user.id, tx)
       await tx.lotAnimaux.delete({ where: { id: existing.id } })
