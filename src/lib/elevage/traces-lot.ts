@@ -8,6 +8,18 @@
 /** Motif du mouvement que la création d'un lot sur une parcelle écrit seule. */
 export const MOTIF_MISE_EN_PLACE_LOT = 'Mise en place du lot'
 
+/** Motif du mouvement que le PATCH du lot écrit seul quand sa parcelle change. */
+export const MOTIF_MODIFICATION_FICHE_LOT = 'Modification de la fiche lot'
+
+/**
+ * Mouvements écrits par la fiche du lot elle-même (création, correction de la
+ * parcelle) : reflets de la fiche, ils ne retiennent pas un lot créé par
+ * erreur. Aucun écran ne supprime un mouvement : les exiger rendait le lot
+ * indestructible (revue du 2026-10-23). Les mouvements saisis au pâturage
+ * comptent, eux.
+ */
+export const MOTIFS_MOUVEMENTS_AUTOMATIQUES_LOT = [MOTIF_MISE_EN_PLACE_LOT, MOTIF_MODIFICATION_FICHE_LOT]
+
 export interface TracesRegistreLot {
   soins: number
   naissances: number
@@ -36,4 +48,20 @@ export function messageTracesRegistreLot(t: TracesRegistreLot): string | null {
   if (parties.length === 0) return null
   if (parties.length === 1) return parties[0]
   return `${parties.slice(0, -1).join(', ')} et ${parties[parties.length - 1]}`
+}
+
+/**
+ * Message de refus : la clôture est toujours possible ; la suppression des
+ * saisies n'est proposée que pour celles qu'un écran sait supprimer (soins,
+ * naissances, consommations), jamais pour les mouvements ou statuts.
+ */
+export function messageRefusSuppressionLot(t: TracesRegistreLot): string | null {
+  const traces = messageTracesRegistreLot(t)
+  if (!traces) return null
+  const supprimables = t.soins + t.naissances + t.consommations > 0
+  const nonSupprimables = t.mouvements + t.statutsSanitairesStructures > 0
+  const issue = supprimables && !nonSupprimables
+    ? " Clôturez le lot plutôt que de le supprimer, ou supprimez d'abord ces saisies depuis leur liste si elles sont des erreurs."
+    : ' Clôturez le lot plutôt que de le supprimer.'
+  return `Ce lot porte ${traces} : ils restent au registre d'élevage.${issue}`
 }
