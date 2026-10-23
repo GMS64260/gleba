@@ -161,6 +161,15 @@ export async function POST(request: NextRequest) {
     // que de produire, sans le dire, une facture sans SIRET pour un client
     // professionnel connu (ou de rattacher une fiche que personne n'a vue).
     const clientId: number | null = d.clientId ?? null
+    // 2026-10-23 — une fiche d'un autre compte (ou disparue) était ignorée en
+    // silence par `creerFacture` : facture émise sans client ni SIRET, sans
+    // un mot. Le refus nomme le champ.
+    if (clientId != null) {
+      const fiche = await prisma.client.findFirst({ where: { id: clientId, userId }, select: { id: true } })
+      if (!fiche) {
+        return NextResponse.json({ error: 'Client introuvable', champ: 'clientId' }, { status: 400 })
+      }
+    }
     if (d.clientId === undefined && d.type !== 'avoir' && d.clientNom?.trim()) {
       const fiches = await prisma.client.findMany({
         where: { userId, actif: true },

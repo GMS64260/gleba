@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   invalidateKpi: vi.fn(),
   creerFacture: vi.fn(),
   clientFindMany: vi.fn(),
+  clientFindFirst: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -27,7 +28,7 @@ vi.mock('@/lib/facture-utils', () => ({
 vi.mock('@/lib/prisma', () => ({
   default: {
     facture: { findFirst: mocks.factureFindFirst },
-    client: { findMany: mocks.clientFindMany },
+    client: { findMany: mocks.clientFindMany, findFirst: mocks.clientFindFirst },
     $transaction: (callback: (tx: unknown) => unknown) =>
       callback({
         facture: { update: mocks.txFactureUpdate },
@@ -148,6 +149,10 @@ describe('POST /api/comptabilite/factures — rattachement à la fiche client', 
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
     mocks.creerFacture.mockResolvedValue({ id: 34, numero: 'F-2026-0003', lignes: [], client: null })
+    // Fiches du compte : 9, 10 et 12 (exonérée) ; toute autre est d'un autre compte.
+    mocks.clientFindFirst.mockImplementation(async ({ where }: { where: { id: number; userId: string } }) =>
+      where.userId === 'user-1' && [9, 10, 12].includes(where.id) ? { id: where.id } : null
+    )
     mocks.clientFindMany.mockResolvedValue([
       { id: 9, nom: 'Restaurant du Port' },
       { id: 10, nom: 'Épicerie du Marché' },
@@ -175,6 +180,14 @@ describe('POST /api/comptabilite/factures — rattachement à la fiche client', 
       expect.anything(),
       expect.objectContaining({ userId: 'user-1', clientId: 9, notes: 'Paiement à 30 jours par virement.' }),
     )
+  })
+
+  it('refuse (400, champ clientId) la fiche d’un autre compte au lieu de facturer sans client', async () => {
+    const res = await POST(request(corpsEcran({ clientId: 77 }), 'POST'))
+    expect(res.status).toBe(400)
+    const corps = await res.json()
+    expect(corps.champ).toBe('clientId')
+    expect(mocks.creerFacture).not.toHaveBeenCalled()
   })
 
   it('respecte un clientId choisi au sélecteur, sans chercher par nom', async () => {
