@@ -16,6 +16,7 @@ import {
 import { googleAuthDisponible, motifRefusConnexionGoogle } from "./auth-google"
 import { estEmailDemo } from "./demo"
 import { REFUS_CONNEXION, type CodeRefusConnexion } from "./auth-refus"
+import { redirectionApresConnexion } from "./auth-retour"
 
 /**
  * Refus de connexion porteur d'un motif lisible par le formulaire.
@@ -317,6 +318,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return true
     },
+    // Même règle que le formulaire de connexion (QA cmvnout4y) : la requête
+    // du lien profond est gardée, toute cible hors du site renvoie à l'accueil.
+    redirect: redirectionApresConnexion,
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id

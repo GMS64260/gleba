@@ -12,6 +12,7 @@ import { Loader2, ArrowRight, RefreshCw } from "lucide-react"
 import { GoogleSignInButton } from "./GoogleSignInButton"
 import { REFUS_CONNEXION, messageRefusConnexion } from "@/lib/auth-refus"
 import { DEMO_EMAIL } from "@/lib/demo"
+import { cibleApresConnexion } from "@/lib/auth-retour"
 
 const VERIFY_MESSAGES: Record<string, { text: string; type: "success" | "error" | "info" }> = {
   success: { text: "Email vérifié ! Vous pouvez maintenant vous connecter.", type: "success" },
@@ -38,7 +39,13 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get("callbackUrl") || "/"
+  // Page d'origine du lien profond, requête comprise (QA cmvnout4y). Valeur
+  // venue de l'URL : seule une cible du site est suivie, jamais `//ailleurs`.
+  // L'origine du site fait accepter la forme absolue que pose Auth.js.
+  const callbackUrl = cibleApresConnexion(
+    searchParams,
+    typeof window === "undefined" ? undefined : window.location.origin,
+  )
   const verifyStatus = searchParams.get("verify")
   const oauthError = searchParams.get("error")
   // Chemin sans JavaScript : Auth.js renvoie sur /login?error=CredentialsSignin

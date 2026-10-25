@@ -3,6 +3,7 @@
  */
 
 import { auth } from "@/lib/auth"
+import { urlConnexion } from "@/lib/auth-retour"
 import {
   estSurfaceAdministration,
   motifInterdictionConsultation,
@@ -131,9 +132,9 @@ export default auth((req) => {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
     }
-    const loginUrl = new URL("/login", req.nextUrl)
-    loginUrl.searchParams.set("callbackUrl", pathname)
-    return NextResponse.redirect(loginUrl)
+    // QA cmvnout4y — le lien profond garde sa requête (`?tab=…&sub=…`) à
+    // travers la connexion : chemin + requête, jamais le chemin seul.
+    return NextResponse.redirect(new URL(urlConnexion(pathname + req.nextUrl.search), req.nextUrl))
   }
 
   if (isAdminRoute && req.auth?.user?.role !== "ADMIN") {
