@@ -87,6 +87,7 @@ import { formatQuantite, formatQuantiteParUnite } from "@/lib/recolte/quantites"
 import { StarRating } from "@/components/avis/StarRating"
 import { AvisDialog } from "@/components/avis/AvisDialog"
 import type { AvisStatsListe } from "@/lib/avis/types"
+import { valeurRenseignee } from "@/lib/referentiel-valeur"
 import {
   useReferentielActions,
   OrigineControls,
@@ -446,19 +447,21 @@ export default function EditEspecePage() {
           besoinEau: especeData.besoinEau || null,
           aPlanifier: especeData.aPlanifier ?? true,
           couleur: especeData.couleur || null,
-          description: especeData.description || null,
+          // Ticket QA cmvnu7ad8 — une sentinelle d'import (« NON_TROUVE ») ne
+          // pré-remplit pas un champ texte : elle se lit comme absente.
+          description: valeurRenseignee(especeData.description),
           categorie: especeData.categorie || null,
           niveau: especeData.niveau || null,
           densite: especeData.densite || null,
           etalement: especeData.etalement || null,
           doseSemis: especeData.doseSemis || null,
           tauxGermination: especeData.tauxGermination || null,
-          temperatureGerm: especeData.temperatureGerm || null,
+          temperatureGerm: valeurRenseignee(especeData.temperatureGerm),
           joursLevee: especeData.joursLevee || null,
-          irrigation: especeData.irrigation || null,
+          irrigation: valeurRenseignee(especeData.irrigation),
           conservation: especeData.conservation || null,
-          effet: especeData.effet || null,
-          usages: especeData.usages || null,
+          effet: valeurRenseignee(especeData.effet),
+          usages: valeurRenseignee(especeData.usages),
           objectifAnnuel: especeData.objectifAnnuel || null,
           prixKg: especeData.prixKg || null,
           semaineTaille: especeData.semaineTaille || null,
@@ -552,7 +555,7 @@ export default function EditEspecePage() {
       prixGraine: v.prixGraine?.toString() || "",
       stockGraines: v.userStockGraines?.toString() || "",
       stockPlants: v.userStockPlants?.toString() || "",
-      description: v.description || "",
+      description: valeurRenseignee(v.description) ?? "",
     })
     setShowVarieteDialog(true)
   }

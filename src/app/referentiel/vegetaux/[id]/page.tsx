@@ -14,6 +14,7 @@ import { nomPublic, originePublique, visibiliteEnfantPublic, visibiliteReferenti
 import { nomAffichableItp } from "@/lib/itp-label";
 import { dureeCycleItpJours } from "@/lib/cultures/dates-itp";
 import { ogBase } from "@/lib/seo/og";
+import { valeurRenseignee } from "@/lib/referentiel-valeur";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const espece = await getEspece(decodeURIComponent(id));
   if (!espece) return { title: "Végétal introuvable" };
   const name = nomPublic(espece);
-  const description = espece.description || `Fiche agricole de ${name} : variétés, exigences et itinéraires techniques selon le terroir.`;
+  const description = valeurRenseignee(espece.description) || `Fiche agricole de ${name} : variétés, exigences et itinéraires techniques selon le terroir.`;
   const url = `https://gleba.fr/referentiel/vegetaux/${encodeURIComponent(espece.id)}`;
   return { title: `${name} — Variétés, culture et terroirs`, description, alternates: { canonical: url }, openGraph: { ...ogBase, title: `${name} — Référentiel Gleba`, description, url, type: "article" } };
 }
@@ -125,11 +126,12 @@ function faitsVariete(variete: {
 }): string[] {
   const floraison = libellePeriodeSemaines(variete.semaineFloraison, variete.dureeFloraison);
   const recolte = libellePeriodeSemaines(variete.semaineRecolte, variete.dureeRecolte);
+  const groupe = valeurRenseignee(variete.groupePollinisation);
   return [
     floraison && `Floraison ${floraison}`,
     recolte && `Récolte ${recolte}`,
-    variete.groupePollinisation && `Groupe de floraison ${variete.groupePollinisation}`,
-    variete.ploidie,
+    groupe && `Groupe de floraison ${groupe}`,
+    valeurRenseignee(variete.ploidie),
   ].filter((fait): fait is string => Boolean(fait));
 }
 
@@ -155,7 +157,10 @@ export default async function FicheVegetalPage({ params }: PageProps) {
   if (!espece) notFound();
   const name = nomPublic(espece);
   const isTree = estTypeVerger(espece.type);
-  const zones = espece.zonesAdaptees?.split(",").map((zone) => zone.trim()).filter(Boolean) ?? [];
+  const zones = espece.zonesAdaptees?.split(",").map((zone) => valeurRenseignee(zone)).filter((zone): zone is string => zone !== null) ?? [];
+  // Ticket QA cmvnu7ad8 — une sentinelle d'import (« NON_TROUVE ») se lit absente.
+  const descriptionEspece = valeurRenseignee(espece.description);
+  const besoinFroid = valeurRenseignee(espece.besoinFroid);
 
   return (
     <MarketingShell>
@@ -168,7 +173,7 @@ export default async function FicheVegetalPage({ params }: PageProps) {
               <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 shadow-sm">{originePublique(espece)}</span>{espece.vivace && <span className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 shadow-sm">Vivace</span>}</div>
               <h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">{name}</h1>
               {espece.nomLatin && <p className="mt-2 text-lg italic text-slate-500">{espece.nomLatin}</p>}
-              {espece.description && <p className="mt-5 max-w-3xl text-base leading-7 text-slate-700">{espece.description}</p>}
+              {descriptionEspece && <p className="mt-5 max-w-3xl text-base leading-7 text-slate-700">{descriptionEspece}</p>}
             </div>
           </div>
         </header>
@@ -184,24 +189,24 @@ export default async function FicheVegetalPage({ params }: PageProps) {
         </section>
 
         <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Fact icon={Sprout} label="Famille" value={espece.famille?.nomFr || espece.famille?.id || "À documenter"} />
-          <Fact icon={Droplets} label="Besoin en eau" value={espece.besoinEau ? `${espece.besoinEau}/5` : espece.irrigation || "À documenter"} />
+          <Fact icon={Sprout} label="Famille" value={valeurRenseignee(espece.famille?.nomFr) ?? valeurRenseignee(espece.famille?.id) ?? "À documenter"} />
+          <Fact icon={Droplets} label="Besoin en eau" value={espece.besoinEau ? `${espece.besoinEau}/5` : valeurRenseignee(espece.irrigation) ?? "À documenter"} />
           <Fact icon={Ruler} label="Densité indicative" value={espece.densite ? `${espece.densite} plants/m²` : "À documenter"} />
-          <Fact icon={CalendarDays} label="Levée" value={espece.joursLevee ? `${espece.joursLevee} jours` : espece.temperatureGerm || "À documenter"} />
+          <Fact icon={CalendarDays} label="Levée" value={espece.joursLevee ? `${espece.joursLevee} jours` : valeurRenseignee(espece.temperatureGerm) ?? "À documenter"} />
         </section>
 
         <section className="mt-10">
           <div className="flex items-center gap-3"><MapPin className="h-6 w-6 text-emerald-700" /><div><h2 className="text-2xl font-bold text-slate-900">Enveloppe climatique</h2><p className="text-sm text-slate-500">Repères généraux à affiner avec le sol et le microclimat de chaque parcelle.</p></div></div>
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap gap-2">{zones.length ? zones.map((zone) => <span key={zone} className="rounded-full bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800">{zoneLabel(zone)}</span>) : <span className="text-sm text-slate-500">Zones adaptées encore non documentées.</span>}</div>
-            {espece.besoinFroid && <p className="mt-4 text-sm text-slate-600">Besoin de froid : <strong>{espece.besoinFroid}</strong></p>}
+            {besoinFroid && <p className="mt-4 text-sm text-slate-600">Besoin de froid : <strong>{besoinFroid}</strong></p>}
           </div>
         </section>
 
         <section className="mt-10">
           <h2 className="text-2xl font-bold text-slate-900">Itinéraires techniques par contexte</h2>
           <p className="mt-1 text-sm text-slate-500">Ces calendriers sont des références contextualisées, pas des garanties de réussite.</p>
-          {espece.itps.length ? <div className="mt-4 grid gap-4 md:grid-cols-2">{espece.itps.map((itp) => <div key={itp.id} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold text-slate-900">{nomAffichableItp(itp)}</h3><div className="flex flex-wrap items-center gap-2"><QualiteBadge statut={itp.statutValidation} /><span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">{itp.zoneClimat ? zoneLabel(itp.zoneClimat) : "Référence générale"}</span></div></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><MiniFact label="Conduite" value={itp.typePlanche || "Non précisée"} /><MiniFact label="Démarrage" value={itp.modeDemarrage || "Non précisé"} /><MiniFact label="Semis" value={week(itp.semaineSemis)} /><MiniFact label="Plantation" value={week(itp.semainePlantation)} /><MiniFact label="Récolte" value={week(itp.semaineRecolte)} /><MiniFact label="Cycle" value={cycleLisible(itp)} /></dl>{itp.sourceReference && <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">Source déclarée : {itp.sourceReference}</p>}</div>)}</div> : <Empty>Les itinéraires contextualisés de ce végétal restent à documenter.</Empty>}
+          {espece.itps.length ? <div className="mt-4 grid gap-4 md:grid-cols-2">{espece.itps.map((itp) => <div key={itp.id} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold text-slate-900">{nomAffichableItp(itp)}</h3><div className="flex flex-wrap items-center gap-2"><QualiteBadge statut={itp.statutValidation} /><span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">{itp.zoneClimat ? zoneLabel(itp.zoneClimat) : "Référence générale"}</span></div></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><MiniFact label="Conduite" value={valeurRenseignee(itp.typePlanche) ?? "Non précisée"} /><MiniFact label="Démarrage" value={valeurRenseignee(itp.modeDemarrage) ?? "Non précisé"} /><MiniFact label="Semis" value={week(itp.semaineSemis)} /><MiniFact label="Plantation" value={week(itp.semainePlantation)} /><MiniFact label="Récolte" value={week(itp.semaineRecolte)} /><MiniFact label="Cycle" value={cycleLisible(itp)} /></dl>{valeurRenseignee(itp.sourceReference) && <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">Source déclarée : {valeurRenseignee(itp.sourceReference)}</p>}</div>)}</div> : <Empty>Les itinéraires contextualisés de ce végétal restent à documenter.</Empty>}
           {espece._count.itps > espece.itps.length && (
             <p className="mt-4 text-sm text-slate-500">
               {espece.itps.length} itinéraires affichés sur {espece._count.itps} publiés pour ce

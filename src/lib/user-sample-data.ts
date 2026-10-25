@@ -13,6 +13,7 @@
 import prisma from "@/lib/prisma"
 import { PARCELLE_EXEMPLE } from "@/lib/localisation-exemple"
 import { productifParDefaut } from "@/lib/tree-care-calendar"
+import { dateJourSeul } from "@/lib/jour-civil"
 
 export interface SampleDataOptions {
   /**
@@ -35,9 +36,21 @@ export async function createSampleDataForUser(
   const avecVerger = options.avecVerger !== false
   const currentYear = new Date().getFullYear()
   const lastYear = currentYear - 1
+  // Dates au jour seul écrites à minuit UTC, comme une saisie de formulaire :
+  // `new Date(a, m, j)` est un minuit LOCAL, stocké la veille à 22:00 ou
+  // 23:00 UTC et lu au jour précédent par le Registre de culture (ticket QA
+  // cmvnulry1, 2026-10-25). `dansJours` : jour civil local d'aujourd'hui ± n,
+  // compté en jours civils (`setDate`) et non en tranches de 24 h, qui
+  // glissent d'un jour près de minuit au changement d'heure.
+  const jour = (annee: number, mois: number, j: number) => dateJourSeul(new Date(annee, mois, j))
+  const dansJours = (n: number) => {
+    const d = new Date()
+    d.setDate(d.getDate() + n)
+    return dateJourSeul(d)
+  }
   // 15 novembre de l'année précédente : les deux arbres d'exemple ont donc
   // moins d'un an, et un pommier n'entre en production que vers 3 ans.
-  const datePlantationArbres = new Date(lastYear, 10, 15)
+  const datePlantationArbres = jour(lastYear, 10, 15)
 
   if (avecVerger) {
     await creerArbresExemple(userId, datePlantationArbres)
@@ -99,9 +112,9 @@ export async function createSampleDataForUser(
       especeId: "Tomate",
       plancheId: planche1.id,
       annee: lastYear,
-      dateSemis: new Date(lastYear, 2, 15), // 15 mars
-      datePlantation: new Date(lastYear, 4, 10), // 10 mai
-      dateRecolte: new Date(lastYear, 7, 15), // 15 août
+      dateSemis: jour(lastYear, 2, 15), // 15 mars
+      datePlantation: jour(lastYear, 4, 10), // 10 mai
+      dateRecolte: jour(lastYear, 7, 15), // 15 août
       semisFait: true,
       plantationFaite: true,
       recolteFaite: true,
@@ -119,7 +132,7 @@ export async function createSampleDataForUser(
       userId,
       especeId: "Tomate",
       cultureId: culture1.id,
-      date: new Date(lastYear, 7, 15),
+      date: jour(lastYear, 7, 15),
       quantite: 25,
       notes: "Première grosse récolte",
     },
@@ -132,8 +145,8 @@ export async function createSampleDataForUser(
       especeId: "Carotte",
       plancheId: planche2.id,
       annee: lastYear,
-      dateSemis: new Date(lastYear, 3, 1), // 1 avril
-      dateRecolte: new Date(lastYear, 8, 1), // 1 septembre
+      dateSemis: jour(lastYear, 3, 1), // 1 avril
+      dateRecolte: jour(lastYear, 8, 1), // 1 septembre
       semisFait: true,
       plantationFaite: false, // Semis direct
       recolteFaite: true,
@@ -151,7 +164,7 @@ export async function createSampleDataForUser(
       userId,
       especeId: "Carotte",
       cultureId: culture2.id,
-      date: new Date(lastYear, 8, 1),
+      date: jour(lastYear, 8, 1),
       quantite: 12,
       notes: "Environ 12 kg de carottes",
     },
@@ -165,12 +178,12 @@ export async function createSampleDataForUser(
       especeId: "Tomate",
       plancheId: planche1.id,
       annee: currentYear,
-      dateSemis: new Date(currentYear, 2, 15), // 15 mars
-      datePlantation: new Date(currentYear, 4, 15), // 15 mai
+      dateSemis: jour(currentYear, 2, 15), // 15 mars
+      datePlantation: jour(currentYear, 4, 15), // 15 mai
       // Échéance à venir : sans date de récolte, le tout premier briefing
       // reprochait au compte neuf des « cultures sans échéance » qu'il n'avait
       // pas saisies (constat compte réel du 2026-08-17).
-      dateRecolte: new Date(Date.now() + 30 * 86400000),
+      dateRecolte: dansJours(30),
       semisFait: true,
       plantationFaite: true,
       recolteFaite: false,
@@ -189,9 +202,9 @@ export async function createSampleDataForUser(
       especeId: "Courgette",
       plancheId: planche1.id,
       annee: currentYear,
-      dateSemis: new Date(currentYear, 3, 15), // 15 avril
-      datePlantation: new Date(currentYear, 4, 20), // 20 mai
-      dateRecolte: new Date(Date.now() + 21 * 86400000), // idem tomate en cours
+      dateSemis: jour(currentYear, 3, 15), // 15 avril
+      datePlantation: jour(currentYear, 4, 20), // 20 mai
+      dateRecolte: dansJours(21), // idem tomate en cours
       semisFait: true,
       plantationFaite: true,
       recolteFaite: false,
@@ -209,7 +222,7 @@ export async function createSampleDataForUser(
       userId,
       especeId: "Tomate",
       cultureId: culture3.id,
-      date: new Date(Date.now() - 21 * 86400000), // ~3 semaines avant (audit #50 : plus de date future)
+      date: dansJours(-21), // ~3 semaines avant (audit #50 : plus de date future)
       quantite: 5.5,
       notes: "Premières tomates de la saison",
     },
@@ -220,7 +233,7 @@ export async function createSampleDataForUser(
       userId,
       especeId: "Tomate",
       cultureId: culture3.id,
-      date: new Date(Date.now() - 10 * 86400000), // ~10 jours avant (audit #50)
+      date: dansJours(-10), // ~10 jours avant (audit #50)
       quantite: 12.3,
       notes: "Belle récolte",
     },
@@ -231,7 +244,7 @@ export async function createSampleDataForUser(
       userId,
       especeId: "Courgette",
       cultureId: culture4.id,
-      date: new Date(Date.now() - 14 * 86400000), // ~2 semaines avant (audit #50)
+      date: dansJours(-14), // ~2 semaines avant (audit #50)
       quantite: 8.7,
       notes: "Courgettes bien développées",
     },

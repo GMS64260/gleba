@@ -9,6 +9,7 @@
  * envoyées, par la règle de la route (`nbPlantsCulture`).
  */
 import { nbPlantsCulture } from '@/lib/cultures/quantite-plants'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import type { AssistantState } from './AssistantDialog'
 
 export type DonneePlants = 'longueur' | 'rangs' | 'espacement'
@@ -41,12 +42,20 @@ export function libelleDonneesManquantes(manquants: DonneePlants[]): string {
   return `${manquants.slice(0, -1).join(', ')} et ${manquants[manquants.length - 1]}`
 }
 
-/** Date saisie (objet ou chaîne) en ISO ; rien sinon. */
-function versIso(d: unknown): string | null {
-  if (!d) return null
-  if (d instanceof Date) return d.toISOString()
-  if (typeof d === 'string') return new Date(d).toISOString()
-  return null
+/**
+ * Date de l'assistant envoyée au serveur : son JOUR « AAAA-MM-JJ », comme le
+ * formulaire « Nouvelle culture ». Rien si absente ou illisible.
+ *
+ * Ticket QA cmvnulry1 (2026-10-25) : l'envoi passait par `toISOString()`. Les
+ * dates de l'assistant sont des minuits LOCAUX (calculées depuis l'ITP par
+ * `semaineVersDate`, ou saisies) : le 12 avril à Paris partait
+ * « 2027-04-11T22:00:00.000Z », stocké la veille au soir et lu au 11 par le
+ * Registre de culture. Le jour local d'un minuit local est le jour voulu dans
+ * tout fuseau (`jourCivilStocke`). Sert aussi à la vérification d'occupation
+ * de l'étape Dates, pour que le verdict porte sur les jours enregistrés.
+ */
+export function jourEnvoye(d: unknown): string | null {
+  return d instanceof Date || typeof d === 'string' ? jourCivilStocke(d) : null
 }
 
 export function corpsCultureSemer(
@@ -61,9 +70,9 @@ export function corpsCultureSemer(
     itpId: itp?.id || culture.itpId || null,
     plancheId: options.plancheId || null,
     annee: culture.annee,
-    dateSemis: versIso(culture.dateSemis),
-    datePlantation: versIso(culture.datePlantation),
-    dateRecolte: versIso(culture.dateRecolte),
+    dateSemis: jourEnvoye(culture.dateSemis),
+    datePlantation: jourEnvoye(culture.datePlantation),
+    dateRecolte: jourEnvoye(culture.dateRecolte),
     nbRangs: plants.nbRangs,
     longueur: plants.longueur,
     espacement: plants.espacement,

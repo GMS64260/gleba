@@ -11,6 +11,27 @@ import * as path from 'path'
 
 const prisma = new PrismaClient()
 
+/**
+ * Sentinelles de l'enrichissement automatique : une donnée introuvable y est
+ * notée `NON_TROUVE` (parfois suivie d'une précision, « NON_TROUVE (Variété
+ * sélectionnée) »). Ce n'est pas une valeur : copiée telle quelle dans une
+ * colonne texte vide, elle s'affichait (« NON_TROUVE » sous LEVÉE sur la fiche
+ * publique du Pommier, ticket QA cmvnu7ad8, 2026-10-25). Une cellule sentinelle
+ * est lue vide, donc jamais écrite.
+ *
+ * Même règle que `valeurRenseignee` (`src/lib/referentiel-valeur.ts`), recopiée
+ * parce que l'image Docker n'embarque pas `src/` ; son test compare les listes.
+ */
+const SENTINELLES_IMPORT = ['NON_TROUVE', 'INCONNU', 'N/A']
+const NON_TROUVE_EN_TETE = /^NON_TROUV[EÉ](?![A-Za-zÀ-ÿ0-9_])/i
+
+function celluleCsv(valeur: string | undefined): string | null {
+  const v = (valeur ?? '').trim()
+  if (v === '') return null
+  if (NON_TROUVE_EN_TETE.test(v) || SENTINELLES_IMPORT.includes(v.toUpperCase())) return null
+  return v
+}
+
 function parseCSV(filePath: string): any[] {
   const content = fs.readFileSync(filePath, 'utf-8')
   const lines = content.split('\n').filter(l => l.trim())
@@ -24,7 +45,7 @@ function parseCSV(filePath: string): any[] {
     const values = parseCSVLine(lines[i])
     const row: any = {}
     headers.forEach((header, idx) => {
-      row[header] = values[idx] || null
+      row[header] = celluleCsv(values[idx])
     })
     data.push(row)
   }
@@ -93,7 +114,10 @@ function champsAComplete<T extends Record<string, unknown>>(
     // lignes (vérifié : 22 espèces et 8 ITP « mis à jour » à chaque passage).
     if (valeur === null || valeur === undefined) continue
     const actuel = existant[champ as keyof T]
-    if (actuel === null || actuel === undefined || actuel === '') retenus[champ] = valeur
+    // Une sentinelle déjà en base (« NON_TROUVE » écrit par un import antérieur
+    // au 2026-10-25, ticket cmvnu7ad8) n'est pas une valeur posée : une vraie
+    // valeur du CSV la remplace. `celluleCsv` lit aussi '' comme vide.
+    if (actuel === null || actuel === undefined || celluleCsv(String(actuel)) === null) retenus[champ] = valeur
   }
   return retenus
 }

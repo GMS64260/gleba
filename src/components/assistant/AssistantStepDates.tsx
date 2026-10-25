@@ -38,6 +38,7 @@ import { evaluerOccupationPlanche, type VerdictOccupation } from "@/lib/planche-
 import { nbPlantsCulture } from "@/lib/cultures/quantite-plants"
 import type { CultureData, PlancheData, EspeceData, ITPData } from "./AssistantDialog"
 import { formatQuantite } from "@/lib/recolte/quantites"
+import { jourEnvoye } from "./corps-culture-semer"
 
 type DateMode = "calculated" | "manual"
 
@@ -182,11 +183,14 @@ export function AssistantStepDates({
         setManualRecolte(value)
         break
     }
-    // QA 2026-07-30 — « T00:00:00 » est interprété en heure locale, puis
-    // sérialisé en UTC à l'envoi : une date saisie au 05/08 partait au
-    // 04/08T22:00Z en Europe/Paris, soit un jour de moins à l'affichage. On
-    // ancre donc la date à midi UTC, comme les dates calculées depuis un ITP.
-    const date = value ? new Date(`${value}T12:00:00.000Z`) : null
+    // Minuit LOCAL du jour saisi, comme les dates calculées depuis l'ITP
+    // (`semaineVersDate`). Le midi UTC du 2026-07-30 compensait un envoi par
+    // `toISOString()` (05/08 parti au 04/08T22:00Z à Paris) ; l'envoi passe
+    // désormais par le jour local (`jourEnvoye`, ticket cmvnulry1), juste dans
+    // tout fuseau pour un minuit local, alors qu'un midi UTC tombe le
+    // lendemain à UTC+12 (Wallis-et-Futuna).
+    const [annee, mois, jour] = value.split("-").map(Number)
+    const date = value ? new Date(annee, mois - 1, jour) : null
     onCultureChange({ [field]: date })
   }
 
@@ -265,10 +269,9 @@ export function AssistantStepDates({
         // est lue par son identifiant et vérifiée par le serveur, sur les
         // cultures qui chevauchent la période ; une planche en cours de
         // création n'a encore aucune culture.
-        // Même sérialisation que l'enregistrement (AssistantStepRecap) : le
-        // verdict compare des instants, pas des jours.
-        const enIso = (d: Date | string | null | undefined) =>
-          d ? new Date(d).toISOString() : ""
+        // Même sérialisation que l'enregistrement (`corpsCultureSemer`) : le
+        // verdict porte sur les jours qui seront enregistrés (cmvnulry1).
+        const enJour = (d: Date | string | null | undefined) => jourEnvoye(d) ?? ""
         let verdict: VerdictOccupation | null = null
         if (plancheId) {
           const params = new URLSearchParams({
@@ -276,9 +279,9 @@ export function AssistantStepDates({
             itpId: itp?.id ?? "",
             nbRangs: String(culture.nbRangs),
             longueur: culture.longueur ? String(culture.longueur) : "",
-            dateSemis: enIso(culture.dateSemis),
-            datePlantation: enIso(culture.datePlantation),
-            dateRecolte: enIso(culture.dateRecolte),
+            dateSemis: enJour(culture.dateSemis),
+            datePlantation: enJour(culture.datePlantation),
+            dateRecolte: enJour(culture.dateRecolte),
           })
           const res = await fetch(`/api/cultures/occupation?${params.toString()}`)
           if (cancelled) return

@@ -17,6 +17,17 @@ import {
   partKg,
   type QuantiteParUnite,
 } from '@/lib/recolte/quantites'
+import { jourCivilStocke } from '@/lib/jour-civil'
+
+/**
+ * Dates du registre rendues en JOUR CIVIL « AAAA-MM-JJ », que l'écran affiche
+ * sans conversion de fuseau. Ticket QA cmvnulry1 (2026-10-25) : l'ISO brut d'un
+ * semis stocké à minuit Paris (22:00 UTC la veille), formaté en UTC par
+ * l'écran, affichait « 11 avr. » pour un semis du 12 avril.
+ */
+function jour(date: Date): string {
+  return jourCivilStocke(date) ?? ''
+}
 
 /** Une ligne héritée sans unité compte des kilos (défaut du schéma). */
 function uniteRecolte(unite: string | null | undefined): UniteQuantite {
@@ -181,7 +192,7 @@ export async function GET(request: NextRequest) {
         // Semis
         if (culture.dateSemis) {
           chronologie.push({
-            date: culture.dateSemis.toISOString(),
+            date: jour(culture.dateSemis),
             type: 'semis',
             description: `Semis ${culture.semisFait ? '(réalisé)' : '(prévu)'}`,
             details: {
@@ -195,9 +206,9 @@ export async function GET(request: NextRequest) {
         // Plantation
         if (culture.datePlantation) {
           chronologie.push({
-            date: culture.datePlantation.toISOString(),
+            date: jour(culture.datePlantation),
             type: 'plantation',
-            description: `Plantation ${culture.plantationFaite ? '(realisee)' : '(prevue)'}`,
+            description: `Plantation ${culture.plantationFaite ? '(réalisée)' : '(prévue)'}`,
             details: {
               espacement: culture.espacement,
               nbRangs: culture.nbRangs,
@@ -208,7 +219,7 @@ export async function GET(request: NextRequest) {
         // Interventions
         autresInterventions.forEach((i) => {
           chronologie.push({
-            date: i.date.toISOString(),
+            date: jour(i.date),
             type: i.type,
             description: i.description || i.type,
             details: {
@@ -224,7 +235,7 @@ export async function GET(request: NextRequest) {
         // Fertilisations
         fertilisations.forEach((f) => {
           chronologie.push({
-            date: f.date.toISOString(),
+            date: jour(f.date),
             type: 'fertilisation',
             description: `${f.fertilisant.id} - ${f.quantite} kg`,
             details: {
@@ -240,7 +251,7 @@ export async function GET(request: NextRequest) {
         // Traitements phyto
         traitementsPhyto.forEach((t) => {
           chronologie.push({
-            date: t.date.toISOString(),
+            date: jour(t.date),
             type: 'traitement_phyto',
             description: `${t.produitPhyto || 'Traitement'} - ${t.cibleTraitement || ''}`,
             details: {
@@ -259,7 +270,7 @@ export async function GET(request: NextRequest) {
         // Recoltes
         culture.recoltes.forEach((r) => {
           chronologie.push({
-            date: r.date.toISOString(),
+            date: jour(r.date),
             type: 'recolte',
             description: `Récolte : ${formatQuantite(r.quantite, uniteRecolte(r.unite))}`,
             details: {
@@ -273,10 +284,9 @@ export async function GET(request: NextRequest) {
           })
         })
 
-        // Trier la chronologie par date
-        chronologie.sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        )
+        // Trier la chronologie par jour (« AAAA-MM-JJ » : l'ordre du texte est
+        // celui des dates ; tri stable, l'ordre d'insertion départage un même jour).
+        chronologie.sort((a, b) => a.date.localeCompare(b.date))
 
         // Total récolte VENTILÉ par unité : une culture de dahlias se lit en
         // tiges, et un registre réglementaire ne peut pas écrire « 360 kg » sur
@@ -302,10 +312,10 @@ export async function GET(request: NextRequest) {
             typePlanche: culture.planche?.type || null,
           },
           dates: {
-            semis: culture.dateSemis?.toISOString() || null,
-            plantation: culture.datePlantation?.toISOString() || null,
-            premiereRecolte: culture.recoltes.length > 0 ? culture.recoltes[0].date.toISOString() : null,
-            derniereRecolte: culture.recoltes.length > 0 ? culture.recoltes[culture.recoltes.length - 1].date.toISOString() : null,
+            semis: jourCivilStocke(culture.dateSemis),
+            plantation: jourCivilStocke(culture.datePlantation),
+            premiereRecolte: culture.recoltes.length > 0 ? jour(culture.recoltes[0].date) : null,
+            derniereRecolte: culture.recoltes.length > 0 ? jour(culture.recoltes[culture.recoltes.length - 1].date) : null,
           },
           avancement: {
             semisFait: culture.semisFait,
@@ -321,7 +331,7 @@ export async function GET(request: NextRequest) {
           },
           recoltes: culture.recoltes.map((r) => ({
             id: r.id,
-            date: r.date.toISOString(),
+            date: jour(r.date),
             quantite: r.quantite,
             unite: uniteRecolte(r.unite),
             statut: r.statut,
@@ -334,7 +344,7 @@ export async function GET(request: NextRequest) {
           totalRecolteTexte: formatQuantiteParUnite(totalRecolteParUnite),
           interventions: autresInterventions.map((i) => ({
             id: i.id,
-            date: i.date.toISOString(),
+            date: jour(i.date),
             type: i.type,
             description: i.description,
             dureeMinutes: i.dureeMinutes,
@@ -342,7 +352,7 @@ export async function GET(request: NextRequest) {
           })),
           fertilisations: fertilisations.map((f) => ({
             id: f.id,
-            date: f.date.toISOString(),
+            date: jour(f.date),
             fertilisant: f.fertilisant.id,
             type: f.fertilisant.type,
             quantite: f.quantite,
@@ -351,7 +361,7 @@ export async function GET(request: NextRequest) {
           })),
           traitementsPhyto: traitementsPhyto.map((t) => ({
             id: t.id,
-            date: t.date.toISOString(),
+            date: jour(t.date),
             produit: t.produitPhyto,
             numAMM: t.numAMM,
             dose: t.doseAppliquee,
