@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { flushSync } from "react-dom"
 import Link from "next/link"
 import Image from "next/image"
 import { getAvailableYears } from "@/components/year-selector"
@@ -318,6 +319,18 @@ function TraçabilitéContent() {
   // on confirme explicitement avant l'export (registre incomplet =
   // non opposable lors d'un contrôle HVE/AB/DDPP).
   const [pendingExport, setPendingExport] = React.useState<string | null>(null)
+  // Date d'édition de l'en-tête imprimé, lue APRÈS le montage : la page est
+  // prérendue au build, un `new Date()` au rendu y figeait le jour du build et
+  // l'hydratation échouait sur ce texte dès le lendemain (React #418,
+  // 2026-10-25). Relue juste avant l'impression, le jour ayant pu changer.
+  const [dateEdition, setDateEdition] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    const dater = () => new Date().toLocaleDateString("fr-FR")
+    setDateEdition(dater())
+    const avantImpression = () => flushSync(() => setDateEdition(dater()))
+    window.addEventListener("beforeprint", avantImpression)
+    return () => window.removeEventListener("beforeprint", avantImpression)
+  }, [])
 
   const handlePhytoExport = React.useCallback(
     (format: "pdf" | "csv") => {
@@ -385,7 +398,7 @@ function TraçabilitéContent() {
           {activeTab === "elevage" && `Registre d'Élevage - Année ${selectedYear}`}
         </h1>
         <p style={{ textAlign: "center", fontSize: "10pt", color: "#666", marginBottom: "12pt" }}>
-          Document généré le {new Date().toLocaleDateString("fr-FR")} - Gleba
+          {dateEdition ? `Document généré le ${dateEdition} - Gleba` : "\u00a0"}
         </p>
         <hr style={{ borderTop: "2px solid #333", marginBottom: "12pt" }} />
       </div>

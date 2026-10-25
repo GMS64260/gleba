@@ -21,7 +21,7 @@ import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordin
 
 import { UserMenu } from "@/components/auth/UserMenu"
 import { messageErreurReponse } from "@/lib/api-erreur"
-import { formatNombre, jourLocalISO } from "@/lib/accueil/classement"
+import { formatNombre } from "@/lib/accueil/classement"
 import {
   CATALOGUE_TUILES,
   IDS_REPERES,
@@ -51,6 +51,7 @@ import type { AccueilAujourdhui, ElementAujourdhui } from "@/lib/accueil/types"
 import { symboleDevise } from "@/lib/format-utils"
 import { toast } from "@/hooks/use-toast"
 import { useAccueilDisposition } from "@/hooks/use-accueil-disposition"
+import { useJourNavigateur } from "@/hooks/use-jour-navigateur"
 import { cn } from "@/lib/utils"
 
 import { LuneDuJour } from "@/components/lunaire/LuneDuJour"
@@ -206,9 +207,14 @@ export function Accueil() {
     })
   }, [])
 
+  // Jour du navigateur en attendant celui de la composition : `null` au
+  // prérendu du build et à l'hydratation, jamais un `new Date()` au rendu
+  // (React #418, signalement du 2026-10-25 ; voir `useJourNavigateur`).
+  const jourNavigateur = useJourNavigateur()
+
   const donnees = accueil.donnees
-  const date = donnees?.date ?? jourLocalISO(new Date())
-  const annee = donnees?.annee ?? new Date().getFullYear()
+  const date = donnees?.date ?? jourNavigateur
+  const annee = donnees?.annee ?? (date ? Number(date.slice(0, 4)) : null)
   const modules = donnees?.modules ?? []
 
   const fenetre: PhraseFenetre | null = React.useMemo(() => {
@@ -233,7 +239,7 @@ export function Accueil() {
   const rc = donnees?.reperes.comptabilite ?? null
   const rs = donnees?.reperes.semaine ? { ...donnees.reperes.semaine, aFaire: Math.max(0, donnees.reperes.semaine.aFaire - tachesSoldees) } : null
   const nonDemarrees = rm ? Math.max(0, rm.culturesPlanifiees - rm.culturesActives) : 0
-  const ecartRecoltes = rm?.recoltes
+  const ecartRecoltes = rm?.recoltes && annee !== null
     ? rm.recoltes.valeurN1 === 0
       ? <span>{rm.recoltes.valeur > 0 ? "première année de récoltes" : "aucune récolte pour l'instant"}</span>
       : rm.recoltes.ecartN1 > 0
@@ -322,7 +328,7 @@ export function Accueil() {
         )
       case "repere:recoltes":
         return (
-          <Repere libelle={`Récoltes ${annee}`} valeur={rm?.recoltes ? <NombreAnime valeur={rm.recoltes.valeur} format={(n) => formatNombre(n, 1)} /> : null} unite={rm?.recoltes?.unite} detail={ecartRecoltes} vide={chargementRepere} href="/maraichage/recoltes" />
+          <Repere libelle={annee !== null ? `Récoltes ${annee}` : "Récoltes"} valeur={rm?.recoltes ? <NombreAnime valeur={rm.recoltes.valeur} format={(n) => formatNombre(n, 1)} /> : null} unite={rm?.recoltes?.unite} detail={ecartRecoltes} vide={chargementRepere} href="/maraichage/recoltes" />
         )
       case "repere:tresorerie":
         return (

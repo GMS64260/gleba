@@ -13,8 +13,13 @@ import { CLASSES_BOUTON, CLASSES_BOUTON_PRINCIPAL } from "./boutons"
  * avec la livraison L3.
  */
 export interface AccueilEnTeteProps {
-  /** Jour civil local AAAA-MM-JJ. */
-  date: string
+  /**
+   * Jour civil local AAAA-MM-JJ ; `null` tant qu'il n'est pas connu (prérendu
+   * du build et hydratation) : le titre garde alors sa hauteur et porte un
+   * libellé masqué stable, pour que l'hydratation retrouve exactement le HTML
+   * du serveur et que le titre ne soit jamais vide.
+   */
+  date: string | null
   fenetre: PhraseFenetre | null
   /** Météo en cours de lecture : la ligne reste réservée, sans texte inventé. */
   chargementFenetre?: boolean
@@ -37,7 +42,15 @@ export function AccueilEnTete({ date, fenetre, chargementFenetre = false, temper
     <div className={cn("flex flex-wrap items-end justify-between gap-x-6 gap-y-3", className)}>
       <div className="min-w-0">
         <h1 className="font-display text-3xl font-medium leading-tight tracking-tight text-encre sm:text-[34px]">
-          {libelleDate(date)}
+          {date ? (
+            libelleDate(date)
+          ) : (
+            <>
+              {/* L'espace garde la hauteur de la ligne, le texte masqu\u00e9 donne un nom au titre. */}
+              <span aria-hidden>{"\u00a0"}</span>
+              <span className="sr-only">Aujourd&rsquo;hui</span>
+            </>
+          )}
         </h1>
         <p className="mt-1 text-sm text-ardoise" aria-live="polite">
           {typeof temperature === "number" && (
