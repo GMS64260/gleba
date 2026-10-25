@@ -5,11 +5,55 @@
 
 import { differenceInDays } from 'date-fns'
 import { calculerDateDepuisSemaine, dateSemaineChrono } from '../assistant-helpers'
+import { datesDepuisItp } from '../cultures/dates-itp'
+import { jourCivilStocke } from '../jour-civil'
+import {
+  alerteSaisonCulture,
+  etapeImplantation,
+  fenetreImplantation,
+  type AlerteSaisonCulture,
+  type ItpSaison,
+} from '../cultures/saison-culture'
 
 export interface ValidationResult {
   valid: boolean
   errors: string[]
   warnings: string[]
+  /**
+   * Date d'implantation hors de la fenêtre de l'ITP (`alerteSaisonCulture`),
+   * déjà comprise dans `warnings` : les écrans qui l'affichent sous le champ
+   * la lisent ici.
+   */
+  alerteSaison: AlerteSaisonCulture | null
+}
+
+/**
+ * Année de la date d'implantation incohérente avec la saison de la culture :
+ * plus de six mois d'écart avec la date que l'ITP propose pour `annee` ET une
+ * autre année civile ; sans ITP qui situe l'implantation, deux ans d'écart ou
+ * plus avec `annee` (une plantation l'année suivante reste plausible).
+ */
+function incoherenceAnneeImplantation(params: {
+  itp?: (ItpSaison & { semaineRecolte?: number | null }) | null
+  annee: number
+  dateSemis: Date | null
+  datePlantation: Date | null
+}): string | null {
+  const { itp, annee, dateSemis, datePlantation } = params
+  const etape = itp ? etapeImplantation(itp) : datePlantation ? 'plantation' : 'semis'
+  const date = etape === 'plantation' ? datePlantation : dateSemis ?? datePlantation
+  const jour = jourCivilStocke(date)
+  if (!date || !jour) return null
+  const anneeDate = Number(jour.slice(0, 4))
+  const libelle = date === datePlantation ? 'Plantation prévue' : 'Semis prévu'
+  const message = `${libelle} en ${anneeDate} pour une culture de la saison ${annee} : vérifiez l'année.`
+  const cycle = itp ? datesDepuisItp(annee, itp) : null
+  const theorique = cycle ? (etape === 'plantation' ? cycle.datePlantation : cycle.dateSemis) : null
+  if (theorique) {
+    const ecart = Math.abs(differenceInDays(date, theorique))
+    return ecart > 182 && anneeDate !== theorique.getFullYear() ? message : null
+  }
+  return Math.abs(anneeDate - annee) >= 2 ? message : null
 }
 
 /**
@@ -20,11 +64,11 @@ export function validateCultureDates(data: {
   dateSemis?: Date | string | null
   datePlantation?: Date | string | null
   dateRecolte?: Date | string | null
-  itp?: {
+  itp?: (ItpSaison & {
     semaineSemis?: number | null
     semainePlantation?: number | null
     semaineRecolte?: number | null
-  } | null
+  }) | null
   annee: number
 }): ValidationResult {
   const errors: string[] = []
@@ -93,10 +137,25 @@ export function validateCultureDates(data: {
   }
 
   // 2. Vérification dans limites ITP (si ITP fourni)
+  //
+  // 2026-10-25 — quand l'ITP documente sa fenêtre d'implantation, l'étape qui
+  // implante la culture est jugée sur cette fenêtre (`alerteSaisonCulture`, à
+  // 3 semaines près, passage d'année compris) et non plus sur ±28 jours autour
+  // d'une seule semaine : un seul message, celui que les écrans affichent sous
+  // le champ.
+  const alerteSaison = alerteSaisonCulture({ itp: data.itp, dateSemis, datePlantation })
+  if (alerteSaison) warnings.push(alerteSaison.message)
+  // L'alerte ne regarde que la SEMAINE : une plantation en S16 2028 pour une
+  // culture 2026 y échappe. L'année se contrôle à part (revue du 2026-10-25),
+  // contre la date que l'ITP propose pour la saison (`datesDepuisItp`, cycles à
+  // cheval sur deux années compris), à défaut contre `annee` à un an près.
+  const avertissementAnnee = incoherenceAnneeImplantation({ itp: data.itp, annee: data.annee, dateSemis, datePlantation })
+  if (avertissementAnnee) warnings.push(avertissementAnnee)
+  const etapeJugeeSurFenetre = data.itp && fenetreImplantation(data.itp) ? etapeImplantation(data.itp) : null
   if (data.itp) {
     try {
       // Semis
-      if (dateSemis && data.itp.semaineSemis) {
+      if (dateSemis && data.itp.semaineSemis && etapeJugeeSurFenetre !== 'semis') {
         const dateTheorique = calculerDateDepuisSemaine(data.annee, data.itp.semaineSemis)
         const diff = Math.abs(differenceInDays(dateSemis, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
@@ -107,7 +166,7 @@ export function validateCultureDates(data: {
       }
 
       // Plantation
-      if (datePlantation && data.itp.semainePlantation) {
+      if (datePlantation && data.itp.semainePlantation && etapeJugeeSurFenetre !== 'plantation') {
         const dateTheorique = dateSemaineChrono(data.annee, data.itp.semainePlantation, data.itp.semaineSemis)
         const diff = Math.abs(differenceInDays(datePlantation, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
@@ -142,6 +201,7 @@ export function validateCultureDates(data: {
   return {
     valid: errors.length === 0,
     errors,
-    warnings
+    warnings,
+    alerteSaison,
   }
 }

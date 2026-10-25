@@ -85,6 +85,10 @@ export interface ITPData {
   notes?: string | null
   decalageMax?: number | null
   nbGrainesPlant?: number | null
+  /** Fenêtre et opération d'implantation (alerte de saison, 2026-10-25). */
+  semaineImplantationDebut?: number | null
+  semaineImplantationFin?: number | null
+  implantation?: string | null
 }
 
 export interface VarieteData {

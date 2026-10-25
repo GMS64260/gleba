@@ -63,6 +63,7 @@ import { badgeOrigine } from "@/lib/referentiel-communaute"
 import { datesDepuisItp, recolteApresDebut, semaineSemisEffective } from "@/lib/cultures/dates-itp"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cocherApresSaisieManuelle, etapeDejaRealisable } from "@/lib/cultures/deja-fait"
+import { alerteSaisonCulture } from "@/lib/cultures/saison-culture"
 
 // Bug #1 — payload de violation renvoyé par POST /api/cultures (status 409).
 type RotationViolation = {
@@ -97,6 +98,8 @@ interface ITPData {
   espacementRangs: number | null
   /** Conduite imposée (« Sous abri », « Plein champ ») ou null (ticket cmv4z6yhg). */
   typePlanche: string | null
+  /** Opération d'implantation de la source (« Plantation », « Semis »), pour l'alerte de saison. */
+  implantation?: string | null
 }
 
 const CHAMPS_DATE = ["dateSemis", "datePlantation", "dateRecolte"] as const
@@ -172,6 +175,15 @@ function cycleItpPropose(itp: ITPData, year: number, today: Date) {
     }
   }
   return { dateSemis, datePlantation, dateRecolte, info }
+}
+
+/** Alerte de saison sous un champ de date : informative, jamais bloquante. */
+function EncartSaison({ message }: { message: string }) {
+  return (
+    <p role="status" className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1">
+      {message} Vous pouvez enregistrer quand même.
+    </p>
+  )
 }
 
 export default function NewCulturePage() {
@@ -567,6 +579,18 @@ export default function NewCulturePage() {
   // bouge, tant qu'elle lui reste postérieure (QA cmv2qzhkf).
   const watchedDateSemis = form.watch("dateSemis")
   const watchedDatePlantation = form.watch("datePlantation")
+  // 2026-10-25 — une aubergine (fenêtre S16–S18) partait plantée un 25 octobre :
+  // la date d'implantation hors de la fenêtre de l'ITP est dite sous le champ,
+  // par la règle de la route (`alerteSaisonCulture`), sans bloquer.
+  const alerteSaison = React.useMemo(
+    () =>
+      alerteSaisonCulture({
+        itp: itps.find((i) => i.id === selectedItp) ?? null,
+        dateSemis: watchedDateSemis,
+        datePlantation: watchedDatePlantation,
+      }),
+    [itps, selectedItp, watchedDateSemis, watchedDatePlantation]
+  )
   React.useEffect(() => {
     // Valeurs COURANTES du formulaire, pas celles du rendu : quand un autre
     // effet du même passage vient de poser la plantation (complétion depuis
@@ -1045,6 +1069,7 @@ export default function NewCulturePage() {
                             )}
                           />
                         )}
+                        {alerteSaison?.champ === "dateSemis" && <EncartSaison message={alerteSaison.message} />}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1086,6 +1111,7 @@ export default function NewCulturePage() {
                             )}
                           />
                         )}
+                        {alerteSaison?.champ === "datePlantation" && <EncartSaison message={alerteSaison.message} />}
                         <FormMessage />
                       </FormItem>
                     )}

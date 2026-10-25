@@ -30,6 +30,7 @@ import {
   jourCivilLocal,
   type ChampEtape,
 } from './execution'
+import { finRecolteApresModification } from './fenetre-recolte'
 
 export type EtapeReportable = 'semis' | 'plantation' | 'recolte'
 
@@ -127,13 +128,14 @@ export function ecrituresReport(
 
   // La fenêtre de récolte SUIT son début. Reporter une récolte du 12/08 au 20/08
   // sans déplacer sa fin raccourcirait la période d'autant, et une aubergine
-  // reportée de trois semaines finirait avant d'avoir commencé.
-  if (
-    deltaJours !== 0 &&
-    culture.finRecolte &&
-    (champDate === 'dateRecolte' || ecritures.dateRecolte !== undefined)
-  ) {
-    ecritures.finRecolte = plusJoursCivils(culture.finRecolte, deltaJours)
+  // reportée de trois semaines finirait avant d'avoir commencé. Règle partagée
+  // avec la modification de la culture (`finRecolteApresModification`).
+  if (ecritures.dateRecolte !== undefined) {
+    const fin = finRecolteApresModification({
+      avant: culture,
+      dateRecolte: ecritures.dateRecolte,
+    })
+    if (fin !== undefined) ecritures.finRecolte = fin
   }
 
   // Chronologie sur les dates résultantes — les étapes FAITES, jamais
