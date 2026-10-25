@@ -53,6 +53,9 @@ const EXCLUDED = new Set<string>([
   "Avis",
   "Evolution",
   "EvolutionVote",
+  // Salon de la communauté : conversation entre membres de CETTE instance, qui
+  // n'a pas de sens sur une instance auto-hébergée (ni ses auteurs).
+  "MessageSalon",
   "ChatMessage",
   "Conversation",
   "GenericCache",
