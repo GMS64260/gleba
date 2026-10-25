@@ -20,6 +20,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
 import { calendrierInjections } from '@/lib/elevage/injections'
 import { lireInjections, synchroniserInjections, fenetresAttenteDepuisInjections } from '@/lib/elevage/injections-protocole'
+import { dateSoinRetenue } from '@/lib/elevage/date-soin'
 import { randomUUID } from 'node:crypto'
 // Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
@@ -496,7 +497,8 @@ export async function PATCH(request: NextRequest) {
   if (error) return error
 
   try {
-    const parsed = soinPatchSchema.safeParse(await request.json())
+    const corps = await request.json()
+    const parsed = soinPatchSchema.safeParse(corps)
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
@@ -517,7 +519,14 @@ export async function PATCH(request: NextRequest) {
     // l'ancienne date dans datePrevue, et `date` reçoit la date d'effet.
     if (fait !== undefined) updateData.fait = fait
     if (date !== undefined) {
-      const newDate = new Date(date)
+      // Ticket cmvnp6s3z : un jour seul (« AAAA-MM-JJ », décidé sur la chaîne
+      // brute, avant la coercition zod en minuit UTC) égal au jour du soin ne
+      // change pas sa date : la 1re injection datée garde son heure réelle.
+      const dateBrute = typeof corps?.date === 'string' ? corps.date : date
+      const newDate = dateSoinRetenue(existing.date, dateBrute)
+      if (Number.isNaN(newDate.getTime())) {
+        return NextResponse.json({ error: 'Date du soin invalide.' }, { status: 400 })
+      }
       if (fait === true && existing.datePrevue == null) {
         updateData.datePrevue = existing.date
       }
@@ -682,10 +691,10 @@ export async function PATCH(request: NextRequest) {
         const premiereRealisee = injectionsExistantes.some((i) => i.numero === 1 && i.statut === 'realisee')
         // Tickets vigie2cc83585 / cmupz9djj (2026-10-01) : le calendrier est
         // recalculé pour TOUTES les injections, réalisées comprises, et un
-        // changement de protocole (date de départ, nombre, intervalle) recale
+        // changement de calendrier (date de départ, nombre, intervalle) recale
         // aussi leurs dates réelles. Cf. src/lib/elevage/injections-protocole.ts.
         await synchroniserInjections(tx, session.user.id, id, { debut, nombre, intervalleHeures: intervalle }, {
-          protocoleChange: dateChangee || injectionsChangees,
+          calendrierChange: dateChangee || injectionsChangees,
           marquerPremiereFaite: fait === true && !premiereRealisee,
           rouvrirPremiere: fait === false && premiereRealisee,
           dateRealiseePremiere: (updateData.date as Date | undefined) ?? new Date(),

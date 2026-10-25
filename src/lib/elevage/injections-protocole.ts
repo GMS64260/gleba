@@ -22,19 +22,24 @@
  *  - Le calendrier (`date_prevue`) est une DÉRIVATION PURE de (date du soin,
  *    nombre, intervalle) : il est recalculé pour TOUTES les injections, réalisées
  *    comprises.
- *  - Quand le protocole change (date de départ, nombre ou intervalle), les
+ *  - Quand le calendrier change (date de départ, nombre ou intervalle), les
  *    injections réalisées prennent la nouvelle date prévue comme date réelle :
- *    l'éleveur déclare le déroulement du traitement. Une date réelle qui
- *    s'écarte du calendrier se corrige ensuite injection par injection
- *    (`daterInjection`). Quand le protocole ne change pas (passage fait /
- *    délais d'attente), les dates réelles saisies sont conservées.
+ *    l'éleveur déclare le déroulement du traitement, et les lignes restent
+ *    cohérentes avec l'en-tête « ×N / H h » sur lequel s'ancrent les délais
+ *    d'attente. Une date réelle qui s'écarte du calendrier se corrige ensuite
+ *    injection par injection (`daterInjection`). Quand le calendrier ne change
+ *    pas (passage fait / délais d'attente), les dates réelles sont conservées.
  *  - Une injection réalisée peut être redatée individuellement ; redater la
  *    première déplace la date du soin (elle EST la date d'administration).
+ *  - Un jour saisi sans heure, égal au jour du soin, ne change pas la date du
+ *    soin (`dateSoinRetenue`, `date-soin.ts`) : la première injection datée
+ *    garde son heure réelle (ticket cmvnp6s3z, 2026-10-25).
  */
 
 import { Prisma } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import { calendrierInjections, derniereInjectionActive, ajouterJours, type InjectionEtat } from './injections'
+import { dateSoinRetenue } from './date-soin'
 
 type Db = Prisma.TransactionClient
 
@@ -58,8 +63,11 @@ export interface ParametresCalendrier {
 }
 
 export interface OptionsSynchronisation {
-  /** Le protocole (départ, nombre, intervalle) a changé : les dates réelles suivent le calendrier. */
-  protocoleChange: boolean
+  /**
+   * Le calendrier (date de départ, nombre ou intervalle) a changé : les
+   * injections réalisées prennent leur nouvelle date prévue comme date réelle.
+   */
+  calendrierChange: boolean
   /** `fait` passe explicitement à true : la première injection devient réalisée. */
   marquerPremiereFaite: boolean
   /** `fait` passe explicitement à false : la première injection est rouverte. */
@@ -91,7 +99,7 @@ export async function synchroniserInjections(
     // (api_errors du 2026-09-19 : un objet jsonb ne se caste pas en booléen).
     const marquerPremiereFaite = injection.numero === 1 && options.marquerPremiereFaite === true
     const rouvrirPremiere = injection.numero === 1 && options.rouvrirPremiere === true
-    const protocoleChange = options.protocoleChange === true
+    const calendrierChange = options.calendrierChange === true
     const statut = marquerPremiereFaite ? 'realisee' : rouvrirPremiere ? 'a_faire' : injection.statut
     const dateRealisee = marquerPremiereFaite ? options.dateRealiseePremiere : null
     await tx.$executeRaw`
@@ -110,7 +118,7 @@ export async function synchroniserInjections(
         date_realisee = CASE
           WHEN ${marquerPremiereFaite}::boolean THEN ${dateRealisee}
           WHEN ${rouvrirPremiere}::boolean THEN NULL
-          WHEN ${protocoleChange}::boolean AND injections_soins.statut = 'realisee' THEN EXCLUDED.date_prevue
+          WHEN ${calendrierChange}::boolean AND injections_soins.statut = 'realisee' THEN EXCLUDED.date_prevue
           ELSE injections_soins.date_realisee
         END,
         updated_at = NOW()
@@ -268,7 +276,8 @@ export async function daterInjection(
 }
 
 export interface ProtocoleSoin {
-  date?: Date
+  /** Jour seul « AAAA-MM-JJ » (chaîne brute) ou date horodatée : cf. `dateSoinRetenue`. */
+  date?: Date | string
   nbInjections?: number
   intervalleInjectionsHeures?: number | null
   produit?: string | null
@@ -284,7 +293,8 @@ export interface ProtocoleSoin {
  * Recale le protocole d'un soin (date de départ, nombre d'injections,
  * intervalle) et ses libellés, pour l'assistant. Même règle que le PATCH de
  * l'écran : le calendrier est recalculé pour toutes les injections et, quand
- * le protocole change, les injections réalisées prennent leur nouvelle date.
+ * le calendrier change, les injections réalisées prennent leur nouvelle date.
+ * Un jour sans heure égal au jour du soin ne change pas la date (cmvnp6s3z).
  * Ne touche ni au statut `fait`, ni à la pharmacie, ni à la cible.
  */
 export async function mettreAJourProtocoleSoin(
@@ -299,7 +309,7 @@ export async function mettreAJourProtocoleSoin(
   const intervalle = protocole.intervalleInjectionsHeures !== undefined
     ? protocole.intervalleInjectionsHeures
     : existing.intervalleInjectionsHeures
-  const debut = protocole.date ?? existing.date
+  const debut = protocole.date !== undefined ? dateSoinRetenue(existing.date, protocole.date) : existing.date
   if (Number.isNaN(debut.getTime())) return { ok: false, status: 400, error: 'Date invalide.' }
   if (nombre < 1 || nombre > 30) return { ok: false, status: 400, error: 'Le nombre d’injections va de 1 à 30.' }
   if (nombre > 1 && (!intervalle || intervalle < 1 || intervalle > 2160)) {
@@ -307,7 +317,7 @@ export async function mettreAJourProtocoleSoin(
   }
 
   const dateChangee = debut.getTime() !== existing.date.getTime()
-  const protocoleChange = dateChangee
+  const calendrierChange = dateChangee
     || nombre !== (existing.nbInjections ?? 1)
     || (nombre > 1 && intervalle !== existing.intervalleInjectionsHeures)
 
@@ -333,7 +343,7 @@ export async function mettreAJourProtocoleSoin(
     const avant = await lireInjections(tx, userId, soinId)
     const premiereRealisee = avant.some((i) => i.numero === 1 && i.statut === 'realisee')
     await synchroniserInjections(tx, userId, soinId, { debut, nombre, intervalleHeures: nombre > 1 ? intervalle : null }, {
-      protocoleChange,
+      calendrierChange,
       // Un soin déjà fait sans ligne d'injection (anciennes données) : la
       // première injection est matérialisée comme réalisée à la date du soin.
       marquerPremiereFaite: existing.fait && !premiereRealisee,

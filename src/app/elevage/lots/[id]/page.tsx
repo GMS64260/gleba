@@ -35,7 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { UserMenu } from "@/components/auth/UserMenu"
 import { ModulesNav } from "@/components/auth/ModulesNav"
-import { especeBaseLabel } from "@/lib/elevage/espece-base"
+import { libelleEspeceAnimale } from "@/lib/elevage/espece-base"
 import { ComposerLotDialog } from "@/components/elevage/ComposerLotDialog"
 
 interface AnimalLite {
@@ -103,6 +103,8 @@ export default function LotDetailPage() {
     () => (lot ? { id: lot.id, nom: lot.nom, especeAnimaleId: lot.especeAnimale.id } : null),
     [lot],
   )
+  // Espèce de base, ou nom complet d'un profil perso hors catalogue (ticket cmvnookz7).
+  const libelleEspece = lot ? libelleEspeceAnimale(lot.especeAnimale) : ""
 
   React.useEffect(() => {
     let cancelled = false
@@ -183,7 +185,11 @@ export default function LotDetailPage() {
                         {lot.especeAnimale.couleur && (
                           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: lot.especeAnimale.couleur }} />
                         )}
-                        {especeBaseLabel(lot.especeAnimale.id)} · <span className="text-slate-500">{lot.especeAnimale.nom}</span>
+                        {libelleEspece}
+                        {/* Le nom du profil n'est répété que s'il diffère du libellé. */}
+                        {libelleEspece !== lot.especeAnimale.nom && (
+                          <> · <span className="text-slate-500">{lot.especeAnimale.nom}</span></>
+                        )}
                       </span>
                       {lot.dateArrivee && (
                         <span className="flex items-center gap-1">
