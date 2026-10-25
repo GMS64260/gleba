@@ -23,6 +23,14 @@ async function capturer(page, motif) {
 
 async function choisir(page, selecteur, index) {
   const champ = page.locator(`${DLG} ${selecteur}`);
+  // 2026-10-25 : la liste des arbres arrive par fetch après l'ouverture du dialogue ;
+  // juste après une bascule (démarrage à froid), options[index] n'existait pas encore
+  // et la sonde lisait null (fausse régression). Attendre que l'option soit servie.
+  await page.waitForFunction(
+    ({ sel, i }) => { const s = document.querySelector(sel); return !!s && s.options.length > i; },
+    { sel: `${DLG} ${selecteur}`, i: index },
+    { timeout: 30000 },
+  ).catch(() => {});
   const valeur = await champ.evaluate((s, i) => s.options[i]?.value ?? null, index);
   await champ.selectOption(valeur);
   return valeur;
