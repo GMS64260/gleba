@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { calculerStocksNet } from '@/lib/stocks-helpers'
+import { calculerStocksNet, chargerComparaisonsStockLots } from '@/lib/stocks-helpers'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { enregistrerStockVariete, stockVarieteSchema } from '@/lib/stocks/stock-variete'
 import { enregistrerInventaireEspece, inventaireEspeceSchema } from '@/lib/stocks/inventaire-espece'
@@ -294,6 +294,12 @@ export async function GET(request: NextRequest) {
       // inventaire brut (qui n'est plus incrémenté à chaque récolte). Sans ça
       // l'écran afficherait vide pour les espèces sans comptage manuel.
       const nets = await calculerStocksNet(userId)
+      // Ticket cmvnpe6ip — l'écran Récoltes > Stock compare ses lots à ce
+      // stock, espèce par espèce, sans supposer la cause de l'écart.
+      const comparaisons = await chargerComparaisonsStockLots(
+        userId,
+        Object.fromEntries(especes.filter(e => nets[e.id]).map(e => [e.id, nets[e.id]])),
+      )
       return NextResponse.json({
         data: especes.map(e => ({
           id: e.id,
@@ -305,6 +311,7 @@ export async function GET(request: NextRequest) {
           autresUnites: nets[e.id]?.autresUnites ?? {},
           dateInventaire: e.userStocks[0]?.dateInventaire ?? null,
           couleur: e.couleur,
+          comparaisonLots: comparaisons[e.id] ?? null,
         })),
       })
     }

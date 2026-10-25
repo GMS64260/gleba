@@ -39,6 +39,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { cultureUpdateFormSchema, type UpdateCultureInput } from "@/lib/validations"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
+import { AIDE_QUANTITE_PLANTS, libelleQuantitePlants, useQuantiteManuelle } from "@/hooks/use-quantite-manuelle"
 import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { AvisItpPlanche } from "@/components/cultures/AvisItpPlanche"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
@@ -85,6 +86,13 @@ export default function EditCulturePage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   // Empêcher l'auto-remplissage au chargement initial
   const initialLoadDone = React.useRef(false)
+  // Quantité saisie à la main : plus de recalcul (ticket cmvnpkkhp, revue).
+  const {
+    manuelle: quantiteManuelle,
+    estManuelle: quantiteEstManuelle,
+    saisir: saisirQuantite,
+    definir: definirQuantiteManuelle,
+  } = useQuantiteManuelle()
   const initialItpId = React.useRef<string | null>(null)
   // Dernier début de cycle appliqué (chargement, changement d'ITP ou saisie).
   // Le recalage de la récolte ne suit que les CHANGEMENTS de début : éditer la
@@ -174,6 +182,15 @@ export default function EditCulturePage() {
         prevItpNbRangs.current = cultureData.nbRangs || null
         prevItpEspacement.current = cultureData.espacement || null
 
+        // Une quantité stockée qui ne vaut pas le calcul a été saisie à la main :
+        // même critère que le serveur (`quantiteCultureApresModification`).
+        const quantiteCalculee = estimerNombrePlantsStrict(
+          cultureData.longueur,
+          cultureData.nbRangs,
+          cultureData.espacement
+        )
+        definirQuantiteManuelle(cultureData.quantite > 0 && cultureData.quantite !== quantiteCalculee)
+
         // Remplir le formulaire
         form.reset({
           especeId: cultureData.especeId || "",
@@ -189,7 +206,11 @@ export default function EditCulturePage() {
           plantationFaite: cultureData.plantationFaite || false,
           recolteFaite: cultureData.recolteFaite || false,
           terminee: cultureData.terminee || null,
-          quantite: cultureData.quantite || null,
+          // Ticket cmvnpkkhp — une culture née sans quantité (assistant
+          // « Semer » avant le 2026-10-25) montrait un champ « auto » vide
+          // sous une formule qui disait 159 : on affiche la quantité que la
+          // route déduira à l'enregistrement, par la même règle.
+          quantite: cultureData.quantite || quantiteCalculee || null,
           nbRangs: cultureData.nbRangs || null,
           longueur: cultureData.longueur || null,
           espacement: cultureData.espacement || null,
@@ -207,7 +228,7 @@ export default function EditCulturePage() {
         })
         router.push("/maraichage/cultures")
       })
-  }, [cultureId, form, router, toast])
+  }, [cultureId, form, router, toast, definirQuantiteManuelle])
 
   // Charger les varietes et ITPs quand l'espece change
   React.useEffect(() => {
@@ -326,15 +347,16 @@ export default function EditCulturePage() {
   // Auto-calculer la quantité de plants (BUG-10 : null si inputs incomplets,
   // pour ne pas garder une ancienne valeur fantôme — la liste reflète alors
   // l'absence de calcul plutôt qu'une valeur stale).
+  // Une quantité saisie à la main n'est plus recalculée.
   React.useEffect(() => {
-    if (!initialLoadDone.current) return
+    if (!initialLoadDone.current || quantiteEstManuelle()) return
     const quantite = estimerNombrePlantsStrict(
       watchedLongueur ?? null,
       watchedNbRangs ?? null,
       watchedEspacement ?? null
     )
     form.setValue("quantite", quantite)
-  }, [watchedNbRangs, watchedLongueur, watchedEspacement, form])
+  }, [watchedNbRangs, watchedLongueur, watchedEspacement, form, quantiteEstManuelle])
 
   const onSubmit = async (data: UpdateCultureInput) => {
     setIsSubmitting(true)
@@ -904,11 +926,8 @@ export default function EditCulturePage() {
                     name="quantite"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel
-                          title="Formule : nbRangs × ⌊longueur (cm) ÷ espacement⌋. Recalculé dès que vous modifiez longueur, nb rangs ou espacement. Vous pouvez aussi écrire la valeur manuellement."
-                          className="cursor-help"
-                        >
-                          Quantité / plants (auto) ⓘ
+                        <FormLabel title={AIDE_QUANTITE_PLANTS} className="cursor-help">
+                          {libelleQuantitePlants(quantiteManuelle)} ⓘ
                         </FormLabel>
                         <FormControl>
                           <Input
@@ -916,11 +935,11 @@ export default function EditCulturePage() {
                             step="0.1"
                             {...field}
                             value={field.value ?? ""}
-                            onChange={(e) =>
-                              field.onChange(
-                                e.target.value ? parseFloat(e.target.value) : null
-                              )
-                            }
+                            onChange={(e) => {
+                              const valeur = e.target.value ? parseFloat(e.target.value) : null
+                              saisirQuantite(valeur)
+                              field.onChange(valeur)
+                            }}
                           />
                         </FormControl>
                         {/* Bug #2 — montrer la formule active pour éviter
@@ -928,7 +947,7 @@ export default function EditCulturePage() {
                         {watchedLongueur && watchedNbRangs && watchedEspacement && watchedEspacement > 0 && (
                           <p className="text-xs text-slate-500">
                             = {watchedNbRangs} rang(s) × ⌊{watchedLongueur} m ÷ {watchedEspacement} cm⌋
-                            = {Math.floor((watchedLongueur * 100) / watchedEspacement) * watchedNbRangs}
+                            = {estimerNombrePlantsStrict(watchedLongueur, watchedNbRangs, watchedEspacement)}
                           </p>
                         )}
                         <FormMessage />

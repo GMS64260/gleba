@@ -48,6 +48,7 @@ import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { cultureFormSchema, type CreateCultureInput } from "@/lib/validations"
 import type { AjustementOccupation } from "@/lib/planche-validation"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
+import { AIDE_QUANTITE_PLANTS, libelleQuantitePlants, useQuantiteManuelle } from "@/hooks/use-quantite-manuelle"
 import { RotationAdviceCompact } from "@/components/planche"
 import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
 import { AdjacenceAdvisor } from "@/components/cultures/AdjacenceAdvisor"
@@ -184,6 +185,12 @@ export default function NewCulturePage() {
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null; type?: string | null }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  // Quantité saisie à la main : plus de recalcul (ticket cmvnpkkhp, revue).
+  const {
+    manuelle: quantiteManuelle,
+    estManuelle: quantiteEstManuelle,
+    saisir: saisirQuantite,
+  } = useQuantiteManuelle()
   // QA cmsp5927v — un refus d'occupation de planche n'existait que dans un toast
   // de 5 s : l'utilisateur revoyait un formulaire vide sans savoir pourquoi.
   const [submitError, setSubmitError] = React.useState<string | null>(null)
@@ -614,15 +621,17 @@ export default function NewCulturePage() {
     }
   }, [selectedPlanche, planches, form])
 
-  // Auto-calculer la quantité de plants (BUG-10 : null si inputs incomplets).
+  // Auto-calculer la quantité de plants (BUG-10 : null si inputs incomplets),
+  // sauf si elle a été saisie à la main.
   React.useEffect(() => {
+    if (quantiteEstManuelle()) return
     const quantite = estimerNombrePlantsStrict(
       watchedLongueur ?? null,
       watchedNbRangs ?? null,
       watchedEspacement ?? null
     )
     form.setValue("quantite", quantite)
-  }, [watchedNbRangs, watchedLongueur, watchedEspacement, form])
+  }, [watchedNbRangs, watchedLongueur, watchedEspacement, form, quantiteEstManuelle])
 
   /**
    * Bug #1 — Soumission avec gestion du 409 rotationViolation.
@@ -1223,11 +1232,8 @@ export default function NewCulturePage() {
                     name="quantite"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel
-                          title="Formule : nbRangs × ⌊longueur (cm) ÷ espacement⌋. Si vous modifiez ce champ, la valeur n'est plus recalculée."
-                          className="cursor-help"
-                        >
-                          Quantité / plants (auto) ⓘ
+                        <FormLabel title={AIDE_QUANTITE_PLANTS} className="cursor-help">
+                          {libelleQuantitePlants(quantiteManuelle)} ⓘ
                         </FormLabel>
                         <FormControl>
                           <Input
@@ -1235,11 +1241,11 @@ export default function NewCulturePage() {
                             step="0.1"
                             {...field}
                             value={field.value ?? ""}
-                            onChange={(e) =>
-                              field.onChange(
-                                e.target.value ? parseFloat(e.target.value) : null
-                              )
-                            }
+                            onChange={(e) => {
+                              const valeur = e.target.value ? parseFloat(e.target.value) : null
+                              saisirQuantite(valeur)
+                              field.onChange(valeur)
+                            }}
                           />
                         </FormControl>
                         {/* Bug #2 — formule active pour rendre transparent
@@ -1248,7 +1254,7 @@ export default function NewCulturePage() {
                         {watchedLongueur && watchedNbRangs && watchedEspacement && watchedEspacement > 0 && (
                           <p className="text-xs text-slate-500">
                             = {watchedNbRangs} rang(s) × ⌊{watchedLongueur} m ÷ {watchedEspacement} cm⌋
-                            = {Math.floor((watchedLongueur * 100) / watchedEspacement) * watchedNbRangs}
+                            = {estimerNombrePlantsStrict(watchedLongueur, watchedNbRangs, watchedEspacement)}
                           </p>
                         )}
                         <FormMessage />

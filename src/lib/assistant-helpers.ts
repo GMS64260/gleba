@@ -6,6 +6,7 @@
 import { getISOWeek } from 'date-fns'
 import { semaineVersDate } from './cultures/dates-itp'
 import { projectionRecolte, type UniteQuantite } from './recolte/projection'
+import { nbPlantsCulture } from './cultures/quantite-plants'
 
 /**
  * Lundi de la semaine ISO `semaine` de l'année `annee`.
@@ -120,18 +121,17 @@ export function calculerDatesCulture(
 
 /**
  * Estime le nombre de plants en fonction de la surface et de l'espacement.
- * Compat : retourne 0 si un input manque (utilisé par l'assistant).
+ * Compat : retourne 0 si un input manque. Même règle que tous les écrans et
+ * la route (`nbPlantsCulture`) : l'assistant calculait `longueur ÷ (esp ÷ 100)`,
+ * qui ne tombait pas toujours sur l'entier des formulaires (ticket cmvnpkkhp).
  */
 export function estimerNombrePlants(
   longueur: number, // mètres
-  largeur: number, // mètres
+  _largeur: number, // mètres (sans effet : les rangs sont saisis)
   nbRangs: number,
   espacement: number // cm
 ): number {
-  if (!longueur || !nbRangs || !espacement) return 0
-  const espacementM = espacement / 100
-  const plantsParRang = Math.floor(longueur / espacementM)
-  return plantsParRang * nbRangs
+  return nbPlantsCulture(longueur, nbRangs, espacement) ?? 0
 }
 
 /**
@@ -147,9 +147,7 @@ export function estimerNombrePlantsStrict(
   nbRangs: number | null | undefined,
   espacement: number | null | undefined
 ): number | null {
-  if (!longueur || !nbRangs || !espacement || espacement <= 0) return null
-  const plantsParRang = Math.floor((longueur * 100) / espacement)
-  return plantsParRang * nbRangs
+  return nbPlantsCulture(longueur, nbRangs, espacement)
 }
 
 /**

@@ -50,6 +50,12 @@ import {
   formatQuantiteParUnite,
   type QuantiteParUnite,
 } from "@/lib/recolte/quantites"
+import {
+  comparaisonADire,
+  lignesComparaison,
+  LIMITE_GESTION_STOCKS,
+  type ComparaisonStockLots,
+} from "@/lib/stocks/rapprochement-recoltes"
 
 /** Unité d'une ligne de récolte ; null = kg (lignes antérieures au 2026-08-20). */
 const uniteRecolte = (unite: string | null | undefined): UniteQuantite =>
@@ -97,6 +103,15 @@ interface Client {
   nom: string
 }
 
+/**
+ * Lots d'une espèce comparés au stock de Gestion des stocks
+ * (`GET /api/stocks?type=recoltes`, champ `comparaisonLots`).
+ */
+interface StockEspece {
+  id: string
+  comparaisonLots: ComparaisonStockLots | null
+}
+
 export default function RecoltesPage() {
   const { toast } = useToast()
   const [data, setData] = React.useState<RecolteWithRelations[]>([])
@@ -107,6 +122,8 @@ export default function RecoltesPage() {
   const [selectedAnnee, setSelectedAnnee] = React.useState<string>('all')
   const [selectedEspece, setSelectedEspece] = React.useState<string>('all')
   const [especes, setEspeces] = React.useState<{ id: string }[]>([])
+  // null = comparaison non chargée : l'écran n'affiche que ses lots.
+  const [stocksEspeces, setStocksEspeces] = React.useState<StockEspece[] | null>(null)
 
   // Dialog vente
   const [showVenteDialog, setShowVenteDialog] = React.useState(false)
@@ -167,6 +184,22 @@ export default function RecoltesPage() {
     fetchData()
   }, [fetchData])
 
+  // Ticket cmvnpe6ip — comparaison avec Gestion des stocks : toutes espèces
+  // et toutes années, filtrée ici ; chargée une fois, puis après chaque
+  // sortie ou suppression de lot, jamais au changement d'année ou d'espèce.
+  const chargerComparaisons = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/stocks?type=recoltes")
+      setStocksEspeces(res.ok ? ((await res.json()).data ?? null) : null)
+    } catch {
+      setStocksEspeces(null)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    chargerComparaisons()
+  }, [chargerComparaisons])
+
   // Filtrer par statut
   const stockRecoltes = data.filter(r => !r.statut || r.statut === "en_stock")
   const venduRecoltes = data.filter(r => r.statut === "vendu")
@@ -214,6 +247,18 @@ export default function RecoltesPage() {
       {},
     )
   const stockParUnite = ventiler(stockRecoltes)
+  // Ticket cmvnpe6ip — « En stock » reste la somme des lots, ce qui se vend.
+  // Gestion des stocks repart d'un comptage daté : son écart avec les lots
+  // est dit espèce par espèce, jamais cumulé (un stock négatif en masquerait
+  // un autre), et seulement pour les espèces récoltées sur cet écran.
+  const especesRecoltees = new Set(especes.map((e) => e.id))
+  const comparaisons = (stocksEspeces ?? []).filter(
+    (s): s is StockEspece & { comparaisonLots: ComparaisonStockLots } =>
+      s.comparaisonLots != null &&
+      especesRecoltees.has(s.id) &&
+      (selectedEspece === 'all' || s.id === selectedEspece) &&
+      comparaisonADire(s.comparaisonLots)
+  )
   const venduParUnite = ventiler(venduRecoltes)
   const totalVentes = venduRecoltes.reduce((sum, r) => sum + (r.prixTotal || 0), 0)
   const stockValeur = stockRecoltes.reduce((sum, r) => sum + (r.quantite * (r.espece?.prixKg || 0)), 0)
@@ -225,6 +270,7 @@ export default function RecoltesPage() {
       const response = await fetch(`/api/recoltes/${id}`, { method: "DELETE" })
       if (response.ok) {
         setData(data.filter(r => r.id !== id))
+        chargerComparaisons()
         toast({ title: "Récolte supprimée" })
       } else {
         const payload = await response.json().catch(() => null)
@@ -323,6 +369,7 @@ export default function RecoltesPage() {
         // Une vente partielle scinde la récolte (reliquat en stock) → on
         // recharge la liste plutôt que de patcher la ligne localement.
         fetchData()
+        chargerComparaisons()
       } else {
         const payload = await res.json().catch(() => null)
         toast({
@@ -351,6 +398,7 @@ export default function RecoltesPage() {
       if (res.ok) {
         const updated = await res.json()
         setData(data.map(r => r.id === updated.id ? updated : r))
+        chargerComparaisons()
         toast({ title: "Marqué comme perte" })
       } else {
         const payload = await res.json().catch(() => null)
@@ -378,6 +426,7 @@ export default function RecoltesPage() {
       if (res.ok) {
         const updated = await res.json()
         setData(data.map(r => r.id === updated.id ? updated : r))
+        chargerComparaisons()
         toast({ title: "Consommation perso enregistrée" })
       } else {
         const payload = await res.json().catch(() => null)
@@ -544,6 +593,38 @@ export default function RecoltesPage() {
                 <CardTitle className="text-base">Récoltes en stock</CardTitle>
               </CardHeader>
               <CardContent>
+                {/* Ticket cmvnpe6ip — par espèce : stock de Gestion des stocks,
+                    lots en stock, écart, et seulement les composantes que
+                    les données établissent ; aucune cause supposée. */}
+                {!isLoading && comparaisons.length > 0 && (
+                  <div
+                    role="note"
+                    className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+                  >
+                    <p className="mb-2 font-medium">Comparaison avec Gestion des stocks (lots de toutes les années)</p>
+                    <ul className="space-y-2">
+                      {comparaisons.map((s) => {
+                        const { ligne, complements } = lignesComparaison(s.comparaisonLots)
+                        return (
+                          <li key={s.id}>
+                            <span className="font-medium">{s.id}</span> : {ligne}
+                            {complements.length > 0 && (
+                              <ul className="ml-5 list-disc">
+                                {complements.map((c) => (
+                                  <li key={c}>{c}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    <p className="mt-2 text-xs">{LIMITE_GESTION_STOCKS}</p>
+                    <Link href="/maraichage/stocks?tab=recoltes" className="mt-1 inline-block underline">
+                      Voir Gestion des stocks
+                    </Link>
+                  </div>
+                )}
                 {isLoading ? (
                   <p className="text-muted-foreground">Chargement...</p>
                 ) : stockRecoltes.length === 0 ? (

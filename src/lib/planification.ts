@@ -26,6 +26,7 @@ import { etapeCycleRotation } from './rotation/etape-cycle'
 import { evaluerOccupationPlanche } from './planche-validation'
 import { selectCulturesOccupation } from './planches/occupation'
 import { finDeCycle, finRecolteDepuisItp } from './cultures/fenetre-recolte'
+import { nbPlantsCulture } from './cultures/quantite-plants'
 
 export { etapeCycleRotation, EPOCH_ROTATION_SANS_ANCRAGE } from './rotation/etape-cycle'
 
@@ -240,19 +241,17 @@ export interface AssociationCulture {
 
 
 /**
- * Calcule le nombre de plants pour une planche/ITP donne
+ * Calcule le nombre de plants pour une planche/ITP donne. Même règle que la
+ * création d'une culture et ses écrans (`nbPlantsCulture`, ticket cmvnpkkhp) :
+ * Plants recalcule ce que la fiche aurait dû enregistrer.
  */
 function calculerNbPlants(
   longueur: number | null,
-  largeur: number | null,
+  _largeur: number | null,
   nbRangs: number | null,
   espacement: number | null
 ): number {
-  if (!longueur || !nbRangs || !espacement) return 0
-  // espacement en cm, longueur en m
-  const longueurCm = longueur * 100
-  const nbPlantsParRang = Math.floor(longueurCm / espacement)
-  return nbPlantsParRang * nbRangs
+  return nbPlantsCulture(longueur, nbRangs, espacement) ?? 0
 }
 
 /**
