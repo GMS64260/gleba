@@ -102,10 +102,22 @@ async function lune(page) {
   console.log("  → /meteo", page.url().replace(BASE, ""), "| jours du mois :", await page.locator('#calendrier-lunaire button[aria-pressed]').count(), "| titre :", JSON.stringify(await section.locator("h2").innerText()));
   const box = await section.boundingBox();
   console.log("  section visible dans la fenêtre =", Boolean(box && box.y >= 0 && box.y < 933));
-  // Palette : entrée « Calendrier lunaire » → page Météo.
-  await page.goto(`${BASE}/aujourdhui`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /Demander ou chercher dans Gleba|Demander à Gleba/ }).first().click();
+  // Palette : entrée « Calendrier lunaire » → page Météo. La barre de l'accueil
+  // s'appelle « Demander ou chercher dans Gleba… » ; « Demander à Gleba » désigne
+  // aussi le bouton de la tuile de l'agent (TuileAgent), qui ouvre l'assistant.
+  // Barre attendue hydratée, puis jusqu'à 3 clics : un clic donné pendant
+  // l'hydratation est perdu (2026-10-25).
+  await page.goto(`${BASE}/aujourdhui`, { waitUntil: "load" });
+  const barre = page.getByRole("button", { name: /Demander ou chercher dans Gleba/ }).first();
+  await barre.waitFor({ timeout: 30000 });
+  await page.waitForFunction((el) => Object.keys(el).some((k) => k.startsWith("__reactProps$")), await barre.elementHandle(), { timeout: 30000 });
   const item = page.locator('[cmdk-item]', { hasText: "Calendrier lunaire" }).first();
+  let clics = 0;
+  for (let essai = 1; essai <= 3 && !clics; essai++) {
+    await barre.click();
+    if (await item.waitFor({ state: "visible", timeout: 4000 }).then(() => true, () => false)) clics = essai;
+  }
+  console.log(`palette : ${clics ? `ouverte au clic ${clics}` : "toujours fermée après 3 clics"}`);
   console.log("palette : entrée présente =", (await item.count()) > 0);
   await item.click();
   await page.waitForURL((u) => u.pathname === "/meteo" && u.hash === "#calendrier-lunaire", { timeout: 30000 });
