@@ -27,6 +27,7 @@ import { zoneEffectiveUser } from '@/lib/terroir'
 import { type UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import { quantiteCultureACreer } from '@/lib/cultures/quantite-plants'
 
 // GET /api/cultures
 export async function GET(request: NextRequest) {
@@ -365,6 +366,13 @@ export async function POST(request: NextRequest) {
       )
       if (finDerivee) data.finRecolte = finDerivee
     }
+
+    // Ticket QA cmvnpkkhp (2026-10-25) — l'assistant « Semer » n'envoyait pas
+    // la quantité qu'il affichait (« ~159 plants ») : la culture naissait sans
+    // nombre de plants, quand Planification > Plants le recalculait depuis les
+    // rangs, la longueur et l'espacement. La route déduit la quantité absente
+    // par la même règle que tous les écrans, quel que soit le client.
+    data.quantite = quantiteCultureACreer(data)
 
     // Audit Marc 2026-05-14 — Bug 04 : remonter les warnings dates/ITP
     // au client (non bloquant). Le client peut alors afficher un toast

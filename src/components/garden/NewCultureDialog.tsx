@@ -36,6 +36,8 @@ import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { validateCultureDates } from "@/lib/validations/date-validation"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cocherApresSaisieManuelle, etapeDejaRealisable } from "@/lib/cultures/deja-fait"
+import { nbPlantsCulture } from "@/lib/cultures/quantite-plants"
+import { AIDE_QUANTITE_PLANTS, libelleQuantitePlants, useQuantiteManuelle } from "@/hooks/use-quantite-manuelle"
 
 interface ITPData {
   id: string
@@ -86,6 +88,13 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
   const [longueur, setLongueur] = React.useState<number | null>(plancheLongueur)
   const [espacement, setEspacement] = React.useState<number | null>(null)
   const [quantite, setQuantite] = React.useState<number | null>(null)
+  // Quantité saisie à la main : plus de recalcul (ticket cmvnpkkhp, revue).
+  const {
+    manuelle: quantiteManuelle,
+    estManuelle: quantiteEstManuelle,
+    saisir: saisirQuantite,
+    definir: definirQuantiteManuelle,
+  } = useQuantiteManuelle()
   const [notes, setNotes] = React.useState("")
   // Dernier début de cycle appliqué : le recalage de la récolte ne suit que
   // les CHANGEMENTS de début, jamais le remplissage initial de l'ITP.
@@ -107,9 +116,10 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
       setLongueur(plancheLongueur)
       setEspacement(null)
       setQuantite(null)
+      definirQuantiteManuelle(false)
       setNotes("")
     }
-  }, [open, plancheLongueur])
+  }, [open, plancheLongueur, definirQuantiteManuelle])
 
   // Charger les especes (visibles : Gleba officiel + communauté + mes perso)
   const loadEspeces = React.useCallback(() => {
@@ -247,12 +257,13 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateSemis, datePlantation, itpId, itps])
 
-  // Auto-calculer quantite
+  // Auto-calculer quantite (règle unique `nbPlantsCulture`, ticket cmvnpkkhp),
+  // sauf si elle a été saisie à la main.
   React.useEffect(() => {
-    if (nbRangs && longueur && espacement && espacement > 0) {
-      setQuantite(nbRangs * Math.floor((longueur * 100) / espacement))
-    }
-  }, [nbRangs, longueur, espacement])
+    if (quantiteEstManuelle()) return
+    const auto = nbPlantsCulture(longueur, nbRangs, espacement)
+    if (auto != null) setQuantite(auto)
+  }, [nbRangs, longueur, espacement, quantiteEstManuelle])
 
   // La case « déjà fait » ne survit pas à une date devenue future ou vidée,
   // quel que soit le chemin qui a déplacé la date (saisie ou préremplissage
@@ -499,8 +510,17 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
               <Input type="number" min="1" className="mt-1" value={espacement ?? ""} onChange={e => setEspacement(e.target.value ? parseInt(e.target.value) : null)} />
             </div>
             <div>
-              <Label className="text-xs">Quantité (auto)</Label>
-              <Input type="number" className="mt-1" value={quantite ?? ""} onChange={e => setQuantite(e.target.value ? parseFloat(e.target.value) : null)} />
+              <Label className="text-xs" title={AIDE_QUANTITE_PLANTS}>{libelleQuantitePlants(quantiteManuelle)}</Label>
+              <Input
+                type="number"
+                className="mt-1"
+                value={quantite ?? ""}
+                onChange={e => {
+                  const valeur = e.target.value ? parseFloat(e.target.value) : null
+                  saisirQuantite(valeur)
+                  setQuantite(valeur)
+                }}
+              />
             </div>
           </div>
 

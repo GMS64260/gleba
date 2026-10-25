@@ -8,6 +8,12 @@ import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
 import type { UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, arrondirQuantites, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { chargerUnitesStock } from '@/lib/stocks/sortie-stock'
+import {
+  comparerStockEtLots,
+  type ComparaisonStockLots,
+  type LotEnStock,
+  type LotVendu,
+} from '@/lib/stocks/rapprochement-recoltes'
 import { computeStockOeufsParLots, type StockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 
 /**
@@ -41,6 +47,13 @@ export interface StockNet {
    * nombre seul ne dit plus rien, et l'écran l'étiquetait « kg » en dur.
    */
   unite: UniteQuantite
+  /**
+   * Date du comptage manuel qui sert de point de départ (null = jamais
+   * compté) : les lots récoltés jusqu'à elle sont remplacés par
+   * `detail.inventaire`. Servie pour que l'écran Récoltes explique l'écart
+   * entre ses lots et ce stock (ticket cmvnpe6ip).
+   */
+  dateInventaire: Date | null
   detail: {
     inventaire: number
     recoltes: number
@@ -53,6 +66,22 @@ export interface StockNet {
    * expose à part plutôt que de les additionner à tort ou de les perdre.
    */
   autresUnites: QuantiteParUnite
+}
+
+/**
+ * Récoltes mises en vente sur la boutique (produit actif lié à la récolte) :
+ * leur stock est suivi par `ProduitBoutique.stockDispo`, le stock de l'espèce
+ * ne les compte pas (audit 2026-07 #51). Une seule définition pour le calcul
+ * du stock et de sa comparaison avec les lots.
+ */
+export async function chargerIdsRecoltesEnBoutique(userId: string): Promise<number[]> {
+  const produitsBoutique = await prisma.produitBoutique.findMany({
+    where: { userId, actif: true, recolteId: { not: null } },
+    select: { recolteId: true },
+  })
+  return produitsBoutique
+    .map(p => p.recolteId)
+    .filter((id): id is number => id != null)
 }
 
 /**
@@ -116,13 +145,7 @@ export async function calculerStocksNet(
   // suivi par ProduitBoutique.stockDispo. On l'EXCLUT du stock physique loose
   // pour ne pas la compter deux fois (avant, elle restait « en stock » même
   // après avoir été vendue en ligne).
-  const produitsBoutique = await prisma.produitBoutique.findMany({
-    where: { userId, actif: true, recolteId: { not: null } },
-    select: { recolteId: true },
-  })
-  const recolteIdsEnBoutique = produitsBoutique
-    .map(p => p.recolteId)
-    .filter((id): id is number => id != null)
+  const recolteIdsEnBoutique = await chargerIdsRecoltesEnBoutique(userId)
 
   const result: Record<string, StockNet> = {}
 
@@ -176,6 +199,7 @@ export async function calculerStocksNet(
       // « 10.799999999999999 kg » à l'écran Stocks > Récoltes.
       stockNet: arrondiQuantiteStock(baseline + totalRecoltes - totalConso),
       unite: uniteEspece,
+      dateInventaire: espece.dateInventaire,
       detail: {
         inventaire: baseline,
         recoltes: totalRecoltes,
@@ -186,6 +210,71 @@ export async function calculerStocksNet(
   }
 
   return result
+}
+
+/**
+ * Comparaison, espèce par espèce, du stock de Gestion des stocks
+ * (`calculerStocksNet`) et des lots de récolte en stock (ticket cmvnpe6ip,
+ * revue du 2026-10-25) : différence et composantes établies par les données,
+ * jamais une cause supposée. Trois requêtes quel que soit le nombre d'espèces :
+ * lots en stock, lots vendus après le plus ancien comptage, lots en boutique.
+ */
+export async function chargerComparaisonsStockLots(
+  userId: string,
+  stocks: Record<string, StockNet>,
+): Promise<Record<string, ComparaisonStockLots>> {
+  const especeIds = Object.keys(stocks)
+  if (especeIds.length === 0) return {}
+
+  const comptages = especeIds
+    .map(id => stocks[id].dateInventaire)
+    .filter((d): d is Date => d != null)
+  const premierComptage = comptages.length > 0
+    ? new Date(Math.min(...comptages.map(d => d.getTime())))
+    : null
+
+  const [lots, vendus, idsBoutique] = await Promise.all([
+    prisma.recolte.findMany({
+      where: { userId, statut: 'en_stock', especeId: { in: especeIds } },
+      select: { id: true, especeId: true, date: true, quantite: true, unite: true },
+    }),
+    // Seule sortie de lot datée : la vente. Un lot vendu après le comptage de
+    // son espèce, mais daté avant lui, reste compté par Gestion des stocks.
+    premierComptage
+      ? prisma.recolte.findMany({
+          where: {
+            userId,
+            statut: 'vendu',
+            especeId: { in: especeIds },
+            dateVente: { gt: premierComptage },
+          },
+          select: { especeId: true, date: true, dateVente: true, quantite: true, unite: true },
+        })
+      : Promise.resolve([]),
+    chargerIdsRecoltesEnBoutique(userId),
+  ])
+  const enBoutique = new Set(idsBoutique)
+
+  const lotsParEspece = new Map<string, LotEnStock[]>()
+  for (const lot of lots) {
+    const liste = lotsParEspece.get(lot.especeId) ?? []
+    liste.push({ date: lot.date, quantite: lot.quantite, unite: lot.unite, enBoutique: enBoutique.has(lot.id) })
+    lotsParEspece.set(lot.especeId, liste)
+  }
+  const vendusParEspece = new Map<string, LotVendu[]>()
+  for (const v of vendus) {
+    if (!v.dateVente) continue
+    const liste = vendusParEspece.get(v.especeId) ?? []
+    liste.push({ date: v.date, dateVente: v.dateVente, quantite: v.quantite, unite: v.unite })
+    vendusParEspece.set(v.especeId, liste)
+  }
+
+  return Object.fromEntries(
+    especeIds.map(id => [
+      id,
+      comparerStockEtLots(stocks[id], lotsParEspece.get(id) ?? [], vendusParEspece.get(id) ?? []),
+    ]),
+  )
 }
 
 /**

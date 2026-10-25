@@ -31,6 +31,7 @@ import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
 import { aDesVentes, compterVentesRecoltesCulture, messageSuppressionCultureRefusee } from '@/lib/cultures/suppression'
+import { quantiteCultureApresModification } from '@/lib/cultures/quantite-plants'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -357,10 +358,17 @@ export async function PUT(
       }
     }
 
+    // Ticket QA cmvnpkkhp (2026-10-25) — « Quantité / plants (auto) » suit les
+    // rangs, la longueur et l'espacement, par la règle de la création. Le
+    // formulaire d'édition renvoyait vide la quantité d'une culture née sans
+    // elle ; une quantité saisie à la main reste intacte.
+    const quantiteAuto = quantiteCultureApresModification(existing, data)
+    const ecritureQuantite = quantiteAuto === undefined ? {} : { quantite: quantiteAuto }
+
     // Mise à jour
     const culture = await prisma.culture.update({
       where: { id: cultureId },
-      data: { ...validationResult.data, ...ecrituresEtapes },
+      data: { ...validationResult.data, ...ecritureQuantite, ...ecrituresEtapes },
       include: {
         espece: true,
         variete: true,

@@ -31,11 +31,11 @@ import { format, getISOWeek } from "date-fns"
 import { fr } from "date-fns/locale"
 import {
   calculerDatesCulture,
-  estimerNombrePlants,
   estimerRendement,
   formatSemaine,
 } from "@/lib/assistant-helpers"
 import { evaluerOccupationPlanche, type VerdictOccupation } from "@/lib/planche-validation"
+import { nbPlantsCulture } from "@/lib/cultures/quantite-plants"
 import type { CultureData, PlancheData, EspeceData, ITPData } from "./AssistantDialog"
 import { formatQuantite } from "@/lib/recolte/quantites"
 
@@ -201,14 +201,15 @@ export function AssistantStepDates({
     return 0
   }, [culture.longueur, planche.largeur, planche.surface])
 
+  // Mêmes valeurs et même règle que le récapitulatif, qui envoie ce nombre à
+  // la création (ticket cmvnpkkhp) : pas de rang ni d'espacement supposés.
   const nbPlants = React.useMemo(() => {
-    return estimerNombrePlants(
-      culture.longueur || planche.longueur || 0,
-      planche.largeur || 0,
-      culture.nbRangs || 1,
-      culture.espacement || 30
+    return nbPlantsCulture(
+      culture.longueur || planche.longueur || null,
+      culture.nbRangs || null,
+      culture.espacement || null
     )
-  }, [culture.longueur, planche.longueur, planche.largeur, culture.nbRangs, culture.espacement])
+  }, [culture.longueur, planche.longueur, culture.nbRangs, culture.espacement])
 
   // L'unité voyage avec le rendement : sans elle, un fruitier en kg/ARBRE
   // était projeté au m² (kiwi 25 → 750 kg sur 30 m²).
@@ -761,7 +762,7 @@ export function AssistantStepDates({
                   <Sprout className="h-3 w-3" />
                   Plants
                 </div>
-                <div className="font-medium">{nbPlants}</div>
+                <div className="font-medium">{nbPlants ?? "—"}</div>
               </div>
               <div>
                 <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs mb-1">
