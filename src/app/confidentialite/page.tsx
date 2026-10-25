@@ -140,6 +140,15 @@ export default function ConfidentialitePage() {
           factures et préférences de livraison, sous la responsabilité du producteur.
         </p>
 
+        <h3>2.8 Salon de discussion</h3>
+        <p>
+          Les messages que vous publiez dans le salon de la page Communauté, avec
+          votre nom et leur date d&apos;envoi. Ils sont lisibles par tous les membres
+          connectés, jamais par les visiteurs ni depuis le compte de démonstration.
+          Vous pouvez supprimer chacun de vos messages à tout moment ; ils sont
+          effacés avec votre compte.
+        </p>
+
         <h2>3. Finalités</h2>
         <ul>
           <li>Fournir les fonctions de gestion agricole que vous utilisez.</li>
@@ -289,7 +298,7 @@ export default function ConfidentialitePage() {
         </p>
 
         <p className="text-xs text-slate-500 mt-12">
-          Dernière mise à jour : 2026-10-10 — version 2.1.
+          Dernière mise à jour : 2026-10-25 — version 2.2.
         </p>
       </main>
     </div>

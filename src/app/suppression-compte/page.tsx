@@ -90,6 +90,7 @@ export default function SuppressionComptePage() {
               <li>animaux, lots, suivi sanitaire et registres d&apos;élevage&nbsp;;</li>
               <li>comptabilité, ventes, factures, justificatifs et boutique&nbsp;;</li>
               <li>photos et documents que vous avez téléversés&nbsp;;</li>
+              <li>messages publiés dans le salon de la communauté&nbsp;;</li>
               <li>fiches de référentiel que vous aviez gardées privées.</li>
             </ul>
           </section>

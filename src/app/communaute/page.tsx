@@ -4,6 +4,8 @@
  * Community Voice — Demandes d'évolution & votes
  * Chaque utilisateur authentifié peut proposer une évolution et voter pour
  * celles des autres. Les mieux notées sont promues dans la roadmap par l'admin.
+ * Onglet « Salon » : discussion entre membres connectés, hors compte de
+ * démonstration (`SalonDiscussion`).
  */
 
 import * as React from "react"
@@ -33,6 +35,8 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserMenu } from "@/components/auth/UserMenu"
+import { SalonDiscussion, type AccesSalon } from "@/components/communaute/SalonDiscussion"
+import { useIsDemoAccount } from "@/hooks/use-is-demo"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import {
@@ -49,6 +53,7 @@ import {
   LayoutGrid,
   Lightbulb,
   Route,
+  MessageSquare,
 } from "lucide-react"
 
 interface Evolution {
@@ -96,11 +101,15 @@ export default function CommunautePage() {
   const { toast } = useToast()
   const isAuthenticated = status === "authenticated"
   const isAdmin = session?.user?.role === "ADMIN"
+  const isDemo = useIsDemoAccount()
+  const accesSalon: AccesSalon =
+    status === "loading" ? "chargement" : !isAuthenticated ? "anonyme" : isDemo ? "demo" : "membre"
 
   const [items, setItems] = React.useState<Evolution[]>([])
   const [loading, setLoading] = React.useState(true)
   const [categorieFiltre, setCategorieFiltre] = React.useState("ALL")
   const [tri, setTri] = React.useState<"votes" | "recent">("votes")
+  const [onglet, setOnglet] = React.useState("propositions")
 
   const fetchItems = React.useCallback(async () => {
     setLoading(true)
@@ -280,8 +289,8 @@ export default function CommunautePage() {
           </CardContent>
         </Card>
 
-        {/* Filtres */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Filtres (sans objet dans le salon) */}
+        <div className={onglet === "salon" ? "hidden" : "flex flex-wrap items-center gap-3"}>
           <Select value={categorieFiltre} onValueChange={setCategorieFiltre}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Toutes les catégories" />
@@ -297,8 +306,9 @@ export default function CommunautePage() {
           </Select>
         </div>
 
-        <Tabs defaultValue="propositions" className="w-full">
-          <TabsList className="mb-4">
+        <Tabs value={onglet} onValueChange={setOnglet} className="w-full">
+          {/* Trois onglets ne tiennent pas sur une ligne à 360 px : ils passent à la ligne. */}
+          <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start">
             <TabsTrigger value="propositions" className="gap-2">
               <Lightbulb className="h-4 w-4" />
               Propositions ({propositions.length})
@@ -306,6 +316,10 @@ export default function CommunautePage() {
             <TabsTrigger value="roadmap" className="gap-2">
               <Route className="h-4 w-4" />
               Roadmap ({roadmap.reduce((n, g) => n + g.items.length, 0)})
+            </TabsTrigger>
+            <TabsTrigger value="salon" className="gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Salon
             </TabsTrigger>
           </TabsList>
 
@@ -406,6 +420,11 @@ export default function CommunautePage() {
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          {/* Salon : monté seulement quand l'onglet est ouvert, donc pas d'interrogation ailleurs */}
+          <TabsContent value="salon">
+            <SalonDiscussion acces={accesSalon} />
           </TabsContent>
         </Tabs>
       </main>
