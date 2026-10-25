@@ -31,4 +31,6 @@ export const MESSAGES_REFUS_DEMO = {
   jetonApi: `${PARTAGE} : son jeton d'accès (MCP) ne se génère ni ne se révoque, il est commun à tous les visiteurs. Créez un compte gratuit pour obtenir le vôtre.`,
   /** Encadré de la « Zone de danger » de l'écran Paramètres (vider + supprimer). */
   zoneDanger: `${PARTAGE} : ses données ne peuvent pas être vidées ni le compte supprimé. Créez un compte gratuit pour essayer ces actions sur votre propre ferme.`,
+  /** Onglet « Salon » de la page Communauté : ni lecture ni écriture. */
+  salon: `${PARTAGE} : le salon de discussion est réservé aux comptes personnels, pour que chacun sache à qui il parle. Créez un compte gratuit pour lire et écrire dans le salon.`,
 } as const

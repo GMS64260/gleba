@@ -251,6 +251,8 @@ model User {
   // Community Voice — demandes d'évolution & votes
   evolutions                       Evolution[]                         @relation("EvolutionAuthor")
   evolutionVotes                   EvolutionVote[]                     @relation("EvolutionVoter")
+  // Salon de discussion de la page Communauté
+  messagesSalon                    MessageSalon[]                      @relation("MessageSalonAuteur")
   declarationsReglementaires       DeclarationReglementaireSuivi[]
   preparationsDocumentsCirculation PreparationDocumentCirculation[]
   evenementsReglementaires         DeclarationReglementaireEvenement[]
@@ -4434,4 +4436,20 @@ model EvolutionVote {
   @@unique([evolutionId, userId])
   @@index([userId])
   @@map("evolution_votes")
+}
+
+/// Message du salon de discussion de la page Communauté. Lisible et écrit par
+/// les seuls comptes personnels connectés : jamais par un visiteur anonyme ni
+/// par le compte de démonstration partagé (garde dans la route). `userId` est
+/// la PERSONNE (acteur), pas l'exploitation : un membre invité parle en son nom.
+model MessageSalon {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation("MessageSalonAuteur", fields: [userId], references: [id], onDelete: Cascade)
+  contenu   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([userId])
+  @@map("messages_salon")
 }
