@@ -16,16 +16,24 @@
     "no-restricted-syntax": [
       "warn",
       {
-        "selector": "Literal[value=/\\b(Variete|Varietes|Espece|Especes|Annee|Annees|Recolte|Recoltes|Categorie|Categories|Itineraire|Itineraires|Parametre|Parametres|Maraichage|Reference|References|Detail|Details|Necessaire|Necessaires|Pepiniere|Definir|Definit|Definissent|Plantees|Semees|Terminees|Sauvegardees|Numerote|Genere|Generee|Etape|Etat|Selectionner|Selection|Duree|Delai|Creer)\\b/]",
+        "selector": "Literal[value=/\\b(Variete|Varietes|Espece|Especes|Annee|Annees|Recolte|Recoltes|Categorie|Categories|Itineraire|Itineraires|Parametre|Parametres|Maraichage|Reference|References|Detail|Details|Necessaire|Necessaires|Pepiniere|Definir|Definit|Definissent|Plantees|Semees|Terminees|Sauvegardees|Numerote|Genere|Generee|Etape|Etat|Selectionner|Selection|Duree|Delai|Creer|Derniere|Dernieres|Premiere|Premieres)\\b/]",
         "message": "Mot français sans accent dans une chaîne. Corriger en ajoutant les diacritiques attendus (ex: Variete → Variété). Voir CONTRIBUTING.md."
       },
       {
-        "selector": "JSXText[value=/\\b(Variete|Varietes|Espece|Especes|Annee|Annees|Recolte|Recoltes|Categorie|Categories|Itineraire|Itineraires|Parametre|Parametres|Maraichage|Reference|References|Detail|Details|Necessaire|Necessaires|Pepiniere|Definir|Definit|Definissent|Plantees|Semees|Terminees|Sauvegardees|Numerote|Genere|Generee|Etape|Etat|Selectionner|Selection|Duree|Delai|Creer)\\b/]",
+        "selector": "JSXText[value=/\\b(Variete|Varietes|Espece|Especes|Annee|Annees|Recolte|Recoltes|Categorie|Categories|Itineraire|Itineraires|Parametre|Parametres|Maraichage|Reference|References|Detail|Details|Necessaire|Necessaires|Pepiniere|Definir|Definit|Definissent|Plantees|Semees|Terminees|Sauvegardees|Numerote|Genere|Generee|Etape|Etat|Selectionner|Selection|Duree|Delai|Creer|Derniere|Dernieres|Premiere|Premieres)\\b/]",
         "message": "Mot français sans accent dans le texte JSX. Corriger en ajoutant les diacritiques attendus (ex: Recolte → Récolte). Voir CONTRIBUTING.md."
       },
       {
-        "selector": "JSXText[value=/\\b(defaut|recoltes?|especes?|varietes?|annees?|deja|necessaires?|resultats?|itineraires?|parametres?|categories?|selectionnee?s?|genealogique|metres|caracteres|systeme|reessayer|apparait|ilots?)\\b/]",
+        "selector": "JSXText[value=/\\b(defaut|recoltes?|especes?|varietes?|annees?|deja|necessaires?|resultats?|itineraires?|parametres?|categories?|selectionnee?s?|genealogique|metres|caracteres|systeme|reessayer|apparait|ilots?|dernieres?|premieres?)\\b/]",
         "message": "Mot français sans accent dans le texte JSX (minuscule). Corriger les diacritiques (ex: Par defaut → Par défaut, recoltes → récoltes). Ticket cmvkpb0g9, voir CONTRIBUTING.md."
+      },
+      {
+        "selector": "Literal[value=/(^|[\\s>«(])(dernieres?|premieres?)([\\s<».,;:!?)]|$)/][value=/\\s/]:not(Property > Literal.key):not(ImportDeclaration > Literal)",
+        "message": "Mot français sans accent dans une phrase (minuscule). Corriger les diacritiques (ex: Semaine derniere → Semaine dernière). Ticket cmvnosa42, voir CONTRIBUTING.md."
+      },
+      {
+        "selector": "TemplateElement[value.raw=/(^|[\\s>«(])(dernieres?|premieres?|Creez)([\\s<».,;:!?)]|$)/][value.raw=/\\s/]",
+        "message": "Mot français sans accent dans un gabarit de texte (courriel, message). Corriger les diacritiques (ex: premieres → premières, Creez → Créez). Ticket cmvnosa42, voir CONTRIBUTING.md."
       },
       {
         "selector": "CallExpression[callee.property.name=/^(flyTo|flyToBounds)$/]",
