@@ -31,6 +31,7 @@ import {
 } from "@/lib/recolte/quantites"
 import { libelleUniteRendement } from "@/lib/validations/espece"
 import { surfaceCultureM2 } from "@/lib/culture-surface"
+import { useJourNavigateur } from "@/hooks/use-jour-navigateur"
 
 interface Culture {
   id: number
@@ -83,7 +84,21 @@ export default function SaisieRecoltePage() {
   const [cultures, setCultures] = React.useState<Culture[]>([])
   const [selectedCulture, setSelectedCulture] = React.useState<string>("")
   const [quantite, setQuantite] = React.useState<string>("")
-  const [date, setDate] = React.useState<string>(format(new Date(), "yyyy-MM-dd"))
+  // Date par défaut = jour du navigateur, vide au prérendu du build et à
+  // l'hydratation : une valeur initiale calculée au rendu y figeait le jour du
+  // build dans le HTML (value="2026-10-23" servi le 25, 2026-10-25). Le jour
+  // vaut tant que la personne n'a pas choisi de date (`null`) ; vider le champ
+  // reste un choix (`""`), refusé à l'envoi comme avant.
+  const jourNavigateur = useJourNavigateur()
+  const [dateChoisie, setDate] = React.useState<string | null>(null)
+  const date = dateChoisie ?? jourNavigateur ?? ""
+  const champDate = React.useRef<HTMLInputElement>(null)
+  React.useEffect(() => {
+    // Une date tapée avant l'hydratation (champ alors vide côté React) reste
+    // celle du champ : lue avant le re-rendu qui pose le jour.
+    const tapee = champDate.current?.value
+    if (tapee) setDate(tapee)
+  }, [])
   const [datePeremption, setDatePeremption] = React.useState<string>("")
   const [notes, setNotes] = React.useState<string>("")
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -345,6 +360,7 @@ export default function SaisieRecoltePage() {
                   {/* QA cmv2r0qua — name + resynchronisation au blur : la date
                       affichée est celle enregistrée (filet relu à l'envoi). */}
                   <Input
+                    ref={champDate}
                     id="saisie-recolte-date"
                     type="date"
                     name="date"
