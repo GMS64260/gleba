@@ -121,6 +121,9 @@ export function urgenceFallback(
  *   connue : JOURS_APRES_DEBUT_RECOLTE_SANS_FIN jours après son début), ou
  *   sans date de récolte. 12 % des cultures retenues le 2026-10-10 avaient fini
  *   leur récolte sans être clôturées : elles sortaient « à arroser ».
+ * #todo (2026-10-25) : en faire le miroir Prisma exact de `presenceSurPlanche`
+ * (`src/lib/cultures/en-place.ts`, qui reprend ces bornes en mémoire pour
+ * l'assistant), avec un test de parité ; écarts listés dans ce module.
  */
 export function whereCulturesEnPlace(annee: number, maintenant: Date = new Date()): Prisma.CultureWhereInput {
   const borne = new Date(maintenant.getTime() - JOURS_APRES_FIN_RECOLTE * 86_400_000)
