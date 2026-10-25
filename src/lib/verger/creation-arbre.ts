@@ -11,32 +11,88 @@
  * arbre muet.
  *
  * Ce module porte le geste partagé ; il ne valide rien et n'écrit pas l'arbre
- * lui-même — chaque route reste maîtresse de ses réponses HTTP.
+ * lui-même — chaque route reste maîtresse de ses réponses HTTP. Il porte aussi
+ * la règle du calendrier d'entretien, que la régénération réutilise.
  */
 
 import prisma from "@/lib/prisma"
-import { findTreeCareProfile, generateCareOperations } from "@/lib/tree-care-calendar"
+import { findTreeCareProfile, generateCareOperations, type TreeCareProfile } from "@/lib/tree-care-calendar"
+
+export interface ArbreCalendrier {
+  id: number
+  variete: string | null
+  datePlantation?: Date | null
+  productif?: boolean | null
+}
+
+function debutDuJour(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
 
 /**
- * Auto-génération du calendrier d'entretien de l'arbre qui vient d'être créé.
+ * Jour de mise en terre, plancher de tout calendrier : aucune opération ne le
+ * précède. La régénération s'en sert aussi pour retirer les opérations
+ * automatiques restées avant une plantation corrigée après coup.
+ */
+export function jourDePlantation(datePlantation: Date | null | undefined): Date | null {
+  return datePlantation ? debutDuJour(datePlantation) : null
+}
+
+/**
+ * Règle UNIQUE du calendrier d'entretien d'un arbre : la création (POST,
+ * duplication, assistant, via `genererCalendrierEntretien`) et la
+ * régénération (`POST /api/arbres/[id]/generer-calendrier`) l'appellent.
+ * Avant le 2026-10-25, la régénération recalculait à sa façon et oubliait la
+ * plantation à venir et l'arbre non productif.
  *
- * Plancher = aujourd'hui : un arbre créé en juillet ne doit pas naître avec les
- * opérations de mars déjà « en retard » (elles reviendront au cycle suivant).
- * La variété est transmise pour caler la récolte, et le type de l'arbre l'est
- * aussi (ticket cmsofzh0w : un Châtaignier FORESTIER ne doit pas hériter du
+ * - Aucune opération ne précède la plantation (QA cmsqmamcv : un arbre à
+ *   planter recevait « Récolte des pommes » et « Bouillie bordelaise »
+ *   antérieures à sa mise en terre).
+ * - Sur l'année en cours (année non demandée, ou demandée égale), plancher =
+ *   aujourd'hui : aucune opération dont la fenêtre est déjà refermée ne naît
+ *   « en retard » (retour utilisateur 2026-07-31). Une fenêtre encore ouverte
+ *   est créée, même si sa date conseillée est passée.
+ * - Une autre année demandée explicitement est générée en entier (rattrapage
+ *   historique), plantation exceptée.
+ * - Pas de récolte sur un arbre non productif : sa première année de
+ *   production peut être loin ; elle reviendra par la régénération quand
+ *   `productif` basculera.
+ *
+ * Sans année demandée, l'année est celle du plancher : celle de la plantation
+ * si elle est à venir, sinon l'année en cours. `maintenant` sert aux tests.
+ */
+export function planCalendrierEntretien(
+  profile: TreeCareProfile,
+  arbre: ArbreCalendrier,
+  userId: string,
+  options: { annee?: number | null; maintenant?: Date } = {},
+): { annee: number; operations: ReturnType<typeof generateCareOperations> } {
+  const aujourdhui = debutDuJour(options.maintenant ?? new Date())
+  const anneeDemandee = options.annee ?? null
+
+  let plancher: Date | null =
+    anneeDemandee === null || anneeDemandee === aujourdhui.getFullYear() ? aujourdhui : null
+  const plantation = jourDePlantation(arbre.datePlantation)
+  if (plantation && (!plancher || plantation > plancher)) plancher = plantation
+
+  const annee = anneeDemandee ?? (plancher ?? aujourdhui).getFullYear()
+  let operations = generateCareOperations(profile, annee, arbre.id, userId, arbre.variete, plancher)
+  if (arbre.productif === false) {
+    operations = operations.filter((op) => op.type !== "recolte")
+  }
+  return { annee, operations }
+}
+
+/**
+ * Auto-génération du calendrier d'entretien de l'arbre qui vient d'être créé,
+ * selon `planCalendrierEntretien`. Le type de l'arbre borne le profil
+ * (ticket cmsofzh0w : un Châtaignier FORESTIER ne doit pas hériter du
  * calendrier fruitier).
  *
  * Retourne `true` si au moins une opération a été créée.
  */
 export async function genererCalendrierEntretien(
-  arbre: {
-    id: number
-    espece: string | null
-    type: string
-    variete: string | null
-    datePlantation?: Date | null
-    productif?: boolean | null
-  },
+  arbre: ArbreCalendrier & { espece: string | null; type: string },
   userId: string,
 ): Promise<boolean> {
   if (!arbre.espece) return false
@@ -44,33 +100,7 @@ export async function genererCalendrierEntretien(
   const profile = findTreeCareProfile(arbre.espece, arbre.type)
   if (!profile) return false
 
-  const now = new Date()
-  let debutJour = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-
-  // QA cmsqmamcv — un arbre à PLANTER (date de plantation future) recevait un
-  // calendrier calé sur l'année civile courante : « Récolte des pommes » et
-  // « Bouillie bordelaise » ANTÉRIEURES à la mise en terre remplissaient la
-  // liste « à faire » de gestes impossibles. Aucune opération ne peut précéder
-  // la plantation : le plancher est repoussé à cette date.
-  if (arbre.datePlantation && arbre.datePlantation > debutJour) {
-    debutJour = new Date(
-      arbre.datePlantation.getFullYear(),
-      arbre.datePlantation.getMonth(),
-      arbre.datePlantation.getDate(),
-    )
-  }
-
-  let operations = generateCareOperations(
-    profile, debutJour.getFullYear(), arbre.id, userId, arbre.variete, debutJour,
-  )
-
-  // Même ticket : pas de récolte planifiée sur un arbre non productif — sa
-  // première année de production peut être à des années de là. L'opération
-  // reviendra par la régénération du calendrier quand `productif` basculera.
-  if (arbre.productif === false) {
-    operations = operations.filter((op) => op.type !== "recolte")
-  }
-
+  const { operations } = planCalendrierEntretien(profile, arbre, userId)
   if (operations.length === 0) return false
 
   await prisma.operationArbre.createMany({ data: operations })

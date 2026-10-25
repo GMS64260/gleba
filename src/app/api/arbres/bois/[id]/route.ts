@@ -12,6 +12,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromProductionBois, deleteAutoEntry } from "@/lib/auto-compta"
 import { creerFacture, annulerFactureLiee } from "@/lib/facture-utils"
 import { m3PleinToStere } from "@/lib/recolte/lot"
+import { libellesVenteBois, refusTypeProductionBois } from "@/lib/verger/production-bois"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -85,6 +86,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json()
+
+    // Même garde que la création (QA cmvnp0dm9) : un type hors liste n'aurait
+    // aucun libellé à afficher sur la vente ni sur la facture.
+    const refusType = body.type !== undefined ? refusTypeProductionBois(body.type) : null
+    if (refusType) {
+      return NextResponse.json({ error: refusType, champ: "type" }, { status: 400 })
+    }
 
     const production = await prisma.productionBois.update({
       where: { id: productionId },
@@ -210,16 +218,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         // Bois = TVA 10 % (aligné sur l'écriture auto-compta, cf. auto-compta.ts)
         const totalHT = body.prixVente / 1.10
         const totalTVA = body.prixVente - totalHT
-        const typeDescription = existing.type || 'Bois'
-        const arbreInfo = existing.arbre ? ` - ${existing.arbre.nom}` : ''
-        const volumeInfo = existing.volumeM3 ? ` (${existing.volumeM3} m³)` : ''
+        // QA cmvnp0dm9 — libellés tirés de la source partagée avec l'écran
+        // (« Élagage », « 0,2 m³ »), jamais de la valeur technique.
+        const textes = libellesVenteBois({
+          type: existing.type,
+          volumeM3: existing.volumeM3,
+          poidsKg: existing.poidsKg,
+          arbreNom: existing.arbre?.nom,
+        })
 
         const facture = await creerFacture(tx, {
           userId,
           type: 'facture',
           clientId: body.clientId || null,
           clientNom: body.clientNom,
-          objet: `Vente de bois - ${typeDescription}${volumeInfo}`,
+          objet: textes.objetFacture,
           totalHT,
           totalTVA,
           totalTTC: body.prixVente,
@@ -227,7 +240,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           datePaiement: new Date(),
           modePaiement: 'especes',
           lignes: [{
-            description: `${typeDescription}${arbreInfo}`,
+            description: textes.ligneFacture,
             quantite: existing.volumeM3 || 1,
             unite: existing.volumeM3 ? 'm³' : 'lot',
             prixUnitaire: totalHT / (existing.volumeM3 || 1),

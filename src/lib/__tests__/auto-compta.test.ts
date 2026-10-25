@@ -231,4 +231,22 @@ describe('invariants auto-compta élevage', () => {
       modeReglement: 'Virement',
     })
   })
+
+  // QA cmvnp0dm9 (2026-10-25) — vente de bois sans facture : l'écriture
+  // portait « Vente bois - elagage - … - 0.2 m³ ».
+  it('décrit la vente de bois par le libellé du type, comme l’écran et la facture', async () => {
+    await createVenteFromProductionBois('user-1', {
+      id: 41,
+      type: 'elagage',
+      volumeM3: 0.2,
+      prixVente: 24,
+      arbre: { nom: 'Noyer 2', espece: 'Noyer' },
+    })
+
+    expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({
+      description: 'Vente bois - Élagage - Noyer 2 - 0,2 m³',
+      quantite: 0.2,
+      unite: 'm³',
+    })
+  })
 })

@@ -24,6 +24,7 @@ import { CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-consta
 import { labelStatutRecolteArbre } from "@/lib/verger/statut-recolte-arbre"
 import { TYPES_ARBRE, categoriesEspecePourTypeArbre, estTypeArbre, libelleTypeArbre } from "@/lib/verger/types-arbre"
 import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
+import { lienOperationsArbre } from "@/lib/verger/lien-operations-arbre"
 import { ChampPorteGreffe } from "@/components/verger/ChampPorteGreffe"
 
 interface Arbre {
@@ -839,7 +840,10 @@ export default function DetailArbrePage() {
                 <p className="text-muted-foreground mb-4">
                   Consultez les opérations de cet arbre dans la page dédiée.
                 </p>
-                <Link href="/verger?tab=operations">
+                {/* QA cmvnorxov — le lien porte l'identifiant de l'arbre : l'onglet
+                    Opérations s'ouvre filtré sur lui, et non sur tout le verger,
+                    sur l'année civile en cours (pas l'année mémorisée). */}
+                <Link href={lienOperationsArbre(arbre.id, new Date().getFullYear())}>
                   <Button variant="outline">Voir les opérations</Button>
                 </Link>
               </CardContent>

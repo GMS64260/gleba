@@ -46,6 +46,11 @@ import { choisirEspeceArbre } from "@/lib/verger/espece-arbre"
 import type { ZoneClimat } from "@/lib/terroir"
 import { Snowflake } from "lucide-react"
 
+// Ticket cmvnopnsu (2026-10-25) : le calendrier d'entretien est généré à la
+// création (`genererCalendrierEntretien`), ce que le formulaire ne disait pas.
+const AIDE_CALENDRIER_CREATION =
+  "À l'enregistrement, Gleba planifie l'entretien connu pour l'espèce, à partir d'aujourd'hui ou de cette date si elle est à venir. Vous pourrez le recalculer depuis la liste des arbres (écran large)."
+
 /**
  * QA cmswxinhf — l'avertissement annonçait la purge des observations et des
  * opérations sans distinguer les traitements phyto, que la suppression effaçait
@@ -269,7 +274,9 @@ function makeColumns(
     {
       id: "calendrier",
       header: "",
-      // Masquée sur mobile : le raccourci reste accessible depuis la fiche.
+      // Masquée sous 768 px. La fiche de l'arbre ne propose ni la duplication
+      // ni le recalcul du calendrier (constat du 2026-10-25) : sur téléphone,
+      // ces deux gestes ne sont pas accessibles.
       meta: { className: "hidden md:table-cell" },
       cell: ({ row }) => {
         const arbre = row.original
@@ -306,7 +313,11 @@ function makeColumns(
               e.stopPropagation()
               onGenererCalendrier(arbre)
             }}
-            title="Générer le calendrier d'entretien"
+            // Ticket cmvnopnsu — le calendrier naît à la création de l'arbre ;
+            // ce bouton le recalcule (opérations automatiques non faites de
+            // l'année), selon la même règle (`planCalendrierEntretien`).
+            title="Recalculer le calendrier d'entretien"
+            aria-label={`Recalculer le calendrier d'entretien de ${arbre.nom}`}
           >
             <CalendarPlus className="h-3.5 w-3.5" />
           </Button>
@@ -396,7 +407,18 @@ export function ArbresTab() {
       })
       if (res.ok) {
         const data = await res.json()
-        toast({ title: `Calendrier généré pour ${data.espece}`, description: `${data.count} opérations créées` })
+        // Ticket cmvnopnsu — le bouton recalcule ; l'année dite est celle
+        // réellement régénérée (celle de la plantation si elle est à venir).
+        const count = Number(data.count) || 0
+        toast({
+          title: `Calendrier recalculé pour ${data.espece} (${data.year})`,
+          description:
+            count === 0
+              ? "Aucune opération à prévoir."
+              : count === 1
+                ? "1 opération créée."
+                : `${count} opérations créées.`,
+        })
       } else {
         const err = await res.json()
         toast({ title: "Calendrier non disponible", description: err.error, variant: "destructive" })
@@ -505,7 +527,19 @@ export function ArbresTab() {
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || "Duplication impossible")
       const noms: string[] = (data?.arbres ?? []).map((a: { nom: string }) => a.nom)
-      toast({ title: noms.length > 1 ? `${noms.length} arbres créés` : "Arbre dupliqué", description: noms.join(", ") })
+      // Ticket cmvnopnsu — chaque copie reçoit son calendrier d'entretien
+      // (`calendriers` renvoyé par la route) : on le dit.
+      const calendriers = Number(data?.calendriers) || 0
+      const annonceCalendrier =
+        calendriers === 0
+          ? null
+          : calendriers === 1
+            ? "Calendrier d'entretien généré."
+            : `Calendrier d'entretien généré pour ${calendriers} arbres.`
+      toast({
+        title: noms.length > 1 ? `${noms.length} arbres créés` : "Arbre dupliqué",
+        description: [noms.join(", "), annonceCalendrier].filter(Boolean).join(". "),
+      })
       fetchData()
     } catch (e) {
       toast({ title: "Erreur", description: e instanceof Error ? e.message : undefined, variant: "destructive" })
@@ -1235,6 +1269,11 @@ export function ArbresTab() {
                   if (value) setNewArbre((current) => (current.datePlantation === value ? current : { ...current, datePlantation: value }))
                 }}
               />
+              {/* Ticket cmvnopnsu — la création génère le calendrier d'entretien
+                  (règle voulue) : on l'annonce avant l'enregistrement. */}
+              {!batchMode && (
+                <p className="mt-1.5 text-xs text-muted-foreground">{AIDE_CALENDRIER_CREATION}</p>
+              )}
             </div>
 
             {/* PROMPT 10 — Spécificités fruitier / agroforesterie */}

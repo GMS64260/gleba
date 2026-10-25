@@ -37,6 +37,7 @@ import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { getAidesByType, NIVEAU_LIBELLE } from "@/data/aides-plantation"
 import { nomEssenceCampagne } from "@/lib/verger/essence-campagne"
+import { libelleVolumeBois } from "@/lib/verger/production-bois"
 import { formatMontantDevise } from "@/lib/format-utils"
 
 const ETAPE_LIBELLES: Record<string, string> = {
@@ -437,7 +438,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                           <p className="font-medium text-sm">
                             {new Date(campagne.productionBois.date).toLocaleDateString("fr-FR")}
                             {campagne.productionBois.arbre?.nom ? ` — ${campagne.productionBois.arbre.nom}` : ""}
-                            {campagne.productionBois.volumeM3 ? ` (${campagne.productionBois.volumeM3} m³)` : ""}
+                            {campagne.productionBois.volumeM3 ? ` (${libelleVolumeBois(campagne.productionBois.volumeM3)})` : ""}
                           </p>
                         </div>
                       )}
