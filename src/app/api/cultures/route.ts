@@ -6,7 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { createCultureSchema, normalizeCultureDateFields, validateCultureDates } from '@/lib/validations'
+import { createCultureSchema, normaliserDatesCreationCulture, validateCultureDates } from '@/lib/validations'
+import { dateJourSeul } from '@/lib/jour-civil'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { evaluerOccupationPlanche } from '@/lib/planche-validation'
@@ -205,7 +206,9 @@ export async function POST(request: NextRequest) {
 
     // Parité avec le PUT (fix efa206f) : un input type=date envoie
     // « YYYY-MM-DD », Prisma exige un DateTime — normaliser avant insertion.
-    const champDateInvalide = normalizeCultureDateFields(data)
+    // Ticket QA cmvnulry1 (2026-10-25) : un instant reçu (« 2027-04-11T22:00Z »,
+    // minuit à Paris) est ramené à son jour civil, écrit à minuit UTC.
+    const champDateInvalide = normaliserDatesCreationCulture(data)
     if (champDateInvalide) {
       return NextResponse.json(
         { error: `Date invalide pour ${champDateInvalide}` },
@@ -364,7 +367,9 @@ export async function POST(request: NextRequest) {
         (data.dateRecolte as Date | null) ?? null,
         itpCalibre ?? itp
       )
-      if (finDerivee) data.finRecolte = finDerivee
+      // Dérivée en jours locaux (`setDate`) : ramenée au jour seul, comme les
+      // dates reçues (cmvnulry1).
+      if (finDerivee) data.finRecolte = dateJourSeul(finDerivee)
     }
 
     // Ticket QA cmvnpkkhp (2026-10-25) — l'assistant « Semer » n'envoyait pas

@@ -14,6 +14,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
 import { identifiantLegalAffichage } from "@/lib/territoires"
 import { applicateurPhyto } from "@/lib/tracabilite/projection-phyto"
+import { jourCivilStocke } from "@/lib/jour-civil"
 
 type Format = "pdf" | "csv"
 
@@ -138,7 +139,9 @@ export async function GET(request: NextRequest) {
     const variete = culture?.variete?.nom ?? culture?.variete?.id ?? arbre?.variete ?? null
     return {
       source: "intervention",
-      date: i.date.toISOString().slice(0, 10),
+      // Jour civil, comme l'écran du registre (cmvnulry1) : `slice(0, 10)` de
+      // l'ISO donnait la veille d'un traitement saisi entre minuit et 2 h à Paris.
+      date: jourCivilStocke(i.date) ?? "",
       parcelle: i.parcelle?.nom ?? planche?.nom ?? null,
       espece,
       variete,
@@ -176,7 +179,7 @@ export async function GET(request: NextRequest) {
 
   const lignesObservation = observations.map((o) => ({
     source: "observation_sante",
-    date: o.date.toISOString().slice(0, 10),
+    date: jourCivilStocke(o.date) ?? "",
     parcelle: o.parcelle?.nom ?? null,
     espece: o.arbre?.espece ?? null,
     variete: o.arbre?.variete ?? null,

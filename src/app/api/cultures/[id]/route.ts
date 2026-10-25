@@ -8,7 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { updateCultureSchema, normalizeCultureDateFields } from '@/lib/validations'
+import { updateCultureSchema, normalizeCultureDateFields, retenirDatesCulture } from '@/lib/validations'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { validateCultureDates } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { irrigationCache } from '@/lib/irrigation-cache'
@@ -181,6 +182,10 @@ export async function PUT(
     }
 
     const data = validationResult.data
+    // Ticket QA cmvnulry1 (2026-10-25) — une date de culture est un JOUR : même
+    // jour civil que la date stockée → instant stocké gardé ; autre jour →
+    // minuit UTC de ce jour (règle `dateSoinRetenue` de l'élevage).
+    retenirDatesCulture(data, existing)
 
     // Changer l'ITP d'une culture est une écriture : l'itinéraire visé doit être
     // visible par ce membre ET encore en service, comme à la création. Sans ce
@@ -344,9 +349,12 @@ export async function PUT(
     for (const champEtape of ETAPES) {
       const champDate = CHAMP_DATE_ETAPE[champEtape]
       const soumise = dateSoumise[champEtape]
+      // Date modifiée = autre JOUR civil (cmvnulry1) : un même jour renvoyé
+      // sous une autre forme (« AAAA-MM-JJ » d'un instant horodaté, minuit
+      // Paris d'une culture ancienne) n'est pas une nouvelle date de plan.
       if (
         soumise !== undefined &&
-        (soumise?.getTime() ?? null) !== (existing[champDate]?.getTime() ?? null)
+        jourCivilStocke(soumise) !== jourCivilStocke(existing[champDate])
       ) {
         Object.assign(ecrituresEtapes, ecrituresDatePlanRedefinie(champEtape))
         continue

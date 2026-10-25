@@ -64,12 +64,8 @@ export function sousTitreAujourdhui(nombre: number): string {
 
 export { formatNombre } from "@/lib/format-utils"
 
-/** Jour civil local AAAA-MM-JJ d'une date (jamais `toISOString`, qui est en UTC). */
-export function jourLocalISO(date: Date): string {
-  const m = String(date.getMonth() + 1).padStart(2, "0")
-  const j = String(date.getDate()).padStart(2, "0")
-  return `${date.getFullYear()}-${m}-${j}`
-}
+/** Jour civil local AAAA-MM-JJ d'une date : copie unique dans `src/lib/jour-civil.ts`. */
+export { jourLocalISO } from "@/lib/jour-civil"
 
 /**
  * Date d'un jour civil AAAA-MM-JJ ancrée à MIDI local : `new Date("AAAA-MM-JJ")`

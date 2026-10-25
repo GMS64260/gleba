@@ -19,6 +19,13 @@ import { UserMenu } from "@/components/auth/UserMenu"
 import { libelleTypeIntervention } from "@/lib/interventions/types"
 import { libelleTypeSoin, optionsFiltreTypeSoin } from "@/lib/elevage/types-soin"
 import {
+  REGISTRE_PAR_DEFAUT,
+  lireEtatTracabilite,
+  urlTracabilite,
+  type EtatTracabilite,
+  type RegistreTracabilite,
+} from "@/lib/tracabilite/registre-url"
+import {
   Sprout,
   TreeDeciduous,
   Bird,
@@ -223,14 +230,15 @@ interface RegistreElevageData {
 // TABS
 // ============================================================
 
-const TABS = [
+// `id` = valeur du paramètre d'URL `registre` (`src/lib/tracabilite/registre-url.ts`).
+const TABS: readonly { id: RegistreTracabilite; label: string; icon: typeof Shield; shortLabel: string }[] = [
   { id: "phyto", label: "Registre phytosanitaire", icon: Shield, shortLabel: "Phyto" },
   { id: "culture", label: "Registre de culture", icon: Leaf, shortLabel: "Cultures" },
   { id: "sanitaire", label: "Carnet sanitaire", icon: Bird, shortLabel: "Sanitaire" },
   { id: "elevage", label: "Registre d'élevage", icon: FileText, shortLabel: "Élevage" },
-] as const
+]
 
-type TabId = (typeof TABS)[number]["id"]
+type TabId = RegistreTracabilite
 
 // QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
 const currentYearNow = new Date().getFullYear()
@@ -244,6 +252,8 @@ const availableYears = getAvailableYears()
 // dates « jour seul » stockées à minuit UTC. On les formate en UTC pour éviter
 // le décalage d'un jour en Outre-mer (offset négatif) et rester cohérent avec
 // l'agrégation serveur (toISOString().slice(0,10)) et l'export PDF.
+// Le Registre de culture reçoit déjà des jours civils « AAAA-MM-JJ »
+// (`jourCivilStocke`, ticket cmvnulry1) : lus minuit UTC, ils gardent leur jour.
 function formatDate(iso: string | null): string {
   if (!iso) return "-"
   return new Date(iso).toLocaleDateString("fr-FR", {
@@ -299,8 +309,33 @@ export default function TraçabilitéPage() {
 
 function TraçabilitéContent() {
   const { data: session } = useSession()
-  const [activeTab, setActiveTab] = React.useState<TabId>("phyto")
+  const [activeTab, setActiveTab] = React.useState<TabId>(REGISTRE_PAR_DEFAUT)
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
+  // Ticket QA cmvntzwng — registre et année vivent dans l'URL
+  // (`?registre=culture&annee=2027`) pour survivre à un rechargement ou à un
+  // lien partagé. Lus APRÈS le montage : la page est prérendue au build, une
+  // lecture de `window.location` au rendu ferait diverger l'hydratation. La
+  // première lecture des données attend cette restauration, sinon le registre
+  // phytosanitaire de l'année courante se chargeait avant le bon.
+  const [etatRestaure, setEtatRestaure] = React.useState(false)
+  React.useEffect(() => {
+    const etat = lireEtatTracabilite(window.location.search, {
+      annees: availableYears,
+      anneeParDefaut: currentYearNow,
+    })
+    setActiveTab(etat.registre)
+    setSelectedYear(etat.annee)
+    setEtatRestaure(true)
+  }, [])
+  // Un choix de registre ou d'année réécrit l'URL sans entrée d'historique.
+  // API History et état `null` (motif 7) : `router.replace` sur le même chemin
+  // est ignoré après préchargement, et avec l'état de Next le routeur
+  // réécrirait l'URL sans le paramètre à sa prochaine mise à jour.
+  const afficherRegistre = (etat: EtatTracabilite) => {
+    setActiveTab(etat.registre)
+    setSelectedYear(etat.annee)
+    window.history.replaceState(null, "", urlTracabilite(window.location, etat))
+  }
 
   // Data states
   const [phytoData, setPhytoData] = React.useState<PhytoData | null>(null)
@@ -346,7 +381,7 @@ function TraçabilitéContent() {
 
   // Fetch data when tab or year changes
   React.useEffect(() => {
-    if (!session?.user) return
+    if (!session?.user || !etatRestaure) return
 
     const fetchData = async () => {
       setLoading(true)
@@ -372,7 +407,7 @@ function TraçabilitéContent() {
     }
 
     fetchData()
-  }, [activeTab, selectedYear, session?.user])
+  }, [activeTab, selectedYear, session?.user, etatRestaure])
 
   const toggleCulture = (id: number) => {
     setExpandedCultures((prev) => {
@@ -473,7 +508,7 @@ function TraçabilitéContent() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => afficherRegistre({ registre: tab.id, annee: selectedYear })}
                     className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                       isActive
                         ? "border-indigo-600 text-indigo-700"
@@ -525,7 +560,7 @@ function TraçabilitéContent() {
               )}
               <select
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                onChange={(e) => afficherRegistre({ registre: activeTab, annee: parseInt(e.target.value, 10) })}
                 className="h-8 px-2 text-sm border rounded-md bg-white"
               >
                 {availableYears.map((year) => (

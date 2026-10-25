@@ -21,6 +21,7 @@
 
 import prisma from '@/lib/prisma'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { numAMMValide } from '@/lib/tracabilite/amm'
 import { champsManquantsObservationPhyto } from '@/lib/tracabilite/conformite-observation-phyto'
 import {
@@ -29,6 +30,16 @@ import {
   operateurPhyto,
   surfaceRegistreM2,
 } from '@/lib/tracabilite/projection-phyto'
+
+/**
+ * Date d'une ligne du registre : son JOUR civil « AAAA-MM-JJ » (minuit UTC pile
+ * = jour saisi, sinon jour à Paris), comme le Registre de culture et l'export.
+ * Ticket QA cmvnulry1 (2026-10-25) : l'ISO brut, formaté en UTC, mettait la
+ * veille un traitement saisi entre minuit et 2 h à Paris (22:30 UTC la veille).
+ */
+function jourLigne(date: Date): string {
+  return jourCivilStocke(date) ?? ''
+}
 
 /**
  * Conformité du numéro d'AMM au registre : absent → « numAMM » manquant ;
@@ -209,7 +220,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
 
       return {
         id: intervention.id,
-        date: intervention.date.toISOString(),
+        date: jourLigne(intervention.date),
         culture: cultureNom || 'Non renseigné',
         espece: especeNom,
         parcelle: plancheNom || 'Non renseigné',
@@ -282,7 +293,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
     if (o.numAMM && !numAMMValide(o.numAMM)) champsMissing.push('numAMM invalide')
     entries.push({
       id: 1_000_000_000 + o.id, // évite la collision d'id avec les interventions
-      date: o.date.toISOString(),
+      date: jourLigne(o.date),
       culture: o.arbre?.nom || 'Non renseigné',
       espece: o.arbre?.espece || '',
       parcelle: o.parcelle?.nom || 'Non renseigné',
@@ -355,7 +366,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
     })
     entries.push({
       id: 2_000_000_000 + op.id, // évite la collision d'id avec interventions et observations
-      date: op.date.toISOString(),
+      date: jourLigne(op.date),
       culture: op.arbre?.nom || 'Non renseigné',
       espece: op.arbre?.espece || '',
       parcelle: 'Non renseigné',

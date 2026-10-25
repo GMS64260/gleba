@@ -20,6 +20,7 @@ import { finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
+import { dateJourSeul } from '@/lib/jour-civil'
 
 function lireDate(valeur: string | null): Date | null {
   if (!valeur) return null
@@ -75,18 +76,20 @@ export async function GET(request: NextRequest) {
         })
       : null
 
-    const dateSemis = lireDate(searchParams.get('dateSemis'))
-    const datePlantation = lireDate(searchParams.get('datePlantation'))
-    const dateRecolte = lireDate(searchParams.get('dateRecolte'))
+    // Mêmes jours que ceux que la création enregistrera : chaque date ramenée
+    // au jour seul, minuit UTC (`dateJourSeul`, ticket cmvnulry1).
+    const dateSemis = dateJourSeul(lireDate(searchParams.get('dateSemis')))
+    const datePlantation = dateJourSeul(lireDate(searchParams.get('datePlantation')))
+    const dateRecolte = dateJourSeul(lireDate(searchParams.get('dateRecolte')))
     // Même dérivation que la création : sans fin de fenêtre fournie, elle se
     // déduit de l'itinéraire, dans le référentiel de semaines de l'exploitation.
-    let finRecolte = lireDate(searchParams.get('finRecolte'))
+    let finRecolte = dateJourSeul(lireDate(searchParams.get('finRecolte')))
     if (!finRecolte && itp) {
       const itpCalibre = appliquerDecalageItp(
         itp,
         decalageItpPourLecteur(itp, await zoneEffectiveUser(prisma, userId), userId)
       )
-      finRecolte = finRecolteDepuisItp(dateRecolte, itpCalibre)
+      finRecolte = dateJourSeul(finRecolteDepuisItp(dateRecolte, itpCalibre))
     }
 
     const verdict = evaluerOccupationPlanche({

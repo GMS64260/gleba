@@ -27,6 +27,7 @@ import { evaluerOccupationPlanche } from './planche-validation'
 import { selectCulturesOccupation } from './planches/occupation'
 import { finDeCycle, finRecolteDepuisItp } from './cultures/fenetre-recolte'
 import { nbPlantsCulture } from './cultures/quantite-plants'
+import { dateJourSeul } from './jour-civil'
 
 export { etapeCycleRotation, EPOCH_ROTATION_SANS_ANCRAGE } from './rotation/etape-cycle'
 
@@ -1634,19 +1635,31 @@ export async function creerCulturesBatch(
     // `dates-itp.ts`. Avant, la culture 2028 matérialisée en S31 se relisait en
     // S30 (convention « semaine contenant le 1er janvier »).
     const semaineSemisEff = semaineSemisEffective(itpCalibre)
-    const dateSemis = semaineSemisEff
+    const semisLocal = semaineSemisEff
       ? calculerDateDepuisSemaine(annee, semaineSemisEff)
       : null
-    const datePlantation = itpCalibre.semainePlantation
+    const plantationLocale = itpCalibre.semainePlantation
       ? dateSemaineChrono(annee, itpCalibre.semainePlantation, semaineSemisEff)
       : null
-    const dateRecolte = itpCalibre.semaineRecolte
+    const recolteLocale = itpCalibre.semaineRecolte
       ? dateSemaineChrono(
           annee,
           itpCalibre.semaineRecolte,
           itpCalibre.semainePlantation ?? semaineSemisEff
         )
       : null
+    // Fenêtre de récolte dérivée de l'itinéraire, comme à la création unitaire
+    // (décalage en jours civils locaux, avant la conversion ci-dessous).
+    const finRecolteLocale = finRecolteDepuisItp(recolteLocale, itpCalibre)
+    // Ticket QA cmvnulry1 (2026-10-25) — `semaineVersDate` rend un minuit
+    // LOCAL : écrit tel quel, le semis du lundi 12/04/2027 était stocké le
+    // 11/04 à 22:00 UTC, que le Registre de culture (jour UTC) affichait au
+    // 11 avr. alors que la fiche (jour local) disait le 12. Une date au jour
+    // seul s'écrit à minuit UTC, comme une saisie « Nouvelle culture ».
+    const dateSemis = dateJourSeul(semisLocal)
+    const datePlantation = dateJourSeul(plantationLocale)
+    const dateRecolte = dateJourSeul(recolteLocale)
+    const finRecolte = dateJourSeul(finRecolteLocale)
 
     // QA cmv29cg0h — une culture concrétisée depuis la rotation arrivait sans
     // longueur, espacement ni quantité : la fiche affichait des champs vides
@@ -1659,8 +1672,6 @@ export async function creerCulturesBatch(
     const espacement = itp.espacement && itp.espacement > 0 ? Math.round(itp.espacement) : null
     const nbPlants = calculerNbPlants(longueur, null, itp.nbRangs, espacement)
     const quantite = nbPlants > 0 ? nbPlants : null
-    // Fenêtre de récolte dérivée de l'itinéraire, comme à la création unitaire.
-    const finRecolte = finRecolteDepuisItp(dateRecolte, itpCalibre)
 
     // Revue du 2026-10-11 (QA cmv2r1v63, cmv2r2rl8) — même règle d'occupation
     // que POST /api/cultures : « Créer quand même » une étape de rotation sur
