@@ -2,8 +2,8 @@
 // Tâches et l'onglet Calendrier, retouches de la relecture de `0e07f60`.
 // Compte démo. Toute écriture est interceptée et annulée, sauf deux arrosages
 // mesurés (Tâches : 20 L ; Calendrier : « 12,5 ») notés puis annulés par le
-// « Annuler » du toast (identifiants d'intervention affichés pour contrôle en
-// base). « Quantité inconnue » est essayé écritures coupées : il doit afficher
+// « Annuler » du toast, ou à défaut par l'API (identifiants d'intervention
+// affichés pour contrôle). « Quantité inconnue » est essayé écritures coupées : il doit afficher
 // l'erreur réseau en français et garder la fenêtre ouverte.
 //   PLAYWRIGHT_DIR=/var/www/escalier node scripts/qa/sonde-lot-20261011c.cjs [BASE] [etapes] [dossier captures]
 const { chromium } = require(`${process.env.PLAYWRIGHT_DIR || "/var/www/escalier"}/node_modules/playwright`);
@@ -87,33 +87,57 @@ async function lireDialogue(page, nom) {
   return dlg;
 }
 
+// Annulation par le « Annuler » DU TOAST « Arrosage noté » (Radix Toast : région
+// « Notifications (F8) », un <li> par toast, SANS rôle : le role="status" de
+// Radix 1.2 est sur la copie annoncée, hors de la région), pas par le premier
+// bouton « Annuler » de la page : le
+// 2026-10-25, `getByRole("button", { name: "Annuler" }).first()` attrapait celui
+// d'une ligne de tâche faite (PATCH /api/cultures/<id> {semisFait:false}, coupé
+// par la garde d'écriture), l'arrosage restait noté (interventions 149 et 150).
+// Le toast vit 8 s : rien d'autre ne s'intercale entre l'envoi et l'annulation.
+// Si le toast n'annule pas, repli par l'API (même corps que le toast), journalisé
+// « annulation (repli API) » : le contrôle du toast reste alors non vu.
 async function noterPuisAnnuler(page, dlg, nom, saisie, observation) {
   await dlg.locator("#arrosage-litres").fill(saisie);
   if (observation) await dlg.locator("#arrosage-notes").fill(observation);
   ecrituresPermises = /^\/api\/cultures\/irriguer$/;
-  let squelettes = 0;
-  const veille = (async () => {
-    for (let i = 0; i < 20; i++) {
-      squelettes = Math.max(squelettes, await page.locator(".animate-pulse").count());
-      await page.waitForTimeout(100);
-    }
-  })();
   const [rep] = await Promise.all([
     page.waitForResponse((r) => r.url().includes("/api/cultures/irriguer") && r.request().method() === "PATCH"),
     dlg.getByRole("button", { name: "Enregistrer" }).click(),
   ]);
   const json = await rep.json();
   console.log(`[${nom}] envoyé :`, JSON.stringify(rep.request().postDataJSON()), "→", rep.status(), "intervention", json.interventionId);
-  await veille;
-  console.log(`[${nom}] squelettes de chargement pendant 2 s :`, squelettes, "| fenêtre fermée :", !(await page.locator(DLG).isVisible()));
-  const toast = page.getByText("Arrosage noté").first().locator("xpath=..");
-  console.log(`[${nom}] toast :`, (await toast.innerText().catch(() => "aucun")).replace(/\s+/g, " "));
-  const [annul] = await Promise.all([
-    page.waitForResponse((r) => r.url().includes("/api/cultures/irriguer") && r.request().method() === "PATCH"),
-    page.getByRole("button", { name: "Annuler" }).first().click(),
-  ]);
-  console.log(`[${nom}] annulation :`, JSON.stringify(annul.request().postDataJSON()), "→", annul.status(), JSON.stringify(await annul.json()));
+  const fenetreFermee = await page.locator(DLG).waitFor({ state: "hidden", timeout: 3000 }).then(() => true, () => false);
+  const toast = page
+    .getByRole("region", { name: /^Notifications/ })
+    .locator("li", { hasText: "Arrosage noté" })
+    .first();
+  console.log(`[${nom}] toast :`, (await toast.innerText({ timeout: 3000 }).catch(() => "aucun")).replace(/\s+/g, " "));
+  let annule = false;
+  try {
+    const [annul] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/cultures/irriguer") && r.request().method() === "PATCH", { timeout: 15000 }),
+      toast.getByRole("button", { name: "Annuler", exact: true }).click({ timeout: 5000 }),
+    ]);
+    console.log(`[${nom}] annulation :`, JSON.stringify(annul.request().postDataJSON()), "→", annul.status(), JSON.stringify(await annul.json().catch(() => null)));
+    annule = annul.ok();
+  } catch (e) {
+    console.log(`[${nom}] annulation par le toast impossible :`, String(e).split("\n")[0].slice(0, 200));
+  }
   ecrituresPermises = null;
+  if (!annule && json.interventionId) {
+    const corps = { annulerArrosage: true, interventionId: json.interventionId };
+    const r = await page.request.patch(`${BASE}/api/cultures/irriguer`, { data: corps });
+    console.log(`[${nom}] annulation (repli API) :`, JSON.stringify(corps), "→", r.status(), (await r.text()).slice(0, 200));
+  }
+  // Squelettes de chargement : surveillés après l'annulation (2 s), pour ne pas
+  // retarder le clic sur le toast.
+  let squelettes = 0;
+  for (let i = 0; i < 20; i++) {
+    squelettes = Math.max(squelettes, await page.locator(".animate-pulse").count());
+    await page.waitForTimeout(100);
+  }
+  console.log(`[${nom}] squelettes de chargement pendant 2 s après l'annulation :`, squelettes, "| fenêtre fermée :", fenetreFermee);
   return json.interventionId;
 }
 

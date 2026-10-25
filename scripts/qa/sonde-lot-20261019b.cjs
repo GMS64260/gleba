@@ -8,6 +8,12 @@
 //   2. cmv9e1u2r : chaque action de ligne de la table des animaux (et des
 //      lots) expose un nom accessible qui nomme le geste et la ligne.
 //   PLAYWRIGHT_DIR=/var/www/escalier node scripts/qa/sonde-lot-20261019b.cjs
+// 2026-10-25 : plantée avant le bilan (code 2) au passage d'après bascule :
+// `page.goto(…/elevage?tab=production, { waitUntil: "networkidle" })` n'aboutit
+// jamais sur gleba.fr (requêtes de fond permanentes), délai de 30 s dépassé,
+// exception hors de tout try. Pages chargées en « load » puis attente explicite
+// de la table ; chaque écran est un bloc qui finit en KO nommé au lieu de
+// faire tomber la sonde.
 const { chromium } = require(process.env.PLAYWRIGHT_DIR ? `${process.env.PLAYWRIGHT_DIR}/node_modules/playwright` : "playwright");
 const BASE = process.env.BASE || "https://gleba.fr";
 const resultats = [];
@@ -26,8 +32,9 @@ const nomsActions = (racine) => racine.evaluateAll((els) => els.map((el) => {
   const ctx = await browser.newContext({ viewport: { width: 1446, height: 1037 }, locale: "fr-FR", timezoneId: "Europe/Paris" });
   await ctx.addInitScript(() => { try { localStorage.setItem("gleba-cookie-consent", JSON.stringify({ necessary: true, analytics: false, date: new Date().toISOString() })); } catch {} });
   const page = await ctx.newPage();
+  page.on("pageerror", (e) => console.log("erreur JS :", String(e).slice(0, 200)));
 
-  await page.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/login`, { waitUntil: "load" });
   await page.fill('input[type="email"]', "demo@gleba.fr");
   await page.fill('input[type="password"]', "demo2026");
   await Promise.all([page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 30000 }), page.keyboard.press("Enter")]);
@@ -40,37 +47,53 @@ const nomsActions = (racine) => racine.evaluateAll((els) => els.map((el) => {
   ok("API : au moins un lot démo écarté par un délai d'attente", bloques.length > 0, `${bloques.length} lot(s) sur ${lots.length}`);
   ok("API : le lot écarté porte la fin du délai (finAttenteVeto)", bloques.length > 0 && bloques.every((l) => l.finAttenteVeto), bloques.map((l) => `${l.datePonte?.slice(0, 10)} fin ${l.finAttenteVeto ?? "∅"}`).join(", "));
 
-  await page.goto(`${BASE}/elevage?tab=production`, { waitUntil: "networkidle" });
-  const tableStock = page.locator("table").filter({ has: page.locator("th", { hasText: "Limite vente" }) }).first();
-  await tableStock.waitFor({ timeout: 20000 });
-  const lignes = tableStock.locator("tbody tr").filter({ hasText: /délai véto/i });
-  const n = await lignes.count();
-  const textes = [];
-  for (let i = 0; i < n; i++) textes.push((await lignes.nth(i).innerText()).replace(/\s+/g, " "));
-  ok("écran : ligne écartée affichée", n > 0, textes[0]);
-  ok("écran : plus de « vendables dès le » sur une ponte écartée", n > 0 && textes.every((t) => !/vendables dès le/i.test(t)), "");
-  ok("écran : la ligne dit « jamais vendables » et la fin du délai", n > 0 && textes.every((t) => /jamais vendables/i.test(t) && /fin le \d{2}\/\d{2}\/\d{4}/.test(t)), "");
-  const limites = [];
-  for (let i = 0; i < n; i++) limites.push((await lignes.nth(i).locator("td").nth(3).innerText()).trim());
-  ok("écran : pas de limite de vente sur une ponte écartée", n > 0 && limites.every((x) => x === "-"), limites.join(", "));
+  try {
+    await page.goto(`${BASE}/elevage?tab=production`, { waitUntil: "load" });
+    const tableStock = page.locator("table").filter({ has: page.locator("th", { hasText: "Limite vente" }) }).first();
+    await tableStock.waitFor({ timeout: 30000 });
+    // Les lignes arrivent avec le stock d'œufs, après l'en-tête de la table :
+    // attendre la ligne écartée quand l'API en annonce une (sinon, la première).
+    const lignes = tableStock.locator("tbody tr").filter({ hasText: /délai véto/i });
+    await (bloques.length ? lignes : tableStock.locator("tbody tr")).first().waitFor({ timeout: 30000 }).catch(() => {});
+    const n = await lignes.count();
+    const textes = [];
+    for (let i = 0; i < n; i++) textes.push((await lignes.nth(i).innerText()).replace(/\s+/g, " "));
+    ok("écran : ligne écartée affichée", n > 0, textes[0]);
+    ok("écran : plus de « vendables dès le » sur une ponte écartée", n > 0 && textes.every((t) => !/vendables dès le/i.test(t)), "");
+    ok("écran : la ligne dit « jamais vendables » et la fin du délai", n > 0 && textes.every((t) => /jamais vendables/i.test(t) && /fin le \d{2}\/\d{2}\/\d{4}/.test(t)), "");
+    const limites = [];
+    for (let i = 0; i < n; i++) limites.push((await lignes.nth(i).locator("td").nth(3).innerText()).trim());
+    ok("écran : pas de limite de vente sur une ponte écartée", n > 0 && limites.every((x) => x === "-"), limites.join(", "));
+  } catch (e) {
+    ok("écran production : table « Traçabilité du stock » lue", false, String(e).split("\n")[0].slice(0, 200));
+  }
 
   // --- 2. Actions de ligne nommées (animaux, puis lots)
-  await page.goto(`${BASE}/elevage?tab=animaux`, { waitUntil: "networkidle" });
-  const tableAnimaux = page.locator("table").filter({ has: page.locator("th", { hasText: "Identifiant" }) }).first();
-  await tableAnimaux.waitFor({ timeout: 20000 });
-  const actionsAnimaux = tableAnimaux.locator("tbody tr td:last-child").locator("button, a");
-  const nomsA = await nomsActions(actionsAnimaux);
-  const mutsA = nomsA.filter((nom) => !nom || nom === "×");
-  ok("animaux : actions de ligne trouvées", nomsA.length > 0, `${nomsA.length} action(s)`);
-  ok("animaux : aucune action sans nom", nomsA.length > 0 && mutsA.length === 0, `${mutsA.length} muette(s) ; ex. ${[...new Set(nomsA.map((x) => x.split(" ")[0]))].join(", ")}`);
-  ok("animaux : « Vendre <animal> » joignable par son nom", (await page.getByRole("button", { name: /^Vendre \S/ }).count()) > 0, nomsA.find((x) => x.startsWith("Vendre")));
+  try {
+    await page.goto(`${BASE}/elevage?tab=animaux`, { waitUntil: "load" });
+    const tableAnimaux = page.locator("table").filter({ has: page.locator("th", { hasText: "Identifiant" }) }).first();
+    await tableAnimaux.waitFor({ timeout: 30000 });
+    await tableAnimaux.locator("tbody tr td:last-child").first().waitFor({ timeout: 30000 }).catch(() => {});
+    const actionsAnimaux = tableAnimaux.locator("tbody tr td:last-child").locator("button, a");
+    const nomsA = await nomsActions(actionsAnimaux);
+    const mutsA = nomsA.filter((nom) => !nom || nom === "×");
+    ok("animaux : actions de ligne trouvées", nomsA.length > 0, `${nomsA.length} action(s)`);
+    ok("animaux : aucune action sans nom", nomsA.length > 0 && mutsA.length === 0, `${mutsA.length} muette(s) ; ex. ${[...new Set(nomsA.map((x) => x.split(" ")[0]))].join(", ")}`);
+    ok("animaux : « Vendre <animal> » joignable par son nom", (await page.getByRole("button", { name: /^Vendre \S/ }).count()) > 0, nomsA.find((x) => x.startsWith("Vendre")));
+  } catch (e) {
+    ok("écran animaux : table lue", false, String(e).split("\n")[0].slice(0, 200));
+  }
 
-  await page.goto(`${BASE}/elevage?tab=animaux&sub=lots`, { waitUntil: "networkidle" });
-  const tableLots = page.locator("table").filter({ has: page.locator("tbody a[href^='/elevage/lots/']") }).first();
-  await tableLots.waitFor({ timeout: 20000 });
-  const nomsL = await nomsActions(tableLots.locator("tbody tr td:last-child").locator("button"));
-  const mutsL = nomsL.filter((nom) => !nom);
-  ok("lots : aucune action sans nom", nomsL.length > 0 && mutsL.length === 0, `${nomsL.length} action(s), ${mutsL.length} muette(s) ; ex. ${nomsL[0]}`);
+  try {
+    await page.goto(`${BASE}/elevage?tab=animaux&sub=lots`, { waitUntil: "load" });
+    const tableLots = page.locator("table").filter({ has: page.locator("tbody a[href^='/elevage/lots/']") }).first();
+    await tableLots.waitFor({ timeout: 30000 });
+    const nomsL = await nomsActions(tableLots.locator("tbody tr td:last-child").locator("button"));
+    const mutsL = nomsL.filter((nom) => !nom);
+    ok("lots : aucune action sans nom", nomsL.length > 0 && mutsL.length === 0, `${nomsL.length} action(s), ${mutsL.length} muette(s) ; ex. ${nomsL[0]}`);
+  } catch (e) {
+    ok("écran lots : table lue", false, String(e).split("\n")[0].slice(0, 200));
+  }
 
   await browser.close();
   const ko = resultats.filter((x) => !x.ok).length;

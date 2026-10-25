@@ -17,12 +17,43 @@ async function interdireEcritures(page) {
   return bloquees;
 }
 
+// Un élément rendu par le serveur ne porte ses gestionnaires React qu'une fois
+// hydraté (clé `__reactProps$…` sur le nœud) : un clic donné avant est perdu.
+// Le 2026-10-25, avant la bascule, le #418 de /aujourdhui faisait re-rendre la
+// page côté client et le clic sur « Plus de pages » tombait dans le vide.
+async function attendreHydrate(page, selecteur) {
+  await page.waitForFunction(
+    (sel) => {
+      const el = document.querySelector(sel);
+      return Boolean(el) && Object.keys(el).some((k) => k.startsWith("__reactProps$"));
+    },
+    selecteur,
+    { timeout: 30000 },
+  );
+}
+
+// Clique jusqu'à ce que la cible apparaisse (3 essais), et dit combien il en a fallu.
+async function ouvrirAvecEssais(declencheur, cible, nom) {
+  for (let essai = 1; essai <= 3; essai++) {
+    await declencheur.click();
+    try {
+      await cible.waitFor({ state: "visible", timeout: 4000 });
+      console.log(`${nom} : ouvert au clic ${essai}${essai > 1 ? " (clic(s) précédent(s) perdu(s))" : ""}`);
+      return essai;
+    } catch {}
+  }
+  console.log(`${nom} : toujours fermé après 3 clics`);
+  return 0;
+}
+
 async function navigation(page) {
   console.log("\n===== cmv2r57qk — navigation (375 px)");
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto(`${BASE}/aujourdhui`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Plus de pages" }).click();
-  const lien = page.locator('[role="dialog"] a[href="/interventions"]');
+  await page.goto(`${BASE}/aujourdhui`, { waitUntil: "load" });
+  await attendreHydrate(page, 'button[aria-label="Plus de pages"]');
+  const menu = page.getByRole("dialog", { name: "Toutes les pages" });
+  await ouvrirAvecEssais(page.getByRole("button", { name: "Plus de pages" }), menu, "menu « Plus de pages »");
+  const lien = menu.locator('a[href="/interventions"]');
   console.log("menu Plus → Interventions :", await lien.count(), await lien.first().innerText().catch(() => ""));
   await lien.first().click();
   await page.waitForURL(/\/interventions$/, { timeout: 20000 });
