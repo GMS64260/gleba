@@ -49,6 +49,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
 import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
+import { dateSoinARenvoyer, jourSoin } from '@/lib/elevage/date-soin'
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 import { SelecteurPeriodeExercice, parametreAnnee, type PeriodeListe } from "./SelecteurPeriodeExercice"
 import { stockMedicamentEstDisponible } from "@/lib/elevage/stock-medicament"
@@ -1177,7 +1178,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       cible: s.animalId ? "animal" : "lot",
       lotId: s.lot?.id ? s.lot.id.toString() : "",
       animalId: s.animal?.id ? s.animal.id.toString() : "",
-      date: s.date.split('T')[0],
+      // Ticket cmvnp6s3z : jour du soin, local pour une heure réelle (24/09
+      // 00:30 Paris est stockée 23/09 22:30 UTC), et non `split('T')[0]`.
+      date: jourSoin(new Date(s.date)),
       type: s.type ?? "Vaccination",
       description: s.description ?? "",
       produit: s.produit ?? "",
@@ -1188,7 +1191,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       motif: s.motif ?? "",
       ordonnanceUrl: s.ordonnanceUrl ?? "",
       veterinaire: s.veterinaire ?? "",
-      datePrevue: s.datePrevue ? s.datePrevue.split('T')[0] : "",
+      datePrevue: s.datePrevue ? jourSoin(new Date(s.datePrevue)) : "",
       quantite: s.quantite ? s.quantite.toString() : "",
       unite: s.unite ?? "",
       cout: s.cout ? s.cout.toString() : "",
@@ -1589,8 +1592,10 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     }
     setIsSavingSoin(true)
     try {
+      // Ticket cmvnp6s3z : un jour non touché renvoie la date stockée intacte
+      // (heure réelle comprise) ; seul un jour modifié part en « AAAA-MM-JJ ».
       const payload: Record<string, unknown> = {
-        date: dateSoinSoumise,
+        date: soinEnEdition ? dateSoinARenvoyer(dateSoinSoumise, soinEnEdition.date) : dateSoinSoumise,
         type: formData.type,
         description: formData.description || null,
         produit: formData.produit || null,
@@ -1601,7 +1606,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
         motif: formData.motif || null,
         ordonnanceUrl: formData.ordonnanceUrl || null,
         veterinaire: formData.veterinaire || null,
-        datePrevue: datePrevueSoumise || null,
+        datePrevue: datePrevueSoumise
+          ? (soinEnEdition ? dateSoinARenvoyer(datePrevueSoumise, soinEnEdition.datePrevue) : datePrevueSoumise)
+          : null,
         quantite: formData.quantite ? parseFloat(formData.quantite) : null,
         unite: formData.unite || null,
         cout: formData.cout ? parseFloat(formData.cout) : null,

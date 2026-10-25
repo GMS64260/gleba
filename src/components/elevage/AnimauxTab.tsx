@@ -56,7 +56,7 @@ import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { especeBaseId, especeBaseLabel, listEspecesBasePresentes } from "@/lib/elevage/espece-base"
+import { cleFiltreEspece, especeBaseId, libelleEspeceAnimale, listEspecesBasePresentes } from "@/lib/elevage/espece-base"
 import { useFiliereSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 import { coerceFiliere, type Filiere } from "@/lib/elevage/filiere"
 import { capacites } from "@/lib/elevage/filiere-ui"
@@ -420,7 +420,7 @@ function AnimauxSubTab() {
   // listait que celles des animaux nominatifs : un user qui gère tout son
   // troupeau en LOTS (poules, brebis, lapins) ne voyait que Chèvre et
   // Cochon. On fetch aussi les lots actifs pour agréger leurs espèces.
-  const [lotsEspeceIds, setLotsEspeceIds] = React.useState<string[]>([])
+  const [lotsEspeces, setLotsEspeces] = React.useState<Array<{ especeAnimaleId: string; especeNom: string | null }>>([])
   // Lots actifs, pour rattacher un animal à un lot depuis sa fiche. Feedback
   // éleveur 2026-07-21 : il n'existait aucune passerelle animal → lot
   // dans l'UI (ni sur la fiche animal, ni sur la page du lot).
@@ -453,9 +453,9 @@ function AnimauxSubTab() {
       if (especesRes.ok) setEspeces((await especesRes.json()).data)
       if (lotsRes.ok) {
         const lotsJson = await lotsRes.json()
-        const lots: Array<{ id: number; nom: string | null; especeAnimaleId: string; statut: string; prixAchatTotal: number | null }> = lotsJson.data ?? []
+        const lots: Array<{ id: number; nom: string | null; especeAnimaleId: string; especeAnimale?: { nom: string } | null; statut: string; prixAchatTotal: number | null }> = lotsJson.data ?? []
         const actifs = lots.filter((l) => l.statut === "actif")
-        setLotsEspeceIds(actifs.map((l) => l.especeAnimaleId))
+        setLotsEspeces(actifs.map((l) => ({ especeAnimaleId: l.especeAnimaleId, especeNom: l.especeAnimale?.nom ?? null })))
         setLotsActifs(actifs.map((l) => ({ id: l.id, nom: l.nom, especeAnimaleId: l.especeAnimaleId, prixAchatTotal: l.prixAchatTotal })))
       }
       if (parcellesRes.ok) {
@@ -819,10 +819,10 @@ function AnimauxSubTab() {
   const especesPresentes = React.useMemo(
     () =>
       listEspecesBasePresentes([
-        ...animaux.map((a) => ({ especeAnimaleId: a.especeAnimale.id })),
-        ...lotsEspeceIds.map((especeAnimaleId) => ({ especeAnimaleId })),
+        ...animaux.map((a) => ({ especeAnimaleId: a.especeAnimale.id, especeNom: a.especeAnimale.nom })),
+        ...lotsEspeces,
       ]),
-    [animaux, lotsEspeceIds]
+    [animaux, lotsEspeces]
   )
 
   // Phase 0 modes d'élevage — le référentiel contient désormais les espèces
@@ -875,7 +875,7 @@ function AnimauxSubTab() {
 
   const filteredAnimaux = animaux.filter(a => {
     if (!filiereMatch(filiereSel, a.especeAnimale.filiere)) return false
-    if (filterEspece !== 'all' && especeBaseId(a.especeAnimale.id) !== filterEspece) {
+    if (filterEspece !== 'all' && cleFiltreEspece(a.especeAnimale.id) !== filterEspece) {
       return false
     }
     if (!search) return true
@@ -1398,7 +1398,7 @@ function AnimauxSubTab() {
                         </Link>
                       </h3>
                       <p className="text-sm text-muted-foreground">
-                        {animal.identifiant || "Identifiant non renseigné"} · {especeBaseLabel(animal.especeAnimale.id)}
+                        {animal.identifiant || "Identifiant non renseigné"} · {libelleEspeceAnimale(animal.especeAnimale)}
                         {animal.race ? ` · ${animal.race}` : ""}
                       </p>
                     </div>
@@ -1566,7 +1566,7 @@ function AnimauxSubTab() {
                         {animal.especeAnimale.couleur && (
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: animal.especeAnimale.couleur }} />
                         )}
-                        {especeBaseLabel(animal.especeAnimale.id)}
+                        {libelleEspeceAnimale(animal.especeAnimale)}
                       </div>
                     </TableCell>
                     <TableCell>{animal.race || '-'}</TableCell>
@@ -2388,7 +2388,7 @@ function LotsSubTab() {
                       <div>
                         <h3 className="font-semibold">{lot.nom || `Lot #${lot.id}`}</h3>
                         <p className="text-sm text-muted-foreground">
-                          {especeBaseLabel(lot.especeAnimale.id)} · {effectif} tête{effectif > 1 ? "s" : ""}
+                          {libelleEspeceAnimale(lot.especeAnimale)} · {effectif} tête{effectif > 1 ? "s" : ""}
                         </p>
                       </div>
                       <Badge className={STATUT_COLORS[lot.statut] || ""}>{labelStatutLot(lot.statut)}</Badge>
@@ -2455,7 +2455,7 @@ function LotsSubTab() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {lot.especeAnimale.couleur && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: lot.especeAnimale.couleur }} />}
-                        {especeBaseLabel(lot.especeAnimale.id)}
+                        {libelleEspeceAnimale(lot.especeAnimale)}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">{lot.quantiteInitiale}</TableCell>

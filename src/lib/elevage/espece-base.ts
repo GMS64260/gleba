@@ -156,19 +156,55 @@ export function especeBaseLabel(especeAnimaleId: string): string {
 }
 
 /**
+ * Libellé de l'espèce d'un animal ou d'un lot dans les listes (Animaux & Lots,
+ * fiche lot, filtre Espèce) : une seule formule.
+ *
+ * - Préfixe d'id connu (catalogue, ou profil perso dont l'id commence par une
+ *   espèce connue : « poule_sussex », « canard_barbarie_maison ») → espèce de
+ *   base (« Poule », « Canard ») ; la race a sa propre colonne (Bug #10).
+ * - Sinon → nom complet du profil. Ticket cmvnookz7 (QA 2026-10-25) : le
+ *   profil « v8-Julien canard 25 octobre » (id `v8_julien_canard_25_octobre`)
+ *   s'affichait « v8 », premier segment de son id, dans la liste des lots.
+ *
+ * Le premier segment brut ne reste qu'à défaut de nom.
+ */
+export function libelleEspeceAnimale(espece: { id: string; nom?: string | null }): string {
+  const base = especeBaseId(espece.id)
+  return libelleBaseConnue(base) ?? (espece.nom?.trim() || base)
+}
+
+/** Libellé d'une espèce de base connue ; `undefined` pour un préfixe de profil perso. */
+function libelleBaseConnue(base: string): string | undefined {
+  return Object.prototype.hasOwnProperty.call(LIBELLES, base) ? LIBELLES[base] : undefined
+}
+
+/**
+ * Clé du filtre Espèce (option ET prédicat de ligne) : l'espèce de base si le
+ * préfixe d'id est connu (« poule_sussex » et « poule_marans » → « poule »),
+ * sinon l'id complet du profil. Revue du ticket cmvnookz7 : « Mes poules » et
+ * « Mes canards » (ids `mes_poules`, `mes_canards`) fusionnaient sous « mes ».
+ */
+export function cleFiltreEspece(especeAnimaleId: string): string {
+  const base = especeBaseId(especeAnimaleId)
+  return libelleBaseConnue(base) !== undefined ? base : especeAnimaleId
+}
+
+/**
  * Renvoie la liste des espèces de base (sans race) effectivement
- * présentes sur la ferme, dédupliquées, triées par libellé.
+ * présentes sur la ferme, dédupliquées par `cleFiltreEspece` (un profil perso
+ * hors catalogue est sa propre entrée), triées par libellé.
  *
  * Accepte n'importe quelle collection d'objets qui expose
- * `especeAnimaleId` (ou un champ équivalent).
+ * `especeAnimaleId` (ou un champ équivalent), et le nom du profil
+ * (`especeNom`) pour libeller un profil personnalisé.
  */
 export function listEspecesBasePresentes(
-  items: Array<{ especeAnimaleId: string }>
+  items: Array<{ especeAnimaleId: string; especeNom?: string | null }>
 ): Array<{ id: string; label: string }> {
   const map = new Map<string, string>()
   for (const it of items) {
-    const id = especeBaseId(it.especeAnimaleId)
-    if (!map.has(id)) map.set(id, especeBaseLabel(it.especeAnimaleId))
+    const id = cleFiltreEspece(it.especeAnimaleId)
+    if (!map.has(id)) map.set(id, libelleEspeceAnimale({ id: it.especeAnimaleId, nom: it.especeNom }))
   }
   return Array.from(map.entries())
     .map(([id, label]) => ({ id, label }))
