@@ -23,6 +23,8 @@ export interface ComboboxOption {
 }
 
 interface ComboboxProps {
+  /** Posé sur le champ texte déclencheur, pour qu'un `<Label htmlFor>` le désigne. */
+  id?: string
   value: string
   onValueChange: (value: string) => void
   options: ComboboxOption[]
@@ -33,6 +35,7 @@ interface ComboboxProps {
 }
 
 export function Combobox({
+  id,
   value,
   onValueChange,
   options,
@@ -52,6 +55,7 @@ export function Combobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <input
+          id={id}
           type="text"
           value={inputValue}
           onChange={(e) => {

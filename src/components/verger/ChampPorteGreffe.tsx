@@ -97,8 +97,11 @@ export function ChampPorteGreffe({
   }
 
   if (catalogue.length === 0) {
+    // Le champ change de composant selon le catalogue (Input, Combobox, Select) :
+    // chacun reçoit l'id, sinon le <Label htmlFor> de l'écran ne désigne plus rien.
     return (
       <Combobox
+        id={id}
         value={libelle ?? ""}
         onValueChange={(v) =>
           onChange(
