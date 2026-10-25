@@ -1,6 +1,12 @@
 import PDFDocument from "pdfkit"
 import { describe, expect, it } from "vitest"
 
+import {
+  decimalesPrixUnitaire,
+  formatPrixUnitaire,
+  mentionPrixUnitaireTTC,
+  prixUnitaireTTCSaisi,
+} from "@/lib/comptabilite/prix-unitaire"
 import { blocNotesFacture, dessinerFacture } from "@/lib/facture-pdf"
 import type { FacturePourExport } from "@/lib/facture-structuree"
 import type { EmetteurSnapshot } from "@/lib/facture-utils"
@@ -121,5 +127,79 @@ describe("PDF de facture : conditions et notes saisies", () => {
     for (const e of ev) {
       if ("texte" in e && !e.texte.startsWith("Document généré le")) expect(e.y).toBeLessThan(842 - 50)
     }
+  })
+})
+
+/**
+ * Ticket cmvnuxvax (QA 2026-10-25) — 40 tiges de dahlia vendues 1,20 € TTC la
+ * tige avec facture automatique (TVA 5,5 %) : le PDF F-2026-0012 affichait
+ * « PU HT 1,14 » pour un total HT de 45,50 € (40 × 1,14 = 45,60). Le PU HT
+ * stocké est exact (1,20 / 1,055) ; seul son affichage l'arrondissait. À
+ * 4 décimales il reste un arrondi (29 × 1,1374 = 32,98 pour 32,99 exacts) :
+ * la mention « soit 1,20 € TTC » donne la référence exacte.
+ */
+const PU_HT_EXACT = 1.2 / 1.055
+const TOTAL_HT = 48 / 1.055
+
+describe("prix unitaire de facture : une seule règle d'affichage", () => {
+  it("2 décimales quand elles suffisent, sinon jusqu'à 4", () => {
+    expect(formatPrixUnitaire(10)).toBe("10,00")
+    expect(formatPrixUnitaire(1.5)).toBe("1,50")
+    expect(formatPrixUnitaire(1.125)).toBe("1,125")
+    expect(formatPrixUnitaire(PU_HT_EXACT)).toBe("1,1374")
+    expect(decimalesPrixUnitaire(PU_HT_EXACT)).toBe(4)
+    // Franc Pacifique : pas de centimes, sauf si le prix en a besoin.
+    expect(formatPrixUnitaire(150, "XPF")).toBe("150")
+    expect(formatPrixUnitaire(142.5, "XPF")).toBe("142,5")
+  })
+
+  it("rappelle le PU TTC d'une vente saisie TTC, et seulement d'elle", () => {
+    expect(prixUnitaireTTCSaisi({ prixUnitaire: PU_HT_EXACT, tauxTVA: 5.5 })).toBe(1.2)
+    expect(mentionPrixUnitaireTTC({ prixUnitaire: PU_HT_EXACT, tauxTVA: 5.5 })).toBe("soit 1,20 € TTC")
+    // PU saisi HT (exact en centimes, ou à 4 décimales qui ne retombent pas sur un TTC rond).
+    expect(mentionPrixUnitaireTTC({ prixUnitaire: 10, tauxTVA: 5.5 })).toBeNull()
+    expect(mentionPrixUnitaireTTC({ prixUnitaire: 1.1374, tauxTVA: 5.5 })).toBeNull()
+    // Sans taxe, le PU est déjà le prix payé.
+    expect(mentionPrixUnitaireTTC({ prixUnitaire: PU_HT_EXACT, tauxTVA: 0 })).toBeNull()
+  })
+
+  it("le PDF de la vente de 40 tiges imprime 1,1374, le PU TTC saisi, et des totaux inchangés", async () => {
+    const ev = await dessiner(
+      facture({
+        numero: "F-2026-0012",
+        totalHT: TOTAL_HT,
+        totalTVA: 48 - TOTAL_HT,
+        totalTTC: 48,
+        totauxParTauxTva: { "5.5": { ht: 45.5, tva: 2.5, ttc: 48 } },
+        lignes: [
+          {
+            id: 1, factureId: 1, ordre: 0, description: "Dahlia", quantite: 40, unite: "tige",
+            prixUnitaire: PU_HT_EXACT, tauxTVA: 5.5,
+            montantHT: TOTAL_HT, montantTVA: 48 - TOTAL_HT, montantTTC: 48, statutBio: null,
+          },
+        ],
+      }),
+    )
+    const t = textes(ev)
+    expect(t).toContain("40 tige")
+    expect(t).toContain("1,1374")
+    expect(t).not.toContain("1,14")
+    expect(t).toContain("soit 1,20 € TTC")
+    // Total de ligne et totaux légaux : calculés sur la valeur exacte, pas sur le PU affiché.
+    expect(t).toContain("45,50")
+    expect(t).toContain("45,50 €")
+    expect(t).toContain("2,50 €")
+    expect(t).toContain("48,00 €")
+    // Le PU HT affiché reste un arrondi : la référence exacte est le côté TTC,
+    // quantité × PU TTC = total TTC (40 × 1,20 = 48,00).
+    expect(Math.round(40 * 1.2 * 100) / 100).toBe(48)
+    expect(pagesAjoutees(ev)).toBe(0)
+  })
+
+  it("une ligne à prix rond reste à 2 décimales, sans mention TTC", async () => {
+    const t = textes(await dessiner(facture()))
+    expect(t).toContain("10,00")
+    expect(t).toContain("50,00")
+    expect(t.some((x) => x.startsWith("soit "))).toBe(false)
   })
 })

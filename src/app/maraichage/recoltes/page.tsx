@@ -44,6 +44,14 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 import { formatMontantDevise } from "@/lib/format-utils"
+import { formatPrixUnitaire } from "@/lib/comptabilite/prix-unitaire"
+import {
+  libelleCourtValorisation,
+  libelleMethodesValorisation,
+  libelleValorisationLot,
+  prixProposeDeVente,
+  type ValorisationLot,
+} from "@/lib/recolte/valorisation"
 import {
   ajouterQuantite,
   formatQuantite,
@@ -86,6 +94,12 @@ interface RecolteWithRelations {
   factureId: number | null
   datePeremption: string | null
   notes: string | null
+  /**
+   * Valeur d'un lot en stock servie par `GET /api/recoltes` (règle unique
+   * `valoriserLot`, la même que Comptabilité > Stocks unifiés), source
+   * toujours dite (`aucune` = sans prix dans son unité) ; null = lot sorti.
+   */
+  valorisation?: ValorisationLot | null
   espece: {
     id: string
     prixKg: number | null
@@ -261,7 +275,15 @@ export default function RecoltesPage() {
   )
   const venduParUnite = ventiler(venduRecoltes)
   const totalVentes = venduRecoltes.reduce((sum, r) => sum + (r.prixTotal || 0), 0)
-  const stockValeur = stockRecoltes.reduce((sum, r) => sum + (r.quantite * (r.espece?.prixKg || 0)), 0)
+  // Ticket cmvnvaal2 — la valeur d'un lot vient du serveur (`valoriserLot`),
+  // jamais de `quantité × Espece.prixKg` : ce prix de catalogue est en €/kg
+  // (dahlia à 30) et faisait valoir 30 € à une tige. Même règle et même
+  // chiffre que Comptabilité > Stocks unifiés, méthode dite à l'écran.
+  const stockValeur =
+    Math.round(stockRecoltes.reduce((sum, r) => sum + (r.valorisation?.valeur ?? 0), 0) * 100) / 100
+  const stockMethode = libelleMethodesValorisation(
+    stockRecoltes.flatMap((r) => (r.valorisation ? [r.valorisation] : [])),
+  )
 
   const handleDelete = async (id: number) => {
     if (!(await confirmDialog("Supprimer cette récolte ?"))) return
@@ -290,7 +312,10 @@ export default function RecoltesPage() {
     setVenteData({
       clientId: "",
       clientNom: "",
-      prixKg: recolte.espece?.prixKg?.toString() || "",
+      // Prix proposé = prix de valorisation du lot DANS SON UNITÉ, limité aux
+      // sources admises pour une vente (`prixProposeDeVente`, la même liste que
+      // la boutique) : jamais le barème indicatif ni un prix au kilo pour des tiges.
+      prixKg: String(prixProposeDeVente(recolte.valorisation) ?? ""),
       quantiteVendue: recolte.quantite.toString(),
       creerFacture: false,
     })
@@ -517,6 +542,9 @@ export default function RecoltesPage() {
                 {formatQuantiteParUnite(stockParUnite)}
               </p>
               <p className="text-xs text-green-600">Valeur : {formatMontantDevise(stockValeur)}</p>
+              {stockMethode && (
+                <p className="text-[11px] text-green-700/80">{stockMethode}</p>
+              )}
               {(perimesCount > 0 || bientotPerimesCount > 0) && (
                 <div className="mt-1 flex gap-2 text-xs">
                   {perimesCount > 0 && (
@@ -698,7 +726,21 @@ export default function RecoltesPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-right text-blue-600">
-                              {r.espece?.prixKg ? formatMontantDevise(r.quantite * r.espece.prixKg) : "-"}
+                              {r.valorisation && r.valorisation.source !== "aucune" ? (
+                                <span title={libelleValorisationLot(r.valorisation)}>
+                                  {formatMontantDevise(r.valorisation.valeur)}
+                                  <span className="block text-[10px] text-muted-foreground">
+                                    {formatPrixUnitaire(r.valorisation.prixUnitaire)} € / {libelleUniteQuantite(r.valorisation.unite, 1)}, {libelleCourtValorisation(r.valorisation)}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">
+                                  -
+                                  <span className="block text-[10px]">
+                                    sans prix en {libelleUniteQuantite(uniteRecolte(r.unite), 2)}
+                                  </span>
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
@@ -768,7 +810,7 @@ export default function RecoltesPage() {
                             {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                           </TableCell>
                           <TableCell className="text-right">
-                            {r.prixKg ? `${formatMontantDevise(r.prixKg)} / ${libelleUniteQuantite(uniteRecolte(r.unite), 1)}` : "-"}
+                            {r.prixKg ? `${formatPrixUnitaire(r.prixKg)} € / ${libelleUniteQuantite(uniteRecolte(r.unite), 1)}` : "-"}
                           </TableCell>
                           <TableCell className="text-right font-medium text-green-600">
                             {r.prixTotal ? formatMontantDevise(r.prixTotal) : "-"}

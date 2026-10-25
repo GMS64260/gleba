@@ -180,6 +180,25 @@ describe("échantillons Factur-X et UBL de bout en bout", () => {
     expect(cii).toContain("<ram:ChargeAmount>0.00</ram:ChargeAmount>")
   })
 
+  it("vente saisie TTC à PU HT non rond (ticket cmvnuxvax) : PU exact au XML, totaux au centime, PDF produit", async () => {
+    // 29 bouquets à 1,20 € TTC, TVA 5,5 %, comme une récolte vendue avec
+    // facture automatique (PU HT = 1,20 / 1,055 stocké exact). « pièce » et non
+    // « tige » : l'unité tige n'a pas encore de code UN/ECE (export refusé).
+    const prixUnitaire = 1.2 / 1.055
+    const montantHT = 34.8 / 1.055
+    const lignes = [{
+      id: 1, factureId: 1, ordre: 0, description: "Bouquet de dahlias", quantite: 29, unite: "pièce",
+      prixUnitaire, tauxTVA: 5.5, montantHT, montantTVA: 34.8 - montantHT, montantTTC: 34.8, statutBio: null,
+    }]
+    const { donnees, cii, ubl } = await produire("facture-pu-non-rond", base("F-2026-0051", "facture", lignes), emetteur("reel-simplifie"))
+    expect(donnees.totalNet).toBe(32.99)
+    expect(donnees.totalVat).toBe(1.81)
+    expect(donnees.totalGross).toBe(34.8)
+    expect(cii).toContain("<ram:ChargeAmount>1.137441</ram:ChargeAmount>")
+    expect(cii).toContain("<ram:LineTotalAmount>32.99</ram:LineTotalAmount>")
+    expect(ubl).toContain(">1.137441</cbc:PriceAmount>")
+  })
+
   it("client professionnel sans SIREN : B2B et export refusé, jamais dégradé en B2C", () => {
     const lignes = [ligne(0, "Panier de légumes", 2, "unité", 18.9, 5.5)]
     const pro = { ...client(), nom: "Restaurant du Port", type: "professionnel", siret: null, siren: null, tvaIntra: null }
