@@ -20,6 +20,10 @@ export interface JourLunaire {
   phase: string          // Nom de la phase (Nouvelle Lune, etc.)
   phaseIndex: number     // 0-7 (0=nouvelle lune, 4=pleine lune)
   illumination: number   // 0-100 %
+  /** Vrai tant que la pleine lune vraie n'est pas passée (SSOT : `phaseVraieDuJour`). */
+  croissante: boolean
+  /** Instant (ISO UTC) de l'événement du jour : nouvelle lune, quartier ou pleine lune ; `null` sinon. */
+  instantEvenement: string | null
   age: number            // Jours depuis nouvelle lune (0-29.5)
   emoji: string          // 🌑🌒🌓🌔🌕🌖🌗🌘
   typeJour: TypeJour
@@ -136,7 +140,10 @@ export function instantPhaseVraie(k: number): number {
       (nm ? 0.17241 : 0.17302) * E * Math.sin(M) +
       (nm ? 0.01608 : 0.01614) * Math.sin(2 * Mp) +
       (nm ? 0.01039 : 0.01043) * Math.sin(2 * F) +
-      (nm ? -0.00739 : -0.00734) * E * Math.sin(Mp - M) +
+      // QA cmvno0s5d (2026-10-25) : signes de Meeus (table 49.A), +E sin(M'−M)
+      // et −E sin(M'+M). Inversés, ils décalaient les syzygies de 10 à 20 min
+      // (exemple 49.a : somme des termes −0,29394 au lieu de −0,28916).
+      (nm ? 0.00739 : 0.00734) * E * Math.sin(Mp - M) -
       (nm ? 0.00514 : 0.00515) * E * Math.sin(Mp + M) +
       (nm ? 0.00208 : 0.00209) * E * E * Math.sin(2 * M) -
       0.00111 * Math.sin(Mp - 2 * F) -
@@ -195,26 +202,59 @@ function evenementsAutour(dateMs: number): EvenementLunaire[] {
  * civile [midi−12 h, midi+12 h) ; sinon phase intermédiaire, déterminée par le
  * dernier événement écoulé. L'âge est recalé sur la dernière nouvelle lune
  * vraie (l'ancien âge moyen dérivait de ±14 h).
+ *
+ * SEULE source du sens et de l'illumination (QA cmvno0s5d, 2026-10-25) : le
+ * 25/10/2026, la carte affichait « Gibbeuse croissante » (événements vrais) et
+ * « Lune décroissante, 100 % » (âge comparé à la demi-lunaison MOYENNE de
+ * 14,77 j, illumination tirée de la fraction du cycle). Or la pleine lune vraie
+ * tombe 15,5 j après la nouvelle lune ce mois-là (26/10 04:12 UTC) : la durée
+ * nouvelle → pleine lune varie de 13,9 à 15,6 j. Sens et illumination se
+ * lisent donc sur les mêmes instants vrais que le nom de la phase :
+ * - élongation interpolée entre les deux événements vrais qui encadrent
+ *   l'instant (0°, 90°, 180°, 270°) ;
+ * - croissante tant que la pleine lune vraie n'est pas passée (élongation
+ *   < 180°) ;
+ * - illumination = (1 − cos élongation) / 2.
  */
-export function phaseVraieDuJour(midiLocal: Date): { phaseIndex: number; age: number; illumination: number } {
+export function phaseVraieDuJour(midiLocal: Date): {
+  phaseIndex: number
+  age: number
+  illumination: number
+  croissante: boolean
+  /** Instant (ms) de l'événement qui donne son icône au jour, `null` un jour intermédiaire. */
+  instantEvenement: number | null
+} {
   const midi = midiLocal.getTime()
   const debutJour = midi - JOUR_MS / 2
   const finJour = midi + JOUR_MS / 2
   const evts = evenementsAutour(midi)
 
   const nmAvant = [...evts].reverse().find((e) => e.index === 0 && e.t <= midi)
-  const nmApres = evts.find((e) => e.index === 0 && e.t > midi)
-  const cycleMs = nmAvant && nmApres ? nmApres.t - nmAvant.t : SYNODIC_PERIOD * JOUR_MS
   const age = nmAvant ? (midi - nmAvant.t) / JOUR_MS : 0
-  const illumination = Math.round(((1 - Math.cos(2 * Math.PI * ((midi - (nmAvant?.t ?? midi)) / cycleMs))) / 2) * 100)
+
+  const precedent = [...evts].reverse().find((e) => e.t <= midi)
+  const suivant = evts.find((e) => e.t > midi)
+  // `evenementsAutour` couvre trois lunaisons autour de l'instant : les deux
+  // bornes existent toujours. Repli défensif sur l'âge si ce n'était pas le cas.
+  const elongation =
+    precedent && suivant
+      ? precedent.index * 45 + 90 * ((midi - precedent.t) / (suivant.t - precedent.t))
+      : (age / SYNODIC_PERIOD) * 360
+  const croissante = elongation < 180
+  const illumination = Math.round(((1 - Math.cos(elongation * D2R)) / 2) * 100)
 
   const duJour = evts.filter((e) => e.t >= debutJour && e.t < finJour)
   if (duJour.length > 0) {
     const plusProche = duJour.reduce((a, b) => (Math.abs(a.t - midi) <= Math.abs(b.t - midi) ? a : b))
-    return { phaseIndex: plusProche.index, age, illumination }
+    return { phaseIndex: plusProche.index, age, illumination, croissante, instantEvenement: plusProche.t }
   }
-  const precedent = [...evts].reverse().find((e) => e.t <= midi)
-  return { phaseIndex: precedent ? (precedent.index + 1) % 8 : 1, age, illumination }
+  return {
+    phaseIndex: precedent ? (precedent.index + 1) % 8 : 1,
+    age,
+    illumination,
+    croissante,
+    instantEvenement: null,
+  }
 }
 
 // ── Détermination du type de jour ─────────────────────────
@@ -271,7 +311,7 @@ export async function fetchMoonPhase(date: Date): Promise<JourLunaire> {
   const cached = getCached(dateStr)
   if (cached) return cached
 
-  const { phaseIndex, age, illumination } = phaseVraieDuJour(date)
+  const { phaseIndex, age, illumination, croissante, instantEvenement } = phaseVraieDuJour(date)
   const phaseName = PHASE_NOMS[phaseIndex] || 'Inconnue'
 
   const typeJour = getTypeJour(age)
@@ -284,7 +324,7 @@ export async function fetchMoonPhase(date: Date): Promise<JourLunaire> {
   // (conseil verger). Le conseil verger doit respecter le repos lunaire.
   const conseilVerger = typeJour === 'repos'
     ? 'Verger — jour de repos lunaire : reporter plantation, taille et greffe au prochain jour favorable.'
-    : age < SYNODIC_PERIOD / 2
+    : croissante
       ? 'Verger — lune croissante : greffes et semis favorisés. Réserver plantation et taille des arbres à la lune décroissante.'
       : 'Verger — lune décroissante : période favorable à la plantation, à la taille et au bouturage des arbres et arbustes.'
 
@@ -293,6 +333,8 @@ export async function fetchMoonPhase(date: Date): Promise<JourLunaire> {
     phase: phaseName,
     phaseIndex,
     illumination,
+    croissante,
+    instantEvenement: instantEvenement === null ? null : new Date(instantEvenement).toISOString(),
     age: Math.round(age * 10) / 10,
     emoji: PHASE_EMOJIS[phaseIndex] || '🌑',
     typeJour,
