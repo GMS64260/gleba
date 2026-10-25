@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Camera, Loader2 } from "lucide-react";
+import { urlConnexion } from "@/lib/auth-retour";
 
 const ORGANES = [
   ["plante", "Plante entière"], ["feuille", "Feuille"], ["fleur", "Fleur"],
@@ -17,7 +18,7 @@ export function PhotoContributionForm({ especeId, nom }: { especeId: string; nom
   const [error, setError] = useState<string | null>(null);
 
   if (status === "unauthenticated") {
-    return <Link href={`/login?callbackUrl=${encodeURIComponent(`/referentiel/vegetaux/${especeId}`)}`} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-medium text-emerald-800 hover:bg-emerald-50"><Camera className="h-4 w-4" /> Se connecter pour proposer une photo</Link>;
+    return <Link href={urlConnexion(`/referentiel/vegetaux/${encodeURIComponent(especeId)}`)} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-medium text-emerald-800 hover:bg-emerald-50"><Camera className="h-4 w-4" /> Se connecter pour proposer une photo</Link>;
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
