@@ -524,7 +524,7 @@ function TachesContent() {
                   : weekOffset === 1
                   ? "Semaine prochaine"
                   : weekOffset === -1
-                  ? "Semaine derniere"
+                  ? "Semaine dernière"
                   : format(weekStart, "d MMM", { locale: fr }) +
                     " - " +
                     format(weekEnd, "d MMM", { locale: fr })}

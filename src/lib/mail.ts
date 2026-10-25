@@ -523,8 +523,8 @@ export function welcomeEmail(name?: string | null, unsubscribeUrl?: string) {
                 <td style="padding:12px 16px;background:#f0fdf4;border-radius:10px;border-left:3px solid #10b981;">
                   <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#065f46;">Pour démarrer :</p>
                   <ul style="margin:0;padding:0 0 0 18px;font-size:14px;color:#475569;line-height:1.8;">
-                    <li>Creez vos planches de culture</li>
-                    <li>Ajoutez vos premieres cultures</li>
+                    <li>Créez vos planches de culture</li>
+                    <li>Ajoutez vos premières cultures</li>
                     <li>Explorez les 154 itinéraires techniques</li>
                   </ul>
                 </td>
