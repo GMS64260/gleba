@@ -9,6 +9,7 @@ import { bilanReserveSol, dureeCycleJours, efficaciteArrosage, joursEntre, noteS
 import { formatNombre } from '@/lib/format-utils'
 import type { ArrosageSaisi } from './arrosages-saisis'
 import { jourDuLieu, jourLocalIso, type MeteoBilan } from './meteo-bilan'
+import { debutSurPlanche } from '@/lib/cultures/en-place'
 
 export interface CultureBilan {
   espece: string
@@ -23,25 +24,10 @@ export interface CultureBilan {
   derniereIrrigation: Date | null
 }
 
-/**
- * Jour (AAAA-MM-JJ) de mise en place sur la planche : la plantation pour un
- * plant repiqué, le semis pour un semis direct.
- * - Un plant encore en pépinière dont la plantation est prévue PLUS TARD
- *   n'est pas encore sur la planche et ne la dessèche pas.
- * - Une plantation prévue et PASSÉE mais non cochée est supposée faite à la
- *   date prévue (32 cas sur 383 le 2026-10-10 : oubli de cocher plutôt que
- *   retard de repiquage, on ne sait pas trancher).
- * - Une plantation ou un semis cochés en avance datent du jour du lieu.
- * Les dates de calendrier sont stockées à minuit (Paris ou UTC) : le jour
- * civil du serveur est le bon.
- */
-export function debutSurPlanche(c: CultureBilan, aujourdhui: string): string | null {
-  const prevu = c.datePlantation ?? c.dateSemis
-  if (!prevu) return null
-  const fait = c.datePlantation ? c.plantationFaite : c.semisFait
-  const jour = jourLocalIso(prevu)
-  return fait && jour > aujourdhui ? aujourdhui : jour
-}
+// `debutSurPlanche` (jour de mise en place sur la planche) vit depuis le
+// 2026-10-25 dans `src/lib/cultures/en-place.ts`, prédicat « en place »
+// partagé avec l'assistant (QA cmvnur8eu) ; réexporté ici, inchangé.
+export { debutSurPlanche }
 
 /**
  * Jour du lieu (AAAA-MM-JJ) d'un arrosage saisi. Un horodatage (« Noter »,
