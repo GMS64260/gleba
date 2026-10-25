@@ -8,7 +8,7 @@ import { todayLocalISO } from "@/lib/format-utils"
 import { cn } from "@/lib/utils"
 
 import { LuneSvg } from "./LuneSvg"
-import { ANCRE_CALENDRIER_LUNAIRE, TYPE_JOUR_CFG, configTypeJour, estCroissante, lireJourLunaire, type JourLunaire } from "./lecture"
+import { ANCRE_CALENDRIER_LUNAIRE, TYPE_JOUR_CFG, configTypeJour, estCroissante, libelleSensDuJour, lireJourLunaire, type JourLunaire } from "./lecture"
 
 /**
  * Calendrier lunaire : la Lune du jour (phase, type de jour, conseils) et le
@@ -126,7 +126,7 @@ export function CalendrierLunaire({ variante, className }: CalendrierLunaireProp
             <div className="min-w-0">
               <p className="font-display text-xl font-medium leading-tight text-encre">{aujourdhui.phase}</p>
               <p className="mt-1 text-sm text-ardoise">
-                Lune {croissante ? "croissante" : "décroissante"}, {aujourdhui.illumination} % éclairée · {Math.max(1, Math.round(aujourdhui.age))}
+                {libelleSensDuJour(aujourdhui)}, {aujourdhui.illumination} % éclairée · {Math.max(1, Math.round(aujourdhui.age))}
                 <sup>e</sup> jour de la lunaison
               </p>
             </div>
