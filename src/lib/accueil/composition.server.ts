@@ -277,7 +277,8 @@ export async function composerAujourdhui(
         module: "maraichage",
         etat: etatPourRetard(s.retardJours),
         titre: `Semer ${s.especeNom}${s.plancheId ? ` ${s.plancheId}` : ""}`,
-        meta: [libelleRetard(s.retardJours), varieteAffichable(s.varieteNom)].filter(Boolean),
+        // Hors de la fenêtre de l'ITP : dit sur la ligne, sans toucher au retard.
+        meta: [libelleRetard(s.retardJours), s.horsSaison ? "hors saison ITP" : "", varieteAffichable(s.varieteNom)].filter(Boolean),
         action: {
           libelle: "Fait",
           href: "/taches",
@@ -294,7 +295,7 @@ export async function composerAujourdhui(
         module: "maraichage",
         etat: etatPourRetard(p.retardJours),
         titre: `Planter ${p.especeNom}${p.plancheId ? ` ${p.plancheId}` : ""}`,
-        meta: [libelleRetard(p.retardJours), varieteAffichable(p.varieteNom)].filter(Boolean),
+        meta: [libelleRetard(p.retardJours), p.horsSaison ? "hors saison ITP" : "", varieteAffichable(p.varieteNom)].filter(Boolean),
         action: {
           libelle: "Fait",
           href: "/taches",

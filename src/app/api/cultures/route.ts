@@ -18,6 +18,7 @@ import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
 import { ecrituresPassageAFait, ETAPES, type EtatEtapes } from '@/lib/cultures/execution'
 import { chevauchePeriode, estVivaceEnPlace, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
+import type { AlerteSaisonCulture } from '@/lib/cultures/saison-culture'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { avertissementItpPlanche, verdictItpPlanche } from '@/lib/cultures/itp-planche'
 import { nomAffichableItp } from '@/lib/itp-label'
@@ -324,6 +325,11 @@ export async function POST(request: NextRequest) {
           // par aucun chemin du maraîchage.
           semaineRecolteFin: true,
           dureeRecolte: true,
+          // Fenêtre d'implantation et opération (2026-10-25) : l'alerte de
+          // saison compare la date d'implantation saisie à cette fenêtre.
+          semaineImplantationDebut: true,
+          semaineImplantationFin: true,
+          implantation: true,
           espacementRangs: true,
           nbGrainesPlant: true,
           doseSemis: true,
@@ -383,6 +389,9 @@ export async function POST(request: NextRequest) {
     // au client (non bloquant). Le client peut alors afficher un toast
     // explicite "Semis le 01/06 hors fenêtre ITP recommandée (mars–avril)".
     const dateWarnings: string[] = []
+    // Date d'implantation hors de la fenêtre de l'ITP (2026-10-25, aubergine
+    // plantée un 25 octobre) : non bloquant, renvoyé structuré pour l'écran.
+    let alerteSaison: AlerteSaisonCulture | null = null
     if (data.dateSemis || data.datePlantation || data.dateRecolte) {
       try {
         const annee = data.annee || new Date().getFullYear()
@@ -407,6 +416,7 @@ export async function POST(request: NextRequest) {
           )
         }
         dateWarnings.push(...dateValidation.warnings)
+        alerteSaison = dateValidation.alerteSaison
       } catch (validationError) {
         console.error('Erreur validation dates:', validationError)
       }
@@ -607,7 +617,11 @@ export async function POST(request: NextRequest) {
     // Audit Marc 2026-05-14 — Bug 04 : warnings remontés non bloquants
     const reponse = masquerReferentielsEmbarques(culture, session!.user.id)
     return NextResponse.json(
-      dateWarnings.length > 0 ? { ...reponse, warnings: dateWarnings } : reponse,
+      {
+        ...reponse,
+        ...(dateWarnings.length > 0 ? { warnings: dateWarnings } : {}),
+        ...(alerteSaison ? { alerteSaison } : {}),
+      },
       { status: 201 }
     )
   } catch (error) {

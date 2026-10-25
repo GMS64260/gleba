@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   chevauchePeriode,
   estVivaceEnPlace,
+  fenetreRecolteIncoherente,
   finDeCycle,
+  finRecolteApresModification,
   finRecolteDepuisItp,
   recolteEnRetard,
   semainesDeRecolte,
@@ -198,5 +200,109 @@ describe('vivaces — occupation sans fin de cycle', () => {
     // n'est pas libérée pour autant (chevauchePeriode).
     expect(finDeCycle(fraisier)).toEqual(new Date(2026, 8, 8))
     expect(recolteEnRetard({ ...fraisier, recolteFaite: false }, new Date(2026, 8, 20))).toBe(true)
+  })
+})
+
+/**
+ * Constat du 2026-10-25 (compte réel) : ail sur l'ITP INRAE-MESCLUN-0011
+ * (« Ail de printemps sec — sous abri », plantation S3, récolte S29–S33,
+ * 5 semaines), planté le 12/01/2026, récolté à partir du 13/07/2026, mais fin
+ * de récolte au 09/08/2027. C'est la fenêtre de l'ITP INRAE-MESCLUN-0008
+ * (« Ail d'automne sec — sous abri », plantation S44 2026, récolte S27 2027 =
+ * 05/07/2027, + 5 semaines) : la fin posée à la création n'a pas suivi le
+ * changement d'itinéraire fait dans le formulaire d'édition.
+ */
+describe('finRecolteApresModification', () => {
+  const AIL_0011 = { semaineRecolte: 29, semaineRecolteFin: 33, dureeRecolte: 5 }
+  const avantA = {
+    dateRecolte: new Date('2027-07-05T00:00:00.000Z'),
+    finRecolte: new Date('2027-08-09T00:00:00.000Z'),
+  }
+
+  it('A : changer d’ITP refait la fenêtre depuis le nouvel itinéraire (S29 + 5 semaines)', () => {
+    const fin = finRecolteApresModification({
+      avant: avantA,
+      dateRecolte: new Date('2026-07-13T00:00:00.000Z'),
+      finSoumise: new Date('2027-08-09T00:00:00.000Z'), // renvoyée telle quelle par le formulaire
+      itpChange: true,
+      itp: AIL_0011,
+    })
+    // Jour seul, minuit UTC, quel que soit l'appelant (PUT, PATCH, report).
+    expect(fin).toEqual(new Date('2026-08-17T00:00:00.000Z'))
+  })
+
+  it('A telle qu’elle est en base : la fenêtre de 392 jours se répare au prochain enregistrement', () => {
+    const avantReel = { dateRecolte: new Date('2026-07-13T00:00:00.000Z'), finRecolte: new Date('2027-08-09T00:00:00.000Z') }
+    expect(fenetreRecolteIncoherente(avantReel)).toBe(true)
+    expect(
+      finRecolteApresModification({ avant: avantReel, dateRecolte: avantReel.dateRecolte, finSoumise: avantReel.finRecolte, itp: AIL_0011 })
+    ).toEqual(new Date('2026-08-17T00:00:00.000Z'))
+  })
+
+  it('fenêtre fermée avant de s’ouvrir : refaite ; ITP connu sans durée : effacée ; ITP non lu : laissée', () => {
+    const inversee = { dateRecolte: new Date('2026-07-13T00:00:00.000Z'), finRecolte: new Date('2026-05-28T00:00:00.000Z') }
+    expect(fenetreRecolteIncoherente(inversee)).toBe(true)
+    expect(finRecolteApresModification({ avant: inversee, dateRecolte: inversee.dateRecolte, itp: AIL_0011 })).toEqual(
+      new Date('2026-08-17T00:00:00.000Z')
+    )
+    expect(finRecolteApresModification({ avant: inversee, dateRecolte: inversee.dateRecolte, itp: null })).toBeNull()
+    expect(finRecolteApresModification({ avant: inversee, dateRecolte: inversee.dateRecolte })).toBeUndefined()
+  })
+
+  it('fenêtre cohérente : 52 semaines au plus, fin après le début', () => {
+    const debut = new Date('2026-07-13T00:00:00.000Z')
+    expect(fenetreRecolteIncoherente({ dateRecolte: debut, finRecolte: new Date('2027-07-12T00:00:00.000Z') })).toBe(false) // 364 j
+    expect(fenetreRecolteIncoherente({ dateRecolte: debut, finRecolte: new Date('2027-07-13T00:00:00.000Z') })).toBe(true)
+    expect(fenetreRecolteIncoherente({ dateRecolte: debut, finRecolte: null })).toBe(false)
+  })
+
+  it('ITP changé vers un ITP sans durée de récolte, récolte inchangée : fin effacée, rien d’inventé', () => {
+    expect(
+      finRecolteApresModification({
+        avant: avantA,
+        dateRecolte: avantA.dateRecolte,
+        itpChange: true,
+        itp: { semaineRecolte: 27, semaineRecolteFin: null, dureeRecolte: null },
+      })
+    ).toBeNull()
+  })
+
+  it('même itinéraire : la fenêtre garde sa longueur, décalée comme son début', () => {
+    const fin = finRecolteApresModification({
+      avant: { dateRecolte: new Date('2026-07-13T00:00:00.000Z'), finRecolte: new Date('2026-08-31T00:00:00.000Z') },
+      dateRecolte: new Date('2026-07-20T00:00:00.000Z'),
+      itp: AIL_0011,
+    })
+    // Fenêtre de 7 semaines corrigée à la main : elle survit au déplacement.
+    expect(fin).toEqual(new Date('2026-09-07T00:00:00.000Z'))
+  })
+
+  it('une fin changée par l’utilisateur fait foi', () => {
+    expect(
+      finRecolteApresModification({
+        avant: avantA,
+        dateRecolte: new Date('2026-07-13T00:00:00.000Z'),
+        finSoumise: '2026-09-01',
+        itpChange: true,
+        itp: AIL_0011,
+      })
+    ).toBeUndefined()
+  })
+
+  it('rien ne bouge : rien à écrire', () => {
+    expect(
+      finRecolteApresModification({ avant: avantA, dateRecolte: new Date('2027-07-05T00:00:00.000Z'), itp: AIL_0011 })
+    ).toBeUndefined()
+  })
+
+  it('culture sans fenêtre : la durée de l’ITP la pose ; sans durée, rien d’inventé', () => {
+    const sansFin = { dateRecolte: new Date('2026-07-06T00:00:00.000Z'), finRecolte: null }
+    expect(
+      finRecolteApresModification({ avant: sansFin, dateRecolte: new Date('2026-07-13T00:00:00.000Z'), itp: AIL_0011 })
+        ?.toISOString().slice(0, 10)
+    ).toBe('2026-08-17')
+    expect(
+      finRecolteApresModification({ avant: sansFin, dateRecolte: new Date('2026-07-13T00:00:00.000Z'), itp: null })
+    ).toBeUndefined()
   })
 })

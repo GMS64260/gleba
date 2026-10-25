@@ -39,6 +39,7 @@ import { nbPlantsCulture } from "@/lib/cultures/quantite-plants"
 import type { CultureData, PlancheData, EspeceData, ITPData } from "./AssistantDialog"
 import { formatQuantite } from "@/lib/recolte/quantites"
 import { jourEnvoye } from "./corps-culture-semer"
+import { alerteSaisonCulture } from "@/lib/cultures/saison-culture"
 
 type DateMode = "calculated" | "manual"
 
@@ -147,6 +148,13 @@ export function AssistantStepDates({
       dateRecolte: datesCalculees.dateRecolte,
     })
   }, [datesCalculees, dateMode, itp]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Date d'implantation hors de la fenêtre de l'ITP (2026-10-25) : même règle
+  // que la route, dite dans un encart, sans bloquer la suite.
+  const alerteSaison = React.useMemo(
+    () => alerteSaisonCulture({ itp, dateSemis: culture.dateSemis, datePlantation: culture.datePlantation }),
+    [itp, culture.dateSemis, culture.datePlantation]
+  )
 
   // --- Date mode toggle ---
   const handleDateModeChange = (newMode: DateMode) => {
@@ -631,6 +639,17 @@ export function AssistantStepDates({
               </CardContent>
             </Card>
           </>
+        )}
+
+        {alerteSaison && (
+          <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTitle>Hors saison pour cet itinéraire</AlertTitle>
+            <AlertDescription>
+              {alerteSaison.message} Vous pouvez continuer : décalez les dates ou
+              changez d&apos;année si ce n&apos;est pas voulu.
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* ====== SECTION 2: QUANTITÉS ====== */}

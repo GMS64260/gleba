@@ -44,6 +44,8 @@ import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { AvisItpPlanche } from "@/components/cultures/AvisItpPlanche"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
 import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
+import { finRecolteApresModification } from "@/lib/cultures/fenetre-recolte"
+import { jourCivilStocke } from "@/lib/jour-civil"
 
 interface ITPData {
   id: string
@@ -98,6 +100,10 @@ export default function EditCulturePage() {
   // Le recalage de la récolte ne suit que les CHANGEMENTS de début : éditer la
   // seule récolte ne déclenche rien.
   const debutCycleRef = React.useRef<string | null>(null)
+  // Fenêtre de récolte telle que stockée, et fin touchée par l'utilisateur :
+  // la fiche montre la fin que l'enregistrement écrira (2026-10-25).
+  const fenetreStockeeRef = React.useRef<{ dateRecolte: Date | null; finRecolte: Date | null; itpId: string | null } | null>(null)
+  const finSaisieRef = React.useRef(false)
   // Mémoriser les valeurs de l'ITP précédent pour la logique d'écrasement intelligent
   const prevItpNbRangs = React.useRef<number | null>(null)
   const prevItpEspacement = React.useRef<number | null>(null)
@@ -175,6 +181,12 @@ export default function EditCulturePage() {
 
         // Mémoriser l'ITP initial pour ne pas écraser les données existantes
         initialItpId.current = itpIncoherent ? null : cultureData.itpId || null
+        fenetreStockeeRef.current = {
+          dateRecolte: cultureData.dateRecolte ? new Date(cultureData.dateRecolte) : null,
+          finRecolte: cultureData.finRecolte ? new Date(cultureData.finRecolte) : null,
+          itpId: cultureData.itpId || null,
+        }
+        finSaisieRef.current = false
         // Début de cycle tel que chargé : baseline du recalage de la récolte.
         const debutInitial = cultureData.datePlantation || cultureData.dateSemis
         debutCycleRef.current = debutInitial ? new Date(debutInitial).toISOString() : null
@@ -328,6 +340,29 @@ export default function EditCulturePage() {
     if (!nouvelleRecolte || nouvelleRecolte.getTime() === recolte.getTime()) return
     form.setValue("dateRecolte", nouvelleRecolte)
   }, [watchedDateSemis, watchedDatePlantation, selectedItp, itps, form])
+
+  // 2026-10-25 — la fin de récolte suit son début et l'itinéraire, par la règle
+  // du PUT (`finRecolteApresModification`) : changer d'ITP réécrivait
+  // plantation et récolte et laissait à l'écran (puis en base) la fin de
+  // l'ancien ITP, un an trop tard. Une fin saisie à la main n'est plus touchée.
+  const watchedDateRecolte = form.watch("dateRecolte")
+  React.useEffect(() => {
+    if (!initialLoadDone.current || finSaisieRef.current) return
+    const stockee = fenetreStockeeRef.current
+    if (!stockee) return
+    const itp = selectedItp ? itps.find((i) => i.id === selectedItp) : null
+    if (selectedItp && !itp) return // itinéraires pas encore chargés
+    const dateRecolte = watchedDateRecolte ? new Date(watchedDateRecolte) : null
+    if (dateRecolte && Number.isNaN(dateRecolte.getTime())) return
+    const fin = finRecolteApresModification({
+      avant: stockee,
+      dateRecolte,
+      itpChange: (selectedItp || null) !== stockee.itpId,
+      itp: itp ?? null,
+    })
+    const affichee = fin === undefined ? stockee.finRecolte : fin
+    form.setValue("finRecolte", affichee ? jourCivilStocke(affichee) : null)
+  }, [watchedDateRecolte, selectedItp, itps, form])
 
   // Mettre à jour la longueur quand la planche change.
   // Bug Ail #509 — En mode édition, on n'écrase la longueur qu'après que l'utilisateur
@@ -746,9 +781,10 @@ export default function EditCulturePage() {
                           <Input
                             type="date"
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              finSaisieRef.current = true
                               field.onChange(e.target.value ? e.target.value : null)
-                            }
+                            }}
                           />
                         </FormControl>
                         <FormMessage />

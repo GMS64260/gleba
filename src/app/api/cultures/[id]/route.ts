@@ -10,6 +10,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateCultureSchema, normalizeCultureDateFields, retenirDatesCulture } from '@/lib/validations'
 import { jourCivilStocke } from '@/lib/jour-civil'
+import { fenetreRecolteIncoherente, finRecolteApresModification } from '@/lib/cultures/fenetre-recolte'
+import type { AlerteSaisonCulture } from '@/lib/cultures/saison-culture'
 import { validateCultureDates } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { irrigationCache } from '@/lib/irrigation-cache'
@@ -35,6 +37,35 @@ import { aDesVentes, compterVentesRecoltesCulture, messageSuppressionCultureRefu
 import { quantiteCultureApresModification } from '@/lib/cultures/quantite-plants'
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+/**
+ * ITP d'une culture tel que son propriétaire le voit : visible et en service,
+ * semaines transposées vers la zone de son exploitation (le référentiel des
+ * dates que les écrans préremplissent), avec sa fenêtre d'implantation et sa
+ * durée de récolte.
+ */
+async function lireItpCalibre(itpId: string, userId: string) {
+  const itpBrut = await prisma.iTP.findFirst({
+    where: { AND: [{ id: itpId }, whereItpUtilisable(userId)] },
+    select: {
+      userId: true,
+      zoneClimat: true,
+      semaineSemis: true,
+      semainePlantation: true,
+      semaineRecolte: true,
+      semaineImplantationDebut: true,
+      semaineImplantationFin: true,
+      implantation: true,
+      semaineRecolteFin: true,
+      dureeRecolte: true,
+    },
+  })
+  if (!itpBrut) return null
+  return appliquerDecalageItp(
+    itpBrut,
+    decalageItpPourLecteur(itpBrut, await zoneEffectiveUser(prisma, userId), userId)
+  )
+}
 
 // GET /api/cultures/[id]
 export async function GET(
@@ -253,34 +284,27 @@ export async function PUT(
     // Audit Marc 2026-05-14 — Bug 04 : valider les dates contre l'ITP en
     // modification également (warnings non bloquants remontés au client).
     const dateWarnings: string[] = []
-    if (data.dateSemis || data.datePlantation || data.dateRecolte) {
+    let alerteSaison: AlerteSaisonCulture | null = null
+    const datesTouchees = Boolean(data.dateSemis || data.datePlantation || data.dateRecolte)
+    const itpChange = data.itpId !== undefined && (data.itpId ?? null) !== (existing.itpId ?? null)
+    // ITP final de la culture, lu une fois : validation des dates, alerte de
+    // saison et durée de récolte de la fenêtre (2026-10-25).
+    let itp: Awaited<ReturnType<typeof lireItpCalibre>> = null
+    // Fenêtre de récolte à refaire depuis l'ITP : itinéraire changé, ou fenêtre
+    // stockée incohérente (réparée au prochain enregistrement).
+    const fenetreARefaire =
+      Boolean(data.dateRecolte ?? existing.dateRecolte) && (itpChange || fenetreRecolteIncoherente(existing))
+    let itpLu = false
+    if (itpFinal && (datesTouchees || fenetreARefaire)) {
       try {
-        const itpId = data.itpId ?? existing.itpId
-        const itpBrut = itpId
-          ? await prisma.iTP.findFirst({
-              where: { AND: [{ id: itpId }, whereItpUtilisable(session!.user.id)] },
-              select: {
-                userId: true,
-                zoneClimat: true,
-                semaineSemis: true,
-                semainePlantation: true,
-                semaineRecolte: true,
-              },
-            })
-          : null
-        // Même référentiel que celui affiché : semaines transposées vers la zone
-        // de l'exploitation, sinon l'écart de calage franchit la tolérance et
-        // fabrique un avertissement sur des dates que l'écran a préremplies.
-        const itp = itpBrut
-          ? appliquerDecalageItp(
-              itpBrut,
-              decalageItpPourLecteur(
-                itpBrut,
-                await zoneEffectiveUser(prisma, session!.user.id),
-                session!.user.id
-              )
-            )
-          : null
+        itp = await lireItpCalibre(itpFinal, session!.user.id)
+        itpLu = true
+      } catch (e) {
+        console.warn('ITP non lu pour la modification de culture :', e)
+      }
+    }
+    if (datesTouchees) {
+      try {
         const annee = data.annee ?? existing.annee ?? new Date().getFullYear()
         const v = validateCultureDates({
           dateSemis: data.dateSemis ?? existing.dateSemis,
@@ -298,10 +322,27 @@ export async function PUT(
           )
         }
         dateWarnings.push(...v.warnings)
+        alerteSaison = v.alerteSaison
       } catch (e) {
         console.warn('Date validation PUT skipped:', e)
       }
     }
+
+    // La fenêtre de récolte suit son début (2026-10-25) : changer l'ITP ou la
+    // date de récolte sans toucher la fin laissait une fenêtre d'un autre
+    // itinéraire (ail récolté S29 2026, fin au 9 août 2027). Une fin modifiée
+    // par l'utilisateur fait foi.
+    const finSuivante = finRecolteApresModification({
+      avant: existing,
+      dateRecolte:
+        data.dateRecolte !== undefined ? ((data.dateRecolte as Date | null) ?? null) : existing.dateRecolte,
+      finSoumise: data.finRecolte as Date | null | undefined,
+      itpChange,
+      // Sans ITP : null (une fin héritée d'un autre itinéraire ne survit pas) ;
+      // ITP non lu : inconnu, rien n'est effacé.
+      itp: !itpFinal ? null : itpLu ? itp : undefined,
+    })
+    if (finSuivante !== undefined) data.finRecolte = finSuivante
 
     // Bug testeur 2026-05-31 — Longueur de culture > longueur de planche : la
     // création (POST) bloque déjà via peutAjouterCulture(), mais l'édition ne
@@ -388,9 +429,11 @@ export async function PUT(
     invalidateKpi(session!.user.id)
 
     const reponse = masquerReferentielsEmbarques(culture, session!.user.id)
-    return NextResponse.json(
-      dateWarnings.length > 0 ? { ...reponse, warnings: dateWarnings } : reponse
-    )
+    return NextResponse.json({
+      ...reponse,
+      ...(dateWarnings.length > 0 ? { warnings: dateWarnings } : {}),
+      ...(alerteSaison ? { alerteSaison } : {}),
+    })
   } catch (error) {
     console.error('PUT /api/cultures/[id] error:', error)
     return NextResponse.json(
@@ -576,6 +619,19 @@ export async function PATCH(
     // bouton « Annuler le semis fait » de /maraichage/cultures passe ici : sans
     // restitution, cocher puis décocher laissait la date d'exécution en place et
     // le plan était perdu.
+    // La fenêtre de récolte suit une date de récolte déplacée par l'appel
+    // (règle de la modification et du report, `finRecolteApresModification`).
+    // Avant le recalage d'exécution : marquer une récolte faite ne déplace pas
+    // la fenêtre.
+    if (updateData.dateRecolte !== undefined) {
+      const fin = finRecolteApresModification({
+        avant: existing,
+        dateRecolte: updateData.dateRecolte as Date | null,
+        finSoumise: 'finRecolte' in updateData ? (updateData.finRecolte as Date | null) : undefined,
+      })
+      if (fin !== undefined) updateData.finRecolte = fin
+    }
+
     for (const [champEtape, champDate] of Object.entries(CHAMP_DATE_ETAPE) as Array<
       [ChampEtape, ChampDateEtape]
     >) {

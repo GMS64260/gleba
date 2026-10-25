@@ -16,6 +16,10 @@ import prisma from '@/lib/prisma'
 import { chargerTourneeDuJour, type TourneeDuJour } from '@/lib/irrigation/a-arroser'
 import { uniteQuantiteRecolte } from '@/lib/recolte/projection'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import { alerteSaisonCulture, fenetreImplantation } from '@/lib/cultures/saison-culture'
+import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
+import { zoneEffectiveUser } from '@/lib/terroir'
+import { estVisibleReferentiel } from '@/lib/referentiel-communaute'
 
 const CULTURE_SELECT = {
   id: true,
@@ -34,6 +38,28 @@ const CULTURE_SELECT = {
   espece: { select: { couleur: true, nom: true, rendement: true, uniteRendement: true } },
   variete: { select: { nom: true } },
   planche: { select: { nom: true } },
+} as const
+
+// Semis et plantations seulement : fenêtre d'implantation de l'ITP
+// (2026-10-25), pour qu'une implantation hors saison le dise sur sa ligne de
+// tâche (`alerteSaisonCulture`, règle de la route). `actif` et la visibilité
+// filtrent comme `whereItpUtilisable` : un ITP retiré ou devenu privé ne parle
+// plus.
+const CULTURE_SELECT_IMPLANTATION = {
+  ...CULTURE_SELECT,
+  itp: {
+    select: {
+      userId: true,
+      partageCommunaute: true,
+      actif: true,
+      zoneClimat: true,
+      semaineSemis: true,
+      semainePlantation: true,
+      semaineImplantationDebut: true,
+      semaineImplantationFin: true,
+      implantation: true,
+    },
+  },
 } as const
 
 // QA cmsjiwn48 — retard exprimé en JOURS CIVILS dans le fuseau métier (local) :
@@ -85,7 +111,7 @@ export async function getTachesPotager(
   const [semisSemaine, semisRetard] = await Promise.all([
     prisma.culture.findMany({
       where: { userId, annee, dateSemis: { gte: start, lte: end } },
-      select: CULTURE_SELECT,
+      select: CULTURE_SELECT_IMPLANTATION,
       orderBy: { dateSemis: 'asc' },
     }),
     prisma.culture.findMany({
@@ -98,7 +124,7 @@ export async function getTachesPotager(
         terminee: null,
         dateSemis: { lt: borneRetard, not: null },
       },
-      select: CULTURE_SELECT,
+      select: CULTURE_SELECT_IMPLANTATION,
       orderBy: { dateSemis: 'asc' },
     }),
   ])
@@ -107,7 +133,7 @@ export async function getTachesPotager(
   const [plantationsSemaine, plantationsRetard] = await Promise.all([
     prisma.culture.findMany({
       where: { userId, annee, datePlantation: { gte: start, lte: end } },
-      select: CULTURE_SELECT,
+      select: CULTURE_SELECT_IMPLANTATION,
       orderBy: { datePlantation: 'asc' },
     }),
     prisma.culture.findMany({
@@ -119,7 +145,7 @@ export async function getTachesPotager(
         terminee: null,
         datePlantation: { lt: borneRetard, not: null },
       },
-      select: CULTURE_SELECT,
+      select: CULTURE_SELECT_IMPLANTATION,
       orderBy: { datePlantation: 'asc' },
     }),
   ])
@@ -165,6 +191,20 @@ export async function getTachesPotager(
       : { lignes: [], nbCultures: 0, horsTournee: [] }
   const irrigation = tournee.lignes
 
+  // ── Saison de l'ITP : la zone n'est lue que si une tâche d'implantation en a besoin ──
+  const implantations = [...semisSemaine, ...semisRetard, ...plantationsSemaine, ...plantationsRetard]
+  let zone: Awaited<ReturnType<typeof zoneEffectiveUser>> = null
+  if (implantations.some((c) => fenetreImplantation(c.itp))) {
+    zone = await zoneEffectiveUser(prisma, userId).catch(() => null)
+  }
+  // Message d'alerte de la culture si l'étape de la tâche est celle qui implante.
+  function horsSaison(c: typeof semisSemaine[number], champ: 'dateSemis' | 'datePlantation'): string | null {
+    if (!c.itp || !c.itp.actif || !estVisibleReferentiel(c.itp, userId)) return null
+    const itp = appliquerDecalageItp(c.itp, decalageItpPourLecteur(c.itp, zone, userId))
+    const alerte = alerteSaisonCulture({ itp, dateSemis: c.dateSemis, datePlantation: c.datePlantation })
+    return alerte?.champ === champ ? alerte.message : null
+  }
+
   // ── Formatter ──
 
   function formatSemis(c: typeof semisSemaine[number], retard: number) {
@@ -183,6 +223,7 @@ export async function getTachesPotager(
       fait: c.semisFait,
       couleur: c.espece?.couleur || null,
       retardJours: retard,
+      horsSaison: horsSaison(c, 'dateSemis'),
     }
   }
 
@@ -200,6 +241,7 @@ export async function getTachesPotager(
       fait: c.plantationFaite,
       couleur: c.espece?.couleur || null,
       retardJours: retard,
+      horsSaison: horsSaison(c, 'datePlantation'),
     }
   }
 
