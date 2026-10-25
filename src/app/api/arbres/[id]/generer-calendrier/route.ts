@@ -6,7 +6,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
-import { findTreeCareProfile, generateCareOperations } from "@/lib/tree-care-calendar"
+import { findTreeCareProfile } from "@/lib/tree-care-calendar"
+import { jourDePlantation, planCalendrierEntretien } from "@/lib/verger/creation-arbre"
+
+/** Bornes d'une année demandée explicitement (rattrapage ou anticipation). */
+const ANNEE_MIN = 1900
+const ECART_ANNEE_MAX = 5
 
 export async function POST(
   request: NextRequest,
@@ -51,24 +56,38 @@ export async function POST(
     }
 
     const body = await request.json().catch(() => ({}))
-    const currentYear = new Date().getFullYear()
-    const year = body.year || currentYear
-
-    // Plancher anti-retards artificiels : sur l'année courante (défaut), ne pas
-    // recréer les opérations dont la FENÊTRE est déjà refermée — elles
-    // naîtraient irréalisables (retour utilisateur 2026-07-31). Une fenêtre
-    // encore ouverte est bien créée, même si sa date conseillée est passée. Une
-    // année explicitement demandée via body.year reste générée en entier
-    // (rattrapage historique).
-    let from: Date | null = null
-    if (!body.year || body.year === currentYear) {
-      const now = new Date()
-      from = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const anneeDemandee = body?.year === undefined || body?.year === null ? null : Number(body.year)
+    const anneeMax = new Date().getFullYear() + ECART_ANNEE_MAX
+    if (
+      anneeDemandee !== null &&
+      (!Number.isInteger(anneeDemandee) || anneeDemandee < ANNEE_MIN || anneeDemandee > anneeMax)
+    ) {
+      return NextResponse.json(
+        { error: `Année invalide : choisissez une année entre ${ANNEE_MIN} et ${anneeMax}.`, champ: "year" },
+        { status: 400 }
+      )
     }
 
-    // Supprimer les anciennes opérations auto-générées pour cette annee
+    // Même règle que la création (`planCalendrierEntretien`) : plancher
+    // « aujourd'hui » sur l'année courante (défaut), aucune opération avant la
+    // plantation, pas de récolte sur un arbre non productif ; une autre année
+    // demandée via body.year reste générée en entier (rattrapage historique).
+    // QA Hélène 2026-05-15, bug #10 : la variété cale la date de récolte.
+    const { annee: year, operations } = planCalendrierEntretien(
+      profile,
+      arbre,
+      session!.user.id,
+      { annee: anneeDemandee },
+    )
+
+    // Supprimer les anciennes opérations auto-générées pour cette année, et,
+    // toutes années confondues, celles qui précèdent la plantation : une date
+    // de plantation corrigée après coup (le PUT de l'arbre ne touche pas au
+    // calendrier) laissait dans « À faire » des gestes antérieurs à la mise en
+    // terre (revue du 2026-10-25).
     const startOfYear = new Date(year, 0, 1)
     const endOfYear = new Date(year, 11, 31, 23, 59, 59)
+    const plantation = jourDePlantation(arbre.datePlantation)
 
     await prisma.operationArbre.deleteMany({
       where: {
@@ -81,13 +100,13 @@ export async function POST(
         // Une fenêtre soldée explicitement ne doit pas être ressuscitée par une
         // régénération : l'utilisateur a acté qu'il ne la ferait pas cette année.
         abandonneeLe: null,
-        datePrevue: { gte: startOfYear, lte: endOfYear },
+        OR: [
+          { datePrevue: { gte: startOfYear, lte: endOfYear } },
+          ...(plantation ? [{ datePrevue: { lt: plantation } }] : []),
+        ],
       },
     })
 
-    // QA Hélène 2026-05-15 — Bug #10 : passer la variété pour caler la
-    // date de récolte sur les cultivars tardifs connus.
-    const operations = generateCareOperations(profile, year, arbreId, session!.user.id, arbre.variete, from)
     if (operations.length > 0) {
       await prisma.operationArbre.createMany({ data: operations })
     }

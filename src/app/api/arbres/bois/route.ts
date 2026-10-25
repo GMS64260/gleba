@@ -8,13 +8,8 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { genererNumeroLot, m3PleinToStere, stereToM3Plein } from "@/lib/recolte/lot"
-
-// Types de production bois
-export const TYPES_PRODUCTION_BOIS = [
-  { value: "elagage", label: "Élagage" },
-  { value: "abattage", label: "Abattage" },
-  { value: "branchage", label: "Branchage" },
-]
+// Types de production bois : liste unique partagée avec l'écran (QA cmvnp0dm9).
+import { refusTypeProductionBois } from "@/lib/verger/production-bois"
 
 // DEV3 #4 — Destinations canoniques (audit Marc 2026-05-14)
 export const DESTINATIONS_BOIS = [
@@ -105,12 +100,11 @@ export async function POST(request: NextRequest) {
     const userId = session!.user.id
     const body = await request.json()
 
-    // Validation
-    if (!body.type) {
-      return NextResponse.json(
-        { error: "Le type de production est requis" },
-        { status: 400 }
-      )
+    // Validation. Un type hors liste n'aurait aucun libellé à afficher sur la
+    // vente ni sur la facture (QA cmvnp0dm9).
+    const refusType = refusTypeProductionBois(body.type)
+    if (refusType) {
+      return NextResponse.json({ error: refusType, champ: "type" }, { status: 400 })
     }
 
     // Vérifier que l'arbre appartient à l'utilisateur (si spécifié)

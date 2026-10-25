@@ -40,6 +40,16 @@ import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
 import { todayLocalISO } from '@/lib/format-utils'
 import { labelStatutRecolteArbre } from '@/lib/verger/statut-recolte-arbre'
 import { estTypeArbreFruitier } from '@/lib/verger/types-arbre'
+// QA cmsjhmi58 puis cmvnp0dm9 — type et volume d'un lot de bois affichés par
+// la source partagée avec la facture (« Élagage », « 0,2 m³ »), jamais par la
+// valeur technique.
+import {
+  libellePoidsBois,
+  libelleTypeBois,
+  libelleVolumeBois,
+  resumeLotBois,
+  TYPES_PRODUCTION_BOIS,
+} from '@/lib/verger/production-bois'
 
 // ============================================================
 // Types
@@ -128,23 +138,11 @@ interface ProductionBois {
   arbre: Arbre | null
 }
 
-const TYPES_PRODUCTION = [
-  { value: "elagage", label: "Élagage" },
-  { value: "abattage", label: "Abattage" },
-  { value: "branchage", label: "Branchage" },
-]
-
 const DESTINATIONS_UTILISATION = [
   { value: "chauffage", label: "Bois de chauffage (perso)" },
   { value: "BRF", label: "BRF / Paillage" },
   { value: "construction", label: "Construction" },
 ]
-
-// QA cmsjhmi58 — les listes affichaient la valeur technique (« elagage »
-// passé en CSS capitalize → « Elagage » sans accent) au lieu du libellé.
-function labelTypeBois(type: string): string {
-  return TYPES_PRODUCTION.find((t) => t.value === type)?.label ?? type
-}
 
 function labelDestinationBois(destination: string | null): string {
   if (!destination) return "-"
@@ -1410,7 +1408,7 @@ function ProductionBoisSubTab() {
               <Package className="h-4 w-4 text-amber-600" />
               <p className="text-sm text-amber-700">En stock</p>
             </div>
-            <p className="text-2xl font-bold text-amber-800">{stockVolume.toFixed(1)} m³</p>
+            <p className="text-2xl font-bold text-amber-800">{libelleVolumeBois(stockVolume)}</p>
             <p className="text-xs text-amber-600">{stockProductions.length} lot(s)</p>
           </CardContent>
         </Card>
@@ -1420,7 +1418,7 @@ function ProductionBoisSubTab() {
               <ShoppingCart className="h-4 w-4 text-green-600" />
               <p className="text-sm text-green-700">Vendu</p>
             </div>
-            <p className="text-2xl font-bold text-green-800">{venduVolume.toFixed(1)} m³</p>
+            <p className="text-2xl font-bold text-green-800">{libelleVolumeBois(venduVolume)}</p>
             <p className="text-xs text-green-600">{venduProductions.length} vente(s)</p>
           </CardContent>
         </Card>
@@ -1484,10 +1482,10 @@ function ProductionBoisSubTab() {
                   {stockProductions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{new Date(p.date).toLocaleDateString("fr-FR")}</TableCell>
-                      <TableCell>{labelTypeBois(p.type)}</TableCell>
+                      <TableCell>{libelleTypeBois(p.type)}</TableCell>
                       <TableCell>{p.arbre?.nom || "-"}</TableCell>
-                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
-                      <TableCell className="text-right">{p.poidsKg ? `${p.poidsKg} kg` : "-"}</TableCell>
+                      <TableCell className="text-right">{p.volumeM3 ? libelleVolumeBois(p.volumeM3) : "-"}</TableCell>
+                      <TableCell className="text-right">{p.poidsKg ? libellePoidsBois(p.poidsKg) : "-"}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           {p.type === "abattage" && (
@@ -1545,8 +1543,8 @@ function ProductionBoisSubTab() {
                   {venduProductions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{p.dateVente ? new Date(p.dateVente).toLocaleDateString("fr-FR") : "-"}</TableCell>
-                      <TableCell>{labelTypeBois(p.type)}</TableCell>
-                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
+                      <TableCell>{libelleTypeBois(p.type)}</TableCell>
+                      <TableCell className="text-right">{p.volumeM3 ? libelleVolumeBois(p.volumeM3) : "-"}</TableCell>
                       <TableCell>{p.clientNom || "-"}</TableCell>
                       <TableCell className="text-right font-medium text-green-600">
                         {p.prixVente ? `${p.prixVente} EUR` : "-"}
@@ -1589,8 +1587,8 @@ function ProductionBoisSubTab() {
                   {utiliseProductions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{new Date(p.date).toLocaleDateString("fr-FR")}</TableCell>
-                      <TableCell>{labelTypeBois(p.type)}</TableCell>
-                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
+                      <TableCell>{libelleTypeBois(p.type)}</TableCell>
+                      <TableCell className="text-right">{p.volumeM3 ? libelleVolumeBois(p.volumeM3) : "-"}</TableCell>
                       <TableCell>{labelDestinationBois(p.destination)}</TableCell>
                     </TableRow>
                   ))}
@@ -1622,7 +1620,7 @@ function ProductionBoisSubTab() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {TYPES_PRODUCTION.map((t) => (
+                    {TYPES_PRODUCTION_BOIS.map((t) => (
                       <SelectItem key={t.value} value={t.value}>
                         {t.label}
                       </SelectItem>
@@ -1721,7 +1719,7 @@ function ProductionBoisSubTab() {
             <div className="space-y-4">
               <div className="p-3 bg-amber-50 rounded-lg">
                 <p className="text-sm text-amber-700">
-                  {selectedProduction.type} - {selectedProduction.volumeM3} m³
+                  {resumeLotBois(selectedProduction)}
                   {selectedProduction.arbre && ` (${selectedProduction.arbre.nom})`}
                 </p>
               </div>
@@ -1801,7 +1799,7 @@ function ProductionBoisSubTab() {
             <div className="space-y-4">
               <div className="p-3 bg-amber-50 rounded-lg">
                 <p className="text-sm text-amber-700">
-                  {selectedProduction.type} - {selectedProduction.volumeM3} m³
+                  {resumeLotBois(selectedProduction)}
                 </p>
               </div>
               <div>

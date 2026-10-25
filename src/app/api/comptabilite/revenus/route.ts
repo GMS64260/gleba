@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { chargerSuiviDesLignes, type SuiviDeLigne } from '@/lib/comptabilite/suivi-ecriture'
+import { libellesVenteBois } from '@/lib/verger/production-bois'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -233,7 +234,13 @@ export async function GET(request: NextRequest) {
         sourceId: b.id,
         module: 'verger',
         date: (b.dateVente || b.date).toISOString(),
-        description: `Vente bois ${b.type} ${b.arbre?.nom || ''}`.trim(),
+        // QA cmvnp0dm9 — même texte que l'écriture de vente (« Élagage »).
+        description: libellesVenteBois({
+          type: b.type,
+          volumeM3: b.volumeM3,
+          poidsKg: b.poidsKg,
+          arbreNom: b.arbre?.nom,
+        }).description,
         quantite: b.volumeM3 || b.poidsKg,
         unite: b.volumeM3 ? 'm³' : 'kg',
         prixUnitaire: null,

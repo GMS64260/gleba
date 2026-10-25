@@ -96,6 +96,8 @@ describe("GET /api/comptabilite/revenus — suivi des lignes dérivées", () => 
       id: 910,
       suivi: { modeReglement: "Virement", numeroPiece: "VIR-12", notes: null },
     })
+    // QA cmvnp0dm9 — libellé du type, pas la valeur technique « elagage ».
+    expect(ligne("bois-34").description).toBe("Vente bois - Élagage - Châtaignier - 3 m³")
     // Miroir affiché tel quel (commande boutique) : retrouvé par son id.
     expect(ligne("manuel-913").ecriture.id).toBe(913)
     expect(ligne("recolte-potager-1177")).toMatchObject({

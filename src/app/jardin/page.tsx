@@ -1873,6 +1873,9 @@ function JardinContent() {
       // en zone tropicale) renvoyé par l'API — non bloquant.
       const created = await response.json().catch(() => null)
       const precisions = [
+        // Ticket cmvnopnsu — la création génère le calendrier d'entretien :
+        // le plan l'annonce comme la liste des arbres.
+        created?.calendrierGenere ? "Calendrier d'entretien généré." : null,
         created?.especeHorsCatalogue
           ? `« ${created.espece} » n'est pas au catalogue : pas de calendrier d'entretien ni de contrôle climatique automatiques.`
           : null,

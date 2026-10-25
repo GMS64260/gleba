@@ -13,6 +13,7 @@ import prisma from '@/lib/prisma'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { formatQuantite } from '@/lib/recolte/quantites'
 import { selectSuiviConserve, suiviConserve, type SuiviVente } from '@/lib/comptabilite/ecriture-derivee'
+import { libellesVenteBois } from '@/lib/verger/production-bois'
 
 // ============================================================
 // HELPERS
@@ -571,10 +572,13 @@ export async function createVenteFromProductionBois(
 
   const { montantHT, montantTVA } = calculTVA(montantTTC, 10) // Bois = TVA 10%
 
-  const typeLabel = productionBois.type || 'Bois'
-  const arbreNom = productionBois.arbre?.nom || ''
-  const volumeInfo = productionBois.volumeM3 ? `${productionBois.volumeM3} m³` : ''
-  const descParts = [`Vente bois - ${typeLabel}`, arbreNom, volumeInfo].filter(Boolean)
+  // QA cmvnp0dm9 — même libellé que l'écran et la facture (« Élagage »).
+  const { description } = libellesVenteBois({
+    type: productionBois.type,
+    volumeM3: productionBois.volumeM3,
+    poidsKg: productionBois.poidsKg,
+    arbreNom: productionBois.arbre?.nom,
+  })
 
   return prisma.$transaction(async (tx) => {
     // Scopé au compte, comme la lecture du suivi (revue du 2026-10-20).
@@ -587,7 +591,7 @@ export async function createVenteFromProductionBois(
         userId,
         date: productionBois.dateVente ? new Date(productionBois.dateVente) : new Date(),
         categorie: 'bois',
-        description: descParts.join(' - '),
+        description,
         quantite: productionBois.volumeM3 || productionBois.poidsKg || null,
         unite: productionBois.volumeM3 ? 'm³' : (productionBois.poidsKg ? 'kg' : null),
         tauxTVA: 10,

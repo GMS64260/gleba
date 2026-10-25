@@ -5,9 +5,10 @@
  */
 
 import * as React from "react"
+import Link from "next/link"
 import { format } from "date-fns"
 import { ColumnDef } from "@tanstack/react-table"
-import { Wrench, ListTodo, Check, CheckCircle, AlertTriangle } from "lucide-react"
+import { Wrench, ListTodo, Check, CheckCircle, AlertTriangle, X } from "lucide-react"
 import { checkOperationSaison } from "@/lib/tree-care-calendar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -37,6 +38,8 @@ import {
   resumeCoutOperations,
 } from "@/lib/verger/annee-operation"
 import { formatMontantDevise } from "@/lib/format-utils"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
+import { lireArbreOuverture, operationsDeLArbre } from "@/lib/verger/lien-operations-arbre"
 
 const FILTER_STATES = [
   { value: "all", label: "Toutes", icon: Wrench },
@@ -212,6 +215,11 @@ export function OperationsTab({ annee }: OperationsTabProps) {
   const [arbres, setArbres] = React.useState<Arbre[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filterFait, setFilterFait] = React.useState("all")
+  // QA cmvnorxov — arbre choisi depuis sa fiche (« Voir les opérations »),
+  // comparé par identifiant. Paramètre d'ouverture `?arbreId=` lu au montage
+  // puis retiré de l'URL, le reste de la requête gardé (motif 7) ; le filtre
+  // vit ensuite dans l'état de l'onglet et se retire par son bouton.
+  const [arbreFiltreId, setArbreFiltreId] = React.useState<number | null>(null)
   const [showDialog, setShowDialog] = React.useState(false)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [newOperation, setNewOperation] = React.useState({
@@ -262,13 +270,37 @@ export function OperationsTab({ annee }: OperationsTabProps) {
     fetchData()
   }, [fetchData])
 
-  const filteredData = React.useMemo(() => {
-    if (filterFait === "fait") return data.filter((op) => op.fait)
-    if (filterFait === "afaire") return data.filter((op) => !op.fait)
-    return data
-  }, [data, filterFait])
+  React.useEffect(() => {
+    const { arbreId, requete } = lireArbreOuverture(window.location.search)
+    if (requete === null) return
+    if (arbreId !== null) setArbreFiltreId(arbreId)
+    // Nettoyage par l'API History, état `null` (cf. dashboard-navigation.ts).
+    updateDashboardSearchParams(new URLSearchParams(requete), "replace")
+  }, [])
 
-  const coutAnnee = resumeCoutOperations(data)
+  const dataArbre = React.useMemo(() => operationsDeLArbre(data, arbreFiltreId), [data, arbreFiltreId])
+
+  const filteredData = React.useMemo(() => {
+    if (filterFait === "fait") return dataArbre.filter((op) => op.fait)
+    if (filterFait === "afaire") return dataArbre.filter((op) => !op.fait)
+    return dataArbre
+  }, [dataArbre, filterFait])
+
+  // Nom affiché du filtre : la liste des arbres du compte, à défaut une
+  // opération chargée de cet arbre. Un arbre introuvable n'a pas de fiche à
+  // ouvrir : son libellé reste un texte simple.
+  const nomArbreConnu =
+    arbreFiltreId === null
+      ? null
+      : arbres.find((a) => a.id === arbreFiltreId)?.nom ??
+        data.find((op) => op.arbreId === arbreFiltreId)?.arbre.nom ??
+        null
+  const nomArbreFiltre =
+    arbreFiltreId === null
+      ? null
+      : nomArbreConnu ?? (isLoading ? "…" : `n° ${arbreFiltreId} (introuvable)`)
+
+  const coutAnnee = resumeCoutOperations(dataArbre)
 
   const handleToggleFait = React.useCallback(
     async (op: OperationArbre) => {
@@ -463,7 +495,10 @@ export function OperationsTab({ annee }: OperationsTabProps) {
       <Card>
         <CardContent className="pt-4 pb-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Coût des opérations {annee}</p>
+            <p className="text-sm text-muted-foreground">
+              Coût des opérations {annee}
+              {nomArbreFiltre !== null ? ` pour ${nomArbreFiltre}` : ""}
+            </p>
             <p className="text-xl font-bold" data-testid="cout-operations-annee">{formatMontantDevise(coutAnnee.total)}</p>
           </div>
           {coutAnnee.prevu > 0 && (
@@ -502,6 +537,35 @@ export function OperationsTab({ annee }: OperationsTabProps) {
         </TabsList>
       </Tabs>
 
+      {arbreFiltreId !== null && (
+        <div
+          className="flex flex-wrap items-center gap-2 rounded-md border border-lime-200 bg-lime-50 px-3 py-2 text-sm"
+          data-testid="filtre-arbre-operations"
+        >
+          <span>
+            Opérations de l&apos;arbre{" "}
+            {nomArbreConnu !== null ? (
+              <Link href={`/verger/${arbreFiltreId}`} className="font-medium text-lime-800 underline">
+                {nomArbreConnu}
+              </Link>
+            ) : (
+              <span className="font-medium">{nomArbreFiltre}</span>
+            )}{" "}
+            en {annee}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2"
+            onClick={() => setArbreFiltreId(null)}
+            title="Retirer le filtre sur l'arbre"
+          >
+            <X className="h-3.5 w-3.5 mr-1" />
+            Tous les arbres
+          </Button>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
         data={filteredData}
@@ -526,7 +590,9 @@ export function OperationsTab({ annee }: OperationsTabProps) {
           }
         }}
         searchPlaceholder="Rechercher une opération..."
-        emptyMessage="Aucune opération trouvée."
+        emptyMessage={
+          arbreFiltreId !== null ? `Aucune opération de cet arbre en ${annee}.` : "Aucune opération trouvée."
+        }
         tableClassName="min-w-[820px]"
       />
 
