@@ -4,6 +4,7 @@ import type { EmetteurSnapshot } from "@/lib/facture-utils"
 import { noteLibreDeFacture, type FacturePourExport } from "@/lib/facture-structuree"
 import { attacherFacturX, creerDocumentPdfA3, terminerPdf, type ProfilFacturX } from "@/lib/facturx/pdfa"
 import { LABELS_CATEGORIE_OPERATION, MENTION_OPTION_DEBITS, mentionsCodifiees, type CategorieOperation } from "@/lib/facture-regles"
+import { formatPrixUnitaire, mentionPrixUnitaireTTC } from "@/lib/comptabilite/prix-unitaire"
 import { symboleDevise } from "@/lib/format-utils"
 import { formatSiren, formatSiret } from "@/lib/siret"
 import { labelMentionAB, mentionABFacture } from "@/lib/statut-bio"
@@ -200,7 +201,10 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
   for (const ligne of facture.lignes) {
     const desc = ligne.description + (ligne.statutBio ? `\n  ${ligne.statutBio}` : "")
     const descHeight = doc.heightOfString(desc, { width: 230 })
-    const rowH = Math.max(18, descHeight + 4)
+    // Ticket cmvnuxvax — vente saisie TTC : le PU HT exact (1,20 / 1,055)
+    // est suivi du PU TTC saisi, sur une seconde ligne de la colonne.
+    const mentionTtc = mentionPrixUnitaireTTC(ligne, devise)
+    const rowH = Math.max(mentionTtc ? 22 : 18, descHeight + 4)
 
     if (ly + rowH > 720) {
       doc.addPage()
@@ -215,11 +219,20 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
       ly,
       { width: 45, align: "right" }
     )
-    doc.text(formatMontant(ligne.prixUnitaire, devise), cols.pu, ly, { width: 55, align: "right" })
+    // Ticket cmvnuxvax — PU HT jusqu'à 4 décimales (« 1,1374 » et non
+    // « 1,14 ») : toujours un arrondi, la référence exacte d'une vente saisie
+    // TTC est la mention TTC (quantité × PU TTC = total TTC). Les totaux
+    // restent ceux stockés, calculés sur la valeur exacte.
+    doc.text(formatPrixUnitaire(ligne.prixUnitaire, devise), cols.pu, ly, { width: 55, align: "right" })
     doc.text(`${ligne.tauxTVA}%`, cols.tva, ly, { width: 40, align: "right" })
     doc.fillColor("#1e293b")
     doc.text(formatMontant(ligne.montantHT, devise), cols.ht, ly, { width: 55, align: "right" })
     doc.text(formatMontant(ligne.montantTTC, devise), cols.ttc, ly, { width: 45, align: "right" })
+    if (mentionTtc) {
+      doc.fillColor("#64748b").fontSize(7)
+      doc.text(mentionTtc, cols.pu - 15, ly + 11, { width: 70, align: "right" })
+      doc.fontSize(9)
+    }
 
     ly += rowH + 4
     doc.moveTo(50, ly - 2).lineTo(545, ly - 2).strokeColor("#f1f5f9").lineWidth(0.5).stroke()

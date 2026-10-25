@@ -17,6 +17,7 @@ import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } fro
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
+import { chargerPrixVentesMoyens, valoriserLot } from '@/lib/recolte/valorisation'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Requête avec comptage
-    const [recoltes, total, stats, especesDistinctes] = await Promise.all([
+    const [recoltes, total, stats, especesDistinctes, prixVentes] = await Promise.all([
       prisma.recolte.findMany({
         where,
         include: {
@@ -115,7 +116,33 @@ export async function GET(request: NextRequest) {
         distinct: ['especeId'],
         orderBy: { especeId: 'asc' },
       }),
+      // Ticket cmvnvaal2 — prix de vente moyens (espèce, unité) des 90 derniers
+      // jours, toutes années et espèces : la valeur d'un lot ne dépend pas du
+      // filtre de l'écran, elle est celle de Comptabilité > Stocks unifiés.
+      chargerPrixVentesMoyens(prisma, session!.user.id),
     ])
+
+    // Valeur d'un lot EN STOCK par la règle unique (`valoriserLot`) : prix du
+    // lot, fiche d'une espèce personnelle dans son unité, vente moyenne dans
+    // l'unité du lot, catalogue et barème pour des kilos du catalogue. La
+    // source est toujours dite (`aucune` = non valorisé) ; null = lot sorti.
+    const recoltesValorisees = recoltes.map((r) => ({
+      ...r,
+      valorisation:
+        r.statut === 'en_stock'
+          ? valoriserLot(
+              {
+                acteurId: session!.user.id,
+                especeId: r.especeId,
+                unite: r.unite,
+                quantite: r.quantite,
+                prixLot: r.prixKg,
+                espece: r.espece,
+              },
+              prixVentes,
+            )
+          : null,
+    }))
 
     const statsParUnite = arrondirQuantites(
       stats.reduce<QuantiteParUnite>(
@@ -128,7 +155,7 @@ export async function GET(request: NextRequest) {
     // Espèce et variété embarquées : jamais l'id de l'auteur d'une entrée
     // partagée par un autre compte (revue 2026-10-20).
     return NextResponse.json({
-      data: masquerReferentielsEmbarques(recoltes, session!.user.id),
+      data: masquerReferentielsEmbarques(recoltesValorisees, session!.user.id),
       total,
       page,
       pageSize,

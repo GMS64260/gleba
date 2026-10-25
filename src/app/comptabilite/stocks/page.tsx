@@ -26,6 +26,8 @@ interface StockItem {
   stockMin: number | null
   alerteBas: boolean
   valeur: number | null
+  /** Méthode de la valeur (récoltes en stock, cultures en cours), cf. `valorisation.ts`. */
+  valeurMethode?: string | null
 }
 
 const MODULE_ICONS: Record<string, React.ReactNode> = {
@@ -300,6 +302,11 @@ export default function StocksPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             {item.valeur !== null ? formatEuro(item.valeur) : '-'}
+                            {/* Ticket cmvnvaal2 — la méthode est dite, comme sur
+                                Récoltes > Stock qui applique la même règle. */}
+                            {item.valeurMethode && (
+                              <span className="block text-[10px] text-muted-foreground">{item.valeurMethode}</span>
+                            )}
                           </TableCell>
                           <TableCell>
                             {item.alerteBas ? (
