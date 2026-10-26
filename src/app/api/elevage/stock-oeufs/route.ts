@@ -32,7 +32,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message || "Données invalides" }, { status: 400 })
   }
   const input = parsed.data
-  const production = await prisma.productionOeuf.findFirst({
+  return prisma.$transaction(async (tx) => {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${session.user.id}`}))`
+  const production = await tx.productionOeuf.findFirst({
     where: { id: input.productionId, userId: session.user.id },
     include: { mouvementsStock: { select: { quantite: true } } },
   })
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
     // d'un soin fait (finAttenteOeufs) couvrant le lot/l'animal ne sont JAMAIS
     // commercialisables : même règle que l'écran et l'assistant
     // (src/lib/elevage/stock-oeufs-lots.ts).
-    const blocages = await blocagesVetoPontes(prisma, session.user.id, [{
+    const blocages = await blocagesVetoPontes(tx, session.user.id, [{
       id: production.id,
       date: production.date,
       lotId: production.lotId,
@@ -83,7 +85,7 @@ export async function POST(request: NextRequest) {
       { status: 422 },
     )
   }
-  const data = await prisma.mouvementStockOeuf.create({
+  const data = await tx.mouvementStockOeuf.create({
     data: {
       userId: session.user.id,
       productionId: input.productionId,
@@ -94,6 +96,7 @@ export async function POST(request: NextRequest) {
     },
   })
   return NextResponse.json({ data }, { status: 201 })
+  })
 }
 
 export async function DELETE(request: NextRequest) {
@@ -106,6 +109,7 @@ export async function DELETE(request: NextRequest) {
     select: { id: true },
   })
   if (!existing) return NextResponse.json({ error: "Mouvement introuvable" }, { status: 404 })
+  if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, mouvementOeufId: id } })) return NextResponse.json({ error: 'Cette sortie est liée à un document commercial. Utilisez Retour en stock sur le bon ou la facture.' }, { status: 409 })
   await prisma.mouvementStockOeuf.delete({ where: { id } })
   return NextResponse.json({ success: true })
 }

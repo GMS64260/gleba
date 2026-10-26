@@ -150,6 +150,7 @@ export default function StocksPage() {
                 <SelectItem value="potager">Maraîchage</SelectItem>
                 <SelectItem value="verger">Verger</SelectItem>
                 <SelectItem value="elevage">Élevage</SelectItem>
+                <SelectItem value="autre">Autres stocks</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
@@ -199,7 +200,7 @@ export default function StocksPage() {
                   <p className="text-[10px] text-muted-foreground mt-1">
                     M {formatEuro(stats.valeurParModule.potager || 0)} ·
                     V {formatEuro(stats.valeurParModule.verger || 0)} ·
-                    E {formatEuro(stats.valeurParModule.elevage || 0)}
+                    E {formatEuro(stats.valeurParModule.elevage || 0)}{stats.valeurParModule.autre != null && <> · Autres {formatEuro(stats.valeurParModule.autre)}</>}
                   </p>
                 )}
               </CardContent>

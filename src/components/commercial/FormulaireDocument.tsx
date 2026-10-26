@@ -9,13 +9,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { SelectNatif } from '@/components/ui/select-natif'
 import { calculerDocument, contenuDocumentSchema, factureSansTaxe, type ContenuDocument } from '@/lib/commercial/regles'
 import { todayLocalISO } from '@/lib/format-utils'
+import { ChoisirStock, prixHTDuStock } from './ChoisirStock'
+import type { ArticleStockCommercial, TypeStockCommercial } from '@/lib/commercial/stock-types'
 import type { DocumentVue } from './DocumentsCommerciaux'
 
 interface ClientVue { id: number; nom: string; exonererTVA: boolean }
-const nouvelleLigne = () => ({ cle: crypto.randomUUID(), description: '', quantite: '1', unite: 'kg', prixUnitaire: '', tauxTVA: '5.5' })
+const nouvelleLigne = () => ({ cle: crypto.randomUUID(), description: '', quantite: '1', unite: 'kg', prixUnitaire: '', tauxTVA: '5.5', articleStockType: null as TypeStockCommercial | null, articleStockId: null as string | null })
 
-export function FormulaireDocument({ type, initial, copie, onSauver, onFermer }: {
-  type: 'devis' | 'livraison'; initial?: DocumentVue; copie?: boolean;
+export function FormulaireDocument({ type, initial, copie, preselection, onSauver, onFermer }: {
+  preselection?: string; type: 'devis' | 'livraison'; initial?: DocumentVue; copie?: boolean;
   onSauver: (contenu: ContenuDocument) => Promise<void>; onFermer: () => void;
 }) {
   const [clients, setClients] = React.useState<ClientVue[]>([])
@@ -24,7 +26,7 @@ export function FormulaireDocument({ type, initial, copie, onSauver, onFermer }:
   const [charge, setCharge] = React.useState(true)
   const [erreur, setErreur] = React.useState('')
   const [clientId, setClientId] = React.useState(String(initial?.clientId || ''))
-  const [lignes, setLignes] = React.useState(() => initial?.lignes.map((l) => ({ cle: crypto.randomUUID(), description: l.description, quantite: String(l.quantite), unite: l.unite, prixUnitaire: String(l.prixUnitaire), tauxTVA: String(l.tauxTVA) })) || [nouvelleLigne()])
+  const [lignes, setLignes] = React.useState(() => initial?.lignes.map((l) => ({ cle: crypto.randomUUID(), description: l.description, quantite: String(l.quantite), unite: l.unite, prixUnitaire: String(l.prixUnitaire), tauxTVA: String(l.tauxTVA), articleStockType: l.articleStockType as TypeStockCommercial | null, articleStockId: l.articleStockId })) || [nouvelleLigne()])
   const verrou = React.useRef(false)
   const [sauve, setSauve] = React.useState(false)
   const today = todayLocalISO()
@@ -48,6 +50,11 @@ export function FormulaireDocument({ type, initial, copie, onSauver, onFermer }:
     setLignes((ls) => ls.map((l) => l.cle === cle ? { ...l, [champ]: valeur } : l))
   }
 
+  function ajouterStock(a: ArticleStockCommercial) {
+    const ligne = { ...nouvelleLigne(), description: a.nom, unite: a.unite, prixUnitaire: prixHTDuStock(a, sansTaxe)?.toString() ?? '', tauxTVA: String(a.tauxTVA), articleStockType: a.type, articleStockId: a.id }
+    setLignes((ls) => ls.length === 1 && !ls[0].description && !ls[0].articleStockId ? [ligne] : [...ls, ligne])
+  }
+
   async function soumettre(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (verrou.current) return
@@ -58,7 +65,7 @@ export function FormulaireDocument({ type, initial, copie, onSauver, onFermer }:
       dateLivraison: texte('dateLivraison') || null, objet: texte('objet'), notes: texte('notes'), adresseLivraison: texte('adresseLivraison'),
       categorieOperation: texte('categorieOperation') || 'biens',
       lignes: lignes.map((l) => ({ description: texte(`${l.cle}-description`), quantite: nombre(texte(`${l.cle}-quantite`)), unite: texte(`${l.cle}-unite`),
-        prixUnitaire: nombre(texte(`${l.cle}-prixUnitaire`)), tauxTVA: nombre(texte(`${l.cle}-tauxTVA`)) })),
+        articleStockType: l.articleStockType as TypeStockCommercial | null, articleStockId: l.articleStockId, prixUnitaire: nombre(texte(`${l.cle}-prixUnitaire`)), tauxTVA: nombre(texte(`${l.cle}-tauxTVA`)) })),
     }
     const parsed = contenuDocumentSchema.safeParse(contenu)
     if (!parsed.success) { setErreur(parsed.error.issues[0]?.message || 'Vérifiez la saisie'); return }
@@ -81,14 +88,17 @@ export function FormulaireDocument({ type, initial, copie, onSauver, onFermer }:
     </div>
     <div><Label htmlFor="doc-adresse">Adresse de livraison</Label><Textarea id="doc-adresse" name="adresseLivraison" maxLength={500} defaultValue={initial?.adresseLivraison || ''} placeholder="Laisser vide pour reprendre l’adresse de la fiche client" /></div>
     {sansTaxe && <p className="rounded-md bg-amber-50 p-3 text-sm">TVA à 0 % : régime de l’exploitation ou exonération de la fiche client. Les prix HT saisis restent les prix à payer.</p>}
+    {!charge && <ChoisirStock onChoisir={ajouterStock} preselection={preselection} />}
+    <p className="text-sm text-muted-foreground">{type === 'devis' ? 'Les quantités restent disponibles jusqu’à la livraison ou la facturation directe du devis.' : 'Les produits liés au stock seront déduits lorsque vous confirmerez la livraison.'} Les lignes libres restent possibles pour les prestations et produits sans stock suivi.</p>
     <div className="space-y-3">{lignes.map((l, index) => <fieldset key={l.cle} className="grid gap-3 rounded-lg border bg-slate-50 p-3 sm:grid-cols-6">
-      <legend className="px-1 text-sm font-medium">Ligne {index + 1}</legend>
+      <legend className="px-1 text-sm font-medium">Ligne {index + 1}{l.articleStockId ? ' · Liée au stock' : ' · Ligne libre'}</legend>
       <div className="sm:col-span-6"><Label htmlFor={`${l.cle}-description`}>Désignation *</Label><Input id={`${l.cle}-description`} name={`${l.cle}-description`} required maxLength={500} value={l.description} onChange={(e) => changerLigne(l.cle, 'description', e.target.value)} /></div>
       <div><Label htmlFor={`${l.cle}-quantite`}>Quantité *</Label><Input id={`${l.cle}-quantite`} name={`${l.cle}-quantite`} type="number" step="any" min="0.000001" max="1000000" required value={l.quantite} onChange={(e) => changerLigne(l.cle, 'quantite', e.target.value)} /></div>
-      <div><Label htmlFor={`${l.cle}-unite`}>Unité *</Label><Input id={`${l.cle}-unite`} name={`${l.cle}-unite`} required maxLength={20} value={l.unite} onChange={(e) => changerLigne(l.cle, 'unite', e.target.value)} /></div>
+      <div><Label htmlFor={`${l.cle}-unite`}>Unité *</Label><Input id={`${l.cle}-unite`} name={`${l.cle}-unite`} required readOnly={!!l.articleStockId} maxLength={20} value={l.unite} onChange={(e) => changerLigne(l.cle, 'unite', e.target.value)} /></div>
       <div className="sm:col-span-2"><Label htmlFor={`${l.cle}-prixUnitaire`}>Prix unitaire HT *</Label><Input id={`${l.cle}-prixUnitaire`} name={`${l.cle}-prixUnitaire`} type="number" step="any" min="0" max="1000000" required value={l.prixUnitaire} onChange={(e) => changerLigne(l.cle, 'prixUnitaire', e.target.value)} /></div>
       <div><Label htmlFor={`${l.cle}-tauxTVA`}>TVA</Label><SelectNatif id={`${l.cle}-tauxTVA`} name={`${l.cle}-tauxTVA`} value={sansTaxe ? '0' : l.tauxTVA} onChange={(e) => changerLigne(l.cle, 'tauxTVA', e.target.value)}>{[0, 2.1, 5.5, 10, 20].map((t) => <option key={t} value={t}>{t.toLocaleString('fr-FR')} %</option>)}</SelectNatif></div>
       <div className="flex items-end"><Button type="button" variant="ghost" disabled={lignes.length === 1} onClick={() => setLignes((ls) => ls.filter((v) => v.cle !== l.cle))} aria-label={`Retirer la ligne ${index + 1}`}>Retirer</Button></div>
+      {l.articleStockId && <div className="sm:col-span-6"><Button type="button" variant="ghost" size="sm" onClick={() => setLignes((ls) => ls.map((v) => v.cle === l.cle ? { ...v, articleStockType: null, articleStockId: null } : v))}>Passer en ligne libre (sans sortie de stock)</Button></div>}
     </fieldset>)}</div>
     <Button type="button" variant="outline" disabled={lignes.length >= 100} onClick={() => setLignes((ls) => [...ls, nouvelleLigne()])}>Ajouter une ligne</Button>
     <p className="text-right font-medium">HT {argent(totaux.totalHT)} · TVA {argent(totaux.totalTVA)} · TTC {argent(totaux.totalTTC)}</p>

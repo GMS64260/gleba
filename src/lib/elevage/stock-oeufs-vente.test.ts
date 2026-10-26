@@ -24,6 +24,7 @@ describe("stock d’œufs lié aux ventes", () => {
   it("ventile une demi-douzaine en FIFO sur le stock commercialisable", async () => {
     const creations: Array<{ productionId: number; quantite: number; notes: string }> = []
     const tx = {
+      $executeRaw: async () => 1,
       soinAnimal: {
         findMany: async () => [],
       },
@@ -73,6 +74,7 @@ describe("stock d’œufs lié aux ventes", () => {
 
   it("refuse atomiquement une vente supérieure au stock disponible", async () => {
     const tx = {
+      $executeRaw: async () => 1,
       soinAnimal: {
         findMany: async () => [],
       },

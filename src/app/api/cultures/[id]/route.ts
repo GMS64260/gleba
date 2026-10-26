@@ -706,6 +706,8 @@ export async function DELETE(
       )
     }
 
+    if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, recolte: { cultureId } } })) return NextResponse.json({ error: 'Cette culture possède des lots liés à des bons ou factures. Conservez-la pour garder leur traçabilité.' }, { status: 409 })
+
     // Audit 2026-10-08 — une récolte vendue retient la culture : la cascade
     // effaçait ses ventes de la comptabilité, exercice déjà déclaré compris.
     const ventes = await compterVentesRecoltesCulture(prisma, cultureId, session!.user.id)

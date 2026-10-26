@@ -133,6 +133,7 @@ export async function GET(request: NextRequest) {
         take: 200,
         select: {
           operationId: true,
+          _count: { select: { mouvementsCommerciaux: true } },
           date: true,
           type: true,
           quantite: true,
@@ -150,6 +151,7 @@ export async function GET(request: NextRequest) {
       unite: string
       quantite: number
       notes: string | null
+      documentCommercial: boolean
     }>()
     for (const mouvement of mouvementsStock) {
       if (!(PRODUITS_RUCHE as readonly string[]).includes(mouvement.production.produit)) continue
@@ -173,6 +175,7 @@ export async function GET(request: NextRequest) {
           unite,
           quantite,
           notes: mouvement.notes,
+          documentCommercial: mouvement._count.mouvementsCommerciaux > 0,
         })
       }
     }

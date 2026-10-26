@@ -100,7 +100,7 @@ import {
 interface MonStock {
   stockNet: number
   unite: UniteQuantite
-  detail: { inventaire: number; recoltes: number; consommations: number }
+  detail: { inventaire: number; recoltes: number; consommations: number; sortiesCommerciales?: number }
   autresUnites: Partial<Record<UniteQuantite, number>>
   inventaire: number | null
   dateInventaire: string | null
@@ -1540,8 +1540,8 @@ export default function EditEspecePage() {
                         {monStock == null
                           ? "Aucun stock suivi pour cette espèce chez vous : saisissez un comptage, ou enregistrez une récolte."
                           : monStock.dateInventaire
-                            ? `Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}, puis ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés et ${formatQuantite(monStock.detail.consommations, monStock.unite)} sortis.`
-                            : `Sans comptage manuel : ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés en stock, ${formatQuantite(monStock.detail.consommations, monStock.unite)} sortis.`}{" "}
+                            ? `Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}, puis ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés et ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0), monStock.unite)} sortis.`
+                            : `Sans comptage manuel : ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés en stock, ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0), monStock.unite)} sortis.`}{" "}
                         Même stock que{" "}
                         <Link href="/maraichage/stocks" className="underline">
                           Stocks &gt; Récoltes
