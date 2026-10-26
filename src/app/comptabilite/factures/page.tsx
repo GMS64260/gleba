@@ -30,6 +30,9 @@ import { factureSansTaxe } from '@/lib/territoires'
 import { construireImpayees, type FactureImpayee, type Impayee } from '@/lib/comptabilite/impayees'
 import { adresseDeFiche, clientDesigneParNom } from '@/lib/comptabilite/rattachement-client'
 import { formatSiren, formatSiret } from '@/lib/siret'
+import { DocumentsCommerciaux } from '@/components/commercial/DocumentsCommerciaux'
+import { EnvoyerDocument } from '@/components/commercial/EnvoyerDocument'
+import { updateDashboardSearchParams } from '@/lib/dashboard-navigation'
 
 interface LigneFacture {
   id: string
@@ -98,6 +101,7 @@ interface FactureEmise {
   factureOrigineId?: number | null
   /** Résolue côté API depuis `factureOrigineId` (cf. ticket cmsx5zhke). */
   factureOrigine?: { id: number; numero: string; clientNom: string } | null
+  documentsCommerciaux?: Array<{ id: string; numero: string; type: string }>
 }
 
 /**
@@ -118,6 +122,19 @@ function objetAffiche(f: FactureEmise): string {
 export default function FacturesPage() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = React.useState("impayees")
+  React.useEffect(() => {
+    const lire = () => {
+      const t = new URLSearchParams(window.location.search).get('tab')
+      if (t && ['impayees', 'emises', 'generer', 'avoir', 'devis', 'livraisons'].includes(t)) setActiveTab(t)
+    }
+    lire(); window.addEventListener('popstate', lire)
+    return () => window.removeEventListener('popstate', lire)
+  }, [])
+  function changerOnglet(t: string) {
+    setActiveTab(t)
+    const q = new URLSearchParams(window.location.search); q.set('tab', t); q.delete('document')
+    updateDashboardSearchParams(q, 'push')
+  }
   const [isLoading, setIsLoading] = React.useState(true)
   const [impayees, setImpayees] = React.useState<Impayee[]>([])
   const [total, setTotal] = React.useState(0)
@@ -518,7 +535,7 @@ export default function FacturesPage() {
       // Recharge la liste & ouvre le PDF
       fetchFacturesEmises()
       ouvrirApercu(`/api/comptabilite/factures/${json.data.id}/pdf`, `Facture ${json.data.numero ?? ''}`.trim())
-      setActiveTab('emises')
+      changerOnglet('emises')
     } catch (err) {
       toast({ variant: 'destructive', title: 'Erreur réseau', description: String(err) })
     } finally {
@@ -627,7 +644,7 @@ export default function FacturesPage() {
             <Link href="/comptabilite"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Comptabilité</Button></Link>
             <div className="flex items-center gap-2">
               <FileText className="h-6 w-6 text-blue-600" />
-              <h1 className="text-xl font-bold">Factures</h1>
+              <h1 className="text-xl font-bold">Devis et facturation</h1>
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={fetchImpayees}><RefreshCw className="h-4 w-4" /></Button>
@@ -635,7 +652,7 @@ export default function FacturesPage() {
       </header>
 
       <div className="container mx-auto px-4 py-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={changerOnglet}>
           {/* Ticket cmsx6g3gq (QA 2026-08-17, viewport 375 px) — quatre onglets
               en `inline-flex` mesuraient 618 px : c'est le DOCUMENT qui
               débordait, pas le tableau des lignes. Le tableau, lui, a bien son
@@ -643,6 +660,8 @@ export default function FacturesPage() {
               parce que la page entière était décalée. Les onglets passent donc
               à la ligne sur mobile. */}
           <TabsList className="mb-6 flex h-auto w-full flex-wrap justify-start gap-1">
+            <TabsTrigger value="devis">Devis</TabsTrigger>
+            <TabsTrigger value="livraisons">Bons de livraison</TabsTrigger>
             <TabsTrigger value="impayees" className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
               Impayées
@@ -666,6 +685,9 @@ export default function FacturesPage() {
               Avoir
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="devis"><DocumentsCommerciaux type="devis" onFacture={() => { fetchFacturesEmises(); fetchImpayees(); changerOnglet('emises') }} /></TabsContent>
+          <TabsContent value="livraisons"><DocumentsCommerciaux type="livraison" onFacture={() => { fetchFacturesEmises(); fetchImpayees(); changerOnglet('emises') }} /></TabsContent>
 
           {/* Onglet Impayées */}
           <TabsContent value="impayees">
@@ -816,6 +838,7 @@ export default function FacturesPage() {
                           <TableCell className="max-w-[180px] truncate">{f.clientNom}</TableCell>
                           <TableCell className="max-w-[200px] truncate text-muted-foreground">
                             {objetAffiche(f)}
+                            {f.documentsCommerciaux?.map((d) => <a key={d.id} className="mt-1 block text-xs text-primary underline" href={`/comptabilite/factures?tab=${d.type === 'devis' ? 'devis' : 'livraisons'}&document=${d.id}`}>{d.numero}</a>)}
                           </TableCell>
                           <TableCell className="text-right font-medium">{formatEuro(f.totalTTC)}</TableCell>
                           <TableCell>
@@ -846,7 +869,8 @@ export default function FacturesPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
+                            <div className="flex flex-wrap items-center justify-end gap-1">
+                              {['emise', 'payee'].includes(f.statut) && <EnvoyerDocument type="facture" id={f.id} numero={f.numero} />}
                               {f.statut === "emise" && (
                                 <>
                                   <Button

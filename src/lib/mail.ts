@@ -33,6 +33,7 @@ interface SendMailOptions {
   replyTo?: string
   /** En-têtes additionnels (ex. List-Unsubscribe pour les campagnes). */
   headers?: Record<string, string>
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string }>
 }
 
 /**
@@ -68,7 +69,7 @@ export async function smtpConfigure(): Promise<boolean> {
   return Boolean(config.host && config.user)
 }
 
-export async function sendMail({ to, subject, html, replyTo, headers }: SendMailOptions) {
+export async function sendMail({ to, subject, html, replyTo, headers, attachments }: SendMailOptions) {
   const config = await getSmtpConfig()
   if (!config.host || !config.user) {
     console.warn("SMTP non configure, email non envoye:", subject)
@@ -92,6 +93,7 @@ export async function sendMail({ to, subject, html, replyTo, headers }: SendMail
     html,
     ...(replyTo && { replyTo }),
     ...(headers && { headers }),
+    ...(attachments && { attachments }),
   })
 }
 
