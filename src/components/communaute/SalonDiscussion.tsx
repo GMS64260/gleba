@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { messageErreurReponse } from "@/lib/api-erreur"
 import { MESSAGES_REFUS_DEMO } from "@/lib/demo"
+import { urlConnexion } from "@/lib/auth-retour"
 import { LONGUEUR_MAX_MESSAGE_SALON } from "@/lib/validations/salon"
 import {
   ajouterPageAncienneSalon,
@@ -47,8 +48,8 @@ export function SalonDiscussion({ acces }: { acces: AccesSalon }) {
   if (acces === "anonyme") {
     return (
       <InvitationSalon texte="Le salon de discussion est réservé aux membres connectés de Gleba. Connectez-vous ou créez un compte gratuit pour échanger avec les autres maraîchers, arboriculteurs et éleveurs.">
-        <Link href="/login?callbackUrl=/communaute">
-          <Button className="bg-violet-600 hover:bg-violet-700">Connexion</Button>
+        <Link href={urlConnexion("/communaute?tab=salon")}>
+          <Button className="bg-foret hover:bg-foret/90">Connexion</Button>
         </Link>
         <Link href="/register">
           <Button variant="outline">Créer un compte</Button>
@@ -64,9 +65,9 @@ export function SalonDiscussion({ acces }: { acces: AccesSalon }) {
 
 function InvitationSalon({ texte, children }: { texte: string; children?: React.ReactNode }) {
   return (
-    <Card className="border-violet-200">
+    <Card className="border-lin">
       <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-        <MessageSquare className="h-10 w-10 text-violet-400" />
+        <MessageSquare className="h-10 w-10 text-sauge" />
         <p className="max-w-xl text-sm text-muted-foreground" role="note">
           {texte}
         </p>
@@ -236,10 +237,10 @@ function FilSalon() {
   const reste = LONGUEUR_MAX_MESSAGE_SALON - brouillon.length
 
   return (
-    <Card className="border-violet-200">
+    <Card className="border-lin">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg text-violet-800">
-          <MessageSquare className="h-5 w-5 text-violet-600" />
+          <MessageSquare className="h-5 w-5 text-foret" />
           Salon de discussion
         </CardTitle>
         <CardDescription>
@@ -334,7 +335,7 @@ function FilSalon() {
               type="submit"
               size="sm"
               disabled={envoi || !brouillon.trim()}
-              className="bg-violet-600 hover:bg-violet-700"
+              className="bg-foret hover:bg-foret/90"
             >
               {envoi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
               Envoyer
@@ -357,14 +358,14 @@ function MessageSalon({
 }) {
   return (
     <div
-      className={`rounded-md px-2 py-1.5 ${message.auteur.estMoi ? "bg-violet-50" : "hover:bg-slate-50"}`}
+      className={`rounded-md px-2 py-1.5 ${message.auteur.estMoi ? "bg-sauge-doux" : "hover:bg-slate-50"}`}
     >
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className="text-sm font-semibold text-slate-800">
           {message.auteur.estMoi ? "Vous" : message.auteur.nom}
         </span>
         {message.auteur.equipe && (
-          <Badge variant="outline" className="border-violet-300 bg-violet-50 px-1.5 py-0 text-[10px] text-violet-700">
+          <Badge variant="outline" className="border-sauge/30 bg-sauge-doux px-1.5 py-0 text-[10px] text-foret">
             Équipe Gleba
           </Badge>
         )}
@@ -379,7 +380,7 @@ function MessageSalon({
           <button
             type="button"
             onClick={() => onRetirer(message)}
-            className="ml-auto rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600"
+            className="ml-auto min-h-11 min-w-11 rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600"
             aria-label={message.auteur.estMoi ? "Supprimer mon message" : `Retirer le message de ${message.auteur.nom}`}
           >
             <Trash2 className="h-3.5 w-3.5" />

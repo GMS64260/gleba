@@ -71,6 +71,16 @@ export async function reprendreReferentielCommunaute(
   tx: Prisma.TransactionClient,
   userId: string
 ): Promise<{ reprises: number }> {
+  // Ordonner une suppression et une publication simultanées : la publication
+  // prend un verrou KEY SHARE sur ce même auteur avant d'inscrire sa version.
+  await tx.$queryRaw`SELECT "id" FROM "users" WHERE "id" = ${userId} FOR UPDATE`
+  // L'historique documentaire reste utile, mais sa signature ne doit pas
+  // identifier un compte supprimé. Les références techniques sont détachées
+  // par les clés étrangères SetNull dans la même transaction.
+  await tx.revisionEncyclopedie.updateMany({
+    where: { authorId: userId },
+    data: { signature: 'Ancien membre' },
+  })
   const cible = { userId: COMMUNAUTE_USER_ID }
 
   // Étape 1 — sauver les PARENTS privés des enfants partagés. Variete.espece et

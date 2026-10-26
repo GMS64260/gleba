@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
-import { requireAdminApi } from "@/lib/auth-utils";
+import { moderateurEncyclopedie } from "@/lib/encyclopedie/http";
+import { getActeurId } from "@/lib/exploitation/garde-session";
 
 const moderationSchema = z.object({
   statut: z.enum(["VALIDE", "REJETE"]),
@@ -9,7 +10,7 @@ const moderationSchema = z.object({
 });
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, session } = await requireAdminApi(request);
+  const { error, session } = await moderateurEncyclopedie(request);
   if (error) return error;
   const parsed = moderationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Décision invalide" }, { status: 400 });
@@ -26,7 +27,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       data: {
         statut: parsed.data.statut,
         principale: parsed.data.statut === "VALIDE" && parsed.data.principale,
-        valideParId: session!.user.id,
+        valideParId: getActeurId(session),
         valideAt: new Date(),
         controleAt: new Date(),
       },

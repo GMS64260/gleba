@@ -125,11 +125,11 @@ export default function AidePage() {
                 <p className="text-xs text-slate-500 mt-1">Signaler un bug, demander une fonctionnalité</p>
               </div>
             </Link>
-            <Link href="/communaute" className="flex items-start gap-2 p-3 border rounded hover:bg-slate-50">
+            <Link href="/communaute?tab=propositions" className="flex items-start gap-2 p-3 border rounded hover:bg-slate-50">
               <Map className="h-4 w-4 text-amber-600 mt-0.5" />
               <div>
-                <strong>Community Voice</strong>
-                <p className="text-xs text-slate-500 mt-1">Proposez, votez et suivez la roadmap</p>
+                <strong>Faire évoluer Gleba</strong>
+                <p className="text-xs text-slate-500 mt-1">Proposez, votez et suivez la feuille de route</p>
               </div>
             </Link>
             <Link href="/glossaire" className="flex items-start gap-2 p-3 border rounded hover:bg-slate-50">

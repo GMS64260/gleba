@@ -140,13 +140,39 @@ export default function ConfidentialitePage() {
           factures et préférences de livraison, sous la responsabilité du producteur.
         </p>
 
-        <h3>2.8 Salon de discussion</h3>
+        <h3>2.8 Forum et ancien salon</h3>
         <p>
           Les messages que vous publiez dans le salon de la page Communauté, avec
           votre nom et leur date d&apos;envoi. Ils sont lisibles par tous les membres
           connectés, jamais par les visiteurs ni depuis le compte de démonstration.
           Vous pouvez supprimer chacun de vos messages à tout moment ; ils sont
           effacés avec votre compte.
+        </p>
+
+        <p>
+          Le forum général est également réservé aux comptes personnels connectés.
+          Les sujets et réponses portent la signature publique que vous choisissez.
+          Vous pouvez retirer vos propres publications ; l’équipe peut modérer les
+          échanges. À la suppression du compte, vos sujets et réponses sont effacés,
+          ainsi que les réponses rattachées aux sujets que vous aviez ouverts.
+        </p>
+
+        <h3>2.9 Encyclopédie collaborative</h3>
+        <p>
+          Les discussions publiées sur une fiche végétale sont accessibles à tous,
+          avec la signature choisie, le texte et la date. Le formulaire le précise
+          avant l’envoi. Les avis terrain historiques restent réservés aux membres.
+          Les photos suivent leur propre procédure de proposition et de validation.
+        </p>
+        <p>
+          Une proposition documentaire comprend votre texte, ses sources, le motif
+          et une signature publique. Elle est visible par vous et par l’équipe de
+          relecture. Après validation, son texte et sa signature sont publiés sous
+          la licence CC BY 4.0 explicitement acceptée au formulaire, et conservés
+          dans l’historique des versions. La suppression du compte efface les
+          propositions et remplace la signature des versions publiées par
+          « Ancien membre » ; ces versions restent consultables pour préserver
+          l’histoire de la connaissance commune.
         </p>
 
         <h2>3. Finalités</h2>

@@ -248,6 +248,13 @@ model User {
   mediasReferentiel        MediaReferentiel[] @relation("MediaReferentielContributeur")
   mediasReferentielValides MediaReferentiel[] @relation("MediaReferentielValidateur")
 
+  // Encyclopédie : contributions personnelles et révisions documentaires.
+  contributionsEncyclopedie       ContributionEncyclopedie[] @relation("ContributionEncyclopedieAuteur")
+  revisionsEncyclopedie           RevisionEncyclopedie[]     @relation("RevisionEncyclopedieAuteur")
+  revisionsEncyclopedieValidees   RevisionEncyclopedie[]     @relation("RevisionEncyclopedieValidateur")
+  discussionsEncyclopedie         DiscussionEncyclopedie[]   @relation("DiscussionEncyclopedieAuteur")
+  reponsesEncyclopedie            ReponseEncyclopedie[]      @relation("ReponseEncyclopedieAuteur")
+
   // Community Voice — demandes d'évolution & votes
   evolutions                       Evolution[]                         @relation("EvolutionAuthor")
   evolutionVotes                   EvolutionVote[]                     @relation("EvolutionVoter")
@@ -737,6 +744,9 @@ model Espece {
   portesGreffe        PorteGreffeEspece[]
   bioagresseurs       BioagresseurEspece[]
   medias              MediaReferentiel[]
+  contributionsEncyclopedie ContributionEncyclopedie[]
+  revisionsEncyclopedie     RevisionEncyclopedie[]
+  discussionsEncyclopedie   DiscussionEncyclopedie[]
 
   @@index([userId])
   @@map("especes")
@@ -4452,4 +4462,101 @@ model MessageSalon {
   @@index([createdAt])
   @@index([userId])
   @@map("messages_salon")
+}
+
+
+// Connaissances documentaires : aucun de ces modèles ne remplace les
+// paramètres agronomiques de Espece ou les itinéraires techniques.
+enum StatutContributionEncyclopedie {
+  EN_ATTENTE
+  PUBLIEE
+  A_REPRENDRE
+  REFUSEE
+}
+
+model ContributionEncyclopedie {
+  id             String @id @default(cuid())
+  especeId       String @map("espece_id")
+  espece         Espece @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId         String @map("user_id")
+  user           User   @relation("ContributionEncyclopedieAuteur", fields: [userId], references: [id], onDelete: Cascade)
+  signature      String
+  section        String
+  contenu        String @db.Text
+  source         String @db.Text
+  motif          String @db.Text
+  revisionBaseId String? @map("revision_base_id")
+  licence        String @default("CC BY 4.0")
+  statut         StatutContributionEncyclopedie @default(EN_ATTENTE)
+  decisionMotif  String? @map("decision_motif") @db.Text
+  decisionAt     DateTime? @map("decision_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  revision       RevisionEncyclopedie?
+
+  @@index([userId, createdAt])
+  @@index([statut, createdAt])
+  @@index([especeId, section])
+  @@map("contributions_encyclopedie")
+}
+
+model RevisionEncyclopedie {
+  id             String @id @default(cuid())
+  especeId       String @map("espece_id")
+  espece         Espece @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  section        String
+  version        Int
+  contenu        String @db.Text
+  source         String @db.Text
+  signature      String
+  licence        String @default("CC BY 4.0")
+  authorId       String? @map("author_id")
+  author         User? @relation("RevisionEncyclopedieAuteur", fields: [authorId], references: [id], onDelete: SetNull)
+  reviewedById   String? @map("reviewed_by_id")
+  reviewedBy     User? @relation("RevisionEncyclopedieValidateur", fields: [reviewedById], references: [id], onDelete: SetNull)
+  contributionId String? @unique @map("contribution_id")
+  contribution   ContributionEncyclopedie? @relation(fields: [contributionId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([especeId, section, version])
+  @@index([authorId])
+  @@index([createdAt])
+  @@map("revisions_encyclopedie")
+}
+
+model DiscussionEncyclopedie {
+  id        String @id @default(cuid())
+  especeId  String? @map("espece_id")
+  espece    Espece? @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId    String @map("user_id")
+  user      User @relation("DiscussionEncyclopedieAuteur", fields: [userId], references: [id], onDelete: Cascade)
+  signature String
+  titre     String
+  contenu   String @db.Text
+  categorie String @default("GENERAL")
+  epingle   Boolean @default(false)
+  resolu    Boolean @default(false)
+  derniereActiviteAt DateTime @default(now()) @map("derniere_activite_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  reponses  ReponseEncyclopedie[]
+
+  @@index([especeId, createdAt])
+  @@index([categorie, derniereActiviteAt])
+  @@index([userId])
+  @@map("discussions_encyclopedie")
+}
+
+model ReponseEncyclopedie {
+  id           String @id @default(cuid())
+  discussionId String @map("discussion_id")
+  discussion   DiscussionEncyclopedie @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  userId       String @map("user_id")
+  user         User @relation("ReponseEncyclopedieAuteur", fields: [userId], references: [id], onDelete: Cascade)
+  signature    String
+  contenu      String @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([discussionId, createdAt])
+  @@index([userId])
+  @@map("reponses_encyclopedie")
 }

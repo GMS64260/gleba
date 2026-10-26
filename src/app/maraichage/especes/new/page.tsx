@@ -221,7 +221,7 @@ export default function NewEspecePage() {
                         Cette liste est fermée : chaque type pilote l&apos;écran où
                         l&apos;espèce apparaît, l&apos;unité de son rendement et ses stocks.
                         Il manque un type à votre production ?{" "}
-                        <Link href="/communaute" className="underline">
+                        <Link href="/communaute?tab=propositions" className="underline">
                           demandez-le à la communauté
                         </Link>
                         {" "}— en attendant, choisissez le type dont la conduite est la plus

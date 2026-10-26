@@ -134,7 +134,7 @@ const COLONNES: { titre: string; liens: [string, string][] }[] = [
       ["/registre-phytosanitaire-numerique", "Registre phyto numérique 2027"],
       ["/referentiel", "Référentiel agricole ouvert"],
       ["/glossaire", "Glossaire agricole"],
-      ["/communaute", "Feuille de route publique"],
+      ["/communaute?tab=roadmap", "Feuille de route publique"],
       ["/licence", "Licence AGPL-3.0"],
       ["/login?demo=1", "Ferme de démonstration"],
     ],

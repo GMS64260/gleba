@@ -3,6 +3,10 @@ const nextConfig = {
   // Output standalone pour Docker
   output: 'standalone',
 
+  // Bancs en worktree : autoriser explicitement les dépendances liées hors
+  // du répertoire du projet. Sans cette variable, garder la racine Next usuelle.
+  ...(process.env.GLEBA_TURBOPACK_ROOT ? { turbopack: { root: process.env.GLEBA_TURBOPACK_ROOT } } : {}),
+
   // Bug PDFKit (audit 2026-05-14) : Next.js standalone ne trace pas les .afm
   // car PDFKit les charge via fs.readFileSync dynamique non détectable par
   // le bundler. Sans ça, tous nos exports PDF crashent avec
@@ -42,7 +46,7 @@ const nextConfig = {
   async redirects() {
     return [
       // Roadmap GitHub historique → Community Voice (roadmap communautaire)
-      { source: '/roadmap', destination: '/communaute', permanent: true },
+      { source: '/roadmap', destination: '/communaute?tab=roadmap', permanent: true },
       // Cluster SEO jardin fusionné dans la page potager.
       { source: '/logiciel-jardin', destination: '/logiciel-potager', permanent: true },
       // Maraîchage

@@ -59,7 +59,7 @@ const DISCOVERY_PAGES: Page[] = [
   { href: "/comparatif-logiciels-maraichage", label: "Comparatif des logiciels de maraîchage", icon: Scale },
   { href: "/assistant-ia-agricole", label: "Assistant IA agricole", icon: Bot },
   { href: "/referentiel", label: "Référentiel agricole public", icon: Sprout },
-  { href: "/communaute", label: "Feuille de route publique", icon: Milestone },
+  { href: "/communaute?tab=roadmap", label: "Feuille de route publique", icon: Milestone },
 ];
 
 function contextualPages(currentPath: string): Page[] {
