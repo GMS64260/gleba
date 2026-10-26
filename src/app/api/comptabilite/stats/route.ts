@@ -10,6 +10,7 @@ import prisma from '@/lib/prisma'
 import { ventilerParModule } from '@/lib/comptabilite/modules'
 import { getKpiCompta } from '@/lib/kpi'
 import { construireImpayees } from '@/lib/comptabilite/impayees'
+import { STATUTS_COMMANDES_EN_ATTENTE } from '@/lib/comptabilite/alertes'
 
 const MOIS_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
 
@@ -375,7 +376,7 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           createdAt: { gte: startOfYear, lte: endOfYear },
-          statut: { in: ['nouveau', 'confirmee', 'prete'] },
+          statut: { in: [...STATUTS_COMMANDES_EN_ATTENTE] },
         },
         _sum: { total: true },
         _count: true,
