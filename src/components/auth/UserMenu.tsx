@@ -35,7 +35,7 @@ export function UserMenu({ user }: UserMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2 border-lin bg-craie text-encre hover:bg-papier hover:text-encre">
+        <Button variant="outline" size="sm" className="gap-2 border-lin bg-craie text-encre hover:bg-papier hover:text-encre" aria-label="Menu du compte" title="Mon compte">
           <User className="h-4 w-4 text-ardoise" />
           <span className="hidden sm:inline">
             {user.name || user.email?.split("@")[0]}

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BookOpen, ChevronRight, Globe2, Leaf, MapPin, Search, Sprout, TreeDeciduous } from "lucide-react";
 
-import { MarketingShell } from "@/components/seo/MarketingShell";
+import { ReferentielShell } from "@/components/referentiel/ReferentielShell";
 import prisma from "@/lib/prisma";
 import { nomPublic, originePublique, visibiliteEnfantPublic, visibiliteReferentielPublic } from "@/lib/referentiel-public";
 import { ESPECE_TYPES, estTypeVerger, libelleTypeEspece } from "@/lib/validations/espece";
@@ -109,7 +109,7 @@ export default async function ReferentielPage({ searchParams }: PageProps) {
   ]);
 
   return (
-    <MarketingShell>
+    <ReferentielShell>
       <section className="px-4 pb-10 pt-8 sm:px-6 sm:pt-14">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-3xl">
@@ -190,7 +190,7 @@ export default async function ReferentielPage({ searchParams }: PageProps) {
           </div>
         </div>
       </section>
-    </MarketingShell>
+    </ReferentielShell>
   );
 }
 
