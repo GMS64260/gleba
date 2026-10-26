@@ -12,10 +12,10 @@ vi.mock('@/lib/prisma', () => ({ default: {
   user: { findUnique: m.user }, documentCommercial: { findFirst: m.document },
   envoiCommercial: { update: m.update },
   $transaction: (f: (tx: unknown) => unknown) => f({ $queryRaw: vi.fn(), envoiCommercial: {
-    findUnique: m.ancien, findFirst: m.attente, count: m.count, create: m.create,
+    findUnique: m.ancien, findFirst: m.attente, count: m.count, create: m.create, update: m.update,
   } }),
 } }))
-import { envoiSchema, envoyerCommercial, messageCommercial } from './envois'
+import { envoiSchema, envoyerCommercial, messageCommercial, statutEnvoi } from './envois'
 
 const entree = { type: 'document' as const, id: 'devis-1', cle: 'b35ae150-23ad-4d8d-9a87-56f47e128eee', destinataire: 'client@example.test', message: 'Voici le devis.' }
 describe('Courriels commerciaux : traçabilité sans double envoi', () => {
@@ -60,11 +60,19 @@ describe('Courriels commerciaux : traçabilité sans double envoi', () => {
     expect(m.document).toHaveBeenCalledWith(expect.objectContaining({ where: { id: entree.id, userId: 'ferme' } }))
   })
   it('bloque une tentative concurrente et applique le quota horaire', async () => {
-    m.attente.mockResolvedValue({ id: 'envoi-2' })
+    m.attente.mockResolvedValue({ id: 'envoi-2', statut: 'en_cours', createdAt: new Date() })
     await expect(envoyerCommercial('ferme', entree)).rejects.toThrow('déjà en cours')
     m.attente.mockResolvedValue(null); m.count.mockResolvedValue(20)
     await expect(envoyerCommercial('ferme', entree)).rejects.toThrow('20 envois')
     expect(m.send).not.toHaveBeenCalled()
+  })
+  it('permet une reprise explicite après interruption, en conservant le résultat incertain de la tentative précédente', async () => {
+    const interrompu = { id: 'ancien', statut: 'en_cours', createdAt: new Date(Date.now() - 3600_000) }
+    expect(statutEnvoi(interrompu)).toBe('a_verifier')
+    m.attente.mockResolvedValue(interrompu)
+    expect(await envoyerCommercial('ferme', entree)).toMatchObject({ statut: 'envoye' })
+    expect(m.update).toHaveBeenCalledWith({ where: { id: 'ancien' }, data: { statut: 'a_verifier' } })
+    expect(m.send).toHaveBeenCalledTimes(1)
   })
   it('échappe le contenu et refuse plusieurs destinataires ou une injection d’en-têtes', () => {
     expect(messageCommercial('Devis', 'D-1', 'Ferme <test>', '<script>x</script>')).toContain('&lt;script&gt;')

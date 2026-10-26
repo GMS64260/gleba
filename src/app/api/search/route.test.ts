@@ -40,13 +40,24 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAuthApi.mockResolvedValue(sessionDe(MOI))
   const vide = { findMany: vi.fn(async () => []) }
-  for (const modele of ['culture', 'arbre', 'animal', 'lotAnimaux', 'client', 'facture', 'parcelleGeo', 'soinAnimal', 'recolte', 'produitBoutique']) {
+  for (const modele of ['culture', 'arbre', 'animal', 'lotAnimaux', 'client', 'facture', 'documentCommercial', 'parcelleGeo', 'soinAnimal', 'recolte', 'produitBoutique']) {
     mocks.db[modele] = vide
   }
   mocks.db.variete = delegueMemoire([...Object.values(varietes), surEspecePrivee] as Ligne[])
 })
 
 describe('GET /api/search?q=', () => {
+  it('retrouve un devis par son identifiant, sans proposer celui d’une autre exploitation', async () => {
+    mocks.db.documentCommercial = delegueMemoire([
+      { id: 'devis-moi', userId: MOI, type: 'devis', statut: 'emis', numero: 'D-2026-0001', clientNom: 'Coeur local' },
+      { id: 'devis-autre', userId: AUTRE, type: 'devis', statut: 'emis', numero: 'D-2026-0002', clientNom: 'Coeur étranger' },
+    ] as Ligne[])
+    const { items } = await (await GET(new NextRequest('http://localhost/api/search?q=coeur'))).json()
+    expect(items.filter((i: { type: string }) => i.type === 'Devis')).toEqual([
+      expect.objectContaining({ id: 'document-devis-moi', href: '/comptabilite/factures?tab=devis&document=devis-moi' }),
+    ])
+    expect(JSON.stringify(items)).not.toContain('devis-autre')
+  })
   it("ne propose que les variétés visibles du compte", async () => {
     const res = await GET(new NextRequest('http://localhost/api/search?q=coeur'))
     expect(res.status).toBe(200)
