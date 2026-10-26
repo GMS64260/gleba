@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { LienCommunaute as Link, naviguerCommunaute } from "./LienCommunaute"
+import { useSearchParams } from "next/navigation"
 import { BookOpen, Camera, ChevronLeft, ChevronRight, Leaf, Loader2, Search, TreeDeciduous } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,6 @@ import { TITRES_SECTIONS, type SectionEncyclopedie } from "@/lib/encyclopedie/ty
 import { estTypeVerger, libelleTypeEspece } from "@/lib/validations/espece"
 
 export function CatalogueCommunaute() {
-  const router = useRouter()
   const params = useSearchParams()
   const recherche = params.toString()
   const [q, setQ] = React.useState(params.get("q") ?? "")
@@ -52,7 +51,7 @@ export function CatalogueCommunaute() {
     if (q.trim()) query.set("q", q.trim()); else query.delete("q")
     if (type) query.set("type", type); else query.delete("type")
     if (sansPhoto) query.set("sansPhoto", "1"); else query.delete("sansPhoto")
-    router.replace(`/communaute?${query}`, { scroll: false })
+    naviguerCommunaute(`/communaute?${query}`, "replace")
   }
 
   function pageUrl(page: number) {

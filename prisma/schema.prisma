@@ -4482,6 +4482,10 @@ model ContributionEncyclopedie {
   user           User   @relation("ContributionEncyclopedieAuteur", fields: [userId], references: [id], onDelete: Cascade)
   signature      String
   section        String
+  cibleType      String @default("SECTION") @map("cible_type")
+  refId          String @default("") @map("ref_id")
+  snapshot       Json?
+  changements    Json?
   contenu        String @db.Text
   source         String @db.Text
   motif          String @db.Text
@@ -4498,6 +4502,7 @@ model ContributionEncyclopedie {
   @@index([statut, createdAt])
   @@index([especeId, section])
   @@map("contributions_encyclopedie")
+  @@index([cibleType, refId])
 }
 
 model RevisionEncyclopedie {
@@ -4505,6 +4510,10 @@ model RevisionEncyclopedie {
   especeId       String @map("espece_id")
   espece         Espece @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   section        String
+  cibleType      String @default("SECTION") @map("cible_type")
+  refId          String @default("") @map("ref_id")
+  snapshot       Json?
+  changements    Json?
   version        Int
   contenu        String @db.Text
   source         String @db.Text
@@ -4518,10 +4527,11 @@ model RevisionEncyclopedie {
   contribution   ContributionEncyclopedie? @relation(fields: [contributionId], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now()) @map("created_at")
 
-  @@unique([especeId, section, version])
+  @@unique([especeId, section, cibleType, refId, version], map: "revisions_encyclopedie_cible_version_key")
   @@index([authorId])
   @@index([createdAt])
   @@map("revisions_encyclopedie")
+  @@index([cibleType, refId, createdAt])
 }
 
 model DiscussionEncyclopedie {

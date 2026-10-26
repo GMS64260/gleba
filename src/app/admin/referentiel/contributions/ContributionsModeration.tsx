@@ -4,6 +4,8 @@ import * as React from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { ComparaisonCorrection } from "@/components/encyclopedie/ComparaisonCorrection"
+import { urlCorrection } from "@/components/encyclopedie/correction-liens"
 import { messageErreurReponse } from "@/lib/api-erreur"
 import { TITRES_SECTIONS, type ContributionModerationVue } from "@/lib/encyclopedie/types"
 
@@ -47,7 +49,8 @@ function Proposition({ item, onDecision, onConflict }: { item: ContributionModer
   const [motif, setMotif] = React.useState("")
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const obsolete = item.revisionBaseId !== item.revisionActuelleId
+  const obsolete = item.revisionBaseId !== item.revisionActuelleId || Boolean(item.correctionObsolete)
+  const lienFiche = item.correction ? urlCorrection(item.espece.id, item.correction.cibleType, item.correction.refId) : `/referentiel/vegetaux/${encodeURIComponent(item.espece.id)}#communaute-fiche`
   async function decide(decision: Decision) {
     if (motif.trim().length < 3) { setError("Expliquez la décision avant de l’enregistrer."); return }
     setBusy(true)
@@ -66,22 +69,22 @@ function Proposition({ item, onDecision, onConflict }: { item: ContributionModer
   return (
     <article className="rounded-xl border border-lin bg-craie p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-2xl text-foret">{item.espece.nom} · {TITRES_SECTIONS[item.section]}</h2>
-        <Link href={`/referentiel/vegetaux/${encodeURIComponent(item.espece.id)}#communaute-fiche`} className="inline-flex min-h-11 items-center text-sm text-foret hover:underline">Consulter la fiche →</Link>
+        <h2 className="font-display text-2xl text-foret">{item.espece.nom} · {item.correction?.titre ?? TITRES_SECTIONS[item.section]}</h2>
+        <Link href={lienFiche} className="inline-flex min-h-11 items-center text-sm text-foret hover:underline">Consulter la fiche →</Link>
       </div>
       <p className="mt-2 text-xs text-ardoise">Proposé par {item.signature} · {new Date(item.createdAt).toLocaleDateString("fr-FR")} · {item.licence}</p>
       <p className="mt-3 whitespace-pre-wrap text-sm text-encre"><strong>Motif : </strong>{item.motif}</p>
-      {obsolete && <p role="alert" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">La section a changé depuis cette proposition. Demandez une reprise pour que le contributeur travaille à partir de la dernière version.</p>}
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
+      {obsolete && <p role="alert" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Cet élément a changé depuis cette proposition. Demandez une reprise pour que le contributeur travaille à partir de la dernière version.</p>}
+      {item.correction ? <div className="mt-5 space-y-3"><ComparaisonCorrection detail={item.correction} actuelles={obsolete ? item.cibleActuelle?.valeurs : undefined} /><p className="text-xs leading-5 text-ardoise">La correction relue sera affichée auprès de cet élément, avec sa source et son historique.</p></div> : <div className="mt-5 grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-lin bg-papier p-4"><h3 className="text-sm font-semibold">Passage actuellement publié</h3><p className="mt-3 whitespace-pre-wrap break-words text-sm text-ardoise">{item.contenuActuel || "Aucun passage documentaire publié dans cette section."}</p></div>
         <div className="rounded-lg border border-sauge/30 bg-sauge-doux/40 p-4"><h3 className="text-sm font-semibold">Passage proposé</h3><p className="mt-3 whitespace-pre-wrap break-words text-sm text-encre">{item.contenu}</p></div>
-      </div>
+      </div>}
       <p className="mt-4 whitespace-pre-wrap break-words text-sm text-ardoise"><strong>Source à vérifier : </strong>{item.source}</p>
       <label htmlFor={`decision-${item.id}`} className="mt-5 block text-sm font-medium">Retour au contributeur</label>
       <Textarea id={`decision-${item.id}`} value={motif} onChange={e => setMotif(e.target.value)} maxLength={1000} className="mt-2" placeholder="Ce qui a été vérifié, ce qui manque ou pourquoi la proposition n’est pas retenue…" />
       {error && <p role="alert" className="mt-3 text-sm text-red-800">{error}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button disabled={busy || obsolete} onClick={() => void decide("PUBLIER")}>Publier la contribution</Button>
+        <Button disabled={busy || obsolete} onClick={() => void decide("PUBLIER")}>{item.correction ? "Publier la correction" : "Publier la contribution"}</Button>
         <Button variant="outline" disabled={busy} onClick={() => void decide("A_REPRENDRE")}>Demander une reprise</Button>
         <Button variant="ghost" disabled={busy} onClick={() => void decide("REFUSER")}>Ne pas retenir</Button>
       </div>
