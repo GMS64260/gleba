@@ -54,6 +54,18 @@ async function main() {
     assert.equal(avant.revenusYtd, 0, 'les BL ne créent pas de revenu')
     // La fiche peut changer ; les documents gardent les coordonnées négociées.
     await prisma.client.update({ where: { id: client.id }, data: { nom: 'Client renommé' } })
+    // Provoquer un échec APRÈS création de facture vérifie le rollback de toute la conversion.
+    assert.match(user.id, /^[a-z0-9]+$/)
+    const contrainte = `qa_rollback_${user.id}`
+    await prisma.$executeRawUnsafe(`ALTER TABLE documents_commerciaux ADD CONSTRAINT ${contrainte} CHECK (user_id <> '${user.id}' OR facture_id IS NULL)`)
+    try {
+      await assert.rejects(facturerDocuments(user.id, [bl.id, bl2.id], jour))
+      assert.equal(await prisma.facture.count({ where: { userId: user.id } }), 0, 'aucune facture orpheline après échec')
+      assert.equal(await prisma.sequenceFacture.count({ where: { userId: user.id, type: 'FACTURE' } }), 0, 'aucun numéro consommé après échec')
+      assert.equal(await prisma.documentCommercial.count({ where: { userId: user.id, factureId: { not: null } } }), 0)
+    } finally {
+      await prisma.$executeRawUnsafe(`ALTER TABLE documents_commerciaux DROP CONSTRAINT ${contrainte}`)
+    }
     const [f, fBis] = await Promise.all([facturerDocuments(user.id, [bl.id, bl2.id], jour), facturerDocuments(user.id, [bl2.id, bl.id], jour)])
     assert.equal(f.id, fBis.id, 'une seule facture, même avec deux requêtes simultanées')
     assert.equal(f.clientNom, client.nom)

@@ -23,9 +23,9 @@ export function genererPdfCommercial(d: DocumentComplet): Promise<Buffer> {
     const texte = (s: string, taille = 10, gras = false) => {
       doc.font(gras ? 'Helvetica-Bold' : 'Helvetica').fontSize(taille)
       const hauteur = doc.heightOfString(s, { width: 505 })
-      place(hauteur + 8)
+      place(Math.min(hauteur + 8, 700))
       doc.text(s, 45, y, { width: 505 })
-      y += hauteur + 8
+      y = doc.y + 8
     }
     doc.fillColor('#0f766e')
     texte(titre, d.type === 'devis' ? 25 : 20, true)
@@ -59,6 +59,7 @@ export function genererPdfCommercial(d: DocumentComplet): Promise<Buffer> {
       doc.font('Helvetica').fontSize(9)
       const h = Math.max(doc.heightOfString(l.description, { width: 205 }), 22) + 12
       if (y + h > 760) { doc.addPage(); y = 45; entete() }
+      doc.font('Helvetica').fontSize(9)
       doc.fillColor('#1e293b').text(l.description, 50, y, { width: 205 })
       doc.text(`${l.quantite.toLocaleString('fr-FR')} ${l.unite}`, 260, y, { width: 65, align: 'right' })
       doc.text(formatPrixUnitaire(l.prixUnitaire, devise), 330, y, { width: 65, align: 'right' })

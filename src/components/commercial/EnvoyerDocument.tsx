@@ -35,8 +35,10 @@ export function EnvoyerDocument({ type, id, numero }: { type: 'document' | 'fact
       .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Historique indisponible'); return j })
       .then((j) => {
         if (!actif) return
-        setDestinataire(j.destinataire); setEnvois(j.data); setPossible(j.smtp && !j.demo)
-        setMotif(j.demo ? 'La démo permet de télécharger le PDF. Les courriels y sont désactivés.' : !j.smtp ? 'L’envoi de courriels n’est pas configuré sur cette instance. Téléchargez le PDF pour le transmettre.' : '')
+        const enCours = j.data.some((e: { statut: string }) => e.statut === 'en_cours')
+        const incertain = j.data.some((e: { statut: string }) => e.statut === 'a_verifier')
+        setDestinataire(j.destinataire); setEnvois(j.data); setPossible(j.smtp && !j.demo && !enCours)
+        setMotif(j.demo ? 'La démo permet de télécharger le PDF. Les courriels y sont désactivés.' : !j.smtp ? 'L’envoi de courriels n’est pas configuré sur cette instance. Téléchargez le PDF pour le transmettre.' : enCours ? 'Un envoi est en cours. Rouvrez cette fenêtre pour consulter son résultat.' : incertain ? 'Une tentative précédente est incertaine. Vérifiez auprès du destinataire avant de renvoyer le document.' : '')
       }).catch((e) => { if (actif) setErreur(e.message) }).finally(() => { if (actif) setCharge(false) })
     return () => { actif = false }
   }, [ouvert, type, id])

@@ -3,7 +3,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { smtpConfigure } from '@/lib/mail'
 import { estEmailDemo } from '@/lib/demo'
-import { cibleEnvoiSchema, chargerCible, envoiSchema, envoyerCommercial, projectionEnvoi } from '@/lib/commercial/envois'
+import { cibleEnvoiSchema, chargerCible, envoiSchema, envoyerCommercial, projectionEnvoi, statutEnvoi } from '@/lib/commercial/envois'
 import { erreurCommerciale } from '@/lib/commercial/http'
 
 export async function GET(request: NextRequest) {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       prisma.envoiCommercial.findMany({ where: { userId: session.user.id, documentId: cible.documentId, factureId: cible.factureId }, select: projectionEnvoi, orderBy: { createdAt: 'desc' }, take: 10 }),
       smtpConfigure(), prisma.user.findUnique({ where: { id: session.user.id }, select: { email: true } }),
     ])
-    return NextResponse.json({ data, destinataire: cible.email || '', smtp, demo: estEmailDemo(compte?.email) }, { headers: { 'Cache-Control': 'private, no-store' } })
+    return NextResponse.json({ data: data.map((e) => ({ ...e, statut: statutEnvoi(e) })), destinataire: cible.email || '', smtp, demo: estEmailDemo(compte?.email) }, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) { return erreurCommerciale(error) }
 }
 

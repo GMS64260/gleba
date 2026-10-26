@@ -18,6 +18,10 @@ export const envoiSchema = cibleEnvoiSchema.extend({
 }).strict()
 type Cible = z.infer<typeof cibleEnvoiSchema>
 
+export function statutEnvoi(envoi: { statut: string; createdAt: Date }, maintenant = Date.now()) {
+  return envoi.statut === 'en_cours' && maintenant - envoi.createdAt.getTime() > 15 * 60_000 ? 'a_verifier' : envoi.statut
+}
+
 const idFacture = (id: string) => {
   if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) throw new ErreurCommerciale('Facture introuvable', 404)
   return Number(id)
@@ -62,7 +66,10 @@ export async function envoyerCommercial(userId: string, entree: z.infer<typeof e
     }
     const where = { userId, documentId: cible.documentId, factureId: cible.factureId }
     const attente = await tx.envoiCommercial.findFirst({ where: { ...where, statut: 'en_cours' } })
-    if (attente) throw new ErreurCommerciale('Un envoi est déjà en cours. Attendez son résultat avant de recommencer.')
+    if (attente) {
+      if (statutEnvoi(attente) === 'en_cours') throw new ErreurCommerciale('Un envoi est déjà en cours. Attendez son résultat avant de recommencer.')
+      await tx.envoiCommercial.update({ where: { id: attente.id }, data: { statut: 'a_verifier' } })
+    }
     const nombre = await tx.envoiCommercial.count({ where: { userId, createdAt: { gte: new Date(Date.now() - 3600_000) } } })
     if (nombre >= 20) throw new ErreurCommerciale('La limite de 20 envois par heure est atteinte. Réessayez plus tard.', 429)
     // Les clés étrangères restent scopées : même la tentative appartient à l'exploitation.

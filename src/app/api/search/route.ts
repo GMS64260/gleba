@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   const userId = session.user.id
   const like = { contains: q, mode: 'insensitive' as const }
 
-  const [cultures, varietes, arbres, animaux, lots, clients, factures, parcelles, soins, recoltes, produitsBout] = await Promise.all([
+  const [cultures, varietes, arbres, animaux, lots, clients, factures, documents, parcelles, soins, recoltes, produitsBout] = await Promise.all([
     prisma.culture.findMany({
       where: { userId, OR: [{ varieteId: like }, { especeId: like }] },
       take: TAKE,
@@ -90,6 +90,12 @@ export async function GET(request: NextRequest) {
       take: TAKE,
       orderBy: { date: 'desc' },
       select: { id: true, numero: true, clientNom: true, totalTTC: true, statut: true },
+    }),
+    prisma.documentCommercial.findMany({
+      where: { userId, OR: [{ numero: like }, { clientNom: like }, { objet: like }] },
+      take: TAKE,
+      orderBy: { date: 'desc' },
+      select: { id: true, numero: true, clientNom: true, type: true, statut: true },
     }),
     prisma.parcelleGeo.findMany({
       where: { userId, nom: like },
@@ -166,6 +172,13 @@ export async function GET(request: NextRequest) {
       sub: `${f.clientNom || ''} · ${f.totalTTC.toFixed(2)} €${f.statut ? ` · ${f.statut}` : ''}`,
       type: 'Facture',
       href: `/comptabilite/factures`,
+    })),
+    ...documents.map((d): SearchItem => ({
+      id: `document-${d.id}`,
+      label: d.statut === 'brouillon' ? `Brouillon · ${d.clientNom}` : d.numero,
+      sub: d.clientNom,
+      type: d.type === 'devis' ? 'Devis' : 'Bon de livraison',
+      href: `/comptabilite/factures?tab=${d.type === 'devis' ? 'devis' : 'livraisons'}&document=${encodeURIComponent(d.id)}`,
     })),
     ...parcelles.map((p): SearchItem => ({
       id: `parcelle-${p.id}`,
