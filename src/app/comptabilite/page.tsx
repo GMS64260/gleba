@@ -50,11 +50,9 @@ import {
   BarChart3,
   Hammer,
   Shield,
-  Bot,
-  MapPin,
 } from "lucide-react"
-import { ChatPanel } from "@/components/chat/ChatPanel"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
+import { liensAlertesCompta } from "@/lib/comptabilite/alertes"
 // Modules du dashboard comptabilité (rationalisé)
 const modulesCompta = [
   {
@@ -220,8 +218,6 @@ interface ComptaStats {
 export default function DashboardComptabilite() {
   const { data: session } = useSession()
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
-  const [showChat, setShowChat] = React.useState(false)
-  const [isChatExpanded, setIsChatExpanded] = React.useState(false)
   const [data, setData] = React.useState<ComptaStats | null>(null)
   const [loading, setLoading] = React.useState(true)
 
@@ -285,6 +281,8 @@ export default function DashboardComptabilite() {
   //   * "vide"     : N-1 = 0 et N = 0  → aucune activité ni en N ni N-1
   const yearDiff = React.useMemo(() => computeYearDiff(data?.stats), [data?.stats])
 
+  const liensAlertes = liensAlertesCompta(selectedYear)
+
   const formatEuro = (value: number) => {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
   }
@@ -292,28 +290,6 @@ export default function DashboardComptabilite() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      {/* Assistant IA */}
-      {showChat && (
-        <div
-          className={`fixed rounded-xl border bg-background shadow-2xl flex flex-col overflow-hidden transition-[width,height,inset] duration-200 ${
-            isChatExpanded
-              ? 'z-[70] inset-2 sm:inset-5 lg:inset-y-8 lg:left-1/2 lg:right-auto lg:w-[min(1100px,calc(100vw-4rem))] lg:-translate-x-1/2'
-              : 'z-50 bottom-2 left-4 right-4 h-[45vh] max-w-sm mx-auto sm:mx-0 sm:left-auto sm:bottom-4 sm:right-4 sm:h-[540px] sm:w-[400px] sm:max-w-none'
-          }`}
-        >
-          <ChatPanel
-            onClose={() => {
-              setShowChat(false)
-              setIsChatExpanded(false)
-            }}
-            section="compta"
-            sectionLabel="Compta"
-            isExpanded={isChatExpanded}
-            onToggleExpanded={() => setIsChatExpanded((current) => !current)}
-          />
-        </div>
-      )}
-
       <AppHeader current="comptabilite" />
 
       {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Comptabilité */}
@@ -334,22 +310,6 @@ export default function DashboardComptabilite() {
             <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700">
               <Link href="/comptabilite/transactions">Nouvelle transaction</Link>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowChat((v) => !v)}
-              className={showChat ? "text-white bg-blue-600 hover:bg-blue-700 border-blue-600" : "text-blue-700 border-blue-300 hover:bg-blue-50"}
-              title="Assistant IA"
-            >
-              <Bot className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">IA</span>
-            </Button>
-            <Link href="/parcelles">
-              <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
-                <MapPin className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Parcelles</span>
-              </Button>
-            </Link>
             <Select
               value={selectedYear.toString()}
               onValueChange={(value) => setSelectedYear(parseInt(value))}
@@ -468,7 +428,8 @@ export default function DashboardComptabilite() {
         {data?.stats && (data.stats.facturesImpayees > 0 || data.stats.stocksBas > 0 || (data.stats.commandesEnAttente ?? 0) > 0) && (
           <div className="grid gap-4 md:grid-cols-3 mb-6">
             {data.stats.facturesImpayees > 0 && (
-              <Card className="border-amber-200 bg-amber-50">
+              <Link href={liensAlertes.creances} aria-label="Voir les créances impayées" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+              <Card className="h-full border-amber-200 bg-amber-50 transition-shadow group-hover:shadow-md">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-amber-700 flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4" />
@@ -481,15 +442,18 @@ export default function DashboardComptabilite() {
                   <p className="text-amber-800">
                     {data.stats.facturesImpayees} créance(s) en attente ({formatEuro(data.stats.facturesImpayeesTotal)})
                   </p>
+                <p className="mt-2 flex items-center gap-1 text-sm font-medium text-amber-800 group-hover:underline">Voir les créances<ArrowRight className="h-4 w-4" /></p>
                 </CardContent>
               </Card>
+              </Link>
             )}
             {(data.stats.commandesEnAttente ?? 0) > 0 && (
               // QA 2026-05-15 — Bug #5 : compteur des commandes boutique
               // pas encore livrées (donc pas encore en compta). Permet
               // de réconcilier "Boutique 14 cmds = Compta 11 cmds + 3
               // en attente".
-              <Card className="border-blue-200 bg-blue-50">
+              <Link href={liensAlertes.commandes} aria-label="Voir les commandes boutique en attente" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+              <Card className="h-full border-blue-200 bg-blue-50 transition-shadow group-hover:shadow-md">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-blue-700 flex items-center gap-2">
                     <ShoppingCart className="h-4 w-4" />
@@ -503,11 +467,14 @@ export default function DashboardComptabilite() {
                   <p className="text-xs text-blue-700 mt-1">
                     Statut Nouveau / Confirmée / Prête — sera comptabilisé à la livraison.
                   </p>
+                <p className="mt-2 flex items-center gap-1 text-sm font-medium text-blue-800 group-hover:underline">Voir les commandes<ArrowRight className="h-4 w-4" /></p>
                 </CardContent>
               </Card>
+              </Link>
             )}
             {data.stats.stocksBas > 0 && (
-              <Card className="border-orange-200 bg-orange-50">
+              <Link href={liensAlertes.stocks} aria-label="Voir les stocks bas" className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+              <Card className="h-full border-orange-200 bg-orange-50 transition-shadow group-hover:shadow-md">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-orange-700 flex items-center gap-2">
                     <Package className="h-4 w-4" />
@@ -516,8 +483,10 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-orange-800">{data.stats.stocksBas} article(s) en dessous du seuil minimum</p>
+                <p className="mt-2 flex items-center gap-1 text-sm font-medium text-orange-800 group-hover:underline">Voir les articles<ArrowRight className="h-4 w-4" /></p>
                 </CardContent>
               </Card>
+              </Link>
             )}
           </div>
         )}
