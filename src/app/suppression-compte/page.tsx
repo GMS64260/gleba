@@ -91,6 +91,7 @@ export default function SuppressionComptePage() {
               <li>comptabilité, ventes, factures, justificatifs et boutique&nbsp;;</li>
               <li>photos et documents que vous avez téléversés&nbsp;;</li>
               <li>messages publiés dans le salon de la communauté&nbsp;;</li>
+              <li>sujets et réponses du forum et des fiches, ainsi que vos propositions documentaires&nbsp;;</li>
               <li>fiches de référentiel que vous aviez gardées privées.</li>
             </ul>
           </section>
@@ -105,6 +106,12 @@ export default function SuppressionComptePage() {
                 avec la communauté (espèces, variétés, itinéraires techniques, races…)
                 restent disponibles pour les autres membres. Elles sont réattribuées au
                 compte « Communauté Gleba » et ne portent plus votre nom.
+              </li>
+              <li>
+                Les versions documentaires déjà publiées dans l’encyclopédie
+                restent dans leur historique, avec la signature « Ancien membre »
+                et sans lien vers votre compte. Les propositions non publiées
+                sont supprimées.
               </li>
               <li>
                 Les journaux techniques de connexion et de sécurité sont conservés jusqu&apos;à{" "}

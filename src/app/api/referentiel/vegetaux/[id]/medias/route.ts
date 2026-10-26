@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuthApi } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session";
+import { membreEncyclopedie } from "@/lib/encyclopedie/http";
 import { stockerImageReferentiel, supprimerImagesStockees, verifierTailleImage } from "@/lib/media-storage";
 import { visibiliteReferentielPublic } from "@/lib/referentiel-public";
 import { contributionMediaSchema } from "@/lib/validations/media-referentiel";
@@ -9,7 +9,7 @@ import { contributionMediaSchema } from "@/lib/validations/media-referentiel";
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { error, session } = await requireAuthApi(request);
+  const { error, session } = await membreEncyclopedie(request, "photo");
   if (error) return error;
   const { id } = await params;
 

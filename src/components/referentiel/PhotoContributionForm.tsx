@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Camera, Loader2 } from "lucide-react";
 import { urlConnexion } from "@/lib/auth-retour";
+import { useIsDemoAccount } from "@/hooks/use-is-demo";
 
 const ORGANES = [
   ["plante", "Plante entière"], ["feuille", "Feuille"], ["fleur", "Fleur"],
@@ -13,9 +14,13 @@ const ORGANES = [
 
 export function PhotoContributionForm({ especeId, nom }: { especeId: string; nom: string }) {
   const { status } = useSession();
+  const demo = useIsDemoAccount();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  if (status === "loading") return <p role="status" className="mt-4 text-sm text-ardoise">Vérification de la connexion…</p>;
+  if (demo) return <p role="note" className="mt-4 rounded-lg border border-lin bg-papier p-4 text-sm text-ardoise">Utilisez votre compte personnel pour proposer une photo avec votre signature.</p>;
 
   if (status === "unauthenticated") {
     return <Link href={urlConnexion(`/referentiel/vegetaux/${encodeURIComponent(especeId)}`)} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-medium text-emerald-800 hover:bg-emerald-50"><Camera className="h-4 w-4" /> Se connecter pour proposer une photo</Link>;
@@ -42,7 +47,7 @@ export function PhotoContributionForm({ especeId, nom }: { especeId: string; nom
       <label className="flex gap-2 text-sm text-slate-700 sm:col-span-2"><input required type="checkbox" name="confirmationDroits" value="true" className="mt-1" /> Je confirme être l’auteur de cette photo et détenir les droits nécessaires.</label>
       <label className="flex gap-2 text-sm text-slate-700 sm:col-span-2"><input required type="checkbox" name="acceptationLicence" value="true" className="mt-1" /> J’accepte de publier cette photo sous licence CC BY 4.0 avec mon nom comme attribution.</label>
       {error && <p className="text-sm text-red-700 sm:col-span-2">{error}</p>}{message && <p className="text-sm text-emerald-700 sm:col-span-2">{message}</p>}
-      <div className="sm:col-span-2"><button disabled={busy || status === "loading"} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />} Proposer la photo</button></div>
+      <div className="sm:col-span-2"><button disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />} Proposer la photo</button></div>
     </form>
   );
 }

@@ -535,7 +535,7 @@ export function HomeLanding() {
                 { icone: Database, titre: "Auto-hébergement avec Docker Compose", texte: "Installez Gleba sur votre serveur ou celui de votre structure ; l'assistant IA reste propre à gleba.fr." },
                 { icone: DownloadSimple, titre: "Export complet du compte", texte: "Toutes vos données à tout moment : un fichier CSV par table, dans une archive ZIP." },
                 { icone: Plant, titre: "Référentiel agricole ouvert", texte: "Plus de 200 végétaux et 750 itinéraires techniques, consultables sans compte.", href: "/referentiel", lien: "Parcourir le référentiel" },
-                { icone: Megaphone, titre: "Feuille de route publique", texte: "Les demandes et les votes des utilisateurs sont visibles par tous.", href: "/communaute", lien: "Voir la feuille de route" },
+                { icone: Megaphone, titre: "Feuille de route publique", texte: "Les demandes et les votes des utilisateurs sont visibles par tous.", href: "/communaute?tab=roadmap", lien: "Voir la feuille de route" },
               ].map(({ icone: Icone, titre, texte, href, lien }) => (
                 <li key={titre} className="flex gap-4">
                   <Icone className="mt-0.5 h-6 w-6 shrink-0 text-sauge" weight="duotone" aria-hidden />

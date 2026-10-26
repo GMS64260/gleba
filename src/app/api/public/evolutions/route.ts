@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic"
 export async function GET() {
   const evolutions = await prisma.evolution.findMany({
     include: {
-      user: { select: { name: true, email: true } },
+      user: { select: { name: true } },
       _count: { select: { votes: true } },
     },
     orderBy: [{ votes: { _count: "desc" } }, { createdAt: "desc" }],
@@ -33,7 +33,7 @@ export async function GET() {
     hasVoted: false,
     author: {
       id: "",
-      name: e.user.name || e.user.email.split("@")[0],
+      name: e.user.name?.trim() || "Membre de Gleba",
       isMe: false,
     },
   }))
