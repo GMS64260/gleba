@@ -69,7 +69,7 @@ export function DocumentsCommerciaux({ type, onFacture }: { type: 'devis' | 'liv
       fetch(`/api/comptabilite/documents?${q}`, { signal: controller.signal })
         .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Documents indisponibles'); return j })
         .then((j) => { setDocuments(j.data); setTotal(j.total); setSelection([]) })
-        .catch((e) => { if (!controller.signal.aborted) setErreur(e.message) })
+        .catch((e) => { if (!controller.signal.aborted) { setErreur(e.message); setDocuments([]); setTotal(0) } })
         .finally(() => { if (!controller.signal.aborted) setCharge(false) })
     }, 200)
     return () => { clearTimeout(timer); controller.abort() }
@@ -137,7 +137,7 @@ export function DocumentsCommerciaux({ type, onFacture }: { type: 'devis' | 'liv
     {documentCible && <Button variant="outline" onClick={() => { setDocumentCible(''); const q = new URLSearchParams(window.location.search); q.delete('document'); updateDashboardSearchParams(q, 'replace') }}>Afficher tous les documents</Button>}
     {erreur && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{erreur}</p>}
     {type === 'livraison' && selection.length > 0 && <div className="flex flex-wrap items-center gap-3 rounded-lg bg-blue-50 p-3"><p>{selection.length} bon(s) sélectionné(s)</p><Button disabled={actionEnCours} onClick={() => setFacturation([...selection])}>Facturer la sélection</Button><Button variant="ghost" onClick={() => setSelection([])}>Désélectionner</Button></div>}
-    {charge ? <p role="status">Chargement des documents…</p> : documents.length === 0 ? <div className="rounded-xl border bg-white p-8 text-center text-muted-foreground">Aucun document pour ces filtres. {peutEcrire ? 'Créez votre premier brouillon avec le bouton ci-dessus.' : ''}</div> : documents.map((d) => {
+    {charge ? <p role="status">Chargement des documents…</p> : documents.length === 0 ? erreur ? null : <div className="rounded-xl border bg-white p-8 text-center text-muted-foreground">Aucun document pour ces filtres. {peutEcrire ? 'Créez votre premier brouillon avec le bouton ci-dessus.' : ''}</div> : documents.map((d) => {
       const converti = !!d.factureId || !!d.bonLivraison
       const expire = d.type === 'devis' && d.statut === 'emis' && d.dateValidite && dateIsoFacture(d.dateValidite) < todayLocalISO()
       return <article key={d.id} id={`document-${d.id}`} className="space-y-3 rounded-xl border bg-white p-4">
