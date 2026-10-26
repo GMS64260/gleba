@@ -1010,6 +1010,9 @@ model Avis {
   @@index([refType, refId])
   @@index([userId])
   @@map("avis")
+  photos PhotoAvis[] @relation("PhotosAvisDirectes")
+  temoignages TemoignageRecolte[]
+
 }
 
 /// Signalement d'une entrée communautaire (décision produit #3 : publication
@@ -1449,6 +1452,8 @@ model Recolte {
   @@index([statut])
   @@index([statutBioSnapshot])
   @@map("recoltes")
+  temoignagesAvis TemoignageRecolte[]
+
 }
 
 /// Irrigations planifiées
@@ -4569,4 +4574,46 @@ model ReponseEncyclopedie {
   @@index([discussionId, createdAt])
   @@index([userId])
   @@map("reponses_encyclopedie")
+}
+
+
+/// Illustrations des avis : octets privés en base, jamais un fichier public.
+/// Le CHECK SQL garantit un seul parent et trois emplacements par parent.
+model PhotoAvis {
+  id String @id @default(uuid())
+  avisId String? @map("avis_id")
+  avis Avis? @relation("PhotosAvisDirectes", fields: [avisId], references: [id], onDelete: Cascade)
+  temoignageId String? @map("temoignage_id")
+  temoignage TemoignageRecolte? @relation(fields: [temoignageId], references: [id], onDelete: Cascade)
+  position Int
+  donnees Bytes @db.ByteA
+  width Int
+  height Int
+  legende String? @db.VarChar(300)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([avisId, position])
+  @@unique([temoignageId, position])
+  @@map("photos_avis")
+}
+
+/// Publication volontaire d'une récolte ; aucune référence économique copiée.
+/// Le témoignage et ses photos disparaissent avec l'avis ou la récolte source.
+model TemoignageRecolte {
+  id String @id @default(cuid())
+  avisId String @map("avis_id")
+  avis Avis @relation(fields: [avisId], references: [id], onDelete: Cascade)
+  recolteId Int @map("recolte_id")
+  recolte Recolte @relation(fields: [recolteId], references: [id], onDelete: Cascade)
+  dateRecolte DateTime @map("date_recolte")
+  quantite Float?
+  unite String?
+  commentaire String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  photos PhotoAvis[]
+
+  @@unique([avisId, recolteId])
+  @@index([recolteId])
+  @@index([avisId, createdAt])
+  @@map("temoignages_recolte")
 }

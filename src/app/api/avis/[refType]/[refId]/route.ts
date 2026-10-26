@@ -1,183 +1,81 @@
-/**
- * API — Avis communautaires génériques (référentiel communautaire).
- * GET    /api/avis/[refType]/[refId]  — liste + stats + dispersion terroir + production réelle
- * POST   /api/avis/[refType]/[refId]  — créer/mettre à jour SON avis (upsert)
- * DELETE /api/avis/[refType]/[refId]  — supprimer SON avis
- *
- * refType ∈ VARIETE | PORTE_GREFFE | ESPECE | RACE. Ouvert à tout utilisateur
- * connecté (`requireAuthApi`) : les objets notés restent des référentiels gérés
- * par ailleurs, mais chacun peut témoigner.
- */
-
+/** Avis et récoltes explicitement partagées, accessibles aux comptes personnels. */
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import prisma from '@/lib/prisma'
-import { requireAuthApi } from '@/lib/auth-utils'
 import { getActeurId, getUserId } from '@/lib/exploitation/garde-session'
+import { membreEncyclopedie, ENTETES_PRIVES } from '@/lib/encyclopedie/http'
 import { terroirDeUser } from '@/lib/terroir'
-import { AVIS_REF_TYPES, type AvisRefType, type AvisNotable } from '@/lib/avis/types'
 import { criteresKeys } from '@/lib/avis/criteres'
 import { calculerStats, moyenneGlobaleNotes, dispersionParTerroir, avisSchema } from '@/lib/avis/stats'
-import { rendementReel, badgeTerrain } from '@/lib/avis/data-driven'
-import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { filtreAvisAvecContributions, filtreAvisDirect } from '@/lib/avis/filtres'
+import { SELECTION_AVIS, avisVue, parseAvisRefType, refAvisVisible, remplacerPhotosAvis, verrouAuteurAvis, statsPartagesAvis } from '@/lib/avis/service'
+import { ErreurAvis, lireCorpsAvis, preparerPhotosAvis, reponseErreurAvis } from '@/lib/avis/photos-serveur'
 
 type RouteParams = { params: Promise<{ refType: string; refId: string }> }
-
-function parseRefType(raw: string): AvisRefType | null {
-  return (AVIS_REF_TYPES as string[]).includes(raw) ? (raw as AvisRefType) : null
-}
-
-/**
- * Vrai si l'objet noté existe ET que le compte le voit (catalogue Gleba,
- * partagé, ou à lui). L'entrée privée d'un autre compte répond comme une
- * entrée inexistante : ni ses avis ne sortent, ni on ne peut la noter.
- */
-async function refVisible(refType: AvisRefType, refId: string, userId: string): Promise<boolean> {
-  const where = { id: refId, AND: [visibiliteReferentiel(userId)] }
-  const select = { id: true }
-  switch (refType) {
-    case 'VARIETE':
-      return !!(await prisma.variete.findFirst({ where, select }))
-    case 'PORTE_GREFFE':
-      return !!(await prisma.porteGreffe.findFirst({ where, select }))
-    case 'ESPECE':
-      return !!(await prisma.espece.findFirst({ where, select }))
-    case 'RACE':
-      return !!(await prisma.raceAnimale.findFirst({ where, select }))
-    case 'ITP':
-      return !!(await prisma.iTP.findFirst({ where, select }))
-  }
-}
-
-const toNotable = (r: { reprend: boolean | null; notes: unknown; contexteTypeSol: string | null; contexteZoneClimat: string | null }): AvisNotable => ({
-  reprend: r.reprend,
-  notes: (r.notes ?? {}) as Record<string, number | null>,
-  contexteTypeSol: r.contexteTypeSol,
-  contexteZoneClimat: r.contexteZoneClimat,
-})
-
-// GET /api/avis/[refType]/[refId]
-export async function GET(_request: NextRequest, { params }: RouteParams) {
-  const { session, error } = await requireAuthApi()
+export const dynamic = 'force-dynamic'
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { error, session } = await membreEncyclopedie(request)
   if (error) return error
-
   try {
-    const { refType: rawType, refId: rawId } = await params
-    const refType = parseRefType(rawType)
-    if (!refType) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
-    const refId = decodeURIComponent(rawId)
-    const userId = getActeurId(session)
-
-    // Entrée invisible du compte (privée d'un autre) : même réponse qu'une
-    // entrée sans avis, sans lire ses avis ni sa production réelle.
-    const visible = await refVisible(refType, refId, getUserId(session))
-    const avis = visible
-      ? await prisma.avis.findMany({
-          where: { refType, refId },
-          include: { user: { select: { id: true, name: true } } },
-          orderBy: { updatedAt: 'desc' },
-        })
-      : []
-
-    const notables = avis.map(toNotable)
-    const stats = calculerStats(notables, moyenneGlobaleNotes(notables), criteresKeys(refType))
-    const dispersionTerroir = dispersionParTerroir(notables)
-    const reel = visible ? (await rendementReel(prisma, refType, [refId])).get(refId) : undefined
-
-    const avisPublics = avis.map((a) => ({
-      id: a.id,
-      auteur: a.user.name || 'Maraîcher',
-      isMine: a.user.id === userId,
-      reprend: a.reprend,
-      notes: (a.notes ?? {}) as Record<string, number | null>,
-      commentaire: a.commentaire,
-      contexteTypeSol: a.contexteTypeSol,
-      contexteZoneClimat: a.contexteZoneClimat,
-      createdAt: a.createdAt,
-      updatedAt: a.updatedAt,
-    }))
-
-    return NextResponse.json({
-      data: {
-        avis: avisPublics,
-        monAvis: avisPublics.find((a) => a.isMine) ?? null,
-        stats,
-        dispersionTerroir,
-        reel: reel ?? { nbProductif: 0, nbExploitations: 0, quantiteTotale: 0 },
-        badgeTerrain: badgeTerrain(reel),
-      },
-    })
-  } catch (err) {
-    console.error('GET /api/avis error:', err)
-    return NextResponse.json({ error: 'Erreur lors de la récupération des avis' }, { status: 500 })
-  }
+    const { refType: type, refId } = await params, refType = parseAvisRefType(type)
+    if (!refType) throw new ErreurAvis(400, 'Type invalide.')
+    const acteur = getActeurId(session), tenant = getUserId(session)
+    const page = Number(request.nextUrl.searchParams.get('page') ?? '1')
+    if (!Number.isInteger(page) || page < 1 || page > 100000) throw new ErreurAvis(400, 'Page invalide.')
+    const visible = await refAvisVisible(prisma, refType, refId, tenant)
+    const where = { refType, refId, AND: [filtreAvisAvecContributions(refType)] }
+    const [avis, monAvis, notables, total, partages] = visible ? await Promise.all([
+      prisma.avis.findMany({ where, select: SELECTION_AVIS, orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }], take: 20, skip: (page - 1) * 20 }),
+      prisma.avis.findUnique({ where: { refType_refId_userId: { refType, refId, userId: acteur } }, select: SELECTION_AVIS }),
+      prisma.avis.findMany({ where: { refType, refId, AND: [filtreAvisDirect(refType)] }, select: { reprend: true, notes: true, contexteTypeSol: true, contexteZoneClimat: true }, orderBy: { updatedAt: 'desc' }, take: 2001 }),
+      prisma.avis.count({ where }), statsPartagesAvis(refType, refId),
+    ]) : [[], null, [], 0, { nbRecoltes: 0, nbContributeurs: 0, quantitesParUnite: {} }]
+    const pourStats = notables.slice(0, 2000).map(a => ({ reprend: a.reprend, notes: (a.notes ?? {}) as Record<string, number | null>, contexteTypeSol: a.contexteTypeSol, contexteZoneClimat: a.contexteZoneClimat }))
+    return NextResponse.json({ data: {
+      avis: avis.map(a => avisVue(a, acteur)), monAvis: monAvis ? avisVue(monAvis, acteur) : null,
+      stats: calculerStats(pourStats, moyenneGlobaleNotes(pourStats), criteresKeys(refType)), dispersionTerroir: dispersionParTerroir(pourStats),
+      partages, reel: { nbProductif: 0, nbExploitations: 0, quantiteTotale: 0 }, badgeTerrain: false,
+      total, page, pages: Math.max(1, Math.ceil(total / 20)), statsLimitees: notables.length > 2000,
+    } }, { headers: ENTETES_PRIVES })
+  } catch (e) { return reponseErreurAvis(e) }
 }
-
-// POST /api/avis/[refType]/[refId] — upsert
 export async function POST(request: NextRequest, { params }: RouteParams) {
-  const { session, error } = await requireAuthApi()
+  const { error, session } = await membreEncyclopedie(request, 'avis-envoi')
   if (error) return error
-
   try {
-    const { refType: rawType, refId: rawId } = await params
-    const refType = parseRefType(rawType)
-    if (!refType) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
-    const refId = decodeURIComponent(rawId)
-    // Auteur de l'avis : la personne. Le contexte de terroir joint à l'avis
-    // reste celui de l'EXPLOITATION où la variété a été cultivée.
-    const userId = getActeurId(session)
-    const tenantId = getUserId(session)
-
-    if (!(await refVisible(refType, refId, tenantId))) {
-      return NextResponse.json({ error: 'Objet introuvable' }, { status: 404 })
-    }
-
-    const parsed = avisSchema(criteresKeys(refType)).safeParse(await request.json())
-    if (!parsed.success) {
-      return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
-    }
-
-    const terroir = await terroirDeUser(prisma, tenantId)
-    const payload = {
-      reprend: parsed.data.reprend ?? null,
-      notes: parsed.data.notes ?? {},
-      commentaire: parsed.data.commentaire?.trim() || null,
-    }
-
-    const avis = await prisma.avis.upsert({
-      where: { refType_refId_userId: { refType, refId, userId } },
-      update: payload,
-      create: {
-        refType,
-        refId,
-        userId,
-        ...payload,
-        contexteTypeSol: terroir.typeSol,
-        contexteZoneClimat: terroir.zoneClimat,
-        contexteCodePostal: terroir.codePostal,
-      },
+    const { refType: type, refId } = await params, refType = parseAvisRefType(type)
+    if (!refType) throw new ErreurAvis(400, 'Type invalide.')
+    const raw = await lireCorpsAvis(request)
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ErreurAvis(400, 'Corps invalide.')
+    const body = raw as Record<string, unknown>
+    const parsed = z.object(avisSchema(criteresKeys(refType)).shape).safeParse(body)
+    if (!parsed.success) throw new ErreurAvis(400, 'Avis invalide.')
+    const acteur = getActeurId(session), tenant = getUserId(session)
+    if (!await refAvisVisible(prisma, refType, refId, tenant)) throw new ErreurAvis(404, 'Objet introuvable.')
+    const photos = await preparerPhotosAvis(body.photos, body.confirmationDroitsPhotos)
+    const terroir = await terroirDeUser(prisma, tenant)
+    const payload = { reprend: parsed.data.reprend ?? null, notes: parsed.data.notes ?? {}, commentaire: parsed.data.commentaire?.trim() || null }
+    const avis = await prisma.$transaction(async tx => {
+      await verrouAuteurAvis(tx, acteur)
+      if (!await refAvisVisible(tx, refType, refId, tenant)) throw new ErreurAvis(404, 'Objet introuvable.')
+      const existant = await tx.avis.findUnique({ where: { refType_refId_userId: { refType, refId, userId: acteur } }, select: { id: true } })
+      const aDuContenu = payload.reprend !== null || Boolean(payload.commentaire) || Object.values(payload.notes).some(n => n !== null && n !== undefined)
+      if (!existant && !aDuContenu && !photos?.length) throw new ErreurAvis(400, 'Ajoutez un avis, un commentaire ou une photo.')
+      const a = await tx.avis.upsert({ where: { refType_refId_userId: { refType, refId, userId: acteur } }, update: payload,
+        create: { refType, refId, userId: acteur, ...payload, contexteTypeSol: terroir.typeSol, contexteZoneClimat: terroir.zoneClimat, contexteCodePostal: terroir.codePostal }, select: { id: true } })
+      await remplacerPhotosAvis(tx, a.id, photos)
+      return tx.avis.findUniqueOrThrow({ where: { id: a.id }, select: SELECTION_AVIS })
     })
-
-    return NextResponse.json({ data: avis }, { status: 201 })
-  } catch (err) {
-    console.error('POST /api/avis error:', err)
-    return NextResponse.json({ error: "Erreur lors de l'enregistrement de l'avis" }, { status: 500 })
-  }
+    return NextResponse.json({ data: avisVue(avis, acteur) }, { status: 201, headers: ENTETES_PRIVES })
+  } catch (e) { return reponseErreurAvis(e) }
 }
-
-// DELETE /api/avis/[refType]/[refId] — supprime SON avis (idempotent)
-export async function DELETE(_request: NextRequest, { params }: RouteParams) {
-  const { session, error } = await requireAuthApi()
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { error, session } = await membreEncyclopedie(request, 'avis-retrait')
   if (error) return error
-
   try {
-    const { refType: rawType, refId: rawId } = await params
-    const refType = parseRefType(rawType)
-    if (!refType) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
-    const refId = decodeURIComponent(rawId)
+    const { refType: type, refId } = await params, refType = parseAvisRefType(type)
+    if (!refType) throw new ErreurAvis(400, 'Type invalide.')
     await prisma.avis.deleteMany({ where: { refType, refId, userId: getActeurId(session) } })
-    return NextResponse.json({ data: { ok: true } })
-  } catch (err) {
-    console.error('DELETE /api/avis error:', err)
-    return NextResponse.json({ error: "Erreur lors de la suppression de l'avis" }, { status: 500 })
-  }
+    return NextResponse.json({ data: { ok: true } }, { headers: ENTETES_PRIVES })
+  } catch (e) { return reponseErreurAvis(e) }
 }

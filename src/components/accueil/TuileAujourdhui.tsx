@@ -8,6 +8,7 @@ import { sousTitreAujourdhui } from "@/lib/accueil/classement"
 import type { ElementAujourdhui } from "@/lib/accueil/types"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { toast } from "@/hooks/use-toast"
+import { BoutonPartagerRecolte } from "@/components/avis/PartagerRecolte"
 import { cn } from "@/lib/utils"
 
 import { CLASSES_LIEN_DISCRET } from "./boutons"
@@ -68,6 +69,7 @@ export function TuileAujourdhui({
   /** Ligne dont on saisit la quantité récoltée, et récoltes créées (pour « Annuler »). */
   const [recolteEnSaisie, setRecolteEnSaisie] = React.useState<ElementAujourdhui | null>(null)
   const recoltesCreees = React.useRef<Map<string, number | null>>(new Map())
+  const [derniereRecolte, setDerniereRecolte] = React.useState<{ id: number; elementId: string; nom: string } | null>(null)
   /** Cultures terminées sans récolte depuis la liste (pour « Annuler »). */
   const culturesTerminees = React.useRef<Set<string>>(new Set())
 
@@ -129,6 +131,7 @@ export function TuileAujourdhui({
       return suivant
     })
     onElementRestaure?.(e)
+    setDerniereRecolte(current => current?.elementId === e.id ? null : current)
   }
 
   const confirmerRecolte = async (quantite: number) => {
@@ -144,6 +147,7 @@ export function TuileAujourdhui({
     }
     setRecolteEnSaisie(null)
     recoltesCreees.current.set(e.id, resultat.recolteId)
+    if (resultat.recolteId !== null) setDerniereRecolte({ id: resultat.recolteId, elementId: e.id, nom: saisie.especeNom })
     poserPhase(e.id, "fait")
     notifierEnregistrement({
       titre: "Récolte notée",
@@ -319,6 +323,7 @@ export function TuileAujourdhui({
       rang={rang}
     >
       {corps}
+      {derniereRecolte && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-lin-doux px-4 py-3 text-sm"><span>Récolte enregistrée · {derniereRecolte.nom}</span><BoutonPartagerRecolte recolteId={derniereRecolte.id} /></div>}
       <DialogueRecolte
         saisie={recolteEnSaisie?.action.saisieRecolte ?? null}
         enCours={recolteEnSaisie ? phases[recolteEnSaisie.id] === "en-cours" : false}

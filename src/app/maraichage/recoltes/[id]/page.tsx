@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { BoutonPartagerRecolte } from "@/components/avis/PartagerRecolte"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import {
   libelleUniteQuantite,
@@ -223,6 +224,7 @@ export default function EditRecoltePage() {
 
       {/* Form */}
       <main className="container mx-auto px-4 py-6 max-w-md">
+        <div className="mb-4 flex justify-end"><BoutonPartagerRecolte recolteId={Number(recolteId)} /></div>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Card>

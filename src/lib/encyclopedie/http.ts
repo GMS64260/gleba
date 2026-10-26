@@ -6,7 +6,7 @@ import prisma from "@/lib/prisma"
 import { checkRateLimit } from "@/lib/rate-limit"
 
 export const ENTETES_PRIVES = { "Cache-Control": "private, no-store", Vary: "Cookie" }
-export async function membreEncyclopedie(request: Request, action = "lecture") {
+export async function membreEncyclopedie(request?: Request, action = "lecture") {
   const auth = await requireAuthApi(request)
   if (auth.error) return auth
   const acteurId = getActeurId(auth.session)

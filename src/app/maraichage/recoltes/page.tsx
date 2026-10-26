@@ -41,6 +41,7 @@ import {
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { BoutonPartagerRecolte } from "@/components/avis/PartagerRecolte"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 import { formatMontantDevise } from "@/lib/format-utils"
@@ -743,7 +744,8 @@ export default function RecoltesPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
+                              <div className="flex flex-wrap justify-end gap-1">
+                                <BoutonPartagerRecolte recolteId={r.id} />
                                 <Button variant="outline" size="sm" onClick={() => openVenteDialog(r)}>
                                   <Euro className="h-4 w-4 mr-1" />
                                   Vendre
@@ -789,6 +791,7 @@ export default function RecoltesPage() {
                         <TableHead className="text-right">Total</TableHead>
                         <TableHead>Client</TableHead>
                         <TableHead>Facture</TableHead>
+                        <TableHead>Communauté</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -825,6 +828,7 @@ export default function RecoltesPage() {
                               </Link>
                             ) : "-"}
                           </TableCell>
+                          <TableCell><BoutonPartagerRecolte recolteId={r.id} /></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -853,6 +857,7 @@ export default function RecoltesPage() {
                         <TableHead>Variété</TableHead>
                         <TableHead className="text-right">Quantité</TableHead>
                         <TableHead>Notes</TableHead>
+                        <TableHead>Communauté</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -872,6 +877,7 @@ export default function RecoltesPage() {
                             {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{r.notes || "-"}</TableCell>
+                          <TableCell><BoutonPartagerRecolte recolteId={r.id} /></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

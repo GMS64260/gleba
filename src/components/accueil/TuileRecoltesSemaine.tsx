@@ -7,6 +7,7 @@ import { annulerRecolte, noterRecolte, rouvrirCulture, terminerCulture } from "@
 import type { RecolteSemaineAccueil, SaisieRecolte } from "@/lib/accueil/types"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { toast } from "@/hooks/use-toast"
+import { BoutonPartagerRecolte } from "@/components/avis/PartagerRecolte"
 
 import { CLASSES_LIEN_DISCRET } from "./boutons"
 import { CocheAnimee } from "./CocheAnimee"
@@ -33,6 +34,7 @@ export function TuileRecoltesSemaine({ recoltes, chargement, rang }: TuileRecolt
   const [enSaisie, setEnSaisie] = React.useState<RecolteSemaineAccueil | null>(null)
   const [enCours, setEnCours] = React.useState(false)
   const [faites, setFaites] = React.useState<Map<number, { recolteId: number | null; terminee: boolean }>>(() => new Map())
+  const [derniereRecolte, setDerniereRecolte] = React.useState<{ id: number; cultureId: number; nom: string } | null>(null)
 
   const saisieDe = (r: RecolteSemaineAccueil): SaisieRecolte => ({
     cultureId: r.cultureId,
@@ -55,6 +57,7 @@ export function TuileRecoltesSemaine({ recoltes, chargement, rang }: TuileRecolt
       suivant.delete(r.cultureId)
       return suivant
     })
+    setDerniereRecolte(current => current?.cultureId === r.cultureId ? null : current)
   }
 
   const confirmer = async (quantite: number) => {
@@ -69,6 +72,7 @@ export function TuileRecoltesSemaine({ recoltes, chargement, rang }: TuileRecolt
     }
     setEnSaisie(null)
     setFaites((f) => new Map(f).set(r.cultureId, { recolteId: resultat.recolteId, terminee: false }))
+    if (resultat.recolteId !== null) setDerniereRecolte({ id: resultat.recolteId, cultureId: r.cultureId, nom: r.especeNom })
     notifierEnregistrement({
       titre: "Récolte notée",
       detail: `${quantite.toLocaleString("fr-FR")} ${r.unite} · ${r.especeNom}${r.plancheNom ? ` · ${r.plancheNom}` : ""}`,
@@ -162,6 +166,7 @@ export function TuileRecoltesSemaine({ recoltes, chargement, rang }: TuileRecolt
         onConfirmer={confirmer}
         onTerminer={terminer}
       />
+      {derniereRecolte && <div className="flex flex-wrap items-center justify-between gap-2 border-t border-lin-doux px-4 py-3 text-sm"><span>Récolte enregistrée · {derniereRecolte.nom}</span><BoutonPartagerRecolte recolteId={derniereRecolte.id} /></div>}
     </Tuile>
   )
 }
