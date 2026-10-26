@@ -97,6 +97,11 @@ le comportement souhaité (la feature n'est pas disponible).
 
 ## Checklist pour ajouter une nouvelle zone privée
 
+Les bancs `scripts/qa/serie-assistant-*.ts` dépendent de la zone privée du VPS.
+Ils sont exclus du typecheck applicatif pour qu'un clone public compile sans
+ces modules. Les sondes d'interface de l'assistant nécessitent également les
+vrais composants du VPS ; les stubs publics rendent volontairement `null`.
+
 1. Ajouter le chemin dans `.gitignore`.
 2. Si du code public importe ce chemin :
    - soit refactor pour rendre l'import conditionnel (feature flag) ;

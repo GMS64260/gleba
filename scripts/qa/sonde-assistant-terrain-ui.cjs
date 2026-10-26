@@ -11,7 +11,7 @@ const assert = require('node:assert/strict');
   const racine = process.cwd();
   const js = await build({
     stdin: { contents: `import React from 'react'; import { createRoot } from 'react-dom/client'; import { ChatBubble } from './src/components/chat/ChatBubble'; createRoot(document.getElementById('root')).render(<ChatBubble />);`, resolveDir: racine, loader: 'tsx' },
-    bundle: true, write: false, platform: 'browser', format: 'iife', tsconfig: path.join(racine, 'tsconfig.json'), define: { 'process.env.NODE_ENV': '"production"' },
+    bundle: true, write: false, platform: 'browser', format: 'iife', tsconfig: path.join(racine, 'tsconfig.json'), define: { 'process.env.NODE_ENV': '"production"', 'process.env': '{}' },
     plugins: [{ name: 'session-du-banc', setup(b) {
       b.onResolve({ filter: /^(next-auth\/react|next\/navigation)$/ }, args => ({ path: args.path, namespace: 'session-simulee' }));
       b.onLoad({ filter: /.*/, namespace: 'session-simulee' }, args => ({ loader: 'js', resolveDir: racine, contents: args.path === 'next/navigation'

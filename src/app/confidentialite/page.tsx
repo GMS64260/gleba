@@ -190,6 +190,12 @@ export default function ConfidentialitePage() {
             conditions et de sa politique de confidentialité. Si vous ne
             souhaitez pas ce transfert, n&apos;utilisez pas l&apos;assistant : le
             reste de l&apos;application fonctionne sans lui.
+            Les photos que vous choisissez de joindre sont également transmises
+            pour analyse visuelle. Elles sont redimensionnées et leurs
+            métadonnées EXIF (dont la position GPS) sont retirées avant cet envoi.
+            Elles restent privées dans votre conversation Gleba et sont
+            supprimées avec celle-ci. Évitez d&apos;y inclure des personnes ou
+            des documents personnels sans nécessité.
           </li>
           <li>
             <strong>Météo, sol et eau</strong> : les coordonnées de la parcelle
@@ -298,7 +304,7 @@ export default function ConfidentialitePage() {
         </p>
 
         <p className="text-xs text-slate-500 mt-12">
-          Dernière mise à jour : 2026-10-25 — version 2.2.
+          Dernière mise à jour : 2026-10-26 — version 2.3.
         </p>
       </main>
     </div>
