@@ -9,6 +9,7 @@ import { type AvisRefType, type AvisStatsListe, type AvisNotable } from './types
 import { calculerStats, moyenneGlobaleNotes } from './stats'
 import { rendementReel, badgeTerrain } from './data-driven'
 import { criteresKeys } from './criteres'
+import { filtreAvisDirect } from './filtres'
 
 export async function statsAvisPourRefs(
   prisma: PrismaClient,
@@ -20,7 +21,7 @@ export async function statsAvisPourRefs(
 
   const [rows, reelMap] = await Promise.all([
     prisma.avis.findMany({
-      where: { refType, refId: { in: refIds } },
+      where: { refType, refId: { in: refIds }, AND: [filtreAvisDirect(refType)] },
       select: { refId: true, reprend: true, notes: true },
     }),
     rendementReel(prisma, refType, refIds),

@@ -51,6 +51,8 @@ const EXCLUDED = new Set<string>([
   "FeedbackToken",
   "FeedbackResponse",
   "Avis",
+  "PhotoAvis",
+  "TemoignageRecolte",
   "Evolution",
   "EvolutionVote",
   // Salon de la communauté : conversation entre membres de CETTE instance, qui

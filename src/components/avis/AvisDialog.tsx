@@ -8,7 +8,9 @@
  */
 
 import * as React from "react"
-import { Sprout, CheckCircle2, Trash2 } from "lucide-react"
+import Link from "next/link"
+import { useSession } from "next-auth/react"
+import { Sprout, Trash2 } from "lucide-react"
 
 import {
   Dialog,
@@ -19,7 +21,6 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
@@ -27,6 +28,9 @@ import { StarRating } from "@/components/avis/StarRating"
 import { type AvisRefType } from "@/lib/avis/types"
 import { avisConfig } from "@/lib/avis/criteres"
 import { ZONE_CLIMAT_LABEL, type ZoneClimat } from "@/lib/terroir"
+import { useIsDemoAccount } from "@/hooks/use-is-demo"
+import type { PhotoAvisVue, TemoignageRecolteVue } from "@/lib/avis/photos"
+import { GaleriePhotosAvis, photosPourEnvoi, SelecteurPhotosAvis } from "./PhotosAvis"
 
 interface GroupeTerroir {
   typeSol: string | null
@@ -45,6 +49,9 @@ interface AvisPublic {
   commentaire: string | null
   contexteTypeSol: string | null
   contexteZoneClimat: string | null
+  photos: PhotoAvisVue[]
+  temoignages: TemoignageRecolteVue[]
+  nbTemoignages: number
 }
 
 interface AvisData {
@@ -60,6 +67,11 @@ interface AvisData {
   dispersionTerroir: GroupeTerroir[]
   reel: { nbProductif: number; nbExploitations: number; quantiteTotale: number }
   badgeTerrain: boolean
+  partages?: { nbRecoltes: number; nbContributeurs: number; quantitesParUnite: Record<string, number> }
+  total: number
+  page: number
+  pages: number
+  statsLimitees?: boolean
 }
 
 interface FormState {
@@ -89,34 +101,44 @@ interface Props {
 
 export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }: Props) {
   const { toast } = useToast()
+  const { data: session, status } = useSession()
+  const demo = useIsDemoAccount()
+  const personnel = status === "authenticated" && !demo && !session?.user?.impersonatedBy
   const config = avisConfig(refType)
   const [loading, setLoading] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
   const [data, setData] = React.useState<AvisData | null>(null)
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM)
+  const [photosConservees, setPhotosConservees] = React.useState<PhotoAvisVue[]>([])
+  const [fichiers, setFichiers] = React.useState<File[]>([])
+  const [droitsPhotos, setDroitsPhotos] = React.useState(false)
+  const [erreurChargement, setErreurChargement] = React.useState<string | null>(null)
   // Garde anti-race : seule la réponse de la requête la plus récente est appliquée.
   const reqIdRef = React.useRef(0)
 
   const base = refId ? `/api/avis/${refType}/${encodeURIComponent(refId)}` : null
 
-  const charger = React.useCallback(async () => {
+  const charger = React.useCallback(async ({ page = 1, reinitialiserForm = true }: { page?: number; reinitialiserForm?: boolean } = {}) => {
     if (!base) return
     const reqId = ++reqIdRef.current
     setLoading(true)
+    setErreurChargement(null)
     try {
-      const res = await fetch(base)
+      const res = await fetch(`${base}?page=${page}`)
       if (!res.ok) throw new Error("Chargement impossible")
       const json = await res.json()
       if (reqId !== reqIdRef.current) return
       const d: AvisData = json.data
       setData(d)
-      setForm(
-        d.monAvis
-          ? { reprend: d.monAvis.reprend, notes: { ...d.monAvis.notes }, commentaire: d.monAvis.commentaire || "" }
-          : EMPTY_FORM
-      )
+      if (reinitialiserForm) {
+        setPhotosConservees(d.monAvis?.photos ?? [])
+        setFichiers([])
+        setDroitsPhotos(false)
+        setForm(d.monAvis ? { reprend: d.monAvis.reprend, notes: { ...d.monAvis.notes }, commentaire: d.monAvis.commentaire || "" } : EMPTY_FORM)
+      }
     } catch (e) {
       if (reqId !== reqIdRef.current) return
+      setErreurChargement(e instanceof Error ? e.message : "Chargement impossible")
       toast({ variant: "destructive", title: "Erreur", description: e instanceof Error ? e.message : "Erreur" })
     } finally {
       if (reqId === reqIdRef.current) setLoading(false)
@@ -126,23 +148,26 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
   React.useEffect(() => {
     if (open && refId) charger()
     if (!open) {
+      reqIdRef.current++
       setData(null)
       setForm(EMPTY_FORM)
+      setFichiers([])
     }
   }, [open, refId, charger])
 
   const aQuelqueChose =
     form.reprend != null ||
     config.criteres.some((c) => form.notes[c.key] != null) ||
-    form.commentaire.trim().length > 0
+    form.commentaire.trim().length > 0 || photosConservees.length > 0 || fichiers.length > 0 || !!data?.monAvis
 
   const setNote = (key: string, v: number | null) =>
     setForm((f) => ({ ...f, notes: { ...f.notes, [key]: v } }))
 
   const enregistrer = async () => {
-    if (!base || !aQuelqueChose) return
+    if (!base || !aQuelqueChose || !personnel || (fichiers.length > 0 && !droitsPhotos)) return
     setSaving(true)
     try {
+      const nouvellesPhotos = await photosPourEnvoi(fichiers)
       const res = await fetch(base, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -150,6 +175,8 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
           reprend: form.reprend,
           notes: form.notes,
           commentaire: form.commentaire.trim() || null,
+          photos: [...photosConservees.map(photo => ({ id: photo.id })), ...nouvellesPhotos],
+          confirmationDroitsPhotos: fichiers.length > 0 ? droitsPhotos : undefined,
         }),
       })
       if (!res.ok) {
@@ -168,7 +195,7 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
 
   const supprimer = async () => {
     if (!base) return
-    if (!(await confirmDialog("Supprimer votre avis ?"))) return
+    if (!(await confirmDialog(data?.monAvis?.nbTemoignages ? "Supprimer votre avis, ses photos et tous ses témoignages de récolte ? Les récoltes restent dans votre registre." : "Supprimer votre avis et ses photos ?"))) return
     try {
       const res = await fetch(base, { method: "DELETE" })
       if (!res.ok) throw new Error("Erreur")
@@ -181,6 +208,16 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
   }
 
   const stats = data?.stats
+  const retirerTemoignage = async (id: string) => {
+    if (!personnel || !(await confirmDialog("Retirer ce témoignage ? La récolte reste dans votre registre."))) return
+    try {
+      const res = await fetch(`/api/avis/temoignages/${encodeURIComponent(id)}`, { method: "DELETE" })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || "Retrait impossible")
+      await charger({ page: data?.page ?? 1, reinitialiserForm: false }); onSaved?.()
+      toast({ title: "Partage retiré" })
+    } catch (error) { toast({ variant: "destructive", title: "Erreur", description: error instanceof Error ? error.message : "Erreur réseau" }) }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -188,12 +225,12 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
         <DialogHeader>
           <DialogTitle>Avis communautaires — {nom}</DialogTitle>
           <DialogDescription>
-            Partagez votre expérience pour aider les autres. Les productions réelles observées
-            confirment les avis.
+            Partagez votre expérience et vos photos avec les membres de Gleba.
+            Les récoltes apparaissent ici lorsque vous choisissez de les partager.
           </DialogDescription>
         </DialogHeader>
 
-        {loading || !data ? (
+        {erreurChargement && !loading ? <div className="space-y-3"><p role="alert" className="text-sm text-red-700">{erreurChargement}</p><Button variant="outline" onClick={() => charger({ page: data?.page ?? 1, reinitialiserForm: !data })}>Réessayer</Button></div> : loading || !data ? (
           <div className="space-y-3">
             <Skeleton className="h-20 w-full" />
             <Skeleton className="h-32 w-full" />
@@ -214,26 +251,21 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
                       {Math.round(stats.tauxReprise * 100)}% le recommandent
                     </span>
                   )}
-                  {data.badgeTerrain && (
-                    <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Confirmé terrain
-                    </Badge>
-                  )}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Aucun avis pour l&apos;instant — soyez le premier à témoigner.
                 </p>
               )}
-              {data.reel.nbProductif > 0 && (
+              {data.partages && data.partages.nbRecoltes > 0 && (
                 <p className="mt-2 text-xs text-muted-foreground">
                   <Sprout className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />
-                  Réellement produit dans {data.reel.nbExploitations} exploitation
-                  {data.reel.nbExploitations > 1 ? "s" : ""} ({data.reel.nbProductif} unité
-                  {data.reel.nbProductif > 1 ? "s" : ""} productive{data.reel.nbProductif > 1 ? "s" : ""}).
+                  {data.partages.nbRecoltes} récolte{data.partages.nbRecoltes > 1 ? "s" : ""} partagée{data.partages.nbRecoltes > 1 ? "s" : ""} volontairement
+                  {Object.entries(data.partages.quantitesParUnite).length > 0 && <> · {Object.entries(data.partages.quantitesParUnite).map(([unite, quantite]) => `${quantite.toLocaleString("fr-FR")} ${unite}`).join(" · ")}</>}
                 </p>
               )}
             </div>
+            {data.statsLimitees && <p className="text-xs text-muted-foreground">Les statistiques portent sur les 2 000 avis les plus récents.</p>}
 
             {/* Détail par critère */}
             {stats && stats.nbAvis > 0 && (
@@ -279,7 +311,7 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
             )}
 
             {/* Formulaire — saisie progressive */}
-            <div className="rounded-lg border p-4">
+            {personnel ? <div className="rounded-lg border p-4">
               <h4 className="mb-3 text-sm font-semibold">{data.monAvis ? "Modifier mon avis" : "Donner mon avis"}</h4>
 
               {/* Niveau 0 — la reprise */}
@@ -317,12 +349,14 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
 
               {/* Niveau 2 — commentaire */}
               <Textarea
+                aria-label="Votre commentaire"
                 placeholder="Un commentaire ? (facultatif)"
                 rows={2}
                 value={form.commentaire}
                 maxLength={2000}
                 onChange={(e) => setForm((f) => ({ ...f, commentaire: e.target.value }))}
               />
+              <div className="mt-4 space-y-3"><GaleriePhotosAvis photos={photosConservees} disabled={saving} retrait={id => setPhotosConservees(photos => photos.filter(photo => photo.id !== id))} /><SelecteurPhotosAvis fichiers={fichiers} onChange={setFichiers} existantes={photosConservees.length} disabled={saving} />{fichiers.length > 0 && <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1.5" checked={droitsPhotos} onChange={event => setDroitsPhotos(event.target.checked)} />J’ai pris ces photos ou j’ai l’autorisation de les partager avec les membres de Gleba.</label>}</div>
 
               <div className="mt-3 flex items-center justify-between">
                 {data.monAvis ? (
@@ -332,20 +366,22 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
                 ) : (
                   <span />
                 )}
-                <Button type="button" disabled={!aQuelqueChose || saving} onClick={enregistrer}>
+                <Button type="button" disabled={!aQuelqueChose || saving || (fichiers.length > 0 && !droitsPhotos)} onClick={enregistrer}>
                   {saving ? "Enregistrement…" : data.monAvis ? "Mettre à jour" : "Publier"}
                 </Button>
               </div>
-            </div>
+            </div> : <p role="note" className="rounded-lg border p-4 text-sm text-muted-foreground">{demo ? "Utilisez un compte personnel pour publier votre avis et vos photos. Les photos des membres ne sont pas visibles en démonstration." : "Connectez-vous avec un compte personnel pour publier un avis et des photos."}</p>}
+
+            <div className="rounded-lg border bg-muted/20 p-4 text-sm"><p className="font-medium">Vous avez récolté ?</p><p className="mt-1 text-muted-foreground">Depuis votre registre, choisissez une récolte et cliquez sur Partager. Vous choisissez le commentaire, les photos et si la quantité apparaît ici.</p><Button asChild variant="outline" className="mt-3 min-h-11"><Link href="/maraichage/recoltes">Choisir une récolte à partager</Link></Button></div>
 
             {/* Liste des avis */}
             {data.avis.length > 0 && (
               <div>
-                <h4 className="mb-2 text-sm font-semibold">Tous les avis ({data.avis.length})</h4>
+                <h4 className="mb-2 text-sm font-semibold">Les expériences des membres</h4>
                 <div className="space-y-2">
                   {data.avis.map((a) => (
                     <div key={a.id} className="rounded-md border p-3 text-sm">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-medium">
                           {a.auteur}
                           {a.isMine && <span className="ml-1 text-xs text-muted-foreground">(vous)</span>}
@@ -364,10 +400,14 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
                             </span>
                           ))}
                       </div>
-                      {a.commentaire && <p className="mt-1.5">{a.commentaire}</p>}
+                      {a.commentaire && <p className="mt-1.5 whitespace-pre-wrap break-words">{a.commentaire}</p>}
+                      {!demo && <GaleriePhotosAvis photos={a.photos ?? []} />}
+                      {a.nbTemoignages > (a.temoignages?.length ?? 0) && <p className="mt-3 text-xs text-muted-foreground">Les {a.temoignages?.length ?? 0} derniers témoignages sur {a.nbTemoignages} sont affichés.</p>}
+                      {(a.temoignages ?? []).length > 0 && <div className="mt-3 space-y-3 border-t pt-3">{a.temoignages.map(temoignage => <div key={temoignage.id} className="rounded-lg bg-muted/30 p-3"><p className="font-medium">Récolte du {new Date(temoignage.dateRecolte).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>{temoignage.quantite !== null && <p className="mt-1 text-xs text-emerald-800">{temoignage.quantite.toLocaleString("fr-FR")} {temoignage.unite}</p>}{temoignage.commentaire && <p className="mt-2 whitespace-pre-wrap break-words">{temoignage.commentaire}</p>}{!demo && <GaleriePhotosAvis photos={temoignage.photos} />}{temoignage.isMine && personnel && <Button type="button" variant="ghost" size="sm" className="mt-2 text-red-700" onClick={() => retirerTemoignage(temoignage.id)}><Trash2 className="mr-1.5 h-4 w-4" aria-hidden />Retirer ce partage</Button>}</div>)}</div>}
                     </div>
                   ))}
                 </div>
+                {data.pages > 1 && <nav aria-label="Pages des avis communautaires" className="mt-4 flex flex-wrap items-center justify-between gap-3"><Button type="button" variant="outline" disabled={data.page <= 1 || loading} onClick={() => charger({ page: data.page - 1, reinitialiserForm: false })}>Précédents</Button><span className="text-sm text-muted-foreground">Page {data.page} sur {data.pages}</span><Button type="button" variant="outline" disabled={data.page >= data.pages || loading} onClick={() => charger({ page: data.page + 1, reinitialiserForm: false })}>Suivants</Button></nav>}
               </div>
             )}
           </div>

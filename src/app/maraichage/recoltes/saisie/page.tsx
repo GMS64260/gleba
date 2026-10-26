@@ -32,6 +32,7 @@ import {
 import { libelleUniteRendement } from "@/lib/validations/espece"
 import { surfaceCultureM2 } from "@/lib/culture-surface"
 import { useJourNavigateur } from "@/hooks/use-jour-navigateur"
+import { BoutonPartagerRecolte } from "@/components/avis/PartagerRecolte"
 
 interface Culture {
   id: number
@@ -105,7 +106,7 @@ export default function SaisieRecoltePage() {
   // Un refus du serveur (récolte avant la plantation…) reste affiché sous le
   // formulaire : un toast de quelques secondes passait inaperçu (cmsp5927v).
   const [submitError, setSubmitError] = React.useState<string | null>(null)
-  const [recentRecoltes, setRecentRecoltes] = React.useState<{especeId: string; especeNom?: string; cultureId: number; quantite: number; unite: UniteQuantite}[]>([])
+  const [recentRecoltes, setRecentRecoltes] = React.useState<{id: number | null; especeId: string; especeNom?: string; cultureId: number; quantite: number; unite: UniteQuantite}[]>([])
 
   // Charger les cultures actives (en cours de recolte ou plantées)
   React.useEffect(() => {
@@ -286,6 +287,7 @@ export default function SaisieRecoltePage() {
           : uniteQuantiteRecolte(cultureData.espece.uniteRendement)
       setRecentRecoltes((prev) => [
         {
+          id: typeof creee?.id === "number" ? creee.id : null,
           especeId: cultureData.especeId,
           especeNom,
           cultureId: cultureData.id,
@@ -563,11 +565,12 @@ export default function SaisieRecoltePage() {
             <CardContent>
               <ul className="space-y-2">
                 {recentRecoltes.map((r, i) => (
-                  <li key={i} className="flex justify-between text-sm">
+                  <li key={r.id ?? i} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <span>{r.especeNom ?? r.especeId}</span>
                     <span className="font-medium text-green-600">
                       {r.quantite} {libelleUniteQuantite(r.unite, r.quantite)}
                     </span>
+                    {r.id !== null && <BoutonPartagerRecolte recolteId={r.id} />}
                   </li>
                 ))}
               </ul>
