@@ -7,15 +7,13 @@
 
 import * as React from "react"
 import { flushSync } from "react-dom"
-import Link from "next/link"
-import Image from "next/image"
 import { getAvailableYears } from "@/components/year-selector"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { UserMenu } from "@/components/auth/UserMenu"
+import { AppHeader } from "@/components/shell/AppHeader"
 import { libelleTypeIntervention } from "@/lib/interventions/types"
 import { libelleTypeSoin, optionsFiltreTypeSoin } from "@/lib/elevage/types-soin"
 import {
@@ -26,11 +24,7 @@ import {
   type RegistreTracabilite,
 } from "@/lib/tracabilite/registre-url"
 import {
-  Sprout,
-  TreeDeciduous,
   Bird,
-  Wallet,
-  Settings,
   FileText,
   Shield,
   Leaf,
@@ -441,65 +435,12 @@ function TraçabilitéContent() {
       {/* ============================================================ */}
       {/* HEADER */}
       {/* ============================================================ */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50 no-print">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between max-w-[1600px]">
-          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
-            <Image
-              src="/gleba-logo.png"
-              alt="Gleba"
-              width={120}
-              height={80}
-              className="h-10 w-auto rounded-lg"
-              priority
-            />
-          </Link>
-          <div className="flex items-center gap-2">
-            {session?.user && (
-              <div className="flex items-center border rounded-lg overflow-hidden">
-                <Link href="/">
-                  <Button variant="ghost" size="sm" className="rounded-none text-green-700 hover:text-green-800 hover:bg-green-50 border-r">
-                    <Sprout className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Maraîchage</span>
-                  </Button>
-                </Link>
-                <Link href="/verger">
-                  <Button variant="ghost" size="sm" className="rounded-none text-lime-700 hover:text-lime-800 hover:bg-lime-50 border-r">
-                    <TreeDeciduous className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Verger</span>
-                  </Button>
-                </Link>
-                <Link href="/elevage">
-                  <Button variant="ghost" size="sm" className="rounded-none text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-r">
-                    <Bird className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Élevage</span>
-                  </Button>
-                </Link>
-                <Link href="/comptabilite">
-                  <Button variant="ghost" size="sm" className="rounded-none text-blue-700 hover:text-blue-800 hover:bg-blue-50 border-r">
-                    <Wallet className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Compta</span>
-                  </Button>
-                </Link>
-                <Button variant="ghost" size="sm" className="rounded-none bg-indigo-50 text-indigo-700">
-                  <FileText className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Traçabilité</span>
-                </Button>
-              </div>
-            )}
-            <Link href="/parametres">
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-            {session?.user && <UserMenu user={session.user} />}
-          </div>
-        </div>
-      </header>
+      <AppHeader className="no-print" />
 
       {/* ============================================================ */}
       {/* NAV TABS + YEAR SELECTOR */}
       {/* ============================================================ */}
-      <nav className="border-b bg-white sticky top-[61px] z-40 no-print">
+      <nav className="border-b bg-white sticky top-[var(--app-header-h,61px)] z-40 no-print">
         <div className="container mx-auto px-4 max-w-[1600px]">
           <div className="flex items-center justify-between">
             <div className="flex items-center -mb-px overflow-x-auto">

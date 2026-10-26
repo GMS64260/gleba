@@ -28,13 +28,14 @@ import { usePathname } from "next/navigation"
 import type { ModuleId } from "@/lib/modules"
 
 interface AppHeaderProps {
+  className?: string
   /** Module courant, pour l'état actif de ModulesNav ; absent sur les pages transverses (ex. /meteo) */
   current?: ModuleId
   /** Affiche la lune dans le widget météo (activé sur les homes) */
   showLune?: boolean
 }
 
-export function AppHeader({ current, showLune = false }: AppHeaderProps) {
+export function AppHeader({ current, showLune = false, className = "" }: AppHeaderProps) {
   const { data: session } = useSession()
   // Retour Guillaume 2026-07-17 : le header s'efface en descendant (seuls
   // les onglets du module restent), réapparaît dès qu'on remonte.
@@ -75,7 +76,7 @@ export function AppHeader({ current, showLune = false }: AppHeaderProps) {
       // Charte « carnet de ferme » (2026-10-09) : craie, lin, Geist ; aucune action déplacée.
       className={`sticky top-0 z-50 border-b border-lin bg-craie/95 font-ui text-encre backdrop-blur-sm transition-transform duration-200 motion-reduce:transition-none ${
         hidden ? "-translate-y-full" : "translate-y-0"
-      } ${railActif ? "lg:hidden" : ""}`}
+      } ${railActif ? "lg:hidden" : ""} ${className}`}
     >
       <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
         <div className="flex items-center gap-3 min-w-0">

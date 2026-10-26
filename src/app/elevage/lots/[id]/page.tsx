@@ -13,15 +13,12 @@
 
 import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { useParams, useRouter } from "next/navigation"
-import { useSession } from "next-auth/react"
 import {
   ArrowLeft,
   Bird,
   Calendar,
   Map as MapIcon,
-  Settings,
   Users,
   Wallet,
   TrendingDown,
@@ -33,8 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { UserMenu } from "@/components/auth/UserMenu"
-import { ModulesNav } from "@/components/auth/ModulesNav"
+import { AppHeader } from "@/components/shell/AppHeader"
 import { libelleEspeceAnimale } from "@/lib/elevage/espece-base"
 import { ComposerLotDialog } from "@/components/elevage/ComposerLotDialog"
 
@@ -90,7 +86,6 @@ const euro = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR"
 export default function LotDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { data: session } = useSession()
   const lotId = params.id as string
 
   const [lot, setLot] = React.useState<LotDetail | null>(null)
@@ -134,22 +129,7 @@ export default function LotDetailPage() {
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
 
       {/* Header global */}
-      <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px]">
-          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
-            <Image src="/gleba-logo.png" alt="Gleba" width={120} height={80} className="h-10 w-auto rounded-lg" priority />
-          </Link>
-          <div className="flex items-center gap-2">
-            <ModulesNav current="elevage" />
-            <Link href="/parametres">
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-            {session?.user && <UserMenu user={session.user} />}
-          </div>
-        </div>
-      </header>
+      <AppHeader current="elevage" />
 
       <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-4">
         <div className="flex items-center gap-3">

@@ -7,7 +7,6 @@
 
 import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { getAvailableYears } from "@/components/year-selector"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { UserMenu } from "@/components/auth/UserMenu"
+import { AppHeader } from "@/components/shell/AppHeader"
 import {
   BarChart,
   Bar,
@@ -33,8 +32,6 @@ import {
   Sprout,
   TreeDeciduous,
   Bird,
-  Settings,
-  Wallet,
   Calendar,
   TrendingUp,
   TrendingDown,
@@ -348,54 +345,7 @@ export default function CoutsProductionPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-slate-50">
       {/* Header */}
-      <header className="border-b border-b-2 border-b-blue-500 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between max-w-[1600px]">
-          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
-            <Image
-              src="/gleba-logo.png"
-              alt="Gleba"
-              width={150}
-              height={100}
-              className="h-10 w-auto rounded-lg"
-              priority
-            />
-          </Link>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center border rounded-lg overflow-hidden">
-              <Link href="/">
-                <Button variant="ghost" size="sm" className="rounded-none text-green-700 hover:text-green-800 hover:bg-green-50 border-r">
-                  <Sprout className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Maraîchage</span>
-                </Button>
-              </Link>
-              <Link href="/verger">
-                <Button variant="ghost" size="sm" className="rounded-none text-lime-700 hover:text-lime-800 hover:bg-lime-50 border-r">
-                  <TreeDeciduous className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Verger</span>
-                </Button>
-              </Link>
-              <Link href="/elevage">
-                <Button variant="ghost" size="sm" className="rounded-none text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-r">
-                  <Bird className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Élevage</span>
-                </Button>
-              </Link>
-              <Link href="/comptabilite">
-                <Button variant="ghost" size="sm" className="rounded-none bg-blue-50 text-blue-700">
-                  <Wallet className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Compta</span>
-                </Button>
-              </Link>
-            </div>
-            <Link href="/parametres">
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-            {session?.user && <UserMenu user={session.user} />}
-          </div>
-        </div>
-      </header>
+      <AppHeader current="comptabilite" />
 
       <main className="container mx-auto px-4 py-8 max-w-[1600px]">
         {/* Title + Back + Year selector */}
