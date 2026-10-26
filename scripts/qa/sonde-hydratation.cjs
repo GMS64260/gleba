@@ -15,10 +15,10 @@
 //     jamais un console.error. L'ancienne sonde, qui n'écoutait que la console, est
 //     restée à 0 alors que le #418 de cmvnnwr70 se produisait (« aveugle ») ;
 //   - (pageerror+date) : `page.on("pageerror")` (même exception, vue par Playwright),
-//     plus 1 si le <h1> du HTML SERVI nomme un jour de la semaine autre
-//     qu'aujourd'hui à Paris (date figée au build : cause du #418 de cmvnnwr70).
-//     « Aujourd'hui » est le jour réel, pas celui de CLOCK_PLUS_JOURS : le HTML
-//     vient du serveur, que l'horloge du navigateur ne déplace pas ;
+//     plus 1 si le <h1> servi nomme un autre jour, ou si la date de l'accueil
+//     (<time datetime>, affiché et servi s'il existe) diffère de l'API du jour.
+//     L'API du serveur reste la référence, jamais CLOCK_PLUS_JOURS : l'horloge
+//     avancée du navigateur ne doit pas changer la date de son registre ;
 //   - mutations du DOM (MutationObserver posé avant tout script) : la réparation
 //     d'hydratation remplace les nœuds rendus par le serveur (removedNodes) par le
 //     rendu client ; imprimées dès qu'un compteur est non nul.
@@ -109,14 +109,35 @@ function h1Servi(html) {
       page.on("pageerror", ecouteExceptions);
       // HTML brut servi pour ce chemin (cookies du contexte : même session).
       let servi = null;
+      let dateServie = null;
       let statutServi = "-";
+      const estAccueil = new URL(chemin, BASE).pathname === "/aujourdhui";
       try {
         const r = await page.request.get(`${BASE}${chemin}`, { headers: { Accept: "text/html" }, timeout: 60000 });
         statutServi = String(r.status());
-        servi = h1Servi(await r.text());
+        const html = await r.text();
+        servi = h1Servi(html);
+        if (estAccueil) dateServie = await page.evaluate((texte) => {
+          const doc = new DOMParser().parseFromString(texte, "text/html");
+          return doc.querySelector('[data-page-entete="aujourdhui"] time[datetime]')?.getAttribute("datetime") ?? null;
+        }, html);
       } catch (e) {
         statutServi = `échec ${String(e).slice(0, 80)}`;
       }
+      // Armer avant goto : la réponse peut précéder DOMContentLoaded. Lire le
+      // GET réellement utilisé par l'accueil évite un second appel et les faux
+      // écarts si le jour change pendant la sonde. Le rejet est toujours traité.
+      const dateApiPromise = estAccueil ? page.waitForResponse((r) => {
+        const url = new URL(r.url());
+        return r.request().method() === "GET" && url.origin === new URL(BASE).origin && url.pathname === "/api/accueil/aujourdhui";
+      }, { timeout: 20000 }).then(async (r) => {
+        if (!r.ok()) throw new Error(`HTTP ${r.status()}`);
+        const donnees = await r.json();
+        if (typeof donnees?.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(donnees.date)) throw new Error("date API absente ou invalide");
+        const midi = new Date(`${donnees.date}T12:00:00Z`);
+        if (!Number.isFinite(midi.getTime()) || midi.toISOString().slice(0, 10) !== donnees.date) throw new Error("date API hors calendrier");
+        return { date: donnees.date, erreur: null };
+      }).catch((e) => ({ date: null, erreur: String(e).replace(/\s+/g, " ").slice(0, 180) })) : null;
       await page.goto(`${BASE}${chemin}`, { waitUntil: "domcontentloaded", timeout: 90000 });
       await page.waitForTimeout(8000);
       page.off("console", ecoute);
@@ -124,12 +145,33 @@ function h1Servi(html) {
       const affiche = await page.locator("h1").first().innerText({ timeout: 2000 }).then((t) => t.replace(/\s+/g, " ").trim()).catch(() => null);
       const champDate = await page.locator('input[type="date"]').first().inputValue({ timeout: 1000 }).catch(() => null);
       const jourServi = servi ? JOURS.find((j) => new RegExp(`\\b${j}\\b`, "i").test(servi)) || null : null;
-      const dateFigee = Boolean(jourServi && jourServi !== aujourdhui);
+      const erreursDate = [];
+      let dateApi = null;
+      let dateAffichee = null;
+      if (estAccueil) {
+        const resultat = await dateApiPromise;
+        dateApi = resultat.date;
+        if (resultat.erreur) erreursDate.push(`API du jour : ${resultat.erreur}`);
+        const temps = page.locator('[data-page-entete="aujourdhui"] time[datetime]').first();
+        await temps.waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
+        dateAffichee = await temps.evaluate((el) => ({ date: el.getAttribute("datetime"), texte: (el.textContent || "").replace(/\s+/g, " ").trim() })).catch(() => null);
+        if (!dateAffichee) erreursDate.push("date affichée absente (<time datetime>)");
+        if (dateApi) {
+          if (dateAffichee && dateAffichee.date !== dateApi) erreursDate.push(`date affichée ${JSON.stringify(dateAffichee.date)} différente de l'API ${dateApi}`);
+          if (dateServie !== null && dateServie !== dateApi) erreursDate.push(`date HTML servie ${JSON.stringify(dateServie)} différente de l'API ${dateApi}`);
+          const libelleAttendu = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long" }).format(new Date(`${dateApi}T12:00:00Z`));
+          if (dateAffichee && dateAffichee.texte.toLocaleLowerCase("fr-FR") !== libelleAttendu.toLocaleLowerCase("fr-FR")) erreursDate.push(`texte de la date différent de l'API : ${JSON.stringify(dateAffichee.texte)}`);
+        }
+      }
+      const jourAttendu = dateApi ? jourSemaineParis(new Date(`${dateApi}T12:00:00Z`)) : aujourdhui;
+      const dateFigee = Boolean((jourServi && jourServi !== jourAttendu) || erreursDate.length);
       const { mut, err } = await page.evaluate(() => ({ mut: window.__mut, err: window.__erreurs }));
       console.log(`\n===== ${largeur} px ${chemin} → ${page.url()} | erreurs hydratation : ${consoleErreurs.length} (console) / ${err.length} (patch) / ${pageErreurs.length + (dateFigee ? 1 : 0)} (pageerror+date)`);
       console.log(`  h1 servi : ${servi === null ? "(aucun)" : JSON.stringify(servi)} (HTTP ${statutServi})`);
       console.log(`  h1 affiché : ${affiche === null ? "(aucun)" : JSON.stringify(affiche)}${champDate !== null ? ` | premier champ date : ${JSON.stringify(champDate)}` : ""}`);
-      if (jourServi) console.log(`  jour nommé par le h1 servi : ${jourServi} ; aujourd'hui : ${aujourdhui}${dateFigee ? " → DATE FIGÉE" : ""}`);
+      if (jourServi) console.log(`  jour nommé par le h1 servi : ${jourServi} ; aujourd'hui : ${jourAttendu}${dateFigee ? " → DATE FIGÉE" : ""}`);
+      if (estAccueil) console.log(`  date accueil : API ${JSON.stringify(dateApi)} ; HTML servi ${JSON.stringify(dateServie)} ; affichée ${JSON.stringify(dateAffichee)}${erreursDate.length ? " → DATE INVALIDE" : ""}`);
+      for (const erreur of erreursDate) console.log(`  contrôle date : ${erreur}`);
       for (const e of err) console.log(`  [${e.t} ms] ${e.s.replace(/\n/g, " ").slice(0, 160)}`);
       for (const e of pageErreurs) console.log(`  pageerror : ${e}`);
       for (const e of autresErreurs) console.log(`  erreur JS (hors hydratation) : ${e}`);

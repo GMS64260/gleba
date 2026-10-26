@@ -26,6 +26,7 @@ import { useHideOnScroll } from "@/hooks/use-hide-on-scroll"
 import { useVersionAccueil } from "@/hooks/use-version-accueil"
 import { usePathname } from "next/navigation"
 import type { ModuleId } from "@/lib/modules"
+import { estCoquilleV2Active } from "@/lib/navigation-principale"
 
 interface AppHeaderProps {
   className?: string
@@ -40,12 +41,10 @@ export function AppHeader({ current, showLune = false, className = "" }: AppHead
   // Retour Guillaume 2026-07-17 : le header s'efface en descendant (seuls
   // les onglets du module restent), réapparaît dès qu'on remonte.
   const hidden = useHideOnScroll()
-  // Accueil v2 (L4, 2026-10-09) : pour un compte en v2, le rail remplace cet
-  // en-tête sur grand écran ; la hauteur publiée tombe à 0 et la barre
-  // d'onglets des modules se colle en haut. L'en-tête reste sur téléphone.
+  // La coquille v2 fournit déjà la barre commune sur toutes les tailles.
   const pathname = usePathname()
   const { version } = useVersionAccueil()
-  const railActif = version === "v2" || pathname === "/aujourdhui"
+  const coquilleActive = estCoquilleV2Active(pathname, version, Boolean(session?.user))
 
   // Ticket cmsx5x1z2 — la barre d'onglets des modules se collait sous le header
   // avec un décalage codé en dur (`top-[61px]`), qui suppose un header d'une
@@ -55,20 +54,35 @@ export function AppHeader({ current, showLune = false, className = "" }: AppHead
   // les clics destinés à ses actions, au profit de ses propres liens de module.
   // On publie donc la hauteur réelle, mesurée, et la barre s'y accroche.
   const headerRef = React.useRef<HTMLElement | null>(null)
+  const proprietaire = React.useId()
   React.useEffect(() => {
+    if (coquilleActive) return
     const element = headerRef.current
     if (!element) return
+    const racine = document.documentElement
+    racine.dataset.appHeaderOwner = proprietaire
     const publier = () => {
-      document.documentElement.style.setProperty(
-        "--app-header-h",
-        `${Math.round(element.getBoundingClientRect().height)}px`,
-      )
+      if (racine.dataset.appHeaderOwner !== proprietaire) return
+      const hauteur = `${Math.ceil(element.getBoundingClientRect().height)}px`
+      racine.style.setProperty("--app-header-h", hauteur)
+      racine.style.setProperty("--app-header-visible-h", hidden ? "0px" : hauteur)
     }
     publier()
     const observateur = new ResizeObserver(publier)
     observateur.observe(element)
-    return () => observateur.disconnect()
-  }, [])
+    return () => {
+      observateur.disconnect()
+      // Une nouvelle barre peut déjà avoir pris la mesure : ne pas effacer
+      // ses variables lors du démontage d'un ancien AppHeader de page.
+      if (racine.dataset.appHeaderOwner === proprietaire) {
+        delete racine.dataset.appHeaderOwner
+        racine.style.removeProperty("--app-header-h")
+        racine.style.removeProperty("--app-header-visible-h")
+      }
+    }
+  }, [coquilleActive, hidden, proprietaire])
+
+  if (coquilleActive) return null
 
   return (
     <header
@@ -76,7 +90,7 @@ export function AppHeader({ current, showLune = false, className = "" }: AppHead
       // Charte « carnet de ferme » (2026-10-09) : craie, lin, Geist ; aucune action déplacée.
       className={`sticky top-0 z-50 border-b border-lin bg-craie/95 font-ui text-encre backdrop-blur-sm transition-transform duration-200 motion-reduce:transition-none ${
         hidden ? "-translate-y-full" : "translate-y-0"
-      } ${railActif ? "lg:hidden" : ""} ${className}`}
+      } ${className}`}
     >
       <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
@@ -127,7 +141,7 @@ export function AppHeader({ current, showLune = false, className = "" }: AppHead
 export function PageToolbar({ children }: { children: React.ReactNode }) {
   return (
     <div className="border-b border-lin bg-craie/80 backdrop-blur-sm">
-      <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-2 flex-wrap max-w-[1600px]">
+      <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap max-w-[1600px] lg:px-6">
         {children}
       </div>
     </div>

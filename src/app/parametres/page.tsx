@@ -7,14 +7,15 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell, Search, ShieldCheck, ChevronRight } from 'lucide-react'
+import { Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell, Search, ShieldCheck, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { AppHeader, PageToolbar } from '@/components/shell/AppHeader'
+import { AppHeader } from '@/components/shell/AppHeader'
+import { ConteneurPage, PageEntete } from '@/components/shell/PageEntete'
 import { StationMeteoConfig } from '@/components/meteo'
 import { useToast } from '@/hooks/use-toast'
 import { useModules } from '@/hooks/use-modules'
@@ -658,14 +659,9 @@ function ParametresContent() {
   return (
     <div className="min-h-screen bg-papier font-ui text-encre">
       <AppHeader />
-      <PageToolbar>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="ghost" size="sm" asChild><Link href="/"><ArrowLeft className="mr-2 h-4 w-4" />Accueil</Link></Button>
-          <div className="flex items-center gap-2"><Settings className="h-5 w-5 text-ardoise" aria-hidden /><h1 className="font-display text-2xl font-medium text-foret">Paramètres</h1></div>
-        </div>
-      </PageToolbar>
+      <PageEntete id="parametres" />
 
-      <main className="relative mx-auto w-full max-w-6xl px-4 py-6">
+      <ConteneurPage className="relative py-6">
         <p className="max-w-2xl text-sm leading-6 text-ardoise">Retrouvez vos réglages par rubrique. Vous pouvez passer de l’une à l’autre sans perdre vos saisies en cours.</p>
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
           <aside className="min-w-0 rounded-xl border border-lin bg-craie p-4 lg:sticky lg:top-[calc(var(--app-header-h,0px)+1rem)]" aria-label="Navigation des paramètres">
@@ -1367,7 +1363,7 @@ function ParametresContent() {
             </PanneauParametres>
           </div>
         </div>
-      </main>
+      </ConteneurPage>
 
       <Dialog open={deleteDialogOpen} onOpenChange={(nextOpen) => {
         if (!deleting) setDeleteDialogOpen(nextOpen)

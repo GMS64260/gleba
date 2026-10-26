@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useSearchParams } from "next/navigation"
@@ -191,17 +192,12 @@ function HomeContent() {
 
       {/* Shell partagé (palier 2) : header global + barre d'onglets communs */}
       <AppHeader current="maraichage" showLune />
-      <ModuleTabBar
-        tabs={TABS}
-        activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab as TabId)}
-        accent="emerald"
-        actions={
+      <PageEntete id="maraichage" actions={
           <>
             <Link href="/jardin?usage=culture">
               <Button variant="outline" size="sm" className="border-lin bg-craie text-encre hover:bg-papier hover:text-encre">
                 <MapIcon className="mr-1 h-4 w-4 text-ardoise" />
-                <span className="hidden sm:inline">Plan</span>
+                <span>Plan</span>
               </Button>
             </Link>
             <Button
@@ -212,7 +208,7 @@ function HomeContent() {
               title="Assistant culture"
             >
               <Wand2 className="mr-1 h-4 w-4 text-ardoise" />
-              <span className="hidden sm:inline">Semer</span>
+              <span>Semer</span>
             </Button>
             <Button
               variant="outline"
@@ -222,19 +218,19 @@ function HomeContent() {
               title="Assistant IA"
             >
               <Bot className={`mr-1 h-4 w-4 ${showChat ? "text-craie" : "text-ardoise"}`} />
-              <span className="hidden sm:inline">IA</span>
+              <span>IA</span>
             </Button>
             <Link href="/parcelles">
               <Button variant="outline" size="sm" className="border-lin bg-craie text-encre hover:bg-papier hover:text-encre">
                 <MapPin className="mr-1 h-4 w-4 text-ardoise" />
-                <span className="hidden sm:inline">Parcelles</span>
+                <span>Parcelles</span>
               </Button>
             </Link>
             <Select
               value={selectedYear.toString()}
               onValueChange={handleYearChange}
             >
-              <SelectTrigger className="w-[100px] h-8">
+              <SelectTrigger className="w-[100px] h-8" aria-label="Année affichée">
                 <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
                 <SelectValue />
               </SelectTrigger>
@@ -247,7 +243,13 @@ function HomeContent() {
               </SelectContent>
             </Select>
           </>
-        }
+        } />
+      <ModuleTabBar
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={(tab) => setActiveTab(tab as TabId)}
+        accent="emerald"
+
       />
 
       {/* Accueil v2 en opt-in (L2, 2026-10-09) : invitation, masquable */}
@@ -256,7 +258,7 @@ function HomeContent() {
       {/* Bannière nouveauté - pluviométrie */}
       {showPluieBanner && session?.user && (
         <div className="border-b border-lin bg-sauge-doux backdrop-blur-sm">
-          <div className="container mx-auto px-4 py-2 max-w-[1600px] flex items-center justify-between gap-3">
+          <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-3 px-4 py-2 lg:px-6">
             <div className="flex items-center gap-2 text-sm text-foret">
               <CloudRain className="h-4 w-4 flex-shrink-0" />
               <span>
@@ -286,7 +288,7 @@ function HomeContent() {
           bouton flottant Assistant IA (fixed bottom-4 right-4, 48px) : sans
           ce dégagement, les dernières actions de la page (« Noter
           l'arrosage ») restaient piégées sous la bulle à 390px de large. */}
-      <main className="container mx-auto px-4 pt-6 pb-24 max-w-[1600px] space-y-6">
+      <ConteneurPage className="space-y-6 pt-6 pb-24">
         {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Maraîchage */}
         {activeTab === "calendrier" && <TourMaraichage />}
         {/* PROMPT 22 + POSTREVIEW Sprint 6 — Bandeau "Premiers pas" Maraîchage */}
@@ -307,7 +309,7 @@ function HomeContent() {
         {isYearReady && activeTab === "referentiel" && (
           <ReferentielTab key={`referentiel-${selectedYear}`} year={selectedYear} />
         )}
-      </main>
+      </ConteneurPage>
 
       {/* Footer */}
       <footer className="border-t mt-8 py-4 text-center text-sm text-slate-500">

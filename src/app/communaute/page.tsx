@@ -32,7 +32,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { UserMenu } from "@/components/auth/UserMenu"
+import { AppHeader } from "@/components/shell/AppHeader"
+import { ConteneurPage, PageEntete } from "@/components/shell/PageEntete"
 import type { AccesSalon } from "@/components/communaute/SalonDiscussion"
 import { CatalogueCommunaute } from "@/components/communaute/CatalogueCommunaute"
 import { ForumCommunaute } from "@/components/communaute/ForumCommunaute"
@@ -50,7 +51,6 @@ import {
   Plus,
   Loader2,
   Trash2,
-  Settings,
   Sprout,
   TreeDeciduous,
   Bird,
@@ -241,8 +241,8 @@ function ContenuCommunaute() {
   return (
     <div className="min-h-screen bg-papier text-encre">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-lin bg-craie/95 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-2 max-w-[1400px]">
+      {isAuthenticated ? <AppHeader /> : <header className="sticky top-0 z-40 border-b border-lin bg-craie/95 backdrop-blur-sm">
+        <div className="mx-auto w-full max-w-[1600px] px-4 py-3 lg:px-6 flex items-center justify-between gap-2">
           <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
             <Image
               src="/gleba-logo.png"
@@ -254,16 +254,6 @@ function ContenuCommunaute() {
             />
           </Link>
           <div className="flex items-center gap-2">
-            {isAuthenticated && session?.user ? (
-              <>
-                <Link href="/parametres" aria-label="Réglages">
-                  <Button variant="ghost" size="sm">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </Link>
-                <UserMenu user={session.user} />
-              </>
-            ) : (
               <>
                 <Link href={urlConnexion(retour)}>
                   <Button variant="ghost" size="sm">
@@ -276,15 +266,14 @@ function ContenuCommunaute() {
                   </Button>
                 </Link>
               </>
-            )}
           </div>
         </div>
-      </header>
+      </header>}
 
-      <main className="container mx-auto px-4 py-8 max-w-[1400px] space-y-6">
+      <PageEntete id="communaute" />
+      <ConteneurPage className="space-y-6 py-6">
         <section className="border-b border-lin pb-6" aria-labelledby="titre-communaute">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ardoise">Communauté Gleba</p>
-          <h1 id="titre-communaute" className="mt-2 font-display text-3xl leading-tight sm:text-4xl">{INTRODUCTIONS[onglet].titre}</h1>
+          <h2 id="titre-communaute" className="font-display text-xl font-medium leading-tight sm:text-2xl">{INTRODUCTIONS[onglet].titre}</h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-ardoise sm:text-base">{INTRODUCTIONS[onglet].description}</p>
           {estSuiviProduit && <div className="mt-5">
             {isAuthenticated ? <NewEvolutionDialog onCreated={fetchItems} /> : <Button asChild className="min-h-11"><Link href={urlConnexion(retour)}>Se connecter pour proposer et voter</Link></Button>}
@@ -424,7 +413,7 @@ function ContenuCommunaute() {
             <ForumCommunaute acces={accesSalon} />
           </TabsContent>
         </Tabs>
-      </main>
+      </ConteneurPage>
     </div>
   )
 }

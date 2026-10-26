@@ -315,6 +315,40 @@ function SynchroCalques({
   return null
 }
 
+/** Leaflet écoute la fenêtre, mais pas les changements de taille de son parent. */
+function RecalerDimensionsCarte() {
+  const map = useMap()
+  useEffect(() => {
+    const conteneur = map.getContainer()
+    let frame: number | null = null
+    let largeur = -1
+    let hauteur = -1
+    const planifier = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(() => {
+        frame = null
+        if (!conteneur.isConnected) return
+        const taille = conteneur.getBoundingClientRect()
+        if (taille.width <= 0 || taille.height <= 0 || (taille.width === largeur && taille.height === hauteur)) return
+        largeur = taille.width
+        hauteur = taille.height
+        // Recalculer les tuiles et coordonnées sans déplacer le point visé
+        // quand la liste latérale, le bandeau ou la navigation se redimensionne.
+        map.invalidateSize({ animate: false, pan: false, debounceMoveend: true })
+      })
+    }
+    const observer = new ResizeObserver(planifier)
+    observer.observe(conteneur)
+    map.whenReady(planifier)
+    return () => {
+      observer.disconnect()
+      map.off("load", planifier)
+      if (frame !== null) window.cancelAnimationFrame(frame)
+    }
+  }, [map])
+  return null
+}
+
 export default function MapContainer({
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
@@ -354,11 +388,11 @@ export default function MapContainer({
   // ouvert ; sinon le clic qui le vise coche OpenStreetMap (voir
   // ./controle-calques.ts).
   return (
-    <div className={`relative h-full w-full z-0 ${CLASSES_BOUTON_CALQUES_EN_PLACE}`}>
+    <div className={`relative z-0 h-full min-h-0 w-full min-w-0 ${CLASSES_BOUTON_CALQUES_EN_PLACE}`}>
       <LeafletMapContainer
         center={center}
         zoom={zoom}
-        className="h-full w-full"
+        className="h-full min-h-0 w-full min-w-0"
         ref={handleMapRef}
         zoomControl={true}
         scrollWheelZoom={true}
@@ -391,6 +425,7 @@ export default function MapContainer({
 
         {/* Après le contrôle : voir SynchroCalques */}
         <SynchroCalques couches={couchesRef} choixInitial={choixInitial} />
+        <RecalerDimensionsCarte />
 
         {/* Contenu additionnel (marqueurs, polygones, controles...) */}
         {children}

@@ -47,7 +47,7 @@ export function Marque({ className = "" }: { className?: string }) {
 
 function MarketingNav() {
   return (
-    <header className="border-b border-lin bg-craie px-4 sm:px-6">
+    <header data-marketing-navigation className="border-b border-lin bg-craie px-4 sm:px-6">
       <nav aria-label="Navigation principale" className="mx-auto flex max-w-6xl items-center justify-between gap-4 py-3">
         <Link href="/" aria-label="Gleba, accueil" className={`shrink-0 rounded-md ${FOCUS}`}>
           <Marque />

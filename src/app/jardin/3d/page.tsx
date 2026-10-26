@@ -34,7 +34,7 @@ function CulturePanel({ planche, onClose }: { planche: Planche3D; onClose: () =>
   const parcelleNom = planche.parcelleGeo?.nom || "Parcelle non renseignée"
 
   return (
-    <aside className="absolute inset-x-0 bottom-0 z-20 max-h-[72dvh] overflow-y-auto overflow-x-hidden rounded-t-3xl bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:max-h-none md:w-[24rem] md:rounded-none md:border-l">
+    <aside className="absolute inset-x-0 bottom-0 z-20 min-h-0 max-h-[72%] overflow-y-auto overflow-x-hidden rounded-t-3xl bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:max-h-none md:w-[24rem] md:rounded-none md:border-l">
       <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b bg-white/95 px-5 py-4 backdrop-blur">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Détail de la planche</p>
@@ -89,7 +89,7 @@ function CulturePanel({ planche, onClose }: { planche: Planche3D; onClose: () =>
 
 export default function Jardin3DPage() {
   return (
-    <React.Suspense fallback={<div className="flex h-[100dvh] items-center justify-center">Chargement…</div>}>
+    <React.Suspense fallback={<div className="flex min-h-0 items-center justify-center" style={{ height: "calc(100dvh - var(--app-header-h, 0px) - var(--navigation-basse-h, 0px))" }}>Chargement…</div>}>
       <Jardin3DContent />
     </React.Suspense>
   )
@@ -237,37 +237,41 @@ function Jardin3DContent() {
   const isEmpty =
     data && data.planches.length === 0 && data.objets.length === 0 && data.arbres.length === 0 && !fond3D
 
-  const btn = "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium shadow-sm backdrop-blur transition"
+  const btn = "inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium shadow-sm backdrop-blur transition"
 
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-gradient-to-b from-sky-100 to-emerald-50">
+    <div className="relative flex min-h-0 min-w-0 w-full flex-col overflow-hidden bg-gradient-to-b from-sky-100 to-emerald-50 [&:fullscreen]:!h-[100dvh]" style={{ height: "calc(100dvh - var(--app-header-h, 0px) - var(--navigation-basse-h, 0px))" }}>
       {/* Barre flottante haute */}
-      <div className="absolute left-3 top-3 z-10 flex flex-wrap items-center gap-2">
-        <Link href="/jardin" className={`${btn} bg-white/90 text-gray-700 hover:bg-white`}>
-          <ArrowLeft className="h-4 w-4" />
-          Plan 2D
-        </Link>
-        <span className="rounded-lg bg-emerald-600/90 px-3 py-2 text-sm font-semibold text-white shadow-sm backdrop-blur">
-          Vue 3D
-        </span>
-      </div>
-      <div className="absolute right-3 top-3 z-10 flex flex-wrap items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => setShowLabels((v) => !v)}
-          className={`${btn} ${showLabels ? "bg-emerald-600 text-white" : "bg-white/90 text-gray-700 hover:bg-white"}`}
-        >
-          <Tags className="h-4 w-4" />
-          Étiquettes
-        </button>
-        <button
-          type="button"
-          onClick={() => setAutoRotate((v) => !v)}
-          className={`${btn} ${autoRotate ? "bg-emerald-600 text-white" : "bg-white/90 text-gray-700 hover:bg-white"}`}
-        >
-          <RotateCw className={`h-4 w-4 ${autoRotate ? "animate-spin" : ""}`} />
-          Rotation
-        </button>
+      <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-wrap items-center justify-between gap-2">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          <Link href="/jardin" className={`${btn} bg-white/90 text-gray-700 hover:bg-white`}>
+            <ArrowLeft className="h-4 w-4" />
+            Plan 2D
+          </Link>
+          <span className="rounded-lg bg-emerald-600/90 px-3 py-2 text-sm font-semibold text-white shadow-sm backdrop-blur">
+            Vue 3D
+          </span>
+        </div>
+        <div className="pointer-events-auto ml-auto flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setShowLabels((v) => !v)}
+            aria-pressed={showLabels}
+            className={`${btn} ${showLabels ? "bg-emerald-600 text-white" : "bg-white/90 text-gray-700 hover:bg-white"}`}
+          >
+            <Tags className="h-4 w-4" />
+            Étiquettes
+          </button>
+          <button
+            type="button"
+            onClick={() => setAutoRotate((v) => !v)}
+            aria-pressed={autoRotate}
+            className={`${btn} ${autoRotate ? "bg-emerald-600 text-white" : "bg-white/90 text-gray-700 hover:bg-white"}`}
+          >
+            <RotateCw className={`h-4 w-4 ${autoRotate ? "animate-spin" : ""}`} />
+            Rotation
+          </button>
+        </div>
       </div>
 
       {/* Contenu */}

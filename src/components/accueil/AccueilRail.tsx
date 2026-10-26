@@ -1,13 +1,10 @@
 "use client"
 
-import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { Bird, CalendarCheck, ClipboardList, CloudSun, Map as MapIcon, Megaphone, Settings, Sprout, Store, TreeDeciduous, Wallet } from "lucide-react"
-
 import { useModules } from "@/hooks/use-modules"
-import type { ModuleId } from "@/lib/modules"
+import { ENTREES_PRINCIPALES, ENTREES_SECONDAIRES, entreeNavigationVisible, estEntreeNavigationActive, type EntreeNavigation } from "@/lib/navigation-principale"
 import { cn } from "@/lib/utils"
 
 /**
@@ -16,31 +13,6 @@ import { cn } from "@/lib/utils"
  * historique, pour les comptes en v2 seulement ; `ModuleTabBar` continue de
  * servir les sous-onglets de chaque module.
  */
-interface Entree {
-  href: string
-  libelle: string
-  icone: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>
-  module?: ModuleId
-}
-
-const ENTREES: Entree[] = [
-  { href: "/aujourdhui", libelle: "Aujourd'hui", icone: CalendarCheck },
-  { href: "/jardin", libelle: "Plan & carte", icone: MapIcon },
-  { href: "/maraichage", libelle: "Cultures", icone: Sprout, module: "maraichage" },
-  // QA cmv2r57qk — registre des interventions, sans module : il sert aux
-  // cultures comme au verger.
-  { href: "/interventions", libelle: "Interventions", icone: ClipboardList },
-  { href: "/verger", libelle: "Verger", icone: TreeDeciduous, module: "verger" },
-  { href: "/elevage", libelle: "Élevage", icone: Bird, module: "elevage" },
-  { href: "/comptabilite", libelle: "Comptabilité", icone: Wallet, module: "comptabilite" },
-  { href: "/meteo", libelle: "Météo", icone: CloudSun },
-]
-
-const SECONDAIRES: Entree[] = [
-  { href: "/communaute", libelle: "Communauté", icone: Megaphone },
-  { href: "/parametres", libelle: "Réglages", icone: Settings },
-]
-
 const CLASSE_LIEN =
   "flex min-h-11 items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-encre hover:bg-papier focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge"
 
@@ -56,8 +28,8 @@ export function AccueilRail({ nomFerme, sousTitreFerme, className }: AccueilRail
   const pathname = usePathname()
   const boutique = process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE === "true"
 
-  const lien = (e: Entree) => {
-    const actif = pathname === e.href
+  const lien = (e: EntreeNavigation) => {
+    const actif = estEntreeNavigationActive(pathname, e.href)
     const Icone = e.icone
     return (
       <Link key={e.href} href={e.href} aria-current={actif ? "page" : undefined} className={cn(CLASSE_LIEN, actif && "bg-sauge-doux text-foret hover:bg-sauge-doux")}>
@@ -68,15 +40,14 @@ export function AccueilRail({ nomFerme, sousTitreFerme, className }: AccueilRail
   }
 
   return (
-    <aside className={cn("flex h-full flex-col gap-1 border-r border-lin bg-craie px-3 pt-4 pb-20", className)} aria-label="Navigation principale">
+    <aside className={cn("flex h-full flex-col gap-1 overflow-y-auto border-r border-lin bg-craie px-3 pt-4 pb-6", className)} aria-label="Navigation principale">
       <Link href="/aujourdhui" className="mb-3 flex items-center gap-2.5 px-2 font-display text-[22px] font-semibold text-foret">
         <Image src="/gleba-logo.png" alt="" width={120} height={80} className="h-7 w-auto rounded-md" priority />
         Gleba
       </Link>
-      {ENTREES.filter((e) => !e.module || modules.includes(e.module)).map(lien)}
+      {ENTREES_PRINCIPALES.filter(e => entreeNavigationVisible(e, modules, boutique)).map(lien)}
       <div className="my-2 h-px bg-lin" aria-hidden />
-      {boutique && lien({ href: "/boutique", libelle: "Boutique", icone: Store })}
-      {SECONDAIRES.map(lien)}
+      {ENTREES_SECONDAIRES.filter(e => entreeNavigationVisible(e, modules, boutique)).map(lien)}
       {nomFerme && (
         <div className="mt-auto flex items-center gap-2.5 rounded-lg border border-lin px-2.5 py-2 text-[13px]">
           <span aria-hidden className="h-7 w-7 shrink-0 rounded-md border border-lin bg-paille-doux" />
