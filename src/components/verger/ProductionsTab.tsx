@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { quantiteBois } from "@/lib/commercial/stock-types"
 import Link from "next/link"
 import { isPast, differenceInDays } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -77,6 +78,7 @@ interface Client {
 }
 
 interface RecolteArbre {
+  stockDisponibleCommercial?: number | null
   id: number
   arbreId: number
   date: string
@@ -121,11 +123,13 @@ function formulaireRecolteVierge() {
 }
 
 interface ProductionBois {
+  stockDisponibleCommercial?: number | null
   id: number
   arbreId: number | null
   date: string
   type: string
   volumeM3: number | null
+  volumeStere: number | null
   poidsKg: number | null
   statut: string
   destination: string | null
@@ -238,7 +242,7 @@ function RecoltesFruitsSubTab() {
     fetchData()
   }, [fetchData])
 
-  const stockRecoltes = recoltes.filter(r => !r.statut || r.statut === "en_stock")
+  const stockRecoltes = recoltes.filter(r => (!r.statut || r.statut === "en_stock") && (r.stockDisponibleCommercial ?? r.quantite) > 0).map(r => ({ ...r, quantite: r.stockDisponibleCommercial ?? r.quantite }))
   const venduRecoltes = recoltes.filter(r => r.statut === "vendu")
   const perteRecoltes = recoltes.filter(r => r.statut === "perte" || r.statut === "consomme")
 
@@ -691,27 +695,28 @@ function RecoltesFruitsSubTab() {
                       <TableCell className="text-right">{r.prixKg ? `${r.prixKg} EUR` : "-"}</TableCell>
                       <TableCell>
                         {r.datePeremption ? (
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2">
                             <span className="text-sm">{new Date(r.datePeremption).toLocaleDateString("fr-FR")}</span>
                             {getPeremptionBadge(r.datePeremption)}
                           </div>
                         ) : "-"}
                       </TableCell>
                       <TableCell className="text-right">
+                        <Link className="block text-sm text-primary underline" href={`/comptabilite/factures?tab=livraisons&stock=fruit:${r.id}`}>Préparer un BL</Link>
                         <div className="flex items-center gap-1 justify-end">
-                          <Button variant="ghost" size="sm" onClick={() => openVenteDialog(r)} title="Vendre">
+                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => openVenteDialog(r)} title="Vendre">
                             <Euro className="h-4 w-4 text-green-600" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleUsageInterne(r.id)} title="Usage interne (auto-consommation)">
+                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => handleUsageInterne(r.id)} title="Usage interne (auto-consommation)">
                             <Home className="h-4 w-4 text-blue-600" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handlePerte(r.id)} title="Perte">
+                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => handlePerte(r.id)} title="Perte">
                             <AlertTriangle className="h-4 w-4 text-orange-500" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => ouvrirModification(r)} title="Modifier (date, quantité, parcelle…)">
+                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => ouvrirModification(r)} title="Modifier (date, quantité, parcelle…)">
                             <Pencil className="h-4 w-4 text-slate-600" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)} title="Supprimer">
+                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => handleDelete(r.id)} title="Supprimer">
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>
@@ -1233,7 +1238,11 @@ function ProductionBoisSubTab() {
     fetchData()
   }, [fetchData])
 
-  const stockProductions = productions.filter(p => p.statut === "en_stock")
+  const stockProductions = productions.filter(p => p.statut === "en_stock" && (p.stockDisponibleCommercial ?? quantiteBois(p).quantite) > 0).map(p => {
+    const initial = quantiteBois(p).quantite
+    const ratio = p.stockDisponibleCommercial == null || initial <= 0 ? 1 : p.stockDisponibleCommercial / initial
+    return { ...p, volumeM3: p.volumeM3 == null ? null : p.volumeM3 * ratio, volumeStere: p.volumeStere == null ? null : p.volumeStere * ratio, poidsKg: p.poidsKg == null ? null : p.poidsKg * ratio }
+  })
   const venduProductions = productions.filter(p => p.statut === "vendu")
   const utiliseProductions = productions.filter(p => p.statut === "utilise")
 
@@ -1487,6 +1496,7 @@ function ProductionBoisSubTab() {
                       <TableCell className="text-right">{p.volumeM3 ? libelleVolumeBois(p.volumeM3) : "-"}</TableCell>
                       <TableCell className="text-right">{p.poidsKg ? libellePoidsBois(p.poidsKg) : "-"}</TableCell>
                       <TableCell className="text-right">
+                        <Link className="block text-sm text-primary underline" href={`/comptabilite/factures?tab=livraisons&stock=bois:${p.id}`}>Préparer un BL</Link>
                         <div className="flex justify-end gap-1">
                           {p.type === "abattage" && (
                             <Button
@@ -1500,14 +1510,14 @@ function ProductionBoisSubTab() {
                               Replanter
                             </Button>
                           )}
-                          <Button variant="outline" size="sm" onClick={() => openVenteDialog(p)}>
+                          <Button variant="outline" size="sm" disabled={p.stockDisponibleCommercial != null} onClick={() => openVenteDialog(p)}>
                             <Euro className="h-4 w-4 mr-1" />
                             Vendre
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => openUtiliseDialog(p)}>
+                          <Button variant="ghost" size="sm" disabled={p.stockDisponibleCommercial != null} onClick={() => openUtiliseDialog(p)}>
                             Utiliser
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDelete(p.id)}>
+                          <Button variant="ghost" size="sm" disabled={p.stockDisponibleCommercial != null} onClick={() => handleDelete(p.id)}>
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>

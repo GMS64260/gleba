@@ -1,10 +1,11 @@
 import { z } from 'zod'
+import { champsArticleStock } from './stock-types'
 import { dateIsoFacture } from '@/lib/facture-regles'
 import { factureSansTaxe } from '@/lib/territoires'
 
 export const TYPES_DOCUMENT = ['devis', 'livraison'] as const
 export const LABELS_STATUT: Record<string, string> = {
-  brouillon: 'Brouillon', emis: 'Émis', accepte: 'Accepté', refuse: 'Refusé', livre: 'Livré', annule: 'Annulé',
+  brouillon: 'Brouillon', emis: 'Émis', accepte: 'Accepté', refuse: 'Refusé', livre: 'Livré', retourne: 'Retourné', annule: 'Annulé',
 }
 export const dateCivileSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue : AAAA-MM-JJ').refine((s) => {
   const d = new Date(`${s}T12:00:00Z`)
@@ -14,6 +15,7 @@ export const dateCivile = (s: string) => new Date(`${s}T12:00:00Z`)
 export const arrondir = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 const ligneSchema = z.object({
+  ...champsArticleStock,
   description: z.string().trim().min(1, 'Description requise').max(500),
   quantite: z.number().positive().max(1_000_000),
   unite: z.string().trim().min(1).max(20),
@@ -33,6 +35,7 @@ export const contenuDocumentSchema = z.object({
   categorieOperation: z.enum(['biens', 'services', 'mixte']).default('biens'),
   lignes: z.array(ligneSchema).min(1).max(100),
 }).strict().superRefine((d, ctx) => {
+  if (d.categorieOperation === 'services' && d.lignes.some((l) => l.articleStockId)) ctx.addIssue({ code: 'custom', path: ['categorieOperation'], message: 'Choisissez Biens ou Biens et services pour les produits liés au stock.' })
   if (d.type === 'devis' && (!d.dateValidite || d.dateValidite < d.date)) {
     ctx.addIssue({ code: 'custom', path: ['dateValidite'], message: 'La validité doit couvrir la date du devis' })
   }
@@ -42,7 +45,7 @@ export const contenuDocumentSchema = z.object({
 })
 export const creationDocumentSchema = z.object({ cle: z.string().uuid(), contenu: contenuDocumentSchema }).strict()
 export const actionDocumentSchema = z.object({
-  action: z.enum(['emettre', 'accepter', 'refuser', 'livrer', 'annuler']),
+  action: z.enum(['emettre', 'accepter', 'refuser', 'livrer', 'annuler', 'retourner']),
   dateLivraison: dateCivileSchema.optional(),
 }).strict()
 export const facturationDocumentsSchema = z.object({
@@ -73,6 +76,7 @@ export class ErreurCommerciale extends Error {
 }
 
 export function transitionDocument(d: { type: string; statut: string; dateValidite: Date | null; factureId: number | null; bonLivraison?: { id: string } | null }, action: string, maintenant = new Date()) {
+  if (action === 'retourner' && d.type === 'livraison' && d.statut === 'livre') return 'retourne'
   if (d.factureId || d.bonLivraison) throw new ErreurCommerciale('Ce document a déjà été converti. Consultez le document lié.')
   const suivantes: Record<string, Record<string, string>> = d.type === 'devis' ? {
     brouillon: { emettre: 'emis' },

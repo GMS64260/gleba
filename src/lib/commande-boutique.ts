@@ -109,11 +109,12 @@ async function materialiserVenteCommande(
     // stockDispo = null → stock illimité, on ignore.
     if (ligne.produit.stockDispo === null) continue
 
-    const stockApres = ligne.produit.stockDispo - ligne.quantite
-    await tx.produitBoutique.update({
+    // L'incrément atomique conserve aussi les débits/retours d'un BL concurrent.
+    const actualise = await tx.produitBoutique.update({
       where: { id: ligne.produit.id },
-      data: { stockDispo: stockApres },
+      data: { stockDispo: { decrement: ligne.quantite } },
     })
+    const stockApres = actualise.stockDispo ?? 0
     if (stockApres < 0) {
       stockNegatifs.push({
         produitId: ligne.produit.id,
@@ -404,6 +405,7 @@ export async function annulerCommandeBoutique(
   motif: "Annulé" | "Remboursé" = "Annulé",
   tx: Tx = prisma
 ): Promise<void> {
+  await tx.$queryRawUnsafe('SELECT id FROM commandes_boutique WHERE id = $1 FOR UPDATE', commandeId)
   const commande = await tx.commandeBoutique.findUnique({
     where: { id: commandeId },
     include: { lignes: { include: { produit: true } } },
@@ -418,7 +420,7 @@ export async function annulerCommandeBoutique(
       if (!ligne.produit || ligne.produit.stockDispo === null) continue
       await tx.produitBoutique.update({
         where: { id: ligne.produit.id },
-        data: { stockDispo: ligne.produit.stockDispo + ligne.quantite },
+        data: { stockDispo: { increment: ligne.quantite } },
       })
       // Récolte source remise en stock si elle avait été marquée vendue (cf #51).
       if (ligne.produit.recolteId) {

@@ -77,6 +77,13 @@ describe('computeStocksTotaux (BUG #7)', () => {
     expect(r.valeurTotale).toBe(0.3) // pas 0.30000000000004
   })
 
+  it('garde la ventilation égale au total avec un produit boutique hors des trois ateliers', () => {
+    const r = computeStocksTotaux([item({ module: 'potager', valeur: 10 }), item({ module: 'autre', valeur: 12 })])
+    expect(r.valeurTotale).toBe(22)
+    expect(r.valeurParModule.autre).toBe(12)
+    expect(Object.values(r.valeurParModule).reduce((s, n) => s + n, 0)).toBe(22)
+  })
+
   it('reproduit le scénario Marc : 8 articles dont 1 fruit valorisé', () => {
     // Simule ce que voyait Camille avant le fix : majorité null + 1 valeur.
     const r = computeStocksTotaux([

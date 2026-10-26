@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
       prisma.recolte.findMany({
         where,
         include: {
+          produitsBoutique: { select: { id: true } },
           espece: {
             include: { famille: true },
           },
@@ -131,7 +132,7 @@ export async function GET(request: NextRequest) {
                 acteurId: session!.user.id,
                 especeId: r.especeId,
                 unite: r.unite,
-                quantite: r.quantite,
+                quantite: r.stockDisponibleCommercial ?? r.quantite,
                 prixLot: r.prixKg,
                 espece: r.espece,
               },

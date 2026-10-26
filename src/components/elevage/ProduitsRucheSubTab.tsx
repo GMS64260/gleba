@@ -99,7 +99,8 @@ interface StockRuche {
 interface MouvementStockRuche {
   operationId: string
   date: string
-  type: "autoconsommation" | "don" | "destruction"
+  type: "vente" | "autoconsommation" | "don" | "destruction" | "retour_commercial"
+  documentCommercial?: boolean
   produit: ProduitRuche
   quantite: number
   unite: "kg" | "g"
@@ -127,6 +128,8 @@ const sortieInitiale = () => ({
 })
 
 const LIBELLES_SORTIE: Record<MouvementStockRuche["type"], string> = {
+  vente: "Livraison commerciale",
+  retour_commercial: "Retour en stock",
   autoconsommation: "Autoconsommation",
   don: "Don",
   destruction: "Perte / destruction",
@@ -443,7 +446,7 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {Object.entries(LIBELLES_SORTIE).map(([type, libelle]) => (
+                      {Object.entries(LIBELLES_SORTIE).filter(([type]) => !['vente', 'retour_commercial'].includes(type)).map(([type, libelle]) => (
                         <SelectItem key={type} value={type}>{libelle}</SelectItem>
                       ))}
                     </SelectContent>
@@ -794,7 +797,7 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
                   variant="ghost"
                   size="icon"
                   aria-label="Supprimer la sortie et restaurer le stock"
-                  onClick={() => handleDeleteSortie(mouvement.operationId)}
+                  disabled={mouvement.documentCommercial} onClick={() => handleDeleteSortie(mouvement.operationId)}
                 >
                   <Trash2 className="h-4 w-4 text-red-600" />
                 </Button>

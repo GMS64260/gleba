@@ -19,6 +19,7 @@ vi.mock('@/lib/prisma', () => ({
     produitBoutique: { findMany: mocks.produitBoutiqueFindMany },
     recolte: { findMany: mocks.recolteFindMany },
     consommation: { findMany: mocks.consommationFindMany },
+    mouvementStockCommercial: { findMany: async () => [] },
   },
 }))
 

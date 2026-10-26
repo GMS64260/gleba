@@ -89,12 +89,12 @@ export async function blocagesVetoPontes(
   return result
 }
 
-export async function computeStockOeufsParLots(userId: string, now = new Date()) {
+export async function computeStockOeufsParLots(userId: string, now = new Date(), db: Db = prisma) {
   // Pas de plafond : ce calcul est désormais LE stock physique (écran, assistant,
   // tableau de bord et valorisation comptable via `calculerStockOeufs`). Un
   // `take: 2000` en date croissante aurait écarté les pontes les plus récentes,
   // les seules encore en stock, dès qu'un compte dépasse 2 000 collectes.
-  const productions = await prisma.productionOeuf.findMany({
+  const productions = await db.productionOeuf.findMany({
     where: { userId },
     orderBy: { date: "asc" },
     include: {
@@ -110,7 +110,7 @@ export async function computeStockOeufsParLots(userId: string, now = new Date())
   // croisés avec chaque ponte (une ponte du 11/08 sous Dectomax jusqu'au 04/09
   // était « commercialisable »).
   const blocages = await blocagesVetoPontes(
-    prisma,
+    db,
     userId,
     productions.map((production) => ({
       id: production.id,

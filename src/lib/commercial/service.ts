@@ -9,8 +9,11 @@ import {
   transitionDocument, verifierSourcesFacturables, type ContenuDocument,
 } from './regles'
 
+import { verifierLignesStock, verrouillerStocksDesLignes, sortirStockCommercial, retournerStockCommercial } from './stock'
+
 type Tx = Prisma.TransactionClient
 export const relationsDocument = {
+  mouvementsStock: { select: { id: true, origineRetourId: true, quantite: true, sourceNom: true, unite: true, articleStockType: true, articleStockId: true } },
   lignes: { orderBy: { ordre: 'asc' as const } },
   facture: { select: { id: true, numero: true, statut: true } },
   devisOrigine: { select: { id: true, numero: true } },
@@ -35,7 +38,7 @@ async function preparer(tx: Tx, userId: string, contenu: ContenuDocument) {
   if (!emetteur?.raisonSociale || !emetteur.adresseSiege || !emetteur.ville) {
     throw new ErreurCommerciale('Renseignez d’abord l’identité de votre exploitation dans Paramètres > Exploitation', 400)
   }
-  const montants = calculerDocument(contenu.lignes, factureSansTaxe(emetteur.regimeTva) || client.exonererTVA)
+  const montants = calculerDocument(await verifierLignesStock(tx, userId, contenu.lignes), factureSansTaxe(emetteur.regimeTva) || client.exonererTVA)
   if (montants.totalTTC <= 0 || montants.totalTTC > 1_000_000_000) throw new ErreurCommerciale('Le total doit être positif et inférieur à un milliard', 400)
   return {
     type: contenu.type,
@@ -115,7 +118,9 @@ export async function agirSurDocument(userId: string, id: string, action: string
     if (action === 'livrer') {
       if (!livraison || livraison > dateIsoFacture(new Date())) throw new ErreurCommerciale('Indiquez la date réelle de livraison, aujourd’hui ou avant', 400)
       data.dateLivraison = dateCivile(livraison)
+      await sortirStockCommercial(tx, userId, d.lignes, { documentId: d.id, numero: d.numero, date: dateCivile(livraison) })
     }
+    if (action === 'retourner' || (action === 'annuler' && d.statut === 'livre')) await retournerStockCommercial(tx, userId, { documentId: d.id })
     return tx.documentCommercial.update({ where: { id }, data, include: relationsDocument })
   })
 }
@@ -144,7 +149,7 @@ export async function convertirEnLivraison(userId: string, id: string) {
       emetteurSnapshot: d.emetteurSnapshot as Prisma.InputJsonValue,
       totalHT: d.totalHT, totalTVA: d.totalTVA, totalTTC: d.totalTTC,
       lignes: { create: d.lignes.map((l) => ({ ordre: l.ordre, description: l.description, quantite: l.quantite, unite: l.unite,
-        prixUnitaire: l.prixUnitaire, tauxTVA: l.tauxTVA, montantHT: l.montantHT, montantTVA: l.montantTVA, montantTTC: l.montantTTC, statutBio: l.statutBio })) },
+        prixUnitaire: l.prixUnitaire, tauxTVA: l.tauxTVA, montantHT: l.montantHT, montantTVA: l.montantTVA, montantTTC: l.montantTTC, statutBio: l.statutBio, articleStockType: l.articleStockType, articleStockId: l.articleStockId })) },
     }, include: relationsDocument })
   })
 }
@@ -170,11 +175,12 @@ export async function facturerDocuments(userId: string, ids: string[], echeance:
     const lignes = docs.flatMap((d) => d.lignes.map((l) => ({
       description: `${d.numero}${d.dateLivraison ? ` du ${dateIsoFacture(d.dateLivraison)}` : ''} : ${l.description}`,
       quantite: l.quantite, unite: l.unite, prixUnitaire: l.prixUnitaire, tauxTVA: l.tauxTVA,
-      montantHT: l.montantHT, montantTVA: l.montantTVA, montantTTC: l.montantTTC, statutBio: l.statutBio,
+      montantHT: l.montantHT, montantTVA: l.montantTVA, montantTTC: l.montantTTC, statutBio: l.statutBio, articleStockType: l.articleStockType, articleStockId: l.articleStockId,
     })))
     if (lignes.length > 300) throw new ErreurCommerciale('Regroupez moins de bons : 300 lignes au plus par facture', 400)
     const notes = docs.map((d) => [d.numero, d.adresseLivraison ? `Livraison : ${d.adresseLivraison}` : '', d.notes].filter(Boolean).join('\n')).join('\n\n')
     if (notes.length > 5000) throw new ErreurCommerciale('Les conditions dépassent 5 000 caractères. Facturez les bons séparément.', 400)
+    if (premier.type === 'devis') await verrouillerStocksDesLignes(tx, userId, lignes)
     const facture = await creerFacture(tx, {
       userId, type: 'facture', statut: 'emise', clientId: premier.clientId,
       objet: docs.length === 1 ? premier.objet : `Livraisons ${docs.map((d) => d.numero).join(', ')}`,
@@ -184,6 +190,11 @@ export async function facturerDocuments(userId: string, ids: string[], echeance:
       totalTVA: arrondir(docs.reduce((s, d) => s + d.totalTVA, 0)),
       totalTTC: arrondir(docs.reduce((s, d) => s + d.totalTTC, 0)), lignes,
     })
+    if (premier.type === 'devis') {
+      await sortirStockCommercial(tx, userId, facture.lignes, { factureId: facture.id, numero: facture.numero, date: new Date() })
+    } else {
+      await tx.mouvementStockCommercial.updateMany({ where: { userId, documentId: { in: ids } }, data: { factureId: facture.id } })
+    }
     // Le changement d'une fiche client ne réécrit pas l'identité contractuelle.
     const resultat = await tx.facture.update({ where: { id: facture.id }, data: {
       clientNom: premier.clientNom, clientAdresse: premier.clientAdresse,

@@ -12,6 +12,7 @@ import { NextRequest } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
+  stockCommercialCount: vi.fn(),
   cultureFindUnique: vi.fn(),
   cultureDelete: vi.fn(),
   recolteFindMany: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('@/lib/irrigation-cache', () => ({ irrigationCache: { invalidateUser: vi
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: mocks.invalidateKpi }))
 vi.mock('@/lib/prisma', () => ({
   default: {
+    mouvementStockCommercial: { count: mocks.stockCommercialCount },
     culture: { findUnique: mocks.cultureFindUnique },
     recolte: { findMany: mocks.recolteFindMany },
     venteManuelle: { findMany: mocks.venteFindMany },
@@ -45,6 +47,7 @@ const supprimer = () => DELETE(
 
 beforeEach(() => {
   vi.clearAllMocks()
+    mocks.stockCommercialCount.mockResolvedValue(0)
   mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
   mocks.cultureFindUnique.mockResolvedValue({ id: 42, especeId: 'Tomate', userId: 'user-1' })
   mocks.venteFindMany.mockResolvedValue([])
@@ -89,4 +92,12 @@ describe('DELETE /api/cultures/[id]', () => {
     expect(mocks.venteFindMany).not.toHaveBeenCalled()
     expect(mocks.cultureDelete).toHaveBeenCalled()
   })
+})
+
+it('refuse de supprimer une culture portant un lot livré par BL, même non facturé', async () => {
+  mocks.stockCommercialCount.mockResolvedValue(1)
+  const res = await supprimer()
+  expect(res.status).toBe(409)
+  expect((await res.json()).error).toContain('bons ou factures')
+  expect(mocks.cultureDelete).not.toHaveBeenCalled()
 })

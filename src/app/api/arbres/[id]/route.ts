@@ -340,6 +340,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
     }
 
+    if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, OR: [{ fruit: { arbreId } }, { bois: { arbreId } }] } })) return NextResponse.json({ error: 'Cet arbre possède des lots liés à des bons ou factures. Conservez-le pour garder leur traçabilité.' }, { status: 409 })
+
     // Audit 2026-07 (#12) : la suppression cascade sur les récoltes de l'arbre,
     // mais laissait orphelines les écritures comptables auto (VenteManuelle
     // sourceType='recolte_arbre') → CA fantôme non nettoyable. Et une récolte

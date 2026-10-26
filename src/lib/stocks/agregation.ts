@@ -26,8 +26,8 @@ export interface StockItem {
 
 export interface StocksTotaux {
   valeurTotale: number
-  valeurParModule: { potager: number; verger: number; elevage: number }
-  itemsParModule: { potager: number; verger: number; elevage: number }
+  valeurParModule: { potager: number; verger: number; elevage: number; autre?: number }
+  itemsParModule: { potager: number; verger: number; elevage: number; autre?: number }
 }
 
 /**
@@ -37,13 +37,14 @@ export interface StocksTotaux {
  */
 export function computeStocksTotaux(stocks: StockItem[]): StocksTotaux {
   let total = 0
-  const parModule: Record<string, number> = { potager: 0, verger: 0, elevage: 0 }
-  const items: Record<string, number> = { potager: 0, verger: 0, elevage: 0 }
+  const parModule: Record<string, number> = { potager: 0, verger: 0, elevage: 0, autre: 0 }
+  const items: Record<string, number> = { potager: 0, verger: 0, elevage: 0, autre: 0 }
   for (const s of stocks) {
-    if (s.module in items) items[s.module]++
+    const module = s.module in items ? s.module : 'autre'
+    items[module]++
     if (s.valeur != null && Number.isFinite(s.valeur)) {
       total += s.valeur
-      if (s.module in parModule) parModule[s.module] += s.valeur
+      parModule[module] += s.valeur
     }
   }
   return {
@@ -52,11 +53,13 @@ export function computeStocksTotaux(stocks: StockItem[]): StocksTotaux {
       potager: round2(parModule.potager),
       verger: round2(parModule.verger),
       elevage: round2(parModule.elevage),
+      ...(items.autre ? { autre: round2(parModule.autre) } : {}),
     },
     itemsParModule: {
       potager: items.potager,
       verger: items.verger,
       elevage: items.elevage,
+      ...(items.autre ? { autre: items.autre } : {}),
     },
   }
 }

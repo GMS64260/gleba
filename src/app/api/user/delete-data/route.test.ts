@@ -13,11 +13,13 @@ const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
   userFindUnique: vi.fn(),
   transaction: vi.fn(),
+  stockCommercialCount: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
+    mouvementStockCommercial: { count: mocks.stockCommercialCount },
     user: { findUnique: mocks.userFindUnique },
     $transaction: mocks.transaction,
   },
@@ -30,6 +32,7 @@ const compteur = () => ({ deleteMany: vi.fn().mockResolvedValue({ count: 2 }) })
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.stockCommercialCount.mockResolvedValue(0)
   mocks.requireAuthApi.mockResolvedValue({
     error: null,
     session: { user: { id: "u1", role: "USER", estProprietaireExploitation: true } },
@@ -102,4 +105,13 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
     expect(mocks.userFindUnique).not.toHaveBeenCalled()
     expect(mocks.transaction).not.toHaveBeenCalled()
   })
+})
+
+it("conserve les lots liés à des documents commerciaux au lieu de déclencher une erreur de clé étrangère", async () => {
+  mocks.userFindUnique.mockResolvedValue({ email: "ferme@example.test" })
+  mocks.stockCommercialCount.mockResolvedValue(1)
+  const res = await DELETE()
+  expect(res.status).toBe(409)
+  expect((await res.json()).error).toContain("bons ou factures")
+  expect(mocks.transaction).not.toHaveBeenCalled()
 })
