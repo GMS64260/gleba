@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
+  stockCommercialCount: vi.fn(),
   arbreFindUnique: vi.fn(),
   arbreUpdate: vi.fn(),
   parcelleFindFirst: vi.fn(),
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
+    mouvementStockCommercial: { count: mocks.stockCommercialCount },
     arbre: {
       findUnique: mocks.arbreFindUnique,
       update: mocks.arbreUpdate,
@@ -63,6 +65,7 @@ const params = { params: Promise.resolve({ id: "42" }) }
 describe("PUT /api/arbres/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.stockCommercialCount.mockResolvedValue(0)
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },
@@ -253,6 +256,7 @@ describe("PUT /api/arbres/[id]", () => {
 describe("DELETE /api/arbres/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.stockCommercialCount.mockResolvedValue(0)
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },
@@ -274,6 +278,14 @@ describe("DELETE /api/arbres/[id]", () => {
 
   const deleteRequest = () =>
     new Request("http://localhost/api/arbres/42", { method: "DELETE" })
+
+  it('conserve l’arbre portant des lots liés à des documents commerciaux', async () => {
+    mocks.stockCommercialCount.mockResolvedValue(1)
+    const res = await DELETE(new Request('http://localhost/api/arbres/42', { method: 'DELETE' }) as never, params)
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('bons ou factures')
+    expect(mocks.txArbreDelete).not.toHaveBeenCalled()
+  })
 
   it("détache les interventions phyto en snapshotant le nom de l'arbre", async () => {
     mocks.interventionFindMany.mockResolvedValue([
@@ -381,6 +393,7 @@ describe("DELETE /api/arbres/[id]", () => {
 describe("PUT /api/arbres/[id] — type d'arbre (QA 2026-10-19)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.stockCommercialCount.mockResolvedValue(0)
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },

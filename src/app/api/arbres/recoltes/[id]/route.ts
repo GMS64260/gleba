@@ -54,6 +54,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     return NextResponse.json(recolte)
   } catch (err) {
+    if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("GET /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la récupération de la récolte" },
@@ -80,6 +81,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       include: { arbre: { select: { espece: true } } },
     })
 
+    if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
     if (!existing) {
       return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
     }
@@ -245,6 +247,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     return NextResponse.json(warnings.length > 0 ? { ...recolte, warnings } : recolte)
   } catch (err) {
+    if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("PUT /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la mise à jour" },
@@ -276,6 +279,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       },
     })
 
+    if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
     if (!existing) {
       return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
     }
@@ -402,6 +406,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     return NextResponse.json(recolte)
   } catch (err) {
+    if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("PATCH /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la mise à jour" },
@@ -426,6 +431,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       where: { id: recolteId, userId: session!.user.id },
     })
 
+    if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
     if (!existing) {
       return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
     }
@@ -454,6 +460,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("DELETE /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la suppression" },

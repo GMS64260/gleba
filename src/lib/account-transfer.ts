@@ -1,3 +1,4 @@
+import { MODELES_STOCK_COMMERCIAL } from '@/lib/commercial/stock-types'
 /**
  * Moteur de transfert de compte — export/import complet des données d'un
  * utilisateur, piloté par le schéma Prisma (DMMF).
@@ -465,6 +466,7 @@ export async function importAccount(
 
   const runner = async (tx: Prisma.TransactionClient) => {
     const pending: PendingPatch[] = []
+    const referencesStock: { delegate: string; pkField: string; newPk: unknown; type: string; oldId: string }[] = []
 
     // 1) RÉFÉRENTIELS — upsert par id (préservé). idMap = identité.
     // Sécurité (audit 2026-07 #21) : les référentiels sont GLOBAUX et partagés.
@@ -550,7 +552,8 @@ export async function importAccount(
 
     for (const meta of ordered) {
       if (!meta.pkField) continue
-      const rows = data[meta.name] ?? []
+      const rows = [...(data[meta.name] ?? [])]
+      if (meta.name === 'MouvementStockCommercial') rows.sort((a, b) => Number(!!a.origineRetourId) - Number(!!b.origineRetourId))
       const map = ensureMap(meta.name)
       let count = 0
       let skip = 0
@@ -568,6 +571,11 @@ export async function importAccount(
           createData.userId = userId
         }
 
+        // Les références polymorphes de stock ne doivent jamais garder un ID numérique de l'instance source.
+        if (['LigneFacture', 'LigneDocumentCommercial', 'MouvementStockCommercial'].includes(meta.name) && MODELES_STOCK_COMMERCIAL[String(row.articleStockType)]) {
+          createData.articleStockId = meta.name === 'MouvementStockCommercial' ? `archive:${row.articleStockId}` : null
+          if (meta.name !== 'MouvementStockCommercial') createData.articleStockType = null
+        }
         // Résolution des FK. Les FK différées (référence en avant / cycle /
         // auto-référence) sont mises à null puis reconnectées en 2e passage.
         const deferredForRow: { fkField: string; targetModel: string; oldValue: unknown }[] = []
@@ -617,6 +625,10 @@ export async function importAccount(
           if (oldPk !== null && oldPk !== undefined) map.set(oldPk, newPk)
           count++
 
+          if (['LigneFacture', 'LigneDocumentCommercial', 'MouvementStockCommercial'].includes(meta.name) && typeof row.articleStockType === 'string' && typeof row.articleStockId === 'string' && MODELES_STOCK_COMMERCIAL[row.articleStockType]) {
+            referencesStock.push({ delegate: meta.delegate, pkField: meta.pkField, newPk, type: row.articleStockType, oldId: row.articleStockId })
+          }
+
           for (const d of deferredForRow) {
             pending.push({
               delegate: meta.delegate,
@@ -658,6 +670,12 @@ export async function importAccount(
         /* ligne disparue / contrainte : on laisse la FK à null (savepoint) */
         await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_patch").catch(() => {})
       }
+    }
+    for (const reference of referencesStock) {
+      const cible = MODELES_STOCK_COMMERCIAL[reference.type]
+      const sourceId = manifest.get(cible)?.pkIsInt ? Number(reference.oldId) : reference.oldId
+      const nouveau = idMap.get(cible)?.get(sourceId)
+      if (nouveau !== undefined) await delegue(tx, reference.delegate).update({ where: { [reference.pkField]: reference.newPk }, data: { articleStockType: reference.type, articleStockId: String(nouveau) } })
     }
     if (patched) warnings.push(`${patched} référence(s) différée(s) reconnectée(s).`)
 

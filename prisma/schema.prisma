@@ -279,6 +279,8 @@ model User {
   adhesionExploitation MembreExploitation? @relation("AdhesionDeMonCompte")
 
   @@map("users")
+  mouvementsStockCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Adhésion d'un compte à l'exploitation d'un AUTRE compte (chantier P1
@@ -1456,6 +1458,9 @@ model Recolte {
   @@map("recoltes")
   temoignagesAvis TemoignageRecolte[]
 
+  stockDisponibleCommercial Float? @map("stock_disponible_commercial")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Irrigations planifiées
@@ -1724,6 +1729,9 @@ model RecolteArbre {
   @@index([parcelleId])
   @@index([numLot])
   @@map("recoltes_arbres")
+  stockDisponibleCommercial Float? @map("stock_disponible_commercial")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Production de bois (élagage, abattage, branchage)
@@ -1768,6 +1776,9 @@ model ProductionBois {
   @@index([parcelleId])
   @@index([numLot])
   @@map("production_bois")
+  stockDisponibleCommercial Float? @map("stock_disponible_commercial")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Opérations sur arbres (taille, greffe, traitement, fertilisation)
@@ -2395,6 +2406,8 @@ model ProductionOeuf {
   @@index([animalId])
   @@index([date])
   @@map("production_oeufs")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Sortie typée d'un lot de ponte. Une production quotidienne constitue le
@@ -2414,6 +2427,8 @@ model MouvementStockOeuf {
   @@index([userId, date])
   @@index([productionId])
   @@map("mouvements_stock_oeufs")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Récoltes des produits de la ruche.
@@ -2443,6 +2458,8 @@ model ProductionRuche {
   @@index([lotId])
   @@index([animalId])
   @@map("productions_ruche")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Sortie physique d'une récolte de la ruche. Les ventes sont liées à leur
@@ -2467,6 +2484,8 @@ model MouvementStockRuche {
   @@index([venteProduitId])
   @@index([userId, operationId])
   @@map("mouvements_stock_ruche")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Ventes de produits (œufs, viande, animaux vivants)
@@ -3242,6 +3261,8 @@ model LotFromage {
   @@unique([userId, numeroLot])
   @@index([userId, dateFabrication])
   @@map("lots_fromage")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 // ============================================================
@@ -3359,6 +3380,8 @@ model MouvementFromage {
   @@index([lotFromageId])
   @@index([venteProduitId])
   @@map("mouvements_fromage")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 // ============================================================
@@ -3539,6 +3562,10 @@ model Facture {
   @@index([date])
   @@index([statut])
   @@map("factures")
+  cleCreationStock String? @map("cle_creation_stock")
+  mouvementsStock MouvementStockCommercial[]
+  @@unique([userId, cleCreationStock])
+
 }
 
 /// Lignes de facture
@@ -3561,6 +3588,10 @@ model LigneFacture {
   @@index([factureId])
   @@index([statutBio])
   @@map("lignes_factures")
+  articleStockType String? @map("article_stock_type")
+  articleStockId String? @map("article_stock_id")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Devis et BL restent hors des écritures comptables jusqu'à la facturation.
@@ -3610,6 +3641,8 @@ model DocumentCommercial {
   @@index([clientId])
   @@index([factureId])
   @@map("documents_commerciaux")
+  mouvementsStock MouvementStockCommercial[]
+
 }
 
 model LigneDocumentCommercial {
@@ -3629,6 +3662,10 @@ model LigneDocumentCommercial {
 
   @@index([documentId])
   @@map("lignes_documents_commerciaux")
+  articleStockType String? @map("article_stock_type")
+  articleStockId String? @map("article_stock_id")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Trace d'une tentative SMTP ; une tentative incertaine ne se rejoue jamais automatiquement.
@@ -4162,6 +4199,8 @@ model ProduitBoutique {
   @@index([statutBio])
   @@index([recolteId])
   @@map("produits_boutique")
+  mouvementsCommerciaux MouvementStockCommercial[]
+
 }
 
 /// Commande passée par un client via la boutique en ligne
@@ -4710,4 +4749,62 @@ model TemoignageRecolte {
   @@index([recolteId])
   @@index([avisId, createdAt])
   @@map("temoignages_recolte")
+}
+
+/// Sorties commerciales et retours, liés au stock réel et à la pièce déclenchante.
+model MouvementStockCommercial {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId String? @map("document_id")
+  document DocumentCommercial? @relation(fields: [documentId], references: [id], onDelete: NoAction)
+  factureId Int? @map("facture_id")
+  facture Facture? @relation(fields: [factureId], references: [id], onDelete: NoAction)
+  ligneDocumentId String? @map("ligne_document_id")
+  ligneDocument LigneDocumentCommercial? @relation(fields: [ligneDocumentId], references: [id], onDelete: NoAction)
+  ligneFactureId Int? @map("ligne_facture_id")
+  ligneFacture LigneFacture? @relation(fields: [ligneFactureId], references: [id], onDelete: NoAction)
+  origineRetourId String? @unique @map("origine_retour_id")
+  origineRetour MouvementStockCommercial? @relation("RetourStockCommercial", fields: [origineRetourId], references: [id], onDelete: NoAction)
+  retour MouvementStockCommercial? @relation("RetourStockCommercial")
+  articleStockType String @map("article_stock_type")
+  articleStockId String @map("article_stock_id")
+  sourceNom String @map("source_nom")
+  unite String
+  quantite Float // positive = sortie ; négative = retour
+  poidsKg Float? @map("poids_kg")
+  stockSuivi Boolean @default(true) @map("stock_suivi")
+  date DateTime @default(now())
+  createdAt DateTime @default(now()) @map("created_at")
+  recolteId Int? @map("recolte_id")
+  recolte Recolte? @relation(fields: [recolteId], references: [id], onDelete: NoAction)
+  fruitId Int? @map("fruit_id")
+  fruit RecolteArbre? @relation(fields: [fruitId], references: [id], onDelete: NoAction)
+  boisId Int? @map("bois_id")
+  bois ProductionBois? @relation(fields: [boisId], references: [id], onDelete: NoAction)
+  produitBoutiqueId Int? @map("produit_boutique_id")
+  produitBoutique ProduitBoutique? @relation(fields: [produitBoutiqueId], references: [id], onDelete: NoAction)
+  ponteId Int? @map("ponte_id")
+  ponte ProductionOeuf? @relation(fields: [ponteId], references: [id], onDelete: NoAction)
+  rucheId Int? @map("ruche_id")
+  ruche ProductionRuche? @relation(fields: [rucheId], references: [id], onDelete: NoAction)
+  fromageId String? @map("fromage_id")
+  fromage LotFromage? @relation(fields: [fromageId], references: [id], onDelete: NoAction)
+  mouvementOeufId String? @map("mouvement_oeuf_id")
+  mouvementOeuf MouvementStockOeuf? @relation(fields: [mouvementOeufId], references: [id], onDelete: NoAction)
+  mouvementRucheId String? @map("mouvement_ruche_id")
+  mouvementRuche MouvementStockRuche? @relation(fields: [mouvementRucheId], references: [id], onDelete: NoAction)
+  mouvementFromageId String? @map("mouvement_fromage_id")
+  mouvementFromage MouvementFromage? @relation(fields: [mouvementFromageId], references: [id], onDelete: NoAction)
+  @@index([userId, date])
+  @@index([documentId])
+  @@index([factureId])
+  @@index([recolteId])
+  @@index([fruitId])
+  @@index([boisId])
+  @@index([produitBoutiqueId])
+  @@index([ponteId])
+  @@index([rucheId])
+  @@index([fromageId])
+  @@map("mouvements_stock_commerciaux")
 }

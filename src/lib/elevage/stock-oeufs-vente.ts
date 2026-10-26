@@ -52,6 +52,7 @@ export async function synchroniserStockOeufsVente(
     unite: string
   },
 ): Promise<number> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${input.userId}`}))`
   const marqueur = marqueurVenteOeufs(input.venteId)
   await tx.mouvementStockOeuf.deleteMany({
     where: {

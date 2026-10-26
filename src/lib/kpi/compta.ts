@@ -218,7 +218,7 @@ export async function chargerVentilationRevenus(userId: string, debut: Date, fin
     }),
     prisma.facture.findMany({
       where: whereFacturesRevenus(userId, debut, fin),
-      select: { id: true, type: true, totalTTC: true, factureOrigineId: true, _count: { select: VENTES_PORTEES } },
+      select: { id: true, type: true, totalTTC: true, factureOrigineId: true, lignes: { select: { articleStockType: true } }, _count: { select: VENTES_PORTEES } },
     }),
   ])
 
@@ -234,7 +234,7 @@ export async function chargerVentilationRevenus(userId: string, debut: Date, fin
   const origines = originesManquantes.length
     ? await prisma.facture.findMany({
         where: { userId, id: { in: originesManquantes } },
-        select: { id: true, _count: { select: VENTES_PORTEES } },
+        select: { id: true, lignes: { select: { articleStockType: true } }, _count: { select: VENTES_PORTEES } },
       })
     : []
 
@@ -250,6 +250,8 @@ export async function chargerVentilationRevenus(userId: string, debut: Date, fin
 
   const moduleParFacture = new Map<number, ModuleCompta | null>()
   for (const f of [...factures, ...origines]) {
+    const modulesStock = [...new Set(f.lignes.filter((l) => l.articleStockType).map((l): ModuleCompta => l.articleStockType === 'recolte' ? 'potager' : ['fruit', 'bois'].includes(l.articleStockType!) ? 'verger' : ['oeufs', 'ruche', 'fromage'].includes(l.articleStockType!) ? 'elevage' : 'autre'))]
+    if (modulesStock.length) { moduleParFacture.set(f.id, modulesStock.length === 1 ? modulesStock[0] : 'autre'); continue }
     moduleParFacture.set(f.id, moduleDesVentesPortees({ ...f._count, recoltes: recoltesParFacture.get(f.id) ?? 0 }))
   }
 

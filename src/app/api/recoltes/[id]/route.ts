@@ -1,3 +1,5 @@
+import { verrouillerRecolteLibre } from '@/lib/commercial/verrou-lot'
+import { ErreurCommerciale } from '@/lib/commercial/regles'
 /**
  * API Routes pour une Récolte spécifique
  * GET /api/recoltes/[id] - Détail d'une recolte
@@ -74,6 +76,8 @@ export async function GET(
     // partagée par un autre compte (revue 2026-10-20).
     return NextResponse.json(masquerReferentielsEmbarques(recolte, session!.user.id))
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('GET /api/recoltes/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération de la récolte' },
@@ -125,6 +129,9 @@ export async function PUT(
         { status: 404 }
       )
     }
+    if (existing.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un bon ou une facture. Préparez un BL pour livrer le reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
+    if (await prisma.produitBoutique.count({ where: { userId: session.user.id, recolteId } })) return NextResponse.json({ error: 'Ce lot est suivi dans le catalogue de la boutique, même hors ligne. Utilisez le produit boutique pour éviter une seconde sortie du même stock.' }, { status: 409 })
+
 
     // QA cmv2r19al — même règle qu'à la création : la date de récolte ne
     // précède pas le début de la culture. Contrôlée seulement quand la date, la
@@ -164,6 +171,7 @@ export async function PUT(
     // Mise à jour + ajustement de l'inventaire si la récolte est en stock
     // (changement de quantité ou d'espèce → le compteur doit suivre).
     const recolte = await prisma.$transaction(async (tx) => {
+      await verrouillerRecolteLibre(tx, session.user.id, recolteId)
       const updated = await tx.recolte.update({
         where: { id: recolteId },
         data,
@@ -182,6 +190,8 @@ export async function PUT(
     invalidateKpi(session!.user.id)
     return NextResponse.json(masquerReferentielsEmbarques(recolte, session!.user.id))
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('PUT /api/recoltes/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour de la récolte' },
@@ -227,6 +237,9 @@ export async function PATCH(
         { status: 404 }
       )
     }
+    if (existing.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un bon ou une facture. Préparez un BL pour livrer le reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
+    if (await prisma.produitBoutique.count({ where: { userId: session.user.id, recolteId } })) return NextResponse.json({ error: 'Ce lot est suivi dans le catalogue de la boutique, même hors ligne. Utilisez le produit boutique pour éviter une seconde sortie du même stock.' }, { status: 409 })
+
 
     const body = await request.json()
     const userId = session!.user.id
@@ -302,13 +315,13 @@ export async function PATCH(
     // « vendue » ici en plus créerait une double vente de la même marchandise.
     if (body.statut === 'vendu' && existing.statut !== 'vendu') {
       const produitBoutique = await prisma.produitBoutique.findFirst({
-        where: { recolteId, actif: true, userId },
+        where: { recolteId, userId },
         select: { id: true, nom: true },
       })
       if (produitBoutique) {
         return NextResponse.json(
           {
-            error: `Cette récolte est publiée en boutique (« ${produitBoutique.nom} »). Retirez-la de la boutique ou vendez-la via une commande boutique.`,
+            error: `Cette récolte est publiée en boutique (« ${produitBoutique.nom} »). Utilisez ce produit via une commande, un BL ou une facture ; le désactiver ne libère pas le lot.`,
           },
           { status: 409 }
         )
@@ -353,6 +366,7 @@ export async function PATCH(
 
     // Transaction atomique : facture + update recolte + reliquat + inventaire
     const recolte = await prisma.$transaction(async (tx) => {
+      await verrouillerRecolteLibre(tx, session.user.id, recolteId)
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
         const totalHT = body.prixTotal / 1.055
         const totalTVA = body.prixTotal - totalHT
@@ -462,6 +476,8 @@ export async function PATCH(
     invalidateKpi(userId)
     return NextResponse.json(masquerReferentielsEmbarques(recolte, userId))
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('PATCH /api/recoltes/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour de la récolte' },
@@ -503,6 +519,9 @@ export async function DELETE(
         { status: 404 }
       )
     }
+    if (recolte.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un bon ou une facture. Préparez un BL pour livrer le reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
+    if (await prisma.produitBoutique.count({ where: { userId: session.user.id, recolteId } })) return NextResponse.json({ error: 'Ce lot est suivi dans le catalogue de la boutique, même hors ligne. Utilisez le produit boutique pour éviter une seconde sortie du même stock.' }, { status: 409 })
+
 
     // Supprimer une récolte facturée laisserait une facture orpheline comptée
     // dans KPI/TVA/FEC : la facture doit être annulée (ou couverte par un avoir).
@@ -522,13 +541,16 @@ export async function DELETE(
 
     // Refonte stock 2026-07 : supprimer la récolte suffit — calculerStocksNet
     // ne comptera plus sa quantité (plus de compteur inventaire à décrémenter).
-    await prisma.recolte.delete({
-      where: { id: recolteId },
+    await prisma.$transaction(async (tx) => {
+      await verrouillerRecolteLibre(tx, session.user.id, recolteId)
+      await tx.recolte.delete({ where: { id: recolteId } })
     })
 
     invalidateKpi(session!.user.id)
     return NextResponse.json({ success: true, deleted: recolteId })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('DELETE /api/recoltes/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression de la récolte' },

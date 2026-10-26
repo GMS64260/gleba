@@ -28,10 +28,12 @@ vi.mock('@/lib/facture-utils', () => ({
 vi.mock('@/lib/prisma', () => ({
   default: {
     facture: { findFirst: mocks.factureFindFirst },
+    mouvementStockCommercial: { count: async () => 0 },
     client: { findMany: mocks.clientFindMany, findFirst: mocks.clientFindFirst },
     $transaction: (callback: (tx: unknown) => unknown) =>
       callback({
-        facture: { update: mocks.txFactureUpdate },
+        facture: { update: mocks.txFactureUpdate, findFirstOrThrow: async () => ({ ...(await mocks.factureFindFirst()), lignes: [] }) },
+        $queryRaw: async () => [{ id: 5 }],
         venteProduit: { updateMany: mocks.txVenteProduitUpdateMany },
       }),
   },
@@ -208,7 +210,7 @@ describe('POST /api/comptabilite/factures — rattachement à la fiche client', 
 
   it('fiche exonérée de TVA : les montants enregistrés sont ceux que l’écran affiche (lignes à 0 %, HT = TTC)', async () => {
     const reel = await vi.importActual<typeof import('@/lib/facture-utils')>('@/lib/facture-utils')
-    const create = vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => data)
+    const create = vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...data, lignes: (data.lignes as { create: unknown[] }).create }))
     const txReel = {
       $executeRawUnsafe: vi.fn().mockResolvedValue(1),
       $queryRawUnsafe: vi.fn().mockImplementation(async (sql: string) =>

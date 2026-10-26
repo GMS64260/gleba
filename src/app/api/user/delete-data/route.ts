@@ -24,6 +24,8 @@ export async function DELETE() {
     const refusDemo = await refusSiCompteDemo(userId, MESSAGES_REFUS_DEMO.viderDonnees)
     if (refusDemo) return refusDemo
 
+    if (await prisma.mouvementStockCommercial.count({ where: { userId } })) return NextResponse.json({ error: 'Ces lots sont liés à des bons ou factures. Ils doivent être conservés avec leurs documents commerciaux ; l’effacement partiel est impossible.' }, { status: 409 })
+
     // Supprimer toutes les données utilisateur
     // Ordre important pour respecter les contraintes de clés étrangères
     const results = await prisma.$transaction(async (tx) => {

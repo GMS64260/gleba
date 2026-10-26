@@ -4,6 +4,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
 import type { UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, arrondirQuantites, type QuantiteParUnite } from '@/lib/recolte/quantites'
@@ -58,6 +59,7 @@ export interface StockNet {
     inventaire: number
     recoltes: number
     consommations: number
+    sortiesCommerciales?: number
   }
   /**
    * Récoltes en stock enregistrées dans une AUTRE unité que l'unité courante.
@@ -69,14 +71,14 @@ export interface StockNet {
 }
 
 /**
- * Récoltes mises en vente sur la boutique (produit actif lié à la récolte) :
+ * Récoltes mises en vente sur la boutique (produit lié à la récolte, y compris hors ligne) :
  * leur stock est suivi par `ProduitBoutique.stockDispo`, le stock de l'espèce
  * ne les compte pas (audit 2026-07 #51). Une seule définition pour le calcul
  * du stock et de sa comparaison avec les lots.
  */
-export async function chargerIdsRecoltesEnBoutique(userId: string): Promise<number[]> {
-  const produitsBoutique = await prisma.produitBoutique.findMany({
-    where: { userId, actif: true, recolteId: { not: null } },
+export async function chargerIdsRecoltesEnBoutique(userId: string, db: Prisma.TransactionClient = prisma): Promise<number[]> {
+  const produitsBoutique = await db.produitBoutique.findMany({
+    where: { userId, recolteId: { not: null } },
     select: { recolteId: true },
   })
   return produitsBoutique
@@ -90,11 +92,12 @@ export async function chargerIdsRecoltesEnBoutique(userId: string): Promise<numb
  */
 export async function calculerStocksNet(
   userId: string,
-  especeId?: string
+  especeId?: string,
+  db: Prisma.TransactionClient = prisma
 ): Promise<Record<string, StockNet>> {
 
   // Récupérer les stocks per-user pour les especes concernées
-  const userStocks = await prisma.userStockEspece.findMany({
+  const userStocks = await db.userStockEspece.findMany({
     where: {
       userId,
       ...(especeId && { especeId }),
@@ -111,7 +114,7 @@ export async function calculerStocksNet(
   // `especeId` et `notIn` portent sur la même colonne : les combiner dans un
   // seul filtre, sinon le second écrasait le premier et un calcul demandé pour
   // UNE espèce parcourait toutes celles du compte (deux requêtes chacune).
-  const additionalEspeces = await prisma.espece.findMany({
+  const additionalEspeces = await db.espece.findMany({
     where: {
       id: especeId ? { equals: especeId, notIn: especeIds } : { notIn: especeIds },
       OR: [
@@ -145,7 +148,7 @@ export async function calculerStocksNet(
   // suivi par ProduitBoutique.stockDispo. On l'EXCLUT du stock physique loose
   // pour ne pas la compter deux fois (avant, elle restait « en stock » même
   // après avoir été vendue en ligne).
-  const recolteIdsEnBoutique = await chargerIdsRecoltesEnBoutique(userId)
+  const recolteIdsEnBoutique = await chargerIdsRecoltesEnBoutique(userId, db)
 
   const result: Record<string, StockNet> = {}
 
@@ -162,7 +165,7 @@ export async function calculerStocksNet(
     const baseline = espece.inventaire || 0
 
     // Récoltes encore en stock, postérieures au comptage, HORS boutique
-    const recoltes = await prisma.recolte.findMany({
+    const recoltes = await db.recolte.findMany({
       where: {
         especeId: espece.id,
         userId,
@@ -184,7 +187,7 @@ export async function calculerStocksNet(
     delete autresUnites[uniteEspece]
 
     // Consommations postérieures au comptage
-    const consommations = await prisma.consommation.findMany({
+    const consommations = await db.consommation.findMany({
       where: {
         especeId: espece.id,
         userId,
@@ -192,18 +195,25 @@ export async function calculerStocksNet(
       },
       select: { quantite: true },
     })
+    const sorties = await db.mouvementStockCommercial.findMany({
+      where: { userId, date: { gt: dateRef }, recolte: { especeId: espece.id }, ...(recolteIdsEnBoutique.length ? { recolteId: { notIn: recolteIdsEnBoutique } } : {}) },
+      select: { quantite: true, unite: true },
+    })
+    const totalSorties = sorties.filter(m => m.unite === uniteEspece).reduce((sum, m) => sum + m.quantite, 0)
+    for (const m of sorties.filter(m => m.unite !== uniteEspece)) ajouterQuantite(autresUnites, m.unite as UniteQuantite, -m.quantite)
     const totalConso = consommations.reduce((sum, c) => sum + c.quantite, 0)
 
     result[espece.id] = {
       // QA cmswu8uva — arrondi métier : la somme flottante affichait
       // « 10.799999999999999 kg » à l'écran Stocks > Récoltes.
-      stockNet: arrondiQuantiteStock(baseline + totalRecoltes - totalConso),
+      stockNet: arrondiQuantiteStock(baseline + totalRecoltes - totalConso - totalSorties),
       unite: uniteEspece,
       dateInventaire: espece.dateInventaire,
       detail: {
         inventaire: baseline,
         recoltes: totalRecoltes,
         consommations: totalConso,
+        sortiesCommerciales: totalSorties,
       },
       autresUnites: arrondirQuantites(autresUnites),
     }
@@ -236,7 +246,7 @@ export async function chargerComparaisonsStockLots(
   const [lots, vendus, idsBoutique] = await Promise.all([
     prisma.recolte.findMany({
       where: { userId, statut: 'en_stock', especeId: { in: especeIds } },
-      select: { id: true, especeId: true, date: true, quantite: true, unite: true },
+      select: { id: true, especeId: true, date: true, quantite: true, unite: true, stockDisponibleCommercial: true },
     }),
     // Seule sortie de lot datée : la vente. Un lot vendu après le comptage de
     // son espèce, mais daté avant lui, reste compté par Gestion des stocks.
@@ -258,7 +268,7 @@ export async function chargerComparaisonsStockLots(
   const lotsParEspece = new Map<string, LotEnStock[]>()
   for (const lot of lots) {
     const liste = lotsParEspece.get(lot.especeId) ?? []
-    liste.push({ date: lot.date, quantite: lot.quantite, unite: lot.unite, enBoutique: enBoutique.has(lot.id) })
+    liste.push({ date: lot.date, quantite: lot.stockDisponibleCommercial ?? lot.quantite, unite: lot.unite, enBoutique: enBoutique.has(lot.id) })
     lotsParEspece.set(lot.especeId, liste)
   }
   const vendusParEspece = new Map<string, LotVendu[]>()
