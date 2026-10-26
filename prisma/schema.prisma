@@ -165,6 +165,8 @@ model User {
   depensesManuelles DepenseManuelle[]
   clients           Client[]
   facturesEmises    Facture[]
+  documentsCommerciaux DocumentCommercial[]
+  envoisCommerciaux EnvoiCommercial[]
 
   // Relations stocks per-user (multi-tenancy)
   userStockVarietes     UserStockVariete[]
@@ -3462,6 +3464,7 @@ model Client {
   // Relations
   ventesManuelles VenteManuelle[]
   factures        Facture[]
+  documentsCommerciaux DocumentCommercial[]
 
   @@index([userId])
   @@index([nom])
@@ -3527,6 +3530,8 @@ model Facture {
   recoltesArbres    RecolteArbre[]     @relation("RecolteArbreFacture")
   productionsBois   ProductionBois[]   @relation("ProductionBoisFacture")
   commandesBoutique CommandeBoutique[] @relation("CommandeFacture")
+  documentsCommerciaux DocumentCommercial[]
+  envoisCommerciaux EnvoiCommercial[]
 
   @@unique([userId, numero])
   @@index([userId])
@@ -3556,6 +3561,95 @@ model LigneFacture {
   @@index([factureId])
   @@index([statutBio])
   @@map("lignes_factures")
+}
+
+/// Devis et BL restent hors des écritures comptables jusqu'à la facturation.
+model DocumentCommercial {
+  id                 String   @id @default(cuid())
+  userId             String   @map("user_id")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type               String // devis | livraison
+  numero             String
+  cleCreation        String   @map("cle_creation")
+  statut             String   @default("brouillon")
+  date               DateTime @default(now())
+  dateValidite       DateTime? @map("date_validite")
+  dateLivraison      DateTime? @map("date_livraison")
+  dateAcceptation    DateTime? @map("date_acceptation")
+  clientId           Int?     @map("client_id")
+  client             Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientNom          String   @map("client_nom")
+  clientAdresse      String?  @map("client_adresse")
+  clientEmail        String?  @map("client_email")
+  clientSiret        String?  @map("client_siret")
+  clientSiren        String?  @map("client_siren")
+  clientTvaIntra     String?  @map("client_tva_intra")
+  clientExonere      Boolean  @default(false) @map("client_exonere")
+  objet              String
+  notes              String?
+  categorieOperation String   @default("biens") @map("categorie_operation")
+  adresseLivraison   String?  @map("adresse_livraison")
+  emetteurSnapshot   Json     @map("emetteur_snapshot")
+  totalHT            Float    @map("total_ht")
+  totalTVA           Float    @map("total_tva")
+  totalTTC           Float    @map("total_ttc")
+  // Une conversion complète au plus ; plusieurs BL peuvent porter la même facture.
+  devisOrigineId     String?  @unique @map("devis_origine_id")
+  devisOrigine       DocumentCommercial? @relation("DevisLivraison", fields: [devisOrigineId], references: [id], onDelete: Restrict)
+  bonLivraison       DocumentCommercial? @relation("DevisLivraison")
+  factureId          Int?     @map("facture_id")
+  facture            Facture? @relation(fields: [factureId], references: [id], onDelete: Restrict)
+  lignes             LigneDocumentCommercial[]
+  envois             EnvoiCommercial[]
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, numero])
+  @@index([userId, type, date])
+  @@unique([userId, cleCreation])
+  @@index([clientId])
+  @@index([factureId])
+  @@map("documents_commerciaux")
+}
+
+model LigneDocumentCommercial {
+  id           String @id @default(cuid())
+  documentId   String @map("document_id")
+  document     DocumentCommercial @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  ordre        Int
+  description  String
+  quantite     Float
+  unite        String
+  prixUnitaire Float @map("prix_unitaire")
+  tauxTVA      Float @map("taux_tva")
+  montantHT    Float @map("montant_ht")
+  montantTVA   Float @map("montant_tva")
+  montantTTC   Float @map("montant_ttc")
+  statutBio    String? @map("statut_bio")
+
+  @@index([documentId])
+  @@map("lignes_documents_commerciaux")
+}
+
+/// Trace d'une tentative SMTP ; une tentative incertaine ne se rejoue jamais automatiquement.
+model EnvoiCommercial {
+  id           String @id @default(cuid())
+  userId       String @map("user_id")
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cle          String
+  documentId   String? @map("document_id")
+  document     DocumentCommercial? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  factureId    Int? @map("facture_id")
+  facture      Facture? @relation(fields: [factureId], references: [id], onDelete: Cascade)
+  destinataire String
+  statut       String @default("en_cours")
+  messageId    String? @map("message_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  envoyeAt     DateTime? @map("envoye_at")
+
+  @@unique([userId, cle])
+  @@index([userId, documentId, factureId])
+  @@map("envois_commerciaux")
 }
 
 // ============================================================

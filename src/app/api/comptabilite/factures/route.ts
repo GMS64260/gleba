@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
       include: {
         client: { select: { id: true, nom: true } },
         lignes: true,
+        documentsCommerciaux: { where: { userId }, select: { id: true, numero: true, type: true } },
       },
     })
 

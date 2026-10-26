@@ -33,6 +33,7 @@ async function main() {
     ["Boutique", () => dm(prisma.boutique.deleteMany({ where: { userId } }))],
 
     // ── Comptabilité ────────────────────────────────────────────────────
+    ["DocumentCommercial", () => dm(prisma.documentCommercial.deleteMany({ where: { userId } }))],
     ["LigneFacture", () => dm(prisma.ligneFacture.deleteMany({ where: { facture: { userId } } }))],
     ["Facture", () => dm(prisma.facture.deleteMany({ where: { userId } }))],
     // Les séquences suivent les factures : une séquence orpheline en retard sur

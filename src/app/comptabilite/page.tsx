@@ -66,8 +66,8 @@ const modulesCompta = [
     bgColor: "bg-blue-50",
   },
   {
-    title: "Factures",
-    description: "Génération, avoirs, impayées",
+    title: "Devis et facturation",
+    description: "Devis, livraisons, factures et avoirs",
     href: "/comptabilite/factures",
     icon: FileText,
     color: "text-amber-600",
