@@ -7,7 +7,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarDays, Droplets, Leaf, MapPin, Ruler, Sprout, TreeDeciduous } from "lucide-react";
 
-import { MarketingShell } from "@/components/seo/MarketingShell";
+import { ReferentielShell } from "@/components/referentiel/ReferentielShell";
 import { AjouterPhoto } from "@/components/encyclopedie/AjouterPhoto";
 import { ModifierItem, CorrectionsItem } from "@/components/encyclopedie/CorrectionItem";
 import { ancreCorrection } from "@/components/encyclopedie/correction-liens";
@@ -177,7 +177,7 @@ export default async function FicheVegetalPage({ params }: PageProps) {
   }
 
   return (
-    <MarketingShell>
+    <ReferentielShell>
       <article className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 sm:pt-12">
         <Link href="/referentiel" className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700 hover:text-emerald-900"><ArrowLeft className="h-4 w-4" /> Retour au référentiel</Link>
         <header id={ancreCorrection("ESPECE", espece.id)} className="mt-6 scroll-mt-8 rounded-xl border border-lin bg-craie p-6 sm:p-9">
@@ -245,7 +245,7 @@ export default async function FicheVegetalPage({ params }: PageProps) {
         </FicheCommunaute>
         </Suspense>
       </article>
-    </MarketingShell>
+    </ReferentielShell>
   );
 }
 

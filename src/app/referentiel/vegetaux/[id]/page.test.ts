@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { createElement } from "react"
+import { createElement, type ReactNode } from "react"
 import { renderToString } from "react-dom/server"
 import { SessionProvider } from "next-auth/react"
 
@@ -17,6 +17,11 @@ vi.mock("@/lib/encyclopedie/service", () => ({
   ErreurEncyclopedie: class extends Error { status: number; constructor(status: number, message: string) { super(message); this.status = status } },
 }))
 vi.mock("@/lib/prisma", () => ({ default: { espece: { findFirst: mocks.especeFindFirst } } }))
+// React 18 renderToString ne déroule pas les Server Components asynchrones.
+// Les branches de navigation sont vérifiées dans ReferentielShell.test.ts.
+vi.mock("@/components/referentiel/ReferentielShell", () => ({
+  ReferentielShell: ({ children }: { children: ReactNode }) => children,
+}))
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("notFound")
