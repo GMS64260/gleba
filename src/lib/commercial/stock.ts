@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client'
 import { chargerCatalogueStock } from './catalogue-stock'
 import { cleArticle, stockEstDenombrable, type ReferenceArticleStock } from './stock-types'
 import { ErreurCommerciale } from './regles'
+import { livraisonFuture, finJourLivraison } from './dates-stock'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 import { sortirStockRuche, verrouillerStockRuche } from '@/lib/elevage/stock-ruche'
 import type { ProduitRuche, UniteProduitRuche } from '@/lib/elevage/produits-ruche'
@@ -48,12 +49,11 @@ export async function verrouillerStocksDesLignes(tx: Tx, userId: string, liees: 
 export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Ligne[], origine: Origine) {
   const liees = lignes.filter((l) => l.articleStockType || l.articleStockId)
   if (!liees.length) return
-  const finJour = new Date(); finJour.setUTCHours(23, 59, 59, 999)
-  if (origine.date > finJour) throw new ErreurCommerciale('Une sortie de stock doit correspondre à une livraison réelle, aujourd’hui ou avant. Préparez un devis ou un BL pour une livraison future.', 400)
+  if (livraisonFuture(origine.date)) throw new ErreurCommerciale('Une sortie de stock doit correspondre à une livraison réelle, aujourd’hui ou avant. Préparez un devis ou un BL pour une livraison future.', 400)
   await verrouillerStocksDesLignes(tx, userId, liees)
   const deja = await tx.mouvementStockCommercial.count({ where: { userId, ...(origine.documentId ? { documentId: origine.documentId } : { factureId: origine.factureId }), origineRetourId: null } })
   if (deja) return // reprise d'une même livraison / émission
-  const dateLimite = new Date(origine.date); dateLimite.setUTCHours(23, 59, 59, 999)
+  const dateLimite = finJourLivraison(origine.date)
   const catalogue = new Map((await chargerCatalogueStock(userId, tx)).map((a) => [cleArticle(a), a]))
   for (const l of liees) {
     const a = catalogue.get(`${l.articleStockType}:${l.articleStockId}`)
