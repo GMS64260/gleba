@@ -2388,8 +2388,8 @@ function JardinContent() {
             )}
           </div>
 
-          <div className="flex w-full flex-wrap items-center gap-2 xl:hidden">
-            <div className="flex h-10 items-center rounded-md border bg-white">
+          <div className="flex w-full flex-wrap items-center gap-1 xl:hidden [&_button]:min-h-11 [&_button]:min-w-11 [&_a]:min-h-11 [&_a]:min-w-11">
+            <div className="flex min-h-11 items-center rounded-md border bg-white">
               <Button
                 variant="ghost"
                 size="icon"
@@ -2399,7 +2399,7 @@ function JardinContent() {
               >
                 <ZoomOut className="h-4 w-4" />
               </Button>
-              <span className="w-14 text-center text-xs tabular-nums">{scale}px/m</span>
+              <span className="w-12 text-center text-xs tabular-nums">{scale}px/m</span>
               <Button
                 variant="ghost"
                 size="icon"
