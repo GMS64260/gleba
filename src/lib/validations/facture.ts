@@ -2,6 +2,7 @@
  * POSTREVIEW — Validation Zod facture (Sprint 3 review : bloquant validation manquante).
  */
 import { z } from "zod"
+import { champsArticleStock } from "@/lib/commercial/stock-types"
 import { caseInsensitiveEnum } from "./case-insensitive-enum"
 
 const TAUX_TVA = [0, 2.1, 5.5, 10, 20] as const
@@ -27,6 +28,7 @@ export const mentionsFactureSchema = z.object({
 
 const ligneSchema = z
   .object({
+    ...champsArticleStock,
     description: z.string().min(1, "Description requise").max(500),
     quantite: z.coerce.number().positive("La quantité doit être strictement positive").default(1),
     unite: z.string().max(20).optional().default("unité"),
@@ -58,6 +60,7 @@ export const createFactureSchema = z
   .object({
     // DEV1 T1 — Résilient à la casse.
     type: caseInsensitiveEnum(["facture", "avoir", "acompte"] as const).optional().default("facture"),
+    cleCreationStock: z.string().uuid().optional(),
     clientId: z.coerce.number().int().positive().nullable().optional(),
     clientNom: z.string().max(200).optional(),
     clientAdresse: z.string().max(500).nullable().optional(),

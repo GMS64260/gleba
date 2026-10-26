@@ -17,6 +17,8 @@ import { factureSansTaxe } from '@/lib/territoires'
 type PrismaTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
 export interface LigneFactureInput {
+  articleStockType?: string | null
+  articleStockId?: string | null
   description: string
   quantite: number
   unite: string
@@ -29,6 +31,7 @@ export interface LigneFactureInput {
 }
 
 export interface CreerFactureParams {
+  cleCreationStock?: string | null
   userId: string
   type: string // 'facture' | 'avoir' | 'acompte'
   clientId?: number | null
@@ -455,6 +458,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       villeLivraison: params.villeLivraison || null,
       paysLivraison: params.paysLivraison || null,
       notes: params.notes || null,
+      cleCreationStock: params.cleCreationStock || null,
       lignes: {
         create: lignes.map((l, index) => ({
           ordre: index,
@@ -467,6 +471,8 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
           montantTVA: l.montantTVA,
           montantTTC: l.montantTTC,
           statutBio: l.statutBio ?? null,
+          articleStockType: l.articleStockType ?? null,
+          articleStockId: l.articleStockId ?? null,
         })),
       },
     },

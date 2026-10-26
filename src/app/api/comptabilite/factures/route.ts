@@ -1,3 +1,5 @@
+import { ErreurCommerciale } from '@/lib/commercial/regles'
+import { verifierLignesStock, verrouillerStocksDesLignes, sortirStockCommercial } from '@/lib/commercial/stock'
 /**
  * API Factures
  * GET/POST/PATCH/DELETE /api/comptabilite/factures
@@ -39,6 +41,7 @@ export async function GET(request: NextRequest) {
       include: {
         client: { select: { id: true, nom: true } },
         lignes: true,
+        mouvementsStock: { select: { quantite: true } },
         documentsCommerciaux: { where: { userId }, select: { id: true, numero: true, type: true } },
       },
     })
@@ -86,6 +89,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data, stats })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/comptabilite/factures error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
@@ -193,6 +197,16 @@ export async function POST(request: NextRequest) {
     // + numéro facture + création. Le contrôle effectué plus haut améliore le
     // message rapide, celui-ci garantit l'invariant sous concurrence.
     const facture = await prisma.$transaction(async (tx) => {
+      if (d.lignes.some((l) => l.articleStockType || l.articleStockId)) {
+        if (categorieOperation === 'services') throw new ErreurCommerciale('Choisissez Biens ou Biens et services pour les produits liés au stock.', 400)
+        if (d.type !== 'facture' || d.statut === 'annulee') throw new ErreurCommerciale('Les stocks se lient à une facture de vente, pas à un avoir ou un acompte.', 400)
+        if (!d.cleCreationStock) throw new ErreurCommerciale('Actualisez le formulaire avant de facturer ces stocks.', 400)
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:facture-stock:${userId}:${d.cleCreationStock}`}))`
+        const existante = await tx.facture.findUnique({ where: { userId_cleCreationStock: { userId, cleCreationStock: d.cleCreationStock } }, include: { lignes: true, client: true } })
+        if (existante) return existante
+      }
+      const lignesValidees = await verifierLignesStock(tx, userId, d.lignes)
+
       if (d.type === 'avoir' && d.factureOrigineId) {
         const locked = await tx.$queryRaw<Array<{ id: number; total_ttc: number }>>`
           SELECT id, total_ttc
@@ -209,7 +223,9 @@ export async function POST(request: NextRequest) {
           throw new Error('AVOIR_INVALIDE:Le total des avoirs dépasserait le montant de la facture d’origine')
         }
       }
-      return creerFacture(tx, {
+      await verrouillerStocksDesLignes(tx, userId, lignesValidees)
+      const creee = await creerFacture(tx, {
+        cleCreationStock: d.cleCreationStock,
         userId,
         type: d.type,
         clientId,
@@ -232,7 +248,7 @@ export async function POST(request: NextRequest) {
         codePostalLivraison: d.codePostalLivraison || null,
         villeLivraison: d.villeLivraison || null,
         paysLivraison: d.paysLivraison || null,
-        lignes: d.lignes.map((l) => ({
+        lignes: lignesValidees.map((l) => ({
           description: l.description,
           quantite: l.quantite,
           unite: l.unite,
@@ -242,13 +258,17 @@ export async function POST(request: NextRequest) {
           montantTVA: l.montantTVA,
           montantTTC: l.montantTTC,
           statutBio: l.statutBio ?? null,
+          articleStockType: l.articleStockType, articleStockId: l.articleStockId,
         })),
       })
-    })
+      if (d.type === 'facture' && ['emise', 'payee'].includes(d.statut)) await sortirStockCommercial(tx, userId, creee.lignes, { factureId: creee.id, numero: creee.numero, date: d.dateLivraison ?? new Date() })
+      return creee
+    }, { timeout: 30_000 })
 
     invalidateKpi(session.user.id)
     return NextResponse.json({ data: facture }, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof Error && error.message.startsWith('AVOIR_INVALIDE:')) {
       return NextResponse.json({ error: error.message.slice('AVOIR_INVALIDE:'.length) }, { status: 409 })
     }
@@ -302,6 +322,7 @@ export async function PATCH(request: NextRequest) {
           { status: 409 }
         )
       }
+      if (updateData.statut === 'annulee' && await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, factureId: existing.id } })) return NextResponse.json({ error: 'Cette facture correspond à une livraison de stock. Conservez-la et émettez un avoir pour la régulariser. Le retour physique se déclare avec Retour en stock.' }, { status: 409 })
       if (existing.statut === 'payee' && updateData.statut === 'annulee') {
         const avoir = await prisma.facture.findFirst({
           where: { userId: session.user.id, type: 'avoir', factureOrigineId: existing.id, statut: { not: 'annulee' } },
@@ -380,6 +401,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     const facture = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM factures WHERE id = ${existing.id} AND user_id = ${session.user.id} FOR UPDATE`
+      const courante = await tx.facture.findFirstOrThrow({ where: { id: existing.id, userId: session.user.id }, include: { lignes: true, client: true } })
+      if (courante.statut !== existing.statut) {
+        if (courante.statut === updateData.statut) return courante
+        throw new ErreurCommerciale('Cette facture a changé. Actualisez la liste.')
+      }
       const data: Prisma.FactureUncheckedUpdateInput = { ...(mentions as Prisma.FactureUncheckedUpdateInput) }
       if (updateData.statut !== undefined) {
         data.statut = updateData.statut
@@ -395,11 +422,13 @@ export async function PATCH(request: NextRequest) {
       if (isEmission) {
         // Import dynamique pour rester compatible avec les autres branches PATCH
         const { reserverProchainNumeroForEmission, snapshotEmetteurForEmission } = await import('@/lib/facture-utils')
+        await verrouillerStocksDesLignes(tx, session.user.id, courante.lignes)
         const dateEmission = new Date()
         const exercice = dateEmission.getFullYear()
         const typeSeq = existing.type === 'avoir' ? 'AVOIR' : 'FACTURE'
         const { numero } = await reserverProchainNumeroForEmission(tx, session.user.id, exercice, typeSeq)
         data.numero = numero
+        if (courante.type === 'facture') await sortirStockCommercial(tx, session.user.id, courante.lignes, { factureId: courante.id, numero, date: courante.dateLivraison ?? dateEmission })
         data.date = dateEmission
         // Json? : `null` (pas d'exploitation) est passé tel quel, comme avant.
         data.emetteurSnapshot = (await snapshotEmetteurForEmission(tx, session.user.id)) as unknown as Prisma.InputJsonValue
@@ -434,6 +463,7 @@ export async function PATCH(request: NextRequest) {
     invalidateKpi(session.user.id)
     return NextResponse.json({ data: facture })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/comptabilite/factures error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la modification', details: "Erreur interne du serveur" },
@@ -470,6 +500,7 @@ export async function DELETE(request: NextRequest) {
       invalidateKpi(session.user.id)
       return NextResponse.json({ success: true, action: 'deleted' })
     }
+    if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, factureId: existing.id } })) return NextResponse.json({ error: 'Cette facture correspond à une livraison de stock. Conservez-la et émettez un avoir pour la régulariser. Le retour physique se déclare avec Retour en stock.' }, { status: 409 })
     if (existing.statut === 'payee') {
       return NextResponse.json(
         {
@@ -525,6 +556,7 @@ export async function DELETE(request: NextRequest) {
     invalidateKpi(session.user.id)
     return NextResponse.json({ success: true, action: 'cancelled' })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/comptabilite/factures error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de l\'annulation', details: "Erreur interne du serveur" },

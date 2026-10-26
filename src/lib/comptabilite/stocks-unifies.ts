@@ -11,6 +11,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { disponibleCommercial, quantiteBois } from '@/lib/commercial/stock-types'
 import { calculerStockOeufs, OEUFS_PAR_UNITE } from '@/lib/stocks-helpers'
 import { arrondiQuantiteStock, computeStocksTotaux, moyennePrix } from '@/lib/stocks/agregation'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
@@ -117,7 +118,7 @@ export async function computeStocksUnifies(userId: string) {
 
     // Récoltes potager en stock
     prisma.recolte.findMany({
-      where: { userId, statut: 'en_stock' },
+      where: { userId, statut: 'en_stock', produitsBoutique: { none: {} } },
       include: {
         // userId + uniteRendement : la règle de valorisation distingue la
         // fiche d'une espèce personnelle (dans son unité) du catalogue (€/kg).
@@ -361,17 +362,19 @@ export async function computeStocksUnifies(userId: string) {
     valorisations: ValorisationLot[]
   }>()
   recoltesEnStock.forEach(r => {
+    const quantite = disponibleCommercial(r)
+    if (quantite <= 0) return
     const unite = uniteDuLot(r.unite)
     const key = `${r.especeId}::${unite}`
     const existing = recoltesParEspeceUnite.get(key)
     const valorisation = valoriserLot(
-      { acteurId: userId, especeId: r.especeId, unite, quantite: r.quantite, prixLot: r.prixKg, espece: r.espece },
+      { acteurId: userId, especeId: r.especeId, unite, quantite, prixLot: r.prixKg, espece: r.espece },
       prixVentesRecoltes,
     )
     const val = valorisation.valeur ?? 0
     const aUnPrix = valorisation.source !== 'aucune'
     if (existing) {
-      existing.total += r.quantite
+      existing.total += quantite
       existing.valeur += val
       existing.hasPrix = existing.hasPrix || aUnPrix
       existing.valorisations.push(valorisation)
@@ -379,7 +382,7 @@ export async function computeStocksUnifies(userId: string) {
       recoltesParEspeceUnite.set(key, {
         nom: r.espece?.nom ?? r.espece?.id ?? r.especeId,
         unite,
-        total: r.quantite,
+        total: quantite,
         valeur: val,
         hasPrix: aUnPrix,
         valorisations: [valorisation],
@@ -599,6 +602,8 @@ export async function computeStocksUnifies(userId: string) {
   // BUG #7 : fallback sur prix moyen €/kg des ventes récentes par arbre.
   const fruitsParArbre = new Map<number, { nom: string; totalKg: number; valeur: number; hasPrix: boolean }>()
   fruitsEnStock.forEach(r => {
+    const quantite = disponibleCommercial(r)
+    if (quantite <= 0) return
     const key = r.arbreId
     const existing = fruitsParArbre.get(key)
     // QA 2026-05-15 — Bug #12 : fallback barème par espèce d'arbre
@@ -608,16 +613,16 @@ export async function computeStocksUnifies(userId: string) {
       ?? moyennePrix(prixParArbre.get(r.arbreId) ?? [])
       ?? prixReferenceKg(r.arbre?.espece ?? null)
       ?? 0
-    const val = r.quantite * prixFallback
+    const val = quantite * prixFallback
     const hasPrix = prixFallback > 0
     if (existing) {
-      existing.totalKg += r.quantite
+      existing.totalKg += quantite
       existing.valeur += val
       existing.hasPrix = existing.hasPrix || hasPrix
     } else {
       fruitsParArbre.set(key, {
         nom: r.arbre?.nom || `Arbre #${key}`,
-        totalKg: r.quantite,
+        totalKg: quantite,
         valeur: val,
         hasPrix,
       })
@@ -639,19 +644,24 @@ export async function computeStocksUnifies(userId: string) {
 
   // Bois en stock
   boisEnStock.forEach(b => {
-    const volume = b.volumeM3 || 0
+    const q = quantiteBois(b)
+    const volume = b.stockDisponibleCommercial ?? q.quantite
+    if (volume <= 0) return
     stocks.push({
       id: `bois-${b.id}`,
       module: 'verger',
       categorie: 'Bois en stock',
       nom: b.arbre?.nom || `Arbre #${b.arbreId}`,
       stock: volume,
-      unite: 'm³',
+      unite: q.unite,
       stockMin: null,
       alerteBas: false,
-      valeur: b.prixVente || null,
+      valeur: b.prixVente && q.quantite > 0 ? b.prixVente * volume / q.quantite : null,
     })
   })
+
+  const produitsBoutique = await prisma.produitBoutique.findMany({ where: { userId, stockDispo: { gt: 0 } } })
+  for (const p of produitsBoutique) stocks.push({ id: `boutique-${p.id}`, module: p.recolteId || ['legumes', 'fleurs'].includes(p.categorie || '') ? 'potager' : p.categorie === 'fruits' ? 'verger' : ['viande', 'oeufs', 'miel'].includes(p.categorie || '') ? 'elevage' : 'autre', categorie: 'Stock boutique', nom: p.nom, stock: p.stockDispo!, unite: p.unite, stockMin: null, alerteBas: false, valeur: p.stockDispo! * p.prix })
 
   // Stats
   // BUG #7 : on utilise le sélecteur testé `computeStocksTotaux` au lieu

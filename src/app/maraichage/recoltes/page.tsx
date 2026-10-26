@@ -84,6 +84,8 @@ interface RecolteWithRelations {
   cultureId: number
   date: string
   quantite: number
+  stockDisponibleCommercial?: number | null
+  produitsBoutique?: Array<{ id: number }>
   /** Unité figée à la saisie ; null = kg (lignes antérieures au 2026-08-20). */
   unite: string | null
   statut: string
@@ -216,7 +218,7 @@ export default function RecoltesPage() {
   }, [chargerComparaisons])
 
   // Filtrer par statut
-  const stockRecoltes = data.filter(r => !r.statut || r.statut === "en_stock")
+  const stockRecoltes = data.filter(r => (!r.statut || r.statut === "en_stock") && !r.produitsBoutique?.length && (r.stockDisponibleCommercial ?? r.quantite) > 0).map(r => ({ ...r, quantite: r.stockDisponibleCommercial ?? r.quantite }))
   const venduRecoltes = data.filter(r => r.statut === "vendu")
   // QA 2026-07-30 — L'auto-consommation était rangée avec les pertes : le KPI
   // annonçait « Pertes 0,8 kg » pour une récolte simplement consommée à la
@@ -654,6 +656,7 @@ export default function RecoltesPage() {
                     </Link>
                   </div>
                 )}
+                {data.some((r) => r.produitsBoutique?.length) && <p className="mb-3 text-sm text-muted-foreground">Les récoltes mises en boutique sont suivies dans leur catalogue. <Link className="text-primary underline" href="/boutique?tab=produits">Voir les stocks boutique</Link></p>}
                 {isLoading ? (
                   <p className="text-muted-foreground">Chargement...</p>
                 ) : stockRecoltes.length === 0 ? (
@@ -744,19 +747,20 @@ export default function RecoltesPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-right">
+                              <Link className="block text-sm text-primary underline" href={`/comptabilite/factures?tab=livraisons&stock=recolte:${r.id}`}>Préparer un BL</Link>
                               <div className="flex flex-wrap justify-end gap-1">
                                 <BoutonPartagerRecolte recolteId={r.id} />
-                                <Button variant="outline" size="sm" onClick={() => openVenteDialog(r)}>
+                                <Button variant="outline" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => openVenteDialog(r)}>
                                   <Euro className="h-4 w-4 mr-1" />
                                   Vendre
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleConsommer(r)}>
+                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => handleConsommer(r)}>
                                   Conso perso
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleMarquerPerte(r)}>
+                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => handleMarquerPerte(r)}>
                                   Perte
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)}>
+                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => handleDelete(r.id)}>
                                   <Trash2 className="h-4 w-4 text-red-500" />
                                 </Button>
                               </div>

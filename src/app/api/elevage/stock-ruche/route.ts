@@ -74,6 +74,7 @@ export async function DELETE(request: NextRequest) {
     if (!mouvement) {
       return NextResponse.json({ error: "Sortie introuvable" }, { status: 404 })
     }
+    if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, mouvementRuche: { operationId } } })) return NextResponse.json({ error: 'Cette sortie est liée à un document commercial. Utilisez Retour en stock sur le bon ou la facture.' }, { status: 409 })
     if (mouvement.venteProduitId) {
       return NextResponse.json(
         { error: "Cette sortie vient d’une vente : annulez ou modifiez la vente." },

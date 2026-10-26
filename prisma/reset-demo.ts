@@ -26,6 +26,7 @@ async function main() {
 
   const dm = (p: Promise<{ count: number }>) => p
   const steps: Array<[string, () => Promise<{ count: number }>]> = [
+    ["MouvementStockCommercial", () => dm(prisma.mouvementStockCommercial.deleteMany({ where: { userId } }))],
     // ── Boutique ────────────────────────────────────────────────────────
     ["LigneCommandeBoutique", () => dm(prisma.ligneCommandeBoutique.deleteMany({ where: { commande: { userId } } }))],
     ["CommandeBoutique", () => dm(prisma.commandeBoutique.deleteMany({ where: { userId } }))],

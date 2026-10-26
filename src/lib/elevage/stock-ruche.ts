@@ -222,7 +222,7 @@ export async function sortirStockRuche(
     unite: UniteProduitRuche
     date: Date
     quantite: number
-    type: "autoconsommation" | "don" | "destruction"
+    type: "vente" | "autoconsommation" | "don" | "destruction"
     notes?: string | null
   },
 ) {

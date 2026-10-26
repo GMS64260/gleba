@@ -98,7 +98,7 @@ export function poidsMoyenPieceKg(lot: LotCave): number | null {
 
 /** Poids retiré par une sortie : son poids pesé, sinon ses pièces au poids moyen. */
 export function poidsSortieKg(sortie: SortieCave, poidsMoyen: number | null): number {
-  if (sortie.poidsKg > 0) return sortie.poidsKg
+  if (sortie.poidsKg !== 0) return sortie.poidsKg
   return poidsMoyen != null ? sortie.nbPieces * poidsMoyen : 0
 }
 

@@ -89,6 +89,7 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
   const existing = await prisma.mouvementFromage.findFirst({ where: { id, userId: session.user.id } })
   if (!existing) return NextResponse.json({ error: 'Mouvement introuvable' }, { status: 404 })
+  if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, mouvementFromageId: id } })) return NextResponse.json({ error: 'Cette sortie est liée à un document commercial. Utilisez Retour en stock sur le bon ou la facture.' }, { status: 409 })
   await prisma.mouvementFromage.delete({ where: { id } })
 
   // Revue élevage 2026-07-21 — recalcul de l'état : supprimer la sortie qui avait

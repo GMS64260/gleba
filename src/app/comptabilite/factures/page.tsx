@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SelectNatif } from "@/components/ui/select-natif"
 import { CATEGORIES_OPERATION, LABELS_CATEGORIE_OPERATION } from "@/lib/facture-regles"
 import { getAvailableYears } from "@/components/year-selector"
+import { useExploitation } from '@/hooks/use-exploitation'
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
@@ -30,11 +31,15 @@ import { factureSansTaxe } from '@/lib/territoires'
 import { construireImpayees, type FactureImpayee, type Impayee } from '@/lib/comptabilite/impayees'
 import { adresseDeFiche, clientDesigneParNom } from '@/lib/comptabilite/rattachement-client'
 import { formatSiren, formatSiret } from '@/lib/siret'
+import { ChoisirStock, prixHTDuStock } from '@/components/commercial/ChoisirStock'
+import type { ArticleStockCommercial } from '@/lib/commercial/stock-types'
 import { DocumentsCommerciaux } from '@/components/commercial/DocumentsCommerciaux'
 import { EnvoyerDocument } from '@/components/commercial/EnvoyerDocument'
 import { updateDashboardSearchParams } from '@/lib/dashboard-navigation'
 
 interface LigneFacture {
+  articleStockType?: string | null
+  articleStockId?: string | null
   id: string
   description: string
   quantite: number
@@ -101,6 +106,7 @@ interface FactureEmise {
   factureOrigineId?: number | null
   /** Résolue côté API depuis `factureOrigineId` (cf. ticket cmsx5zhke). */
   factureOrigine?: { id: number; numero: string; clientNom: string } | null
+  mouvementsStock?: Array<{ quantite: number }>
   documentsCommerciaux?: Array<{ id: string; numero: string; type: string }>
 }
 
@@ -120,6 +126,7 @@ function objetAffiche(f: FactureEmise): string {
 }
 
 export default function FacturesPage() {
+  const { peutEcrire } = useExploitation()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = React.useState("impayees")
   React.useEffect(() => {
@@ -169,6 +176,7 @@ export default function FacturesPage() {
     villeLivraison: "",
     paysLivraison: "France",
   })
+  const cleStockFacture = React.useRef<string | null>(null)
   const [lignes, setLignes] = React.useState<LigneFacture[]>([
     { id: "1", description: "", quantite: 1, unite: "unité", prixUnitaire: 0, tauxTVA: 5.5, tauxChoisi: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }
   ])
@@ -443,6 +451,12 @@ export default function FacturesPage() {
     }))
   }
 
+  const ajouterStockFacture = (a: ArticleStockCommercial) => {
+    const ligne = recalcLigne({ id: crypto.randomUUID(), description: a.nom, quantite: 1, unite: a.unite,
+      prixUnitaire: prixHTDuStock(a, sansTaxe) ?? 0, tauxTVA: a.tauxTVA, tauxChoisi: a.tauxTVA,
+      montantHT: 0, montantTVA: 0, montantTTC: 0, articleStockType: a.type, articleStockId: a.id })
+    setLignes((ls) => ls.length === 1 && !ls[0].description ? [ligne] : [...ls, ligne])
+  }
   const removeLigne = (id: string) => {
     if (lignes.length > 1) {
       setLignes(lignes.filter(l => l.id !== id))
@@ -477,6 +491,7 @@ export default function FacturesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'facture',
+          cleCreationStock: cleStockFacture.current ||= crypto.randomUUID(),
           // Ticket cmvfljaru — fiche choisie : son id ; refus explicite : null ;
           // sinon absent, et la route rattache la fiche de même nom s'il y en
           // a une seule (identité de l'acheteur figée à l'émission).
@@ -503,6 +518,7 @@ export default function FacturesPage() {
           villeLivraison: factureData.livraisonDifferente ? factureData.villeLivraison || null : null,
           paysLivraison: factureData.livraisonDifferente ? factureData.paysLivraison || null : null,
           lignes: lignes.map(l => ({
+            articleStockType: l.articleStockType, articleStockId: l.articleStockId,
             description: l.description,
             quantite: l.quantite,
             unite: l.unite,
@@ -525,6 +541,7 @@ export default function FacturesPage() {
           ? `Numéro ${json.data.numero}, rattachée à la fiche « ${json.data.client.nom} »`
           : `Numéro ${json.data.numero}`,
       })
+      cleStockFacture.current = null
       // Réinitialise le formulaire
       setLignes([{ id: '1', description: '', quantite: 1, unite: 'unité', prixUnitaire: 0, tauxTVA: 5.5, tauxChoisi: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }])
       setFactureData({
@@ -869,6 +886,13 @@ export default function FacturesPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
+                            {peutEcrire && !!f.mouvementsStock?.length && (f.mouvementsStock.filter((m) => m.quantite < 0).length === f.mouvementsStock.filter((m) => m.quantite > 0).length ? <span className="block text-xs text-muted-foreground">Stock retourné</span> : <Button size="sm" variant="outline" onClick={async () => {
+                              if (!await confirmDialog('Toutes les quantités liées à cette facture seront remises en stock. Confirmez leur retour physique. La facture reste inchangée : émettez un avoir si un remboursement est dû.', { title: 'Retour en stock de la facture ?' })) return
+                              const r = await fetch(`/api/comptabilite/factures/${f.id}/stock`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'retourner' }) })
+                              const j = await r.json()
+                              if (!r.ok) { toast({ variant: 'destructive', title: 'Retour impossible', description: j.error }); return }
+                              toast({ title: 'Quantités remises en stock' }); fetchFacturesEmises()
+                            }}>Retour en stock</Button>)}
                             <div className="flex flex-wrap items-center justify-end gap-1">
                               {['emise', 'payee'].includes(f.statut) && <EnvoyerDocument type="facture" id={f.id} numero={f.numero} />}
                               {f.statut === "emise" && (
@@ -1143,6 +1167,8 @@ export default function FacturesPage() {
                   </div>
                 )}
 
+                <ChoisirStock onChoisir={ajouterStockFacture} />
+                <p className="text-sm text-muted-foreground">Les produits liés sont déduits du stock à l’émission de cette facture directe. Pour une livraison déjà enregistrée, facturez son bon depuis l’onglet Bons de livraison.</p>
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <Label>Lignes de facturation</Label>
@@ -1174,6 +1200,7 @@ export default function FacturesPage() {
                               onChange={(e) => updateLigne(ligne.id, 'description', e.target.value)}
                               placeholder="Description"
                             />
+                            {ligne.articleStockId && <div className="mt-1 text-xs text-green-800">Liée au stock <button type="button" className="underline" onClick={() => setLignes((ls) => ls.map((l) => l.id === ligne.id ? { ...l, articleStockType: null, articleStockId: null } : l))}>Détacher</button></div>}
                           </TableCell>
                           <TableCell>
                             <Input
@@ -1188,8 +1215,10 @@ export default function FacturesPage() {
                             <select
                               className="h-9 rounded-md border border-slate-300 px-2 bg-white"
                               value={ligne.unite}
+                              disabled={!!ligne.articleStockId}
                               onChange={(e) => updateLigne(ligne.id, 'unite', e.target.value)}
                             >
+                              {ligne.articleStockId && <option value={ligne.unite}>{ligne.unite}</option>}
                               <option value="unité">unité</option>
                               <option value="kg">kg</option>
                               <option value="pièce">pièce</option>
