@@ -4,6 +4,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { dateEffetStockCommercial } from '@/lib/commercial/dates-stock'
 import type { Prisma } from '@prisma/client'
 import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
 import type { UniteQuantite } from '@/lib/recolte/projection'
@@ -196,11 +197,12 @@ export async function calculerStocksNet(
       select: { quantite: true },
     })
     const sorties = await db.mouvementStockCommercial.findMany({
-      where: { userId, date: { gt: dateRef }, recolte: { especeId: espece.id }, ...(recolteIdsEnBoutique.length ? { recolteId: { notIn: recolteIdsEnBoutique } } : {}) },
-      select: { quantite: true, unite: true },
+      where: { userId, OR: [{ date: { gt: dateRef } }, { createdAt: { gt: dateRef } }], recolte: { especeId: espece.id }, ...(recolteIdsEnBoutique.length ? { recolteId: { notIn: recolteIdsEnBoutique } } : {}) },
+      select: { quantite: true, unite: true, date: true, createdAt: true },
     })
-    const totalSorties = sorties.filter(m => m.unite === uniteEspece).reduce((sum, m) => sum + m.quantite, 0)
-    for (const m of sorties.filter(m => m.unite !== uniteEspece)) ajouterQuantite(autresUnites, m.unite as UniteQuantite, -m.quantite)
+    const sortiesApresComptage = sorties.filter(m => dateEffetStockCommercial(m) > dateRef)
+    const totalSorties = sortiesApresComptage.filter(m => m.unite === uniteEspece).reduce((sum, m) => sum + m.quantite, 0)
+    for (const m of sortiesApresComptage.filter(m => m.unite !== uniteEspece)) ajouterQuantite(autresUnites, m.unite as UniteQuantite, -m.quantite)
     const totalConso = consommations.reduce((sum, c) => sum + c.quantite, 0)
 
     result[espece.id] = {
