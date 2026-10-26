@@ -1,8 +1,10 @@
+import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
+export { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 import type { Prisma } from '@prisma/client'
 import { chargerCatalogueStock } from './catalogue-stock'
 import { cleArticle, stockEstDenombrable, type ReferenceArticleStock } from './stock-types'
 import { ErreurCommerciale } from './regles'
-import { livraisonFuture, finJourLivraison } from './dates-stock'
+import { livraisonFuture, finJourLivraison, dateEffetStockCommercial } from './dates-stock'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 import { sortirStockRuche, verrouillerStockRuche } from '@/lib/elevage/stock-ruche'
 import type { ProduitRuche, UniteProduitRuche } from '@/lib/elevage/produits-ruche'
@@ -12,10 +14,6 @@ import { calculerStocksNet } from '@/lib/stocks-helpers'
 type Tx = Prisma.TransactionClient
 type Ligne = ReferenceArticleStock & { id?: string | number; description: string; quantite: number; unite: string; statutBio?: string | null }
 type Origine = { documentId?: string; factureId?: number; numero: string; date: Date }
-
-export async function verrouillerStockCommercial(tx: Tx, userId: string) {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-commercial:${userId}`}))`
-}
 
 /** Le navigateur choisit une référence ; l'appartenance, l'unité et le bio viennent du serveur. */
 export async function verifierLignesStock<T extends Ligne>(tx: Tx, userId: string, lignes: T[]): Promise<T[]> {
@@ -60,12 +58,14 @@ export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Lign
     if (!a) throw new ErreurCommerciale(`Stock indisponible pour « ${l.description} ». Actualisez les produits du document.`)
     if (l.unite !== a.unite || !Number.isFinite(l.quantite) || l.quantite <= 0 || (stockEstDenombrable(a.unite) && !Number.isInteger(l.quantite))) throw new ErreurCommerciale(`Quantité ou unité invalide pour « ${a.nom} ».`, 400)
     if (a.disponible != null && l.quantite > a.disponible + 1e-6) throw new ErreurCommerciale(`Stock insuffisant : ${a.nom}, ${a.disponible} ${a.unite} disponible(s), ${l.quantite} demandé(s).`)
+    const instantSortie = new Date()
+    const dateEffet = dateEffetStockCommercial({ date: origine.date, createdAt: instantSortie })
     const trace: Prisma.MouvementStockCommercialUncheckedCreateInput = {
       userId, documentId: origine.documentId, factureId: origine.factureId,
       ligneDocumentId: origine.documentId ? String(l.id) : undefined,
       ligneFactureId: !origine.documentId && l.id != null ? Number(l.id) : undefined,
       articleStockType: a.type, articleStockId: a.id, sourceNom: a.nom, unite: a.unite,
-      quantite: l.quantite, date: origine.date,
+      quantite: l.quantite, date: dateEffet, createdAt: instantSortie,
     }
     const notes = `${origine.numero} · ${l.description}`
     if (a.type === 'recolte' || a.type === 'fruit' || a.type === 'bois') {
@@ -128,7 +128,9 @@ export async function retournerStockCommercial(tx: Tx, userId: string, origine: 
     if (m.fruitId) await tx.recolteArbre.update({ where: { id: m.fruitId }, data: { stockDisponibleCommercial: { increment: m.quantite } } })
     if (m.boisId) await tx.productionBois.update({ where: { id: m.boisId }, data: { stockDisponibleCommercial: { increment: m.quantite } } })
     if (m.produitBoutiqueId && m.stockSuivi) await tx.produitBoutique.updateMany({ where: { id: m.produitBoutiqueId, stockDispo: { not: null } }, data: { stockDispo: { increment: m.quantite } } })
+    const instantRetour = new Date()
     const data: Prisma.MouvementStockCommercialUncheckedCreateInput = {
+      date: instantRetour, createdAt: instantRetour,
       userId, documentId: m.documentId, factureId: m.factureId, ligneDocumentId: m.ligneDocumentId, ligneFactureId: m.ligneFactureId,
       origineRetourId: m.id, articleStockType: m.articleStockType, articleStockId: m.articleStockId, sourceNom: m.sourceNom,
       quantite: -m.quantite, unite: m.unite, poidsKg: m.poidsKg == null ? null : -m.poidsKg, stockSuivi: m.stockSuivi,
