@@ -341,6 +341,11 @@ html.coquille-v2 [data-marketing-navigation] {
   html.coquille-v2 button.fixed[aria-label="Envoyer un feedback"] {
     bottom: calc(var(--navigation-basse-h) + 1rem);
   }
+  /* Le panneau du plan garde ses commandes dégagées ; le feedback revient
+     dès sa fermeture et reste disponible sur ordinateur. */
+  html.coquille-v2:has(#details-selection-plan.fixed) button.fixed[aria-label="Envoyer un feedback"] {
+    display: none;
+  }
   html.coquille-v2 button.fixed[aria-label="Assistant IA"] {
     display: none;
   }
