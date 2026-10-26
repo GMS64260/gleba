@@ -25,3 +25,37 @@ export const sujetForumSchema = discussionEncyclopedieSchema.extend({
 })
 export const modifierSujetForumSchema = z.object({ resolu: z.boolean().optional(), epingle: z.boolean().optional() })
   .refine(v => v.resolu !== undefined || v.epingle !== undefined, "Aucune modification indiquée.")
+
+// Une correction d'item décrit une différence ; elle n'écrit jamais dans le
+// référentiel. Aucune FK, identité de propriétaire ou provenance n'est saisissable.
+const texteOptionnel = (max: number) => z.string().trim().max(max).transform(v => v || null).nullable().optional()
+const nomCorrection = z.string().trim().min(1).max(200).optional()
+const semaineCorrection = z.number().int().min(1).max(52).nullable().optional()
+export const changementsEspeceSchema = z.object({
+  nom: nomCorrection, nomLatin: texteOptionnel(200), description: texteOptionnel(12000), vivace: z.boolean().optional(),
+  besoinEau: z.number().min(1).max(5).nullable().optional(), irrigation: texteOptionnel(200),
+  densite: z.number().min(0.01).max(100000).nullable().optional(),
+  joursLevee: z.number().int().min(1).max(365).nullable().optional(), temperatureGerm: texteOptionnel(200),
+  besoinFroid: z.enum(["aucun", "faible", "modere", "eleve"]).nullable().optional(), zonesAdaptees: texteOptionnel(500),
+}).strict()
+export const changementsVarieteSchema = z.object({
+  nom: nomCorrection, bio: z.boolean().optional(), semaineFloraison: semaineCorrection, semaineRecolte: semaineCorrection,
+  dureeFloraison: z.number().int().min(0).max(52).nullable().optional(), dureeRecolte: z.number().int().min(0).max(52).nullable().optional(),
+  groupePollinisation: texteOptionnel(100), ploidie: texteOptionnel(100),
+}).strict()
+export const changementsItpSchema = z.object({
+  nom: z.string().trim().min(1).max(100).optional(), typePlanche: texteOptionnel(50), modeDemarrage: texteOptionnel(50),
+  semaineSemis: semaineCorrection, semainePlantation: semaineCorrection, semaineRecolte: semaineCorrection,
+  zoneClimat: texteOptionnel(100),
+}).strict()
+const baseCorrection = {
+  refId: z.string().min(1).max(400), empreinteBase: z.string().regex(/^[a-f0-9]{64}$/),
+  source: contributionEncyclopedieSchema.shape.source, motif: z.string().trim().max(500).optional().transform(v => v || "Correction proposée depuis la fiche"),
+  signature, acceptationLicence: contributionEncyclopedieSchema.shape.acceptationLicence,
+}
+export const correctionCibleeSchema = z.discriminatedUnion("cibleType", [
+  z.object({ ...baseCorrection, cibleType: z.literal("ESPECE"), changements: changementsEspeceSchema }).strict(),
+  z.object({ ...baseCorrection, cibleType: z.literal("VARIETE"), changements: changementsVarieteSchema }).strict(),
+  z.object({ ...baseCorrection, cibleType: z.literal("ITP"), changements: changementsItpSchema }).strict(),
+])
+export type PropositionCorrectionCiblee = z.infer<typeof correctionCibleeSchema>

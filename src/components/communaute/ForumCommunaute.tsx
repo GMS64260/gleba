@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { LienCommunaute as Link, naviguerCommunaute } from "./LienCommunaute"
+import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Loader2, MessageSquare, PushPin as Pin, Plus, Search, Send, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -69,7 +69,6 @@ export function ForumCommunaute({ acces }: { acces: AccesSalon }) {
 
 function ForumMembre() {
   const params = useSearchParams()
-  const router = useRouter()
   const sujetId = params.get("sujet")
   function urlForum(changes: Record<string, string | null>) {
     const query = new URLSearchParams(params.toString())
@@ -77,12 +76,11 @@ function ForumMembre() {
     for (const [key, value] of Object.entries(changes)) { if (value) query.set(key, value); else query.delete(key) }
     return `/communaute?${query}`
   }
-  const revenir = () => router.push(urlForum({ sujet: null, pageReponses: null }), { scroll: false })
+  const revenir = () => naviguerCommunaute(urlForum({ sujet: null, pageReponses: null }))
   return sujetId ? <FilForumMembre key={sujetId} sujetId={sujetId} revenir={revenir} /> : <ListeForum urlForum={urlForum} />
 }
 
 function ListeForum({ urlForum }: { urlForum: (changes: Record<string, string | null>) => string }) {
-  const router = useRouter()
   const params = useSearchParams()
   const [data, setData] = React.useState<PageForum | null>(null)
   const [erreur, setErreur] = React.useState<string | null>(null)
@@ -116,11 +114,11 @@ function ListeForum({ urlForum }: { urlForum: (changes: Record<string, string | 
         <div className="mt-5 hidden rounded-xl border border-lin bg-craie p-4 lg:block"><BookOpen className="h-5 w-5 text-sauge" aria-hidden /><p className="mt-3 text-sm font-medium">Du forum à la fiche</p><p className="mt-2 text-xs leading-6 text-ardoise">Une discussion peut faire émerger une source ou une précision utile à l’encyclopédie.</p><Link href="/communaute?tab=encyclopedie" className="mt-3 inline-flex min-h-11 items-center text-sm text-foret underline underline-offset-4">Explorer les fiches</Link></div>
       </aside>
       <section className="min-w-0 space-y-4" aria-labelledby="sujets-forum">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="sujets-forum" className="font-display text-2xl">{categorie ? labelCategorie(categorie) : "Tous les sujets"}</h2><p className="mt-1 text-sm text-ardoise">{!chargement && !erreur && data ? `${data.total} sujet${data.total > 1 ? "s" : ""}` : "Des échanges que l’on peut retrouver"}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" className="min-h-11" onClick={() => setReessai((n) => n + 1)}>Actualiser</Button><NouveauSujet onCreated={(id) => router.push(urlForum({ sujet: id, pageReponses: null }), { scroll: false })} /></div></div>
-        <form onSubmit={(event) => { event.preventDefault(); router.replace(urlForum({ forumQ: recherche.trim() || null, forumPage: null }), { scroll: false }) }} className="flex flex-wrap gap-2 rounded-xl border border-lin bg-craie p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 id="sujets-forum" className="font-display text-2xl">{categorie ? labelCategorie(categorie) : "Tous les sujets"}</h2><p className="mt-1 text-sm text-ardoise">{!chargement && !erreur && data ? `${data.total} sujet${data.total > 1 ? "s" : ""}` : "Des échanges que l’on peut retrouver"}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" className="min-h-11" onClick={() => setReessai((n) => n + 1)}>Actualiser</Button><NouveauSujet onCreated={(id) => naviguerCommunaute(urlForum({ sujet: id, pageReponses: null }))} /></div></div>
+        <form onSubmit={(event) => { event.preventDefault(); naviguerCommunaute(urlForum({ forumQ: recherche.trim() || null, forumPage: null }), "replace") }} className="flex flex-wrap gap-2 rounded-xl border border-lin bg-craie p-3">
           <label className="sr-only" htmlFor="forum-recherche">Rechercher un sujet</label><div className="relative min-w-0 flex-1 basis-44"><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-ardoise" aria-hidden /><Input id="forum-recherche" type="search" maxLength={80} value={recherche} onChange={(event) => setRecherche(event.target.value)} placeholder="Rechercher dans les sujets…" className="h-11 pl-9" /></div>
           <Button type="submit" variant="outline" className="min-h-11">Rechercher</Button>
-          <label className="sr-only" htmlFor="forum-tri">Afficher les sujets</label><select id="forum-tri" value={tri} onChange={(event) => router.replace(urlForum({ forumTri: event.target.value, forumPage: null }), { scroll: false })} className="h-11 max-w-full rounded-md border border-input bg-background px-3 text-sm"><option value="recent">Dernières activités</option><option value="sans-reponse">Sans réponse</option></select>
+          <label className="sr-only" htmlFor="forum-tri">Afficher les sujets</label><select id="forum-tri" value={tri} onChange={(event) => naviguerCommunaute(urlForum({ forumTri: event.target.value, forumPage: null }), "replace")} className="h-11 max-w-full rounded-md border border-input bg-background px-3 text-sm"><option value="recent">Dernières activités</option><option value="sans-reponse">Sans réponse</option></select>
         </form>
         {erreur ? <ErreurForum message={erreur} reessayer={() => setReessai((n) => n + 1)} /> : chargement ? <ChargementForum /> : data && data.sujets.length === 0 ? <div className="rounded-xl border border-dashed border-lin bg-craie p-8 text-center"><MessageSquare className="mx-auto h-8 w-8 text-sauge" aria-hidden /><h3 className="mt-4 font-display text-xl">{q || categorie || tri === "sans-reponse" ? "Aucun sujet dans cette sélection" : "La conversation peut commencer ici"}</h3><p className="mt-2 text-sm leading-6 text-ardoise">{q || categorie || tri === "sans-reponse" ? "Essayez une autre recherche ou consultez tous les sujets." : "Présentez votre question ou votre pratique dans un premier sujet."}</p>{(q || categorie || tri === "sans-reponse") && <Link href={urlForum({ forumQ: null, forumCategorie: null, forumTri: null, forumPage: null })} className="mt-3 inline-flex min-h-11 items-center text-sm text-foret underline underline-offset-4">Voir tous les sujets</Link>}</div> : data ? <>
           <div className="divide-y divide-lin overflow-hidden rounded-xl border border-lin bg-craie">{data.sujets.map((sujet) => <Link key={sujet.id} href={urlForum({ sujet: sujet.id, pageReponses: null })} scroll={false} className="group grid min-w-0 gap-3 p-4 transition-colors hover:bg-sauge-doux/40 sm:grid-cols-[minmax(0,1fr)_100px] sm:p-5"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-xs text-ardoise"><span className="rounded-md bg-papier px-2 py-1">{labelCategorie(sujet.categorie)}</span>{sujet.epingle && <span className="inline-flex items-center gap-1 text-foret"><Pin className="h-3.5 w-3.5" aria-hidden />Épinglé</span>}{sujet.resolu && <span className="inline-flex items-center gap-1 text-foret"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden />Résolu</span>}{sujet.espece && <span>{sujet.espece.nom}</span>}</div><h3 className="mt-2 break-words text-base font-semibold leading-6 text-encre group-hover:text-foret">{sujet.titre}</h3><p className="mt-2 break-words text-xs text-ardoise">{sujet.signature} · <DateForum value={sujet.createdAt} /></p></div><div className="flex items-center justify-between gap-3 text-xs text-ardoise sm:flex-col sm:items-end sm:justify-center"><span className="inline-flex items-center gap-1.5"><MessageSquare className="h-4 w-4" aria-hidden />{sujet.nbReponses} réponse{sujet.nbReponses > 1 ? "s" : ""}</span><span className="sm:text-right">Actif <DateForum value={sujet.derniereActiviteAt} relative /></span></div></Link>)}</div>
@@ -154,7 +152,6 @@ function NouveauSujet({ onCreated }: { onCreated: (id: string) => void }) {
 
 function FilForumMembre({ sujetId, revenir }: { sujetId: string; revenir: () => void }) {
   const params = useSearchParams()
-  const router = useRouter()
   const pageReponses = params.get("pageReponses")
   const { data: session } = useSession()
   const isAdmin = session?.user?.role === "ADMIN"
@@ -184,7 +181,7 @@ function FilForumMembre({ sujetId, revenir }: { sujetId: string; revenir: () => 
       const response = await fetch(`/api/referentiel/discussions/${encodeURIComponent(sujetId)}/reponses`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contenu: contenu.trim(), signature: signature.trim() }) })
       if (!response.ok) throw new Error(await messageErreurReponse(response))
       setContenu(""); setMessage("Votre réponse a été publiée.");
-      if (pageReponses) { const query = new URLSearchParams(params.toString()); query.delete("pageReponses"); router.replace(`/communaute?${query}`, { scroll: false }) }
+      if (pageReponses) { const query = new URLSearchParams(params.toString()); query.delete("pageReponses"); naviguerCommunaute(`/communaute?${query}`, "replace") }
       recharger()
     } catch (error) { setMessage(error instanceof Error ? error.message : "La réponse n’a pas pu être publiée.") }
     finally { setEnvoi(false) }

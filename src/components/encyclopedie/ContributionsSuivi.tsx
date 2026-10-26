@@ -4,6 +4,8 @@ import * as React from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
+import { ComparaisonCorrection } from "./ComparaisonCorrection"
+import { urlCorrection } from "./correction-liens"
 import { useIsDemoAccount } from "@/hooks/use-is-demo"
 import { messageErreurReponse } from "@/lib/api-erreur"
 import { urlConnexion } from "@/lib/auth-retour"
@@ -58,22 +60,22 @@ export function ContributionsSuivi() {
       </div>
       {loading && <p role="status" className="text-sm text-ardoise">Chargement des propositions…</p>}
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
-      {!loading && !error && items.length === 0 && <p className="rounded-xl border border-dashed border-lin p-6 text-sm text-ardoise">Vous n’avez pas encore proposé de modification. Choisissez un végétal dans l’encyclopédie puis « Proposer une amélioration ».</p>}
+      {!loading && !error && items.length === 0 && <p className="rounded-xl border border-dashed border-lin p-6 text-sm text-ardoise">Vous n’avez pas encore proposé de modification. Ouvrez un végétal dans l’encyclopédie, puis cliquez sur « Modifier » auprès de l’élément à corriger.</p>}
       {items.map(item => (
         <article key={item.id} className="rounded-xl border border-lin bg-craie p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="rounded-md bg-sauge-doux px-2.5 py-1 text-xs font-medium text-foret">{LIBELLES[item.statut]}</span>
             <time dateTime={item.createdAt} className="text-xs text-ardoise">{new Date(item.createdAt).toLocaleDateString("fr-FR")}</time>
           </div>
-          <h3 className="mt-3 font-medium text-encre">{item.espece.nom} · {TITRES_SECTIONS[item.section]}</h3>
+          <h3 className="mt-3 font-medium text-encre">{item.espece.nom} · {item.correction?.titre ?? TITRES_SECTIONS[item.section]}</h3>
           <p className="mt-2 whitespace-pre-wrap text-sm text-ardoise">{item.motif}</p>
           {item.decisionMotif && <p className="mt-3 whitespace-pre-wrap rounded-lg bg-papier p-3 text-sm text-encre"><strong>Retour de relecture : </strong>{item.decisionMotif}</p>}
           <details className="mt-3 text-sm">
             <summary className="flex min-h-11 cursor-pointer items-center text-foret">Relire ma proposition</summary>
-            <p className="whitespace-pre-wrap break-words text-ardoise">{item.contenu}</p>
+            {item.correction ? <ComparaisonCorrection detail={item.correction} /> : <p className="whitespace-pre-wrap break-words text-ardoise">{item.contenu}</p>}
             <p className="mt-3 whitespace-pre-wrap break-words text-xs text-ardoise">Source : {item.source}</p>
           </details>
-          <Link className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-foret underline-offset-4 hover:underline" href={`/referentiel/vegetaux/${encodeURIComponent(item.espece.id)}${item.statut === "A_REPRENDRE" ? `?section=${item.section}` : ""}#communaute-fiche`}>{item.statut === "A_REPRENDRE" ? "Préparer une nouvelle proposition" : "Revoir la fiche"} →</Link>
+          <Link className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-foret underline-offset-4 hover:underline" href={item.correction ? urlCorrection(item.espece.id, item.correction.cibleType, item.correction.refId, item.statut === "A_REPRENDRE") : `/referentiel/vegetaux/${encodeURIComponent(item.espece.id)}${item.statut === "A_REPRENDRE" ? `?section=${item.section}` : ""}#communaute-fiche`}>{item.statut === "A_REPRENDRE" ? "Préparer une nouvelle proposition" : "Revoir la fiche"} →</Link>
         </article>
       ))}
     </section>

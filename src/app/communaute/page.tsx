@@ -7,7 +7,7 @@
  */
 
 import * as React from "react"
-import Link from "next/link"
+import { LienCommunaute as Link, naviguerCommunaute } from "@/components/communaute/LienCommunaute"
 import Image from "next/image"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserMenu } from "@/components/auth/UserMenu"
-import { SalonDiscussion, type AccesSalon } from "@/components/communaute/SalonDiscussion"
+import type { AccesSalon } from "@/components/communaute/SalonDiscussion"
 import { CatalogueCommunaute } from "@/components/communaute/CatalogueCommunaute"
 import { ForumCommunaute } from "@/components/communaute/ForumCommunaute"
 import { ContributionsSuivi } from "@/components/encyclopedie/ContributionsSuivi"
@@ -119,7 +119,7 @@ function ContenuCommunaute() {
   const recherche = searchParams.toString()
   const onglet = lireOngletCommunaute(searchParams.get("tab"))
   const retour = `/communaute${recherche ? `?${recherche}` : ""}`
-  const changerOnglet = (value: string) => router.replace(urlOngletCommunaute(lireOngletCommunaute(value), recherche), { scroll: false })
+  const changerOnglet = (value: string) => naviguerCommunaute(urlOngletCommunaute(lireOngletCommunaute(value), recherche), "replace")
   const { toast } = useToast()
   const isAuthenticated = status === "authenticated"
   const isAdmin = session?.user?.role === "ADMIN"
@@ -131,7 +131,6 @@ function ContenuCommunaute() {
   const [loading, setLoading] = React.useState(true)
   const [categorieFiltre, setCategorieFiltre] = React.useState("ALL")
   const [tri, setTri] = React.useState<"votes" | "recent">("votes")
-  const [ancienSalonOuvert, setAncienSalonOuvert] = React.useState(false)
   const [erreurEvolutions, setErreurEvolutions] = React.useState<string | null>(null)
   const estSuiviProduit = onglet === "propositions" || onglet === "roadmap"
 
@@ -302,7 +301,7 @@ function ContenuCommunaute() {
           </Select>
         </div>}
 
-        <Tabs value={onglet} onValueChange={changerOnglet} className="w-full">
+        <Tabs value={onglet} onValueChange={changerOnglet} persist={false} className="w-full">
           <TabsList className="mb-6 h-auto max-w-full flex-wrap justify-start gap-1 bg-lin/40 p-1">
             <TabsTrigger value="encyclopedie" className="min-h-11 gap-2"><BookOpen className="h-4 w-4" aria-hidden />Encyclopédie</TabsTrigger>
             <TabsTrigger value="contribuer" className="min-h-11 gap-2"><Edit className="h-4 w-4" aria-hidden />Contribuer</TabsTrigger>
@@ -423,7 +422,6 @@ function ContenuCommunaute() {
           {/* Aucune lecture du forum ni de l’ancien salon tant que cet onglet est fermé. */}
           <TabsContent value="salon" className="space-y-6">
             <ForumCommunaute acces={accesSalon} />
-            {accesSalon === "membre" && <details open={ancienSalonOuvert} className="rounded-xl border border-lin bg-craie p-4" onToggle={(event) => setAncienSalonOuvert(event.currentTarget.open)}><summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Ancien salon de discussion</summary>{ancienSalonOuvert && <div className="mt-4"><SalonDiscussion acces={accesSalon} /></div>}</details>}
           </TabsContent>
         </Tabs>
       </main>

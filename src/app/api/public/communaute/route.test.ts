@@ -30,7 +30,7 @@ describe("GET /api/public/communaute", () => {
     expect(catalogue.where.AND).toContainEqual(visibiliteReferentielPublic)
     expect(catalogue.select._count.select.varietes.where).toEqual(visibiliteEnfantPublic())
     expect(catalogue.select._count.select.itps.where).toEqual({ AND: [{ actif: true }, visibiliteEnfantPublic()] })
-    expect(mocks.revisions.mock.calls[0][0].where).toEqual({ espece: visibiliteReferentielPublic })
+    expect(mocks.revisions.mock.calls[0][0].where).toEqual({ espece: visibiliteReferentielPublic, cibleType: "SECTION", refId: "" })
     expect(catalogue.select).not.toHaveProperty("userId")
   })
 

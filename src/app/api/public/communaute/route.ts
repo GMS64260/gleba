@@ -33,7 +33,7 @@ export async function GET(request: Request) {
         take: TAILLE_PAGE_CATALOGUE,
       }),
       prisma.revisionEncyclopedie.findMany({
-        where: { espece: visibiliteReferentielPublic },
+        where: { espece: visibiliteReferentielPublic, cibleType: "SECTION", refId: "" },
         select: { id: true, section: true, signature: true, createdAt: true, espece: { select: { id: true, nom: true } } },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 6,

@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { Edit, History, Loader2, RefreshCw, Sprout } from "lucide-react"
+import { History, Loader2, RefreshCw, Sprout } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AvisDialog } from "@/components/avis/AvisDialog"
@@ -14,17 +14,19 @@ import { SECTIONS_ENCYCLOPEDIE, TITRES_SECTIONS, type CommunauteVegetalVue, type
 import { FormContribution, type BrouillonContribution } from "@/components/encyclopedie/FormContribution"
 import { FicheDiscussions } from "@/components/encyclopedie/FicheDiscussions"
 import { ReferenceSource } from "@/components/encyclopedie/ReferenceSource"
+import { ContexteCorrections, EditeurCorrection } from "@/components/encyclopedie/CorrectionItem"
 
 interface Props {
   especeId: string
   nom: string
+  description?: string | null
   initialData?: CommunauteVegetalVue
   children?: React.ReactNode
 }
 const EMPTY: CommunauteVegetalVue = { sections: [], revisions: [], discussions: [] }
 const date = (valeur: string) => new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(new Date(valeur))
 
-export function FicheCommunaute({ especeId, nom, initialData, children }: Props) {
+export function FicheCommunaute({ especeId, nom, description, initialData, children }: Props) {
   const { status } = useSession()
   const isDemo = useIsDemoAccount()
   const searchParams = useSearchParams()
@@ -73,9 +75,10 @@ export function FicheCommunaute({ especeId, nom, initialData, children }: Props)
   const proposer = React.useCallback((section: SectionEncyclopedie, ancienne?: RevisionEncyclopedieVue) => {
     if (!peutPublier) return
     const actuelle = data.sections.find(s => s.section === section)
-    setDraft({ section, contenu: ancienne?.contenu ?? actuelle?.contenu ?? "", source: ancienne?.source ?? actuelle?.source ?? "", contenuBase: actuelle?.contenu ?? "", revisionBaseId: actuelle?.revisionId ?? null })
+    const base = actuelle?.contenu ?? (section === "presentation" ? description ?? "" : "")
+    setDraft({ section, contenu: ancienne?.contenu ?? base, source: ancienne?.source ?? actuelle?.source ?? "", contenuBase: base, revisionBaseId: actuelle?.revisionId ?? null })
     setEditor(true)
-  }, [data.sections, peutPublier])
+  }, [data.sections, description, peutPublier])
 
   React.useEffect(() => {
     const section = searchParams.get("section")
@@ -93,10 +96,11 @@ export function FicheCommunaute({ especeId, nom, initialData, children }: Props)
   )
 
   return (
+    <ContexteCorrections corrections={data.corrections ?? []}>
     <section id="communaute-fiche" className="mt-8 min-w-0 scroll-mt-8 space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-lin pb-5">
         <div className="max-w-2xl"><p className="text-xs font-medium uppercase tracking-widest text-sauge">L’encyclopédie se construit ensemble</p><h2 className="mt-2 font-display text-2xl text-foret sm:text-3xl">Les connaissances et le terrain</h2><p className="mt-2 text-sm leading-6 text-ardoise">Les textes sourcés complètent les repères du catalogue. Les observations locales gardent leur contexte.</p></div>
-        <div className="flex flex-wrap items-center gap-2"><Button asChild variant="outline" className="min-h-11" onClick={() => setTab("fiche")}><a href="#images-documentaires">Proposer une photo</a></Button>{peutPublier && <Button className="min-h-11" onClick={() => proposer("presentation")}><Edit className="mr-2 h-4 w-4" />Proposer une amélioration</Button>}<Button variant="ghost" className="min-h-11" disabled={loading} onClick={() => { void charger() }} aria-label="Actualiser les contributions">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}</Button></div>
+        <div className="flex flex-wrap items-center gap-2"><Button variant="ghost" className="min-h-11" disabled={loading} onClick={() => { void charger() }} aria-label="Actualiser les contributions">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}</Button></div>
       </div>
       {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p>{error}</p><Button variant="outline" className="min-h-11" disabled={loading} onClick={() => { void charger() }}>Réessayer</Button></div>}
       <Tabs value={tab} onValueChange={setTab} persist={false}>
@@ -105,7 +109,7 @@ export function FicheCommunaute({ especeId, nom, initialData, children }: Props)
           {loaded && data.sections.length > 0 ? (
             <div className="space-y-5">{SECTIONS_ENCYCLOPEDIE.map(section => {
               const texte = data.sections.find(s => s.section === section)
-              return texte ? <section key={section} id={`texte-communaute-${section}`} className="rounded-xl border border-lin bg-white p-4 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wider text-sauge">Texte communautaire relu</p><h3 className="mt-2 font-display text-2xl text-foret">{TITRES_SECTIONS[section]}</h3></div>{peutPublier && <Button variant="outline" className="min-h-11" onClick={() => proposer(section)} aria-label={`Améliorer : ${TITRES_SECTIONS[section]}`}>Améliorer ce passage</Button>}</div><p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-encre">{texte.contenu}</p><div className="mt-5 space-y-2 border-t border-lin pt-4 text-xs leading-5 text-ardoise"><p><span className="font-medium">Source : </span><ReferenceSource source={texte.source} /></p><p>{texte.signature} · Version {texte.version} · {date(texte.createdAt)} · {texte.licence}</p></div></section> : null
+              return texte ? <section key={section} id={`texte-communaute-${section}`} className="rounded-xl border border-lin bg-white p-4 sm:p-6"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-wider text-sauge">Texte communautaire relu</p><h3 className="mt-2 font-display text-2xl text-foret">{TITRES_SECTIONS[section]}</h3></div>{peutPublier && <Button variant="outline" className="min-h-11" onClick={() => proposer(section)} aria-label={`Modifier : ${TITRES_SECTIONS[section]}`}>Modifier</Button>}</div><p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-encre">{texte.contenu}</p><div className="mt-5 space-y-2 border-t border-lin pt-4 text-xs leading-5 text-ardoise"><p><span className="font-medium">Source : </span><ReferenceSource source={texte.source} /></p><p>{texte.signature} · Version {texte.version} · {date(texte.createdAt)} · {texte.licence}</p></div></section> : null
             })}</div>
           ) : loaded && !error ? (
             <div className="flex flex-col gap-4 rounded-xl border border-lin bg-sauge-doux/40 p-5 sm:flex-row sm:items-center sm:justify-between"><div className="max-w-2xl"><h3 className="font-medium text-foret">Une connaissance à ajouter à cette fiche ?</h3><p className="mt-2 text-sm leading-6 text-ardoise">Les repères du catalogue sont présentés ci-dessous. Vous pouvez les compléter par un texte sourcé sur le semis, la conduite, la récolte ou la conservation.</p></div>{peutPublier && <Button variant="outline" className="min-h-11 shrink-0" onClick={() => proposer("semis")}>Ajouter une première section</Button>}</div>
@@ -124,8 +128,10 @@ export function FicheCommunaute({ especeId, nom, initialData, children }: Props)
           {loaded && data.revisions.length === 0 && !error ? <p className="rounded-xl border border-dashed border-lin bg-papier/50 p-5 text-sm text-ardoise">Aucun texte communautaire n’a encore été publié sur cette fiche. Les premières versions apparaîtront après relecture des contributions.</p> : data.revisions.map(r => <article key={r.id} className="rounded-xl border border-lin bg-white p-4 sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h4 className="font-medium text-foret">{TITRES_SECTIONS[r.section]} · Version {r.version}</h4><p className="text-xs text-ardoise">{date(r.createdAt)} · {r.signature}</p></div><details className="mt-3"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-foret">Lire cette version et sa source</summary><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7">{r.contenu}</p><p className="mt-4 text-xs leading-5 text-ardoise">Source : <ReferenceSource source={r.source} /> · {r.licence}</p></details>{peutPublier && <Button variant="outline" className="mt-3 min-h-11" onClick={() => proposer(r.section, r)}>Proposer à partir de cette version</Button>}</article>)}
         </TabsContent>
       </Tabs>
+      <EditeurCorrection especeId={especeId} />
       <FormContribution especeId={especeId} nom={nom} open={editor} initial={draft} sections={data.sections} onOpenChange={setEditor} onReload={charger} />
       {peutPublier && <AvisDialog refType="ESPECE" refId={especeId} nom={nom} open={avis} onOpenChange={setAvis} />}
     </section>
+    </ContexteCorrections>
   )
 }
