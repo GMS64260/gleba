@@ -35,7 +35,10 @@ ARG NEXT_PUBLIC_FEATURE_BOUTIQUE=false
 ENV NEXT_PUBLIC_FEATURE_BOUTIQUE=$NEXT_PUBLIC_FEATURE_BOUTIQUE
 
 RUN npx prisma generate
-RUN npm run build
+# Le contrôle TypeScript du référentiel dépasse le tas V8 implicite de 2 Go.
+# Ce plafond concerne le compilateur ; le builder garde ses limites Docker.
+ARG GLEBA_BUILD_NODE_HEAP_MB=3072
+RUN NODE_OPTIONS="--max-old-space-size=${GLEBA_BUILD_NODE_HEAP_MB}" npm run build
 
 # ==========================================
 # Stage 3: Runner (Production)
