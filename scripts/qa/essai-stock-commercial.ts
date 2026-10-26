@@ -23,7 +23,7 @@ async function main() {
   const u = await db.user.create({ data: { email: `stock-${suffixe}@example.test`, emailVerified: true } })
   const autre = await db.user.create({ data: { email: `stock-autre-${suffixe}@example.test`, emailVerified: true } })
   const importe = await db.user.create({ data: { email: `stock-import-${suffixe}@example.test`, emailVerified: true } })
-  const jour = new Date().toISOString().slice(0, 10)
+  const jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
   const hier = new Date(`${jour}T00:00:00Z`); hier.setUTCDate(hier.getUTCDate() - 1)
   try {
     await db.exploitation.create({ data: { userId: u.id, raisonSociale: 'Ferme QA stock', formeJuridique: 'EI', regimeFiscal: 'micro-BA', emailContact: 'qa@example.test', adresseSiege: '1 chemin de contrôle', codePostal: '64000', ville: 'Essai', regimeTva: 'reel-normal' } })
