@@ -6,13 +6,15 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell, Search, ShieldCheck, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AppHeader, PageToolbar } from '@/components/shell/AppHeader'
 import { StationMeteoConfig } from '@/components/meteo'
 import { useToast } from '@/hooks/use-toast'
 import { useModules } from '@/hooks/use-modules'
@@ -30,6 +32,49 @@ import {
   CLE_PREF_BRIEFING_AUTO,
   briefingAutoActive,
 } from '@/lib/chat/daily-opening'
+
+const RUBRIQUES_PARAMETRES = [
+  { id: 'carnet', titre: 'Mon carnet', description: 'Choisissez les activités et les modes d’élevage que vous utilisez.', icone: Layers, mots: 'modules actifs navigation maraîchage verger comptabilité élevage animaux compagnie équin nac' },
+  { id: 'exploitation', titre: 'Exploitation et équipe', description: 'Retrouvez l’identité de votre exploitation et les accès de votre équipe.', icone: Building2, mots: 'identité légale raison sociale siret fiscal coordonnées bancaires factures associés salariés comptable devise unités' },
+  { id: 'jardin', titre: 'Plan du jardin', description: 'Réglez les dimensions et l’apparence de votre plan.', icone: ImageIcon, mots: 'planches largeur longueur hauteur grille couleurs image fond satellite drone calibration' },
+  { id: 'meteo', titre: 'Météo', description: 'Reliez votre station pour suivre la météo au plus près de vos parcelles.', icone: CloudSun, mots: 'station personnelle température pluie vent capteurs météo' },
+  { id: 'notifications', titre: 'Assistant et notifications', description: 'Choisissez quand Gleba vous accompagne et ce que vous souhaitez recevoir.', icone: Bell, mots: 'ia briefing automatique alertes email courriel push navigateur météo tâches stocks récoltes irrigations itp géolocalisation' },
+  { id: 'donnees', titre: 'Sauvegardes et données', description: 'Sauvegardez, exportez ou restaurez les données de votre exploitation.', icone: Download, mots: 'portabilité migration serveur raspberry nas import export json csv zip tableur archive restauration sauvegarde' },
+  { id: 'connexions', titre: 'Connexions', description: 'Connectez un assistant externe avec votre jeton personnel.', icone: Key, mots: 'mcp ia api token jeton claude desktop configuration intégrer révoquer régénérer' },
+  { id: 'securite', titre: 'Compte et sécurité', description: 'Gérez votre mot de passe et les actions de suppression.', icone: ShieldCheck, mots: 'mot de passe connexion compte supprimer effacer données zone danger confidentialité' },
+] as const
+
+type RubriqueParametres = typeof RUBRIQUES_PARAMETRES[number]['id']
+
+function texteRechercheReglages(texte: string) {
+  return texte.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr-FR')
+}
+
+function rubriqueDepuisCible(cible: string | null): RubriqueParametres | null {
+  if (!cible) return null
+  const id = cible.replace(/^parametres-/, '')
+  if (RUBRIQUES_PARAMETRES.some(rubrique => rubrique.id === id)) return id as RubriqueParametres
+  if (id.startsWith('notif-') || id === 'briefing-auto' || id === 'assistant') return 'notifications'
+  if (id.startsWith('module-') || id.startsWith('elevage-mode-') || id === 'modules') return 'carnet'
+  if (id.startsWith('cp-') || id.startsWith('delete-') || ['compte', 'mot-de-passe'].includes(id)) return 'securite'
+  if (['sauvegarde', 'sauvegardes', 'export', 'import'].includes(id)) return 'donnees'
+  if (['mcp', 'api'].includes(id)) return 'connexions'
+  if (id === 'plan') return 'jardin'
+  return null
+}
+
+function PanneauParametres({ id, active, children }: { id: RubriqueParametres; active: RubriqueParametres; children: React.ReactNode }) {
+  const rubrique = RUBRIQUES_PARAMETRES.find(item => item.id === id)!
+  return (
+    <section id={`parametres-${id}`} data-rubrique={id} hidden={active !== id} aria-labelledby={`titre-reglages-${id}`} className={active === id ? 'space-y-5' : 'hidden space-y-5'}>
+      <div>
+        <h2 id={`titre-reglages-${id}`} tabIndex={-1} className="font-display text-2xl font-medium text-foret focus:outline-none">{rubrique.titre}</h2>
+        <p className="mt-1 text-sm leading-6 text-ardoise">{rubrique.description}</p>
+      </div>
+      {children}
+    </section>
+  )
+}
 
 // Clé localStorage pour les parametres
 const SETTINGS_KEY = 'gleba_settings'
@@ -76,7 +121,53 @@ const defaultSettings: GardenSettings = {
 }
 
 export default function ParametresPage() {
+  return <React.Suspense fallback={<p role="status" className="p-6 text-sm text-ardoise">Chargement des paramètres…</p>}><ParametresContent /></React.Suspense>
+}
+
+function ParametresContent() {
   const { toast } = useToast()
+  const queryParametres = useSearchParams().toString()
+  const [rubrique, setRubrique] = React.useState<RubriqueParametres>('carnet')
+  const [rechercheReglages, setRechercheReglages] = React.useState('')
+  const termesReglages = texteRechercheReglages(rechercheReglages).trim().split(/\s+/).filter(Boolean)
+  const rubriquesFiltrees = RUBRIQUES_PARAMETRES.filter(item => {
+    const texte = texteRechercheReglages(`${item.titre} ${item.description} ${item.mots}`)
+    return termesReglages.every(terme => texte.includes(terme))
+  })
+
+  React.useEffect(() => {
+    const lireUrl = () => {
+      const url = new URL(window.location.href)
+      let fragment = ''
+      try { fragment = decodeURIComponent(url.hash.slice(1)) } catch { /* fragment invalide ignoré */ }
+      const element = fragment ? document.getElementById(fragment) : null
+      const depuisElement = element?.closest('[data-rubrique]')?.getAttribute('data-rubrique') ?? null
+      const selection = rubriqueDepuisCible(depuisElement) ?? rubriqueDepuisCible(fragment) ?? rubriqueDepuisCible(url.searchParams.get('rubrique') ?? url.searchParams.get('section') ?? url.searchParams.get('tab')) ?? 'carnet'
+      setRubrique(selection)
+      if (fragment) requestAnimationFrame(() => document.getElementById(fragment)?.scrollIntoView({ block: 'center' }))
+    }
+    lireUrl()
+    window.addEventListener('popstate', lireUrl)
+    window.addEventListener('hashchange', lireUrl)
+    return () => {
+      window.removeEventListener('popstate', lireUrl)
+      window.removeEventListener('hashchange', lireUrl)
+    }
+  }, [queryParametres])
+
+  const choisirRubrique = (id: RubriqueParametres) => {
+    setRubrique(id)
+    setRechercheReglages('')
+    const url = new URL(window.location.href)
+    url.searchParams.set('rubrique', id)
+    url.hash = ''
+    window.history.pushState(null, '', url)
+    requestAnimationFrame(() => {
+      document.getElementById('contenu-reglages')?.scrollIntoView({ block: 'start' })
+      document.getElementById(`titre-reglages-${id}`)?.focus({ preventScroll: true })
+    })
+  }
+
   // Compte de démonstration partagé : vider, supprimer et importer y sont
   // refusés par les routes (`src/lib/demo-garde.ts`) ; l'écran le dit d'avance.
   const isDemo = useIsDemoAccount()
@@ -565,27 +656,50 @@ export default function ParametresPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
-      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Accueil
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Settings className="h-6 w-6 text-slate-600" />
-              <h1 className="text-xl font-bold">Paramètres</h1>
-            </div>
-          </div>
+    <div className="min-h-screen bg-papier font-ui text-encre">
+      <AppHeader />
+      <PageToolbar>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="ghost" size="sm" asChild><Link href="/"><ArrowLeft className="mr-2 h-4 w-4" />Accueil</Link></Button>
+          <div className="flex items-center gap-2"><Settings className="h-5 w-5 text-ardoise" aria-hidden /><h1 className="font-display text-2xl font-medium text-foret">Paramètres</h1></div>
         </div>
-      </header>
+      </PageToolbar>
 
-      <main className="container mx-auto px-4 py-6 max-w-4xl space-y-6">
+      <main className="relative mx-auto w-full max-w-6xl px-4 py-6">
+        <p className="max-w-2xl text-sm leading-6 text-ardoise">Retrouvez vos réglages par rubrique. Vous pouvez passer de l’une à l’autre sans perdre vos saisies en cours.</p>
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-8">
+          <aside className="min-w-0 rounded-xl border border-lin bg-craie p-4 lg:sticky lg:top-[calc(var(--app-header-h,0px)+1rem)]" aria-label="Navigation des paramètres">
+            <Label htmlFor="recherche-reglages" className="text-xs font-medium text-ardoise">Rechercher un réglage</Label>
+            <div className="relative mt-2">
+              <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-ardoise" aria-hidden />
+              <Input id="recherche-reglages" type="search" placeholder="Mot de passe, météo…" value={rechercheReglages} onChange={event => setRechercheReglages(event.target.value)} onKeyDown={event => {
+                if (event.key === 'Enter' && rubriquesFiltrees[0]) { event.preventDefault(); choisirRubrique(rubriquesFiltrees[0].id) }
+                if (event.key === 'Escape') setRechercheReglages('')
+              }} className="min-h-11 bg-papier pl-9" />
+            </div>
+            <div className="mt-4 lg:hidden">
+              <Label htmlFor="rubrique-reglages" className="text-xs font-medium text-ardoise">Rubrique des paramètres</Label>
+              <select id="rubrique-reglages" value={rubrique} onChange={event => choisirRubrique(event.target.value as RubriqueParametres)} className="mt-2 min-h-11 w-full rounded-md border border-lin bg-papier px-3 py-2 text-sm text-encre">
+                {RUBRIQUES_PARAMETRES.map(item => <option key={item.id} value={item.id}>{item.titre}</option>)}
+              </select>
+            </div>
+            <nav aria-label="Rubriques des paramètres" className={rechercheReglages.trim() ? 'mt-4 space-y-1' : 'mt-4 hidden space-y-1 lg:block'}>
+              {rubriquesFiltrees.map(item => {
+                const Icone = item.icone
+                return <button key={item.id} type="button" aria-current={rubrique === item.id ? 'page' : undefined} aria-controls={`parametres-${item.id}`} onClick={() => choisirRubrique(item.id)} className={`flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge ${rubrique === item.id ? 'bg-sauge-doux font-medium text-foret' : 'text-encre hover:bg-papier'}`}><Icone className="h-4 w-4 shrink-0" aria-hidden /><span className="min-w-0 flex-1">{item.titre}</span><ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden /></button>
+              })}
+              {rubriquesFiltrees.length === 0 && <p role="status" className="py-2 text-sm leading-6 text-ardoise">Aucun réglage trouvé. Essayez « sauvegarde », « équipe » ou « mot de passe ».</p>}
+            </nav>
+          </aside>
+          <div id="contenu-reglages" className="min-w-0 scroll-mt-[calc(var(--app-header-h,0px)+1rem)]">
+            <PanneauParametres id="carnet" active={rubrique}>
+        {/* Modules actifs */}
+        <ModulesSection />
+
+        {/* Modes d'élevage (compagnie / équin / NAC) — affiché si le module Élevage est actif */}
+        <ElevageModesSection />
+            </PanneauParametres>
+            <PanneauParametres id="exploitation" active={rubrique}>
         {/* Identité légale de l'exploitation (PROMPT 14) */}
         <Card>
           <CardHeader>
@@ -606,18 +720,6 @@ export default function ParametresPage() {
             </Link>
           </CardContent>
         </Card>
-
-        {/* Modules actifs */}
-        <ModulesSection />
-
-        {/* Assistant IA : ouverture automatique du briefing */}
-        <AssistantSection />
-
-        {/* Préférences des emails métier */}
-        <NotificationsSection />
-
-        {/* Modes d'élevage (compagnie / équin / NAC) — affiché si le module Élevage est actif */}
-        <ElevageModesSection />
 
         {/* Bug cmp8snsxp (Marc 2026-05-16) — feature request multi-user/
             devise/unités. En attendant l'implémentation complète, on
@@ -664,7 +766,8 @@ export default function ParametresPage() {
             </div>
           </CardContent>
         </Card>
-
+            </PanneauParametres>
+            <PanneauParametres id="jardin" active={rubrique}>
         {/* Paramètres du jardin */}
         <Card>
           <CardHeader>
@@ -870,7 +973,31 @@ export default function ParametresPage() {
             </Link>
           </CardContent>
         </Card>
+            </PanneauParametres>
+            <PanneauParametres id="meteo" active={rubrique}>
+                <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CloudSun className="h-5 w-5" />
+              Stations météo
+            </CardTitle>
+            <CardDescription>
+              Connectez votre station météo personnelle pour des données ultra-locales sur vos parcelles
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <StationMeteoConfig />
+          </CardContent>
+        </Card>
+            </PanneauParametres>
+            <PanneauParametres id="notifications" active={rubrique}>
+        {/* Assistant IA : ouverture automatique du briefing */}
+        <AssistantSection />
 
+        {/* Préférences des emails métier */}
+        <NotificationsSection />
+            </PanneauParametres>
+            <PanneauParametres id="donnees" active={rubrique}>
         {/* Sauvegarde complète & migration */}
         <Card>
           <CardHeader>
@@ -949,10 +1076,10 @@ export default function ParametresPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div className="space-y-3">
                 <h4 className="text-sm font-medium text-slate-900">Exporter (partiel)</h4>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={() => handleExport('json')} disabled={exporting}>
                     {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     JSON
@@ -983,26 +1110,8 @@ export default function ParametresPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Stations météo */}
-        {/* Sécurité : changement de mot de passe */}
-        <ChangePasswordSection />
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CloudSun className="h-5 w-5" />
-              Stations météo
-            </CardTitle>
-            <CardDescription>
-              Connectez votre station météo personnelle pour des données ultra-locales sur vos parcelles
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <StationMeteoConfig />
-          </CardContent>
-        </Card>
-
+            </PanneauParametres>
+            <PanneauParametres id="connexions" active={rubrique}>
         {/* Connexion MCP / IA */}
         <Card>
           <CardHeader>
@@ -1149,6 +1258,10 @@ export default function ParametresPage() {
             )}
           </CardContent>
         </Card>
+            </PanneauParametres>
+            <PanneauParametres id="securite" active={rubrique}>
+        {/* Sécurité du compte */}
+        <ChangePasswordSection />
 
         {/* Zone de danger */}
         <Card className="border-red-200 bg-red-50">
@@ -1165,7 +1278,7 @@ export default function ParametresPage() {
                   <p className="text-sm text-amber-900">{MESSAGES_REFUS_DEMO.zoneDanger}</p>
                 </div>
               )}
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
                 <div className="flex-1">
                   <h4 className="text-sm font-medium text-slate-900 mb-1">
                     Supprimer toutes mes données
@@ -1202,7 +1315,7 @@ export default function ParametresPage() {
                 </p>
               </div>
 
-              <div className="flex items-start justify-between gap-4 border-t border-red-200 pt-3">
+              <div className="flex flex-col items-start justify-between gap-4 border-t border-red-200 pt-3 sm:flex-row">
                 <div className="flex-1">
                   <h4 className="text-sm font-medium text-slate-900 mb-1">
                     Supprimer mon compte
@@ -1251,6 +1364,9 @@ export default function ParametresPage() {
             </div>
           </CardContent>
         </Card>
+            </PanneauParametres>
+          </div>
+        </div>
       </main>
 
       <Dialog open={deleteDialogOpen} onOpenChange={(nextOpen) => {
