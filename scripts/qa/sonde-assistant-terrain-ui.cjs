@@ -112,7 +112,9 @@ const assert = require('node:assert/strict');
     await page.addInitScript(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition; });
     await page.goto(`http://127.0.0.1:${serveur.address().port}/`);
     await page.getByRole('button', { name: 'Assistant IA', exact: true }).click();
-    await page.getByText('Vous pouvez dicter avec le micro du clavier de votre téléphone.').waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Dicter un message', exact: true }).count(), 0);
+    await page.getByRole('textbox', { name: 'Votre message à Gleba' }).fill('Mon brouillon au clavier');
+    assert.equal(await page.getByRole('textbox', { name: 'Votre message à Gleba' }).inputValue(), 'Mon brouillon au clavier');
     resultats.push({ sansApiVocale: true });
     console.log(JSON.stringify(resultats, null, 2));
   } finally {

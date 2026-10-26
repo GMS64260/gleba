@@ -65,13 +65,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_DIR ? `${process.env.PLAYWRI
       await fichier.setInputFiles([plante, plante, plante, plante]);
       await page.getByRole('alert').filter({ hasText: 'Trois photos maximum' }).waitFor();
       assert.equal(await preview.count(), 0);
+      assert.equal(await page.getByText('3 photos maximum', { exact: true }).count(), 0);
+      assert.equal(await page.getByText('Micro : dicter · Envoyer : préparer la saisie · « Oui » : confirmer', { exact: true }).count(), 0);
+      assert.equal(await page.getByRole('button', { name: 'Prendre une photo', exact: true }).count(), 0);
       await fichier.setInputFiles({ name: 'invalide.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('faux fichier') });
       await page.getByRole('alert').filter({ hasText: 'illisible' }).waitFor();
       await fichier.setInputFiles(plante);
       await page.waitForFunction(() => document.querySelectorAll('img[alt^="Aperçu photo"]').length === 1);
       await fichier.setInputFiles([path.join(fixtures, 'tomate-taches.jpg'), path.join(fixtures, 'pommier-taches.jpg')]);
       await page.waitForFunction(() => document.querySelectorAll('img[alt^="Aperçu photo"]').length === 3);
-      assert.ok(await page.getByRole('button', { name: 'Ajouter des photos', exact: true }).isDisabled());
+      assert.ok(await page.getByRole('button', { name: 'Joindre des photos', exact: true }).isDisabled());
       await page.getByRole('button', { name: 'Retirer la photo 2', exact: true }).click();
       assert.equal(await preview.count(), 2);
       await input.fill('Mon brouillon photographié');
