@@ -17,6 +17,7 @@
  */
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
+import { verrouillerStockCommercial } from './verrou-commercial'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { chargerUnitesStock } from '@/lib/stocks/sortie-stock'
@@ -80,16 +81,19 @@ export async function enregistrerInventaireEspece(
   const refus = refusInventaire(saisie.stock, unite)
   if (refus) return { ok: false, status: 400, error: refus }
 
-  const comptage =
-    saisie.stock == null
-      ? { inventaire: null, dateInventaire: null }
-      : { inventaire: saisie.stock, dateInventaire: saisie.dateStock ?? new Date() }
+  const ligne = await prisma.$transaction(async (tx) => {
+    await verrouillerStockCommercial(tx, userId)
+    const comptage =
+      saisie.stock == null
+        ? { inventaire: null, dateInventaire: null }
+        : { inventaire: saisie.stock, dateInventaire: saisie.dateStock ?? new Date() }
 
-  const ligne = await prisma.userStockEspece.upsert({
-    where: { userId_especeId: { userId, especeId: espece.id } },
-    create: { userId, especeId: espece.id, ...comptage },
-    update: comptage,
-    select: { inventaire: true, dateInventaire: true },
+    return tx.userStockEspece.upsert({
+      where: { userId_especeId: { userId, especeId: espece.id } },
+      create: { userId, especeId: espece.id, ...comptage },
+      update: comptage,
+      select: { inventaire: true, dateInventaire: true },
+    })
   })
 
   return { ok: true, especeId: espece.id, unite, ligne }
