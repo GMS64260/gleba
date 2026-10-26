@@ -99,6 +99,14 @@ export function formatQuantite(quantite: number, unite: UniteQuantite): string {
   return `${nombre} ${libelleUniteQuantite(unite, quantite)}`
 }
 
+/** Une saisie doit se vérifier avant arrondi : 1 g ne peut pas se confirmer
+ * « 0 kg ». Les très petites pesées restent lisibles en grammes. */
+export function formatQuantiteSaisie(quantite: number, unite: UniteQuantite): string {
+  const enGrammes = unite === 'kg' && quantite > 0 && quantite < 0.01
+  const valeur = enGrammes ? quantite * 1000 : quantite
+  return `${valeur.toLocaleString('fr-FR', { maximumSignificantDigits: 15 })} ${enGrammes ? 'g' : libelleUniteQuantite(unite, quantite)}`
+}
+
 /**
  * Ventilation lisible : « 12,5 kg + 360 tiges ».
  *

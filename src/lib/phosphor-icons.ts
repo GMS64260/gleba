@@ -84,6 +84,7 @@ export {
   MapTrifold as Map,
   ArrowsOut as Maximize2,
   ChatCircle as MessageCircle,
+  Microphone as Mic,
   ChatText as MessageSquare,
   ChatCircleDots as MessageSquarePlus,
   FlagBanner as Milestone,

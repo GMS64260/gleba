@@ -10,7 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
-  cultureFindUnique: vi.fn(),
+  cultureFindMany: vi.fn(),
   cultureUpdate: vi.fn(),
   recolteCreate: vi.fn(),
   chargerSurcharges: vi.fn(),
@@ -31,7 +31,7 @@ vi.mock("@/lib/prisma", () => {
   }
   return {
     default: {
-      culture: { findUnique: mocks.cultureFindUnique },
+      culture: { findMany: mocks.cultureFindMany },
       $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx),
     },
   }
@@ -78,7 +78,7 @@ describe("POST /api/recoltes — date de récolte et cycle de la culture", () =>
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
-    mocks.cultureFindUnique.mockResolvedValue(ZINNIA)
+    mocks.cultureFindMany.mockResolvedValue([ZINNIA])
     mocks.recolteCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
     mocks.cultureUpdate.mockResolvedValue({})
     mocks.chargerSurcharges.mockResolvedValue(new Map())
@@ -109,7 +109,7 @@ describe("POST /api/recoltes — date de récolte et cycle de la culture", () =>
 
   it("la culture est relue dans le compte connecté", async () => {
     await enregistrer("2027-01-17")
-    expect(mocks.cultureFindUnique.mock.calls[0][0].where).toEqual({ id: 1174, userId: "u1" })
+    expect(mocks.cultureFindMany.mock.calls[0][0].where).toEqual({ id: { in: [1174] }, userId: "u1" })
   })
 })
 
@@ -156,7 +156,7 @@ describe("POST /api/recoltes — unité de la récolte", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
-    mocks.cultureFindUnique.mockResolvedValue(BASILIC)
+    mocks.cultureFindMany.mockResolvedValue([BASILIC])
     mocks.recolteCreate.mockImplementation(async ({ data }) => ({ id: 2, ...data }))
     mocks.cultureUpdate.mockResolvedValue({})
   })
