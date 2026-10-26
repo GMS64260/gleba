@@ -42,6 +42,7 @@
     "node_modules",
     "mcp-server",
     "prisma/import-legacy-sqlite.ts",
+    "scripts/qa/serie-assistant-*.ts",
     "src/**/__tests__/**",
     "vitest.config.ts"
   ]
