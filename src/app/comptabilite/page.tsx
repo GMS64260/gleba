@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,7 +44,6 @@ import {
   ShoppingCart,
   Download,
   FileText,
-  Euro,
   AlertTriangle,
   Users,
   Truck,
@@ -291,22 +291,7 @@ export default function DashboardComptabilite() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       <AppHeader current="comptabilite" />
-
-      {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Comptabilité */}
-      <TourComptabilite />
-      <main className="container mx-auto px-4 py-8 max-w-[1600px]">
-        <div className="mb-6">
-          <PremiersPasBanner module="comptabilite" />
-        </div>
-        {/* Titre + Sélecteur d'annee */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <Euro className="h-5 w-5 text-blue-700" />
-            </div>
-            <h1 className="text-xl font-semibold text-slate-800">Gestion Comptable</h1>
-          </div>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 [&>*]:shrink-0">
+      <PageEntete id="comptabilite" actions={<div className="flex flex-wrap items-center gap-2">
             <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700">
               <Link href="/comptabilite/transactions">Nouvelle transaction</Link>
             </Button>
@@ -314,7 +299,7 @@ export default function DashboardComptabilite() {
               value={selectedYear.toString()}
               onValueChange={(value) => setSelectedYear(parseInt(value))}
             >
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger className="w-[120px]" aria-label="Année affichée">
               <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -326,8 +311,16 @@ export default function DashboardComptabilite() {
               ))}
             </SelectContent>
             </Select>
-          </div>
+          </div>} />
+
+      {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Comptabilité */}
+      <TourComptabilite />
+      <ConteneurPage className="py-6">
+        <div className="mb-6">
+          <PremiersPasBanner module="comptabilite" />
         </div>
+        {/* Titre + Sélecteur d'annee */}
+
 
         {/* Stats Cards */}
         <div className="grid gap-4 lg:grid-cols-4 mb-6">
@@ -642,7 +635,7 @@ export default function DashboardComptabilite() {
             </Card>
           </div>
         )}
-      </main>
+      </ConteneurPage>
     </div>
   )
 }

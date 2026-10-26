@@ -14,7 +14,8 @@
 import * as React from "react"
 import Link from "next/link"
 import { CloudSun, MapPin, Radio, Settings } from "lucide-react"
-import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
+import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
+import { AppHeader } from "@/components/shell/AppHeader"
 import { MeteoWidget } from "@/components/meteo/MeteoWidget"
 import { IrrigationAdvisor } from "@/components/meteo/IrrigationAdvisor"
 import { CalendrierLunaire } from "@/components/lunaire/CalendrierLunaire"
@@ -175,22 +176,8 @@ export default function MeteoPage() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       <AppHeader />
-      <BandeauLocalisationExemple
-        info={localisationExemple}
-        onRecale={() => {
-          setLocalisationExemple(null)
-          // Relire les centroïdes, puis rejouer les widgets météo/irrigation
-          // sur les nouvelles coordonnées.
-          setParcellesVersion((v) => v + 1)
-          setSourceVersion((v) => v + 1)
-        }}
-      />
-      <PageToolbar>
-        <div className="flex items-center gap-2">
-          <CloudSun className="h-6 w-6 text-sky-600" />
-          <h1 className="text-xl font-bold">Météo</h1>
-        </div>
-        <div className="flex items-center gap-2">
+
+      <PageEntete id="meteo" actions={<div className="flex flex-wrap items-center gap-2">
           {parcelles.length > 1 && selectedId && (
             <Select value={selectedId} onValueChange={selectionnerParcelle}>
               <SelectTrigger className="w-[230px] h-8" title={libellesParcelles.get(selectedId) ?? undefined}>
@@ -208,12 +195,21 @@ export default function MeteoPage() {
           )}
           <Button variant="outline" size="sm" onClick={() => setShowConfig((v) => !v)}>
               <Settings className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">Configurer</span>
+              <span>Configurer</span>
           </Button>
-        </div>
-      </PageToolbar>
+        </div>} />
+      <BandeauLocalisationExemple
+        info={localisationExemple}
+        onRecale={() => {
+          setLocalisationExemple(null)
+          // Relire les centroïdes, puis rejouer les widgets météo/irrigation
+          // sur les nouvelles coordonnées.
+          setParcellesVersion((v) => v + 1)
+          setSourceVersion((v) => v + 1)
+        }}
+      />
 
-      <main className="container mx-auto px-4 py-6 max-w-[1600px]">
+      <ConteneurPage className="py-6">
         <Card className="mb-4">
           <CardContent className="py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
@@ -266,7 +262,7 @@ export default function MeteoPage() {
         )}
         {/* Sans parcelle géolocalisée aussi : la Lune ne dépend pas du lieu. */}
         <CalendrierLunaire variante="page" className="mt-4" />
-      </main>
+      </ConteneurPage>
     </div>
   )
 }

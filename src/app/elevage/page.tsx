@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
@@ -229,20 +230,15 @@ function ElevageDashboardInner() {
       )}
 
       <AppHeader current="elevage" />
-      <ModuleTabBar
-        tabs={visibleTabs}
-        activeTab={activeTab}
-        onTabChange={(tab) => handleTabChange(tab as TabId)}
-        accent="amber"
-        actions={
+      <PageEntete id="elevage" actions={
           <>
               {/* Raccourcis regroupés dans un menu « Plus » pour libérer la
                   rangée d'onglets (Espèces/Races passaient sous les boutons). */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="text-slate-700">
+                  <Button variant="outline" size="sm" className="text-slate-700" aria-label="Autres actions d’élevage">
                     <MoreHorizontal className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Plus</span>
+                    <span>Plus</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
@@ -276,7 +272,7 @@ function ElevageDashboardInner() {
                 value={selectedYear.toString()}
                 onValueChange={handleYearChange}
               >
-                <SelectTrigger className="w-[100px] h-8">
+                <SelectTrigger className="w-[100px] h-8" aria-label="Année affichée">
                   <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
                   <SelectValue />
                 </SelectTrigger>
@@ -289,7 +285,13 @@ function ElevageDashboardInner() {
                 </SelectContent>
               </Select>
           </>
-        }
+        } />
+      <ModuleTabBar
+        tabs={visibleTabs}
+        activeTab={activeTab}
+        onTabChange={(tab) => handleTabChange(tab as TabId)}
+        accent="amber"
+
       />
 
       {/* Barre de contexte « atelier / filière » (Phase 0 modes d'élevage).
@@ -298,7 +300,7 @@ function ElevageDashboardInner() {
           tout le module en dessous via FiliereProvider. */}
       {showFiliereSelector && (
         <div className="border-b bg-white/70 backdrop-blur-sm">
-          <div className="container mx-auto flex max-w-[1600px] items-center gap-1.5 overflow-x-auto px-4 py-1.5">
+          <div className="mx-auto flex w-full max-w-[1600px] items-center gap-1.5 overflow-x-auto px-4 py-1.5 lg:px-6">
             <span className="mr-1 inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground">
               <PawPrint className="h-3.5 w-3.5" />
               Atelier
@@ -328,7 +330,7 @@ function ElevageDashboardInner() {
       {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Élevage */}
       <TourElevage />
       {/* Contenu de l'onglet actif */}
-      <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-4">
+      <ConteneurPage className="space-y-4 py-6">
         <FiliereProvider value={selectedFiliere}>
         {activeTab === "calendrier" && <PremiersPasBanner module="elevage" />}
         {activeTab === "calendrier" && <CalendrierTab />}
@@ -350,7 +352,7 @@ function ElevageDashboardInner() {
         {activeTab === "especes" && <EspecesTab />}
         {activeTab === "races" && <RacesTab />}
         </FiliereProvider>
-      </main>
+      </ConteneurPage>
 
       {/* Footer */}
       <footer className="border-t mt-8 py-4 text-center text-sm text-slate-500">

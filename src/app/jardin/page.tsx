@@ -5,9 +5,11 @@
  */
 
 import * as React from "react"
+import { AppHeader } from "@/components/shell/AppHeader"
+import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Box, CalendarClock, ChevronDown, Download, ExternalLink, Image as ImageIcon, Layers as LayersIcon, Map as MapIcon, Maximize2, Minimize2, Move, RotateCcw, Ruler, Upload, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, Copy } from "lucide-react"
+import { Box, CalendarClock, ChevronDown, Download, ExternalLink, Image as ImageIcon, Layers as LayersIcon, Map as MapIcon, Maximize2, Minimize2, Move, RotateCcw, Ruler, Upload, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, Copy } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -317,6 +319,20 @@ export default function JardinPage() {
 
 function JardinContent() {
   const { toast } = useToast()
+  const racinePlanRef = React.useRef<HTMLDivElement>(null)
+  const entetePlanRef = React.useRef<HTMLDivElement>(null)
+  const outilsPlanRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    const publierHauteur = () => {
+      const hauteur = (entetePlanRef.current?.getBoundingClientRect().height ?? 0) + (outilsPlanRef.current?.getBoundingClientRect().height ?? 0)
+      racinePlanRef.current?.style.setProperty("--plan-entete-h", hauteur + "px")
+    }
+    const observateur = new ResizeObserver(publierHauteur)
+    if (entetePlanRef.current) observateur.observe(entetePlanRef.current)
+    if (outilsPlanRef.current) observateur.observe(outilsPlanRef.current)
+    publierHauteur()
+    return () => observateur.disconnect()
+  }, [])
   const searchParams = useSearchParams()
   const [parcelles, setParcelles] = React.useState<ParcelleOption[]>([])
   const [selectedParcelleId, setSelectedParcelleId] = React.useState<string | null>(null)
@@ -418,6 +434,30 @@ function JardinContent() {
 
   // Sélection multi-éléments
   const [selection, setSelection] = React.useState<SelectionItem[]>([])
+  const [detailsMobilesOuverts, setDetailsMobilesOuverts] = React.useState(false)
+  const [detailsAgrandis, setDetailsAgrandis] = React.useState(false)
+  const [renommageMobile, setRenommageMobile] = React.useState(false)
+  const titreDetailsRef = React.useRef<HTMLHeadingElement>(null)
+  const contenuDetailsRef = React.useRef<HTMLDivElement>(null)
+  const boutonDetailsRef = React.useRef<HTMLButtonElement>(null)
+  const cleSelection = selection.map(item => item.type + ':' + item.id).join('|')
+  React.useEffect(() => {
+    if (!cleSelection) setDetailsMobilesOuverts(false)
+    setDetailsAgrandis(false)
+    setRenommageMobile(false)
+  }, [cleSelection])
+  React.useEffect(() => {
+    if (!detailsMobilesOuverts || isPlanFullscreen || !window.matchMedia('(max-width: 1023px)').matches) return
+    const frame = requestAnimationFrame(() => {
+      contenuDetailsRef.current?.scrollTo({ top: 0 })
+      titreDetailsRef.current?.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [detailsMobilesOuverts, isPlanFullscreen])
+  const retourAuPlan = () => {
+    setDetailsMobilesOuverts(false)
+    requestAnimationFrame(() => boutonDetailsRef.current?.focus({ preventScroll: true }))
+  }
 
   // Valeurs dérivées pour la sidebar (quand 1 seul sélectionné)
   const selectedPlanche = selection.length === 1 && selection[0].type === 'planche' ? selection[0].id as string : null
@@ -1039,6 +1079,7 @@ function JardinContent() {
   const selectedPlancheData = planches.find(p => p.id === selectedPlanche)
   const selectedObjetData = objets.find(o => o.id === selectedObjet)
   const selectedArbreData = arbres.find(a => a.id === selectedArbre)
+  const nomSelection = selectedPlancheData?.nom || selectedPlancheData?.id || selectedObjetData?.nom || (selectedObjetData ? labelTypeObjet(selectedObjetData.type) : null) || selectedArbreData?.nom || (selection.length > 1 ? selection.length + ' éléments' : 'Sélection')
 
   // Parcelles proposées pour rattacher l'arbre sélectionné (mêmes règles que
   // la fiche /verger/[id] : compatibles verger + la parcelle déjà rattachée)
@@ -1211,7 +1252,7 @@ function JardinContent() {
     if (selPlanches.size > 0 || selObjets.size > 0 || arbreSansGps) {
       marquerChangement()
     }
-  }, [selection, arbres])
+  }, [selection, arbres, marquerChangement])
 
   // Orienter une planche : angle absolu, déjà normalisé dans [0, 360) par
   // RotationControl (le schéma Zod refuse un angle négatif — audit 2026-07, #24).
@@ -1606,7 +1647,7 @@ function JardinContent() {
       })
       await Promise.all([fetchPlanches(), fetchPlanchesSansParcelle()])
       const derniere = creees[creees.length - 1]
-      if (derniere) setSelection([{ type: 'planche', id: derniere.id }])
+      if (derniere) { setSelection([{ type: 'planche', id: derniere.id }]); setDetailsMobilesOuverts(true) }
     } catch (error) {
       await fetchPlanches()
       toast({
@@ -1645,6 +1686,7 @@ function JardinContent() {
 
       toast({ title: `Reclassé en ${label.toLowerCase()}`, description: source?.nom })
       setSelection(payload?.objet?.id ? [{ type: 'objet', id: payload.objet.id }] : [])
+      setDetailsMobilesOuverts(Boolean(payload?.objet?.id))
       await Promise.all([fetchPlanches(), fetchObjets()])
     } catch (error) {
       toast({
@@ -1796,7 +1838,7 @@ function JardinContent() {
         description: source.nom ? noms.join(", ") : label,
       })
       await fetchObjets()
-      if (dernierId !== null) setSelection([{ type: 'objet', id: dernierId }])
+      if (dernierId !== null) { setSelection([{ type: 'objet', id: dernierId }]); setDetailsMobilesOuverts(true) }
     } catch (error) {
       // Comme pour les planches : les copies créées avant l'échec sont
       // conservées, on rafraîchit pour montrer l'état réel.
@@ -1926,7 +1968,7 @@ function JardinContent() {
       })
       await Promise.all([fetchArbres(), fetchArbresSansParcelle()])
       const dernier = data?.arbres?.[data.arbres.length - 1]
-      if (dernier) setSelection([{ type: 'arbre', id: dernier.id }])
+      if (dernier) { setSelection([{ type: 'arbre', id: dernier.id }]); setDetailsMobilesOuverts(true) }
     } catch (error) {
       await fetchArbres()
       toast({
@@ -2183,44 +2225,24 @@ function JardinContent() {
     (especeId: string) => {
       const ids = planchesParEspece.get(especeId) ?? []
       if (ids.length === 0) return
-      setSelection(
-        especeEnSurbrillance(especeId) ? [] : ids.map(id => ({ type: 'planche' as const, id }))
-      )
+      const dejaSelectionnee = especeEnSurbrillance(especeId)
+      setSelection(dejaSelectionnee ? [] : ids.map(id => ({ type: 'planche' as const, id })))
+      setDetailsMobilesOuverts(!dejaSelectionnee)
     },
     [planchesParEspece, especeEnSurbrillance]
   )
 
   return (
-    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+    <div ref={racinePlanRef} className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4">
-          {/* xl:min-w-fit : le bloc titre ne se compresse jamais sur grand
-              écran — si la barre d'outils manque de place, elle passe sur sa
-              propre ligne (flex-wrap du parent) au lieu de chevaucher le titre. */}
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-4 xl:min-w-fit xl:flex-nowrap">
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Accueil
-              </Button>
-            </Link>
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 xl:flex-nowrap">
-              <MapIcon className="h-6 w-6 text-green-600 flex-shrink-0" />
-              {/* Bug cmp8rs6uh (Marc 2026-05-16) — titre cassé sur 3 lignes
-                  quand le sélecteur de parcelle pousse la ligne : on bloque
-                  le wrap du titre et on laisse le flex-wrap se faire entre
-                  bloc-titre et bloc-actions. */}
-              <h1 className="text-xl font-bold whitespace-nowrap">Plan du jardin</h1>
-
-              {/* Selecteur de parcelle */}
-              {parcelles.length > 0 && (
+      <AppHeader />
+      <PageEntete ref={entetePlanRef} id="jardin" actions={parcelles.length > 0 && (
                 <Select
                   value={selectedParcelleId ?? "all"}
                   onValueChange={(v) => setSelectedParcelleId(v === "all" ? null : v === "none" ? "none" : v)}
                 >
-                  <SelectTrigger className="w-full min-w-0 sm:ml-2 sm:w-[200px]">
+                  <SelectTrigger className="w-full min-w-0 sm:w-[240px]" aria-label="Parcelle du plan">
                     <SelectValue placeholder="Toutes les parcelles" />
                   </SelectTrigger>
                   <SelectContent>
@@ -2233,9 +2255,10 @@ function JardinContent() {
                     <SelectItem value="none">Non assigné</SelectItem>
                   </SelectContent>
                 </Select>
-              )}
-            </div>
-          </div>
+              )} />
+      <div ref={outilsPlanRef} className="sticky top-[var(--app-header-visible-h,var(--app-header-h,0px))] z-30 border-b border-lin bg-craie/95 backdrop-blur-sm">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-end gap-3 px-4 py-3 lg:px-6">
+
 
           {/* Barre complète sur grand écran. En dessous de 1280 px, une version
               compacte évite tout débordement et conserve des cibles tactiles de 40 px.
@@ -2485,14 +2508,14 @@ function JardinContent() {
             )}
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Content */}
-      <main className="container mx-auto px-2 py-3 sm:px-4 sm:py-4">
+      <ConteneurPage className="py-4">
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
           {/* Plan */}
           <Card className={isPlanFullscreen ? "fixed inset-0 z-[100] overflow-hidden rounded-none border-0 bg-emerald-50" : "overflow-hidden"}>
-            <CardContent className={isPlanFullscreen ? "relative h-[100dvh] p-0" : "relative h-[max(420px,calc(100dvh-250px))] p-0 sm:h-[max(500px,calc(100dvh-200px))]"}>
+            <CardContent className={isPlanFullscreen ? "relative h-[100dvh] p-0" : "relative min-h-[420px] p-0 sm:min-h-[500px]"} style={isPlanFullscreen ? undefined : { height: "calc(100dvh - var(--app-header-h, 0px) - var(--plan-entete-h, 0px) - var(--navigation-basse-h, 0px) - 2rem)" }}>
               {isPlanFullscreen && (
                 <>
                   <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-xl border bg-white/95 p-1.5 shadow-lg backdrop-blur sm:right-4 sm:top-4 sm:gap-2">
@@ -2535,6 +2558,7 @@ function JardinContent() {
                   </div>
                 </>
               )}
+              {selection.length > 0 && (!detailsMobilesOuverts || isPlanFullscreen) && <Button ref={boutonDetailsRef} type="button" variant="secondary" className="absolute right-3 top-16 z-30 min-h-11 max-w-[calc(100%_-_1.5rem)] lg:hidden" aria-controls="details-selection-plan" aria-expanded={false} onClick={() => { setIsPlanFullscreen(false); setDetailsMobilesOuverts(true) }}>Détails de {nomSelection}</Button>}
               {tool !== 'select' && (
                 <div className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/80 py-1.5 pl-3 pr-1.5 text-xs text-white shadow">
                   <span className="whitespace-nowrap">
@@ -2580,6 +2604,15 @@ function JardinContent() {
                     editable
                     selection={selection}
                     onSelectionChange={handleSelectionChange}
+                    onSelectionActivate={() => {
+                      setDetailsMobilesOuverts(true)
+                      // Déjà ouvert : revenir à la culture de la nouvelle sélection,
+                      // uniquement après le tap confirmé, jamais au pointerdown.
+                      if (detailsMobilesOuverts && !isPlanFullscreen && window.matchMedia('(max-width: 1023px)').matches) requestAnimationFrame(() => {
+                        contenuDetailsRef.current?.scrollTo({ top: 0 })
+                        titreDetailsRef.current?.focus({ preventScroll: true })
+                      })
+                    }}
                     onGroupMove={handleGroupMove}
                     onPlancheMove={handlePlancheMove}
                     onObjetMove={handleObjetMove}
@@ -2724,11 +2757,14 @@ function JardinContent() {
           </Card>
 
           {/* Sidebar */}
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             {/* Planche sélectionnée */}
-            {selectedPlancheData ? (
+            <div id="details-selection-plan" role="region" aria-label="Détails de la sélection du plan" style={{ '--details-plan-bas': 'calc(var(--navigation-basse-h, 0px) + 0.5rem)', '--details-plan-hauteur': detailsAgrandis ? 'min(72dvh, calc(100dvh - var(--app-header-visible-h, 0px) - var(--navigation-basse-h, 0px) - 1rem))' : 'min(48dvh, calc(100dvh - var(--app-header-visible-h, 0px) - var(--navigation-basse-h, 0px) - 1rem))' } as React.CSSProperties} className={selection.length > 0 ? (detailsMobilesOuverts && !isPlanFullscreen ? 'fixed inset-x-2 bottom-[var(--details-plan-bas)] z-40 flex max-h-[var(--details-plan-hauteur)] min-w-0 max-w-full flex-col overflow-hidden rounded-xl border border-lin bg-craie shadow-xl' : 'hidden') + ' lg:static lg:block lg:max-h-none lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none' : ''} onKeyDown={event => { if (event.key === 'Escape' && window.matchMedia('(max-width: 1023px)').matches) { event.stopPropagation(); retourAuPlan() } }}>
+              {selection.length > 0 && <div className="flex shrink-0 items-center justify-between gap-3 border-b border-lin px-4 py-2 lg:hidden"><div className="min-w-0"><h2 ref={titreDetailsRef} tabIndex={-1} className="truncate text-base font-semibold text-encre focus:outline-none">{nomSelection}</h2>{selectedPlancheData && <p className="text-xs text-ardoise">{selectedPlancheData.largeur ?? '–'} × {selectedPlancheData.longueur ?? '–'} m{selectedPlancheData.largeur != null && selectedPlancheData.longueur != null && <> · {(selectedPlancheData.largeur * selectedPlancheData.longueur).toLocaleString('fr-FR')} m²</>}</p>}</div><div className="flex shrink-0 items-center gap-1"><Button type="button" variant="ghost" size="icon" className="min-h-11 min-w-11" aria-label={detailsAgrandis ? "Réduire les détails" : "Agrandir les détails"} title={detailsAgrandis ? "Réduire les détails" : "Agrandir les détails"} aria-pressed={detailsAgrandis} onClick={() => setDetailsAgrandis(value => !value)}>{detailsAgrandis ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button><Button type="button" variant="outline" size="sm" className="min-h-11 shrink-0" onClick={retourAuPlan}>Retour au plan</Button></div></div>}
+              <div ref={contenuDetailsRef} className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11 lg:[&_button]:min-h-0 lg:[&_button]:min-w-0 lg:[&_input]:min-h-0 [&>div]:min-w-0 [&>div]:max-w-full [&>div]:rounded-none [&>div]:border-0 [&>div]:shadow-none lg:overflow-visible lg:[&>div]:rounded-xl lg:[&>div]:border lg:[&>div]:shadow">
+                {selectedPlancheData ? (
               <Card>
-                <CardHeader className="pb-2">
+                <CardHeader className={renommageMobile ? "pb-2" : "hidden pb-2 lg:flex"}>
                   <div className="flex items-center justify-between gap-2">
                     {/* Nom modifiable sur place : sans ça, une planche mal
                         nommée à la duplication le restait définitivement. */}
@@ -2743,57 +2779,15 @@ function JardinContent() {
                         if (e.key === "Escape") { setNomPlancheEdite(null); e.currentTarget.blur() }
                       }}
                       title="Cliquez pour renommer la planche"
+                      id="nom-planche-selection"
                       aria-label="Nom de la planche"
                     />
-                    <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
+                    <Button variant="ghost" size="icon" className="hidden lg:inline-flex" aria-label="Désélectionner cet élément" onClick={() => setSelection([])}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <label className="text-muted-foreground block text-xs">Largeur (m)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0.1"
-                        className="w-full border rounded px-2 py-1 text-sm font-medium"
-                        value={selectedPlancheData.largeur || 0}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0
-                          setPlanches(prev => prev.map(p =>
-                            p.id === selectedPlancheData.id ? { ...p, largeur: val } : p
-                          ))
-                          marquerChangement()
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-muted-foreground block text-xs">Longueur (m)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0.1"
-                        className="w-full border rounded px-2 py-1 text-sm font-medium"
-                        value={selectedPlancheData.longueur || 0}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0
-                          setPlanches(prev => prev.map(p =>
-                            p.id === selectedPlancheData.id ? { ...p, longueur: val } : p
-                          ))
-                          marquerChangement()
-                        }}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">Surface:</span>
-                      <span className="ml-1 font-medium">
-                        {((selectedPlancheData.largeur || 0) * (selectedPlancheData.longueur || 0)).toFixed(1)} m²
-                      </span>
-                    </div>
-                  </div>
-
                   {selectedPlancheData.cultures.length > 0 ? (
                     <div>
                       <span className="text-sm text-muted-foreground">
@@ -2838,6 +2832,57 @@ function JardinContent() {
                   ) : (
                     <p className="text-sm text-muted-foreground italic">Aucune culture</p>
                   )}
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <label htmlFor="selection-planche-largeur" className="text-muted-foreground block text-xs">Largeur (m)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        className="w-full border rounded px-2 py-1 text-sm font-medium"
+                        id="selection-planche-largeur"
+                        value={selectedPlancheData.largeur || 0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0
+                          setPlanches(prev => prev.map(p =>
+                            p.id === selectedPlancheData.id ? { ...p, largeur: val } : p
+                          ))
+                          marquerChangement()
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="selection-planche-longueur" className="text-muted-foreground block text-xs">Longueur (m)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        className="w-full border rounded px-2 py-1 text-sm font-medium"
+                        id="selection-planche-longueur"
+                        value={selectedPlancheData.longueur || 0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0
+                          setPlanches(prev => prev.map(p =>
+                            p.id === selectedPlancheData.id ? { ...p, longueur: val } : p
+                          ))
+                          marquerChangement()
+                        }}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Surface:</span>
+                      <span className="ml-1 font-medium">
+                        {((selectedPlancheData.largeur || 0) * (selectedPlancheData.longueur || 0)).toFixed(1)} m²
+                      </span>
+                    </div>
+                  </div>
+
+
+                  {!renommageMobile && <Button type="button" variant="ghost" size="sm" className="w-full justify-start lg:hidden" onClick={() => {
+                    setRenommageMobile(true)
+                    requestAnimationFrame(() => document.getElementById('nom-planche-selection')?.focus())
+                  }}>Renommer la planche</Button>}
 
                   {/* Pluviométrie */}
                   <div className="pt-2 border-t">
@@ -2917,7 +2962,7 @@ function JardinContent() {
                     <CardTitle className="text-base">
                       {selectedObjetData.nom || labelTypeObjet(selectedObjetData.type)}
                     </CardTitle>
-                    <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
+                    <Button variant="ghost" size="icon" className="hidden lg:inline-flex" aria-label="Désélectionner cet élément" onClick={() => setSelection([])}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -3069,7 +3114,7 @@ function JardinContent() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">{selectedArbreData.nom}</CardTitle>
-                    <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
+                    <Button variant="ghost" size="icon" className="hidden lg:inline-flex" aria-label="Désélectionner cet élément" onClick={() => setSelection([])}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -3596,7 +3641,7 @@ function JardinContent() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">{selection.length} éléments</CardTitle>
-                    <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
+                    <Button variant="ghost" size="icon" className="hidden lg:inline-flex" aria-label="Désélectionner cet élément" onClick={() => setSelection([])}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -3626,6 +3671,8 @@ function JardinContent() {
                 </CardContent>
               </Card>
             )}
+              </div>
+            </div>
 
             {/* Légende */}
             <Card>
@@ -3751,7 +3798,7 @@ function JardinContent() {
             </Card>
           </div>
         </div>
-      </main>
+      </ConteneurPage>
 
       {/* Dialog création planche */}
       <Dialog open={showNewPlancheDialog} onOpenChange={setShowNewPlancheDialog}>

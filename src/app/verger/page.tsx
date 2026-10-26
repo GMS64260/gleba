@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
@@ -134,12 +135,7 @@ function VergerPageInner() {
 
       {/* Shell partagé (palier 2) : header global + barre d'onglets communs */}
       <AppHeader current="verger" showLune />
-      <ModuleTabBar
-        tabs={TABS}
-        activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab as TabId)}
-        accent="lime"
-        actions={
+      <PageEntete id="verger" actions={
           <>
             <Button
               size="sm"
@@ -148,12 +144,12 @@ function VergerPageInner() {
               title="Assistant Plantation"
             >
               <Wand2 className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">Plantation</span>
+              <span>Plantation</span>
             </Button>
             <Link href="/jardin?usage=verger">
               <Button variant="outline" size="sm" className="text-teal-700 border-teal-300 hover:bg-teal-50">
                 <MapIcon className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Plan</span>
+                <span>Plan</span>
               </Button>
             </Link>
             <Button
@@ -164,12 +160,12 @@ function VergerPageInner() {
               title="Assistant IA"
             >
               <Bot className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">IA</span>
+              <span>IA</span>
             </Button>
             <Link href="/parcelles">
               <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
                 <MapIcon className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Parcelles</span>
+                <span>Parcelles</span>
               </Button>
             </Link>
             {ongletVergerSuitAnnee(activeTab) ? (
@@ -202,13 +198,19 @@ function VergerPageInner() {
               </span>
             )}
           </>
-        }
+        } />
+      <ModuleTabBar
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={(tab) => setActiveTab(tab as TabId)}
+        accent="lime"
+
       />
 
       {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Verger */}
       <TourVerger />
       {/* Contenu de l'onglet actif */}
-      <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-4">
+      <ConteneurPage className="space-y-4 py-6">
         {activeTab === "calendrier" && <PremiersPasBanner module="verger" />}
         {/* QA cmsogh2sw — garde d'hydratation : ne pas monter le calendrier
             avant la lecture de gleba_verger_year, sinon il fetche l'année par
@@ -220,7 +222,7 @@ function VergerPageInner() {
         {activeTab === "operations" && yearHydrated && <OperationsTab annee={selectedYear} />}
         {activeTab === "sante" && <SanteTab />}
         {activeTab === "referentiel" && <ReferentielTab />}
-      </main>
+      </ConteneurPage>
 
       {/* Assistant Plantation (accessible depuis le header) */}
       <AssistantPlantationDialog

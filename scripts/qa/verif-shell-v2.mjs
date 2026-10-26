@@ -28,17 +28,29 @@ const BASE = process.argv[2] ?? "http://127.0.0.1:3400";
 const OUT = resolve(process.argv[3] ?? `audit/captures/${new Date().toISOString().slice(0, 10)}-shell-v2`);
 mkdirSync(OUT, { recursive: true });
 const PAGES = ["/dashboard", "/maraichage?tab=cultures", "/maraichage?tab=calendrier", "/verger?tab=calendrier", "/elevage", "/comptabilite"];
-const browser = await chromium.launch({ headless: true, handleSIGINT: false });
 const rapport = {};
+let browser;
 let interrompu = false;
+let rapportImprime = false;
+let etape = "lancement du navigateur";
+let connexion = null;
+function imprimerRapport() {
+  if (rapportImprime) return;
+  rapportImprime = true;
+  console.log(JSON.stringify(rapport, null, 1));
+}
 process.on("SIGINT", async () => {
   if (interrompu) process.exit(130);
   interrompu = true;
-  console.log(JSON.stringify({ ...rapport, _interrompu: true }, null, 1));
-  await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+  rapport._interrompu = true;
+  imprimerRapport();
+  await Promise.race([browser?.close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
   process.exit(130);
 });
+try {
+browser = await chromium.launch({ headless: true, handleSIGINT: false });
 for (const [vue, viewport] of [["desktop", { width: 1440, height: 900 }], ["mobile", { width: 390, height: 844 }]]) {
+  etape = `${vue} : création du contexte`;
   const ctx = await browser.newContext({ viewport, locale: "fr-FR", timezoneId: "Europe/Paris" });
   await ctx.addInitScript(() => {
     try {
@@ -48,10 +60,37 @@ for (const [vue, viewport] of [["desktop", { width: 1440, height: 900 }], ["mobi
   const page = await ctx.newPage();
   const erreurs = [];
   page.on("pageerror", (e) => erreurs.push(String(e).slice(0, 120)));
+  connexion = { vue, sessionHTTP: null, callbackHTTP: null };
+  page.on("response", (r) => {
+    const url = new URL(r.url());
+    if (url.origin === new URL(BASE).origin && url.pathname === "/api/auth/callback/credentials" && r.request().method() === "POST") connexion.callbackHTTP = r.status();
+  });
+  // SessionProvider ne reçoit pas de session initiale : son effet client émet
+  // ce GET public après hydratation. Armer l'attente AVANT goto pour ne pas
+  // perdre une réponse rapide, puis attendre la fin du transfert. Aucun accès
+  // aux internes React et aucune nouvelle tentative de connexion.
+  const sessionInitiale = page.waitForResponse((r) => {
+    const url = new URL(r.url());
+    return r.request().method() === "GET" && url.origin === new URL(BASE).origin && url.pathname === "/api/auth/session";
+  }, { timeout: 45000 }).then(async (r) => {
+    const erreur = await r.finished();
+    if (erreur) throw erreur;
+    if (!r.ok()) throw new Error(`GET /api/auth/session HTTP ${r.status()}`);
+    return { statut: r.status(), erreur: null };
+  }).catch((e) => ({ statut: null, erreur: String(e).replace(/\s+/g, " ").slice(0, 180) }));
+  etape = `${vue} : chargement de la connexion`;
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
+  etape = `${vue} : hydratation de la connexion`;
+  const session = await sessionInitiale;
+  connexion.sessionHTTP = session.statut;
+  if (session.erreur) throw new Error(`Initialisation de la connexion impossible : ${session.erreur}`);
+  await page.locator("#email").waitFor({ state: "visible" });
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));
+  etape = `${vue} : soumission unique de la connexion`;
   await page.fill("#email", "demo@gleba.fr"); await page.fill("#password", "demo2026");
-  await Promise.all([page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 60000 }), page.click("button[type=submit]")]);
+  await Promise.all([page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 60000, waitUntil: "domcontentloaded" }), page.click("button[type=submit]")]);
   for (const path of PAGES) {
+    etape = `${vue} : ${path}`;
     await page.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(4000);
     await page.click('button:has-text("Tout refuser")', { timeout: 1500 }).catch(() => {});
@@ -84,6 +123,7 @@ for (const [vue, viewport] of [["desktop", { width: 1440, height: 900 }], ["mobi
     await page.screenshot({ path: `${OUT}/${vue}${path.replace(/[/?=]/g, "_")}.png`, fullPage: vue === "mobile" || path.includes("calendrier"), animations: "disabled" });
   }
   if (vue === "desktop") {
+    etape = "desktop : clic rail Cultures";
     await page.goto(`${BASE}/aujourdhui`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3000);
     await page.click("aside[aria-label='Navigation principale'] a[href='/maraichage']");
@@ -100,5 +140,19 @@ for (const [vue, viewport] of [["desktop", { width: 1440, height: 900 }], ["mobi
   }
   await ctx.close();
 }
-await browser.close();
-console.log(JSON.stringify(rapport, null, 1));
+} catch (e) {
+  if (!interrompu) {
+    rapport._erreur = { etape, message: String(e).replace(/\s+/g, " ").slice(0, 350), connexion };
+    process.exitCode = 1;
+  }
+} finally {
+  try {
+    await browser?.close();
+  } catch (e) {
+    if (!interrompu) {
+      rapport._erreurFermeture = String(e).replace(/\s+/g, " ").slice(0, 200);
+      process.exitCode = 1;
+    }
+  }
+  imprimerRapport();
+}

@@ -367,6 +367,8 @@ interface GardenViewProps {
   editable?: boolean
   selection?: SelectionItem[]
   onSelectionChange?: (selection: SelectionItem[]) => void
+  /** Tap confirmé ou activation clavier ; ne se déclenche jamais au début d'un geste. */
+  onSelectionActivate?: (selection: SelectionItem[]) => void
   onGroupMove?: (dx: number, dy: number) => void
   onPlancheMove?: (id: string, x: number, y: number) => void
   onObjetMove?: (id: number, x: number, y: number) => void
@@ -406,6 +408,7 @@ export function GardenView({
   editable = false,
   selection = [],
   onSelectionChange,
+  onSelectionActivate,
   onGroupMove,
   onPlancheMove,
   onObjetMove,
@@ -442,6 +445,7 @@ export function GardenView({
   const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 })
   const activePointers = React.useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = React.useRef<{ distance: number; scale: number } | null>(null)
+  const tapSelection = React.useRef<{ pointerId: number; x: number; y: number; seuil: number; selection: SelectionItem[] } | null>(null)
 
   // Pan du plan : glisser sur le fond fait défiler le conteneur. La sélection
   // rectangle (marquee) reste disponible via Maj+glisser. Le pan travaille en
@@ -633,6 +637,7 @@ export function GardenView({
 
   const registerPointer = (e: React.PointerEvent) => {
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (activePointers.current.size > 1) tapSelection.current = null
     svgRef.current?.setPointerCapture?.(e.pointerId)
     if (activePointers.current.size === 2) {
       const [a, b] = Array.from(activePointers.current.values())
@@ -645,6 +650,29 @@ export function GardenView({
     }
   }
 
+  // Une étiquette sélectionne son élément sans amorcer son déplacement.
+  const handleEtiquettePointerDown = (event: React.PointerEvent, id: string) => {
+    if (toolActive || !onSelectionChange) return
+    event.stopPropagation()
+    registerPointer(event)
+    if (activePointers.current.size > 1) return
+    const nouvelle = event.shiftKey
+      ? isItemSelected('planche', id) ? selection.filter(item => !(item.type === 'planche' && item.id === id)) : [...selection, { type: 'planche' as const, id }]
+      : [{ type: 'planche' as const, id }]
+    tapSelection.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, seuil: event.pointerType === 'touch' || event.pointerType === 'pen' ? 6 : 0, selection: nouvelle }
+    setDragging(null)
+    setGroupDrag(null)
+    setMarquee(null)
+    panStart.current = null
+    setPanning(false)
+    if (event.shiftKey) {
+      const presente = isItemSelected('planche', id)
+      onSelectionChange?.(presente ? selection.filter(item => !(item.type === 'planche' && item.id === id)) : [...selection, { type: 'planche', id }])
+      return
+    }
+    onSelectionChange?.([{ type: 'planche', id }])
+  }
+
   const handleItemPointerDown = (e: React.PointerEvent, type: SelectionItem['type'], id: string | number) => {
     // Outil actif : le clic sur un élément pose un point comme sur le fond
     // (l'événement remonte jusqu'au SVG qui gère l'outil).
@@ -652,6 +680,10 @@ export function GardenView({
 
     registerPointer(e)
     if (activePointers.current.size > 1) return
+    const nouvelle = e.shiftKey
+      ? isItemSelected(type, id) ? selection.filter(item => !(item.type === type && item.id === id)) : [...selection, { type, id }]
+      : isItemSelected(type, id) && selection.length > 1 ? selection : [{ type, id }]
+    tapSelection.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, seuil: e.pointerType === 'touch' || e.pointerType === 'pen' ? 6 : 0, selection: nouvelle }
     if (!editable) {
       // Non-edit mode: simple click select
       onSelectionChange?.([{ type, id }])
@@ -760,6 +792,8 @@ export function GardenView({
     if (activePointers.current.has(e.pointerId)) {
       activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     }
+    const tap = tapSelection.current
+    if (tap && (activePointers.current.size > 1 || (tap.pointerId === e.pointerId && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > tap.seuil))) tapSelection.current = null
 
     if (activePointers.current.size >= 2 && pinchStart.current && onScaleChange) {
       e.preventDefault()
@@ -786,6 +820,8 @@ export function GardenView({
     }
 
     if (!editable) return
+    // Le tremblement d'un tap tactile n'est pas un déplacement de l'élément.
+    if (tapSelection.current?.pointerId === e.pointerId) return
 
     // Pan du fond : défilement du conteneur en coordonnées écran
     if (panStart.current) {
@@ -921,6 +957,9 @@ export function GardenView({
   }
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    const tap = tapSelection.current
+    const activation = tap && tap.pointerId === e.pointerId && activePointers.current.size === 1 && e.type !== 'pointercancel' && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) <= tap.seuil ? tap.selection : null
+    if (tap?.pointerId === e.pointerId) tapSelection.current = null
     activePointers.current.delete(e.pointerId)
     if (activePointers.current.size < 2) pinchStart.current = null
 
@@ -954,6 +993,7 @@ export function GardenView({
     }
 
     if (activePointers.current.size === 0) finishInteraction()
+    if (activation?.length) onSelectionActivate?.(activation)
   }
 
   const handleSvgClick = (e: React.MouseEvent) => {
@@ -1740,24 +1780,7 @@ export function GardenView({
                 />
               )}
               {/* Nom */}
-              {calques.etiquettes && (
-                <text
-                  x={w / 2}
-                  y={l / 2}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={Math.min(w * 0.4, l * 0.15, 0.4)}
-                  fill="#1f2937"
-                  fontWeight="600"
-                  stroke="#ffffff"
-                  strokeWidth={0.045}
-                  strokeLinejoin="round"
-                  paintOrder="stroke"
-                  style={{ pointerEvents: "none" }}
-                >
-                  {planche.nom || planche.id}
-                </text>
-              )}
+
               {/* Cultures en cours - sillons en pointillés */}
               {planche.cultures.length > 0 && (
                 <>
@@ -1912,43 +1935,13 @@ export function GardenView({
                           })}
 
                         {/* Label de la culture */}
-                        {calques.etiquettes && (
-                          <text
-                            x={zoneStartX + zoneWidth / 2}
-                            y={l - 0.2}
-                            textAnchor="middle"
-                            fontSize={0.14}
-                            fill="#1f2937"
-                            fontWeight="700"
-                            stroke="#ffffff"
-                            strokeWidth={0.035}
-                            strokeLinejoin="round"
-                            paintOrder="stroke"
-                            opacity={0.95}
-                            style={{ pointerEvents: "none" }}
-                          >
-                            {culture.espece.nom ?? culture.espece.id}
-                          </text>
-                        )}
+
                       </g>
                     )
                   })}
 
                   {/* Texte : nom de la première culture ou compteur */}
-                  {calques.etiquettes && planche.cultures.length > 3 && (
-                    <text
-                      x={w / 2}
-                      y={l - 0.15}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize={0.12}
-                      fill="#4b5563"
-                      fontWeight="500"
-                      style={{ pointerEvents: "none" }}
-                    >
-                      +{planche.cultures.length - 3} autres
-                    </text>
-                  )}
+
                 </>
               )}
 
@@ -1984,6 +1977,80 @@ export function GardenView({
               )}
             </g>
           )
+        })}
+
+        {/* Les libellés sont au-dessus des géométries : leur texte peut dépasser
+            une planche étroite sans faire sélectionner sa voisine au toucher. */}
+        {calques.etiquettes && planches.map(planche => {
+          const x = planche.posX ?? 0
+          const y = planche.posY ?? 0
+          const w = planche.largeur ?? 0.8
+          const l = planche.longueur ?? 2
+          return <g key={'etiquettes-' + planche.id} transform={`translate(${x}, ${y}) rotate(${planche.rotation2D ?? 0}, ${w / 2}, ${l / 2})`}>
+            {calques.etiquettes && (
+                <text
+                  x={w / 2}
+                  y={l / 2}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={Math.min(w * 0.4, l * 0.15, 0.4)}
+                  fill="#1f2937"
+                  fontWeight="600"
+                  stroke="#ffffff"
+                  strokeWidth={0.045}
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
+                  style={{ pointerEvents: toolActive || !onSelectionChange ? "none" : "all", cursor: onSelectionChange ? "pointer" : undefined }}
+                  onPointerDown={event => handleEtiquettePointerDown(event, planche.id)}
+                  onKeyDown={event => { if (toolActive) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectionChange?.([{ type: 'planche', id: planche.id }]); onSelectionActivate?.([{ type: 'planche', id: planche.id }]) } }}
+                  role={onSelectionChange ? "button" : undefined} tabIndex={toolActive || !onSelectionChange ? -1 : 0} aria-label={`Détails de la planche ${planche.nom || planche.id}`} data-selection-planche={planche.id}
+                >
+                  {planche.nom || planche.id}
+                </text>
+              )}
+            {planche.cultures.slice(0, 3).map((culture, cultureIdx) => {
+              const zoneWidth = (planche.largeur || 0.8) / Math.min(planche.cultures.length, 3)
+              const zoneStartX = cultureIdx * zoneWidth
+              return <g key={'etiquette-culture-' + culture.id}>{calques.etiquettes && (
+                          <text
+                            x={zoneStartX + zoneWidth / 2}
+                            y={l - 0.2}
+                            textAnchor="middle"
+                            fontSize={0.14}
+                            fill="#1f2937"
+                            fontWeight="700"
+                            stroke="#ffffff"
+                            strokeWidth={0.035}
+                            strokeLinejoin="round"
+                            paintOrder="stroke"
+                            opacity={0.95}
+                            style={{ pointerEvents: toolActive || !onSelectionChange ? "none" : "all", cursor: onSelectionChange ? "pointer" : undefined }}
+                  onPointerDown={event => handleEtiquettePointerDown(event, planche.id)}
+                  onKeyDown={event => { if (toolActive) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectionChange?.([{ type: 'planche', id: planche.id }]); onSelectionActivate?.([{ type: 'planche', id: planche.id }]) } }}
+                  role={onSelectionChange ? "button" : undefined} tabIndex={toolActive || !onSelectionChange ? -1 : 0} aria-label={`Détails de ${culture.espece.nom ?? culture.espece.id}, planche ${planche.nom || planche.id}`} data-selection-planche={planche.id}
+                          >
+                            {culture.espece.nom ?? culture.espece.id}
+                          </text>
+                        )}</g>
+            })}
+            {calques.etiquettes && planche.cultures.length > 3 && (
+                    <text
+                      x={w / 2}
+                      y={l - 0.15}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize={0.12}
+                      fill="#4b5563"
+                      fontWeight="500"
+                      style={{ pointerEvents: toolActive || !onSelectionChange ? "none" : "all", cursor: onSelectionChange ? "pointer" : undefined }}
+                  onPointerDown={event => handleEtiquettePointerDown(event, planche.id)}
+                  onKeyDown={event => { if (toolActive) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectionChange?.([{ type: 'planche', id: planche.id }]); onSelectionActivate?.([{ type: 'planche', id: planche.id }]) } }}
+                  role={onSelectionChange ? "button" : undefined} tabIndex={toolActive || !onSelectionChange ? -1 : 0} aria-label={`Autres cultures de la planche ${planche.nom || planche.id}`} data-selection-planche={planche.id}
+                    >
+                      +{planche.cultures.length - 3} autres
+                    </text>
+                  )}
+          </g>
         })}
 
         {/* Calque associations : liaisons favorables/défavorables entre planches */}

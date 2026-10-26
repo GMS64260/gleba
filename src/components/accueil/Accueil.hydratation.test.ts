@@ -45,8 +45,9 @@ describe("Accueil : premier rendu indépendant de l'horloge", () => {
     const visite = rendreA("2026-10-25T10:00:00Z")
     expect(visite).toBe(build)
     expect(build).not.toMatch(/octobre/)
-    // Titre jamais vide : libellé masqué stable tant que le jour n'est pas connu.
-    expect(build).toMatch(/<h1[^>]*>.*<span class="sr-only">Aujourd’hui<\/span><\/h1>/)
+    // Le titre de navigation reste stable ; la date est une métadonnée chargée au client.
+    expect(build).toMatch(/<h1[^>]*>Aujourd’hui<\/h1>/)
+    expect(build).not.toContain("<time")
     // La rangée de repères est bien rendue, sans année figée.
     expect(build).toContain("Récoltes")
     expect(build).not.toContain("Récoltes 2026")

@@ -63,12 +63,12 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
       // menu mobile, et le recouvrement du contenu en dessous.
       style={{ "--module-tabbar-top": headerHidden ? "0px" : "var(--app-header-h, 61px)" } as React.CSSProperties}
     >
-      <div className="container mx-auto px-4 max-w-[1600px]">
+      <div className="container mx-auto px-4 max-w-[1600px] lg:px-6">
         {/* Mobile/tablette : onglets visibles. Le menu déroulant affichait
             seulement « Calendrier » fermé, ce qui rendait les autres sections
             introuvables sur les écrans tactiles. */}
         <div className="space-y-2 py-2 xl:hidden">
-          <div className="-mx-4 overflow-x-auto px-4 pb-0.5 scrollbar-hide">
+          <div className="-mx-4 overflow-x-auto px-4 pb-0.5 scrollbar-hide lg:-mx-6 lg:px-6">
             <div className="flex w-max min-w-full items-center gap-1.5">
               {tabs.map((tab) => {
                 const isActive = activeTab === tab.id
@@ -108,6 +108,7 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
                   type="button"
                   key={tab.id}
                   onClick={() => onTabChange(tab.id)}
+                  aria-current={isActive ? "page" : undefined}
                   className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     isActive
                       ? a.active

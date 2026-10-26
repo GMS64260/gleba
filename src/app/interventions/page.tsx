@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { getAvailableYears } from "@/components/year-selector"
@@ -772,23 +773,9 @@ export default function InterventionsPage() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       <AppHeader />
-
-      <main className="container mx-auto px-4 py-6 max-w-[1600px]">
-        {/* Title + Year + Add button */}
-        {/* QA cmswxlath — cette ligne ne repliait pas : titre (≈180 px) + année +
-            bouton « Nouvelle intervention » (≈195 px) ne tiennent pas dans les
-            344 px utiles d'un écran de 375 px, et rien ici n'est réductible
-            (min-width auto). Le document mesurait 502 px et la saisie au champ
-            partait hors écran. */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-              <Hammer className="h-5 w-5 text-orange-700" />
-            </div>
-            <h1 className="text-xl font-semibold text-slate-800">Interventions</h1>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+      <PageEntete id="interventions" actions={<div className="flex flex-wrap items-center gap-2">
             <select
+              aria-label="Année affichée"
               value={selectedYear}
               onChange={(e) => changerAnnee(parseInt(e.target.value))}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -1200,8 +1187,16 @@ export default function InterventionsPage() {
                 </form>
               </DialogContent>
             </Dialog>
-          </div>
-        </div>
+          </div>} />
+
+      <ConteneurPage className="py-6">
+        {/* Title + Year + Add button */}
+        {/* QA cmswxlath — cette ligne ne repliait pas : titre (≈180 px) + année +
+            bouton « Nouvelle intervention » (≈195 px) ne tiennent pas dans les
+            344 px utiles d'un écran de 375 px, et rien ici n'est réductible
+            (min-width auto). Le document mesurait 502 px et la saisie au champ
+            partait hors écran. */}
+
 
         {/* Stats cards */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
@@ -1675,7 +1670,7 @@ export default function InterventionsPage() {
             )}
           </CardContent>
         </Card>
-      </main>
+      </ConteneurPage>
 
       {/* Footer */}
       <footer className="border-t mt-8 py-4 text-center text-sm text-slate-500">

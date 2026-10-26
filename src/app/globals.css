@@ -317,13 +317,53 @@
 }
 
 /* ============================================================ */
-/* ACCUEIL v2 — shell : le rail (200 px) remplace l'en-tête       */
+/* SHELL v2 — rail, barre supérieure et navigation mobile        */
 /* ============================================================ */
-/* Posé sur <html> par CoquilleV2 pour un compte en v2 : le contenu de toutes
-   les pages est décalé de la largeur du rail sur grand écran. */
+/* Les mesures sont publiées par les deux barres. Les replis évitent que le
+   contenu passe derrière la navigation pendant leur premier montage. */
+html.coquille-v2 {
+  --app-header-h: 65px;
+  --app-header-visible-h: var(--app-header-h);
+  --navigation-basse-h: calc(4rem + env(safe-area-inset-bottom, 0px));
+}
+/* Les pages de présentation restent statiques pour les visiteurs. Un membre
+   conserve la navigation de son carnet sans second menu de connexion. */
+html.coquille-v2 [data-marketing-navigation] {
+  display: none;
+}
+@media (max-width: 1023px) {
+  html.coquille-v2 body {
+    padding-bottom: calc(var(--navigation-basse-h) + 1rem);
+  }
+  /* Les boutons privés gardent leur code et leurs règles de saisie. Seuls
+     ces déclencheurs flottants identifiés remontent au-dessus du menu. */
+  html.coquille-v2 button.fixed[aria-label="Fermer l'assistant"],
+  html.coquille-v2 button.fixed[aria-label="Envoyer un feedback"] {
+    bottom: calc(var(--navigation-basse-h) + 1rem);
+  }
+  html.coquille-v2 button.fixed[aria-label="Assistant IA"] {
+    display: none;
+  }
+  html.coquille-v2 [data-assistant-panel="compact"] {
+    bottom: calc(var(--navigation-basse-h) + 5rem);
+    max-height: calc(100dvh - var(--app-header-visible-h, var(--app-header-h)) - var(--navigation-basse-h) - 6rem);
+  }
+}
 @media (min-width: 1024px) {
+  html.coquille-v2 {
+    --navigation-basse-h: 0px;
+  }
   html.coquille-v2 body {
     padding-left: 200px;
+  }
+}
+@media print {
+  html.coquille-v2 body {
+    padding-left: 0;
+    padding-bottom: 0;
+  }
+  [data-app-topbar], [data-navigation-basse], aside[aria-label="Navigation principale"] {
+    display: none !important;
   }
 }
 
