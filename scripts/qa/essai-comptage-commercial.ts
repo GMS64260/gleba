@@ -30,7 +30,7 @@ async function main() {
     const premier = await livrer(4)
     assert.equal(await net(), 6)
     // Forme exacte des journaux 215 déjà écrits : midi civil, création réelle antérieure.
-    await db.mouvementStockCommercial.updateMany({ where: { userId: u.id, documentId: premier.id }, data: { createdAt: new Date(Date.now() - 1000) } })
+    await db.mouvementStockCommercial.updateMany({ where: { userId: u.id, documentId: premier.id }, data: { date: dateCivile(jour), createdAt: new Date(Date.now() - 1000) } })
     await enregistrerInventaireEspece(u.id, e.id, { stock: 6 })
     assert.equal(await net(), 6, 'après comptage6, le BL antérieur ne retire pas encore4')
     const second = await livrer(2)
