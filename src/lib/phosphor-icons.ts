@@ -69,6 +69,7 @@ export {
   ClockCounterClockwise as History,
   House as Home,
   ImageSquare as ImagePlus,
+  Paperclip,
   InstagramLogo as Instagram,
   StackSimple as Layers,
   Gauge as LayoutDashboard,

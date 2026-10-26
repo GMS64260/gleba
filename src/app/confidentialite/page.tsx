@@ -190,6 +190,8 @@ export default function ConfidentialitePage() {
             conditions et de sa politique de confidentialité. Si vous ne
             souhaitez pas ce transfert, n&apos;utilisez pas l&apos;assistant : le
             reste de l&apos;application fonctionne sans lui.
+            Si vous utilisez le micro, la dictée peut aussi transmettre votre
+            audio au service vocal de votre navigateur.
             Les photos que vous choisissez de joindre sont également transmises
             pour analyse visuelle. Elles sont redimensionnées et leurs
             métadonnées EXIF (dont la position GPS) sont retirées avant cet envoi.
