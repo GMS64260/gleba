@@ -9,7 +9,7 @@ async function main() {
   const dossier = '/tmp/gleba-stock-captures'
   await fs.mkdir(dossier, { recursive: true })
   const browser = await chromium.launch({ headless: true })
-  const context = await browser.newContext({ viewport: { width: 1366, height: 1024 }, extraHTTPHeaders: { 'x-forwarded-for': '203.0.113.79' } })
+  const context = await browser.newContext({ viewport: { width: 1366, height: 1024 }, timezoneId: 'Europe/Paris', locale: 'fr-FR', extraHTTPHeaders: { 'x-forwarded-for': '203.0.113.79' } })
   const page = await context.newPage()
   page.setDefaultNavigationTimeout(120000)
   page.setDefaultTimeout(30000)
@@ -53,7 +53,7 @@ async function main() {
     const livrer = page.waitForResponse((r) => r.url().endsWith(`/api/comptabilite/documents/${bon.id}`) && r.request().method() === 'PATCH')
     await dialogue.getByRole('button', { name: 'Confirmer la livraison', exact: true }).click(); assert.equal((await livrer).status(), 200)
     assert.equal(await stock(), 16)
-    const jour = new Date().toISOString().slice(0, 10)
+    const jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
     const facture = await api('/api/comptabilite/documents/facturer', { ids: [bon.id], dateEcheance: jour }, 'POST', 201)
     assert.equal(await stock(), 16, 'la facture du BL ne débite pas à nouveau')
     // Le vrai POST facture partage le même contrôle et sa clé de reprise ne double ni facture ni stock.
