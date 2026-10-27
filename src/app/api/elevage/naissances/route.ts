@@ -11,6 +11,13 @@ import prisma from '@/lib/prisma'
 import { naissanceSchema } from '@/lib/validations/elevage-naissance'
 import { erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
 
+class NaissanceLieeError extends Error {}
+
+function detailPetit(petit: object) {
+  const p = petit as Record<string, unknown>
+  return Object.fromEntries(['sexe', 'boucleProvisoire', 'boucleDefinitive', 'modeElevage', 'poids', 'couleur', 'vivant', 'notes'].map((champ) => [champ, p[champ] ?? (champ === 'vivant' ? true : null)]))
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -25,7 +32,7 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = { userId }
     if (annee) {
       const start = new Date(parseInt(annee), 0, 1)
-      const end = new Date(parseInt(annee), 11, 31, 23, 59, 59)
+      const end = new Date(parseInt(annee), 11, 31, 23, 59, 59, 999)
       where.date = { gte: start, lte: end }
     }
     if (filiere) {
@@ -35,7 +42,7 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    const [naissances, stats] = await Promise.all([
+    const [naissances, stats, lignesMensuelles] = await Promise.all([
       prisma.naissanceAnimale.findMany({
         where,
         include: {
@@ -65,11 +72,12 @@ export async function GET(request: NextRequest) {
         },
         _count: true,
       }),
+      prisma.naissanceAnimale.findMany({ where, select: { date: true, nombreNes: true, nombreVivants: true } }),
     ])
 
     // Stats par mois
     const parMois: Record<number, { nes: number; vivants: number }> = {}
-    naissances.forEach(n => {
+    lignesMensuelles.forEach(n => {
       const mois = new Date(n.date).getMonth() + 1
       if (!parMois[mois]) parMois[mois] = { nes: 0, vivants: 0 }
       parMois[mois].nes += n.nombreNes
@@ -283,6 +291,18 @@ export async function PATCH(request: NextRequest) {
     const nouveauVivants = parsed.data.nombreVivants
 
     const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM naissances_animales WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`
+      const courante = await tx.naissanceAnimale.findFirst({ where: { id, userId }, include: { petits: { orderBy: { numero: 'asc' } } } })
+      const individualisee = courante?.petits.some((p) => p.animalId != null) ?? false
+      if (individualisee && courante) {
+        const cible = { mereId: parsed.data.mereId ?? null, lotId: nouveauLot, date: parsed.data.date ?? courante.date, nombreNes: parsed.data.nombreNes, nombreVivants: nouveauVivants, nombreMales: parsed.data.nombreMales ?? null, nombreFemelles: parsed.data.nombreFemelles ?? null }
+        const change = Object.entries(cible).some(([champ, valeur]) => {
+          const avant = courante[champ as keyof typeof courante]
+          return valeur instanceof Date && avant instanceof Date ? valeur.getTime() !== avant.getTime() : valeur !== avant
+        })
+        const petitsChanges = parsed.data.petits !== undefined && JSON.stringify(parsed.data.petits.map(detailPetit)) !== JSON.stringify(courante.petits.map(detailPetit))
+        if (change || petitsChanges) throw new NaissanceLieeError('Des fiches de petits existent déjà. Corrigez ces fiches ; les effectifs, la date et le détail de cette naissance ne peuvent plus être remplacés ici. Les notes restent modifiables.')
+      }
       if (ancienLot !== nouveauLot || ancienVivants !== nouveauVivants) {
         if (ancienLot && ancienVivants > 0) {
           const lot = await tx.lotAnimaux.findFirst({
@@ -323,7 +343,7 @@ export async function PATCH(request: NextRequest) {
       })
 
       // PROMPT 29 — remplacement du détail par petit si fourni (undefined = inchangé)
-      if (parsed.data.petits !== undefined) {
+      if (parsed.data.petits !== undefined && !individualisee) {
         await tx.petitNaissance.deleteMany({ where: { naissanceId: id } })
         if (parsed.data.petits.length > 0) {
           await tx.petitNaissance.createMany({
@@ -354,6 +374,7 @@ export async function PATCH(request: NextRequest) {
     })
     return NextResponse.json({ data: updated })
   } catch (error) {
+    if (error instanceof NaissanceLieeError) return NextResponse.json({ error: error.message }, { status: 409 })
     console.error('PATCH /api/elevage/naissances error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
@@ -384,6 +405,10 @@ export async function DELETE(request: NextRequest) {
     // sans lot ne doit jamais modifier l'effectif du lot courant de la mère.
     const lotCredite = existing.lotId
     await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM naissances_animales WHERE id = ${existing.id} AND user_id = ${session.user.id} FOR UPDATE`
+      if (await tx.petitNaissance.count({ where: { naissanceId: existing.id, animalId: { not: null } } })) {
+        throw new NaissanceLieeError('Cette naissance a créé des fiches de petits. Conservez-la pour préserver leur origine et l’effectif du lot.')
+      }
       if (lotCredite && existing.nombreVivants > 0) {
         const lot = await tx.lotAnimaux.findFirst({
           where: { id: lotCredite, userId: session.user.id },
@@ -402,6 +427,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof NaissanceLieeError) return NextResponse.json({ error: error.message }, { status: 409 })
     console.error('DELETE /api/elevage/naissances error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },

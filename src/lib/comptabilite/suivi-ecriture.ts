@@ -104,6 +104,25 @@ export interface SuiviDeLigne {
   facture: { id: number; numero: string } | null
 }
 
+/** Les dépenses générées gardent leur suivi sur DepenseManuelle. */
+export async function chargerSuiviDesDepenses(userId: string, lignes: Array<LigneRevenuDerivable & { comptable: boolean }>) {
+  const types: Record<string, string> = { LotAnimaux: 'achat_animal', Animal: 'achat_animal_individuel', OperationArbre: 'operation_arbre', Intervention: 'intervention' }
+  const cibles = lignes.filter((l) => l.comptable && !l.corrigeable && types[l.source])
+  const where = cibles.map((l) => ({ sourceType: types[l.source], sourceId: l.sourceId }))
+  const resultat = new Map<string, { ecriture: EcritureDeLigne; paye: boolean; modeReglement: string | null }>()
+  if (!where.length) return resultat
+  const miroirs = await prisma.depenseManuelle.findMany({
+    where: { userId, auto: true, OR: where },
+    select: { id: true, sourceType: true, sourceId: true, paye: true, ...SELECT_SUIVI },
+  })
+  const parSource = new Map(miroirs.map((m) => [cleSource(m.sourceType!, m.sourceId!), m]))
+  for (const l of cibles) {
+    const m = parSource.get(cleSource(types[l.source], l.sourceId))
+    if (m) resultat.set(l.id, { ecriture: { id: m.id, suivi: suiviDe(m) }, paye: m.paye, modeReglement: m.modeReglement ?? null })
+  }
+  return resultat
+}
+
 /**
  * Écriture et facture de chaque ligne dérivée de la liste Transactions (clé :
  * `ligne.id`). Une ligne manuelle (`corrigeable`) ou une ligne sans miroir ni

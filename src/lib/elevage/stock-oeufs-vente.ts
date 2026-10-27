@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client"
 import { OEUFS_PAR_UNITE, oeufsDepuisUnite } from "@/lib/stocks-helpers"
 import { statutLotOeufs, stockRestantLotOeufs } from "./stock-oeufs"
 import { blocagesVetoPontes } from "./stock-oeufs-lots"
+import { finJourLivraison } from '@/lib/commercial/dates-stock'
 
 export class StockOeufsVenteError extends Error {
   constructor(
@@ -66,7 +67,7 @@ export async function synchroniserStockOeufsVente(
   const productions = await tx.productionOeuf.findMany({
     where: {
       userId: input.userId,
-      date: { lte: input.date },
+      date: { lte: finJourLivraison(input.date) },
     },
     orderBy: [{ date: "asc" }, { id: "asc" }],
     include: {

@@ -21,6 +21,14 @@ import { libellesVenteBois } from '@/lib/verger/production-bois'
 
 type AutoComptaTx = Prisma.TransactionClient
 
+async function suiviDuMiroirDepense(db: AutoComptaTx, where: { userId: string; sourceType: string; sourceId: number; auto: true }) {
+  await db.$queryRaw`SELECT id FROM depenses_manuelles WHERE user_id = ${where.userId} AND source_type = ${where.sourceType} AND source_id = ${where.sourceId} AND auto = true FOR UPDATE`
+  return (await db.depenseManuelle.findFirst({
+    where,
+    select: { paye: true, modeReglement: true, numeroPiece: true, journal: true, pjUrl: true, notes: true, refFacture: true, dateEcheance: true },
+  })) ?? {}
+}
+
 function inAutoComptaTransaction<T>(
   tx: AutoComptaTx | undefined,
   operation: (db: AutoComptaTx) => Promise<T>,
@@ -206,6 +214,7 @@ export async function createDepenseFromLotAnimaux(
 ) {
   const montantTTC = lot.prixAchatTotal || 0
   return inAutoComptaTransaction(tx, async (db) => {
+    const suivi = await suiviDuMiroirDepense(db, { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true })
     await db.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true },
     })
@@ -229,6 +238,7 @@ export async function createDepenseFromLotAnimaux(
         sourceType: 'achat_animal',
         sourceId: lot.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -315,6 +325,7 @@ export async function createVenteFromVenteProduit(
     tauxTVA?: number | null
     factureId?: number | null
     paye?: boolean | null
+    modeReglement?: string | null
   },
   tx?: AutoComptaTx,
 ) {
@@ -373,6 +384,7 @@ export async function createVenteFromVenteProduit(
         sourceId: venteProduit.id,
         auto: true,
         ...suivi,
+        ...(venteProduit.modeReglement !== undefined ? { modeReglement: venteProduit.modeReglement } : {}),
       },
     })
   })
@@ -641,8 +653,9 @@ export async function createDepenseFromOperationArbre(
   // Une opération planifiée (fait=false) n'est pas une dépense réelle.
   const montantTTC = operation.fait === false ? 0 : operation.cout || 0
   return prisma.$transaction(async (tx) => {
+    const suivi = await suiviDuMiroirDepense(tx, { userId, sourceType: 'operation_arbre', sourceId: operation.id, auto: true })
     await tx.depenseManuelle.deleteMany({
-      where: { sourceType: 'operation_arbre', sourceId: operation.id, auto: true },
+      where: { userId, sourceType: 'operation_arbre', sourceId: operation.id, auto: true },
     })
     if (montantTTC <= 0) return null
     const tauxTVA = operation.type === 'traitement' ? 20 : 10
@@ -663,6 +676,7 @@ export async function createDepenseFromOperationArbre(
         sourceType: 'operation_arbre',
         sourceId: operation.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -684,8 +698,9 @@ export async function createDepenseFromCampagnePlantation(
 ) {
   const montantTTC = campagne.coutReel || 0
   return prisma.$transaction(async (tx) => {
+    const suivi = await suiviDuMiroirDepense(tx, { userId, sourceType: 'campagne_plantation', sourceId: campagne.id, auto: true })
     await tx.depenseManuelle.deleteMany({
-      where: { sourceType: 'campagne_plantation', sourceId: campagne.id, auto: true },
+      where: { userId, sourceType: 'campagne_plantation', sourceId: campagne.id, auto: true },
     })
     if (montantTTC <= 0) return null
     const { montantHT, montantTVA } = calculTVA(montantTTC, 10)
@@ -709,6 +724,7 @@ export async function createDepenseFromCampagnePlantation(
         sourceType: 'campagne_plantation',
         sourceId: campagne.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -742,6 +758,7 @@ export async function createDepenseFromConsommationAliment(
       aliment?.userStocks?.[0]?.coutUnitaire ?? aliment?.userStocks?.[0]?.prix ?? aliment?.prix ?? 0
     const montantTTC = consommation.quantite * prixUnitaire
 
+    const suivi = await suiviDuMiroirDepense(db, { userId, sourceType: 'consommation_aliment', sourceId: consommation.id, auto: true })
     await db.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'consommation_aliment', sourceId: consommation.id, auto: true },
     })
@@ -765,6 +782,7 @@ export async function createDepenseFromConsommationAliment(
         sourceType: 'consommation_aliment',
         sourceId: consommation.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -788,6 +806,7 @@ export async function createDepenseFromSoinAnimal(
   // Un soin planifié (fait=false) n'est pas une dépense réelle.
   const montantTTC = soin.fait === false ? 0 : soin.cout || 0
   return inAutoComptaTransaction(tx, async (db) => {
+    const suivi = await suiviDuMiroirDepense(db, { userId, sourceType: 'soin_animal', sourceId: soin.id, auto: true })
     await db.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'soin_animal', sourceId: soin.id, auto: true },
     })
@@ -811,6 +830,7 @@ export async function createDepenseFromSoinAnimal(
         sourceType: 'soin_animal',
         sourceId: soin.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -835,6 +855,7 @@ export async function createDepenseFromAchatAnimal(
 ) {
   const montantTTC = animal.prixAchatInclusDansLot ? 0 : animal.prixAchat || 0
   return inAutoComptaTransaction(tx, async (db) => {
+    const suivi = await suiviDuMiroirDepense(db, { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true })
     await db.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true },
     })
@@ -858,6 +879,7 @@ export async function createDepenseFromAchatAnimal(
         sourceType: 'achat_animal_individuel',
         sourceId: animal.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -998,8 +1020,9 @@ export async function createDepenseFromFertilisation(
   const montantTTC = fertilisation.quantite * prixUnitaire
 
   return prisma.$transaction(async (tx) => {
+    const suivi = await suiviDuMiroirDepense(tx, { userId, sourceType: 'fertilisation', sourceId: fertilisation.id, auto: true })
     await tx.depenseManuelle.deleteMany({
-      where: { sourceType: 'fertilisation', sourceId: fertilisation.id, auto: true },
+      where: { userId, sourceType: 'fertilisation', sourceId: fertilisation.id, auto: true },
     })
     if (montantTTC <= 0) return null
     const { montantHT, montantTVA } = calculTVA(montantTTC, 20)
@@ -1019,6 +1042,7 @@ export async function createDepenseFromFertilisation(
         sourceType: 'fertilisation',
         sourceId: fertilisation.id,
         auto: true,
+        ...suivi,
       },
     })
   })
@@ -1075,8 +1099,9 @@ export async function createDepenseFromIntervention(
     || `${intervention.type}${intervention.intrantNom ? ` - ${intervention.intrantNom}` : ''}`
 
   return prisma.$transaction(async (tx) => {
+    const suivi = await suiviDuMiroirDepense(tx, { userId, sourceType: 'intervention', sourceId: intervention.id, auto: true })
     await tx.depenseManuelle.deleteMany({
-      where: { sourceType: 'intervention', sourceId: intervention.id, auto: true },
+      where: { userId, sourceType: 'intervention', sourceId: intervention.id, auto: true },
     })
 
     return tx.depenseManuelle.create({
@@ -1094,6 +1119,7 @@ export async function createDepenseFromIntervention(
         sourceType: 'intervention',
         sourceId: intervention.id,
         auto: true,
+        ...suivi,
       },
     })
   })

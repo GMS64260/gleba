@@ -62,6 +62,8 @@ export interface VenteManuelleImpayee {
   description: string
   montant: number
   client?: string | null
+  auto?: boolean
+  sourceType?: string | null
 }
 
 /** Arrondi au centime : les montants nets passent par une soustraction. */
@@ -81,19 +83,17 @@ export function construireImpayees(sources: {
   // Un avoir réduit la créance de la facture qu'il corrige.
   const avoirsParOrigine = new Map<number, number>()
   for (const a of factures) {
-    if (a.type !== 'avoir' || a.statut === 'annulee' || !a.factureOrigineId) continue
+    if (a.type !== 'avoir' || !['emise', 'payee'].includes(a.statut ?? '') || !a.factureOrigineId) continue
     avoirsParOrigine.set(a.factureOrigineId, (avoirsParOrigine.get(a.factureOrigineId) ?? 0) + a.totalTTC)
   }
 
   const items: Impayee[] = []
-  const facturesRetenues = new Set<number>()
 
   for (const f of factures) {
     if (f.statut !== 'emise' || f.type === 'avoir') continue
     const net = centimes(f.totalTTC - (avoirsParOrigine.get(f.id) ?? 0))
     // Une facture intégralement soldée par avoir n'est plus une créance.
     if (net <= 0.005) continue
-    facturesRetenues.add(f.id)
     items.push({
       id: f.id,
       source: 'Facture',
@@ -108,7 +108,7 @@ export function construireImpayees(sources: {
 
   for (const v of ventes) {
     // Déjà portée par sa facture : ne pas compter la créance deux fois.
-    if (v.factureId != null && facturesRetenues.has(v.factureId)) continue
+    if (v.factureId != null) continue
     items.push({
       id: v.id,
       source: 'VenteProduit',
@@ -121,6 +121,8 @@ export function construireImpayees(sources: {
   }
 
   for (const m of ventesManuelles) {
+    // Les ventes d’atelier sont déjà lues ci-dessus depuis VenteProduit.
+    if (m.auto && m.sourceType === 'vente_produit') continue
     items.push({
       id: m.id,
       source: 'VenteManuelle',

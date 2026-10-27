@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client"
+import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import { randomUUID } from "node:crypto"
 import {
   PRODUITS_RUCHE,
@@ -129,7 +130,7 @@ async function ventilerSortieFifo(
     where: {
       userId: input.userId,
       produit: input.produit,
-      date: { lte: input.date },
+      date: { lte: finJourLivraison(input.date) },
     },
     orderBy: [{ date: "asc" }, { id: "asc" }],
     include: { mouvementsStock: { select: { quantite: true } } },

@@ -164,6 +164,9 @@ export async function GET(request: NextRequest) {
       client: string | null
       paye: boolean | null
       categorie: string
+      modeReglement?: string | null
+      numeroPiece?: string | null
+      tauxTVA?: number | null
       /** Facture qui porte la vente source (ticket cmvgdzsf7). */
       factureId?: number | null
     }
@@ -324,6 +327,9 @@ export async function GET(request: NextRequest) {
         montant: v.montant,
         client: v.clientNom || fallbackClient,
         paye: v.paye,
+        modeReglement: v.modeReglement ?? null,
+        numeroPiece: v.numeroPiece ?? null,
+        tauxTVA: v.tauxTVA ?? null,
         categorie: v.categorie === 'legumes' ? 'Légumes' :
                    v.categorie === 'fruits' ? 'Fruits' :
                    v.categorie === 'transformation' ? 'Transformation' :

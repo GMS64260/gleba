@@ -5,24 +5,27 @@ const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
   productionFindFirst: vi.fn(),
   mouvementCreate: vi.fn(),
+  mouvementFindFirst: vi.fn(),
+  mouvementDelete: vi.fn(),
   soinFindMany: vi.fn(),
   animalFindFirst: vi.fn(),
   animalFindMany: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  const db = {
+    $executeRaw: vi.fn(),
     productionOeuf: { findFirst: mocks.productionFindFirst },
-    mouvementStockOeuf: { create: mocks.mouvementCreate },
-    // Ticket cmsoeyhs5 — la garde vente consulte les soins (délai œufs) et
-    // l'expansion lot↔membres (ciblesAffectees).
+    mouvementStockOeuf: { create: mocks.mouvementCreate, findFirst: mocks.mouvementFindFirst, delete: mocks.mouvementDelete },
+    mouvementStockCommercial: { count: async () => 0 },
     soinAnimal: { findMany: mocks.soinFindMany },
     animal: { findFirst: mocks.animalFindFirst, findMany: mocks.animalFindMany },
-  },
-}))
+  }
+  return { default: { ...db, $transaction: (callback: (tx: unknown) => unknown) => callback(db) } }
+})
 
-import { POST } from "./route"
+import { POST, DELETE } from "./route"
 
 const request = (body: object) => new NextRequest("http://localhost/api/elevage/stock-oeufs", {
   method: "POST",
@@ -143,5 +146,17 @@ describe("sorties du stock d'œufs", () => {
     expect(response.status).toBe(422)
     expect((await response.json()).error).toContain("22 œuf")
     expect(mocks.mouvementCreate).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('suppression d’une sortie issue d’une vente', () => {
+  it('refuse de restituer du stock sans annuler la vente comptabilisée', async () => {
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
+    mocks.mouvementFindFirst.mockResolvedValue({ id: 'm1', notes: '[vente-produit:12] Sortie automatique' })
+    mocks.mouvementDelete.mockClear()
+    const res = await DELETE(new NextRequest('http://localhost/api/elevage/stock-oeufs?id=m1', { method: 'DELETE' }))
+    expect(res.status).toBe(409)
+    expect(mocks.mouvementDelete).not.toHaveBeenCalled()
   })
 })

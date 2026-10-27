@@ -222,6 +222,9 @@ export async function PATCH(request: NextRequest) {
     invalidateKpi(session.user.id)
     return NextResponse.json(depense)
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      return NextResponse.json({ error: 'Cette écriture a été régénérée ou supprimée. Rechargez les transactions avant de la corriger.' }, { status: 409 })
+    }
     console.error('PATCH /api/comptabilite/depenses-manuelles error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },

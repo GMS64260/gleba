@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { chargerCheptelEnStock } from '@/lib/elevage/stock-cheptel'
 
 const currentYear = () => new Date().getUTCFullYear()
 const yearSchema = z.coerce.number().int().min(1990).max(currentYear() + 1)
@@ -25,8 +26,8 @@ export async function GET(request: NextRequest) {
     }
     const annee = parsedYear.data
     const userId = session.user.id
-    const startOfYear = new Date(Date.UTC(annee, 0, 1))
-    const endOfYear = new Date(Date.UTC(annee + 1, 0, 1))
+    const startOfYear = new Date(annee, 0, 1)
+    const endOfYear = new Date(annee + 1, 0, 1)
 
     // Animaux morts cette annee
     const mortalites = await prisma.animal.findMany({
@@ -72,9 +73,8 @@ export async function GET(request: NextRequest) {
     })
 
     // Taux de mortalite global
-    const totalActifs = await prisma.animal.count({
-      where: { userId, statut: 'actif' },
-    })
+    const cheptel = await chargerCheptelEnStock(userId)
+    const totalActifs = [...cheptel.individuels, ...cheptel.lots].reduce((sum, groupe) => sum + groupe.tetes, 0)
     const totalMorts = mortalites.length
     const tauxMortalite = (totalActifs + totalMorts) > 0
       ? (totalMorts / (totalActifs + totalMorts)) * 100

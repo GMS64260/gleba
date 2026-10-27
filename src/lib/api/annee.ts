@@ -21,6 +21,6 @@ export function lireAnnee(searchParams: URLSearchParams, parametre = 'annee'): A
   const toutesAnnees = brut === 'all'
   const lu = brut && !toutesAnnees ? parseInt(brut, 10) : NaN
   const annee = Number.isInteger(lu) && lu >= 2000 && lu <= 2200 ? lu : new Date().getFullYear()
-  const bornes = toutesAnnees ? null : { gte: new Date(annee, 0, 1), lte: new Date(annee, 11, 31, 23, 59, 59) }
+  const bornes = toutesAnnees ? null : { gte: new Date(annee, 0, 1), lte: new Date(annee, 11, 31, 23, 59, 59, 999) }
   return { annee, toutesAnnees, bornes }
 }

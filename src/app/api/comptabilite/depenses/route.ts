@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { MODULES_COMPTA, bucketModuleCompta, ventilerParModule } from '@/lib/comptabilite/modules'
+import { chargerSuiviDesDepenses } from '@/lib/comptabilite/suivi-ecriture'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -209,6 +210,9 @@ export async function GET(request: NextRequest) {
       fournisseur: string | null
       paye: boolean | null
       categorie: string
+      modeReglement?: string | null
+      numeroPiece?: string | null
+      tauxTVA?: number | null
       comptable: boolean
     }
 
@@ -420,6 +424,9 @@ export async function GET(request: NextRequest) {
         montant: d.montant,
         fournisseur: d.fournisseurNom,
         paye: d.paye,
+        modeReglement: d.modeReglement ?? null,
+        numeroPiece: d.numeroPiece ?? null,
+        tauxTVA: d.tauxTVA ?? null,
         categorie: d.categorie === 'materiel' ? 'Matériel' :
                    d.categorie === 'carburant' ? 'Carburant' :
                    d.categorie === 'main_oeuvre' ? 'Main d\'oeuvre' :
@@ -445,7 +452,9 @@ export async function GET(request: NextRequest) {
     filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
     // Limiter
-    const limited = filtered.slice(0, limit)
+    const page = filtered.slice(0, limit)
+    const suivi = await chargerSuiviDesDepenses(userId, page)
+    const limited = page.map((d) => ({ ...d, ...suivi.get(d.id) }))
 
     // Calculer les stats
     const comptables = filtered.filter((e) => e.comptable)

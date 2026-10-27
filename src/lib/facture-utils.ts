@@ -306,32 +306,38 @@ export const snapshotEmetteurForEmission = snapshotEmetteur
  * Appelé quand une source facturée (vente élevage, abattage, récolte, bois)
  * est annulée, dé-vendue ou supprimée. Règles :
  *   - facture déjà annulée → ok
- *   - facture brouillon/émise non payée → annulée ici même
- *   - facture payée → ok seulement si un avoir non annulé y est rattaché
- *     (factureOrigineId) ; sinon refus — l'utilisateur doit émettre un avoir.
+ *   - facture non payée sans avoir émis → annulée ici même
+ *   - facture payée ou déjà créditée → avoirs émis couvrant le total requis ;
+ *     facture et avoirs conservés pour que leur revenu net reste nul.
  * Sans cette symétrie, la facture restait comptée dans KPI/TVA/FEC alors que
  * la vente n'existait plus (CA fantôme), ou la vente disparaissait du FEC.
  */
+export async function montantAvoirsEmis(db: Pick<PrismaTx, 'facture'>, userId: string, factureId: number) {
+  const avoirs = await db.facture.aggregate({
+    where: { userId, type: 'avoir', factureOrigineId: factureId, statut: { in: ['emise', 'payee'] } },
+    _sum: { totalTTC: true },
+  })
+  return avoirs._sum.totalTTC ?? 0
+}
+
 export async function annulerFactureLiee(
   db: PrismaTx,
   userId: string,
   factureId: number
 ): Promise<{ ok: true } | { ok: false; raison: string }> {
+  await db.$queryRaw`SELECT id FROM factures WHERE id = ${factureId} AND user_id = ${userId} FOR UPDATE`
   const facture = await db.facture.findFirst({
     where: { id: factureId, userId },
-    select: { id: true, numero: true, statut: true },
+    select: { id: true, numero: true, statut: true, totalTTC: true },
   })
   if (!facture || facture.statut === 'annulee') return { ok: true }
 
-  if (facture.statut === 'payee') {
-    const avoir = await db.facture.findFirst({
-      where: { userId, type: 'avoir', factureOrigineId: factureId, statut: { not: 'annulee' } },
-      select: { id: true },
-    })
-    if (!avoir) {
+  const credite = await montantAvoirsEmis(db, userId, factureId)
+  if (facture.statut === 'payee' || credite > 0) {
+    if (credite < facture.totalTTC - 0.005) {
       return {
         ok: false,
-        raison: `La facture ${facture.numero} liée à cette vente est payée : émettez d'abord un avoir depuis Comptabilité > Factures.`,
+        raison: `La facture ${facture.numero} liée à cette vente est payée ou déjà corrigée par un avoir : émettez d'abord un ou plusieurs avoirs couvrant son montant total depuis Comptabilité > Factures. Un brouillon ou un avoir partiel ne permet pas d'annuler toute la vente.`,
       }
     }
     return { ok: true }

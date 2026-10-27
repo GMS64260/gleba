@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100')
     const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
     const yearStart = new Date(annee, 0, 1)
-    const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
+    const yearEnd = new Date(annee, 11, 31, 23, 59, 59, 999)
 
     const date: Prisma.DateTimeFilter = { gte: yearStart, lte: yearEnd }
     if (dateDebut) date.gte = new Date(dateDebut)
