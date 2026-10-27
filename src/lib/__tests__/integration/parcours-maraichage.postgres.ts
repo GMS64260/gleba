@@ -264,8 +264,11 @@ it('PostgreSQL: planifier, réaliser, corriger et annuler une charge actualise a
   expect((await getKpiCompta(u.id, annee)).depensesYtd).toBe(0)
   expect((await MODIFIER_INTERVENTION(req('/api/interventions', 'PATCH', { id: i.id, fait: true }))).status).toBe(200)
   expect((await getKpiCompta(u.id, annee)).depensesYtd).toBe(20)
+  const source = { userId: u.id, auto: true, sourceType: 'intervention', sourceId: i.id }
+  await db.depenseManuelle.updateMany({ where: source, data: { paye: false, modeReglement: 'Virement', numeroPiece: 'PIECE-QA', refFacture: 'FOURN-QA', dateEcheance: hier } })
   expect((await MODIFIER_INTERVENTION(req('/api/interventions', 'PATCH', { id: i.id, coutTotal: 30 }))).status).toBe(200)
   expect((await getKpiCompta(u.id, annee)).depensesYtd).toBe(30)
+  expect(await db.depenseManuelle.findFirstOrThrow({ where: source })).toMatchObject({ montant: 30, paye: false, modeReglement: 'Virement', numeroPiece: 'PIECE-QA', refFacture: 'FOURN-QA', dateEcheance: hier })
   expect((await MODIFIER_INTERVENTION(req('/api/interventions', 'PATCH', { id: i.id, fait: false }))).status).toBe(200)
   expect((await getKpiCompta(u.id, annee)).depensesYtd).toBe(0)
   expect((await SUPPRIMER_INTERVENTION(req(`/api/interventions?id=${i.id}`, 'DELETE'))).status).toBe(200)

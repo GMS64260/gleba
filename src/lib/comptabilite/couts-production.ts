@@ -335,14 +335,11 @@ export async function computeCoutsProduction(userId: string, year: number) {
         NOT: { auto: true, sourceType: 'operation_arbre' },
       },
     }),
-    // TICKET cmsog2niy — même motif que le potager (cf. ventesPotagerAgg plus
-    // bas) : une VenteManuelle saisie à la main dans Transactions avec
+    // Une VenteManuelle saisie à la main dans Transactions avec
     // module='verger' (ex. vente de bois de chauffage) doit compter dans la
     // carte atelier. On exclut les miroirs auto des sources brutes déjà
     // sommées ci-dessous (recolte_arbre, production_bois — cf. auto-compta)
-    // pour ne pas doubler ; les ventes manuelles s'ADDITIONNENT donc aux
-    // récoltes/bois au lieu du Math.max potager (dont l'agrégat inclut les
-    // miroirs).
+    // pour ne pas doubler ; ces ventes s'ajoutent aux récoltes et au bois.
     prisma.venteManuelle.aggregate({
       where: {
         userId,
@@ -511,8 +508,8 @@ export async function computeCoutsProduction(userId: string, year: number) {
   const totalCouts = potagerCouts + vergerCouts + elevageCoutsTotal + coutsGeneraux
 
   // Revenus : on s'aligne sur la source unique de vérité (getKpiCompta).
-  // Le revenu par culture/espèce reste affiché à partir des récoltes vendues
-  // (utile pour la rentabilité fine), mais le TOTAL exposé en haut de la
+  // Le revenu par culture/espèce rattache les ventes directes et les factures
+  // aux lots concernés, mais le TOTAL exposé en haut de la
   // réponse est celui de la SSOT, identique sur tous les autres écrans.
   const asOf = new Date()
   const kpiCompta = await getKpiCompta(userId, year, asOf)
