@@ -85,6 +85,8 @@ const lot = (espece: { id: string }, quantite: number, unite: string, extra: Lig
   datePeremption: null,
   notes: null,
   statutBioSnapshot: null,
+  stockDisponibleCommercial: null,
+  produitsBoutique: [],
   espece,
   culture: { id: 7, variete: null, planche: null },
   ...extra,
@@ -330,4 +332,12 @@ describe('Récoltes > Stock et Comptabilité > Stocks unifiés donnent la même 
     expect(ligne?.valeur).toBeNull()
     expect(ligne?.valeurMethode).toBe('sans prix de vente en tiges')
   })
+})
+
+it('un lot en boutique, même hors ligne, n’est pas valorisé une seconde fois dans le stock libre', async () => {
+  etat.requireAuthApi.mockResolvedValue(sessionDe(MOI))
+  etat.recolte = { ...delegueMemoire([lot(carotte, 10, 'kg', { produitsBoutique: [{ id: 1, actif: false }] })]), groupBy: vi.fn(async () => []) }
+  etat.culture = delegueMemoire([])
+  const stocks = await computeStocksUnifies(MOI)
+  expect(stocks.data.filter(s => s.categorie === 'Récoltes en stock')).toHaveLength(0)
 })

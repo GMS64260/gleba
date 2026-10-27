@@ -86,6 +86,12 @@ export function correspond(ligne: Ligne, where: unknown): boolean {
     const valeur = ligne[cle]
     if (!estObjet(cond)) return valeur === cond
     if (Object.keys(cond).some((k) => OPERATEURS.has(k))) return appliquerOperateurs(valeur, cond)
+    // Relations listes utilisées notamment pour exclure les lots en boutique.
+    if (Array.isArray(valeur)) {
+      if ('none' in cond) return !valeur.some(v => correspond(v as Ligne, cond.none))
+      if ('some' in cond) return valeur.some(v => correspond(v as Ligne, cond.some))
+      if ('every' in cond) return valeur.every(v => correspond(v as Ligne, cond.every))
+    }
     // Filtre de relation to-one : la ligne liée doit correspondre.
     if (estObjet(valeur)) return correspond(valeur, cond)
     if (valeur == null) return false

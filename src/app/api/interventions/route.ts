@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { invalidateKpi } from '@/lib/kpi'
 import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
 import { apresDemain, MESSAGE_REALISEE_FUTURE } from '@/lib/interventions/date-realisee'
 import { irrigationCache } from '@/lib/irrigation-cache'
@@ -16,7 +17,7 @@ import { supprimerArrosageNote } from '@/lib/irrigation-recording'
 import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
-import { resoudreIdPlanche } from '@/lib/planches/resolution'
+import { verifierReferencesIntervention } from '@/lib/interventions/references'
 import type { Prisma } from '@prisma/client'
 import type { ZodError } from 'zod'
 
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
 
     const [refCultures, refPlanches, refArbres] = await Promise.all([
       manualCultureIds.length > 0 ? prisma.culture.findMany({
-        where: { id: { in: manualCultureIds } },
+        where: { userId, id: { in: manualCultureIds } },
         include: { espece: SELECT_LIBELLE_REFERENTIEL, variete: SELECT_LIBELLE_REFERENTIEL, planche: true },
       }) : [],
       // `plancheId` historique : id OU nom de planche (cf. registre phyto).
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
         where: { userId, OR: [{ id: { in: manualPlancheIds } }, { nom: { in: manualPlancheIds } }] },
       }) : [],
       manualArbreIds.length > 0 ? prisma.arbre.findMany({
-        where: { id: { in: manualArbreIds } },
+        where: { userId, id: { in: manualArbreIds } },
       }) : [],
     ])
 
@@ -548,81 +549,63 @@ export async function POST(request: NextRequest) {
     if (d.fait && apresDemain(d.date)) {
       return NextResponse.json({ error: MESSAGE_REALISEE_FUTURE }, { status: 400 })
     }
-    // On stocke l'identifiant de la planche, jamais son libellé (règle du
-    // projet) ; une référence par nom, héritée des anciens formulaires, est
-    // traduite ; une référence inconnue est conservée telle quelle.
-    const plancheIdNormalise = d.plancheId
-      ? (await resoudreIdPlanche(prisma, d.plancheId, userId)) ?? d.plancheId
-      : null
+    const references = await verifierReferencesIntervention(prisma, userId, d)
+    if (!references.ok) return NextResponse.json({ error: references.error, champ: references.champ }, { status: 400 })
+    const plancheIdNormalise = references.plancheId ?? null
 
-    const intervention = await prisma.intervention.create({
-      data: {
-        userId,
-        date: d.date,
-        type: d.type,
-        cultureId: d.cultureId ?? null,
-        plancheId: plancheIdNormalise,
-        arbreId: d.arbreId ?? null,
-        description: d.description ?? null,
-        dureeMinutes: d.dureeMinutes ?? null,
-        nbPersonnes: d.nbPersonnes,
-        coutMainOeuvre: d.coutMainOeuvre ?? null,
-        coutTotal: d.coutTotal ?? null,
-        datePrevue: d.datePrevue ?? null,
-        fait: d.fait,
-        // Phyto fields
-        produitPhyto: d.produitPhyto ?? null,
-        numAMM: d.numAMM ?? null,
-        cibleTraitement: d.cibleTraitement ?? null,
-        doseAppliquee: d.doseAppliquee ?? null,
-        uniteDose: d.uniteDose ?? null,
-        surfaceTraitee: d.surfaceTraitee ?? null,
-        dar: d.dar ?? null,
-        delaiReentree: d.delaiReentree ?? null,
-        conditionsMeteo: d.conditionsMeteo ?? null,
-        // Intrant fields
-        intrantNom: d.intrantNom ?? null,
-        intrantQuantite: d.intrantQuantite ?? null,
-        intrantUnite: d.intrantUnite ?? null,
-        intrantCout: d.intrantCout ?? null,
-        intrantNumLot: d.intrantNumLot ?? null,
-        notes: d.notes ?? null,
-        // PROMPT 11 LOT B/D — Traçabilité PBI (justification + lien observation)
-        justification: d.justification ?? null,
-        observationLieeId: d.observationLieeId ?? null,
-        volumeBouillieLHa: d.volumeBouillieLHa ?? null,
-        temperatureC: d.temperatureC ?? null,
-        ventKmh: d.ventKmh ?? null,
-        hygrometriePct: d.hygrometriePct ?? null,
-        produitPhytoId: d.produitPhytoId ?? null,
-        // QA 2026-07-30 — ZNT : colonnes déjà présentes en base et restituées par
-        // l'export du registre, mais jamais écrites par cette route.
-        zntDistanceM: d.zntDistanceM ?? null,
-        zntRespectee: d.zntRespectee ?? null,
-      },
-    })
+    const intervention = await prisma.$transaction(async tx => {
+      const intervention = await tx.intervention.create({
+        data: {
+          userId,
+          date: d.date,
+          type: d.type,
+          cultureId: d.cultureId ?? null,
+          plancheId: plancheIdNormalise,
+          arbreId: d.arbreId ?? null,
+          description: d.description ?? null,
+          dureeMinutes: d.dureeMinutes ?? null,
+          nbPersonnes: d.nbPersonnes,
+          coutMainOeuvre: d.coutMainOeuvre ?? null,
+          coutTotal: d.coutTotal ?? null,
+          datePrevue: d.datePrevue ?? null,
+          fait: d.fait,
+          // Phyto fields
+          produitPhyto: d.produitPhyto ?? null,
+          numAMM: d.numAMM ?? null,
+          cibleTraitement: d.cibleTraitement ?? null,
+          doseAppliquee: d.doseAppliquee ?? null,
+          uniteDose: d.uniteDose ?? null,
+          surfaceTraitee: d.surfaceTraitee ?? null,
+          dar: d.dar ?? null,
+          delaiReentree: d.delaiReentree ?? null,
+          conditionsMeteo: d.conditionsMeteo ?? null,
+          // Intrant fields
+          intrantNom: d.intrantNom ?? null,
+          intrantQuantite: d.intrantQuantite ?? null,
+          intrantUnite: d.intrantUnite ?? null,
+          intrantCout: d.intrantCout ?? null,
+          intrantNumLot: d.intrantNumLot ?? null,
+          notes: d.notes ?? null,
+          // PROMPT 11 LOT B/D — Traçabilité PBI (justification + lien observation)
+          justification: d.justification ?? null,
+          observationLieeId: d.observationLieeId ?? null,
+          volumeBouillieLHa: d.volumeBouillieLHa ?? null,
+          temperatureC: d.temperatureC ?? null,
+          ventKmh: d.ventKmh ?? null,
+          hygrometriePct: d.hygrometriePct ?? null,
+          produitPhytoId: d.produitPhytoId ?? null,
+          // QA 2026-07-30 — ZNT : colonnes déjà présentes en base et restituées par
+          // l'export du registre, mais jamais écrites par cette route.
+          zntDistanceM: d.zntDistanceM ?? null,
+          zntRespectee: d.zntRespectee ?? null,
+        },
+      })
 
-    // Auto-comptabilite : creer une depense si coutTotal > 0
-    if (intervention.coutTotal && intervention.coutTotal > 0) {
-      try {
-        await createDepenseFromIntervention(userId, {
-          id: intervention.id,
-          type: intervention.type,
-          description: intervention.description,
-          coutTotal: intervention.coutTotal,
-          coutMainOeuvre: intervention.coutMainOeuvre,
-          intrantCout: intervention.intrantCout,
-          intrantNom: intervention.intrantNom,
-          date: intervention.date,
-          fait: intervention.fait,
-          cultureId: intervention.cultureId,
-          plancheId: intervention.plancheId,
-          arbreId: intervention.arbreId,
-        })
-      } catch (autoComptaError) {
-        console.error('Auto-compta error (intervention POST):', autoComptaError)
+      if (intervention.coutTotal && intervention.coutTotal > 0) {
+        await createDepenseFromIntervention(userId, intervention, tx)
       }
-    }
+      return intervention
+    })
 
     // « Modifier » un arrosage noté : l'intervention complète (volume, durée)
     // remplace la trace « Noter », sans double compte (ticket QA cmv2rfmzl).
@@ -639,6 +622,7 @@ export async function POST(request: NextRequest) {
       }
     }
     // Un arrosage saisi ici nourrit le bilan hydrique (ticket QA cmv2rdmdn).
+    invalidateKpi(userId)
     irrigationCache.invalidateUser(userId)
 
     return NextResponse.json(intervention, { status: 201 })
@@ -682,6 +666,13 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Intervention non trouvée' }, { status: 404 })
     }
 
+    const references = await verifierReferencesIntervention(prisma, userId, {
+      ...('cultureId' in updates ? { cultureId: parsedUpdates.data.cultureId } : {}),
+      ...('arbreId' in updates ? { arbreId: parsedUpdates.data.arbreId } : {}),
+      ...('plancheId' in updates ? { plancheId: parsedUpdates.data.plancheId } : {}),
+    })
+    if (!references.ok) return NextResponse.json({ error: references.error, champ: references.champ }, { status: 400 })
+
     // DEV2 #7 — Audit comptable : la transition "Planifié → Fait" exige
     // une durée renseignée (sinon les statistiques de coût MO restent
     // à 0). On la bloque ici plutôt que de filtrer après coup.
@@ -719,9 +710,7 @@ export async function PATCH(request: NextRequest) {
     if (updates.fait !== undefined) data.fait = updates.fait
     if (updates.cultureId !== undefined) data.cultureId = updates.cultureId || null
     if (updates.plancheId !== undefined) {
-      data.plancheId = updates.plancheId
-        ? (await resoudreIdPlanche(prisma, String(updates.plancheId), userId)) ?? updates.plancheId
-        : null
+      data.plancheId = references.plancheId ?? null
     }
     if (updates.arbreId !== undefined) data.arbreId = updates.arbreId || null
     if (updates.datePrevue !== undefined) data.datePrevue = updates.datePrevue ? new Date(updates.datePrevue) : null
@@ -746,36 +735,14 @@ export async function PATCH(request: NextRequest) {
     if (updates.intrantNumLot !== undefined) data.intrantNumLot = updates.intrantNumLot || null
     if (updates.notes !== undefined) data.notes = updates.notes || null
 
-    const updated = await prisma.intervention.update({
-      where: { id: parseInt(id) },
-      data,
+    const updated = await prisma.$transaction(async tx => {
+      const updated = await tx.intervention.update({ where: { id: parseInt(id), userId }, data })
+      // Le helper retire aussi le miroir d'une intervention planifiée ou sans coût.
+      await createDepenseFromIntervention(userId, updated, tx)
+      return updated
     })
 
-    // Auto-comptabilite : mettre a jour la depense auto
-    try {
-      if (updated.coutTotal && updated.coutTotal > 0) {
-        await createDepenseFromIntervention(userId, {
-          id: updated.id,
-          type: updated.type,
-          description: updated.description,
-          coutTotal: updated.coutTotal,
-          coutMainOeuvre: updated.coutMainOeuvre,
-          intrantCout: updated.intrantCout,
-          intrantNom: updated.intrantNom,
-          date: updated.date,
-          fait: updated.fait,
-          cultureId: updated.cultureId,
-          plancheId: updated.plancheId,
-          arbreId: updated.arbreId,
-        })
-      } else {
-        // Plus de cout -> supprimer la depense auto si elle existe
-        await deleteAutoEntry('intervention', updated.id, 'depense')
-      }
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (intervention PATCH):', autoComptaError)
-    }
-
+    invalidateKpi(userId)
     irrigationCache.invalidateUser(userId)
     return NextResponse.json(updated)
   } catch (err) {
@@ -806,16 +773,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Intervention non trouvée' }, { status: 404 })
     }
 
-    // Supprimer les ecritures auto-compta liees
-    try {
-      await deleteAutoEntry('intervention', parseInt(id), 'depense')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (intervention):', autoComptaError)
-    }
-
-    await prisma.intervention.delete({
-      where: { id: parseInt(id) },
+    await prisma.$transaction(async tx => {
+      await deleteAutoEntry('intervention', parseInt(id), 'depense', userId, tx)
+      await tx.intervention.delete({ where: { id: parseInt(id), userId } })
     })
+    invalidateKpi(userId)
     irrigationCache.invalidateUser(userId)
 
     return NextResponse.json({ success: true })

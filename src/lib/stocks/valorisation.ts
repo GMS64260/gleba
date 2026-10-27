@@ -57,14 +57,20 @@ export function valoriser(
     if (m.quantite > 0) {
       // Entrée
       const cu = m.coutUnitaire ?? 0
-      lots.push({ date: m.date, quantite: m.quantite, coutUnitaire: cu })
+      if (methode === 'PMP') {
+        const quantite = lots.reduce((s, l) => s + l.quantite, 0)
+        const valeur = lots.reduce((s, l) => s + l.quantite * l.coutUnitaire, 0)
+        const pmp = (valeur + m.quantite * cu) / (quantite + m.quantite)
+        for (const lot of lots) lot.coutUnitaire = pmp
+        lots.push({ date: m.date, quantite: m.quantite, coutUnitaire: pmp })
+      } else lots.push({ date: m.date, quantite: m.quantite, coutUnitaire: cu })
       dernierCout = cu
     } else if (m.quantite < 0) {
       // Sortie
       let aSortir = -m.quantite
       if (methode === "FIFO" || methode === "PMP") {
         // FIFO : consomme les lots dans l'ordre d'entrée
-        // PMP : on consomme aussi en FIFO mais on revalorisera à la fin
+        // PMP : tous les lots portent le coût moyen recalculé à la dernière entrée.
         while (aSortir > 0 && lots.length > 0) {
           const premier = lots[0]
           if (premier.quantite <= aSortir) {

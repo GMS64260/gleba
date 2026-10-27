@@ -13,15 +13,21 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
+vi.mock('@/lib/kpi', () => ({ invalidateKpi: vi.fn() }))
 vi.mock('@/lib/cache-helper', () => ({ getOrFetch: vi.fn() }))
 vi.mock('@/lib/meteo', () => ({ fetchOpenMeteoHistory: vi.fn() }))
 vi.mock('@/lib/irrigation-cache', () => ({ irrigationCache: { invalidateUser: vi.fn() } }))
 vi.mock('@/lib/irrigation-recording', () => ({ supprimerArrosageNote: vi.fn() }))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromIntervention: vi.fn(), deleteAutoEntry: vi.fn() }))
 vi.mock('@/lib/planches/resolution', () => ({ resoudreIdPlanche: vi.fn(async (_p: unknown, ref: string) => ref) }))
-vi.mock('@/lib/prisma', () => ({
-  default: { intervention: { create: mocks.create, findFirst: mocks.findFirst, update: mocks.update } },
-}))
+vi.mock('@/lib/prisma', async () => {
+  const { delegueMemoire } = await import('@/lib/__tests__/fixtures/referentiel-memoire')
+  const db = {
+    intervention: { create: mocks.create, findFirst: mocks.findFirst, update: mocks.update },
+    culture: delegueMemoire([{ id: 461, userId: 'u1' }]),
+  }
+  return { default: { ...db, $transaction: async (fn: (tx: typeof db) => unknown) => fn(db) } }
+})
 
 import { PATCH, POST } from './route'
 

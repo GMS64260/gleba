@@ -133,8 +133,8 @@ export async function computeTvaPeriode(
       select: { prixTotal: true, tauxTVA: true },
     }),
     prisma.recolte.findMany({
-      where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, prixTotal: { not: null }, factureId: null },
-      select: { prixTotal: true },
+      where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, OR: [{ prixTotal: { not: null } }, { prixKg: { not: null } }], factureId: null },
+      select: { prixTotal: true, prixKg: true, quantite: true },
     }),
     prisma.recolteArbre.findMany({
       where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, prixKg: { not: null }, factureId: null },
@@ -228,7 +228,7 @@ export async function computeTvaPeriode(
     inferencesBreakdown.ventesElevage++
   }
   for (const r of recoltesPotager) {
-    const ttc = r.prixTotal || 0
+    const ttc = r.prixTotal || r.quantite * (r.prixKg || 0)
     if (ttc > 0) {
       const ht = ttc / 1.055
       addC('5.5', ht, ttc - ht)

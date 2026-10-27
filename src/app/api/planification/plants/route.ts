@@ -56,11 +56,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data,
       stats: {
-        nbEspeces: besoins.length,
+        nbEspeces: new Set(besoins.map(b => b.especeId)).size,
         totalPlants,
         totalCultures,
         totalACommander,
-        especesSansStock: besoinsSansStock.length,
+        especesSansStock: new Set(besoinsSansStock.map(b => b.especeId)).size,
         parSemaine,
       },
       annee,

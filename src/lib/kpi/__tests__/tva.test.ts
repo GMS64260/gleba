@@ -27,6 +27,7 @@ vi.mock('@/lib/prisma', () => ({
 }))
 
 import { computeTvaPeriode } from '../tva'
+import { delegueMemoire } from '@/lib/__tests__/fixtures/referentiel-memoire'
 
 describe('TVA élevage réconciliée', () => {
   beforeEach(() => {
@@ -77,4 +78,14 @@ describe('TVA élevage réconciliée', () => {
       }),
     })
   })
+  it('inclut une récolte ancienne au prix unitaire seul, exclut sa version facturée et les autres comptes', async () => {
+    const r = { userId: 'user-1', dateVente: new Date('2026-06-01'), statut: 'vendu', factureId: null,
+      quantite: 10, prixKg: 2, prixTotal: null }
+    mocks.recolteFindMany.mockImplementation(delegueMemoire([
+      r, { ...r, factureId: 2 }, { ...r, userId: 'autre' }, { ...r, dateVente: new Date('2025-06-01') },
+    ]).findMany)
+    const result = await computeTvaPeriode('user-1', new Date('2026-01-01'), new Date('2026-12-31'))
+    expect(result.collectee.parTaux['5.5']).toEqual({ base: 18.96, tva: 1.04 })
+  })
+
 })

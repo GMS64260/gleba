@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
   }
 
   const start = new Date(exercice, 0, 1)
-  const end = new Date(exercice, 11, 31, 23, 59, 59)
+  const end = new Date(exercice, 11, 31, 23, 59, 59, 999)
   const userId = session!.user.id
 
   const [
@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
         userId,
         statut: 'vendu',
         dateVente: { gte: start, lte: end },
-        prixTotal: { not: null },
+        OR: [{ prixTotal: { not: null } }, { prixKg: { not: null } }],
         factureId: null,
       },
       include: { espece: { select: { id: true } } },
@@ -302,7 +302,7 @@ export async function GET(request: NextRequest) {
     })
   }
   for (const r of ventesPotager) {
-    const ttc = r.prixTotal as number
+    const ttc = r.prixTotal || r.quantite * (r.prixKg || 0)
     const tauxTVA = 5.5
     const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
     const tva = Math.round((ttc - ht) * 100) / 100

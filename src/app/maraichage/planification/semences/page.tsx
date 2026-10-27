@@ -53,6 +53,7 @@ interface BesoinSemence {
   nbGrainesG: number | null
   nbGrainesGEstime?: boolean
   doseSemis: number | null
+  doseMoyenne?: boolean
   uniteDose: "g_m2" | "pieces_m2" | "graines_plant" | "caieux_m2" | null
   tauxGerminationPct: number | null
   aCommander: number
@@ -218,7 +219,7 @@ function GrainesTooltip({ b, appliquerMarge }: { b: BesoinSemence; appliquerMarg
           <div>
             Dose × surface : <strong>{brut.toFixed(1)} g</strong>
             {b.doseSemis !== null && (
-              <span className="text-slate-300"> ({b.doseSemis} {uniteLabel(b.uniteDose)} × {b.surfaceTotale.toFixed(1)} m²)</span>
+              <span className="text-slate-300"> ({b.doseMoyenne ? 'dose moyenne : ' : ''}{b.doseSemis} {uniteLabel(b.uniteDose)} × {b.surfaceTotale.toFixed(1)} m²)</span>
             )}
           </div>
           {b.margeSecuritePct > 0 && (

@@ -138,7 +138,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       // Recuperer culture si liee
       if (intervention.cultureId) {
         const culture = await prisma.culture.findUnique({
-          where: { id: intervention.cultureId },
+          where: { id: intervention.cultureId, userId },
           include: {
             espece: { select: { id: true, nom: true } },
             variete: { select: { id: true, nom: true } },

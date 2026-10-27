@@ -343,6 +343,12 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         )
       }
+      if (itp.especeId && itp.especeId !== data.especeId) {
+        return NextResponse.json(
+          { error: "Choisissez un itinéraire technique de la même espèce que la culture.", champ: 'itpId' },
+          { status: 400 }
+        )
+      }
     }
 
     // Les dates proposées par les formulaires sont calculées sur les semaines
