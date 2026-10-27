@@ -348,13 +348,13 @@ const reglesLot20261012 = [
   { nom: "choix manuel conservé en changeant de planche", re: /puis Planche 15 → ITP conservé : (.*)$/m, ok: (m) => /abri/i.test(m[1]) },
   { nom: "Interventions : année 2025 gardée après F5 (URL, appels)", re: /après F5 : année (\S+) \| URL (\S*) \| appels ([\d,]*) \(attendu/, ok: (m) => m[1] === "2025" && /annee=2025/.test(m[2]) && m[3] !== "" && m[3].split(",").every((a) => a === "2025") },
   { nom: "?annee=2025&nouvelle=1 : fiche ouverte, année gardée", re: /annee=2025&nouvelle=1 : fiche ouverte, URL nettoyée → (\S*)/, ok: (m) => m[1] === "?annee=2025" },
-  { nom: "1301 px : pas d'entrée lunaire dans le rail, pas de débordement", re: /rail sans entrée lunaire = (\w+) \| débordement : (\w+)/, ok: (m) => m[1] === "true" && m[2] === "false" },
+  { nom: "1301 px : lune dans la barre commune, rail sans doublon et sans débordement", re: /1301 px : lune dans barre commune = (\w+) \| rail sans entrée lunaire = (\w+) \| débordement : (\w+)/, ok: (m) => m[1] === "true" && m[2] === "true" && m[3] === "false" },
   { nom: "petite lune → /meteo, calendrier du mois", re: /→ \/meteo \S+ \| jours du mois : (\d+)/, ok: (m) => Number(m[1]) >= 28 },
-  { nom: "section lunaire visible à l'arrivée", re: /section visible dans la fenêtre = (\w+)/, ok: vrai(1) },
-  { nom: "palette : entrée « Calendrier lunaire »", re: /palette : entrée présente = (\w+)/, ok: vrai(1) },
-  { nom: "palette → /meteo#calendrier-lunaire", re: /^\s+→\s+(\/meteo#calendrier-lunaire)\s*$/m, ok: () => true },
-  { nom: "375 px : petite lune visible, sans débordement", re: /375 px : petite lune visible = (\w+) .*\| débordement : (\w+)/, ok: (m) => m[1] === "true" && m[2] === "false" },
-  { nom: "/meteo à 375 px : calendrier sans débordement", re: /\/meteo à 375 px : jours (\d+) \| débordement : (\w+)/, ok: (m) => Number(m[1]) >= 28 && m[2] === "false" },
+  { nom: "calendrier lunaire actionnable à l'arrivée", re: /calendrier actionnable dans la fenêtre = (\w+)/, ok: vrai(1) },
+  { nom: "palette bureau : entrée « Calendrier lunaire »", re: /palette bureau : entrée présente = (\w+)/, ok: vrai(1) },
+  { nom: "palette bureau → /meteo#calendrier-lunaire", re: /^palette bureau → (\/meteo#calendrier-lunaire)\s*$/m, ok: () => true },
+  { nom: "375 px : calendrier par palette actionnable, en-tête compact et sans débordement", re: /375 px : accès lunaire par palette = (\w+) \| URL (\S+) \| en-tête compact = (\w+) \| calendrier actionnable = (\w+) \| débordement : (\w+)/, ok: (m) => m[1] === "true" && m[2] === "/meteo#calendrier-lunaire" && m[3] === "true" && m[4] === "true" && m[5] === "false" },
+  { nom: "375 px : Plus ouvre Météo, calendrier sans débordement", re: /375 px : Plus propose Météo = (\w+) \| destination (\S+)\n[\s\S]*?\/meteo à 375 px : jours (\d+) \| débordement : (\w+)/, ok: (m) => m[1] === "true" && m[2] === "/meteo" && Number(m[3]) >= 28 && m[4] === "false" },
 ];
 
 // Dates saisies relatives au jour du passage (J+7, J+49, J+105 à Paris, depuis le
@@ -615,6 +615,7 @@ const SONDES = [
     ecrit: "non",
     cout: "1 contexte, 5 pages (POST interceptés)",
     connexions: 1,
+    args: (c) => [c.base, "", c.captures("verger-selecteurs")],
     analyser: parRegles(reglesVerger),
   },
   // ----- classe b : rejouables, mais dépendantes d'un état de la démo (à surveiller)
@@ -653,7 +654,7 @@ const SONDES = [
     fichier: "scripts/qa/sonde-lot-20261012.cjs",
     lot: "2026-10-12",
     tickets: ["cmv4z6yhg", "cmv4z983m", "cmv4zb9yy"],
-    prouve: "ITP proposé selon le type de planche et choix manuel conservé, année des Interventions dans l'URL, petite lune et calendrier lunaire sur /meteo",
+    prouve: "ITP proposé selon le type de planche et choix manuel conservé, année des Interventions dans l'URL, lien lunaire PC et accès mobile par palette et Météo",
     classe: "b",
     etat: "planches démo « Planche 15 » (sans type), A1 (serre), B1 (plein champ) par identifiant ; ITP Radis sous abri et plein champ",
     verdict: "dérivé",
@@ -661,6 +662,7 @@ const SONDES = [
     cout: "1 contexte, ~9 pages",
     connexions: 1,
     delaiMs: 5 * 60_000,
+    args: (c) => [c.base, "", c.captures("lot-20261012")],
     analyser: parRegles(reglesLot20261012),
   },
   {
