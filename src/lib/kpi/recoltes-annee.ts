@@ -88,12 +88,13 @@ export async function getRecoltesAnneeAggregat(
     },
   })
 
-  // 2. Cultures de l'année encore en cours (pas récoltées + non terminées).
-  // Projection = surface × rendement de l'espèce.
+  // 2. Récoltes prévues pendant cette année civile, même si le cycle a débuté
+  // la saison précédente. Sans date de récolte, aucune projection mensuelle
+  // n'est établie ; elle ne doit pas non plus gonfler le détail par espèce.
   const cultures = await prisma.culture.findMany({
     where: {
       userId,
-      annee: year,
+      dateRecolte: { gte: startOfYear, lte: endOfYear },
       terminee: null,
       recolteFaite: false,
     },
@@ -148,7 +149,7 @@ export async function getRecoltesAnneeAggregat(
 
   // Projection
   for (const c of cultures) {
-    if (!c.especeId) continue
+    if (!c.especeId || !c.dateRecolte || c.dateRecolte < startOfYear || c.dateRecolte > endOfYear) continue
     const effectif = rendementEffectif(c.espece, surcharges.get(c.especeId))
     if (!effectif.rendement) continue
     const surface = surfaceCultureM2(c)
@@ -156,8 +157,8 @@ export async function getRecoltesAnneeAggregat(
     const { quantite, unite } = projectionRecolte(surface, effectif.rendement, effectif.uniteRendement)
     // Note DEV2 : dérive le mois (0..11) depuis Culture.dateRecolte si
     // saisie (la projection se mappe au mois prévu de récolte).
-    const mois = c.dateRecolte ? c.dateRecolte.getMonth() : null
-    if (mois !== null) ajouterQuantite(moisBuckets[mois].projection, unite, quantite)
+    const mois = c.dateRecolte.getMonth()
+    ajouterQuantite(moisBuckets[mois].projection, unite, quantite)
     ajouterQuantite(bucketEspece(c.especeId, c.espece?.couleur ?? null).projection, unite, quantite)
   }
 

@@ -148,12 +148,13 @@ export async function createVenteFromRecolte(
     clientId?: number | null
     dateVente?: Date | string | null
     factureId?: number | null
-  }
+  },
+  tx?: AutoComptaTx,
 ) {
   // Contrat anti-double-comptage (cf. kpi/compta.ts) : une vente facturée est
   // comptée via sa Facture — pas d'écriture auto en plus.
   if (recolte.factureId) {
-    await deleteAutoEntry('recolte', recolte.id, 'vente')
+    await deleteAutoEntry('recolte', recolte.id, 'vente', userId, tx)
     return null
   }
 
@@ -164,7 +165,7 @@ export async function createVenteFromRecolte(
   const { montantHT, montantTVA } = calculTVA(montantTTC, 5.5)
 
   // Transaction atomique : supprimer l'ancien + creer le nouveau
-  return prisma.$transaction(async (tx) => {
+  return inAutoComptaTransaction(tx, async (tx) => {
     // Scopé au compte, comme la lecture du suivi (revue du 2026-10-20).
     const miroir = { userId, sourceType: 'recolte', sourceId: recolte.id, auto: true }
     const suivi = await suiviDuMiroirVente(tx, miroir)
@@ -1066,13 +1067,14 @@ export async function createDepenseFromIntervention(
     plancheId?: string | null
     arbreId?: number | null
     fait?: boolean | null
-  }
+  },
+  tx?: AutoComptaTx,
 ) {
   // Audit compta 2026-06 (#9) : une intervention planifiée (fait=false)
   // n'est pas une dépense réelle — elle faussait dépenses et TVA déductible.
   const montantTTC = intervention.fait === false ? 0 : intervention.coutTotal || 0
   if (montantTTC <= 0) {
-    await deleteAutoEntry('intervention', intervention.id, 'depense')
+    await deleteAutoEntry('intervention', intervention.id, 'depense', userId, tx)
     return null
   }
 
@@ -1098,7 +1100,7 @@ export async function createDepenseFromIntervention(
   const desc = intervention.description
     || `${intervention.type}${intervention.intrantNom ? ` - ${intervention.intrantNom}` : ''}`
 
-  return prisma.$transaction(async (tx) => {
+  return inAutoComptaTransaction(tx, async (tx) => {
     const suivi = await suiviDuMiroirDepense(tx, { userId, sourceType: 'intervention', sourceId: intervention.id, auto: true })
     await tx.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'intervention', sourceId: intervention.id, auto: true },

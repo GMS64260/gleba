@@ -4,7 +4,7 @@
  */
 
 import prisma from '@/lib/prisma'
-import { getISOWeek, getISOWeekYear } from 'date-fns'
+import { getISOWeek, getISOWeekYear, getISOWeeksInYear } from 'date-fns'
 import { calculerDateDepuisSemaine, dateSemaineChrono } from './assistant-helpers'
 import { whereItpUtilisable } from './itp-acces'
 import { visibiliteReferentiel } from './referentiel-communaute'
@@ -20,7 +20,7 @@ import {
   type QuantiteParUnite,
 } from './recolte/quantites'
 import { chargerSurchargesRendement, rendementEffectif } from './recolte/rendement-effectif'
-import type { StatutSemence } from './semences/calcul'
+import { quantiteEntiereAvecMarge, type StatutSemence } from './semences/calcul'
 import { zoneEffectiveUser } from './terroir'
 import { etapeCycleRotation } from './rotation/etape-cycle'
 import { evaluerOccupationPlanche } from './planche-validation'
@@ -186,6 +186,8 @@ export interface BesoinSemence {
   /** true si nbGrainesG est une estimation (fallback espèce), pas la valeur saisie. */
   nbGrainesGEstime: boolean
   doseSemis: number | null
+  /** Plusieurs conduites : dose moyenne pondérée par surface ou nombre de plants. */
+  doseMoyenne?: boolean
   /** Unité dans laquelle est exprimée la dose (cf. Espece.uniteDose). */
   uniteDose: 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2' | null
   /** Taux de germination réaliste (mémo pour tooltip marge). */
@@ -838,7 +840,7 @@ export async function getRecoltesPrevuesDetail(
 
   // Convertir en tableau
   const result: RecoltePrevue[] = []
-  const maxPeriode = groupBy === 'mois' ? 12 : 52
+  const maxPeriode = groupBy === 'mois' ? 12 : getISOWeeksInYear(new Date(annee, 6, 1))
 
   for (let i = 1; i <= maxPeriode; i++) {
     const group = groupedMap.get(i)
@@ -1081,10 +1083,10 @@ export async function getBesoinsSemences(
     varieteId: string | null
     surfaceTotale: number
     nbPlants: number
-    /** Dose de semis (g/m²) portée par l'ITP rattaché, si elle existe. */
-    doseItpGParM2: number | null
-    /** Graines par plant portées par l'ITP rattaché, si elles existent. */
-    grainesParPlantItp: number | null
+    sommeDosePonderee: number
+    doses: Set<number>
+    doseManquante: boolean
+    aDoseItp: boolean
   }
   const densiteFallbackSemences = new Map<string, number>()
   for (const e of especes) {
@@ -1111,20 +1113,31 @@ export async function getBesoinsSemences(
       varieteId: culture.varieteId,
       surfaceTotale: 0,
       nbPlants: 0,
-      doseItpGParM2: null,
-      grainesParPlantItp: null,
+      sommeDosePonderee: 0,
+      doses: new Set<number>(),
+      doseManquante: false,
+      aDoseItp: false,
     }
     cur.surfaceTotale += mesure.surfaceM2
     cur.nbPlants += mesure.nbPlants
-    // Dose de l'itinéraire rattaché : première renseignée du groupe.
-    if (culture.itpId) {
-      const dosesItp = itpDoseMap.get(culture.itpId)
-      if (cur.doseItpGParM2 == null && dosesItp?.doseSemis != null) {
-        cur.doseItpGParM2 = dosesItp.doseSemis
-      }
-      if (cur.grainesParPlantItp == null && dosesItp?.nbGrainesPlant != null) {
-        cur.grainesParPlantItp = dosesItp.nbGrainesPlant
-      }
+    // Chaque culture garde la dose de SA conduite. La moyenne permet de
+    // cumuler le besoin avant marge/arrondi et de déduire le stock une seule
+    // fois, sans dépendre de l'ordre des cultures d'une même variété.
+    const espece = especeMap.get(culture.especeId)
+    const unite = (espece?.uniteDose ?? null) as UniteDoseSemence
+    const dosesItp = culture.itpId ? itpDoseMap.get(culture.itpId) : undefined
+    const doseItp = unite === 'graines_plant'
+      ? dosesItp?.nbGrainesPlant
+      : unite === null || unite === 'g_m2' ? dosesItp?.doseSemis : null
+    const dose = doseItp ?? espece?.doseSemis ?? (
+      espece?.modeSemis === 'plant_repique' && unite === 'graines_plant' ? 1 : null
+    )
+    const poids = unite === 'graines_plant' ? mesure.nbPlants : mesure.surfaceM2
+    cur.aDoseItp ||= doseItp != null
+    if (dose != null) cur.doses.add(dose)
+    if (poids > 0) {
+      if (dose == null || dose <= 0) cur.doseManquante = true
+      else cur.sommeDosePonderee += dose * poids
     }
     accMap.set(key, cur)
   }
@@ -1142,15 +1155,12 @@ export async function getBesoinsSemences(
     // correspond. Une espèce comptée en pièces/m² ou en caïeux/m² garde donc
     // la sienne — substituer des g/m² à des pièces/m² changerait la grandeur.
     const uniteEspece = (espece?.uniteDose ?? null) as UniteDoseSemence
-    const doseItp =
-      uniteEspece === 'graines_plant'
-        ? acc.grainesParPlantItp
-        : uniteEspece === null || uniteEspece === 'g_m2'
-          ? acc.doseItpGParM2
-          : null
-    const doseEffective = doseItp ?? espece?.doseSemis ?? null
+    const poidsTotal = uniteEspece === 'graines_plant' ? acc.nbPlants : acc.surfaceTotale
+    const doseEffective = acc.doseManquante ? null : poidsTotal > 0
+      ? acc.sommeDosePonderee / poidsTotal
+      : acc.doses.values().next().value ?? null
     const uniteEffective: UniteDoseSemence =
-      doseItp != null && uniteEspece === null ? 'g_m2' : uniteEspece
+      acc.aDoseItp && uniteEspece === null ? 'g_m2' : uniteEspece
 
     const calc = calculerBesoin({
       mode: (espece?.modeSemis ?? 'graine_directe') as 'graine_directe' | 'plant_repique' | 'bulbe_caieu' | 'bouture',
@@ -1185,6 +1195,7 @@ export async function getBesoinsSemences(
       nbGrainesG: variete?.nbGrainesG ?? defaultGrainesParGramme(acc.especeId),
       nbGrainesGEstime: variete?.nbGrainesG == null,
       doseSemis: doseEffective,
+      doseMoyenne: acc.doses.size > 1,
       uniteDose: uniteEffective,
       tauxGerminationPct: espece?.tauxGermination ?? null,
       aCommander: calc.manqueGrammes,
@@ -1352,7 +1363,7 @@ export async function getBesoinsPlants(
     let stockRestant = lignes[0]?.stockActuel ?? 0
     for (const besoin of lignes) {
       // Ajouter 10% de marge pour pertes
-      const nbPlantsAvecMarge = Math.ceil(besoin.nbPlants * 1.1)
+      const nbPlantsAvecMarge = quantiteEntiereAvecMarge(besoin.nbPlants, 10)
       const couvert = Math.min(stockRestant, nbPlantsAvecMarge)
       besoin.stockActuel = couvert
       besoin.aCommander = Math.max(0, nbPlantsAvecMarge - couvert)

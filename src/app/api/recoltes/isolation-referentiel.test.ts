@@ -98,7 +98,7 @@ function attendreEspeceMasquee(espece: Ligne) {
 
 let recoltes: ReturnType<typeof delegueMemoire>
 let cultures: ReturnType<typeof delegueMemoire>
-const tx = { recolte: { create: vi.fn(), update: vi.fn() }, culture: { update: vi.fn() } }
+const tx = { recolte: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() }, culture: { update: vi.fn() }, produitBoutique: { count: vi.fn(async () => 0) }, $queryRaw: vi.fn(async () => []), $executeRaw: vi.fn(async () => 1) }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -108,7 +108,8 @@ beforeEach(() => {
   mocks.db.recolte = { ...recoltes, groupBy: vi.fn(async () => []) }
   mocks.db.culture = cultures
   mocks.db.userStockEspece = { findMany: vi.fn(async () => []) }
-  mocks.db.produitBoutique = { findFirst: vi.fn(async () => null) }
+  mocks.db.produitBoutique = { findFirst: vi.fn(async () => null), count: vi.fn(async () => 0) }
+  tx.recolte.findFirst.mockImplementation(recoltes.findFirst)
   mocks.db.$transaction = async (fn: (t: typeof tx) => unknown) => fn(tx)
   // Comme Prisma : la ligne écrite revient avec ses relations incluses.
   tx.recolte.create.mockImplementation(async ({ data }: { data: Ligne }) => ({ ...recolte(), ...data, id: 1151 }))

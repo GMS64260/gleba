@@ -90,6 +90,14 @@ export interface BesoinGrainesAffichable {
 
 const DEFAULT_MARGE = 15
 
+/** Un comptage entier ne gagne pas une unité à cause du flottant 200 × 1,1. */
+export function quantiteEntiereAvecMarge(quantite: number, margePct: number): number {
+  const majoree = quantite * (100 + Math.max(0, margePct)) / 100
+  const entierProche = Math.round(majoree)
+  const tolerance = 4 * Number.EPSILON * Math.max(1, Math.abs(majoree))
+  return Math.abs(majoree - entierProche) <= tolerance ? entierProche : Math.ceil(majoree)
+}
+
 /**
  * Reconstitue le besoin brut à partir du besoin majoré renvoyé par l'API.
  * Le sélecteur d'affichage de la page Semences utilise ce même calcul pour
@@ -177,7 +185,7 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
       if (dose > 0 && surfaceM2 > 0) {
         if (uniteDose === 'pieces_m2') {
           // Dose = plants/m² : on commande des plants/boutures (unités entières)
-          besoinCaieux = Math.ceil(surfaceM2 * dose * margeFactor)
+          besoinCaieux = quantiteEntiereAvecMarge(surfaceM2 * dose, marge)
         } else {
           // g/m² par défaut
           besoinGrammes = round2(surfaceM2 * dose * margeFactor)
@@ -202,7 +210,7 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
         if (gpg > 0 && totalGraines > 0) {
           besoinGrammes = round2((totalGraines / gpg) * margeFactor)
         } else if (totalGraines > 0) {
-          besoinCaieux = Math.ceil(totalGraines * margeFactor)
+          besoinCaieux = quantiteEntiereAvecMarge(totalGraines, marge)
         } else {
           raisonBesoinNul = 'dimension'
         }
@@ -224,9 +232,9 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
       // quand `nbPlants > 0`, et on retombe sur `surface × dose` seulement
       // si la culture n'a pas de nbRangs/espacement saisis.
       if (nbPlants > 0) {
-        besoinCaieux = Math.ceil(nbPlants * margeFactor)
+        besoinCaieux = quantiteEntiereAvecMarge(nbPlants, marge)
       } else if (uniteDose === 'caieux_m2' && surfaceM2 > 0 && (input.doseGParM2 ?? 0) > 0) {
-        besoinCaieux = Math.ceil(surfaceM2 * (input.doseGParM2 as number) * margeFactor)
+        besoinCaieux = quantiteEntiereAvecMarge(surfaceM2 * (input.doseGParM2 as number), marge)
       } else {
         besoinCaieux = 0
         raisonBesoinNul = surfaceM2 > 0 ? 'referentiel' : 'dimension'

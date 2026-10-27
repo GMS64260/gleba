@@ -218,6 +218,27 @@ export async function PUT(
     // minuit UTC de ce jour (règle `dateSoinRetenue` de l'élevage).
     retenirDatesCulture(data, existing)
 
+    if (data.plancheId) {
+      const planche = await prisma.planche.findFirst({
+        where: { id: data.plancheId, userId: session!.user.id },
+        select: { id: true },
+      })
+      if (!planche) return NextResponse.json(
+        { error: 'Planche introuvable pour votre exploitation.', champ: 'plancheId' },
+        { status: 400 },
+      )
+    }
+    if (data.especeId && data.especeId !== existing.especeId) {
+      const espece = await prisma.espece.findFirst({
+        where: { AND: [{ id: data.especeId }, visibiliteReferentiel(session!.user.id)] },
+        select: { id: true },
+      })
+      if (!espece) return NextResponse.json(
+        { error: 'Espèce indisponible pour votre exploitation.', champ: 'especeId' },
+        { status: 400 },
+      )
+    }
+
     // Changer l'ITP d'une culture est une écriture : l'itinéraire visé doit être
     // visible par ce membre ET encore en service, comme à la création. Sans ce
     // contrôle, l'édition rattachait une culture à l'itinéraire privé d'un autre

@@ -20,6 +20,7 @@ import { NextRequest } from "next/server"
 type Ligne = Record<string, unknown>
 
 const etat = vi.hoisted(() => ({
+  recoltes: [] as Array<Record<string, unknown>>,
   miroirs: [] as Array<Record<string, unknown>>,
   ventesElevage: [] as Array<Record<string, unknown>>,
 }))
@@ -45,7 +46,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     recolteArbre: { findMany: vi.fn().mockResolvedValue([]) },
     venteProduit: { findMany: vi.fn(async () => etat.ventesElevage) },
-    recolte: { findMany: vi.fn().mockResolvedValue([]) },
+    recolte: { findMany: vi.fn(async ({ where }) => etat.recoltes.filter(r => correspond(r, where))) },
     abattage: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }))
@@ -89,6 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
   etat.ventesElevage = [venteOeufs(true)]
+  etat.recoltes = []
   // État APRÈS l'enregistrement du formulaire « Règlement et pièce » (PATCH ventes-manuelles).
   etat.miroirs = [
     miroir({ id: 909, sourceType: "vente_produit", sourceId: 167, description: "v8 Œufs marché", categorie: "oeufs", montant: 86.4, montantHT: 81.9, montantTVA: 4.5, tauxTVA: 5.5, modeReglement: "Chèque", numeroPiece: "CHQ-0042" }),
@@ -146,4 +148,24 @@ describe("GET /api/comptabilite/export/fec — suivi des ventes générées", ()
     expect(ecriture.some((l) => l.CompteNum === "512100")).toBe(false)
     expect(ecriture[0].JournalCode).toBe("VE")
   })
+})
+
+it('une ancienne récolte au PU seul produit une écriture équilibrée de 20 euros', async () => {
+  const r = { id: 7, userId: 'u1', statut: 'vendu', factureId: null, quantite: 10,
+    prixKg: 2, prixTotal: null, date: new Date('2026-06-01'), dateVente: new Date('2026-06-02'),
+    especeId: 'Radis', espece: { id: 'Radis' }, clientNom: 'Marché' }
+  etat.recoltes = [r, { ...r, id: 8, factureId: 42 }, { ...r, id: 9, userId: 'autre' }]
+  const lignes = (await exporter()).filter(l => l.PieceRef.startsWith('RECOLTE-'))
+  const montant = (s: string) => Number(s.replace(',', '.'))
+  expect(lignes.length).toBeGreaterThan(0)
+  expect(lignes.every(l => l.PieceRef === 'RECOLTE-7')).toBe(true)
+  expect(lignes.reduce((s,l) => s + montant(l.Debit),0)).toBeCloseTo(20,2)
+  expect(lignes.reduce((s,l) => s + montant(l.Credit),0)).toBeCloseTo(20,2)
+})
+
+it('le FEC conserve aussi la dernière seconde de l’exercice civil de Paris', async () => {
+  etat.recoltes = [{ id: 7, userId: 'u1', statut: 'vendu', factureId: null, quantite: 10, prixKg: 2,
+    prixTotal: 20, date: new Date('2026-12-31T22:59:59.500Z'), dateVente: new Date('2026-12-31T22:59:59.500Z'),
+    especeId: 'Radis', espece: { id: 'Radis' }, clientNom: 'Marché' }]
+  expect((await exporter()).some(l => l.PieceRef === 'RECOLTE-7')).toBe(true)
 })

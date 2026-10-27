@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id
     const startOfYear = new Date(year, 0, 1)
-    const endOfYear = new Date(year, 11, 31, 23, 59, 59)
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
 
     // Récupérer toutes les sources de revenus
     const [
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
           userId,
           statut: 'vendu',
           dateVente: { gte: startOfYear, lte: endOfYear },
-          prixTotal: { not: null },
+          OR: [{ prixTotal: { not: null } }, { prixKg: { not: null } }],
         },
         orderBy: { dateVente: 'desc' },
       }),

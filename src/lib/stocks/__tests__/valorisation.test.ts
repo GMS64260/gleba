@@ -26,11 +26,26 @@ describe('valoriser', () => {
         ],
         'PMP'
       )
-      // Reste : 50u du lot 1€ + 100u du lot 2€ = 150u @ valeur 250€
+      // La sortie est valorisée au coût moyen de 1,50 €, soit 75 €.
+      // Reste : 300 - 75 = 225 € pour 150 unités.
       expect(r.quantiteFinale).toBe(150)
-      expect(r.valeurTotale).toBeCloseTo(250, 1)
-      // PMP : 250 / 150 ≈ 1.67
-      expect(r.coutUnitaireValorise).toBeCloseTo(1.67, 1)
+      expect(r.valeurTotale).toBeCloseTo(225, 1)
+      // PMP : une sortie ne change pas le coût moyen.
+      expect(r.coutUnitaireValorise).toBe(1.5)
+    })
+
+    it('une entrée après sortie pondère le stock restant, pas toutes les entrées historiques', () => {
+      const r = valoriser([
+        { date: new Date('2026-01-01'), quantite: 100, coutUnitaire: 1 },
+        { date: new Date('2026-02-01'), quantite: 100, coutUnitaire: 2 },
+        { date: new Date('2026-03-01'), quantite: -50 },
+        { date: new Date('2026-04-01'), quantite: 50, coutUnitaire: 3 },
+        { date: new Date('2026-05-01'), quantite: -20 },
+      ], 'PMP')
+      // (225 + 150) / 200 = 1,875 ; sortie de 37,50 €.
+      expect(r.quantiteFinale).toBe(180)
+      expect(r.valeurTotale).toBe(337.5)
+      expect(r.coutUnitaireValorise).toBe(1.88)
     })
 
     it('stock épuisé → quantité 0 valeur 0', () => {

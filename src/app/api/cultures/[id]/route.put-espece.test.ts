@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   varieteFindFirst: vi.fn(),
   itpFindFirst: vi.fn(),
   itpFindUnique: vi.fn(),
+  especeFindFirst: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({
@@ -17,6 +18,7 @@ vi.mock("@/lib/auth-utils", () => ({
 vi.mock("@/lib/prisma", () => ({
   default: {
     culture: { findUnique: mocks.cultureFindUnique, update: mocks.cultureUpdate },
+    espece: { findFirst: mocks.especeFindFirst },
     variete: { findFirst: mocks.varieteFindFirst },
     iTP: { findFirst: mocks.itpFindFirst, findUnique: mocks.itpFindUnique },
   },
@@ -64,6 +66,7 @@ describe("PUT /api/cultures/[id] — espèce, variété et ITP cohérents", () =
     mocks.cultureFindUnique.mockResolvedValue(roquette)
     mocks.cultureUpdate.mockImplementation(async ({ data }) => ({ ...roquette, ...data, aIrriguer: false }))
     mocks.itpFindFirst.mockResolvedValue({ id: "x" })
+    mocks.especeFindFirst.mockResolvedValue({ id: 'Navet' })
   })
 
   it("refuse de changer l'espèce en gardant la variété de l'ancienne", async () => {

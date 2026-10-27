@@ -9,6 +9,7 @@ import { ErreurCommerciale } from '@/lib/commercial/regles'
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { modePaiementDepuisReglement } from '@/lib/validations/reglement'
 import { updateRecolteSchema, recoltePatchSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
@@ -87,474 +88,205 @@ export async function GET(
 }
 
 // PUT /api/recoltes/[id]
-export async function PUT(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function PUT(request: NextRequest, { params }: RouteParams) {
   const { error, session } = await requireAuthApi()
   if (error) return error
-
   try {
-    const { id } = await params
-    const recolteId = parseInt(id)
-    const body = await request.json()
-
-    if (isNaN(recolteId)) {
-      return NextResponse.json(
-        { error: 'ID de récolte invalide' },
-        { status: 400 }
-      )
-    }
-
-    // Validation
-    const validationResult = updateRecolteSchema.safeParse(body)
-    if (!validationResult.success) {
-      return NextResponse.json(
-        { error: 'Données invalides', details: validationResult.error.flatten() },
-        { status: 400 }
-      )
-    }
-
-    // Vérifier existence et propriété
-    const existing = await prisma.recolte.findUnique({
-      where: {
-        id: recolteId,
-        userId: session!.user.id,
-      },
+    const recolteId = Number((await params).id)
+    if (!Number.isInteger(recolteId) || recolteId <= 0) return NextResponse.json({ error: 'ID de récolte invalide' }, { status: 400 })
+    const validation = updateRecolteSchema.safeParse(await request.json())
+    if (!validation.success) return NextResponse.json({ error: 'Données invalides', details: validation.error.flatten() }, { status: 400 })
+    const userId = session!.user.id
+    const data = validation.data
+    const resultat = await prisma.$transaction(async tx => {
+      const lot = await verrouillerRecolteLibre(tx, userId, recolteId)
+      if (data.quantite != null && (lot.unite ?? 'kg') !== 'kg' && !Number.isInteger(data.quantite)) {
+        throw new ErreurCommerciale('Indiquez une quantité entière dans l’unité de ce lot.', 400)
+      }
+      if (lot.statut === 'vendu' && (
+        (data.quantite !== undefined && data.quantite !== lot.quantite) ||
+        (data.especeId !== undefined && data.especeId !== lot.especeId) ||
+        (data.cultureId !== undefined && data.cultureId !== lot.cultureId)
+      )) throw new ErreurCommerciale('Ce lot est vendu : corrigez ou annulez d’abord sa vente avant de modifier sa quantité ou sa culture.')
+      const cultureCible = data.cultureId ?? lot.cultureId
+      const especeCible = data.especeId ?? lot.especeId
+      const dateCible = data.date ?? lot.date
+      const dateChange = data.date !== undefined && jourCivilLocal(data.date) !== jourCivilLocal(lot.date)
+      // Vérifier les références après le verrou, dans le même état que l’écriture.
+      if (cultureCible !== lot.cultureId || especeCible !== lot.especeId || dateChange) {
+        const culture = await tx.culture.findUnique({
+          where: { id: cultureCible, userId },
+          select: { id: true, especeId: true, dateSemis: true, datePlantation: true, semisFait: true, plantationFaite: true },
+        })
+        if (!culture) throw new ErreurCommerciale(`La culture #${cultureCible} n'existe pas`, 400)
+        if (culture.especeId !== especeCible) return { ok: false as const, response: NextResponse.json(
+          { error: `L'espèce de la récolte doit correspondre à l'espèce de la culture #${culture.id}`, champ: 'especeId' }, { status: 400 },
+        ) }
+        const refusDate = refusRecolteAvantDebut(culture, dateCible)
+        if (refusDate) return { ok: false as const, response: NextResponse.json({ error: refusDate, champ: 'date' }, { status: 400 }) }
+      }
+      const recolte = await tx.recolte.update({ where: { id: recolteId }, data, include: { espece: true, culture: true } })
+      return { ok: true as const, recolte }
     })
-
-    if (!existing) {
-      return NextResponse.json(
-        { error: `Récolte #${id} non trouvée` },
-        { status: 404 }
-      )
-    }
-    if (existing.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un bon ou une facture. Préparez un BL pour livrer le reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
-    if (await prisma.produitBoutique.count({ where: { userId: session.user.id, recolteId } })) return NextResponse.json({ error: 'Ce lot est suivi dans le catalogue de la boutique, même hors ligne. Utilisez le produit boutique pour éviter une seconde sortie du même stock.' }, { status: 409 })
-
-
-    // QA cmv2r19al — même règle qu'à la création : la date de récolte ne
-    // précède pas le début de la culture. Contrôlée seulement quand la date, la
-    // culture ou l'espèce change, pour ne pas bloquer la retouche d'une ligne
-    // ancienne.
-    // La culture visée est relue dans le compte : un rattachement à la culture
-    // d'un autre compte n'était pas vérifié.
-    const data = validationResult.data
-    const cultureCible = data.cultureId ?? existing.cultureId
-    const especeCible = data.especeId ?? existing.especeId
-    const dateCible = data.date ?? existing.date
-    const dateChange = data.date !== undefined && jourCivilLocal(data.date) !== jourCivilLocal(existing.date)
-    if (cultureCible !== existing.cultureId || especeCible !== existing.especeId || dateChange) {
-      const culture = await prisma.culture.findUnique({
-        where: { id: cultureCible, userId: session!.user.id },
-        select: { id: true, especeId: true, dateSemis: true, datePlantation: true, semisFait: true, plantationFaite: true },
-      })
-      if (!culture) {
-        return NextResponse.json(
-          { error: `La culture #${cultureCible} n'existe pas` },
-          { status: 400 }
-        )
-      }
-      // Même cohérence qu'à la création : l'espèce est celle de la culture.
-      if (culture.especeId !== especeCible) {
-        return NextResponse.json(
-          { error: `L'espèce de la récolte doit correspondre à l'espèce de la culture #${culture.id}`, champ: 'especeId' },
-          { status: 400 }
-        )
-      }
-      const refusDate = refusRecolteAvantDebut(culture, dateCible)
-      if (refusDate) {
-        return NextResponse.json({ error: refusDate, champ: 'date' }, { status: 400 })
-      }
-    }
-
-    // Mise à jour + ajustement de l'inventaire si la récolte est en stock
-    // (changement de quantité ou d'espèce → le compteur doit suivre).
-    const recolte = await prisma.$transaction(async (tx) => {
-      await verrouillerRecolteLibre(tx, session.user.id, recolteId)
-      const updated = await tx.recolte.update({
-        where: { id: recolteId },
-        data,
-        include: {
-          espece: true,
-          culture: true,
-        },
-      })
-
-      // Refonte stock 2026-07 : plus d'ajustement du compteur inventaire ici
-      // (recalcul par calculerStocksNet à partir des récoltes en stock).
-
-      return updated
-    })
-
-    invalidateKpi(session!.user.id)
-    return NextResponse.json(masquerReferentielsEmbarques(recolte, session!.user.id))
+    if (!resultat.ok) return resultat.response
+    invalidateKpi(userId)
+    return NextResponse.json(masquerReferentielsEmbarques(resultat.recolte, userId))
   } catch (error) {
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
-    if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('PUT /api/recoltes/[id] error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la mise à jour de la récolte' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erreur lors de la mise à jour de la récolte' }, { status: 500 })
   }
 }
 
-// PATCH /api/recoltes/[id] - Mise à jour partielle (vente, perte, etc.)
-export async function PATCH(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+// PATCH /api/recoltes/[id] - Vente et miroir comptable dans la même transaction.
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { error, session } = await requireAuthApi()
   if (error) return error
-
   try {
-    const { id } = await params
-    const recolteId = parseInt(id)
-
-    if (isNaN(recolteId)) {
-      return NextResponse.json(
-        { error: 'ID de récolte invalide' },
-        { status: 400 }
-      )
-    }
-
-    // Vérifier existence et propriété
-    const existing = await prisma.recolte.findUnique({
-      where: {
-        id: recolteId,
-        userId: session!.user.id,
-      },
-      include: {
-        espece: true,
-        culture: { include: { variete: true } },
-      },
-    })
-
-    if (!existing) {
-      return NextResponse.json(
-        { error: `Récolte #${id} non trouvée` },
-        { status: 404 }
-      )
-    }
-    if (existing.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un bon ou une facture. Préparez un BL pour livrer le reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
-    if (await prisma.produitBoutique.count({ where: { userId: session.user.id, recolteId } })) return NextResponse.json({ error: 'Ce lot est suivi dans le catalogue de la boutique, même hors ligne. Utilisez le produit boutique pour éviter une seconde sortie du même stock.' }, { status: 409 })
-
-
+    const recolteId = Number((await params).id)
+    if (!Number.isInteger(recolteId) || recolteId <= 0) return NextResponse.json({ error: 'ID de récolte invalide' }, { status: 400 })
     const body = await request.json()
     const userId = session!.user.id
-
-    // BUG-07 : validation Zod. Si statut=vendu sans prix/date/client → 400.
-    // On préserve l'existant pour les champs non transmis : on construit
-    // le payload effectif (body merged sur existing) pour que le refinement
-    // n'invalide pas une transition partielle « j'ajoute juste le prix ».
-    const effectiveStatut = body.statut ?? existing.statut
-    const effectivePayload = {
-      ...body,
-      statut: effectiveStatut,
-      prixKg: body.prixKg ?? existing.prixKg,
-      prixTotal: body.prixTotal ?? existing.prixTotal,
-      dateVente: body.dateVente ?? existing.dateVente,
-      clientId: body.clientId ?? existing.clientId,
-      clientNom: body.clientNom ?? existing.clientNom,
-    }
-    const validation = recoltePatchSchema.safeParse(effectivePayload)
-    if (!validation.success) {
-      return NextResponse.json(
-        { error: 'Données invalides', details: validation.error.flatten() },
-        { status: 400 }
-      )
-    }
-
-    // Préparer les données de mise à jour
-    const updateData: Record<string, unknown> = {}
-    if (body.statut !== undefined) updateData.statut = body.statut
-    if (body.dateVente !== undefined) updateData.dateVente = body.dateVente ? new Date(body.dateVente) : null
-    if (body.prixKg !== undefined) updateData.prixKg = body.prixKg
-    if (body.prixTotal !== undefined) updateData.prixTotal = body.prixTotal
-    if (body.clientId !== undefined) updateData.clientId = body.clientId
-    if (body.clientNom !== undefined) updateData.clientNom = body.clientNom
-    if (body.datePeremption !== undefined) updateData.datePeremption = body.datePeremption ? new Date(body.datePeremption) : null
-    if (body.notes !== undefined) updateData.notes = body.notes
-
-    // Vente partielle : l'UI propose « Quantité vendue » mais l'ancien code
-    // l'ignorait (récolte entière marquée vendue, facture incohérente). On
-    // scinde désormais : la récolte vendue porte la quantité vendue, le
-    // reliquat redevient une récolte en_stock distincte.
-    // QA cmv2r1oao — des tiges, pièces ou bottes se vendent à l'unité : l'écran
-    // le contrôle, la route aussi (un reliquat de 2,5 tiges n'aurait aucun sens).
-    if (
-      body.statut === 'vendu' &&
-      typeof body.quantiteVendue === 'number' &&
-      (existing.unite ?? 'kg') !== 'kg' &&
-      !Number.isInteger(body.quantiteVendue)
-    ) {
-      return NextResponse.json(
-        {
-          error: `Quantité vendue invalide : un nombre entier de ${libelleUniteQuantite(existing.unite as UniteQuantite, 2)} est attendu.`,
-        },
-        { status: 400 }
-      )
-    }
-
-    const quantiteVendue =
-      body.statut === 'vendu' &&
-      typeof body.quantiteVendue === 'number' &&
-      body.quantiteVendue > 0
-        ? Math.min(body.quantiteVendue, existing.quantite)
-        : existing.quantite
-    // Scission limitée aux récoltes encore en stock : re-patcher une récolte
-    // déjà vendue ne doit pas générer un reliquat jamais compté en inventaire.
-    const reliquat =
-      body.statut === 'vendu' && existing.statut === 'en_stock'
-        ? existing.quantite - quantiteVendue
-        : 0
-
-    // Audit compta 2026-06 : une récolte publiée en boutique se vend via une
-    // commande boutique (qui génère sa propre écriture compta) — la marquer
-    // « vendue » ici en plus créerait une double vente de la même marchandise.
-    if (body.statut === 'vendu' && existing.statut !== 'vendu') {
-      const produitBoutique = await prisma.produitBoutique.findFirst({
-        where: { recolteId, userId },
-        select: { id: true, nom: true },
+    const resultat = await prisma.$transaction(async tx => {
+      // Relire TOUT l'état après le verrou : une vente concurrente peut avoir
+      // changé statut, quantité et facture pendant l'attente.
+      const existing = await verrouillerRecolteLibre(tx, userId, recolteId)
+      const refuser = (error: string, status = 400, extras: Record<string, unknown> = {}) => ({
+        ok: false as const, response: NextResponse.json({ error, ...extras }, { status }),
       })
-      if (produitBoutique) {
-        return NextResponse.json(
-          {
-            error: `Cette récolte est publiée en boutique (« ${produitBoutique.nom} »). Utilisez ce produit via une commande, un BL ou une facture ; le désactiver ne libère pas le lot.`,
-          },
-          { status: 409 }
-        )
+      const statut = body.statut ?? existing.statut
+      const effectif = {
+        ...body, statut,
+        ...Object.fromEntries(['prixKg','prixTotal','dateVente','clientId','clientNom'].map(champ => [
+          champ, body[champ] !== undefined ? body[champ] : existing[champ as keyof typeof existing],
+        ])),
       }
-    }
-
-    // Sécurité multi-tenant : un clientId fourni doit appartenir à l'utilisateur
-    // (il est persisté sur la récolte, l'écriture auto et la facture).
-    if (body.clientId) {
-      const clientOk = await prisma.client.findFirst({
-        where: { id: body.clientId, userId },
-        select: { id: true },
-      })
-      if (!clientOk) {
-        return NextResponse.json({ error: 'Client introuvable' }, { status: 400 })
+      const validation = recoltePatchSchema.safeParse(effectif)
+      if (!validation.success) return refuser('Données invalides', 400, { details: validation.error.flatten() })
+      const donnees = validation.data
+      if (donnees.quantiteVendue != null && (body.statut !== 'vendu' || existing.statut !== 'en_stock')) {
+        return refuser('Ce lot est déjà sorti du stock ou ne fait pas l’objet d’une vente. Actualisez les récoltes.', 409)
       }
-    }
-
-    // Anti-double-facture : une récolte déjà facturée ne peut pas générer
-    // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
-    if (body.creerFacture && existing.factureId) {
-      return NextResponse.json(
-        { error: 'Cette récolte est déjà facturée', factureId: existing.factureId },
-        { status: 409 }
-      )
-    }
-
-    // Dé-vente d'une récolte facturée (retour en stock/perte) : la facture
-    // doit suivre, sinon le CA reste compté via la facture (CA fantôme).
-    if (
-      existing.factureId &&
-      existing.statut === 'vendu' &&
-      body.statut &&
-      body.statut !== 'vendu'
-    ) {
-      const liee = await annulerFactureLiee(prisma, userId, existing.factureId)
-      if (!liee.ok) {
-        return NextResponse.json({ error: liee.raison }, { status: 409 })
+      if (donnees.quantiteVendue != null && donnees.quantiteVendue > existing.quantite + 1e-9) {
+        return refuser('La quantité vendue dépasse la quantité disponible du lot.', 400, { champ: 'quantiteVendue' })
       }
-      updateData.factureId = null
-    }
-
-    // Transaction atomique : facture + update recolte + reliquat + inventaire
-    const recolte = await prisma.$transaction(async (tx) => {
-      await verrouillerRecolteLibre(tx, session.user.id, recolteId)
-      if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
-        const totalHT = body.prixTotal / 1.055
-        const totalTVA = body.prixTotal - totalHT
-        const espece = existing.espece?.nom ?? existing.espece?.id ?? 'Légumes'
-        const variete = existing.culture?.variete?.id ? ` - ${existing.culture.variete.nom ?? existing.culture.variete.id}` : ''
-
+      let quantiteVendue = donnees.quantiteVendue ?? existing.quantite
+      if (Math.abs(quantiteVendue - existing.quantite) <= 1e-9) quantiteVendue = existing.quantite
+      if (statut === 'vendu' && (existing.unite ?? 'kg') !== 'kg' && !Number.isInteger(quantiteVendue)) {
+        return refuser(`Un nombre entier de ${libelleUniteQuantite(existing.unite as UniteQuantite, 2)} est attendu.`, 400, { champ: 'quantiteVendue' })
+      }
+      const reliquat = statut === 'vendu' && existing.statut === 'en_stock' ? existing.quantite - quantiteVendue : 0
+      if (donnees.clientId != null && !await tx.client.findFirst({ where: { id: donnees.clientId, userId }, select: { id: true } })) {
+        return refuser('Client introuvable', 400, { champ: 'clientId' })
+      }
+      if (donnees.creerFacture && existing.factureId) return refuser('Cette récolte est déjà facturée', 409, { factureId: existing.factureId })
+      const updateData: Record<string, unknown> = {}
+      for (const champ of ['statut','dateVente','prixKg','prixTotal','clientId','clientNom','datePeremption','notes'] as const) {
+        if (body[champ] !== undefined) updateData[champ] = donnees[champ]
+      }
+      let prixTotal: number | null = null
+      let prixKg: number | null = null
+      if (statut === 'vendu') {
+        // Un prix unitaire seul est une vente complète aussi pour TVA/FEC.
+        // Une correction du PU recalcule le total ; un total seul déduit le PU.
+        prixTotal = body.prixTotal != null ? donnees.prixTotal! :
+          body.prixKg != null || existing.prixTotal == null || reliquat > 0
+            ? quantiteVendue * (donnees.prixKg ?? 0) : existing.prixTotal
+        prixKg = body.prixKg != null ? donnees.prixKg! : body.prixTotal != null
+          ? prixTotal / quantiteVendue : existing.prixKg ?? prixTotal / quantiteVendue
+        if (!(Number.isFinite(prixTotal) && prixTotal > 0 && Number.isFinite(prixKg) && prixKg > 0)) {
+          return refuser('Indiquez un montant de vente strictement positif.', 400, { champ: 'prixTotal' })
+        }
+        if (Math.abs(quantiteVendue * prixKg - prixTotal) > 0.005) {
+          return refuser('Le prix total doit correspondre à la quantité vendue multipliée par le prix unitaire.', 400, { champ: 'prixTotal' })
+        }
+        Object.assign(updateData, { prixTotal, prixKg })
+        if (existing.factureId && (
+          prixTotal !== existing.prixTotal || prixKg !== existing.prixKg ||
+          donnees.dateVente?.getTime() !== existing.dateVente?.getTime() ||
+          donnees.clientId !== existing.clientId || donnees.clientNom !== existing.clientNom
+        )) return refuser('Cette vente est facturée : régularisez sa facture par un avoir avant de corriger les montants ou le client.', 409)
+      }
+      if (existing.factureId && existing.statut === 'vendu' && statut !== 'vendu') {
+        const annulation = await annulerFactureLiee(tx, userId, existing.factureId)
+        if (!annulation.ok) return refuser(annulation.raison, 409)
+        updateData.factureId = null
+      }
+      if (statut === 'vendu' && donnees.creerFacture) {
+        const totalHT = prixTotal! / 1.055
+        const espece = existing.espece.nom ?? existing.espece.id
+        const variete = existing.culture.variete
+        const description = `${espece}${variete ? ` - ${variete.nom ?? variete.id}` : ''}`
+        const suivi = await tx.venteManuelle.findFirst({
+          where: { userId, auto: true, sourceType: 'recolte', sourceId: recolteId },
+          select: { paye: true, modeReglement: true },
+        })
         const facture = await creerFacture(tx, {
-          userId,
-          type: 'facture',
-          clientId: body.clientId || null,
-          clientNom: body.clientNom,
-          objet: `Vente de ${espece}${variete}`,
-          totalHT,
-          totalTVA,
-          totalTTC: body.prixTotal,
-          statut: 'payee',
-          datePaiement: new Date(),
-          modePaiement: 'especes',
-          lignes: [{
-            description: `${espece}${variete}`,
-            // Quantité réellement vendue (pas la quantité totale de la
-            // récolte) : sinon quantité × prix unitaire ≠ montant.
-            quantite: quantiteVendue,
-            // QA cmv2r1oao — même règle que l'écriture auto (auto-compta.ts) :
-            // une récolte en tiges se facture en tiges, `prixKg` étant un prix
-            // par unité de la récolte.
+          userId, type: 'facture', clientId: donnees.clientId, clientNom: donnees.clientNom ?? undefined,
+          objet: `Vente de ${description}`, totalHT, totalTVA: prixTotal! - totalHT, totalTTC: prixTotal!,
+          statut: suivi?.paye === false ? 'emise' : 'payee',
+          datePaiement: suivi?.paye === false ? null : donnees.dateVente,
+          modePaiement: modePaiementDepuisReglement(suivi?.modeReglement),
+          lignes: [{ description, quantite: quantiteVendue,
             unite: libelleUniteQuantite((existing.unite ?? 'kg') as UniteQuantite, 1),
-            prixUnitaire: (body.prixKg || 0) / 1.055,
-            tauxTVA: 5.5,
-            montantHT: totalHT,
-            montantTVA: totalTVA,
-            montantTTC: body.prixTotal,
+            prixUnitaire: prixKg! / 1.055, tauxTVA: 5.5,
+            montantHT: totalHT, montantTVA: prixTotal! - totalHT, montantTTC: prixTotal!,
+            statutBio: existing.statutBioSnapshot,
           }],
         })
-
         updateData.factureId = facture.id
       }
-
-      // Scission du reliquat non vendu : il reste en stock.
       if (reliquat > 0) {
         updateData.quantite = quantiteVendue
-        await tx.recolte.create({
-          data: {
-            userId,
-            especeId: existing.especeId,
-            cultureId: existing.cultureId,
-            date: existing.date,
-            quantite: reliquat,
-            // Le reliquat est la même matière que la récolte scindée : il garde
-            // son unité figée (des tiges restent des tiges), comme son snapshot
-            // Bio. Sans cette ligne il naissait sans unité, donc relu en kilos.
-            unite: existing.unite,
-            statut: 'en_stock',
-            datePeremption: existing.datePeremption,
-            statutBioSnapshot: existing.statutBioSnapshot,
-            notes: `Reliquat non vendu de la récolte #${recolteId}`,
-          },
-        })
+        await tx.recolte.create({ data: {
+          userId, especeId: existing.especeId, cultureId: existing.cultureId,
+          date: existing.date, quantite: reliquat, unite: existing.unite, statut: 'en_stock',
+          datePeremption: existing.datePeremption, statutBioSnapshot: existing.statutBioSnapshot,
+          notes: `Reliquat non vendu de la récolte #${recolteId}`,
+        } })
       }
-
-      // Refonte stock 2026-07 : la transition de statut n'ajuste plus de
-      // compteur — calculerStocksNet ne compte que les récoltes 'en_stock',
-      // donc une sortie (vente/perte/consommé) réduit le stock automatiquement.
-
-      return tx.recolte.update({
-        where: { id: recolteId },
-        data: updateData,
-        include: {
-          espece: {
-            include: { famille: true },
-          },
-          culture: {
-            include: {
-              variete: true,
-              planche: true,
-            },
-          },
-        },
+      const recolte = await tx.recolte.update({ where: { id: recolteId }, data: updateData,
+        include: { espece: { include: { famille: true } }, culture: { include: { variete: true, planche: true } } },
       })
+      if (statut === 'vendu') await createVenteFromRecolte(userId, recolte, tx)
+      else if (existing.statut === 'vendu') await deleteAutoEntry('recolte', recolteId, 'vente', userId, tx)
+      return { ok: true as const, recolte }
     })
-
-    // Auto-comptabilite : gerer les ecritures automatiques
-    try {
-      if (body.statut === 'vendu' && (body.prixTotal || body.prixKg)) {
-        // Recolte marquee comme vendue -> creer une vente auto
-        await createVenteFromRecolte(userId, {
-          id: recolteId,
-          especeId: existing.especeId,
-          quantite: quantiteVendue,
-          unite: existing.unite,
-          prixKg: body.prixKg ?? existing.prixKg,
-          prixTotal: body.prixTotal ?? existing.prixTotal,
-          clientNom: body.clientNom ?? existing.clientNom,
-          clientId: body.clientId ?? existing.clientId,
-          dateVente: body.dateVente ?? existing.dateVente,
-          factureId: recolte.factureId,
-        })
-      } else if (existing.statut === 'vendu' && body.statut && body.statut !== 'vendu') {
-        // Recolte qui n'est plus vendue -> supprimer la vente auto
-        await deleteAutoEntry('recolte', recolteId, 'vente')
-      }
-    } catch (autoComptaError) {
-      // Ne pas bloquer la requete si l'auto-compta echoue
-      console.error('Auto-compta error (recolte):', autoComptaError)
-    }
-
+    if (!resultat.ok) return resultat.response
     invalidateKpi(userId)
-    return NextResponse.json(masquerReferentielsEmbarques(recolte, userId))
+    return NextResponse.json(masquerReferentielsEmbarques(resultat.recolte, userId))
   } catch (error) {
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('PATCH /api/recoltes/[id] error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la mise à jour de la récolte' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'La modification de la récolte et de sa vente n’a pas été enregistrée.' }, { status: 500 })
   }
 }
 
-// DELETE /api/recoltes/[id]
-export async function DELETE(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+// DELETE /api/recoltes/[id] : source, facture et miroir réussissent ensemble.
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { error, session } = await requireAuthApi()
   if (error) return error
-
   try {
-    const { id } = await params
-    const recolteId = parseInt(id)
-
-    if (isNaN(recolteId)) {
-      return NextResponse.json(
-        { error: 'ID de récolte invalide' },
-        { status: 400 }
-      )
-    }
-
-    // Vérifier existence et propriété
-    const recolte = await prisma.recolte.findUnique({
-      where: {
-        id: recolteId,
-        userId: session!.user.id,
-      },
-    })
-
-    if (!recolte) {
-      return NextResponse.json(
-        { error: `Récolte #${id} non trouvée` },
-        { status: 404 }
-      )
-    }
-    if (recolte.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un bon ou une facture. Préparez un BL pour livrer le reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
-    if (await prisma.produitBoutique.count({ where: { userId: session.user.id, recolteId } })) return NextResponse.json({ error: 'Ce lot est suivi dans le catalogue de la boutique, même hors ligne. Utilisez le produit boutique pour éviter une seconde sortie du même stock.' }, { status: 409 })
-
-
-    // Supprimer une récolte facturée laisserait une facture orpheline comptée
-    // dans KPI/TVA/FEC : la facture doit être annulée (ou couverte par un avoir).
-    if (recolte.factureId) {
-      const liee = await annulerFactureLiee(prisma, session!.user.id, recolte.factureId)
-      if (!liee.ok) {
-        return NextResponse.json({ error: liee.raison }, { status: 409 })
+    const recolteId = Number((await params).id)
+    if (!Number.isInteger(recolteId) || recolteId <= 0) return NextResponse.json({ error: 'ID de récolte invalide' }, { status: 400 })
+    const userId = session!.user.id
+    const resultat = await prisma.$transaction(async tx => {
+      const recolte = await verrouillerRecolteLibre(tx, userId, recolteId)
+      if (recolte.factureId) {
+        const liee = await annulerFactureLiee(tx, userId, recolte.factureId)
+        if (!liee.ok) return liee
       }
-    }
-
-    // Toujours nettoyer les ecritures auto-compta liees avant de supprimer
-    try {
-      await deleteAutoEntry('recolte', recolteId, 'vente')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (recolte):', autoComptaError)
-    }
-
-    // Refonte stock 2026-07 : supprimer la récolte suffit — calculerStocksNet
-    // ne comptera plus sa quantité (plus de compteur inventaire à décrémenter).
-    await prisma.$transaction(async (tx) => {
-      await verrouillerRecolteLibre(tx, session.user.id, recolteId)
+      await deleteAutoEntry('recolte', recolteId, 'vente', userId, tx)
       await tx.recolte.delete({ where: { id: recolteId } })
+      return { ok: true as const }
     })
-
-    invalidateKpi(session!.user.id)
+    if (!resultat.ok) return NextResponse.json({ error: resultat.raison }, { status: 409 })
+    invalidateKpi(userId)
     return NextResponse.json({ success: true, deleted: recolteId })
   } catch (error) {
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
-    if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('DELETE /api/recoltes/[id] error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la suppression de la récolte' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'La suppression de la récolte et de sa vente n’a pas été enregistrée.' }, { status: 500 })
   }
 }

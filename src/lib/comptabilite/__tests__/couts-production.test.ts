@@ -15,6 +15,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   cultureFindMany: vi.fn(),
+  recolteFindMany: vi.fn(),
+  factureFindMany: vi.fn(),
   interventionFindMany: vi.fn(),
   fertilisationFindMany: vi.fn(),
   depenseManuelleFindMany: vi.fn(),
@@ -34,6 +36,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({
   default: {
     culture: { findMany: mocks.cultureFindMany },
+    recolte: { findMany: mocks.recolteFindMany },
+    facture: { findMany: mocks.factureFindMany },
     intervention: { findMany: mocks.interventionFindMany },
     fertilisation: { findMany: mocks.fertilisationFindMany },
     depenseManuelle: { findMany: mocks.depenseManuelleFindMany },
@@ -62,6 +66,8 @@ describe('computeCoutsProduction — revenus Verger', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.cultureFindMany.mockResolvedValue([])
+    mocks.recolteFindMany.mockResolvedValue([])
+    mocks.factureFindMany.mockResolvedValue([])
     mocks.interventionFindMany.mockResolvedValue([])
     mocks.fertilisationFindMany.mockResolvedValue([])
     mocks.depenseManuelleFindMany.mockResolvedValue([])
@@ -80,7 +86,7 @@ describe('computeCoutsProduction — revenus Verger', () => {
     mocks.consommationAlimentFindMany.mockResolvedValue([])
     mocks.soinAnimalFindMany.mockResolvedValue([])
     mocks.userStockEspeceFindMany.mockResolvedValue([])
-    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 1234.56, depensesYtd: 999.99 })
+    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 1234.56, depensesYtd: 999.99, revenusParModuleYtd: { parModule: { potager: 0 } } })
   })
 
   it('additionne les VenteManuelle module=verger saisies à la main aux récoltes et au bois', async () => {
@@ -135,6 +141,8 @@ describe('computeCoutsProduction — unité des quantités et des ratios', () =>
     vi.clearAllMocks()
     for (const mock of [
       mocks.cultureFindMany,
+      mocks.recolteFindMany,
+      mocks.factureFindMany,
       mocks.interventionFindMany,
       mocks.fertilisationFindMany,
       mocks.depenseManuelleFindMany,
@@ -151,10 +159,11 @@ describe('computeCoutsProduction — unité des quantités et des ratios', () =>
       mock.mockResolvedValue([])
     }
     mocks.venteManuelleAggregate.mockResolvedValue({ _sum: { montant: 0 } })
-    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 0, depensesYtd: 0 })
+    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 0, depensesYtd: 0, revenusParModuleYtd: { parModule: { potager: 0 } } })
   })
 
   it('rend le coût et le prix moyen PAR TIGE quand la ferme compte en tiges', async () => {
+    mocks.recolteFindMany.mockResolvedValue([{ cultureId: 1, quantite: 200, unite: 'tige', prixKg: 1.5, prixTotal: 300 }])
     mocks.cultureFindMany.mockResolvedValue([
       {
         id: 1,
