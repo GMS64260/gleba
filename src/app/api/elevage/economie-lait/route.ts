@@ -23,6 +23,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { indicateursEconomieLait } from '@/lib/elevage/economie-lait'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { poidsMoyenPieceKg, poidsSortieKg, sortieCaveDepuisVente } from '@/lib/elevage/cave-fromage'
 
 const estLaitier = (production?: string | null, productions?: string[] | null): boolean => {
   const p = (production || '').toLowerCase()
@@ -36,10 +37,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const annee = parseInt(searchParams.get('annee') || `${new Date().getFullYear()}`, 10) || new Date().getFullYear()
+    const anneeBrute = searchParams.get('annee') || String(new Date().getFullYear())
+    const annee = Number(anneeBrute)
+    if (!/^\d{4}$/.test(anneeBrute) || annee < 2000 || annee > 2200) return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
     const userId = session.user.id
     const debut = new Date(annee, 0, 1)
-    const fin = new Date(annee, 11, 31, 23, 59, 59)
+    const fin = new Date(annee, 11, 31, 23, 59, 59, 999)
 
     const [animaux, lots, collectes, fabrications, ventes, consommations, soins, paies] = await Promise.all([
       prisma.animal.findMany({
@@ -65,11 +68,11 @@ export async function GET(request: NextRequest) {
       }),
       prisma.venteProduit.findMany({
         where: { userId, annule: false, date: { gte: debut, lte: fin } },
-        select: { type: true, quantite: true, unite: true, prixTotal: true, lotFromageId: true, lotFromage: { select: { typeFromage: true } } },
+        select: { type: true, quantite: true, unite: true, prixTotal: true, lotFromageId: true, lotFromage: { select: { typeFromage: true, nbPieces: true, poidsTotalKg: true } }, mouvementsFromage: { where: { userId }, select: { poidsKg: true } } },
       }),
       prisma.consommationAliment.findMany({
         where: { userId, date: { gte: debut, lte: fin } },
-        select: { quantite: true, lotId: true, aliment: { select: { prix: true } } },
+        select: { quantite: true, lotId: true, animalId: true, aliment: { select: { prix: true, userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 } } } },
       }),
       prisma.soinAnimal.findMany({
         where: { userId, fait: true, date: { gte: debut, lte: fin }, cout: { not: null } },
@@ -143,10 +146,13 @@ export async function GET(request: NextRequest) {
     // Coût alimentaire affecté
     let coutAlimentaire = 0
     for (const c of consommations) {
-      const prixKg = c.aliment?.prix || 0
+      const prixKg = c.aliment?.userStocks?.[0]?.coutUnitaire ?? c.aliment?.userStocks?.[0]?.prix ?? c.aliment?.prix ?? 0
       const cout = Number(c.quantite) * prixKg
-      if (c.lotId == null) coutAlimentaire += cout * partGlobaleLaitiere
-      else if (lotsLaitiers.has(c.lotId)) coutAlimentaire += cout
+      if (c.animalId != null) {
+        if (animauxLaitiers.has(c.animalId)) coutAlimentaire += cout
+      } else if (c.lotId != null) {
+        if (lotsLaitiers.has(c.lotId)) coutAlimentaire += cout
+      } else coutAlimentaire += cout * partGlobaleLaitiere
       // lot non laitier → 0
     }
 
@@ -179,11 +185,11 @@ export async function GET(request: NextRequest) {
     // Rendement & marge par type de fromage
     const parType = new Map<
       string,
-      { volumeLait: number; kg: number; pieces: number; ca: number }
+      { volumeLait: number; kg: number; pieces: number; ca: number; kgVendus: number; poidsComplet: boolean; poidsEstime: boolean }
     >()
     for (const f of fabrications) {
       const t = f.typeFromage || 'Autre'
-      const e = parType.get(t) || { volumeLait: 0, kg: 0, pieces: 0, ca: 0 }
+      const e = parType.get(t) || { volumeLait: 0, kg: 0, pieces: 0, ca: 0, kgVendus: 0, poidsComplet: true, poidsEstime: false }
       e.volumeLait += Number(f.volumeLaitUtiliseL)
       e.kg += Number(f.poidsTotalKg)
       e.pieces += f.nbPieces || 0
@@ -191,8 +197,17 @@ export async function GET(request: NextRequest) {
     }
     for (const v of ventesFromage) {
       const t = v.lotFromage?.typeFromage || 'Autre'
-      const e = parType.get(t) || { volumeLait: 0, kg: 0, pieces: 0, ca: 0 }
+      const e = parType.get(t) || { volumeLait: 0, kg: 0, pieces: 0, ca: 0, kgVendus: 0, poidsComplet: true, poidsEstime: false }
       e.ca += Number(v.prixTotal)
+      // Le prix de vente porte sur le poids sorti, jamais sur toute la
+      // fabrication (une partie peut encore être en cave).
+      const pesee = v.mouvementsFromage?.reduce((s, m) => s + Number(m.poidsKg), 0) ?? 0
+      const sortie = sortieCaveDepuisVente(v.quantite, v.unite)
+      const moyen = v.lotFromage ? poidsMoyenPieceKg({ nbPieces: v.lotFromage.nbPieces, poidsTotalKg: Number(v.lotFromage.poidsTotalKg) }) : null
+      const kg = pesee > 0 ? pesee : sortie.ok ? poidsSortieKg(sortie, moyen) : null
+      if (pesee <= 0 && sortie.ok && sortie.nbPieces > 0 && moyen != null) e.poidsEstime = true
+      if (kg == null || !Number.isFinite(kg) || kg <= 0) e.poidsComplet = false
+      else e.kgVendus += kg
       parType.set(t, e)
     }
     const fromages = Array.from(parType.entries()).map(([type, e]) => ({
@@ -203,7 +218,9 @@ export async function GET(request: NextRequest) {
       rendementKgParL: e.volumeLait > 0 ? Math.round((e.kg / e.volumeLait) * 1000) / 1000 : null,
       litresParKg: e.kg > 0 ? Math.round((e.volumeLait / e.kg) * 100) / 100 : null,
       ca: Math.round(e.ca * 100) / 100,
-      prixMoyenKg: e.kg > 0 && e.ca > 0 ? Math.round((e.ca / e.kg) * 100) / 100 : null,
+      kgVendus: e.poidsComplet ? Math.round(e.kgVendus * 1000) / 1000 : null,
+      poidsVenduEstime: e.poidsEstime,
+      prixMoyenKg: e.poidsComplet && e.kgVendus > 0 && e.ca > 0 ? Math.round((e.ca / e.kgVendus) * 100) / 100 : null,
     }))
 
     return NextResponse.json({

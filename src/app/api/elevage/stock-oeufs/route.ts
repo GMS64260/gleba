@@ -106,9 +106,12 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: "ID requis" }, { status: 400 })
   const existing = await prisma.mouvementStockOeuf.findFirst({
     where: { id, userId: session.user.id },
-    select: { id: true },
+    select: { id: true, notes: true },
   })
   if (!existing) return NextResponse.json({ error: "Mouvement introuvable" }, { status: 404 })
+  if (/^\[vente-produit:\d+\]/.test(existing.notes ?? '')) {
+    return NextResponse.json({ error: 'Cette sortie vient d’une vente : annulez ou modifiez la vente dans Production > Ventes.' }, { status: 409 })
+  }
   if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, mouvementOeufId: id } })) return NextResponse.json({ error: 'Cette sortie est liée à un document commercial. Utilisez Retour en stock sur le bon ou la facture.' }, { status: 409 })
   await prisma.mouvementStockOeuf.delete({ where: { id } })
   return NextResponse.json({ success: true })

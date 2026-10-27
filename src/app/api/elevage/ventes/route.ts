@@ -21,6 +21,9 @@ import { sortieCaveDepuisVente } from '@/lib/elevage/cave-fromage'
 import { createVenteFromVenteProduit, deleteAutoEntry } from '@/lib/auto-compta'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { venteProduitSchema, venteProduitTypeSchema } from '@/lib/validations/elevage-vente'
+import { modeReglementSchema, modePaiementDepuisReglement } from '@/lib/validations/reglement'
+import { chargerSuiviDesSources, cleSource } from '@/lib/comptabilite/suivi-ecriture'
+import { ReglementVenteError } from '@/lib/comptabilite/reglement-vente'
 import { invalidateKpi } from '@/lib/kpi'
 import {
   StockOeufsVenteError,
@@ -83,23 +86,32 @@ export async function GET(request: NextRequest) {
 
     // Stats par type
     const statsParType = await prisma.venteProduit.groupBy({
-      by: ['type'],
+      by: ['type', 'unite'],
       where,
       _sum: { prixTotal: true, quantite: true },
       _count: true,
     })
 
+    const suivi = await chargerSuiviDesSources(session.user.id, {
+      sources: ventes.filter((v) => !v.factureId).map((v) => ({ sourceType: 'vente_produit', sourceId: v.id })),
+    })
+    const parType = new Map<string, { type: string; total: number; count: number; quantiteParUnite: Record<string, number> }>()
+    for (const s of statsParType) {
+      const ligne = parType.get(s.type) ?? { type: s.type, total: 0, count: 0, quantiteParUnite: {} }
+      ligne.total += s._sum.prixTotal ?? 0
+      ligne.count += s._count
+      ligne.quantiteParUnite[s.unite] = (ligne.quantiteParUnite[s.unite] ?? 0) + (s._sum.quantite ?? 0)
+      parType.set(s.type, ligne)
+    }
     return NextResponse.json({
-      data: ventes,
+      data: ventes.map((v) => ({ ...v, modeReglement: suivi.parSource.get(cleSource('vente_produit', v.id))?.suivi.modeReglement ?? null })),
       stats: {
         totalVentes: stats._sum.prixTotal || 0,
         nbVentes: stats._count,
-        parType: statsParType.map(s => ({
-          type: s.type,
-          total: s._sum.prixTotal || 0,
-          quantite: s._sum.quantite || 0,
-          count: s._count,
-        })),
+        parType: [...parType.values()].map((s) => {
+          const unites = Object.keys(s.quantiteParUnite)
+          return { ...s, quantite: unites.length === 1 ? s.quantiteParUnite[unites[0]] : null, unite: unites.length === 1 ? unites[0] : null }
+        }),
       },
       meta: { year: annee, total: ventes.length },
     })
@@ -359,6 +371,7 @@ export async function POST(request: NextRequest) {
         date: vente.date,
         tauxTVA: vente.tauxTVA,
         paye: vente.paye,
+        modeReglement: parsed.data.modeReglement,
       }, tx)
 
       return vente
@@ -507,6 +520,11 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
     const { id, paye, client, notes } = body
 
+    const mode = modeReglementSchema.safeParse(body.modeReglement)
+    if (!mode.success || (paye !== undefined && typeof paye !== 'boolean')) {
+      return NextResponse.json({ error: 'Règlement invalide' }, { status: 400 })
+    }
+
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     }
@@ -556,7 +574,11 @@ export async function PATCH(request: NextRequest) {
     // Audit 2026-07 (#15) : le PATCH ignorait date, type, quantité, prix,
     // unité et description — l'édition affichait un succès mais ne changeait
     // rien (CA/TVA/écriture auto calculés sur l'ancien prix). On les persiste.
-    if (body.date !== undefined) updateData.date = new Date(body.date)
+    if (body.date !== undefined) {
+      const date = new Date(body.date)
+      if (!Number.isFinite(date.getTime())) return NextResponse.json({ error: 'Date invalide' }, { status: 400 })
+      updateData.date = date
+    }
     if (body.type !== undefined) {
       const typeParse = venteProduitTypeSchema.safeParse(body.type)
       if (!typeParse.success) {
@@ -571,21 +593,22 @@ export async function PATCH(request: NextRequest) {
     if (body.unite !== undefined) updateData.unite = body.unite
     if (body.quantite !== undefined) {
       const q = parseFloat(String(body.quantite))
-      if (Number.isNaN(q) || q <= 0) {
+      if (!Number.isFinite(q) || q <= 0) {
         return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
       }
       updateData.quantite = q
     }
     if (body.prixUnitaire !== undefined) {
       const pu = parseFloat(String(body.prixUnitaire))
-      if (Number.isNaN(pu) || pu < 0) {
+      if (!Number.isFinite(pu) || pu < 0) {
         return NextResponse.json({ error: 'Prix unitaire invalide' }, { status: 400 })
       }
       updateData.prixUnitaire = pu
     }
     if (body.tauxTVA !== undefined) {
       const t = parseFloat(String(body.tauxTVA))
-      if (!Number.isNaN(t) && t >= 0 && t <= 100) updateData.tauxTVA = t
+      if (!Number.isFinite(t) || t < 0 || t > 100) return NextResponse.json({ error: 'TVA invalide' }, { status: 400 })
+      updateData.tauxTVA = t
     }
     // Recalcul du total si quantité ou prix unitaire changent.
     if (updateData.quantite !== undefined || updateData.prixUnitaire !== undefined) {
@@ -597,6 +620,16 @@ export async function PATCH(request: NextRequest) {
     // Ticket cms1vqsqu — exception : cession gratuite (convention notes
     // préfixées « [Cession gratuite] », il n'y a rien à encaisser).
     const payeFinal = updateData.paye ?? existing.paye
+    if (existing.factureId) {
+      const modifies = Object.entries(updateData).some(([champ, valeur]) => {
+        if (champ === 'notes') return false
+        const avant = existing[champ as keyof VenteProduit]
+        return valeur instanceof Date && avant instanceof Date ? valeur.getTime() !== avant.getTime() : valeur !== avant
+      })
+      if (modifies || body.modeReglement !== undefined) {
+        return NextResponse.json({ error: 'Cette vente est facturée. Suivez son règlement dans Factures ; une correction des montants passe par un avoir.', factureId: existing.factureId }, { status: 409 })
+      }
+    }
     const prixTotalFinal = updateData.prixTotal ?? existing.prixTotal
     const notesFinales = String((updateData.notes ?? existing.notes) ?? '')
     if (payeFinal === true && prixTotalFinal === 0 && !notesFinales.startsWith('[Cession gratuite]')) {
@@ -634,6 +667,15 @@ export async function PATCH(request: NextRequest) {
 
     // Transaction atomique : facture + update vente
     const vente = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM ventes_produits WHERE id = ${existing.id} AND user_id = ${userId} FOR UPDATE`
+      const courante = await tx.venteProduit.findFirst({ where: { id: existing.id, userId } })
+      const aChange = !courante || Object.entries(existing).some(([champ, avant]) => {
+        const apres = courante[champ as keyof VenteProduit]
+        return avant instanceof Date && apres instanceof Date ? avant.getTime() !== apres.getTime() : avant !== apres
+      })
+      if (aChange) {
+        throw new ReglementVenteError('Cette vente a changé. Rechargez la liste avant de la modifier.')
+      }
       // Revue élevage 2026-07-21 — la facture était construite sur les ANCIENNES
       // valeurs (existing.*) même quand le même PATCH modifiait prix/quantité →
       // document légal ≠ vente ≠ compta. On facture sur les valeurs FINALES.
@@ -656,7 +698,7 @@ export async function PATCH(request: NextRequest) {
           // POSTREVIEW — Toujours 'facture' (la sémantique métier est dans objet/sourceType)
           type: 'facture',
           clientId: body.clientId || null,
-          clientNom: existing.client || undefined,
+          clientNom: (updateData.client !== undefined ? updateData.client : existing.client) || undefined,
           date: dateF,
           objet: `Vente de ${typeF} - ${descF || ''}`,
           totalHT,
@@ -664,7 +706,7 @@ export async function PATCH(request: NextRequest) {
           totalTTC: totalFinal,
           statut: payeFinal ? 'payee' : 'emise',
           datePaiement: payeFinal ? new Date() : null,
-          modePaiement: body.modePaiement || 'especes',
+          modePaiement: body.modePaiement || modePaiementDepuisReglement(mode.data !== undefined ? mode.data : (await tx.venteManuelle.findFirst({ where: { userId, auto: true, sourceType: 'vente_produit', sourceId: existing.id }, select: { modeReglement: true } }))?.modeReglement),
           lignes: [{
             description: `${typeF} - ${descF || ''}`,
             quantite: qteF,
@@ -723,6 +765,7 @@ export async function PATCH(request: NextRequest) {
         tauxTVA: updated.tauxTVA,
         factureId: updated.factureId,
         paye: updated.paye,
+        modeReglement: mode.data,
       }, tx)
       return updated
     })
@@ -730,6 +773,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: vente })
   } catch (error) {
+    if (error instanceof ReglementVenteError) return NextResponse.json({ error: error.message }, { status: 409 })
     if (error instanceof StockOeufsVenteError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }

@@ -5,6 +5,9 @@
  */
 
 import * as React from "react"
+import Link from "next/link"
+import { SelectNatif } from "@/components/ui/select-natif"
+import { MODES_REGLEMENT } from "@/lib/validations/reglement"
 import { useSession } from "next-auth/react"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
@@ -1151,6 +1154,8 @@ interface Vente {
   prixTotal: number
   client: string | null
   paye: boolean
+  modeReglement?: string | null
+  factureId?: number | null
   tauxTVA: number
   notes: string | null
 }
@@ -1197,7 +1202,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
   const [formData, setFormData] = React.useState({
     date: todayLocalISO(),
     type: "oeufs", description: "", quantite: "", unite: "douzaine",
-    prixUnitaire: "", client: "", paye: true, notes: "",
+    prixUnitaire: "", client: "", paye: false, notes: "", modeReglement: "",
     tauxTVA: "5.5",
     // Ticket cms1vqsqu — don / autoconsommation d'un animal vivant.
     cessionGratuite: false,
@@ -1208,7 +1213,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
 
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "", tauxTVA: "5.5", cessionGratuite: false, animalId: "" })
+    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: false, notes: "", modeReglement: "", tauxTVA: "5.5", cessionGratuite: false, animalId: "" })
   }
 
   // Ticket cmsog7lrc — animaux actifs pour le sélecteur « Animal vendu »,
@@ -1235,6 +1240,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
       prixUnitaire: v.prixUnitaire.toString(),
       client: v.client ?? "",
       paye: v.paye,
+      modeReglement: v.modeReglement ?? "",
       notes: v.notes ?? "",
       tauxTVA: String(v.tauxTVA ?? tauxTvaVenteProduitParDefaut(v.type)),
       // Ticket cms1vqsqu — la case reflète la convention notes préfixées.
@@ -1328,6 +1334,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
         prixUnitaire: formData.prixUnitaire ? parseFloat(formData.prixUnitaire) : 0,
         client: formData.client || null,
         paye: formData.paye,
+        modeReglement: formData.modeReglement || null,
         tauxTVA: Number.parseFloat(formData.tauxTVA),
         notes,
         // Ticket cms1vqsqu — cessionGratuite + marqueur `validationVente` qui
@@ -1489,7 +1496,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                 <div className="space-y-2">
                   <Label>Prix unit. *</Label>
                   {/* Ticket cms1vqsqu — prix verrouillé à 0 quand cession gratuite. */}
-                  <Input type="number" step="0.01" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder={'€'} disabled={formData.cessionGratuite} />
+                  <Input type="number" step="any" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder={'€'} disabled={formData.cessionGratuite} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="vente-taux-tva">TVA *</Label>
@@ -1562,6 +1569,18 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                   aria-required={formData.type === 'animal_vivant'}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="vente-mode-reglement">Mode de règlement</Label>
+                <SelectNatif id="vente-mode-reglement" value={formData.modeReglement} onChange={(e) => setFormData(f => ({ ...f, modeReglement: e.target.value }))}>
+                  <option value="">Non renseigné</option>
+                  {MODES_REGLEMENT.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                </SelectNatif>
+              </div>
+              <label htmlFor="vente-encaissee" className="flex items-center gap-2 text-sm">
+                <input id="vente-encaissee" type="checkbox" checked={formData.paye} onChange={(e) => setFormData(f => ({ ...f, paye: e.target.checked }))} />
+                Encaissement confirmé
+              </label>
+              <p className="text-xs text-muted-foreground">Cochez après vérification sur votre compte ou en caisse. Le mode de règlement ne confirme pas l&apos;encaissement.</p>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
                 {/* Ticket cmsog7lrc — pas de soumission sans animal pour ce type. */}
@@ -1606,14 +1625,15 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                     <TableCell>{vente.client || '-'}</TableCell>
                     <TableCell>
                       <Badge className={vente.paye ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
-                        {vente.paye ? "Payé" : "À payer"}
+                        {vente.paye ? "Encaissé" : "À encaisser"}
                       </Badge>
+                      <p className="mt-1 text-xs text-muted-foreground">{vente.factureId ? 'Voir la facture' : vente.modeReglement || 'Mode non renseigné'}</p>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(vente)} title="Modifier" className="text-slate-600 hover:text-slate-900">
+                        {vente.factureId ? <Link href="/comptabilite/factures" className="text-xs underline">Suivre la facture</Link> : <Button variant="ghost" size="sm" onClick={() => handleEdit(vente)} title="Modifier" className="text-slate-600 hover:text-slate-900">
                           <Pencil className="h-3.5 w-3.5" />
-                        </Button>
+                        </Button>}
                         <Button variant="ghost" size="sm" onClick={() => handleDelete(vente.id)} className="text-red-600 hover:text-red-700" title="Supprimer">&times;</Button>
                       </div>
                     </TableCell>

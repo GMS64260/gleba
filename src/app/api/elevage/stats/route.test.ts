@@ -37,7 +37,7 @@ vi.mock("@/lib/stocks-helpers", () => ({
 }))
 vi.mock("@/lib/prisma", () => ({
   default: {
-    animal: { count: mocks.animalCount, groupBy: mocks.animalGroupBy },
+    animal: { count: mocks.animalCount, groupBy: mocks.animalGroupBy, findMany: vi.fn().mockResolvedValue([]) },
     lotAnimaux: { findMany: mocks.lotFindMany },
     productionOeuf: { aggregate: mocks.aggregatVide() },
     venteProduit: { aggregate: mocks.aggregatVide(), findMany: vi.fn().mockResolvedValue([]) },
@@ -73,7 +73,7 @@ describe("GET /api/elevage/stats — répartition par espèce", () => {
     // Les quatre chèvres du lot 58 sont des fiches actives rattachées.
     mocks.animalGroupBy.mockResolvedValue([{ especeAnimaleId: "chevre", _count: 4 }])
     mocks.animalCount.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
-      where.statut === "actif" ? ("lotId" in where ? 0 : 4) : 0,
+      where.statut === "actif" ? ("OR" in where ? 0 : 4) : 0,
     )
     mocks.especeFindMany.mockResolvedValue([
       { id: "pintade", nom: "Pintade perle", couleur: null, production: "mixte", productions: [] },

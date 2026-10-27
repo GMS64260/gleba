@@ -42,8 +42,8 @@ describe('getKpiCompta', () => {
       .mockResolvedValueOnce({ _sum: { montant: 1500 } }) // N1 total
     mocked.facture.findMany
       .mockResolvedValueOnce([
-        { id: 1, type: 'facture', totalTTC: 500, factureOrigineId: null, _count: {} },
-        { id: 2, type: 'avoir', totalTTC: 100, factureOrigineId: 1, _count: {} }, // soustrait
+        { id: 1, type: 'facture', totalTTC: 500, factureOrigineId: null, lignes: [], _count: {} },
+        { id: 2, type: 'avoir', totalTTC: 100, factureOrigineId: 1, lignes: [], _count: {} }, // soustrait
       ])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
@@ -94,14 +94,14 @@ describe('getKpiCompta', () => {
     ])
     mocked.facture.findMany.mockImplementation(async (args: { where: { id?: unknown; date?: { gte: Date } } }) => {
       // Facture d'origine d'un avoir, chargée à part (exercice antérieur).
-      if (args.where.id) return [{ id: 7, _count: { ventesProduits: 1 } }]
+      if (args.where.id) return [{ id: 7, lignes: [], _count: { ventesProduits: 1 } }]
       // Exercice N-1 : rien.
       if (args.where.date && args.where.date.gte.getFullYear() === 2025) return []
       return [
-        { id: 11, type: 'facture', totalTTC: 211.1, factureOrigineId: null, _count: { ventesProduits: 1 } },
-        { id: 12, type: 'facture', totalTTC: 165.5, factureOrigineId: null, _count: {} }, // saisie sans vente
-        { id: 13, type: 'facture', totalTTC: 50, factureOrigineId: null, _count: {} }, // récolte du potager facturée
-        { id: 14, type: 'avoir', totalTTC: 37.4, factureOrigineId: 7, _count: {} },
+        { id: 11, type: 'facture', totalTTC: 211.1, factureOrigineId: null, lignes: [], _count: { ventesProduits: 1 } },
+        { id: 12, type: 'facture', totalTTC: 165.5, factureOrigineId: null, lignes: [], _count: {} }, // saisie sans vente
+        { id: 13, type: 'facture', totalTTC: 50, factureOrigineId: null, lignes: [], _count: {} }, // récolte du potager facturée
+        { id: 14, type: 'avoir', totalTTC: 37.4, factureOrigineId: 7, lignes: [], _count: {} },
       ]
     })
     mocked.recolte.findMany.mockResolvedValueOnce([{ factureId: 13 }])

@@ -932,14 +932,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
               <Card>
                 <CardHeader className="pb-1 pt-3 px-4">
                   <CardDescription className="text-xs flex items-center gap-1">
-                    📦 Stock lait transformable
+                    Lait sans lot de fromage
                   </CardDescription>
                   <CardTitle className="text-2xl text-cyan-700">
                     {data.stats.laitStockTransformable} L
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pb-3 px-4">
-                  <p className="text-xs text-muted-foreground">non affecté à un lot</p>
+                  <p className="text-xs text-muted-foreground">Collectes non affectées ; ventes et livraisons non déduites.</p>
                 </CardContent>
               </Card>
             )}

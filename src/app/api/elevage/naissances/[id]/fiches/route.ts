@@ -19,7 +19,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 import { enregistrerChangementLot } from '@/lib/elevage/animal-lot'
+
+const INCLUDE_NAISSANCE = {
+  mere: { select: { id: true, especeAnimaleId: true, race: true, raceAnimaleId: true, orientationProduction: true } },
+  lot: { select: { id: true, especeAnimaleId: true, quantiteActuelle: true } },
+  petits: { orderBy: { numero: 'asc' } },
+} satisfies Prisma.NaissanceAnimaleInclude
 
 function modeElevageLabel(mode: string | null): string | null {
   if (mode === 'sous_mere') return 'Élevé sous la mère'
@@ -44,19 +51,7 @@ export async function POST(
 
     const naissance = await prisma.naissanceAnimale.findFirst({
       where: { id: naissanceId, userId },
-      include: {
-        mere: {
-          select: {
-            id: true,
-            especeAnimaleId: true,
-            race: true,
-            raceAnimaleId: true,
-            orientationProduction: true,
-          },
-        },
-        lot: { select: { id: true, especeAnimaleId: true, quantiteActuelle: true } },
-        petits: { orderBy: { numero: 'asc' } },
-      },
+      include: INCLUDE_NAISSANCE,
     })
     if (!naissance) {
       return NextResponse.json({ error: 'Naissance introuvable' }, { status: 404 })
@@ -80,10 +75,18 @@ export async function POST(
       )
     }
 
-    const dateNaissance = naissance.date
-    const lotId = naissance.lotId ?? null
-
     const created = await prisma.$transaction(async (tx) => {
+      // Sérialiser sur la naissance AVANT de créer des animaux (les clés
+      // étrangères prennent ensuite des verrous sur le lot). Relire les
+      // petits après attente évite doublons et interblocage entre deux clics.
+      await tx.$queryRaw`SELECT id FROM naissances_animales WHERE id = ${naissanceId} AND user_id = ${userId} FOR UPDATE`
+      const naissance = await tx.naissanceAnimale.findFirst({ where: { id: naissanceId, userId }, include: INCLUDE_NAISSANCE })
+      if (!naissance) throw new Error('Naissance introuvable')
+      const aCreer = naissance.petits.filter((p) => p.vivant && p.animalId == null)
+      const especeAnimaleId = naissance.mere?.especeAnimaleId ?? naissance.lot?.especeAnimaleId
+      if (!especeAnimaleId) throw new Error('Espèce de la naissance introuvable')
+      const dateNaissance = naissance.date
+      const lotId = naissance.lotId ?? null
       const ids: number[] = []
       for (const p of aCreer) {
         const identifiant = p.boucleDefinitive || p.boucleProvisoire || null
@@ -146,7 +149,7 @@ export async function POST(
       return ids
     })
 
-    return NextResponse.json({ data: { created: created.length, animalIds: created } }, { status: 201 })
+    return NextResponse.json({ data: { created: created.length, animalIds: created } }, { status: created.length ? 201 : 200 })
   } catch (err) {
     console.error('POST /api/elevage/naissances/[id]/fiches error:', err)
     return NextResponse.json(

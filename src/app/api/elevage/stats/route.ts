@@ -10,7 +10,7 @@ import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 import { fenetrePonteGlissante, tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
-import { calculerTetesNonPondeuses, effectifPondeuses } from '@/lib/elevage/pondeuses'
+import { ageEntreePonteJours, calculerTetesNonPondeuses, effectifPondeuses, nominatifPondeur } from '@/lib/elevage/pondeuses'
 import {
   aUneActiviteOeufsDashboard,
   agregerProductionsLaitieresDashboard,
@@ -24,13 +24,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
+    const anneeBrute = searchParams.get('annee') || String(new Date().getFullYear())
+    const annee = Number(anneeBrute)
+    if (!/^\d{4}$/.test(anneeBrute) || annee < 2000 || annee > 2200) return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
 
     const userId = session.user.id
     const startOfYear = new Date(annee, 0, 1)
-    const endOfYear = new Date(annee, 11, 31, 23, 59, 59)
+    const endOfYear = new Date(annee, 11, 31, 23, 59, 59, 999)
     const startOfPrevYear = new Date(annee - 1, 0, 1)
-    const endOfPrevYear = new Date(annee - 1, 11, 31, 23, 59, 59)
+    const endOfPrevYear = new Date(annee - 1, 11, 31, 23, 59, 59, 999)
 
     // Lots de ponte : une seule lecture, partagée par le stock physique et les
     // statuts (commercialisables, bloqués véto).
@@ -53,7 +55,7 @@ export async function GET(request: NextRequest) {
       stockOeufs,
       stockOeufsLots,
       mortaliteAnnee,
-      animauxPondeursActifs,
+      nominatifsPondeursHorsLot,
       lotsPondeusesDetail,
       totalConsommationAliments,
     ] = await Promise.all([
@@ -62,11 +64,11 @@ export async function GET(request: NextRequest) {
         where: { userId, statut: 'actif' },
       }),
 
-      // QA caprin cms1v227a — fiches actives SANS lot : les fiches rattachées
-      // à un lot sont déjà comprises dans l'effectif calculé des lots
-      // (reconstituerEffectifsLots), les additionner double-compterait.
+      // Comme le stock de cheptel : seules les fiches d'un lot ACTIF sont
+      // déjà comprises dans l'effectif de ce lot. Une fiche restée active
+      // dans un lot terminé reste une tête présente.
       prisma.animal.count({
-        where: { userId, statut: 'actif', lotId: null },
+        where: { userId, statut: 'actif', OR: [{ lotId: null }, { lot: { statut: { not: 'actif' } } }] },
       }),
 
       // Animaux par type d'espece — individuels uniquement à ce stade,
@@ -106,13 +108,13 @@ export async function GET(request: NextRequest) {
       // Production œufs par mois
       prisma.$queryRaw`
         SELECT
-          EXTRACT(MONTH FROM date) as mois,
+          EXTRACT(MONTH FROM date AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Paris') as mois,
           SUM(quantite) as total
         FROM production_oeufs
         WHERE user_id = ${userId}
           AND date >= ${startOfYear}
           AND date <= ${endOfYear}
-        GROUP BY EXTRACT(MONTH FROM date)
+        GROUP BY EXTRACT(MONTH FROM date AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Paris')
         ORDER BY mois
       ` as Promise<{ mois: number; total: bigint }[]>,
 
@@ -200,13 +202,16 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // Animaux individuels rattachés à un atelier œufs actif.
-      prisma.animal.count({
+      // Les pondeuses suivies individuellement hors lot actif ne sont pas
+      // dans l'effectif reconstitué des lots. Même règle d'âge et de sexe.
+      prisma.animal.findMany({
         where: {
           userId,
           statut: 'actif',
+          OR: [{ lotId: null }, { lot: { statut: { not: 'actif' } } }],
           especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
         },
+        select: { sexe: true, dateNaissance: true, especeAnimale: { select: { nom: true, dureeElevage: true } } },
       }),
 
       // BUG #5 — Lots pondeuses détaillés (espèce + effectif) pour le
@@ -313,9 +318,12 @@ export async function GET(request: NextRequest) {
         effectifsLots.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle,
         tetesNonPondeuses.get(lot.id),
       )
+    const pondeusesIndividuelles = nominatifsPondeursHorsLot.filter((animal) =>
+      nominatifPondeur(animal, ageEntreePonteJours(animal.especeAnimale), referencePonte),
+    )
     const nbPondeuses = lotsPondeusesDetail.reduce(
       (somme, lot) => somme + effectifLotPondeur(lot),
-      0,
+      pondeusesIndividuelles.length,
     )
     const nbOeufsAnnee = productionOeufsAnnee._sum.quantite || 0
     const nbOeufsAnneePrecedente = productionOeufsAnneePrecedente._sum.quantite || 0
@@ -324,7 +332,7 @@ export async function GET(request: NextRequest) {
     const consoAlimentsKg = totalConsommationAliments._sum.quantite || 0
     const poidsCarcasseTotal = abattagesAnnee._sum.poidsCarcasse || 0
     const activiteOeufs = aUneActiviteOeufsDashboard({
-      animauxPondeursActifs,
+      animauxPondeursActifs: nominatifsPondeursHorsLot.length,
       // Le contrat produit parle d'un lot pondeur actif, indépendamment de son
       // effectif courant. `lotsPondeusesDetail` contient aussi les lots à zéro.
       lotsPondeursActifs: lotsPondeusesDetail.length,
@@ -369,6 +377,10 @@ export async function GET(request: NextRequest) {
       sommeAttenduPondere += q * tx
       effectifPondeur += q
     }
+    for (const animal of pondeusesIndividuelles) {
+      sommeAttenduPondere += tauxPonteAttenduPeriode(animal.especeAnimale.nom, periodStart, periodEnd)
+      effectifPondeur += 1
+    }
     const tauxPonteAttendu =
       effectifPondeur > 0 ? Math.round((sommeAttenduPondere / effectifPondeur) * 10) / 10 : null
 
@@ -381,27 +393,41 @@ export async function GET(request: NextRequest) {
         ? Math.round((tauxPonte / tauxPonteAttendu) * 100) / 100
         : null
 
+    const animauxEnLots = Array.from(effectifsLots.values()).reduce(
+      (sum, e) => sum + e.effectifCalcule,
+      0,
+    )
+    const lotsActifsCount = lotsActifs.length
+    // QA caprin cms1v227a / cms1vcvc5 — effectif physique réel : effectif des
+    // lots (fiches rattachées incluses) + fiches hors lot. Avant : animauxActifs
+    // + animauxEnLots comptait deux fois chaque fiche rattachée à un lot
+    // (+25 % d'effectif fantôme sur la démo, faux inventaire PAC/registre).
+    const animauxRattachesLots = animauxActifs - animauxHorsLot
+    const animauxTotal = animauxHorsLot + animauxEnLots
+
     // FCR = kg aliment / kg carcasse
     const fcr = poidsCarcasseTotal > 0 ? consoAlimentsKg / poidsCarcasseTotal : null
 
     // Taux de mortalité
-    const totalAnimauxEver = animauxActifs + mortaliteAnnee
+    const totalAnimauxEver = animauxTotal + mortaliteAnnee
     const tauxMortalite = totalAnimauxEver > 0
       ? (mortaliteAnnee / totalAnimauxEver) * 100
       : 0
 
     // PROMPT 17 — KPI lait
+    const fenetreLait = fenetrePonteGlissante(new Date(), 30)
+    const borneStockLait = new Date(Math.min(endOfYear.getTime(), fenetreLait.fin.getTime()))
     const [productionsLaitieres, laitNonAffecte, laitJ30] = await Promise.all([
       agregerProductionsLaitieresDashboard({
         collecteLait: { aggregate: (args) => prisma.collecteLait.aggregate(args) },
         lotFromage: { aggregate: (args) => prisma.lotFromage.aggregate(args) },
       }, userId, startOfYear, endOfYear),
       prisma.collecteLait.aggregate({
-        where: { userId, lotFromageId: null, ecarteAttente: false, date: { gte: startOfYear, lte: endOfYear } },
+        where: { userId, lotFromageId: null, ecarteAttente: false, date: { gte: startOfYear, lte: borneStockLait } },
         _sum: { quantiteLitres: true },
       }),
       prisma.collecteLait.aggregate({
-        where: { userId, date: { gte: new Date(Date.now() - 30 * 86_400_000) } },
+        where: { userId, date: { gte: fenetreLait.debut, lte: fenetreLait.fin } },
         _sum: { quantiteLitres: true },
       }),
     ])
@@ -424,17 +450,7 @@ export async function GET(request: NextRequest) {
     // contenaient 63 bêtes). Désormais on expose les deux compteurs et le
     // total cheptel pour que l'UI puisse afficher « 69 animaux · 6 individus
     // · 63 en lots (3 lots) ».
-    const animauxEnLots = Array.from(effectifsLots.values()).reduce(
-      (sum, e) => sum + e.effectifCalcule,
-      0,
-    )
-    const lotsActifsCount = lotsActifs.length
-    // QA caprin cms1v227a / cms1vcvc5 — effectif physique réel : effectif des
-    // lots (fiches rattachées incluses) + fiches hors lot. Avant : animauxActifs
-    // + animauxEnLots comptait deux fois chaque fiche rattachée à un lot
-    // (+25 % d'effectif fantôme sur la démo, faux inventaire PAC/registre).
-    const animauxRattachesLots = animauxActifs - animauxHorsLot
-    const animauxTotal = animauxHorsLot + animauxEnLots
+
 
     return NextResponse.json({
       stats: {

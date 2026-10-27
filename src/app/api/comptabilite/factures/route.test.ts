@@ -22,6 +22,7 @@ vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: mocks.invalidateKpi }))
 vi.mock('@/lib/facture-utils', () => ({
   creerFacture: mocks.creerFacture,
+  montantAvoirsEmis: vi.fn().mockResolvedValue(0),
   reserverProchainNumeroForEmission: vi.fn(),
   snapshotEmetteurForEmission: vi.fn(),
 }))
@@ -32,7 +33,9 @@ vi.mock('@/lib/prisma', () => ({
     client: { findMany: mocks.clientFindMany, findFirst: mocks.clientFindFirst },
     $transaction: (callback: (tx: unknown) => unknown) =>
       callback({
-        facture: { update: mocks.txFactureUpdate, findFirstOrThrow: async () => ({ ...(await mocks.factureFindFirst()), lignes: [] }) },
+        mouvementStockCommercial: { count: async () => 0 },
+        recolte: { count: async () => 0 },
+        facture: { findUnique: async () => null, update: mocks.txFactureUpdate, findFirstOrThrow: async () => ({ ...(await mocks.factureFindFirst()), lignes: [] }) },
         $queryRaw: async () => [{ id: 5 }],
         venteProduit: { updateMany: mocks.txVenteProduitUpdateMany },
       }),
@@ -307,4 +310,15 @@ describe('PATCH /api/comptabilite/factures — notes d’une facture émise', ()
     expect((await PATCH(request({ id: 6, notes: 'Paiement à réception.' }))).status).toBe(200)
     expect(mocks.txFactureUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ notes: 'Paiement à réception.' }) }))
   })
+})
+
+
+it('retirer le pointage d’une facture remet aussi ses ventes en impayé', async () => {
+  mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
+  mocks.factureFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', statut: 'payee', type: 'facture' })
+  mocks.txVenteProduitUpdateMany.mockClear()
+  const res = await PATCH(request({ id: 5, statut: 'emise' }))
+  expect(res.status).toBe(200)
+  expect(mocks.txVenteProduitUpdateMany).toHaveBeenCalledWith({ where: { factureId: 5, userId: 'user-1' }, data: { paye: false } })
+  expect(mocks.txFactureUpdate.mock.calls.at(-1)?.[0].data.datePaiement).toBeNull()
 })

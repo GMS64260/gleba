@@ -10,10 +10,34 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
-import { creerFacture } from '@/lib/facture-utils'
+import { creerFacture, montantAvoirsEmis } from '@/lib/facture-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { clientDesigneParNom, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
 import { noteLibreDeFacture } from '@/lib/facture-structuree'
+
+async function nombreVentesLiees(db: Pick<Prisma.TransactionClient, 'facture' | 'recolte'>, userId: string, id: number) {
+  const lien = await db.facture.findUnique({
+    where: { id, userId },
+    select: { _count: { select: { ventesProduits: true, abattages: true, recoltesArbres: true, productionsBois: true, commandesBoutique: true } } },
+  })
+  const recoltes = await db.recolte.count({ where: { userId, factureId: id } })
+  const compte = lien?._count
+  return recoltes + (compte ? compte.ventesProduits + compte.abattages + compte.recoltesArbres + compte.productionsBois + compte.commandesBoutique : 0)
+}
+
+async function verifierAnnulationFacture(db: Prisma.TransactionClient, userId: string, facture: { id: number; statut: string }) {
+  if (facture.statut === 'payee') throw new ErreurCommerciale('Conservez cette facture payée et émettez un avoir pour la régulariser.')
+  if (await montantAvoirsEmis(db, userId, facture.id) > 0) throw new ErreurCommerciale('Cette facture est déjà corrigée par un avoir émis. Conservez la facture et ses avoirs pour préserver leur revenu net.')
+  if (await nombreVentesLiees(db, userId, facture.id)) throw new ErreurCommerciale('Cette facture porte une vente. Annulez la vente depuis son atelier ou émettez un avoir pour conserver les revenus et les stocks cohérents.')
+  if (await db.mouvementStockCommercial.count({ where: { userId, factureId: facture.id } })) throw new ErreurCommerciale('Cette facture correspond à une livraison de stock. Conservez-la et émettez un avoir pour la régulariser. Le retour physique se déclare avec Retour en stock.')
+}
+
+async function verrouillerOrigineAvoir(tx: Prisma.TransactionClient, userId: string, id: number) {
+  const lignes = await tx.$queryRaw<Array<{ id: number; total_ttc: number; statut: string; type: string }>>`SELECT id, total_ttc, statut, type FROM factures WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`
+  const origine = lignes[0]
+  if (!origine || origine.type === 'avoir' || !['emise', 'payee'].includes(origine.statut)) throw new ErreurCommerciale('Facture d’origine introuvable, annulée ou invalide pour un avoir.')
+  return origine
+}
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -208,18 +232,12 @@ export async function POST(request: NextRequest) {
       const lignesValidees = await verifierLignesStock(tx, userId, d.lignes)
 
       if (d.type === 'avoir' && d.factureOrigineId) {
-        const locked = await tx.$queryRaw<Array<{ id: number; total_ttc: number }>>`
-          SELECT id, total_ttc
-          FROM factures
-          WHERE id = ${d.factureOrigineId} AND user_id = ${userId}
-          FOR UPDATE
-        `
-        if (locked.length !== 1) throw new Error('AVOIR_INVALIDE:Facture d’origine introuvable')
+        const origine = await verrouillerOrigineAvoir(tx, userId, d.factureOrigineId)
         const cumul = await tx.facture.aggregate({
           where: { userId, type: 'avoir', factureOrigineId: d.factureOrigineId, statut: { not: 'annulee' } },
           _sum: { totalTTC: true },
         })
-        if ((cumul._sum.totalTTC ?? 0) + d.totalTTC > Number(locked[0].total_ttc) + 0.01) {
+        if ((cumul._sum.totalTTC ?? 0) + d.totalTTC > Number(origine.total_ttc) + 0.01) {
           throw new Error('AVOIR_INVALIDE:Le total des avoirs dépasserait le montant de la facture d’origine')
         }
       }
@@ -307,7 +325,7 @@ export async function PATCH(request: NextRequest) {
       const TRANSITIONS: Record<string, string[]> = {
         brouillon: ['emise', 'payee'], // payee direct passe par le circuit d'émission
         emise: ['payee', 'annulee'],
-        payee: ['emise', 'annulee'], // emise = correction de pointage ; annulee exige un avoir
+        payee: ['emise', 'annulee'], // emise = correction de pointage ; annulation vérifiée sous verrou
         annulee: [],
       }
       const autorisees = TRANSITIONS[existing.statut] ?? []
@@ -323,18 +341,6 @@ export async function PATCH(request: NextRequest) {
         )
       }
       if (updateData.statut === 'annulee' && await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, factureId: existing.id } })) return NextResponse.json({ error: 'Cette facture correspond à une livraison de stock. Conservez-la et émettez un avoir pour la régulariser. Le retour physique se déclare avec Retour en stock.' }, { status: 409 })
-      if (existing.statut === 'payee' && updateData.statut === 'annulee') {
-        const avoir = await prisma.facture.findFirst({
-          where: { userId: session.user.id, type: 'avoir', factureOrigineId: existing.id, statut: { not: 'annulee' } },
-          select: { id: true },
-        })
-        if (!avoir) {
-          return NextResponse.json(
-            { error: "Une facture payée ne peut être annulée qu'après émission d'un avoir" },
-            { status: 409 }
-          )
-        }
-      }
     }
 
     // POSTREVIEW — Transition brouillon → émise (ou payée directe) :
@@ -407,6 +413,9 @@ export async function PATCH(request: NextRequest) {
         if (courante.statut === updateData.statut) return courante
         throw new ErreurCommerciale('Cette facture a changé. Actualisez la liste.')
       }
+      if (updateData.statut === 'annulee') {
+        await verifierAnnulationFacture(tx, session.user.id, courante)
+      }
       const data: Prisma.FactureUncheckedUpdateInput = { ...(mentions as Prisma.FactureUncheckedUpdateInput) }
       if (updateData.statut !== undefined) {
         data.statut = updateData.statut
@@ -420,6 +429,7 @@ export async function PATCH(request: NextRequest) {
       if (updateData.notes !== undefined && existing.statut === 'brouillon') data.notes = updateData.notes
 
       if (isEmission) {
+        if (courante.type === 'avoir' && courante.factureOrigineId) await verrouillerOrigineAvoir(tx, session.user.id, courante.factureOrigineId)
         // Import dynamique pour rester compatible avec les autres branches PATCH
         const { reserverProchainNumeroForEmission, snapshotEmetteurForEmission } = await import('@/lib/facture-utils')
         await verrouillerStocksDesLignes(tx, session.user.id, courante.lignes)
@@ -446,10 +456,10 @@ export async function PATCH(request: NextRequest) {
       // liables à une facture, seul VenteProduit porte un champ `paye`
       // (RecolteArbre/ProductionBois n'ont qu'un statut, sans notion de
       // règlement) ; VenteProduit n'a pas de datePaiement.
-      if (updateData.statut === 'payee') {
+      if (updateData.statut === 'payee' || updateData.statut === 'emise') {
         await tx.venteProduit.updateMany({
           where: { factureId: existing.id, userId: session.user.id },
-          data: { paye: true },
+          data: { paye: updateData.statut === 'payee' },
         })
       }
 
@@ -477,90 +487,28 @@ export async function DELETE(request: NextRequest) {
   if (error) return error
 
   try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID requis' }, { status: 400 })
-    }
-
-    const existing = await prisma.facture.findFirst({
-      where: { id: parseInt(id), userId: session.user.id },
+    const id = new URL(request.url).searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
+    const userId = session.user.id
+    const action = await prisma.$transaction(async (tx) => {
+      // Même verrou que l'émission et les avoirs : relire le statut après
+      // attente évite de supprimer un brouillon devenu une facture émise.
+      await tx.$queryRaw`SELECT id FROM factures WHERE id = ${parseInt(id)} AND user_id = ${userId} FOR UPDATE`
+      const existing = await tx.facture.findFirst({ where: { id: parseInt(id), userId } })
+      if (!existing) throw new ErreurCommerciale('Facture non trouvée', 404)
+      if (existing.statut === 'brouillon') {
+        await tx.facture.delete({ where: { id: existing.id, userId } })
+        return 'deleted'
+      }
+      await verifierAnnulationFacture(tx, userId, existing)
+      await tx.facture.update({ where: { id: existing.id, userId }, data: { statut: 'annulee' } })
+      return 'cancelled'
     })
-
-    if (!existing) {
-      return NextResponse.json({ error: 'Facture non trouvée' }, { status: 404 })
-    }
-
-    // PROMPT 14B — obligation légale : pas de suppression définitive d'une
-    // facture émise/payée. Brouillon → suppression OK. Émise → annulation
-    // (statut). Payée → refus (passer par un avoir).
-    if (existing.statut === 'brouillon') {
-      await prisma.facture.delete({ where: { id: parseInt(id) } })
-      invalidateKpi(session.user.id)
-      return NextResponse.json({ success: true, action: 'deleted' })
-    }
-    if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, factureId: existing.id } })) return NextResponse.json({ error: 'Cette facture correspond à une livraison de stock. Conservez-la et émettez un avoir pour la régulariser. Le retour physique se déclare avec Retour en stock.' }, { status: 409 })
-    if (existing.statut === 'payee') {
-      return NextResponse.json(
-        {
-          error: 'Suppression interdite',
-          details:
-            "Une facture payée ne peut être supprimée. Émettez un avoir pour la régulariser (obligation art. 242 nonies A CGI).",
-        },
-        { status: 409 }
-      )
-    }
-
-    // Audit 2026-07 (#8) : annuler une facture liée à une vente métier
-    // (récolte, animal, bois, commande boutique) faisait disparaître le revenu
-    // de TOUS les agrégats — la facture sort des totaux (annulee) mais la
-    // source reste marquée « facturée » donc n'est pas recomptée non plus.
-    // On bloque et on oriente vers le bon flux (dé-vente / avoir).
-    const liens = await prisma.facture.findUnique({
-      where: { id: parseInt(id) },
-      select: {
-        _count: {
-          select: {
-            ventesProduits: true,
-            abattages: true,
-            recoltesArbres: true,
-            productionsBois: true,
-            commandesBoutique: true,
-          },
-        },
-      },
-    })
-    const nbLiens = liens
-      ? liens._count.ventesProduits + liens._count.abattages + liens._count.recoltesArbres +
-        liens._count.productionsBois + liens._count.commandesBoutique
-      : 0
-    if (nbLiens > 0) {
-      return NextResponse.json(
-        {
-          error: 'Annulation impossible',
-          details:
-            "Cette facture est rattachée à une vente (récolte, animal, bois ou commande boutique). " +
-            "Annulez d'abord la vente concernée (retour en stock) ou émettez un avoir — sinon le revenu " +
-            "disparaîtrait des totaux comptables.",
-        },
-        { status: 409 }
-      )
-    }
-
-    await prisma.facture.update({
-      where: { id: parseInt(id) },
-      data: { statut: 'annulee' },
-    })
-
-    invalidateKpi(session.user.id)
-    return NextResponse.json({ success: true, action: 'cancelled' })
+    invalidateKpi(userId)
+    return NextResponse.json({ success: true, action })
   } catch (error) {
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/comptabilite/factures error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de l\'annulation', details: "Erreur interne du serveur" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erreur lors de l’annulation', details: 'Erreur interne du serveur' }, { status: 500 })
   }
 }

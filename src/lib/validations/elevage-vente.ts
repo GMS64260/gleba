@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { caseInsensitiveEnum } from './case-insensitive-enum'
+import { modeReglementSchema } from './reglement'
 
 export const venteProduitTypeSchema = caseInsensitiveEnum([
   'oeufs',
@@ -33,6 +34,7 @@ export const venteProduitSchema = z
     client: z.string().max(200).nullable().optional(),
     destinationId: z.string().nullable().optional(),
     paye: z.boolean().default(true),
+    modeReglement: modeReglementSchema,
     // Le taux par défaut dépend du produit et est appliqué par l'API. Il reste
     // facultatif ici pour préserver les appelants historiques.
     tauxTVA: z.number().min(0).max(100).optional(),

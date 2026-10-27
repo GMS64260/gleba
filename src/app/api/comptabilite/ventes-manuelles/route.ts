@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client'
 import { createVenteManuelleSchema, updateVenteManuelleSchema } from '@/lib/validations/vente-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
 import { champsEnvoyes, refusModificationDerivee } from '@/lib/comptabilite/ecriture-derivee'
+import { enregistrerReglementVente, ReglementVenteError } from '@/lib/comptabilite/reglement-vente'
 import {
   ClientIntrouvableError,
   ensureClientForUser,
@@ -255,14 +256,14 @@ export async function PATCH(request: NextRequest) {
     if (updates.numeroPiece !== undefined) updateData.numeroPiece = updates.numeroPiece
     if (updates.pjUrl !== undefined) updateData.pjUrl = updates.pjUrl || null
 
-    const vente = await prisma.venteManuelle.update({
-      where: { id },
-      data: updateData,
-    })
+    const vente = await enregistrerReglementVente(session.user.id, existing, updateData)
 
     invalidateKpi(session.user.id)
     return NextResponse.json({ data: vente })
   } catch (error) {
+    if (error instanceof ReglementVenteError) {
+      return NextResponse.json({ error: error.message, champ: 'paye' }, { status: 409 })
+    }
     console.error('PATCH /api/comptabilite/ventes-manuelles error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la modification', details: "Erreur interne du serveur" },

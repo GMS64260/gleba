@@ -79,6 +79,9 @@ interface Transaction {
   client?: string | null
   fournisseur?: string | null
   paye: boolean | null
+  modeReglement?: string | null
+  numeroPiece?: string | null
+  tauxTVA?: number | null
   categorie: string
   // false = coût interne de production : visible ici mais non ajouté au FEC,
   // à la TVA déductible ni au total comptable.
@@ -324,6 +327,8 @@ function TransactionsPageInner() {
   const [suiviForm, setSuiviForm] = React.useState<Record<ChampSuiviVente, string>>(suiviVide)
   const [erreurSuivi, setErreurSuivi] = React.useState<string | null>(null)
   const [isSavingSuivi, setIsSavingSuivi] = React.useState(false)
+  const [suiviPaye, setSuiviPaye] = React.useState(false)
+  const peutPointer = (t: Transaction) => t.source === 'VenteProduit' || (t.source !== 'VenteManuelle' && t.comptable === true)
 
   const endpointFor = (t: Transaction) =>
     t.source === "VenteManuelle"
@@ -345,6 +350,9 @@ function TransactionsPageInner() {
       module: (MODULES_SAISIE as readonly string[]).includes(t.module) ? t.module : "",
       tiers: (t.source === "VenteManuelle" ? t.client : t.fournisseur) ?? "",
       paye: t.paye === false ? "false" : "true",
+      modeReglement: t.modeReglement ?? "",
+      numeroPiece: t.numeroPiece ?? "",
+      tauxTVA: t.tauxTVA == null ? "" : String(t.tauxTVA),
     })
     setEditing(t)
   }
@@ -367,8 +375,8 @@ function TransactionsPageInner() {
       }
       if (editForm.categorie) body.categorie = editForm.categorie
       if (editForm.module) body.module = editForm.module
-      if (editForm.modeReglement) body.modeReglement = editForm.modeReglement
-      if (editForm.numeroPiece.trim()) body.numeroPiece = editForm.numeroPiece.trim()
+      if (editForm.modeReglement !== (editing.modeReglement ?? "")) body.modeReglement = editForm.modeReglement || null
+      if (editForm.numeroPiece.trim() !== (editing.numeroPiece ?? "")) body.numeroPiece = editForm.numeroPiece.trim() || null
       if (editForm.tauxTVA) {
         const taux = parseFloat(editForm.tauxTVA.replace(",", "."))
         if (!Number.isFinite(taux) || taux < 0 || taux > 100) {
@@ -417,6 +425,7 @@ function TransactionsPageInner() {
 
   const openSuivi = (t: Transaction) => {
     if (!t.ecriture) return
+    setSuiviPaye(t.paye === true)
     const valeurs = t.ecriture.suivi
     setSuiviForm(
       Object.fromEntries(CHAMPS_DE_SUIVI_SAISIS_VENTE.map((c) => [c, valeurs[c] ?? ""])) as Record<ChampSuiviVente, string>,
@@ -440,6 +449,7 @@ function TransactionsPageInner() {
       const saisi = suiviForm[champ].trim()
       if (saisi !== (suivant.ecriture.suivi[champ] ?? "")) body[champ] = saisi || null
     }
+    if (peutPointer(suivant) && suiviPaye !== suivant.paye) body.paye = suiviPaye
     if (Object.keys(body).length === 1) {
       setSuivant(null)
       return
@@ -447,7 +457,7 @@ function TransactionsPageInner() {
     setIsSavingSuivi(true)
     setErreurSuivi(null)
     try {
-      const res = await fetch("/api/comptabilite/ventes-manuelles", {
+      const res = await fetch(suivant.comptable === true ? "/api/comptabilite/depenses-manuelles" : "/api/comptabilite/ventes-manuelles", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -490,7 +500,7 @@ function TransactionsPageInner() {
           variant="outline"
           size="sm"
           className="h-8"
-          title="Mode de règlement, numéro de pièce et notes de l'écriture"
+          title="Suivre le règlement, le numéro de pièce et les notes"
           onClick={() => openSuivi(t)}
         >
           <FileText className="h-4 w-4 mr-1" />
@@ -970,6 +980,7 @@ function TransactionsPageInner() {
                           <TableHead>Description</TableHead>
                           <TableHead className="text-right">Montant</TableHead>
                           <TableHead>Client</TableHead>
+                          <TableHead>Mode de règlement</TableHead>
                           <TableHead>Statut</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -1000,20 +1011,21 @@ function TransactionsPageInner() {
                               )}
                             </TableCell>
                             <TableCell>{r.client || '-'}</TableCell>
+                            <TableCell className="whitespace-nowrap">{r.modeReglement || r.ecriture?.suivi.modeReglement || 'Non renseigné'}</TableCell>
                             <TableCell>
                               {r.paye === null ? (
-                                <Badge variant="outline">N/A</Badge>
+                                <Badge variant="outline">Non suivi</Badge>
                               ) : r.paye ? (
-                                <Badge className="bg-green-100 text-green-800">Payé</Badge>
+                                <Badge className="bg-green-100 text-green-800">Encaissé</Badge>
                               ) : (
-                                <Badge className="bg-orange-100 text-orange-800">À payer</Badge>
+                                <Badge className="bg-orange-100 text-orange-800">À encaisser</Badge>
                               )}
                             </TableCell>
                             <TableCell className="text-right">{cellulActions(r)}</TableCell>
                           </TableRow>
                         ))}
                         {revenus.length === 0 && (
-                          <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun revenu</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucun revenu</TableCell></TableRow>
                         )}
                       </TableBody>
                     </Table>
@@ -1067,6 +1079,7 @@ function TransactionsPageInner() {
                           <TableHead>Description</TableHead>
                           <TableHead className="text-right">Montant</TableHead>
                           <TableHead>Fournisseur</TableHead>
+                          <TableHead>Mode de règlement</TableHead>
                           <TableHead>Statut</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -1084,6 +1097,7 @@ function TransactionsPageInner() {
                             <TableCell className="max-w-[250px] truncate">{d.description}</TableCell>
                             <TableCell className="text-right font-bold text-red-600">{formatEuro(d.montant)}</TableCell>
                             <TableCell>{d.fournisseur || '-'}</TableCell>
+                            <TableCell className="whitespace-nowrap">{d.comptable === false ? 'Coût interne' : d.modeReglement || d.ecriture?.suivi.modeReglement || 'Non renseigné'}</TableCell>
                             <TableCell>
                               {d.comptable === false ? (
                                 <Badge className="bg-amber-100 text-amber-800">Analytique</Badge>
@@ -1099,7 +1113,7 @@ function TransactionsPageInner() {
                           </TableRow>
                         ))}
                         {depenses.length === 0 && (
-                          <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucune dépense</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucune dépense</TableCell></TableRow>
                         )}
                       </TableBody>
                     </Table>
@@ -1478,24 +1492,20 @@ function TransactionsPageInner() {
             </div>
             <div>
               <Label htmlFor="edit-mode">Mode de règlement</Label>
-              <Select value={editForm.modeReglement} onValueChange={(v) => setEditForm({ ...editForm, modeReglement: v })}>
-                <SelectTrigger id="edit-mode" name="modeReglement">
-                  <SelectValue placeholder="Inchangé" />
-                </SelectTrigger>
-                <SelectContent>
+              <SelectNatif id="edit-mode" name="modeReglement" value={editForm.modeReglement} onChange={(e) => setEditForm({ ...editForm, modeReglement: e.target.value })}>
+                  <option value="">Non renseigné</option>
                   {MODES_REGLEMENT.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    <option key={m.value} value={m.value}>{m.label}</option>
                   ))}
-                </SelectContent>
-              </Select>
+              </SelectNatif>
             </div>
             <div>
               <Label htmlFor="edit-paye">Règlement</Label>
               <Select value={editForm.paye} onValueChange={(v) => setEditForm({ ...editForm, paye: v })}>
                 <SelectTrigger id="edit-paye" name="paye"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="true">Payé</SelectItem>
-                  <SelectItem value="false">À payer</SelectItem>
+                  <SelectItem value="true">{editing?.source === 'VenteManuelle' ? 'Encaissé' : 'Payé'}</SelectItem>
+                  <SelectItem value="false">{editing?.source === 'VenteManuelle' ? 'À encaisser' : 'À payer'}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1537,6 +1547,15 @@ function TransactionsPageInner() {
                 <Link href={LIEN_SOURCE[suivant.source]} className="inline-block text-sm text-teal-700 underline">
                   Ouvrir la source
                 </Link>
+              )}
+              {peutPointer(suivant) && (
+                <div>
+                  <label htmlFor="suivi-paye" className="flex items-center gap-2 text-sm font-medium">
+                    <input id="suivi-paye" type="checkbox" checked={suiviPaye} onChange={(e) => setSuiviPaye(e.target.checked)} />
+                    {suivant.comptable === true ? 'Paiement confirmé' : 'Encaissement confirmé'}
+                  </label>
+                  <p className="mt-1 text-xs text-muted-foreground">Pointage manuel à vérifier sur votre compte ou en caisse.{suivant.source === 'VenteProduit' && ' Le statut sera aussi mis à jour dans l’atelier d’élevage.'}</p>
+                </div>
               )}
               {CHAMPS_DE_SUIVI_SAISIS_VENTE.map((champ) => (
                 <div key={champ}>

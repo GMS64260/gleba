@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   venteFindFirst: vi.fn(),
   venteUpdate: vi.fn(),
   venteCreate: vi.fn(),
+  sourceUpdateMany: vi.fn(),
   clientFindFirst: vi.fn(),
 }))
 
@@ -23,11 +24,13 @@ vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 vi.mock("@/lib/prisma", () => {
   const db = {
+    $queryRaw: async () => [{ id: 167 }],
     venteManuelle: {
       findFirst: mocks.venteFindFirst,
       update: mocks.venteUpdate,
       create: mocks.venteCreate,
     },
+    venteProduit: { updateMany: mocks.sourceUpdateMany },
     client: { findFirst: mocks.clientFindFirst },
   }
   return { default: { ...db, $transaction: (callback: (tx: unknown) => unknown) => callback(db) } }
@@ -55,6 +58,7 @@ const venteManuelle = {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
+  mocks.sourceUpdateMany.mockResolvedValue({ count: 1 })
   mocks.venteFindFirst.mockResolvedValue(venteManuelle)
   mocks.venteUpdate.mockImplementation(({ data }: { data: object }) => ({ ...venteManuelle, ...data }))
   mocks.venteCreate.mockImplementation(({ data }: { data: object }) => ({ id: 13, ...data }))
@@ -156,7 +160,7 @@ describe("PATCH /api/comptabilite/ventes-manuelles — écriture dérivée", () 
     expect(res.status).toBe(200)
     expect(mocks.venteFindFirst).toHaveBeenCalledWith({ where: { id: 909, userId: "u1" } })
     expect(mocks.venteUpdate).toHaveBeenCalledWith({
-      where: { id: 909 },
+      where: { id: 909, userId: "u1" },
       data: { modeReglement: "Chèque", numeroPiece: "CHQ-0042", notes: "Remis en banque" },
     })
   })
@@ -165,7 +169,7 @@ describe("PATCH /api/comptabilite/ventes-manuelles — écriture dérivée", () 
     const res = await PATCH(requete("PATCH", { id: 909, numeroPiece: null }))
 
     expect(res.status).toBe(200)
-    expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 909 }, data: { numeroPiece: null } })
+    expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 909, userId: "u1" }, data: { numeroPiece: null } })
   })
 
   it("refuse le montant d'une ligne dérivée, nomme le champ et dit où corriger", async () => {
@@ -182,7 +186,8 @@ describe("PATCH /api/comptabilite/ventes-manuelles — écriture dérivée", () 
     const res = await PATCH(requete("PATCH", { id: 909, paye: true }))
 
     expect(res.status).toBe(200)
-    expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 909 }, data: { paye: true } })
+    expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 909, userId: "u1" }, data: { paye: true } })
+    expect(mocks.sourceUpdateMany).toHaveBeenCalledWith({ where: { id: 167, userId: "u1", annule: false, factureId: null }, data: { paye: true } })
   })
 
   it("nomme un mode de règlement hors liste refusé par la validation", async () => {
@@ -191,6 +196,28 @@ describe("PATCH /api/comptabilite/ventes-manuelles — écriture dérivée", () 
     expect(res.status).toBe(400)
     const corps = await res.json()
     expect(Object.keys(corps.details.fieldErrors)).toEqual(["modeReglement"])
+    expect(mocks.venteUpdate).not.toHaveBeenCalled()
+  })
+})
+
+
+describe("pointage et source d’élevage", () => {
+  it("défaire un pointage corrige aussi la vente d’origine", async () => {
+    mocks.venteFindFirst.mockResolvedValue({ ...venteManuelle, auto: true, sourceType: "vente_produit", sourceId: 167 })
+    expect((await PATCH(requete("PATCH", { id: 12, paye: false, modeReglement: "Chèque" }))).status).toBe(200)
+    expect(mocks.sourceUpdateMany).toHaveBeenCalledWith({ where: { id: 167, userId: "u1", annule: false, factureId: null }, data: { paye: false } })
+    expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 12, userId: "u1" }, data: { paye: false, modeReglement: "Chèque" } })
+  })
+  it("refuse une source disparue, annulée, facturée ou hors du compte sans écrire le miroir", async () => {
+    mocks.venteFindFirst.mockResolvedValue({ ...venteManuelle, auto: true, sourceType: "vente_produit", sourceId: 167 })
+    mocks.sourceUpdateMany.mockResolvedValue({ count: 0 })
+    expect((await PATCH(requete("PATCH", { id: 12, paye: true }))).status).toBe(409)
+    expect(mocks.venteUpdate).not.toHaveBeenCalled()
+  })
+  it("renvoie le paiement d’une commande vers la boutique", async () => {
+    mocks.venteFindFirst.mockResolvedValue({ ...venteManuelle, auto: true, sourceType: "commande_boutique", sourceId: 167 })
+    expect((await PATCH(requete("PATCH", { id: 12, paye: true }))).status).toBe(409)
+    expect(mocks.sourceUpdateMany).not.toHaveBeenCalled()
     expect(mocks.venteUpdate).not.toHaveBeenCalled()
   })
 })

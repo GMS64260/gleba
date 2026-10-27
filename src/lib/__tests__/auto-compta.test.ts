@@ -6,11 +6,13 @@ const mocks = vi.hoisted(() => ({
   venteFindFirst: vi.fn(),
   depenseDeleteMany: vi.fn(),
   depenseCreate: vi.fn(),
+  depenseFindFirst: vi.fn(),
   alimentFindUnique: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => {
   const tx = {
+    $queryRaw: async () => [],
     venteManuelle: {
       deleteMany: mocks.venteDeleteMany,
       create: mocks.venteCreate,
@@ -19,6 +21,7 @@ vi.mock('@/lib/prisma', () => {
     depenseManuelle: {
       deleteMany: mocks.depenseDeleteMany,
       create: mocks.depenseCreate,
+      findFirst: mocks.depenseFindFirst,
     },
     aliment: { findUnique: mocks.alimentFindUnique },
   }
@@ -32,6 +35,7 @@ vi.mock('@/lib/prisma', () => {
 
 import {
   createDepenseFromAchatAnimal,
+  createDepenseFromLotAnimaux,
   createDepenseFromConsommationAliment,
   createVenteFromProductionBois,
   createVenteFromRecolte,
@@ -45,6 +49,7 @@ describe('invariants auto-compta élevage', () => {
     vi.clearAllMocks()
     mocks.venteCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
     mocks.venteFindFirst.mockResolvedValue(null)
+    mocks.depenseFindFirst.mockResolvedValue(null)
     mocks.depenseCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
     mocks.alimentFindUnique.mockResolvedValue({
       nom: 'Foin',
@@ -248,5 +253,22 @@ describe('invariants auto-compta élevage', () => {
       quantite: 0.2,
       unite: 'm³',
     })
+  })
+})
+
+
+describe('suivi des achats d’élevage', () => {
+  it('conserve l’impayé, la pièce et l’échéance lors d’une correction de lot', async () => {
+    vi.clearAllMocks()
+    const suivi = { paye: false, modeReglement: 'Virement', numeroPiece: 'ACH-QA', journal: 'AC', pjUrl: null, notes: 'Pointage à vérifier', refFacture: 'FA-QA', dateEcheance: new Date('2026-11-01') }
+    mocks.depenseFindFirst.mockResolvedValue(suivi)
+    await createDepenseFromLotAnimaux('user-1', { id: 71, nom: 'Poules QA', prixAchatTotal: 211 })
+    expect(mocks.depenseFindFirst.mock.calls[0][0].where).toEqual({ userId: 'user-1', auto: true, sourceType: 'achat_animal', sourceId: 71 })
+    expect(mocks.depenseCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ ...suivi, montant: 211, montantHT: 200, montantTVA: 11 }) })
+  })
+  it('permet de saisir le mode sur une vente sans changer son statut impayé', async () => {
+    mocks.venteFindFirst.mockResolvedValue(null)
+    await createVenteFromVenteProduit('user-1', { id: 22, type: 'oeufs', prixTotal: 12, paye: false, modeReglement: 'Chèque' })
+    expect(mocks.venteCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ modeReglement: 'Chèque', paye: false }) })
   })
 })
