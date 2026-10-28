@@ -20,7 +20,7 @@ import { GpsPositionButton } from "@/components/gps/GpsPositionButton"
 import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
 import { roundCoord } from "@/lib/geolocation"
 import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
-import { CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-constants"
+import { AVERTISSEMENT_SUPPRESSION_ARBRE, CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-constants"
 import { labelStatutRecolteArbre } from "@/lib/verger/statut-recolte-arbre"
 import { TYPES_ARBRE, categoriesEspecePourTypeArbre, estTypeArbre, libelleTypeArbre } from "@/lib/verger/types-arbre"
 import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
@@ -287,13 +287,8 @@ export default function DetailArbrePage() {
     }
   }
 
-  // Feedback Marc 2026-05-16 — V4 Bug 1 : avant ce fix, la
-  // suppression d'un arbre passait par un `confirm()` browser qui
-  // peut être supprimé par certaines extensions / contextes mobiles,
-  // ou simplement skippé par l'utilisateur fatigué. Or l'API DELETE
-  // cascade sur recoltes_arbres / operations_arbres / observations
-  // → 12,5 kg de récoltes disparaissaient sans avertissement. On
-  // utilise désormais `DeleteConfirmDialog` qui liste les dépendances.
+  // Le serveur décide si l'historique permet la suppression ; son refus
+  // reste visible pour que l'utilisateur sache pourquoi conserver la fiche.
   const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false)
   const handleDelete = () => {
     setConfirmDeleteOpen(true)
@@ -305,7 +300,9 @@ export default function DetailArbrePage() {
         toast({ title: "Arbre supprimé" })
         router.push("/verger?tab=arbres")
       } else {
-        toast({ variant: "destructive", title: "Erreur", description: "Suppression refusée" })
+        const payload = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Suppression refusée",
+          description: typeof payload?.error === "string" ? payload.error : "La suppression n’a pas pu être effectuée." })
       }
     } catch (err) {
       console.error("Erreur suppression:", err)
@@ -852,22 +849,11 @@ export default function DetailArbrePage() {
         </Tabs>
       </div>
 
-      {/* Feedback Marc 2026-05-16 — V4 Bug 1 : confirmation explicite
-          avec liste des récoltes/opérations/observations qui seront
-          supprimées en cascade. */}
       <DeleteConfirmDialog
         open={confirmDeleteOpen}
         onOpenChange={setConfirmDeleteOpen}
         entityLabel={`l'arbre "${arbre.nom}"`}
-        dependencies={
-          arbre._count
-            ? [
-                { label: "récoltes", count: arbre._count.recoltesArbres ?? 0 },
-                { label: "opérations (taille, traitement, greffe…)", count: arbre._count.operationsArbres ?? 0 },
-                { label: "observations de santé", count: arbre._count.observationsSante ?? 0 },
-              ]
-            : []
-        }
+        warning={AVERTISSEMENT_SUPPRESSION_ARBRE}
         onConfirm={performDelete}
       />
 
