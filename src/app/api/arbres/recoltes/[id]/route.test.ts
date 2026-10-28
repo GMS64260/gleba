@@ -23,7 +23,7 @@ vi.mock("@/lib/prisma", () => ({
   default: {
     $transaction: async (fn: (tx: unknown) => unknown) => { const { default: db } = await import("@/lib/prisma"); return fn(db) },
     $executeRaw: vi.fn(),
-    $queryRaw: vi.fn(),
+    $queryRaw: vi.fn(async () => [{ dernier_numero: 1 }]),
     recolteArbre: {
       findUnique: mocks.recolteFindUnique,
       update: mocks.recolteUpdate,
@@ -120,9 +120,6 @@ describe("PUT /api/arbres/recoltes/[id] — changement d'arbre", () => {
     const data = mocks.recolteUpdate.mock.calls[0][0].data
     expect(data.arbreId).toBe(30)
     expect(data.numLot).toBe("20261010-Verger-Pommier-01")
-    expect(mocks.recolteCount).toHaveBeenCalledWith({
-      where: expect.objectContaining({ arbre: { espece: "Pommier" } }),
-    })
   })
 
   // Revue : le formulaire renvoie le lot affiché ; ce lot inchangé ne doit pas

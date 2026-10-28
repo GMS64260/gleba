@@ -17,7 +17,8 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { deleteAutoEntry } from "@/lib/auto-compta"
 import { annulerFactureLiee } from "@/lib/facture-utils"
-import { estNumeroLotAuto, genererNumeroLot } from "@/lib/recolte/lot"
+import { estNumeroLotAuto } from "@/lib/recolte/lot"
+import { prochainNumeroLotVerger } from '@/lib/verger/numero-lot'
 import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes, retirerMarqueSaison } from "@/lib/verger/saison-recolte-arbre"
 
 interface Params {
@@ -185,24 +186,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
               (await tx.parcelleGeo.findFirst({ where: { id: parcelleIdLot, userId }, select: { nom: true } }))?.nom ??
               null
           }
-          const dayStart = new Date(dateLot)
-          dayStart.setHours(0, 0, 0, 0)
-          const dayEnd = new Date(dateLot)
-          dayEnd.setHours(23, 59, 59, 999)
-          const sameDayCount = await tx.recolteArbre.count({
-            where: {
-              userId,
-              id: { not: recolteId },
-              date: { gte: dayStart, lte: dayEnd },
-              ...(parcelleIdLot ? { parcelleId: parcelleIdLot } : {}),
-              arbre: { espece: especeLot ?? undefined },
-            },
-          })
-          numLot = genererNumeroLot({
+          numLot = await prochainNumeroLotVerger(tx, userId, {
             date: dateLot,
             parcelleNom: parcelleNomLot,
             espece: especeLot,
-            numeroSequence: sameDayCount + 1,
           })
         }
       }

@@ -10,6 +10,7 @@ import { nouveauReglementSchema } from '@/lib/validations/reglements'
 import { suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
 import { finJourLivraison } from '@/lib/commercial/dates-stock'
+import { indisponibiliteLotVerger } from './disponibilite-lot'
 import { quantiteBois } from '@/lib/commercial/stock-types'
 import { invalidateKpi } from '@/lib/kpi/cache'
 import { ErreurVerger } from './erreur'
@@ -70,6 +71,9 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
       ? saisie.dateVente !== undefined ? dateRecolteApi(saisie.dateVente, 'dateVente', new Date())! : nouvelleVente ? new Date() : courant.dateVente ?? new Date()
       : courant.dateVente
     if (statut === 'vendu' && dateVente! > finJourLivraison(new Date())) throw new ErreurVerger('Une vente réelle ne peut pas être datée dans le futur.', 400, 'dateVente')
+    const indisponible = statut === 'vendu' ? indisponibiliteLotVerger(courant, dateVente!) : null
+    if (indisponible === 'avant_production') throw new ErreurVerger('Ce lot n’existait pas à la date de vente. Corrigez la date ou attendez sa production.', 409, 'dateVente')
+    if (indisponible === 'perime') throw new ErreurVerger('Ce lot est périmé à la date de vente. Vérifiez sa date ou enregistrez sa perte.', 409)
     const montant = fruit
       ? totalSaisi ?? (prixKgSaisi !== undefined ? fruit.quantite * (prixKgSaisi ?? 0) : montantVenteFruit(fruit))
       : totalSaisi ?? bois!.prixVente ?? 0

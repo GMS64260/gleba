@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
+    $transaction: async (fn: (tx: unknown) => unknown) => { const { default: db } = await import('@/lib/prisma'); return fn(db) },
+    $executeRaw: vi.fn(async () => 0), $queryRaw: vi.fn(async () => [{ dernier_numero: 1 }]),
     productionBois: { create: mocks.productionCreate, count: mocks.productionCount },
     arbre: { findFirst: mocks.arbreFindFirst },
     parcelleGeo: { findFirst: mocks.parcelleFindUnique },
