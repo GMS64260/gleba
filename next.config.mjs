@@ -3,6 +3,12 @@ const nextConfig = {
   // Output standalone pour Docker
   output: 'standalone',
 
+  // Docker vérifie les types avant la compilation pour libérer toute la mémoire
+  // du vérificateur. Les autres builds gardent la vérification Next habituelle.
+  typescript: {
+    ignoreBuildErrors: process.env.GLEBA_TYPECHECK_PREALABLE === '1',
+  },
+
   // Bancs en worktree : autoriser explicitement les dépendances liées hors
   // du répertoire du projet. Sans cette variable, garder la racine Next usuelle.
   ...(process.env.GLEBA_TURBOPACK_ROOT ? { turbopack: { root: process.env.GLEBA_TURBOPACK_ROOT } } : {}),
