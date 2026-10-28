@@ -12,6 +12,8 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from "next/server"
 import { porteGreffeAccessible } from "@/lib/verger/porte-greffe-accessible"
 import prisma from "@/lib/prisma"
+import { createDepenseFromAchatArbre } from "@/lib/auto-compta"
+import { invalidateKpi } from "@/lib/kpi/cache"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { doitInfererParcelle, trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
 import { messageErreurCoordonnees } from "@/lib/geolocation"
@@ -235,7 +237,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
       )
     }
 
-    const arbre = await prisma.arbre.update({
+    const arbre = await prisma.$transaction(async tx => {
+      await verrouillerStockCommercial(tx, session!.user.id)
+      const arbre = await tx.arbre.update({
       where: { id: arbreId },
       data: {
         nom: body.nom,
@@ -310,8 +314,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
     })
 
+      await createDepenseFromAchatArbre(session!.user.id, arbre, tx)
+      return arbre
+    })
+    invalidateKpi(session!.user.id)
     return NextResponse.json(arbre)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("PUT /api/arbres/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la mise à jour" },
@@ -349,6 +358,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
       if (await tx.mouvementStockCommercial.count({ where: { userId: session.user.id, OR: [{ fruit: { arbreId } }, { bois: { arbreId } }] } })) return NextResponse.json({ error: 'Cet arbre possède des lots liés à des bons ou factures. Conservez-le pour garder leur traçabilité.' }, { status: 409 })
 
+      if (await tx.depenseManuelle.findFirst({ where: { userId: session!.user.id, auto: true, sourceType: 'achat_arbre', sourceId: arbreId }, select: { id: true } })) {
+        return NextResponse.json({ error: 'Cet arbre possède une écriture d’achat. Archivez sa fiche pour conserver cet achat et ses règlements.' }, { status: 409 })
+      }
       // Récoltes et écritures doivent survivre à la disparition physique
       // de l'arbre : sa fiche ne se supprime plus lorsqu'elle porte cet historique.
       const recoltes = await tx.recolteArbre.findMany({

@@ -1,3 +1,4 @@
+import { invalidateKpi } from '@/lib/kpi/cache'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Opération non trouvée" }, { status: 404 })
     }
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json(operation)
   } catch (err) {
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
@@ -144,6 +146,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return operation
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json(operation)
   } catch (err) {
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
@@ -185,6 +188,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       await tx.operationArbre.delete({ where: { id: operationId, userId: session!.user.id } })
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json({ success: true })
   } catch (err) {
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })

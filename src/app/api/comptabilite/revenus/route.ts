@@ -1,469 +1,92 @@
-import { montantVenteFruit, periodeVenteVerger } from "@/lib/verger/montant-vente"
-/**
- * API Revenus unifiés
- * GET /api/comptabilite/revenus
- * Agrège tous les revenus de tous les modules
- */
-
+/** Transactions : mêmes ventes et factures signées que le calcul comptable. */
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { enrichirLignesReglements } from '@/lib/comptabilite/projection-reglements'
+import { chargerFacturesRevenus, whereVentesRevenus } from '@/lib/kpi/compta'
+import { moduleDeVente, ventilerRevenus } from '@/lib/comptabilite/ventilation-revenus'
 import { chargerSuiviDesLignes } from '@/lib/comptabilite/suivi-ecriture'
-import { libellesVenteBois } from '@/lib/verger/production-bois'
+import { enrichirLignesReglements } from '@/lib/comptabilite/projection-reglements'
+import { MODELES_STOCK_COMMERCIAL } from '@/lib/commercial/stock-types'
+import { bucketModuleCompta } from '@/lib/comptabilite/modules'
 
+// Les miroirs gardent l'accès à leur atelier ; leur montant et leur date font foi.
+const SOURCES: Record<string, { source: string; prefixe: string; categorie: string }> = {
+  recolte: { source: MODELES_STOCK_COMMERCIAL.recolte, prefixe: 'recolte-potager', categorie: 'Légumes' },
+  recolte_arbre: { source: MODELES_STOCK_COMMERCIAL.fruit, prefixe: 'recolte-arbre', categorie: 'Fruits' },
+  production_bois: { source: MODELES_STOCK_COMMERCIAL.bois, prefixe: 'bois', categorie: 'Bois' },
+  vente_produit: { source: 'VenteProduit', prefixe: 'vente', categorie: 'Élevage' },
+  abattage: { source: 'Abattage', prefixe: 'abattage', categorie: 'Viande' },
+  paie_lait: { source: 'PaieLait', prefixe: 'paie-lait', categorie: 'Lait' },
+}
+const CATEGORIES: Record<string, string> = {
+  legumes: 'Légumes', fruits: 'Fruits', bois: 'Bois', oeufs: 'Œufs', viande: 'Viande', lait: 'Lait',
+  fromage: 'Fromage', produits_ruche: 'Produits de la ruche', transformation: 'Transformation',
+  animal_vivant: 'Animaux vivants', service: 'Services', epicerie: 'Épicerie', autre: 'Autre',
+}
+interface Revenu {
+  id: string; source: string; sourceId: number; corrigeable: boolean; module: string; date: string;
+  description: string; quantite: number | null; unite: string | null; prixUnitaire: number | null;
+  montant: number; client: string | null; paye: boolean | null; categorie: string;
+  modeReglement?: string | null; numeroPiece?: string | null; tauxTVA?: number | null;
+  factureId?: number | null; reglementsDisponibles?: boolean;
+}
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
-
   try {
-    const { searchParams } = new URL(request.url)
-    const year = searchParams.get('year') ? parseInt(searchParams.get('year')!) : new Date().getFullYear()
-    const moduleDemande = searchParams.get('module') // potager, verger, elevage, autre
-    const limit = parseInt(searchParams.get('limit') || '200')
-
+    const params = request.nextUrl.searchParams
+    const maintenant = new Date()
+    const year = params.has('year') ? Number(params.get('year')) : maintenant.getFullYear()
+    if (!Number.isInteger(year) || year < 1900 || year > 9999) return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
     const userId = session.user.id
-    const startOfYear = new Date(year, 0, 1)
-    const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
-
-    // Récupérer toutes les sources de revenus
-    const [
-      ventesElevage,
-      recoltesArbres,
-      venteBois,
-      venteAbattage,
-      recoltesPotager,
-      ventesManuelles,
-      commandesBoutique,
-      paiesLait,
-    ] = await Promise.all([
-      // VenteProduit (elevage)
-      prisma.venteProduit.findMany({
-        where: {
-          userId,
-          annule: { not: true },
-          date: { gte: startOfYear, lte: endOfYear },
-        },
-        orderBy: { date: 'desc' },
-      }),
-
-      // RecolteArbre avec prix (verger fruits) — uniquement vendues
-      prisma.recolteArbre.findMany({
-        where: {
-          userId,
-          statut: 'vendu',
-          ...periodeVenteVerger(startOfYear, endOfYear),
-          AND: [{ OR: [{ prixKg: { not: null } }, { prixTotal: { not: null } }] }],
-        },
-        orderBy: { dateVente: 'desc' },
-        include: {
-          arbre: { select: { nom: true, espece: true } },
-        },
-      }),
-
-      // ProductionBois avec vente (verger bois)
-      prisma.productionBois.findMany({
-        where: {
-          userId,
-          ...periodeVenteVerger(startOfYear, endOfYear),
-          statut: 'vendu',
-          prixVente: { not: null },
-        },
-        orderBy: { date: 'desc' },
-        include: {
-          arbre: { select: { nom: true } },
-        },
-      }),
-
-      // Abattage avec vente
-      prisma.abattage.findMany({
-        where: {
-          userId,
-          annule: { not: true },
-          date: { gte: startOfYear, lte: endOfYear },
-          destination: 'vente',
-          prixVente: { not: null },
-        },
-        orderBy: { date: 'desc' },
-        include: {
-          animal: { select: { nom: true, especeAnimale: { select: { nom: true } } } },
-          lot: { select: { nom: true, especeAnimale: { select: { nom: true } } } },
-        },
-      }),
-
-      // Recolte potager vendue
-      prisma.recolte.findMany({
-        where: {
-          userId,
-          statut: 'vendu',
-          dateVente: { gte: startOfYear, lte: endOfYear },
-          OR: [{ prixTotal: { not: null } }, { prixKg: { not: null } }],
-        },
-        orderBy: { dateVente: 'desc' },
-      }),
-
-      // VenteManuelle : on exclut les auto=true (réinjectées via leurs sources
-      // brutes VenteProduit, Abattage, Recolte…) SAUF celles de la boutique,
-      // qui n'ont pas de source brute réinjectée ici. Sans cette exception, une
-      // commande confirmée était comptée dans le total (getKpiCompta) mais
-      // absente de la liste des transactions (audit 2026-07, high #2). Les
-      // inclure alimente aussi commandeIdsDejaComptees → pas de double ligne.
-      prisma.venteManuelle.findMany({
-        where: {
-          userId,
-          date: { gte: startOfYear, lte: endOfYear },
-          OR: [
-            { auto: { not: true } },
-            { auto: true, sourceType: { in: ['commande_boutique', 'reservation_elevage'] } },
-          ],
-        },
-        orderBy: { date: 'desc' },
-      }),
-
-      // CommandeBoutique livrées - revenus de la boutique en ligne
-      prisma.commandeBoutique.findMany({
-        where: {
-          userId,
-          statut: 'livree',
-          createdAt: { gte: startOfYear, lte: endOfYear },
-        },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          lignes: { select: { nom: true, quantite: true, unite: true } },
-        },
-      }),
-
-      // PaieLait (chèque laiterie) — revenu n°1 d'un éleveur laitier livreur.
-      // La recette est aussi comptée dans getKpiCompta via une VenteManuelle
-      // auto (sourceType 'paie_lait'), exclue de la liste plus bas → pas de
-      // double ligne. Ajoutée à la liste ici pour être visible en transactions.
-      prisma.paieLait.findMany({
-        where: { userId, annee: year },
-        orderBy: [{ mois: 'desc' }],
-      }),
+    const debut = new Date(year, 0, 1)
+    const fin = year === maintenant.getFullYear() ? maintenant : new Date(year, 11, 31, 23, 59, 59, 999)
+    const [ventes, factures] = await Promise.all([
+      prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debut, fin), orderBy: { date: 'desc' } }),
+      chargerFacturesRevenus(userId, debut, fin),
     ])
-
-    // Transformer en format unifié
-    type UnifiedRevenue = {
-      id: string
-      source: string
-      sourceId: number
-      /**
-       * Écriture saisie à la main, donc corrigeable et supprimable depuis cet
-       * écran (2026-08-13). Une vente manuelle peut aussi être AUTO (commande
-       * boutique, réservation d'élevage) : elle porte alors le nom de table
-       * `VenteManuelle` sans être corrigeable ici — ne pas déduire l'origine
-       * du seul nom de source.
-       */
-      corrigeable?: boolean
-      module: string
-      date: string
-      description: string
-      quantite: number | null
-      unite: string | null
-      prixUnitaire: number | null
-      montant: number
-      client: string | null
-      paye: boolean | null
-      categorie: string
-      modeReglement?: string | null
-      numeroPiece?: string | null
-      tauxTVA?: number | null
-      /** Facture qui porte la vente source (ticket cmvgdzsf7). */
-      factureId?: number | null
-    }
-
-    const revenues: UnifiedRevenue[] = []
-
-    // VenteProduit -> revenus
-    ventesElevage.forEach(v => {
-      revenues.push({
-        id: `vente-${v.id}`,
-        source: 'VenteProduit',
-        sourceId: v.id,
-        module: 'elevage',
-        date: v.date.toISOString(),
-        description: v.description || `Vente ${v.type}`,
-        quantite: v.quantite,
-        unite: v.unite,
-        prixUnitaire: v.prixUnitaire,
-        montant: v.prixTotal,
-        client: v.client,
-        paye: v.paye,
-        factureId: v.factureId,
-        categorie: v.type === 'oeufs' ? 'Oeufs' :
-                   v.type === 'viande' ? 'Viande' :
-                   v.type === 'animal_vivant' ? 'Animal vivant' :
-                   v.type === 'lait' ? 'Lait' :
-                   v.type === 'fromage' ? 'Fromage' :
-                   v.type === 'miel' ? 'Miel' :
-                   v.type === 'cire' ? 'Cire' :
-                   v.type === 'propolis' ? 'Propolis' :
-                   v.type === 'pollen' ? 'Pollen' :
-                   v.type === 'gelee_royale' ? 'Gelée royale' :
-                   v.type === 'autre_ruche' ? 'Autre produit de la ruche' : 'Autre élevage',
-      })
+    // Certains anciens miroirs boutique n'ont pas le nom de leur commande.
+    const commandesSansNom = ventes.filter(v => v.auto && v.sourceType === 'commande_boutique' && v.sourceId != null && !v.clientNom)
+    const commandes = commandesSansNom.length ? await prisma.commandeBoutique.findMany({
+      where: { userId, id: { in: commandesSansNom.map(v => v.sourceId!) } }, select: { id: true, clientNom: true },
+    }) : []
+    const clientsCommandes = new Map(commandes.map(c => [c.id, c.clientNom]))
+    const lignes: Revenu[] = ventes.map(v => {
+      const origine = v.auto && v.sourceId != null && v.sourceType ? SOURCES[v.sourceType] : null
+      return {
+        id: origine ? `${origine.prefixe}-${v.sourceId}` : `manuel-${v.id}`,
+        source: origine?.source ?? 'VenteManuelle', sourceId: origine ? v.sourceId! : v.id,
+        corrigeable: !v.auto, module: moduleDeVente(v), date: v.date.toISOString(),
+        description: v.description, quantite: v.quantite, unite: v.unite, prixUnitaire: v.prixUnitaire,
+        montant: v.montant, client: v.clientNom || (v.sourceType === 'commande_boutique' && v.sourceId != null ? clientsCommandes.get(v.sourceId) ?? null : null), paye: v.paye,
+        categorie: CATEGORIES[v.categorie] ?? origine?.categorie ?? v.categorie, modeReglement: v.modeReglement,
+        numeroPiece: v.numeroPiece, tauxTVA: v.tauxTVA,
+      }
     })
-
-    // RecolteArbre -> revenus
-    recoltesArbres.forEach(r => {
-      revenues.push({
-        id: `recolte-arbre-${r.id}`,
-        source: 'RecolteArbre',
-        sourceId: r.id,
-        module: 'verger',
-        date: (r.dateVente || r.date).toISOString(),
-        description: `Récolte ${r.arbre?.espece || r.arbre?.nom || 'fruits'}`,
-        quantite: r.quantite,
-        unite: 'kg',
-        prixUnitaire: r.prixKg,
-        montant: montantVenteFruit(r),
-        client: r.clientNom,
-        paye: false, // Le miroir ou le journal remplace ce défaut ci-dessous.
-        categorie: 'Fruits',
-        factureId: r.factureId,
-      })
+    for (const f of factures) lignes.push({
+      id: `facture-${f.id}`, source: 'Facture', sourceId: f.id, factureId: f.id,
+      corrigeable: false, module: f.moduleSource ?? 'autre', date: f.date.toISOString(),
+      description: `${f.type === 'avoir' ? 'Avoir' : 'Facture'} ${f.numero}${f.objet ? ` · ${f.objet}` : ''}`,
+      quantite: null, unite: null, prixUnitaire: null, montant: (f.type === 'avoir' ? -1 : 1) * f.totalTTC,
+      client: f.clientNom, paye: f.type === 'avoir' ? null : f.statut === 'payee',
+      categorie: f.type === 'avoir' ? 'Avoirs' : 'Factures', reglementsDisponibles: f.type !== 'avoir',
     })
-
-    // ProductionBois -> revenus
-    venteBois.forEach(b => {
-      revenues.push({
-        id: `bois-${b.id}`,
-        source: 'ProductionBois',
-        sourceId: b.id,
-        module: 'verger',
-        date: (b.dateVente || b.date).toISOString(),
-        // QA cmvnp0dm9 — même texte que l'écriture de vente (« Élagage »).
-        description: libellesVenteBois({
-          type: b.type,
-          volumeM3: b.volumeM3,
-          poidsKg: b.poidsKg,
-          arbreNom: b.arbre?.nom,
-        }).description,
-        quantite: b.volumeM3 || b.poidsKg,
-        unite: b.volumeM3 ? 'm³' : 'kg',
-        prixUnitaire: null,
-        montant: b.prixVente || 0,
-        client: b.clientNom ?? null,
-        // Le suivi du miroir ou du journal est appliqué après l'agrégation.
-        paye: false,
-        categorie: 'Bois',
-        factureId: b.factureId,
-      })
-    })
-
-    // Abattage -> revenus
-    venteAbattage.forEach(a => {
-      const nom = a.animal?.nom || a.lot?.nom ||
-                  a.animal?.especeAnimale?.nom || a.lot?.especeAnimale?.nom || 'animal'
-      revenues.push({
-        id: `abattage-${a.id}`,
-        source: 'Abattage',
-        sourceId: a.id,
-        module: 'elevage',
-        date: a.date.toISOString(),
-        description: `Vente viande ${nom}`,
-        quantite: a.poidsCarcasse || a.quantite,
-        unite: a.poidsCarcasse ? 'kg' : 'unité',
-        prixUnitaire: null,
-        montant: a.prixVente || 0,
-        client: null,
-        paye: null,
-        categorie: 'Viande',
-        factureId: a.factureId,
-      })
-    })
-
-    // Recolte potager -> revenus
-    recoltesPotager.forEach(r => {
-      revenues.push({
-        id: `recolte-potager-${r.id}`,
-        source: 'Recolte',
-        sourceId: r.id,
-        module: 'potager',
-        date: (r.dateVente || r.date).toISOString(),
-        description: `Vente ${r.especeId}`,
-        quantite: r.quantite,
-        unite: 'kg',
-        prixUnitaire: r.prixKg,
-        montant: r.prixTotal || (r.quantite * (r.prixKg || 0)),
-        client: r.clientNom,
-        paye: true, // statut='vendu' implique payé
-        categorie: 'Légumes',
-        factureId: r.factureId,
-      })
-    })
-
-    // VenteManuelle -> revenus
-    // Bug feedback cmpkyeynq — Quand une VenteManuelle a été créée depuis
-    // une CommandeBoutique livrée, son `clientNom` est souvent vide
-    // (l'écran "/comptabilite/transactions" affichait alors "-" pour le
-    // client alors que le nom était dans la commande source). On résout
-    // par jointure pour les sourceType='commande_boutique'.
-    const boutiqueClientById = new Map<number, string | null>(
-      commandesBoutique.map(c => [c.id, c.clientNom])
-    )
-    ventesManuelles.forEach(v => {
-      const fallbackClient =
-        v.sourceType === 'commande_boutique' && v.sourceId != null
-          ? boutiqueClientById.get(v.sourceId) ?? null
-          : null
-      revenues.push({
-        id: `manuel-${v.id}`,
-        source: 'VenteManuelle',
-        sourceId: v.id,
-        corrigeable: v.auto !== true,
-        module: v.module || 'autre',
-        date: v.date.toISOString(),
-        description: v.description,
-        quantite: v.quantite,
-        unite: v.unite,
-        prixUnitaire: v.prixUnitaire,
-        montant: v.montant,
-        client: v.clientNom || fallbackClient,
-        paye: v.paye,
-        modeReglement: v.modeReglement ?? null,
-        numeroPiece: v.numeroPiece ?? null,
-        tauxTVA: v.tauxTVA ?? null,
-        categorie: v.categorie === 'legumes' ? 'Légumes' :
-                   v.categorie === 'fruits' ? 'Fruits' :
-                   v.categorie === 'transformation' ? 'Transformation' :
-                   v.categorie === 'animal_vivant' ? 'Animaux vivants' :
-                   v.categorie === 'service' ? 'Service' : 'Autre',
-      })
-    })
-
-    // CommandeBoutique livrées -> revenus
-    //
-    // DEV1 Ticket 3 (audit QA 2026-05-14) : pour chaque commande livrée,
-    // une VenteManuelle existe déjà (créée par confirmCommandeBoutique ou
-    // par le seed). Sans dédoublonnage, chaque CMD-XXXX apparaissait 2 fois
-    // dans /comptabilite/transactions : 1 ligne module 'general' (depuis
-    // VenteManuelle) + 1 ligne module 'boutique' (ici).
-    //
-    // Règle : on n'émet la ligne 'CommandeBoutique' QUE si aucune
-    // VenteManuelle ne référence déjà cette commande
-    // (sourceType='commande_boutique', sourceId=c.id).
-    const commandeIdsDejaComptees = new Set(
-      ventesManuelles
-        .filter((v) => v.sourceType === 'commande_boutique' && v.sourceId != null)
-        .map((v) => v.sourceId as number)
-    )
-
-    commandesBoutique.forEach(c => {
-      if (commandeIdsDejaComptees.has(c.id)) return // déjà comptée via VenteManuelle
-      if (c.venteManuelleId != null) return // safeguard supplémentaire
-
-      const description = c.lignes.length > 0
-        ? `Commande boutique ${c.numero} : ${c.lignes.slice(0, 3).map(l => `${l.quantite} ${l.unite} ${l.nom}`).join(', ')}${c.lignes.length > 3 ? '...' : ''}`
-        : `Commande boutique ${c.numero}`
-      revenues.push({
-        id: `boutique-${c.id}`,
-        source: 'CommandeBoutique',
-        sourceId: c.id,
-        module: 'boutique',
-        date: c.createdAt.toISOString(),
-        description,
-        quantite: null,
-        unite: null,
-        prixUnitaire: null,
-        montant: c.total,
-        client: c.clientNom,
-        // QA cmsqlzvw9 — « livrée » n'implique PAS « encaissée » : une
-        // commande livrée avec paiement « En attente » était constatée payée
-        // en comptabilité alors que la Boutique affichait l'inverse. Le
-        // statut de paiement du modèle est la seule vérité.
-        paye: c.paiementStatut === 'Confirmé',
-        categorie: 'Boutique en ligne',
-      })
-    })
-
-    // PaieLait -> revenus. Affiché en TTC (montantHT × 1,055) pour rester
-    // homogène avec les autres lignes (VenteProduit.prixTotal = TTC) et avec le
-    // CA de getKpiCompta, qui compte la paie via sa VenteManuelle auto en TTC.
-    // Sinon `stats.total` (somme des lignes) divergeait du CA de la TVA.
-    paiesLait.forEach(p => {
-      const montantTTC = Number(p.montantHT) * 1.055
-      const litres = Number(p.litres)
-      revenues.push({
-        id: `paie-lait-${p.id}`,
-        source: 'PaieLait',
-        // sourceId synthétique aligné sur la VenteManuelle auto (annee*100+mois).
-        sourceId: p.annee * 100 + p.mois,
-        module: 'elevage',
-        date: new Date(year, p.mois - 1, 1).toISOString(),
-        description: `Paie du lait ${String(p.mois).padStart(2, '0')}/${p.annee}${p.laiterie ? ` — ${p.laiterie}` : ''}`,
-        quantite: litres || null,
-        unite: 'L',
-        prixUnitaire: litres > 0 ? Math.round((montantTTC / litres) * 100) / 100 : null,
-        montant: Math.round(montantTTC * 100) / 100,
-        client: p.laiterie ?? null,
-        paye: true,
-        categorie: 'Lait',
-      })
-    })
-
-    // Filtrer par module si spécifié
-    let filtered = revenues
-    if (moduleDemande) {
-      filtered = revenues.filter(r => r.module === moduleDemande)
-    }
-
-    // Trier par date décroissante
-    filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-    // Limiter
-    // Ticket cmvgdzsf7 (2026-10-20) — chaque ligne dérivée porte son écriture
-    // comptable (suivi modifiable : règlement, pièce, notes) ou la facture qui
-    // la porte : sans elles, l'écran n'offrait rien sur une ligne générée.
-    const page = filtered.slice(0, limit)
-    const suiviParLigne = await chargerSuiviDesLignes(userId, page)
-    const limited = await enrichirLignesReglements(userId, 'vente', page.map((r) => ({
-      ...r,
-      ...suiviParLigne.get(r.id),
-      ...(r.source === 'Abattage' && !r.factureId ? { paye: suiviParLigne.get(r.id)?.ecriture?.paye ?? false } : {}),
-    })), ventesManuelles)
-
-    // Total agrégé : on s'aligne sur la source unique de vérité (getKpiCompta).
-    // L'ancien `filtered.reduce(...)` agrégeait les "sources brutes" potager
-    // (recoltes vendues) + verger (recoltesArbres) + elevage (venteProduit) +
-    // autres (venteManuelle) ; selon la couverture des doublons auto-compta,
-    // le résultat divergeait du total exposé par /api/comptabilite/stats.
-    // Désormais le total = VenteManuelle + LigneFacture (factures non
-    // annulées), identique sur tous les écrans.
-
-    const stats = {
-      // Bug R27 : le total doit être la SOMME DES LIGNES affichées (sources
-      // brutes), sinon l'utilisateur additionne les transactions et n'obtient
-      // pas le total (écart « fantôme » avec getKpiCompta qui agrège les
-      // VenteManuelle, dont les écritures auto peuvent être désynchronisées).
-      total: filtered.reduce((sum, r) => sum + r.montant, 0),
-      count: filtered.length,
-      parModule: {
-        potager: filtered.filter(r => r.module === 'potager').reduce((sum, r) => sum + r.montant, 0),
-        verger: filtered.filter(r => r.module === 'verger').reduce((sum, r) => sum + r.montant, 0),
-        elevage: filtered.filter(r => r.module === 'elevage').reduce((sum, r) => sum + r.montant, 0),
-        boutique: filtered.filter(r => r.module === 'boutique').reduce((sum, r) => sum + r.montant, 0),
-        autre: filtered.filter(r => r.module === 'autre').reduce((sum, r) => sum + r.montant, 0),
-      },
-      parCategorie: Object.entries(
-        filtered.reduce((acc, r) => {
-          acc[r.categorie] = (acc[r.categorie] || 0) + r.montant
-          return acc
-        }, {} as Record<string, number>)
-      ).map(([categorie, montant]) => ({ categorie, montant })),
-    }
-
-    return NextResponse.json({
-      data: limited,
-      stats,
-      meta: { year, module: moduleDemande, total: filtered.length },
-    })
-  } catch (error) {
-    console.error('GET /api/comptabilite/revenus error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
-      { status: 500 }
-    )
+    const ventilation = ventilerRevenus(ventes, factures)
+    const moduleDemande = params.get('module')
+    const filtrees = (moduleDemande ? lignes.filter(l => l.module === bucketModuleCompta(moduleDemande)) : lignes)
+      .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id))
+    const limite = Math.min(1000, Math.max(1, Number(params.get('limit')) || 200))
+    const page = filtrees.slice(0, limite)
+    const suivi = await chargerSuiviDesLignes(userId, page)
+    const data = await enrichirLignesReglements(userId, 'vente', page.map(l => ({ ...l, ...suivi.get(l.id) })), ventes)
+    const somme = (ls: Revenu[]) => Math.round(ls.reduce((s, l) => s + l.montant, 0) * 100) / 100
+    return NextResponse.json({ data, stats: {
+      total: moduleDemande ? ventilation.parModule[bucketModuleCompta(moduleDemande)] : ventilation.total, count: filtrees.length,
+      parModule: Object.fromEntries(Object.entries(ventilation.parModule).map(([m, montant]) => [m, !moduleDemande || m === bucketModuleCompta(moduleDemande) ? montant : 0])),
+      parCategorie: [...new Set(filtrees.map(l => l.categorie))].map(categorie => ({ categorie, montant: somme(filtrees.filter(l => l.categorie === categorie)) })),
+    }, meta: { year, module: moduleDemande, total: filtrees.length } })
+  } catch (err) {
+    console.error('GET /api/comptabilite/revenus error:', err)
+    return NextResponse.json({ error: 'Erreur lors de la récupération' }, { status: 500 })
   }
 }

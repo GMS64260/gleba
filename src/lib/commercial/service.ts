@@ -38,7 +38,7 @@ async function preparer(tx: Tx, userId: string, contenu: ContenuDocument) {
   if (!emetteur?.raisonSociale || !emetteur.adresseSiege || !emetteur.ville) {
     throw new ErreurCommerciale('Renseignez d’abord l’identité de votre exploitation dans Paramètres > Exploitation', 400)
   }
-  const montants = calculerDocument(await verifierLignesStock(tx, userId, contenu.lignes), factureSansTaxe(emetteur.regimeTva) || client.exonererTVA)
+  const montants = calculerDocument(await verifierLignesStock(tx, userId, contenu.lignes, dateCivile(contenu.dateLivraison ?? contenu.date)), factureSansTaxe(emetteur.regimeTva) || client.exonererTVA)
   if (montants.totalTTC <= 0 || montants.totalTTC > 1_000_000_000) throw new ErreurCommerciale('Le total doit être positif et inférieur à un milliard', 400)
   return {
     type: contenu.type,

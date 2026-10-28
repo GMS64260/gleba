@@ -52,10 +52,12 @@ vi.mock("@/lib/prisma", () => ({
         },
         observationSante: { findMany: mocks.txObservationFindMany },
         operationArbre: { findMany: mocks.txOperationFindMany },
-        arbre: { findUnique: mocks.arbreFindUnique, delete: mocks.txArbreDelete },
+        arbre: { findUnique: mocks.arbreFindUnique, update: mocks.arbreUpdate, delete: mocks.txArbreDelete },
       }),
   },
 }))
+
+vi.mock("@/lib/auto-compta", () => ({ createDepenseFromAchatArbre: vi.fn() }))
 
 import { DELETE, PUT } from "./route"
 

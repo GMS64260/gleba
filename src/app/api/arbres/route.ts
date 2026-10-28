@@ -6,6 +6,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { createDepenseFromAchatArbre } from "@/lib/auto-compta"
+import { verrouillerStockCommercial } from "@/lib/stocks/verrou-commercial"
+import { ErreurReglement } from "@/lib/comptabilite/monnaie"
+import { invalidateKpi } from "@/lib/kpi/cache"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { productifParDefaut } from "@/lib/tree-care-calendar"
 import { genererCalendrierEntretien } from "@/lib/verger/creation-arbre"
@@ -268,7 +272,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const arbre = await prisma.arbre.create({
+    const { arbre, calendrierGenere } = await prisma.$transaction(async tx => {
+      await verrouillerStockCommercial(tx, session!.user.id)
+      const arbre = await tx.arbre.create({
       data: {
         userId: session!.user.id,
         nom: body.nom.trim(),
@@ -347,13 +353,18 @@ export async function POST(request: NextRequest) {
 
     // Geste partagé avec l'outil `create_arbre` de l'assistant : voir
     // `src/lib/verger/creation-arbre.ts`.
-    const calendrierGenere = await genererCalendrierEntretien(arbre, session!.user.id)
+      const calendrierGenere = await genererCalendrierEntretien(arbre, session!.user.id, tx)
+      await createDepenseFromAchatArbre(session!.user.id, arbre, tx)
+      return { arbre, calendrierGenere }
+    })
+    invalidateKpi(session!.user.id)
 
     // Avertissement d'adéquation géographique (non bloquant) : ex. planter un
     // fruitier à besoin de froid en zone tropicale. Renvoyé pour affichage
     // (toast) — couvre le plan du jardin, le chat et les imports, qui passent
     // tous par cette route. Le catalogue officiel a id = nom (rattachement direct).
     let avertissementZone: string | null = null
+    try {
     if (arbre.espece) {
       const espece = await prisma.espece.findFirst({
         where: { AND: [{ id: arbre.espece }, visibiliteReferentiel(session!.user.id)] },
@@ -369,6 +380,10 @@ export async function POST(request: NextRequest) {
         if (statut === "peu_adaptee") avertissementZone = raison
       }
     }
+    } catch (cause) {
+      console.warn('Contrôle de zone indisponible après création d’un arbre', cause instanceof Error ? cause.message : 'Erreur')
+      avertissementZone = 'L’arbre est enregistré ; le contrôle d’adéquation au climat est temporairement indisponible.'
+    }
 
     return NextResponse.json(
       {
@@ -381,6 +396,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("POST /api/arbres error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la création de l'arbre" },

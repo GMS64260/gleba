@@ -1,3 +1,4 @@
+import { enCentimes, ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * Auto-Comptabilite - Generation automatique d'ecritures comptables
@@ -18,7 +19,7 @@ import { libellesVenteBois } from '@/lib/verger/production-bois'
 import { montantVenteFruit } from '@/lib/verger/montant-vente'
 import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
-import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture } from '@/lib/comptabilite/suivi-reglement-source'
+import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture, suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
 
 // ============================================================
 // HELPERS
@@ -29,12 +30,22 @@ type AutoComptaTx = Prisma.TransactionClient
 async function suiviDuMiroirDepense(db: AutoComptaTx, where: { userId: string; sourceType: string; sourceId: number; auto: true }, montant?: number) {
   await verrouillerReglements(db, where.userId)
   await db.$queryRaw`SELECT id FROM depenses_manuelles WHERE user_id = ${where.userId} AND source_type = ${where.sourceType} AND source_id = ${where.sourceId} AND auto = true FOR UPDATE`
-  const ancienne = (await db.depenseManuelle.findFirst({
+  const ancienne = await db.depenseManuelle.findFirst({
     where,
-    select: { paye: true, modeReglement: true, numeroPiece: true, journal: true, pjUrl: true, notes: true, refFacture: true, dateEcheance: true },
-  })) ?? {}
-  const reglement = montant !== undefined ? await synchroniserReglementSource(db, where.userId, cleSourceReglement('depense', where.sourceType, where.sourceId), montant) : {}
-  return { ...ancienne, ...reglement }
+    select: { montant: true, paye: true, modeReglement: true, numeroPiece: true, journal: true, pjUrl: true, notes: true, refFacture: true, dateEcheance: true },
+  })
+  const cle = cleSourceReglement('depense', where.sourceType, where.sourceId)
+  if (ancienne?.paye && montant !== undefined && typeof ancienne.montant === 'number'
+    && enCentimes(ancienne.montant) !== enCentimes(montant)) {
+    const dossier = await suiviReglementParCle(db, where.userId, cle)
+    const versements = dossier ? await db.reglement.count({ where: { userId: where.userId, dossierId: dossier.dossierId, annuleLe: null } }) : 0
+    if (!versements) throw new ErreurReglement('Précisez les versements historiques dans Règlements avant de corriger le montant de cette dépense déclarée payée.')
+  }
+  const reglement = montant !== undefined ? await synchroniserReglementSource(db, where.userId, cle, montant) : {}
+  // Le montant appartient à la source ; seul le suivi est reporté.
+  const suivi = ancienne ? { paye: ancienne.paye, modeReglement: ancienne.modeReglement, numeroPiece: ancienne.numeroPiece,
+    journal: ancienne.journal, pjUrl: ancienne.pjUrl, notes: ancienne.notes, refFacture: ancienne.refFacture, dateEcheance: ancienne.dateEcheance } : {}
+  return { ...suivi, ...reglement }
 }
 
 function inAutoComptaTransaction<T>(
@@ -672,6 +683,28 @@ export async function createVenteFromProductionBois(
  * les ventes. Les écrans qui agrègent les sources brutes (liste Dépenses,
  * stats, coûts de production) excluent les écritures auto correspondantes.
  */
+
+/** Achat d'un arbre : même date et montant que la fiche, sans présumer son paiement. */
+export async function createDepenseFromAchatArbre(userId: string, arbre: {
+  id: number; nom: string; prixAchat: number | null; fournisseur: string | null;
+  dateAchat: Date | null; datePlantation: Date | null; createdAt: Date
+}, tx?: AutoComptaTx) {
+  const montant = arbre.prixAchat ?? 0
+  if (!Number.isFinite(montant) || montant < 0) throw new ErreurReglement('Le prix d’achat doit être positif ou nul.', 400)
+  return inAutoComptaTransaction(tx, async db => {
+    const where = { userId, sourceType: 'achat_arbre', sourceId: arbre.id, auto: true as const }
+    const suivi = await suiviDuMiroirDepense(db, where, montant)
+    await db.depenseManuelle.deleteMany({ where })
+    if (montant === 0) return null
+    const tva = calculTVA(montant, 10)
+    return db.depenseManuelle.create({ data: {
+      ...where, date: arbre.dateAchat ?? arbre.datePlantation ?? arbre.createdAt,
+      categorie: 'plants', description: `Achat ${arbre.nom}`,
+      fournisseurNom: arbre.fournisseur, montant, montantHT: tva.montantHT, montantTVA: tva.montantTVA,
+      tauxTVA: 10, tvaInferee: true, journal: 'AC', module: 'verger', comptable: true, paye: false, ...suivi,
+    } })
+  })
+}
 
 /**
  * Cree une DepenseManuelle quand une OperationArbre a un coût (taille,

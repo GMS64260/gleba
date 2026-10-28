@@ -16,9 +16,9 @@ type Ligne = ReferenceArticleStock & { id?: string | number; description: string
 type Origine = { documentId?: string; factureId?: number; numero: string; date: Date }
 
 /** Le navigateur choisit une référence ; l'appartenance, l'unité et le bio viennent du serveur. */
-export async function verifierLignesStock<T extends Ligne>(tx: Tx, userId: string, lignes: T[]): Promise<T[]> {
+export async function verifierLignesStock<T extends Ligne>(tx: Tx, userId: string, lignes: T[], dateEffet = new Date()): Promise<T[]> {
   if (!lignes.some((l) => l.articleStockType || l.articleStockId)) return lignes
-  const catalogue = new Map((await chargerCatalogueStock(userId, tx)).map((a) => [cleArticle(a), a]))
+  const catalogue = new Map((await chargerCatalogueStock(userId, tx, dateEffet)).map((a) => [cleArticle(a), a]))
   return lignes.map((l) => {
     if (!l.articleStockType && !l.articleStockId) return l
     const a = catalogue.get(`${l.articleStockType}:${l.articleStockId}`)
@@ -52,7 +52,7 @@ export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Lign
   const deja = await tx.mouvementStockCommercial.count({ where: { userId, ...(origine.documentId ? { documentId: origine.documentId } : { factureId: origine.factureId }), origineRetourId: null } })
   if (deja) return // reprise d'une même livraison / émission
   const dateLimite = finJourLivraison(origine.date)
-  const catalogue = new Map((await chargerCatalogueStock(userId, tx)).map((a) => [cleArticle(a), a]))
+  const catalogue = new Map((await chargerCatalogueStock(userId, tx, origine.date)).map((a) => [cleArticle(a), a]))
   for (const l of liees) {
     const a = catalogue.get(`${l.articleStockType}:${l.articleStockId}`)
     if (!a) throw new ErreurCommerciale(`Stock indisponible pour « ${l.description} ». Actualisez les produits du document.`)

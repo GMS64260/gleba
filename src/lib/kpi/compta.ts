@@ -200,18 +200,14 @@ const VENTES_PORTEES = {
  * le module de la vente métier qu'elle porte, un avoir celui de sa facture
  * d'origine, une facture saisie sans vente va en « Autre ».
  */
-export async function chargerVentilationRevenus(userId: string, debut: Date, fin: Date): Promise<VentilationRevenus> {
-  const [ventes, factures] = await Promise.all([
-    prisma.venteManuelle.findMany({
-      where: whereVentesRevenus(userId, debut, fin),
-      select: { montant: true, module: true, categorie: true },
-    }),
-    prisma.facture.findMany({
-      where: whereFacturesRevenus(userId, debut, fin),
-      select: { id: true, type: true, totalTTC: true, factureOrigineId: true, lignes: { select: { articleStockType: true } }, _count: { select: VENTES_PORTEES } },
-    }),
-  ])
-
+/** Factures du périmètre comptable, avec leur module et celui de l'origine des avoirs. */
+export async function chargerFacturesRevenus(userId: string, debut: Date, fin: Date) {
+  const factures = await prisma.facture.findMany({
+    where: whereFacturesRevenus(userId, debut, fin),
+    select: { id: true, numero: true, type: true, statut: true, date: true, clientNom: true, objet: true,
+      totalTTC: true, factureOrigineId: true, modePaiement: true,
+      lignes: { select: { articleStockType: true } }, _count: { select: VENTES_PORTEES } },
+  })
   // Un avoir suit sa facture d'origine, qui peut dater d'un exercice antérieur.
   const chargees = new Set(factures.map((f) => f.id))
   const originesManquantes = [
@@ -245,17 +241,17 @@ export async function chargerVentilationRevenus(userId: string, debut: Date, fin
     moduleParFacture.set(f.id, moduleDesVentesPortees({ ...f._count, recoltes: recoltesParFacture.get(f.id) ?? 0 }))
   }
 
-  return ventilerRevenus(
-    ventes,
-    factures.map((f) => ({
-      type: f.type,
-      totalTTC: f.totalTTC,
-      moduleSource:
-        f.type === 'avoir'
-          ? f.factureOrigineId != null ? moduleParFacture.get(f.factureOrigineId) ?? null : null
-          : moduleParFacture.get(f.id) ?? null,
-    })),
-  )
+  return factures.map(f => ({ ...f, moduleSource: f.type === 'avoir'
+    ? f.factureOrigineId != null ? moduleParFacture.get(f.factureOrigineId) ?? null : null
+    : moduleParFacture.get(f.id) ?? null }))
+}
+
+export async function chargerVentilationRevenus(userId: string, debut: Date, fin: Date): Promise<VentilationRevenus> {
+  const [ventes, factures] = await Promise.all([
+    prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debut, fin), select: { montant: true, module: true, categorie: true } }),
+    chargerFacturesRevenus(userId, debut, fin),
+  ])
+  return ventilerRevenus(ventes, factures)
 }
 
 function round2(n: number): number {

@@ -82,8 +82,11 @@ interface Client {
   nom: string
 }
 
+interface SortieVerger { id: string; nature: string; quantite: number; unite: string; date: string; notes: string | null }
+
 interface RecolteArbre {
   ventesCommerciales?: VenteCommercialeVerger[]
+  mouvementsCommerciaux?: SortieVerger[]
   ecriture?: { id: number } | null
   warnings?: string[]
   stockDisponibleCommercial?: number | null
@@ -132,6 +135,7 @@ function formulaireRecolteVierge() {
 
 interface ProductionBois {
   ventesCommerciales?: VenteCommercialeVerger[]
+  mouvementsCommerciaux?: SortieVerger[]
   ecriture?: { id: number } | null
   stockDisponibleCommercial?: number | null
   id: number
@@ -207,6 +211,7 @@ function RecoltesFruitsSubTab() {
   // pouvait qu'être supprimée puis re-saisie ; l'utilisateur a re-saisi sans
   // supprimer, d'où un doublon en stock. Le même dialogue sert désormais à
   // modifier une récolte existante.
+  const [sortieEnCours, setSortieEnCours] = React.useState(false)
   const [editingRecolte, setEditingRecolte] = React.useState<RecolteArbre | null>(null)
   const [parcelles, setParcelles] = React.useState<ParcelleOption[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -256,7 +261,11 @@ function RecoltesFruitsSubTab() {
   const venduRecoltes = recoltes.filter(r => r.statut === "vendu" && !r.ventesCommerciales?.some(v => v.facture?.id === r.factureId))
   const livraisonsFruits = recoltes.flatMap(lot => (lot.ventesCommerciales ?? []).map(vente => ({ lot, vente })))
   const nombreVentesFruits = venduRecoltes.length + livraisonsFruits.length
-  const perteRecoltes = recoltes.filter(r => r.statut === "perte" || r.statut === "consomme")
+  const perteRecoltes = [
+    ...recoltes.filter(r => r.statut === "perte" || r.statut === "consomme").map(r => ({ ...r, cleHistorique: `lot-${r.id}` })),
+    ...recoltes.flatMap(r => (r.mouvementsCommerciaux ?? []).map(m => ({ ...r, cleHistorique: m.id,
+      statut: m.nature, date: m.date, quantite: m.quantite, notes: m.notes }))),
+  ].sort((a, b) => b.date.localeCompare(a.date))
 
   const now = new Date()
   const perimesCount = stockRecoltes.filter(r => r.datePeremption && isPast(new Date(r.datePeremption))).length
@@ -543,44 +552,19 @@ function RecoltesFruitsSubTab() {
     } finally { setVenteEnCours(false) }
   }
 
-  const handlePerte = async (id: number) => {
-    if (!(await confirmDialog("Marquer cette récolte comme perte ?"))) return
+  const handleSortie = async (id: number, statut: 'perte' | 'consomme') => {
+    if (sortieEnCours) return
+    setSortieEnCours(true)
     try {
-      const res = await fetch(`/api/arbres/recoltes/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: "perte" }),
-      })
-      if (res.ok) {
-        toast({ title: "Perte enregistrée" })
-        fetchData()
-      } else {
-        const data = await res.json().catch(() => ({}))
-        toast({ title: "Échec de l'enregistrement de la perte", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
-      }
-    } catch {
-      toast({ title: "Erreur", variant: "destructive" })
-    }
-  }
-
-  const handleUsageInterne = async (id: number) => {
-    if (!(await confirmDialog("Marquer cette récolte comme usage interne (auto-consommation) ?"))) return
-    try {
-      const res = await fetch(`/api/arbres/recoltes/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: "consomme" }),
-      })
-      if (res.ok) {
-        toast({ title: "Usage interne enregistré" })
-        fetchData()
-      } else {
-        const data = await res.json().catch(() => ({}))
-        toast({ title: "Échec de l'enregistrement", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
-      }
-    } catch {
-      toast({ title: "Erreur", variant: "destructive" })
-    }
+      const lot = stockRecoltes.find(r => r.id === id)
+      if (!lot || !(await confirmDialog(`Enregistrer ${lot.quantite} kg ${statut === 'perte' ? 'en perte' : 'en usage interne'} ? Cette sortie sera conservée dans l’historique.`))) return
+      const res = await fetch(`/api/arbres/recoltes/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut, quantite: lot.quantite, cleIdempotence: crypto.randomUUID() }) })
+      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `Erreur ${res.status}`) }
+      toast({ title: statut === 'perte' ? 'Perte enregistrée' : 'Usage interne enregistré' })
+      await fetchData()
+    } catch (e) { toast({ title: 'Sortie refusée', description: e instanceof Error ? e.message : 'Erreur', variant: 'destructive' }) }
+    finally { setSortieEnCours(false) }
   }
 
   return (
@@ -725,10 +709,10 @@ function RecoltesFruitsSubTab() {
                           <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => openVenteDialog(r)} title="Vendre">
                             <Euro className="h-4 w-4 text-green-600" />
                           </Button>
-                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => handleUsageInterne(r.id)} title="Usage interne (auto-consommation)">
+                          <Button disabled={sortieEnCours} variant="ghost" size="sm" onClick={() => handleSortie(r.id, "consomme")} title="Usage interne (auto-consommation)">
                             <Home className="h-4 w-4 text-blue-600" />
                           </Button>
-                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => handlePerte(r.id)} title="Perte">
+                          <Button disabled={sortieEnCours} variant="ghost" size="sm" onClick={() => handleSortie(r.id, "perte")} title="Perte">
                             <AlertTriangle className="h-4 w-4 text-orange-500" />
                           </Button>
                           <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => ouvrirModification(r)} title="Modifier (date, quantité, parcelle…)">
@@ -820,7 +804,7 @@ function RecoltesFruitsSubTab() {
                 </TableHeader>
                 <TableBody>
                   {perteRecoltes.map((r) => (
-                    <TableRow key={r.id}>
+                    <TableRow key={r.cleHistorique}>
                       <TableCell>{celluleDate(r)}</TableCell>
                       <TableCell className="font-medium">{r.arbre.nom}{r.warnings?.map(message => <p key={message} className="mt-1 max-w-sm text-xs text-amber-800">{message}</p>)}</TableCell>
                       <TableCell className="text-right">{r.quantite} kg</TableCell>
@@ -1281,7 +1265,11 @@ function ProductionBoisSubTab() {
   const venduProductions = productions.filter(p => p.statut === "vendu" && !p.ventesCommerciales?.some(v => v.facture?.id === p.factureId))
   const livraisonsBois = productions.flatMap(lot => (lot.ventesCommerciales ?? []).map(vente => ({ lot, vente })))
   const nombreVentesBois = venduProductions.length + livraisonsBois.length
-  const utiliseProductions = productions.filter(p => p.statut === "utilise")
+  const utiliseProductions = [
+    ...productions.filter(p => p.statut === "utilise").map(p => ({ ...p, cleHistorique: `lot-${p.id}`, quantiteUtilisee: quantiteBois(p) })),
+    ...productions.flatMap(p => (p.mouvementsCommerciaux ?? []).map(m => ({ ...p, cleHistorique: m.id, date: m.date,
+      destination: m.notes, quantiteUtilisee: { quantite: m.quantite, unite: m.unite } }))),
+  ].sort((a, b) => b.date.localeCompare(a.date))
 
   const stockVolume = stockProductions.reduce((sum, p) => sum + (p.volumeM3 || 0), 0)
   const venduVolume = venduProductions.reduce((sum, p) => sum + (p.volumeM3 || 0), 0) + livraisonsBois.reduce((sum, { lot, vente }) => {
@@ -1402,13 +1390,15 @@ function ProductionBoisSubTab() {
   }
 
   const handleUtiliser = async () => {
-    if (!selectedProduction) return
+    if (!selectedProduction || isSubmitting) return
+    setIsSubmitting(true)
     try {
       const res = await fetch(`/api/arbres/bois/${selectedProduction.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           statut: "utilise",
+          cleIdempotence: crypto.randomUUID(),
           destination: utiliseData.destination,
         }),
       })
@@ -1424,7 +1414,7 @@ function ProductionBoisSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
-    }
+    } finally { setIsSubmitting(false) }
   }
 
   const handleDelete = async (id: number) => {
@@ -1563,7 +1553,7 @@ function ProductionBoisSubTab() {
                             <Euro className="h-4 w-4 mr-1" />
                             Vendre
                           </Button>
-                          <Button variant="ghost" size="sm" disabled={p.stockDisponibleCommercial != null} onClick={() => openUtiliseDialog(p)}>
+                          <Button variant="ghost" size="sm" disabled={isSubmitting} onClick={() => openUtiliseDialog(p)}>
                             Utiliser
                           </Button>
                           <Button variant="ghost" size="sm" disabled={p.stockDisponibleCommercial != null} onClick={() => handleDelete(p.id)}>
@@ -1657,10 +1647,10 @@ function ProductionBoisSubTab() {
                 </TableHeader>
                 <TableBody>
                   {utiliseProductions.map((p) => (
-                    <TableRow key={p.id}>
+                    <TableRow key={p.cleHistorique}>
                       <TableCell>{new Date(p.date).toLocaleDateString("fr-FR")}</TableCell>
                       <TableCell>{libelleTypeBois(p.type)}</TableCell>
-                      <TableCell className="text-right">{p.volumeM3 ? libelleVolumeBois(p.volumeM3) : "-"}</TableCell>
+                      <TableCell className="text-right">{p.quantiteUtilisee.quantite.toLocaleString("fr-FR")} {p.quantiteUtilisee.unite}</TableCell>
                       <TableCell>{labelDestinationBois(p.destination)}</TableCell>
                     </TableRow>
                   ))}
@@ -1893,7 +1883,7 @@ function ProductionBoisSubTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={handleUtiliser} className="w-full">
+              <Button disabled={isSubmitting} onClick={handleUtiliser} className="w-full">
                 Confirmer
               </Button>
             </div>

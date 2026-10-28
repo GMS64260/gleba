@@ -11,7 +11,7 @@ export function prixHTDuStock(a: ArticleStockCommercial, sansTaxe: boolean) {
   return a.prixTTC == null ? null : Math.round(a.prixTTC / (sansTaxe ? 1 : 1 + a.tauxTVA / 100) * 10000) / 10000
 }
 
-export function ChoisirStock({ onChoisir, preselection }: { onChoisir: (a: ArticleStockCommercial) => void; preselection?: string }) {
+export function ChoisirStock({ onChoisir, preselection, dateEffet }: { onChoisir: (a: ArticleStockCommercial) => void; preselection?: string; dateEffet?: string }) {
   const [articles, setArticles] = React.useState<ArticleStockCommercial[]>([])
   const [charge, setCharge] = React.useState(true)
   const [erreur, setErreur] = React.useState('')
@@ -23,8 +23,8 @@ export function ChoisirStock({ onChoisir, preselection }: { onChoisir: (a: Artic
   const preselectionFaite = React.useRef(false)
   React.useEffect(() => {
     const controller = new AbortController()
-    setCharge(true); setErreur('')
-    fetch('/api/comptabilite/documents/stock', { signal: controller.signal })
+    setCharge(true); setErreur(''); setArticles([]); setChoix('')
+    fetch('/api/comptabilite/documents/stock' + (dateEffet ? `?date=${encodeURIComponent(dateEffet)}` : ''), { signal: controller.signal })
       .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Stocks indisponibles'); return j.data as ArticleStockCommercial[] })
       .then((liste) => {
         setArticles(liste)
@@ -34,7 +34,7 @@ export function ChoisirStock({ onChoisir, preselection }: { onChoisir: (a: Artic
       .catch((e) => { if (!controller.signal.aborted) setErreur(e.message) })
       .finally(() => { if (!controller.signal.aborted) setCharge(false) })
     return () => controller.abort()
-  }, [version, preselection])
+  }, [version, preselection, dateEffet])
   const visibles = articles.filter((a) => `${a.nom} ${a.categorie} ${a.dateLot || ''}`.toLocaleLowerCase('fr-FR').includes(recherche.toLocaleLowerCase('fr-FR')))
   const selection = articles.find((a) => cleArticle(a) === choix)
   return <div className="space-y-3 rounded-lg border border-green-200 bg-green-50/50 p-3">

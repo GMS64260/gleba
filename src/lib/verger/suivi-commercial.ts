@@ -21,7 +21,7 @@ export async function chargerSuiviCommercialVerger(
   const resultat = new Map<number, VenteCommercialeVerger[]>()
   if (!ids.length) return resultat
   const mouvements = await db.mouvementStockCommercial.findMany({
-    where: { userId, origineRetourId: null, ...(nature === 'fruit' ? { fruitId: { in: ids } } : { boisId: { in: ids } }) },
+    where: { userId, nature: 'livraison', origineRetourId: null, ...(nature === 'fruit' ? { fruitId: { in: ids } } : { boisId: { in: ids } }) },
     select: {
       id: true, fruitId: true, boisId: true, quantite: true, unite: true, date: true, factureId: true,
       document: { select: { id: true, userId: true, numero: true, clientNom: true, factureId: true, emetteurSnapshot: true } },

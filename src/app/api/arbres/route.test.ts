@@ -21,8 +21,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  const db = {
+    $executeRaw: vi.fn(),
     arbre: { create: mocks.arbreCreate },
     parcelleGeo: {
       findFirst: mocks.parcelleFindFirst,
@@ -32,11 +33,14 @@ vi.mock("@/lib/prisma", () => ({
     espece: { findFirst: mocks.especeFindFirst, findMany: mocks.especeFindMany },
     zoneVerger: { findFirst: mocks.zoneFindFirst },
     porteGreffe: { findFirst: mocks.porteGreffeFindFirst },
-  },
-}))
+  }
+  return { default: { ...db, $transaction: (fn: (tx: typeof db) => unknown) => fn(db) } }
+})
 vi.mock("@/lib/verger/creation-arbre", () => ({
   genererCalendrierEntretien: mocks.genererCalendrierEntretien,
 }))
+
+vi.mock("@/lib/auto-compta", () => ({ createDepenseFromAchatArbre: vi.fn() }))
 
 import { POST } from "./route"
 
