@@ -1,3 +1,4 @@
+import { masquerReferencesCampagnes } from "@/lib/verger/references-campagne"
 /**
  * GET /api/arbres/campagnes/[id]/export
  *
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "ID invalide" }, { status: 400 })
   }
 
-  const campagne = await prisma.campagnePlantation.findFirst({
+  const brute = await prisma.campagnePlantation.findFirst({
     where: { id: campagneId, userId: session.user.id },
     include: {
       observations: { orderBy: { date: "asc" } },
@@ -43,9 +44,11 @@ export async function GET(request: NextRequest, { params }: Params) {
       espece: { select: { id: true, nom: true, nomLatin: true } },
     },
   })
-  if (!campagne) {
+  if (!brute) {
     return NextResponse.json({ error: "Cohorte introuvable" }, { status: 404 })
   }
+
+  const [campagne] = await masquerReferencesCampagnes(prisma, session.user.id, [brute])
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },

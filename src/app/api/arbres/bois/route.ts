@@ -6,10 +6,13 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { chargerSuiviDesLignes } from "@/lib/comptabilite/suivi-ecriture"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { genererNumeroLot, m3PleinToStere, stereToM3Plein } from "@/lib/recolte/lot"
 // Types de production bois : liste unique partagée avec l'écran (QA cmvnp0dm9).
 import { refusTypeProductionBois } from "@/lib/verger/production-bois"
+import { prixFruitApi, dateRecolteApi } from '@/lib/verger/creation-recolte'
+import { ErreurVerger } from '@/lib/verger/erreur'
 
 // DEV3 #4 — Destinations canoniques (audit Marc 2026-05-14)
 export const DESTINATIONS_BOIS = [
@@ -81,7 +84,8 @@ export async function GET(request: NextRequest) {
       orderBy: { date: "desc" },
     })
 
-    return NextResponse.json(productions)
+    const suivi = await chargerSuiviDesLignes(userId, productions.filter(p => p.statut === 'vendu').map(p => ({ id: String(p.id), source: 'ProductionBois', sourceId: p.id, factureId: p.factureId })))
+    return NextResponse.json(productions.map(p => ({ ...p, ecriture: suivi.get(String(p.id))?.ecriture })))
   } catch (err) {
     console.error("GET /api/arbres/bois error:", err)
     return NextResponse.json(
@@ -99,6 +103,7 @@ export async function POST(request: NextRequest) {
   try {
     const userId = session!.user.id
     const body = await request.json()
+    const prixVente = prixFruitApi(body.prixVente, 'prixVente')
 
     // Validation. Un type hors liste n'aurait aucun libellé à afficher sur la
     // vente ni sur la facture (QA cmvnp0dm9).
@@ -137,7 +142,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const dateProd = body.date ? new Date(body.date) : new Date()
+    const dateProd = dateRecolteApi(body.date, 'date', new Date())!
 
     // DEV3 #4 — Conversion automatique stère ↔ m³ plein
     // Si l'utilisateur saisit l'un, on calcule l'autre.
@@ -149,13 +154,13 @@ export async function POST(request: NextRequest) {
     // DEV3 #4 — Parcelle d'origine : par défaut celle de l'arbre, surchargeable
     const parcelleId =
       body.parcelleId !== undefined ? body.parcelleId : arbre?.parcelleGeoId ?? null
+    if (parcelleId != null && typeof parcelleId !== 'string') throw new ErreurVerger('Parcelle invalide.', 400, 'parcelleId')
+    const parcelle = parcelleId ? await prisma.parcelleGeo.findFirst({ where: { id: parcelleId, userId }, select: { nom: true } }) : null
+    if (parcelleId && !parcelle) throw new ErreurVerger('Parcelle non trouvée.', 400, 'parcelleId')
 
     // DEV3 #4 — N° de lot auto YYYYMMDD-PARCELLE-ESPECE-NN si non fourni
     let numLot = body.numLot || null
     if (!numLot) {
-      const parcelleNom = parcelleId
-        ? (await prisma.parcelleGeo.findUnique({ where: { id: parcelleId }, select: { nom: true } }))?.nom
-        : null
       const dayStart = new Date(dateProd)
       dayStart.setHours(0, 0, 0, 0)
       const dayEnd = new Date(dateProd)
@@ -169,7 +174,7 @@ export async function POST(request: NextRequest) {
       })
       numLot = genererNumeroLot({
         date: dateProd,
-        parcelleNom: parcelleNom ?? null,
+        parcelleNom: parcelle?.nom ?? null,
         espece: arbre?.espece ?? body.type,
         numeroSequence: sameDayCount + 1,
       })
@@ -186,7 +191,7 @@ export async function POST(request: NextRequest) {
         poidsKg: body.poidsKg ? parseFloat(body.poidsKg) : null,
         statut: "en_stock",
         destination: body.destination || null,
-        prixVente: body.prixVente ? parseFloat(body.prixVente) : null,
+        prixVente: prixVente ?? null,
         notes: body.notes || null,
         // DEV3 #4
         parcelleId,
@@ -207,6 +212,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(production, { status: 201 })
   } catch (err) {
+    if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     console.error("POST /api/arbres/bois error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la création de la production de bois" },

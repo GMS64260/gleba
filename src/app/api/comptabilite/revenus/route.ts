@@ -1,3 +1,4 @@
+import { montantVenteFruit, periodeVenteVerger } from "@/lib/verger/montant-vente"
 /**
  * API Revenus unifiés
  * GET /api/comptabilite/revenus
@@ -51,8 +52,8 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           statut: 'vendu',
-          dateVente: { gte: startOfYear, lte: endOfYear },
-          prixKg: { not: null },
+          ...periodeVenteVerger(startOfYear, endOfYear),
+          AND: [{ OR: [{ prixKg: { not: null } }, { prixTotal: { not: null } }] }],
         },
         orderBy: { dateVente: 'desc' },
         include: {
@@ -64,8 +65,8 @@ export async function GET(request: NextRequest) {
       prisma.productionBois.findMany({
         where: {
           userId,
-          date: { gte: startOfYear, lte: endOfYear },
-          destination: 'vente',
+          ...periodeVenteVerger(startOfYear, endOfYear),
+          statut: 'vendu',
           prixVente: { not: null },
         },
         orderBy: { date: 'desc' },
@@ -216,9 +217,9 @@ export async function GET(request: NextRequest) {
         quantite: r.quantite,
         unite: 'kg',
         prixUnitaire: r.prixKg,
-        montant: r.quantite * (r.prixKg || 0),
-        client: null,
-        paye: null, // Pas de tracking paiement
+        montant: montantVenteFruit(r),
+        client: r.clientNom,
+        paye: false, // Le miroir ou le journal remplace ce défaut ci-dessous.
         categorie: 'Fruits',
         factureId: r.factureId,
       })
@@ -226,12 +227,6 @@ export async function GET(request: NextRequest) {
 
     // ProductionBois -> revenus
     venteBois.forEach(b => {
-      // DEV1 Ticket 4 (audit QA 2026-05-14) : avant ce fix, `client` et
-      // `paye` étaient hardcodés à null. La ligne affichée dans
-      // /comptabilite/transactions présentait "Client : vide" + "Statut : N/A"
-      // alors que le champ existe en BDD (b.clientNom) et que la vente est
-      // de facto encaissée si une dateVente / factureId est set.
-      const facturee = b.factureId != null || b.dateVente != null
       revenues.push({
         id: `bois-${b.id}`,
         source: 'ProductionBois',
@@ -250,9 +245,8 @@ export async function GET(request: NextRequest) {
         prixUnitaire: null,
         montant: b.prixVente || 0,
         client: b.clientNom ?? null,
-        // Si dateVente est renseigné OU une facture a été créée, on
-        // considère la transaction payée. Sinon, statut "à régler".
-        paye: facturee,
+        // Le suivi du miroir ou du journal est appliqué après l'agrégation.
+        paye: false,
         categorie: 'Bois',
         factureId: b.factureId,
       })

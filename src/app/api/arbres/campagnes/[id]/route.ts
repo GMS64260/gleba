@@ -1,3 +1,5 @@
+import { verifierReferencesCampagne, masquerReferencesCampagnes } from "@/lib/verger/references-campagne"
+import { ErreurVerger } from "@/lib/verger/erreur"
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -46,8 +48,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Campagne non trouvée" }, { status: 404 })
     }
 
-    return NextResponse.json(campagne)
+    return NextResponse.json((await masquerReferencesCampagnes(prisma, session!.user.id, [campagne]))[0])
   } catch (err) {
+    if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("GET /api/arbres/campagnes/[id] error:", err)
     return NextResponse.json(
@@ -77,6 +80,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json()
+
+    await verifierReferencesCampagne(prisma, session!.user.id, body)
 
     const campagne = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
@@ -140,8 +145,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return campagne
     })
 
-    return NextResponse.json(campagne)
+    return NextResponse.json((await masquerReferencesCampagnes(prisma, session!.user.id, [campagne]))[0])
   } catch (err) {
+    if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("PUT /api/arbres/campagnes/[id] error:", err)
     return NextResponse.json(
@@ -178,6 +184,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("DELETE /api/arbres/campagnes/[id] error:", err)
     return NextResponse.json(

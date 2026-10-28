@@ -1,3 +1,4 @@
+import { masquerReferencesCampagnes } from "@/lib/verger/references-campagne"
 /**
  * Génération d'un brouillon de campagne "Regarnissage" depuis une cohorte
  * mère dont le taux de reprise < 90 % (PROMPT 24 §3).
@@ -49,6 +50,8 @@ export async function POST(_request: NextRequest, { params }: Params) {
       )
     }
 
+    const [visible] = await masquerReferencesCampagnes(prisma, session.user.id, [mere])
+
     const nouvelle = await prisma.campagnePlantation.create({
       data: {
         userId: session.user.id,
@@ -58,14 +61,14 @@ export async function POST(_request: NextRequest, { params }: Params) {
         cause: "echec_plantation",
         peuplementPrecedent: mere.peuplementPrecedent,
         essencePrecedente: mere.essencePrecedente,
-        porteGreffeId: mere.porteGreffeId,
+        porteGreffeId: visible.porteGreffeId,
         typePlant: mere.typePlant,
         conduite: mere.conduite,
         labelProvenance: mere.labelProvenance,
-        parcelleGeoId: mere.parcelleGeoId,
-        zoneVergerId: mere.zoneVergerId,
+        parcelleGeoId: visible.parcelleGeoId,
+        zoneVergerId: visible.zoneVergerId,
         surfaceHa: mere.surfaceHa,
-        especeId: mere.especeId,
+        especeId: visible.especeId,
         essenceLibre: mere.essenceLibre,
         varieteOuProvenance: mere.varieteOuProvenance,
         nombrePlants: manquants,

@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { montantVenteFruit, periodeVenteVerger } from '@/lib/verger/montant-vente'
 import { genererFec, serialiserFec, validerEquilibre, type FecInputVente, type FecInputDepense } from '@/lib/comptabilite/fec'
 import { getTerritoire, collecteTvaFrancaise } from '@/lib/territoires'
 import { chargerSuiviDesSources, cleSource } from '@/lib/comptabilite/suivi-ecriture'
@@ -120,7 +121,7 @@ async function exporterFec(request: NextRequest) {
     prisma.productionBois.findMany({
       where: {
         userId,
-        date: { gte: start, lte: end },
+        ...periodeVenteVerger(start, end),
         statut: 'vendu',
         prixVente: { not: null },
         factureId: null,
@@ -132,9 +133,8 @@ async function exporterFec(request: NextRequest) {
     prisma.recolteArbre.findMany({
       where: {
         userId,
-        date: { gte: start, lte: end },
+        ...periodeVenteVerger(start, end),
         statut: 'vendu',
-        prixTotal: { not: null },
         factureId: null,
       },
       include: { arbre: { select: { espece: true, nom: true } } },
@@ -208,9 +208,11 @@ async function exporterFec(request: NextRequest) {
     chargerFecReglements(userId, start, end),
   ])
   function suiviDeLaSource(sourceType: string, sourceId: number, refSource: string, description: string) {
-    const suivi = suiviSources.parSource.get(cleSource(sourceType, sourceId))?.suivi
+    const ecriture = suiviSources.parSource.get(cleSource(sourceType, sourceId))
+    const suivi = ecriture?.suivi
     const piece = suivi?.numeroPiece?.trim()
     return {
+      paye: ecriture?.paye ?? true,
       reglementDetaille: soldesDetail.has(cleSourceReglement('vente', sourceType, sourceId)),
       modeReglement: suivi?.modeReglement ?? null,
       numeroPiece: piece || refSource,
@@ -264,12 +266,12 @@ async function exporterFec(request: NextRequest) {
       montantHT: ht,
       montantTVA: tva,
       clientNom: b.clientNom,
-      paye: true,
     })
   }
   // DEV3 #5 - Injection ventes RecolteArbre directes (sans facture)
   for (const r of ventesFruits) {
-    const ttc = r.prixTotal as number
+    const ttc = montantVenteFruit(r)
+    if (ttc <= 0) continue
     const tauxTVA = 5.5  // Fruits frais : 5.5% TVA réduite
     const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
     const tva = Math.round((ttc - ht) * 100) / 100
@@ -284,7 +286,6 @@ async function exporterFec(request: NextRequest) {
       montantHT: ht,
       montantTVA: tva,
       clientNom: r.clientNom,
-      paye: true,
     })
   }
 

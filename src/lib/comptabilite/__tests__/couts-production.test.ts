@@ -1,8 +1,8 @@
 /**
  * TICKET cmsog2niy — revenus Verger de computeCoutsProduction : la carte
  * atelier doit compter les VenteManuelle module='verger' saisies à la main
- * (ex. vente de bois de chauffage dans Transactions), en excluant les miroirs
- * auto (recolte_arbre, production_bois) déjà sommés via les sources brutes.
+ * (ex. vente de bois de chauffage dans Transactions), ainsi que les BL et
+ * avoirs via le revenu comptable du module, sans resommer les sources brutes.
  *
  * TICKET cmsoez28o — `totaux.depensesComptables` expose la SSOT dépenses du
  * dashboard (getKpiCompta) pour que l'écran affiche l'écart avec les coûts
@@ -77,16 +77,11 @@ describe('computeCoutsProduction — revenus Verger', () => {
     mocks.venteProduitFindMany.mockResolvedValue([])
     mocks.abattageFindMany.mockResolvedValue([])
     mocks.venteManuelleFindMany.mockResolvedValue([])
-    // aggregate est appelé pour le verger (module='verger') ET le potager
-    // (module='potager') : on route sur le where pour rester explicite.
-    mocks.venteManuelleAggregate.mockImplementation(async (args: { where?: { module?: string } }) => {
-      if (args?.where?.module === 'verger') return { _sum: { montant: 450 } }
-      return { _sum: { montant: 0 } }
-    })
+    mocks.venteManuelleAggregate.mockResolvedValue({ _sum: { montant: 0 } })
     mocks.consommationAlimentFindMany.mockResolvedValue([])
     mocks.soinAnimalFindMany.mockResolvedValue([])
     mocks.userStockEspeceFindMany.mockResolvedValue([])
-    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 1234.56, depensesYtd: 999.99, revenusParModuleYtd: { parModule: { potager: 0 } } })
+    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 1234.56, depensesYtd: 999.99, revenusParModuleYtd: { parModule: { potager: 0, verger: 450 } } })
   })
 
   it('additionne les VenteManuelle module=verger saisies à la main aux récoltes et au bois', async () => {
@@ -94,6 +89,7 @@ describe('computeCoutsProduction — revenus Verger', () => {
       { statut: 'vendu', prixTotal: 100, prixKg: null, quantite: 10, arbre },
     ])
     mocks.productionBoisFindMany.mockResolvedValue([{ prixVente: 50 }])
+    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 1234.56, depensesYtd: 999.99, revenusParModuleYtd: { parModule: { potager: 0, verger: 600 } } })
 
     const res = await computeCoutsProduction('user-1', YEAR)
 
@@ -101,18 +97,12 @@ describe('computeCoutsProduction — revenus Verger', () => {
     expect(res.parModule.verger.revenus).toBe(600)
   })
 
-  it('exclut les miroirs auto recolte_arbre/production_bois de l’agrégat verger (pas de double comptage)', async () => {
-    await computeCoutsProduction('user-1', YEAR)
-
-    const callVerger = mocks.venteManuelleAggregate.mock.calls
-      .map((c) => c[0])
-      .find((args) => args?.where?.module === 'verger')
-    expect(callVerger).toBeDefined()
-    expect(callVerger.where.NOT).toEqual({
-      auto: true,
-      sourceType: { in: ['recolte_arbre', 'production_bois'] },
-    })
-    expect(callVerger.where.userId).toBe('user-1')
+  it('reprend le revenu comptable après BL et avoir sans ajouter la récolte physique', async () => {
+    mocks.recolteArbreFindMany.mockResolvedValue([{ statut: 'vendu', prixTotal: 100, quantite: 10, arbre }])
+    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 1234.56, depensesYtd: 999.99, revenusParModuleYtd: { parModule: { potager: 0, verger: 580 } } })
+    const res = await computeCoutsProduction('user-1', YEAR)
+    expect(res.parModule.verger.revenus).toBe(580)
+    expect(res.parModule.verger.marge).toBe(580)
   })
 
   it('compte une vente manuelle verger même sans récolte ni bois', async () => {
@@ -159,7 +149,7 @@ describe('computeCoutsProduction — unité des quantités et des ratios', () =>
       mock.mockResolvedValue([])
     }
     mocks.venteManuelleAggregate.mockResolvedValue({ _sum: { montant: 0 } })
-    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 0, depensesYtd: 0, revenusParModuleYtd: { parModule: { potager: 0 } } })
+    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 0, depensesYtd: 0, revenusParModuleYtd: { parModule: { potager: 0, verger: 0 } } })
   })
 
   it('rend le coût et le prix moyen PAR TIGE quand la ferme compte en tiges', async () => {

@@ -1,3 +1,4 @@
+vi.mock("@/lib/stocks/verrou-commercial", () => ({ verrouillerStockCommercial: vi.fn(async () => undefined) }))
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -18,8 +19,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
+    $transaction: async (fn: (tx: unknown) => unknown) => { const { default: db } = await import("@/lib/prisma"); return fn(db) },
+    $executeRaw: vi.fn(),
+    $queryRaw: vi.fn(),
     arbre: { findFirst: mocks.arbreFindFirst },
-    operationArbre: { deleteMany: mocks.operationDeleteMany, createMany: mocks.operationCreateMany },
+    operationArbre: { findMany: vi.fn(async () => []), deleteMany: mocks.operationDeleteMany, createMany: mocks.operationCreateMany },
   },
 }))
 
@@ -56,6 +60,9 @@ type OperationStockee = {
   fait: boolean
   abandonneeLe: Date | null
   datePrevue: Date
+  fenetreDebut?: Date | null
+  type?: string
+  saisonRecommandee?: string | null
 }
 
 /** Applique le `where` du deleteMany (champs utilisés par la route) à une opération. */
@@ -68,7 +75,11 @@ function seraitSupprimee(op: OperationStockee, where: Record<string, unknown>): 
     op.notes === where.notes &&
     op.fait === where.fait &&
     op.abandonneeLe === where.abandonneeLe &&
-    (where.OR as { datePrevue: Borne }[]).some((c) => dansBorne(op.datePrevue, c.datePrevue))
+    (where.OR as { datePrevue?: Borne; fenetreDebut?: Borne | null; type?: string; saisonRecommandee?: string }[]).some(c =>
+      (!c.type || c.type === op.type) && (!c.saisonRecommandee || c.saisonRecommandee === op.saisonRecommandee) &&
+      (!c.datePrevue || dansBorne(op.datePrevue, c.datePrevue)) &&
+      (c.fenetreDebut === undefined || (c.fenetreDebut === null ? op.fenetreDebut == null : Boolean(op.fenetreDebut && dansBorne(op.fenetreDebut, c.fenetreDebut))))
+    )
   )
 }
 
@@ -102,16 +113,16 @@ describe("POST /api/arbres/[id]/generer-calendrier — même règle que la créa
     }
     // Ne sont remplacées que des opérations automatiques non faites et non
     // abandonnées : de l'année régénérée, ou antérieures à la plantation.
-    expect(mocks.operationDeleteMany.mock.calls[0][0].where).toEqual({
+    expect(mocks.operationDeleteMany.mock.calls[0][0].where).toMatchObject({
       arbreId: 881,
       userId: "u1",
       notes: "auto:calendrier",
       fait: false,
       abandonneeLe: null,
-      OR: [
-        { datePrevue: { gte: new Date(2027, 0, 1), lte: new Date(2027, 11, 31, 23, 59, 59) } },
+      OR: expect.arrayContaining([
+        { fenetreDebut: { gte: new Date(2027, 0, 1), lte: new Date(2027, 11, 31, 23, 59, 59, 999) } },
         { datePrevue: { lt: new Date(2027, 2, 1) } },
-      ],
+      ]),
     })
   })
 

@@ -311,17 +311,14 @@ export async function computeCoutsProduction(userId: string, year: number) {
   // ============================================================
   // 2. VERGER : Arbres + Récoltes arbres + Opérations + Bois
   // ============================================================
-  const [recoltesArbres, opsArbres, ventesArbres, depensesVerger, ventesManuellesVergerAgg] = await Promise.all([
+  const [recoltesArbres, opsArbres, depensesVerger] = await Promise.all([
     prisma.recolteArbre.findMany({
       where: { userId, date: dateRange },
       include: { arbre: { select: { nom: true, espece: true, especeId: true } } },
     }),
     prisma.operationArbre.findMany({
-      where: { userId, date: dateRange },
+      where: { userId, fait: true, date: dateRange },
       include: { arbre: { select: { nom: true, espece: true, especeId: true } } },
-    }),
-    prisma.productionBois.findMany({
-      where: { userId, date: dateRange, statut: 'vendu' },
     }),
     prisma.depenseManuelle.findMany({
       // Lot 5 : les OperationArbre ont désormais une écriture auto module
@@ -335,28 +332,9 @@ export async function computeCoutsProduction(userId: string, year: number) {
         NOT: { auto: true, sourceType: 'operation_arbre' },
       },
     }),
-    // Une VenteManuelle saisie à la main dans Transactions avec
-    // module='verger' (ex. vente de bois de chauffage) doit compter dans la
-    // carte atelier. On exclut les miroirs auto des sources brutes déjà
-    // sommées ci-dessous (recolte_arbre, production_bois — cf. auto-compta)
-    // pour ne pas doubler ; ces ventes s'ajoutent aux récoltes et au bois.
-    prisma.venteManuelle.aggregate({
-      where: {
-        userId,
-        module: 'verger',
-        date: dateRange,
-        NOT: { auto: true, sourceType: { in: ['recolte_arbre', 'production_bois'] } },
-      },
-      _sum: { montant: true },
-    }),
   ])
 
   // Agrégation verger par espece d'arbre
-  const vergerRevenus = recoltesArbres
-    .filter((r) => r.statut === 'vendu' && ((r.prixKg ?? 0) > 0 || (r.prixTotal ?? 0) > 0))
-    .reduce((sum, r) => sum + (r.prixTotal || (r.quantite * (r.prixKg || 0))), 0)
-    + ventesArbres.reduce((sum, v) => sum + (v.prixVente || 0), 0)
-    + (ventesManuellesVergerAgg._sum.montant ?? 0)
   const vergerProduction = recoltesArbres.reduce((sum, r) => sum + r.quantite, 0)
   const vergerCouts = opsArbres.reduce((sum, o) => sum + (o.cout || 0), 0)
     + depensesVerger.reduce((sum, d) => sum + d.montant, 0)
@@ -513,6 +491,9 @@ export async function computeCoutsProduction(userId: string, year: number) {
   // réponse est celui de la SSOT, identique sur tous les autres écrans.
   const asOf = new Date()
   const kpiCompta = await getKpiCompta(userId, year, asOf)
+  // Même ventilation que le CA : ventes natives, BL facturés et avoirs,
+  // à leur date comptable, sans compter deux fois la sortie physique.
+  const vergerRevenus = kpiCompta.revenusParModuleYtd.parModule.verger
   const totalRevenus = kpiCompta.revenusYtd
   const revenusPotagerComptables = kpiCompta.revenusParModuleYtd.parModule.potager
 

@@ -15,6 +15,7 @@ import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projecti
 import { formatQuantite } from '@/lib/recolte/quantites'
 import { selectSuiviConserve, suiviConserve, type SuiviVente } from '@/lib/comptabilite/ecriture-derivee'
 import { libellesVenteBois } from '@/lib/verger/production-bois'
+import { montantVenteFruit } from '@/lib/verger/montant-vente'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
 import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture } from '@/lib/comptabilite/suivi-reglement-source'
 
@@ -292,7 +293,7 @@ export async function createVenteFromRecolteArbre(
     })
   }
 
-  const montantTTC = recolteArbre.prixTotal ?? (recolteArbre.quantite * (recolteArbre.prixKg || 0))
+  const montantTTC = montantVenteFruit(recolteArbre)
   if (montantTTC <= 0) { await deleteAutoEntry('recolte_arbre', recolteArbre.id, 'vente', userId, tx); return null }
 
   const { montantHT, montantTVA } = calculTVA(montantTTC, 5.5)
@@ -303,6 +304,7 @@ export async function createVenteFromRecolteArbre(
   return inAutoComptaTransaction(tx, async (tx) => {
     // Scopé au compte, comme la lecture du suivi (revue du 2026-10-20).
     const miroir = { userId, sourceType: 'recolte_arbre', sourceId: recolteArbre.id, auto: true }
+    const ancien = await tx.venteManuelle.findFirst({ where: miroir, select: { paye: true } })
     const suivi = await suiviDuMiroirVente(tx, miroir, montantTTC)
     await tx.venteManuelle.deleteMany({ where: miroir })
 
@@ -322,7 +324,7 @@ export async function createVenteFromRecolteArbre(
         clientId: recolteArbre.clientId || null,
         clientNom: recolteArbre.clientNom || null,
         module: 'verger',
-        paye: true,
+        paye: ancien?.paye ?? false,
         sourceType: 'recolte_arbre',
         sourceId: recolteArbre.id,
         auto: true,
@@ -628,6 +630,7 @@ export async function createVenteFromProductionBois(
   return inAutoComptaTransaction(tx, async (tx) => {
     // Scopé au compte, comme la lecture du suivi (revue du 2026-10-20).
     const miroir = { userId, sourceType: 'production_bois', sourceId: productionBois.id, auto: true }
+    const ancien = await tx.venteManuelle.findFirst({ where: miroir, select: { paye: true } })
     const suivi = await suiviDuMiroirVente(tx, miroir, montantTTC)
     await tx.venteManuelle.deleteMany({ where: miroir })
 
@@ -646,7 +649,7 @@ export async function createVenteFromProductionBois(
         clientId: productionBois.clientId || null,
         clientNom: productionBois.clientNom || null,
         module: 'verger',
-        paye: true,
+        paye: ancien?.paye ?? false,
         sourceType: 'production_bois',
         sourceId: productionBois.id,
         auto: true,

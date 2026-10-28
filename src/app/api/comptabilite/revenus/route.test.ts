@@ -126,6 +126,7 @@ describe("GET /api/comptabilite/revenus — suivi des lignes dérivées", () => 
     })
     expect(lectureMiroirs.select).toEqual({
       id: true,
+      paye: true,
       sourceType: true,
       sourceId: true,
       modeReglement: true,
