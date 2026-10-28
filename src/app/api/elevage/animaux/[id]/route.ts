@@ -182,10 +182,14 @@ export async function PATCH(
     // PROMPT 24 — bascule lactation longue (trait sans tarir)
     if (body.lactationLongue !== undefined) data.lactationLongue = Boolean(body.lactationLongue)
 
-    const animal = await prisma.animal.update({
-      where: { id: parseInt(id) },
-      data,
-      include: { especeAnimale: true, lot: true },
+    const animal = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
+      const animal = await tx.animal.update({
+        where: { id: parseInt(id) },
+        data,
+        include: { especeAnimale: true, lot: true },
+      })
+      return animal
     })
 
     return NextResponse.json({ data: masquerReferentielsEmbarques(animal, session.user.id) })

@@ -18,6 +18,9 @@ import { Prisma } from '@prisma/client'
 import { collecteLaitSchema, updateCollecteLaitSchema } from '@/lib/validations/lait'
 import { causesAttenteCollectes, soinCouvrantCollecte } from '@/lib/elevage/attente-lait'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurElevage } from '@/lib/elevage/erreurs'
+import { protegerCollecteAffectee } from '@/lib/elevage/collecte-affectee'
 import {
   estAnimalCollectableLait,
   estLotCollectableLait,
@@ -194,44 +197,49 @@ export async function POST(request: NextRequest) {
     // le soin porte sur le MÊME animal/lot OU sur l'animal↔son lot (soin de lot
     // → collecte individuelle d'un membre, et inversement). Comparaison au jour
     // (collecte à 00:00, soin horodaté). Cf. lib attente-lait.
-    const soinCouvrant = await soinCouvrantCollecte(prisma, session.user.id, data.animalId ?? null, data.lotId ?? null, day)
-    const ecarte = (data.ecarteAttente ?? false) || soinCouvrant !== null
-
     if (data.lotFromageId) {
       const refusLot = await refusLotFromageHorsCompte(data.lotFromageId, session.user.id)
       if (refusLot) return refusLot
     }
 
-    // Upsert pour permettre "saisie identique à hier" / corrections
-    const existing = await prisma.collecteLait.findFirst({
-      where: {
+    const { collecte, soinCouvrant, existant } = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
+      // Même verrou que la fabrication : son affectation ne peut pas apparaître
+      // entre le contrôle d'une correction et son écriture.
+      const soinCouvrant = await soinCouvrantCollecte(tx, session.user.id, data.animalId ?? null, data.lotId ?? null, day)
+      const existing = await tx.collecteLait.findFirst({
+        where: {
+          userId: session.user.id,
+          date: day,
+          traite: data.traite,
+          animalId: data.animalId ?? null,
+          lotId: data.lotId ?? null,
+        },
+      })
+      if (existing) protegerCollecteAffectee(existing, { ...data, date: day })
+      const ecarte = soinCouvrant !== null || (body.ecarteAttente !== undefined ? data.ecarteAttente : existing?.ecarteAttente ?? false)
+
+      const payload = {
         userId: session.user.id,
         date: day,
         traite: data.traite,
         animalId: data.animalId ?? null,
         lotId: data.lotId ?? null,
-      },
+        quantiteLitres: data.quantiteLitres,
+        mgGpl: data.mgGpl,
+        mpGpl: data.mpGpl,
+        cellulesParMl: data.cellulesParMl,
+        temperatureC: data.temperatureC,
+        ecarteAttente: ecarte,
+        notes: data.notes,
+        lotFromageId: data.lotFromageId,
+      }
+
+      const collecte = existing
+        ? await tx.collecteLait.update({ where: { id: existing.id }, data: payload })
+        : await tx.collecteLait.create({ data: payload })
+      return { collecte, soinCouvrant, existant: Boolean(existing) }
     })
-
-    const payload = {
-      userId: session.user.id,
-      date: day,
-      traite: data.traite,
-      animalId: data.animalId ?? null,
-      lotId: data.lotId ?? null,
-      quantiteLitres: data.quantiteLitres,
-      mgGpl: data.mgGpl ?? null,
-      mpGpl: data.mpGpl ?? null,
-      cellulesParMl: data.cellulesParMl ?? null,
-      temperatureC: data.temperatureC ?? null,
-      ecarteAttente: ecarte,
-      notes: data.notes ?? null,
-      lotFromageId: data.lotFromageId ?? null,
-    }
-
-    const collecte = existing
-      ? await prisma.collecteLait.update({ where: { id: existing.id }, data: payload })
-      : await prisma.collecteLait.create({ data: payload })
 
     return NextResponse.json(
       {
@@ -240,9 +248,10 @@ export async function POST(request: NextRequest) {
           ? `Collecte écartée automatiquement : traitement « ${soinCouvrant.produit || soinCouvrant.type} » en temps d'attente lait jusqu'au ${soinCouvrant.finAttenteLait?.toLocaleDateString('fr-FR')}.`
           : null,
       },
-      { status: existing ? 200 : 201 }
+      { status: existant ? 200 : 201 }
     )
   } catch (err) {
+    if (err instanceof ErreurElevage) return NextResponse.json({ error: err.message, code: err.code }, { status: err.status })
     console.error('POST /api/elevage/collectes-lait error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
@@ -259,9 +268,6 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const { id, ...updates } = parsed.data
-    const existing = await prisma.collecteLait.findFirst({ where: { id, userId: session.user.id } })
-    if (!existing) return NextResponse.json({ error: 'Collecte non trouvée' }, { status: 404 })
-
     if (updates.lotFromageId) {
       const refusLot = await refusLotFromageHorsCompte(updates.lotFromageId, session.user.id)
       if (refusLot) return refusLot
@@ -274,19 +280,26 @@ export async function PATCH(request: NextRequest) {
     // change. La ré-intégration (flag → false), elle, ne se fait que sur
     // changement de date (audit 2026-06-11 : déplacer une collecte hors fenêtre
     // gardait l'ancien flag) pour ne pas effacer un écartement manuel.
-    const data: typeof updates & { ecarteAttente?: boolean } = { ...updates }
-    if (updates.ecarteAttente === undefined && (existing.animalId || existing.lotId)) {
-      const day = new Date(updates.date ?? existing.date)
-      day.setUTCHours(0, 0, 0, 0)
-      // Cross-granularité + comparaison au jour (cf. lib attente-lait).
-      const soinCouvrant = await soinCouvrantCollecte(prisma, session.user.id, existing.animalId, existing.lotId, day)
-      if (soinCouvrant) data.ecarteAttente = true
-      else if (updates.date) data.ecarteAttente = false
-    }
+    const collecte = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
+      const existing = await tx.collecteLait.findFirst({ where: { id, userId: session.user.id } })
+      if (!existing) throw new ErreurElevage('Collecte non trouvée', 404)
+      protegerCollecteAffectee(existing, updates)
+      const data: typeof updates & { ecarteAttente?: boolean } = { ...updates }
+      if (existing.animalId || existing.lotId) {
+        const day = new Date(updates.date ?? existing.date)
+        day.setUTCHours(0, 0, 0, 0)
+        // Cross-granularité + comparaison au jour (cf. lib attente-lait).
+        const soinCouvrant = await soinCouvrantCollecte(tx, session.user.id, existing.animalId, existing.lotId, day)
+        if (soinCouvrant) data.ecarteAttente = true
+        else if (updates.date && updates.ecarteAttente === undefined) data.ecarteAttente = false
+      }
 
-    const collecte = await prisma.collecteLait.update({ where: { id }, data })
+      return tx.collecteLait.update({ where: { id }, data })
+    })
     return NextResponse.json({ data: collecte })
   } catch (err) {
+    if (err instanceof ErreurElevage) return NextResponse.json({ error: err.message, code: err.code }, { status: err.status })
     console.error('PATCH /api/elevage/collectes-lait error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
@@ -300,17 +313,18 @@ export async function DELETE(request: NextRequest) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
 
-  const existing = await prisma.collecteLait.findFirst({ where: { id, userId: session.user.id } })
-  if (!existing) return NextResponse.json({ error: 'Collecte non trouvée' }, { status: 404 })
-
-  // Refus si déjà affectée à un lot fromage (intégrité traçabilité)
-  if (existing.lotFromageId) {
-    return NextResponse.json(
-      { error: 'Cette collecte est affectée à un lot fromage. Désaffectez-la d\'abord.' },
-      { status: 409 }
-    )
+  try {
+    await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
+      const existing = await tx.collecteLait.findFirst({ where: { id, userId: session.user.id } })
+      if (!existing) throw new ErreurElevage('Collecte non trouvée', 404)
+      if (existing.lotFromageId) throw new ErreurElevage('Cette collecte est affectée à une fabrication. Annulez cette fabrication avant de supprimer la collecte.')
+      await tx.collecteLait.delete({ where: { id } })
+    })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    if (err instanceof ErreurElevage) return NextResponse.json({ error: err.message }, { status: err.status })
+    console.error('DELETE /api/elevage/collectes-lait error:', err)
+    return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
-
-  await prisma.collecteLait.delete({ where: { id } })
-  return NextResponse.json({ success: true })
 }

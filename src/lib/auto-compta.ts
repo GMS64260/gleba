@@ -55,15 +55,16 @@ async function suiviDuMiroirVente(
   db: AutoComptaTx,
   where: Prisma.VenteManuelleWhereInput,
   montant?: number,
+  conserverPointage = false,
 ): Promise<SuiviVente & { paye?: boolean }> {
   if (typeof where.userId === 'string') await verrouillerReglements(db, where.userId)
   const ancienne = await db.venteManuelle.findFirst({
     where,
-    select: selectSuiviConserve() as Prisma.VenteManuelleSelect,
+    select: { ...selectSuiviConserve(), ...(conserverPointage ? { paye: true } : {}) } as Prisma.VenteManuelleSelect,
   })
   const identite = typeof where.userId === 'string' && typeof where.sourceType === 'string' && (typeof where.sourceId === 'number' || typeof where.sourceRef === 'string')
   const reglement = montant !== undefined && identite ? await synchroniserReglementSource(db, where.userId as string, cleSourceReglement('vente', where.sourceType as string, (where.sourceId ?? where.sourceRef) as number | string, where.sourceId == null), montant) : {}
-  return { ...suiviConserve(ancienne), ...reglement }
+  return { ...suiviConserve(ancienne), ...(conserverPointage && ancienne ? { paye: ancienne.paye } : {}), ...reglement }
 }
 
 /**
@@ -559,7 +560,7 @@ export async function createVenteFromAbattage(
   const animalInfo = abattage.animal?.nom || abattage.lot?.nom || 'Abattage'
 
   return inAutoComptaTransaction(tx, async (db) => {
-    const suivi = await suiviDuMiroirVente(db, { userId, sourceType: 'abattage', sourceId: abattage.id, auto: true }, montantTTC)
+    const suivi = await suiviDuMiroirVente(db, { userId, sourceType: 'abattage', sourceId: abattage.id, auto: true }, montantTTC, true)
     await db.venteManuelle.deleteMany({
       where: { userId, sourceType: 'abattage', sourceId: abattage.id, auto: true },
     })
@@ -577,7 +578,7 @@ export async function createVenteFromAbattage(
         montantTVA,
         montant: montantTTC,
         module: 'elevage',
-        paye: true,
+        paye: false,
         sourceType: 'abattage',
         sourceId: abattage.id,
         auto: true,

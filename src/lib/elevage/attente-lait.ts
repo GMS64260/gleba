@@ -56,9 +56,9 @@ type SoinCouvrant = { date: Date; finAttenteLait: Date | null; animalId: number 
 type CollecteCible = { animalId: number | null; lotId: number | null; date: Date }
 
 /** Un soin couvre-t-il une collecte ? (cible cross-granularité + fenêtre au jour) */
-type AppartenanceDatee = { animalId: number; lotId: number; dateDebut: Date; dateFin: Date | null }
+export type AppartenanceDatee = { animalId: number; lotId: number; dateDebut: Date; dateFin: Date | null }
 
-function lotALaDate(
+export function lotALaDate(
   animalId: number,
   date: Date,
   historiques: Map<number, AppartenanceDatee[]>,

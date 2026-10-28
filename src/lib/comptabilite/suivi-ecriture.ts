@@ -31,6 +31,7 @@ export const MIROIR_VENTE_PAR_SOURCE: Record<string, string> = {
 
 export interface EcritureDeLigne {
   id: number
+  /** Pointage des ventes dont le suivi vit sur le miroir comptable. */
   paye?: boolean
   suivi: Record<ChampSuiviSaisiVente, string | null>
 }

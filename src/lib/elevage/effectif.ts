@@ -15,6 +15,7 @@
  * GET /api/elevage/stats (dashboard « en lots ») pour qu'ils ne divergent plus.
  */
 import prisma from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 
 export interface LotEffectifInput {
   id: number
@@ -46,6 +47,7 @@ export interface LotEffectifResult {
 export async function reconstituerEffectifsLots(
   userId: string,
   lots: LotEffectifInput[],
+  db: Prisma.TransactionClient = prisma,
 ): Promise<Map<number, LotEffectifResult>> {
   const result = new Map<number, LotEffectifResult>()
   const lotIds = lots.map((l) => l.id)
@@ -59,7 +61,7 @@ export async function reconstituerEffectifsLots(
 
   // Une naissance ne crédite jamais implicitement le lot de la mère. Seul le
   // lot des petits explicitement choisi sur la mise bas est comptabilisé.
-  const naissances = await prisma.naissanceAnimale.findMany({
+  const naissances = await db.naissanceAnimale.findMany({
     where: { userId, lotId: { in: lotIds } },
     select: { lotId: true, nombreVivants: true },
   })
@@ -69,7 +71,7 @@ export async function reconstituerEffectifsLots(
     naissancesParLot.set(lotId, (naissancesParLot.get(lotId) ?? 0) + n.nombreVivants)
   }
 
-  const abattages = await prisma.abattage.groupBy({
+  const abattages = await db.abattage.groupBy({
     by: ['lotId'],
     where: { userId, lotId: { in: lotIds }, annule: false },
     _sum: { quantite: true },
@@ -82,7 +84,7 @@ export async function reconstituerEffectifsLots(
   // Abattages déjà rattachés à une fiche nominative : ils sont comptés dans la
   // somme ci-dessus, il ne faut donc pas les retrancher une seconde fois au
   // titre de la sortie de la fiche (cf. `sortiesParLot` plus bas).
-  const abattagesNominatifs = await prisma.abattage.groupBy({
+  const abattagesNominatifs = await db.abattage.groupBy({
     by: ['lotId'],
     where: { userId, lotId: { in: lotIds }, annule: false, animalId: { not: null } },
     _count: { _all: true },
@@ -99,7 +101,7 @@ export async function reconstituerEffectifsLots(
   // figeait à `quantiteActuelle` (6 initial + 3 naissances → 6 au lieu de 9) et
   // les petits « disparaissaient » du comptage. On somme donc les animaux
   // nominatifs présents (actifs) au comptage anonyme.
-  const nominatifs = await prisma.animal.groupBy({
+  const nominatifs = await db.animal.groupBy({
     by: ['lotId'],
     where: { userId, lotId: { in: lotIds }, statut: 'actif' },
     _count: { _all: true },
@@ -116,7 +118,7 @@ export async function reconstituerEffectifsLots(
   // comptait un animal actif de trop. Une fiche rattachée NOMME une tête du lot
   // (c'est le sens du plafond prudent) : sa sortie définitive — morte, vendue,
   // abattue — doit sortir cette tête du lot.
-  const sorties = await prisma.animal.groupBy({
+  const sorties = await db.animal.groupBy({
     by: ['lotId'],
     where: { userId, lotId: { in: lotIds }, statut: { not: 'actif' } },
     _count: { _all: true },

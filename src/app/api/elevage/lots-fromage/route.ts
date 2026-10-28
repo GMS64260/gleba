@@ -12,6 +12,8 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { lotFromageSchema } from '@/lib/validations/lait'
 import { prochainNumeroLot } from '@/lib/lait'
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurElevage } from '@/lib/elevage/erreurs'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -47,6 +49,7 @@ export async function POST(request: NextRequest) {
     const data = parsed.data
 
     const result = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       const numero = await prochainNumeroLot(tx, session.user.id, data.dateFabrication)
 
       // Vérifie que les collectes existent, appartiennent au user et ne sont pas déjà affectées
@@ -55,6 +58,7 @@ export async function POST(request: NextRequest) {
         const collectes = await tx.collecteLait.findMany({
           where: { id: { in: data.collecteIds }, userId: session.user.id },
         })
+        if (collectes.length !== new Set(data.collecteIds).size) throw new ErreurElevage('Une ou plusieurs collectes sont introuvables dans votre élevage.', 400)
         const refusees = collectes.filter((c) => c.lotFromageId && c.lotFromageId.length > 0)
         if (refusees.length > 0) {
           throw new Error(`${refusees.length} collecte(s) déjà affectée(s) à un autre lot.`)
@@ -109,24 +113,24 @@ export async function DELETE(request: NextRequest) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
 
-  const existing = await prisma.lotFromage.findFirst({
-    where: { id, userId: session.user.id },
-    include: { ventesProduit: { select: { id: true } } },
-  })
-  if (!existing) return NextResponse.json({ error: 'Lot non trouvé' }, { status: 404 })
-
-  if (existing.ventesProduit.length > 0) {
-    return NextResponse.json(
-      { error: 'Lot lié à une ou plusieurs ventes — suppression refusée pour préserver la traçabilité.' },
-      { status: 409 }
-    )
+  try {
+    await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
+      const existing = await tx.lotFromage.findFirst({
+        where: { id, userId: session.user.id },
+        include: { _count: { select: { ventesProduit: true, mouvements: true } } },
+      })
+      if (!existing) throw new ErreurElevage('Lot non trouvé', 404)
+      if (existing._count.ventesProduit || existing._count.mouvements) {
+        throw new ErreurElevage('Ce lot possède des ventes ou des sorties de cave. Suppression refusée pour préserver la traçabilité.')
+      }
+      await tx.collecteLait.updateMany({ where: { lotFromageId: id, userId: session.user.id }, data: { lotFromageId: null } })
+      await tx.lotFromage.delete({ where: { id } })
+    })
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    if (err instanceof ErreurElevage) return NextResponse.json({ error: err.message }, { status: err.status })
+    console.error('DELETE /api/elevage/lots-fromage error:', err)
+    return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
-
-  await prisma.$transaction(async (tx) => {
-    // Détache les collectes (gardées pour traçabilité)
-    await tx.collecteLait.updateMany({ where: { lotFromageId: id }, data: { lotFromageId: null } })
-    await tx.lotFromage.delete({ where: { id } })
-  })
-
-  return NextResponse.json({ success: true })
 }
