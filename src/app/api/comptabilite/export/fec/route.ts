@@ -17,6 +17,9 @@ import { genererFec, serialiserFec, validerEquilibre, type FecInputVente, type F
 import { getTerritoire, collecteTvaFrancaise } from '@/lib/territoires'
 import { chargerSuiviDesSources, cleSource } from '@/lib/comptabilite/suivi-ecriture'
 import { formatMontantFec } from '@/lib/comptabilite/fec-affichage'
+import { chargerSoldesReglements } from '@/lib/comptabilite/reglements'
+import { cleMiroirReglement, cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
+import { chargerFecReglements } from '@/lib/comptabilite/banque/fec-reglements'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -180,10 +183,23 @@ export async function GET(request: NextRequest) {
    * sont saisis, sinon la référence technique (`ELEV-<id>`…) et aucun mode.
    * La référence de la source reste lisible dans le libellé.
    */
+  const [soldesDetail, journalReglements] = await Promise.all([
+    chargerSoldesReglements(userId, [
+      ...ventes.map((v) => cleMiroirReglement('vente', v)),
+      ...depenses.map((d) => cleMiroirReglement('depense', d)),
+      ...ventesBois.map((v) => cleSourceReglement('vente', 'production_bois', v.id)),
+      ...ventesFruits.map((v) => cleSourceReglement('vente', 'recolte_arbre', v.id)),
+      ...ventesElevage.map((v) => cleSourceReglement('vente', 'vente_produit', v.id)),
+      ...ventesPotager.map((v) => cleSourceReglement('vente', 'recolte', v.id)),
+      ...abattagesVendus.map((v) => cleSourceReglement('vente', 'abattage', v.id)),
+    ]),
+    chargerFecReglements(userId, start, end),
+  ])
   function suiviDeLaSource(sourceType: string, sourceId: number, refSource: string, description: string) {
     const suivi = suiviSources.parSource.get(cleSource(sourceType, sourceId))?.suivi
     const piece = suivi?.numeroPiece?.trim()
     return {
+      reglementDetaille: soldesDetail.has(cleSourceReglement('vente', sourceType, sourceId)),
       modeReglement: suivi?.modeReglement ?? null,
       numeroPiece: piece || refSource,
       description: piece ? `${description} (${refSource})` : description,
@@ -203,6 +219,7 @@ export async function GET(request: NextRequest) {
     montantTVA: v.montantTVA,
     clientNom: v.clientNom,
     paye: v.paye,
+    reglementDetaille: soldesDetail.has(cleMiroirReglement('vente', v)),
   }))
 
   // DEV3 #5 - Injection des ventes ProductionBois (sans facture) au FEC.
@@ -351,6 +368,7 @@ export async function GET(request: NextRequest) {
     montantTVA: d.montantTVA,
     fournisseurNom: d.fournisseurNom,
     paye: d.paye,
+    reglementDetaille: soldesDetail.has(cleMiroirReglement('depense', d)),
   }))
 
   // POSTREVIEW — Heuristique de catégorisation des lignes de facture pour
@@ -395,7 +413,7 @@ export async function GET(request: NextRequest) {
   // de TVA au FEC (les écritures auto/manuelles ont un taux 5,5/20 par défaut
   // qui contredirait le régime déclaré — audit 2026-07 #10).
   const sansTva = !collecteTvaFrancaise(exploitation?.regimeTva)
-  const lignes = genererFec({ ventes: ventesIn, depenses: depensesIn, factures: facturesIn, sansTva })
+  const lignes = genererFec({ ventes: ventesIn, depenses: depensesIn, factures: facturesIn, sansTva, exercice, ...journalReglements })
   const validation = validerEquilibre(lignes)
 
   if (check) {

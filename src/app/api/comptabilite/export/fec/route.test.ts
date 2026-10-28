@@ -33,6 +33,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
+    cibleReglement: { findMany: vi.fn().mockResolvedValue([]) },
+    reglement: { findMany: vi.fn().mockResolvedValue([]) },
+    operationBancaire: { findMany: vi.fn().mockResolvedValue([]) },
+    virementBancaire: { findMany: vi.fn().mockResolvedValue([]) },
     exploitation: {
       findUnique: vi.fn().mockResolvedValue({ siren: "123456789", territoire: null, regimeTva: "reel-simplifie" }),
     },

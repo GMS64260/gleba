@@ -108,6 +108,15 @@ model User {
   accounts Account[]
   pushSubscriptions PushSubscription[]
 
+  dossiersReglement DossierReglement[]
+  ciblesReglement CibleReglement[]
+  reglements Reglement[]
+  comptesBancaires CompteBancaire[]
+  operationsBancaires OperationBancaire[]
+  virementsBancaires VirementBancaire[]
+  connexionsStripe ConnexionStripe[]
+  etatsConnexionStripe EtatConnexionStripe[]
+
   // Relations avec données utilisateur
   planches              Planche[]
   cultures              Culture[]
@@ -4807,4 +4816,163 @@ model MouvementStockCommercial {
   @@index([rucheId])
   @@index([fromageId])
   @@map("mouvements_stock_commerciaux")
+}
+
+// Journal de règlements : les cibles utilisent une identité stable, même si
+// un miroir comptable est régénéré ou si la vente devient une facture.
+model DossierReglement {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sens String
+  devise String @default("EUR")
+  libelle String
+  tiers String?
+  referencePiece String @map("reference_piece")
+  datePiece DateTime @map("date_piece")
+  montantReferenceCentimes BigInt @map("montant_reference_centimes")
+  historiqueDeclarePaye Boolean @default(false) @map("historique_declare_paye")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  cibles CibleReglement[]
+  reglements Reglement[]
+  @@unique([id, userId])
+  @@index([userId])
+  @@map("dossiers_reglement")
+}
+
+model CibleReglement {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cle String
+  type String
+  reference String
+  dossierId String @map("dossier_id")
+  dossier DossierReglement @relation(fields: [dossierId, userId], references: [id, userId], onDelete: Cascade)
+  @@unique([userId, cle])
+  @@index([dossierId])
+  @@map("cibles_reglement")
+}
+
+model Reglement {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dossierId String @map("dossier_id")
+  dossier DossierReglement @relation(fields: [dossierId, userId], references: [id, userId], onDelete: Cascade)
+  montantCentimes BigInt @map("montant_centimes")
+  date DateTime
+  modeReglement String @map("mode_reglement")
+  reference String?
+  notes String?
+  acteurId String @map("acteur_id")
+  cleIdempotence String @map("cle_idempotence")
+  operationBancaireId String? @map("operation_bancaire_id")
+  operationBancaire OperationBancaire? @relation(fields: [operationBancaireId, userId], references: [id, userId], onDelete: NoAction)
+  partieBancaire String @default("principal") @map("partie_bancaire")
+  annuleLe DateTime? @map("annule_le")
+  annulePar String? @map("annule_par")
+  motifAnnulation String? @map("motif_annulation")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([userId, cleIdempotence])
+  @@index([dossierId, annuleLe])
+  @@index([userId, date])
+  @@index([operationBancaireId])
+  @@map("reglements")
+}
+
+model ConnexionStripe {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  compteStripeId String @map("compte_stripe_id")
+  jetonChiffre String @map("jeton_chiffre")
+  modeTest Boolean @map("mode_test")
+  actif Boolean @default(true)
+  derniereSynchro DateTime? @map("derniere_synchro")
+  curseurHistorique String? @map("curseur_historique")
+  historiqueComplet Boolean @default(false) @map("historique_complet")
+  dernierTransactionId String? @map("dernier_transaction_id")
+  curseurNouveaux String? @map("curseur_nouveaux")
+  teteNouveaux String? @map("tete_nouveaux")
+  verrouSynchroJusqua DateTime? @map("verrou_synchro_jusqua")
+  createdAt DateTime @default(now()) @map("created_at")
+  comptes CompteBancaire[]
+  @@unique([compteStripeId, modeTest])
+  @@unique([id, userId])
+  @@index([userId])
+  @@map("connexions_stripe")
+}
+
+model EtatConnexionStripe {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  acteurId String @map("acteur_id")
+  empreinte String @unique
+  expireLe DateTime @map("expire_le")
+  utiliseLe DateTime? @map("utilise_le")
+  @@index([userId])
+  @@map("etats_connexion_stripe")
+}
+
+model CompteBancaire {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom String
+  devise String @default("EUR")
+  connexionStripeId String? @map("connexion_stripe_id")
+  connexionStripe ConnexionStripe? @relation(fields: [connexionStripeId, userId], references: [id, userId], onDelete: NoAction)
+  soldeCentimes BigInt? @map("solde_centimes")
+  soldeAu DateTime? @map("solde_au")
+  archive Boolean @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  operations OperationBancaire[]
+  @@unique([id, userId])
+  @@unique([connexionStripeId, devise])
+  @@index([userId])
+  @@map("comptes_bancaires")
+}
+
+model OperationBancaire {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  compteId String @map("compte_id")
+  compte CompteBancaire @relation(fields: [compteId, userId], references: [id, userId], onDelete: NoAction)
+  referenceExterne String @map("reference_externe")
+  date DateTime
+  libelle String
+  montantCentimes BigInt @map("montant_centimes")
+  brutCentimes BigInt @map("brut_centimes")
+  fraisCentimes BigInt @default(0) @map("frais_centimes")
+  famille String @default("releve")
+  statut String @default("comptabilisee")
+  aVerifier Boolean @default(false) @map("a_verifier")
+  motifExclusion String? @map("motif_exclusion")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  reglements Reglement[]
+  virementsSortants VirementBancaire[] @relation("VirementSortie")
+  virementsEntrants VirementBancaire[] @relation("VirementEntree")
+  @@unique([id, userId])
+  @@unique([compteId, referenceExterne])
+  @@index([userId, date])
+  @@map("operations_bancaires")
+}
+
+model VirementBancaire {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  operationSortieId String @unique @map("operation_sortie_id")
+  operationSortie OperationBancaire @relation("VirementSortie", fields: [operationSortieId, userId], references: [id, userId], onDelete: NoAction)
+  operationEntreeId String @unique @map("operation_entree_id")
+  operationEntree OperationBancaire @relation("VirementEntree", fields: [operationEntreeId, userId], references: [id, userId], onDelete: NoAction)
+  acteurId String @map("acteur_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([userId])
+  @@map("virements_bancaires")
 }

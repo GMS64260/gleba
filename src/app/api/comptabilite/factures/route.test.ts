@@ -37,6 +37,7 @@ vi.mock('@/lib/prisma', () => ({
         recolte: { count: async () => 0 },
         facture: { findUnique: async () => null, update: mocks.txFactureUpdate, findFirstOrThrow: async () => ({ ...(await mocks.factureFindFirst()), lignes: [] }) },
         $queryRaw: async () => [{ id: 5 }],
+        $executeRaw: async () => 0,
         venteProduit: { updateMany: mocks.txVenteProduitUpdateMany },
       }),
   },

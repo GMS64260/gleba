@@ -1,3 +1,4 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * API Dépenses Manuelles
  * GET/POST/PATCH/DELETE /api/comptabilite/depenses-manuelles
@@ -6,6 +7,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { enrichirMiroirsReglements } from '@/lib/comptabilite/projection-reglements'
+import { cleMiroirReglement } from '@/lib/comptabilite/cle-reglement'
+import { verifierPointageDetaille, suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { Prisma } from '@prisma/client'
 import { createDepenseManuelleSchema, updateDepenseManuelleSchema } from '@/lib/validations/depense-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
@@ -50,13 +55,14 @@ export async function GET(request: NextRequest) {
     ])
 
     return NextResponse.json({
-      data: depenses,
+      data: await enrichirMiroirsReglements(userId, 'depense', depenses),
       stats: {
         total: stats._sum.montant || 0,
         count: stats._count,
       },
     })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/comptabilite/depenses-manuelles error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
@@ -89,6 +95,7 @@ export async function POST(request: NextRequest) {
     // un `fournisseurNom` est fourni (saisie rapide). Le find-or-create
     // est idempotent, donc pas de doublon si le fournisseur existait.
     const depense = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       let resolvedFournisseurId: string | null = rest.fournisseurId ?? null
       if (!resolvedFournisseurId && rest.fournisseurNom) {
         resolvedFournisseurId = await ensureFournisseurForUser(
@@ -126,6 +133,7 @@ export async function POST(request: NextRequest) {
     invalidateKpi(userId)
     return NextResponse.json(depense, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('POST /api/comptabilite/depenses-manuelles error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
@@ -214,14 +222,19 @@ export async function PATCH(request: NextRequest) {
     if (updates.numeroPiece !== undefined) updateData.numeroPiece = updates.numeroPiece
     if (updates.pjUrl !== undefined) updateData.pjUrl = updates.pjUrl || null
 
-    const depense = await prisma.depenseManuelle.update({
-      where: { id },
-      data: updateData,
+    const depense = await prisma.$transaction(async (db) => {
+      await verrouillerReglements(db, session.user.id)
+      await db.$queryRaw`SELECT id FROM depenses_manuelles WHERE id = ${id} AND user_id = ${session.user.id} FOR UPDATE`
+      const courante = await db.depenseManuelle.findFirst({ where: { id, userId: session.user.id } })
+      if (!courante) throw new ErreurReglement('Écriture introuvable. Actualisez les transactions.', 404)
+      const projection = await verifierPointageDetaille(db, session.user.id, cleMiroirReglement('depense', courante), updateData.montant ?? courante.montant, typeof updateData.paye === 'boolean' ? updateData.paye : undefined)
+      return db.depenseManuelle.update({ where: { id, userId: session.user.id }, data: { ...updateData, ...projection } })
     })
 
     invalidateKpi(session.user.id)
     return NextResponse.json(depense)
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return NextResponse.json({ error: 'Cette écriture a été régénérée ou supprimée. Rechargez les transactions avant de la corriger.' }, { status: 409 })
     }
@@ -260,13 +273,18 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    await prisma.depenseManuelle.delete({
-      where: { id: parseInt(id), userId: session.user.id },
+    await prisma.$transaction(async (db) => {
+      await verrouillerReglements(db, session.user.id)
+      await db.$queryRaw`SELECT id FROM depenses_manuelles WHERE id = ${existing.id} AND user_id = ${session.user.id} FOR UPDATE`
+      const suivi = await suiviReglementParCle(db, session.user.id, cleMiroirReglement('depense', existing))
+      if (suivi) throw new ErreurReglement('Régularisez les règlements avant de supprimer cette pièce.')
+      await db.depenseManuelle.delete({ where: { id: existing.id, userId: session.user.id } })
     })
 
     invalidateKpi(session.user.id)
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/comptabilite/depenses-manuelles error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },

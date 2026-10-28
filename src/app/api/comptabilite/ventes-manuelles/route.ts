@@ -1,3 +1,4 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * API Ventes Manuelles
  * GET/POST/PATCH/DELETE /api/comptabilite/ventes-manuelles
@@ -6,6 +7,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { enrichirMiroirsReglements } from '@/lib/comptabilite/projection-reglements'
+import { cleMiroirReglement } from '@/lib/comptabilite/cle-reglement'
+import { suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { Prisma } from '@prisma/client'
 import { createVenteManuelleSchema, updateVenteManuelleSchema } from '@/lib/validations/vente-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
@@ -55,13 +60,14 @@ export async function GET(request: NextRequest) {
     ])
 
     return NextResponse.json({
-      data: ventes,
+      data: await enrichirMiroirsReglements(userId, 'vente', ventes),
       stats: {
         total: stats._sum.montant || 0,
         count: stats._count,
       },
     })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/comptabilite/ventes-manuelles error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
@@ -98,6 +104,7 @@ export async function POST(request: NextRequest) {
     // rollback automatique si le client n'existe pas / n'appartient
     // pas au tenant.
     const vente = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       if (rest.clientId) {
         await exigerClientDuCompte(userId, rest.clientId, tx)
       }
@@ -143,6 +150,7 @@ export async function POST(request: NextRequest) {
     invalidateKpi(userId)
     return NextResponse.json(vente, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     // QA 2026-05-15 — Bug #3 : client introuvable = 400 explicite, qui nomme
     // le champ (même refus qu'au PATCH).
     if (error instanceof ClientIntrouvableError) {
@@ -261,6 +269,7 @@ export async function PATCH(request: NextRequest) {
     invalidateKpi(session.user.id)
     return NextResponse.json({ data: vente })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ReglementVenteError) {
       return NextResponse.json({ error: error.message, champ: 'paye' }, { status: 409 })
     }
@@ -299,13 +308,18 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    await prisma.venteManuelle.delete({
-      where: { id: parseInt(id), userId: session.user.id },
+    await prisma.$transaction(async (db) => {
+      await verrouillerReglements(db, session.user.id)
+      await db.$queryRaw`SELECT id FROM ventes_manuelles WHERE id = ${existing.id} AND user_id = ${session.user.id} FOR UPDATE`
+      const suivi = await suiviReglementParCle(db, session.user.id, cleMiroirReglement('vente', existing))
+      if (suivi) throw new ErreurReglement('Régularisez les règlements avant de supprimer cette pièce.')
+      await db.venteManuelle.delete({ where: { id: existing.id, userId: session.user.id } })
     })
 
     invalidateKpi(session.user.id)
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/comptabilite/ventes-manuelles error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },

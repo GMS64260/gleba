@@ -1,3 +1,4 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
 import { verifierLignesStock, verrouillerStocksDesLignes, sortirStockCommercial } from '@/lib/commercial/stock'
 /**
@@ -8,12 +9,16 @@ import { verifierLignesStock, verrouillerStocksDesLignes, sortirStockCommercial 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { enrichirFacturesReglements } from '@/lib/comptabilite/projection-reglements'
 import { Prisma } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import { creerFacture, montantAvoirsEmis } from '@/lib/facture-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { clientDesigneParNom, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
 import { noteLibreDeFacture } from '@/lib/facture-structuree'
+import { cleFacture } from '@/lib/comptabilite/cle-reglement'
+import { suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
+import { enCentimes } from '@/lib/comptabilite/monnaie'
 
 async function nombreVentesLiees(db: Pick<Prisma.TransactionClient, 'facture' | 'recolte'>, userId: string, id: number) {
   const lien = await db.facture.findUnique({
@@ -26,6 +31,8 @@ async function nombreVentesLiees(db: Pick<Prisma.TransactionClient, 'facture' | 
 }
 
 async function verifierAnnulationFacture(db: Prisma.TransactionClient, userId: string, facture: { id: number; statut: string }) {
+  const reglements = await suiviReglementParCle(db, userId, cleFacture(facture.id))
+  if (reglements) throw new ErreurCommerciale('Cette facture a des règlements. Régularisez son journal avant de l’annuler.')
   if (facture.statut === 'payee') throw new ErreurCommerciale('Conservez cette facture payée et émettez un avoir pour la régulariser.')
   if (await montantAvoirsEmis(db, userId, facture.id) > 0) throw new ErreurCommerciale('Cette facture est déjà corrigée par un avoir émis. Conservez la facture et ses avoirs pour préserver leur revenu net.')
   if (await nombreVentesLiees(db, userId, facture.id)) throw new ErreurCommerciale('Cette facture porte une vente. Annulez la vente depuis son atelier ou émettez un avoir pour conserver les revenus et les stocks cohérents.')
@@ -92,11 +99,11 @@ export async function GET(request: NextRequest) {
         })
       : []
     const origineParId = new Map(origines.map((o) => [o.id, o]))
-    const data = factures.map((f) =>
+    const data = await enrichirFacturesReglements(userId, factures.map((f) =>
       f.factureOrigineId != null
         ? { ...f, factureOrigine: origineParId.get(f.factureOrigineId) ?? null }
         : f,
-    )
+    ))
 
     // Stats
     const stats = {
@@ -221,6 +228,7 @@ export async function POST(request: NextRequest) {
     // + numéro facture + création. Le contrôle effectué plus haut améliore le
     // message rapide, celui-ci garantit l'invariant sous concurrence.
     const facture = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       if (d.lignes.some((l) => l.articleStockType || l.articleStockId)) {
         if (categorieOperation === 'services') throw new ErreurCommerciale('Choisissez Biens ou Biens et services pour les produits liés au stock.', 400)
         if (d.type !== 'facture' || d.statut === 'annulee') throw new ErreurCommerciale('Les stocks se lient à une facture de vente, pas à un avoir ou un acompte.', 400)
@@ -407,6 +415,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const facture = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       await tx.$queryRaw`SELECT id FROM factures WHERE id = ${existing.id} AND user_id = ${session.user.id} FOR UPDATE`
       const courante = await tx.facture.findFirstOrThrow({ where: { id: existing.id, userId: session.user.id }, include: { lignes: true, client: true } })
       if (courante.statut !== existing.statut) {
@@ -415,6 +424,13 @@ export async function PATCH(request: NextRequest) {
       }
       if (updateData.statut === 'annulee') {
         await verifierAnnulationFacture(tx, session.user.id, courante)
+      }
+      if (updateData.statut === 'payee' || updateData.statut === 'emise') {
+        const suivi = await suiviReglementParCle(tx, session.user.id, cleFacture(courante.id))
+        if (suivi) {
+          const du = Math.max(0, enCentimes(courante.totalTTC) - enCentimes(await montantAvoirsEmis(tx, session.user.id, courante.id)))
+          if ((updateData.statut === 'payee') !== (suivi.regle >= du)) throw new ErreurCommerciale('Cette facture a un journal de règlements. Ajoutez ou corrigez ses versements depuis Règlements.')
+        }
       }
       const data: Prisma.FactureUncheckedUpdateInput = { ...(mentions as Prisma.FactureUncheckedUpdateInput) }
       if (updateData.statut !== undefined) {
@@ -491,6 +507,7 @@ export async function DELETE(request: NextRequest) {
     if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     const userId = session.user.id
     const action = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       // Même verrou que l'émission et les avoirs : relire le statut après
       // attente évite de supprimer un brouillon devenu une facture émise.
       await tx.$queryRaw`SELECT id FROM factures WHERE id = ${parseInt(id)} AND user_id = ${userId} FOR UPDATE`

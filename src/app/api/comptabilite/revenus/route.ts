@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { chargerSuiviDesLignes, type SuiviDeLigne } from '@/lib/comptabilite/suivi-ecriture'
+import { enrichirLignesReglements } from '@/lib/comptabilite/projection-reglements'
+import { chargerSuiviDesLignes } from '@/lib/comptabilite/suivi-ecriture'
 import { libellesVenteBois } from '@/lib/verger/production-bois'
 
 export async function GET(request: NextRequest) {
@@ -423,10 +424,10 @@ export async function GET(request: NextRequest) {
     // la porte : sans elles, l'écran n'offrait rien sur une ligne générée.
     const page = filtered.slice(0, limit)
     const suiviParLigne = await chargerSuiviDesLignes(userId, page)
-    const limited: Array<UnifiedRevenue & Partial<SuiviDeLigne>> = page.map((r) => ({
+    const limited = await enrichirLignesReglements(userId, 'vente', page.map((r) => ({
       ...r,
       ...suiviParLigne.get(r.id),
-    }))
+    })), ventesManuelles)
 
     // Total agrégé : on s'aligne sur la source unique de vérité (getKpiCompta).
     // L'ancien `filtered.reduce(...)` agrégeait les "sources brutes" potager

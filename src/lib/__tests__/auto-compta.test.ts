@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => {
   const tx = {
     $queryRaw: async () => [],
+    $executeRaw: async () => 0,
     venteManuelle: {
       deleteMany: mocks.venteDeleteMany,
       create: mocks.venteCreate,
@@ -127,6 +128,7 @@ describe('invariants auto-compta élevage', () => {
 
   it('ventile une cession livrée entre acompte payé et solde impayé sans double compte', async () => {
     const tx = {
+      $executeRaw: async () => 0,
       venteManuelle: {
         deleteMany: mocks.venteDeleteMany,
         create: mocks.venteCreate,
@@ -194,6 +196,7 @@ describe('invariants auto-compta élevage', () => {
       where.sourceRef === 'reservation-1:acompte' ? { numeroPiece: 'VIR-7', notes: null } : null,
     )
     const tx = {
+      $executeRaw: async () => 0,
       venteManuelle: {
         deleteMany: mocks.venteDeleteMany,
         create: mocks.venteCreate,

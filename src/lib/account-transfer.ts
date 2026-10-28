@@ -45,6 +45,7 @@ const EXCLUDED = new Set<string>([
   "Session",
   "Account",
   "VerificationToken",
+  "EtatConnexionStripe",
   "LoginLog",
   "CookieConsent",
   "BugReport",
@@ -182,18 +183,16 @@ function buildManifest(): Map<string, ModelMeta> {
       }
     }
 
-    // Relations many-to-one : un champ objet avec exactement une FK scalaire
+    // Les relations métier peuvent porter [id, userId] pour empêcher une
+    // référence inter-exploitation. userId est réinjecté depuis le tenant.
     const rels: RelMeta[] = []
     for (const f of m.fields) {
-      if (f.kind === "object" && f.relationFromFields && f.relationFromFields.length === 1) {
-        const fkField = f.relationFromFields[0]
-        const scalar = scalarFieldNames.get(fkField)
-        rels.push({
-          fkField,
-          targetModel: f.type,
-          nullable: scalar ? !scalar.required : true,
-        })
-      }
+      if (f.kind !== "object" || !f.relationFromFields?.length) continue
+      const fks = f.relationFromFields.filter((nom) => nom !== 'userId')
+      const fkField = f.relationFromFields.length === 1 ? f.relationFromFields[0] : fks.length === 1 ? fks[0] : null
+      if (!fkField) continue
+      const scalar = scalarFieldNames.get(fkField)
+      rels.push({ fkField, targetModel: f.type, nullable: scalar ? !scalar.required : true })
     }
 
     let klass: ModelClass
@@ -278,7 +277,12 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
     const rows = await delegue(prisma, meta.delegate).findMany({
       where: { userId },
     })
-    data[meta.name] = rows
+    data[meta.name] = rows.map((row) => {
+      const copie = Object.fromEntries(Object.entries(row).map(([nom, valeur]) => [nom, typeof valeur === 'bigint' ? valeur.toString() : valeur]))
+      // Une sauvegarde de données ne transporte aucun accès bancaire.
+      if (meta.name === 'ConnexionStripe') Object.assign(copie, { jetonChiffre: '', actif: false, verrouSynchroJusqua: null })
+      return copie
+    })
     stats[meta.name] = rows.length
     if (meta.pkField) {
       ownedIds.set(
@@ -433,6 +437,7 @@ function coerceValue(value: unknown, type: string): unknown {
   if (type === "DateTime") {
     return value instanceof Date ? value : new Date(value as string)
   }
+  if (type === 'BigInt') return BigInt(String(value))
   return value
 }
 
@@ -561,6 +566,8 @@ export async function importAccount(
       for (const row of rows) {
         const oldPk = row[meta.pkField]
         const createData = buildScalarData(meta, row)
+        if (meta.name === 'ConnexionStripe') Object.assign(createData, { jetonChiffre: '', actif: false, verrouSynchroJusqua: null })
+        if (meta.name === 'CibleReglement') createData.cle = 'transfert:' + String(row.id)
         // PK : on retire l'entière (autoincrement) ; on garde la string (cuid).
         if (meta.pkIsInt) {
           delete createData[meta.pkField]
@@ -676,6 +683,46 @@ export async function importAccount(
       const sourceId = manifest.get(cible)?.pkIsInt ? Number(reference.oldId) : reference.oldId
       const nouveau = idMap.get(cible)?.get(sourceId)
       if (nouveau !== undefined) await delegue(tx, reference.delegate).update({ where: { [reference.pkField]: reference.newPk }, data: { articleStockType: reference.type, articleStockId: String(nouveau) } })
+    }
+    // Les clés du journal de règlements désignent des pièces polymorphes.
+    // Leurs identifiants suivent les pièces remappées sur l'instance cible.
+    const sourcesReglements: Record<string, string> = {
+      vente_produit: 'VenteProduit', recolte: 'Recolte', recolte_arbre: 'RecolteArbre',
+      production_bois: 'ProductionBois', abattage: 'Abattage', achat_animal: 'LotAnimaux',
+      achat_animal_individuel: 'Animal', consommation_aliment: 'ConsommationAliment',
+      soin_animal: 'SoinAnimal', fertilisation: 'Fertilisation', intervention: 'Intervention',
+      campagne_plantation: 'CampagnePlantation', operation_arbre: 'OperationArbre',
+    }
+    const miroirsRemappes: { delegate: string; pk: unknown; sourceId: unknown }[] = []
+    for (const nom of ['VenteManuelle', 'DepenseManuelle']) {
+      for (const row of data[nom] ?? []) {
+        if (!row.auto || row.sourceId == null) continue
+        const pk = idMap.get(nom)?.get(row.id)
+        const sourceId = idMap.get(sourcesReglements[String(row.sourceType)])?.get(row.sourceId)
+        if (pk !== undefined && sourceId !== undefined) miroirsRemappes.push({ delegate: delegateName(nom), pk, sourceId })
+      }
+    }
+    // Libérer les anciennes clés avant d'appliquer une permutation d'IDs.
+    for (const m of miroirsRemappes) await delegue(tx, m.delegate).update({ where: { id: m.pk }, data: { sourceId: null } })
+    for (const m of miroirsRemappes) await delegue(tx, m.delegate).update({ where: { id: m.pk }, data: { sourceId: m.sourceId } })
+    for (const row of data.CibleReglement ?? []) {
+      const pk = idMap.get('CibleReglement')?.get(row.id)
+      if (pk === undefined) continue
+      const type = String(row.type), ancienneCle = String(row.cle)
+      let reference = idMap.get(type)?.get(Number(row.reference))
+      let cle = ancienneCle
+      if (ancienneCle.startsWith('[')) {
+        const [nature, source, mode, ancienId] = JSON.parse(ancienneCle) as string[]
+        const nouveauId = mode === 'id' ? idMap.get(sourcesReglements[source])?.get(Number(ancienId)) : undefined
+        cle = JSON.stringify([nature, source, mode, String(nouveauId ?? ancienId)])
+        if (reference === undefined && ['VenteManuelle', 'DepenseManuelle'].includes(type)) {
+          const miroir = (data[type] ?? []).find((m) => m.auto && m.sourceType === source && String(mode === 'ref' ? m.sourceRef : m.sourceId) === ancienId)
+          if (miroir) reference = idMap.get(type)?.get(miroir.id)
+        }
+      } else if (reference !== undefined) {
+        cle = type === 'Facture' ? 'facture:' + reference : (type === 'VenteManuelle' ? 'vente' : 'depense') + ':manuel:' + reference
+      }
+      await delegue(tx, 'cibleReglement').update({ where: { id: pk }, data: { cle, ...(reference !== undefined ? { reference: String(reference) } : {}) } })
     }
     if (patched) warnings.push(`${patched} référence(s) différée(s) reconnectée(s).`)
 

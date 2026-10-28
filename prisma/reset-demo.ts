@@ -26,6 +26,13 @@ async function main() {
 
   const dm = (p: Promise<{ count: number }>) => p
   const steps: Array<[string, () => Promise<{ count: number }>]> = [
+    ["Reglement", () => dm(prisma.reglement.deleteMany({ where: { userId } }))],
+    ["VirementBancaire", () => dm(prisma.virementBancaire.deleteMany({ where: { userId } }))],
+    ["OperationBancaire", () => dm(prisma.operationBancaire.deleteMany({ where: { userId } }))],
+    ["CompteBancaire", () => dm(prisma.compteBancaire.deleteMany({ where: { userId } }))],
+    ["ConnexionStripe", () => dm(prisma.connexionStripe.deleteMany({ where: { userId } }))],
+    ["EtatConnexionStripe", () => dm(prisma.etatConnexionStripe.deleteMany({ where: { userId } }))],
+    ["DossierReglement", () => dm(prisma.dossierReglement.deleteMany({ where: { userId } }))],
     ["MouvementStockCommercial", () => dm(prisma.mouvementStockCommercial.deleteMany({ where: { userId } }))],
     // ── Boutique ────────────────────────────────────────────────────────
     ["LigneCommandeBoutique", () => dm(prisma.ligneCommandeBoutique.deleteMany({ where: { commande: { userId } } }))],

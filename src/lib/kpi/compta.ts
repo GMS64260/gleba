@@ -22,6 +22,7 @@
 
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { chargerEncoursCompta } from '@/lib/comptabilite/encours'
 import type { ModuleCompta } from '@/lib/comptabilite/modules'
 import {
   moduleDesVentesPortees,
@@ -108,24 +109,13 @@ async function computeKpiCompta(
     depenseYtd,
     depenseN1Ytd,
     depenseN1Total,
-    depensesNonPayees,
-    revenusNonPayes,
   ] = await Promise.all([
     sumDepenseManuelle(userId, startOfYear, upperBound),
     sumDepenseManuelle(userId, startOfYearN1, asOfN1),
     sumDepenseManuelle(userId, startOfYearN1, endOfYearN1),
-    // BUG #2 — sous-totaux non payés (info, pas un filtre)
-    prisma.depenseManuelle.aggregate({
-      where: { userId, date: { gte: startOfYear, lte: upperBound }, paye: false, comptable: true },
-      _sum: { montant: true },
-      _count: true,
-    }),
-    prisma.venteManuelle.aggregate({
-      where: { userId, date: { gte: startOfYear, lte: upperBound }, paye: false },
-      _sum: { montant: true },
-      _count: true,
-    }),
   ])
+
+  const encours = await chargerEncoursCompta(userId, startOfYear, upperBound)
 
   const beneficeYtd = revenusYtd - depenseYtd
   const margePercentYtd = revenusYtd > 0 ? (beneficeYtd / revenusYtd) * 100 : 0
@@ -142,10 +132,10 @@ async function computeKpiCompta(
     depensesN1Total: round2(depenseN1Total),
     beneficeYtd: round2(beneficeYtd),
     margePercentYtd: round2(margePercentYtd),
-    depensesNonPayeesYtd: round2(depensesNonPayees._sum.montant ?? 0),
-    nbDepensesNonPayees: depensesNonPayees._count,
-    revenusNonPayesYtd: round2(revenusNonPayes._sum.montant ?? 0),
-    nbRevenusNonPayes: revenusNonPayes._count,
+    depensesNonPayeesYtd: encours.dettes.total,
+    nbDepensesNonPayees: encours.dettes.nombre,
+    revenusNonPayesYtd: encours.creances.total,
+    nbRevenusNonPayes: encours.creances.items.length,
   }
 }
 

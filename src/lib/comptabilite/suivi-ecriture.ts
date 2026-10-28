@@ -104,9 +104,11 @@ export interface SuiviDeLigne {
   facture: { id: number; numero: string } | null
 }
 
+export const MIROIR_DEPENSE_PAR_SOURCE: Record<string, string> = { LotAnimaux: 'achat_animal', Animal: 'achat_animal_individuel', OperationArbre: 'operation_arbre', Intervention: 'intervention' }
+
 /** Les dépenses générées gardent leur suivi sur DepenseManuelle. */
 export async function chargerSuiviDesDepenses(userId: string, lignes: Array<LigneRevenuDerivable & { comptable: boolean }>) {
-  const types: Record<string, string> = { LotAnimaux: 'achat_animal', Animal: 'achat_animal_individuel', OperationArbre: 'operation_arbre', Intervention: 'intervention' }
+  const types = MIROIR_DEPENSE_PAR_SOURCE
   const cibles = lignes.filter((l) => l.comptable && !l.corrigeable && types[l.source])
   const where = cibles.map((l) => ({ sourceType: types[l.source], sourceId: l.sourceId }))
   const resultat = new Map<string, { ecriture: EcritureDeLigne; paye: boolean; modeReglement: string | null }>()
