@@ -29,6 +29,13 @@ export async function register() {
   } catch (error) {
     console.error("[notifications] Échec d'initialisation du scheduler:", error)
   }
+
+  try {
+    const { initBanqueScheduler } = await import('@/lib/comptabilite/banque/scheduler')
+    initBanqueScheduler()
+  } catch {
+    console.warn('[banque] Synchronisation automatique indisponible.')
+  }
 }
 
 export async function onRequestError(

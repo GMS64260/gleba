@@ -1,5 +1,8 @@
 "use client"
 
+import { cibleReglementLigne } from "@/lib/comptabilite/cle-reglement"
+import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
+
 /**
  * Page Transactions unifiée
  * Onglets: Revenus, Dépenses, Saisie
@@ -66,6 +69,9 @@ interface StatsTransactions {
 }
 
 interface Transaction {
+  reglementsDisponibles?: boolean
+  montantRegle?: number | null
+  resteAPayer?: number | null
   id: string
   source: string
   sourceId: number
@@ -484,7 +490,7 @@ function TransactionsPageInner() {
   }
 
   /** Cellule d'actions : corriger/supprimer, suivi d'une ligne dérivée, ou dire où corriger. */
-  const cellulActions = (t: Transaction) =>
+  const anciennesActions = (t: Transaction) =>
     t.corrigeable ? (
       <div className="flex justify-end gap-1">
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Corriger cette écriture" onClick={() => openEdit(t)}>
@@ -538,6 +544,15 @@ function TransactionsPageInner() {
     if (isManualTransactionType(requestedType)) setFormType(requestedType)
     setSelectedModule(isTransactionModule(requestedModule) ? requestedModule : "all")
   }, [requestedTab, requestedType, requestedModule])
+
+  const cellulActions = (t: Transaction, nature: 'vente' | 'depense') => {
+    const cible = cibleReglementLigne(t, nature)
+    return <div className="flex flex-wrap items-center justify-end gap-2">
+      {cible && t.montant > 0 && <ReglementsDialog type={cible.type} id={cible.id} onChange={fetchData} />}
+      {anciennesActions(t)}
+    </div>
+  }
+
 
   const handleTabChange = React.useCallback((value: string) => {
     if (!isTransactionTab(value)) return
@@ -1013,7 +1028,7 @@ function TransactionsPageInner() {
                             <TableCell>{r.client || '-'}</TableCell>
                             <TableCell className="whitespace-nowrap">{r.modeReglement || r.ecriture?.suivi.modeReglement || 'Non renseigné'}</TableCell>
                             <TableCell>
-                              {r.paye === null ? (
+                              {r.facture ? <Badge variant="outline">Facturée</Badge> : r.montantRegle != null && r.montantRegle > 0 && (r.resteAPayer ?? 0) > 0 ? <Badge className="bg-amber-100 text-amber-800">Partiel · reste {formatEuro(r.resteAPayer!)}</Badge> : r.paye === null ? (
                                 <Badge variant="outline">Non suivi</Badge>
                               ) : r.paye ? (
                                 <Badge className="bg-green-100 text-green-800">Encaissé</Badge>
@@ -1021,7 +1036,7 @@ function TransactionsPageInner() {
                                 <Badge className="bg-orange-100 text-orange-800">À encaisser</Badge>
                               )}
                             </TableCell>
-                            <TableCell className="text-right">{cellulActions(r)}</TableCell>
+                            <TableCell className="text-right">{cellulActions(r, 'vente')}</TableCell>
                           </TableRow>
                         ))}
                         {revenus.length === 0 && (
@@ -1101,6 +1116,8 @@ function TransactionsPageInner() {
                             <TableCell>
                               {d.comptable === false ? (
                                 <Badge className="bg-amber-100 text-amber-800">Analytique</Badge>
+                              ) : d.montantRegle != null && d.montantRegle > 0 && (d.resteAPayer ?? 0) > 0 ? (
+                                <Badge className="bg-amber-100 text-amber-800">Partiel · reste {formatEuro(d.resteAPayer!)}</Badge>
                               ) : d.paye === null ? (
                                 <Badge variant="outline">N/A</Badge>
                               ) : d.paye ? (
@@ -1109,7 +1126,7 @@ function TransactionsPageInner() {
                                 <Badge className="bg-orange-100 text-orange-800">À payer</Badge>
                               )}
                             </TableCell>
-                            <TableCell className="text-right">{cellulActions(d)}</TableCell>
+                            <TableCell className="text-right">{cellulActions(d, 'depense')}</TableCell>
                           </TableRow>
                         ))}
                         {depenses.length === 0 && (

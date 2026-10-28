@@ -78,6 +78,7 @@ export interface FecInputVente {
   montantTVA: number | null
   clientNom: string | null
   paye: boolean
+  reglementDetaille?: boolean
 }
 
 export interface FecInputDepense {
@@ -93,6 +94,7 @@ export interface FecInputDepense {
   montantTVA: number | null
   fournisseurNom: string | null
   paye: boolean
+  reglementDetaille?: boolean
 }
 
 /**
@@ -215,10 +217,26 @@ export interface FecInputFacture {
   }>
 }
 
+export interface FecInputReglement {
+  id: string; date: Date; montant: number; sens: string; modeReglement: string
+  piece: string; libelle: string; tiers?: { num: string; lib: string }
+  compteTresorerie?: { num: string; lib: string }
+  annuleLe: Date | null
+}
+export interface FecInputMouvementInterne {
+  id: string; date: Date; montant: number; sens: 'sortie' | 'entree'; piece: string
+  compteTresorerie: { num: string; lib: string }
+}
+export function auxiliaireClient(clientId: number | null, nom: string) {
+  return clientId ? '411' + String(clientId).padStart(6, '0').slice(-6) : '411A' + (nom || 'ANONYME').replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase().padEnd(6, 'X')
+}
 export function genererFec(input: {
   ventes: FecInputVente[]
   depenses: FecInputDepense[]
   factures: FecInputFacture[]
+  reglements?: FecInputReglement[]
+  mouvementsInternes?: FecInputMouvementInterne[]
+  exercice?: number
   // Exploitation hors champ TVA française (franchise 293B, non-assujetti,
   // TGC) : aucune ligne de TVA ne doit apparaître au FEC et le HT = TTC.
   // Sans ce gate, les écritures auto/manuelles (tauxTVA 5,5/20 par défaut)
@@ -284,9 +302,7 @@ export function genererFec(input: {
     // pour permettre le lettrage et le suivi de balance âgée.
     // Si clientId est null (client anonyme), on utilise un hash stable du nom
     // pour préserver le regroupement par nom.
-    const tiersNum = f.clientId
-      ? `411${String(f.clientId).padStart(6, '0').slice(-6)}`
-      : `411A${(f.clientNom || 'ANONYME').replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase().padEnd(6, 'X')}`
+    const tiersNum = auxiliaireClient(f.clientId, f.clientNom)
     const tiers = { num: tiersNum, lib: f.clientNom || 'Client anonyme' }
 
     // Débit client (créance) = TTC
@@ -334,7 +350,7 @@ export function genererFec(input: {
 
   // ============ VENTES MANUELLES (non auto) ============
   for (const v of input.ventes) {
-    const { compteNum: compteTreso, compteLib: libTreso, journal } = contrepartieReglement(v.paye, v.modeReglement, 'vente')
+    const { compteNum: compteTreso, compteLib: libTreso, journal } = contrepartieReglement(v.reglementDetaille ? false : v.paye, v.reglementDetaille ? 'À crédit' : v.modeReglement, 'vente')
     const pieceRef = v.numeroPiece || `VM-${v.id}`
     const libelle = `${v.description}${v.clientNom ? ' — ' + v.clientNom : ''}`
 
@@ -355,7 +371,7 @@ export function genererFec(input: {
 
   // ============ DÉPENSES MANUELLES (auto incluses — SSOT dépenses) ============
   for (const d of input.depenses) {
-    const { compteNum: compteTreso, compteLib: libTreso, journal } = contrepartieReglement(d.paye, d.modeReglement, 'depense')
+    const { compteNum: compteTreso, compteLib: libTreso, journal } = contrepartieReglement(d.reglementDetaille ? false : d.paye, d.reglementDetaille ? 'À crédit' : d.modeReglement, 'depense')
     const pieceRef = d.numeroPiece || `DM-${d.id}`
     const libelle = `${d.description}${d.fournisseurNom ? ' — ' + d.fournisseurNom : ''}`
 
@@ -372,6 +388,37 @@ export function genererFec(input: {
     lignes.push({ compteNum: compteTreso, compteLib: libTreso, debit: 0, credit: d.montant })
 
     ecritures.push({ journal, date: d.date, pieceRef, libelle, lignes })
+  }
+
+  // Les règlements soldent le tiers : ils ne recréent ni produit ni TVA.
+  for (const r of input.reglements ?? []) {
+    const encaissement = r.sens === 'encaissement'
+    const contrepartie = contrepartieReglement(true, r.modeReglement, encaissement ? 'vente' : 'depense')
+    const tresorerie = r.compteTresorerie ?? { num: contrepartie.compteNum, lib: contrepartie.compteLib }
+    const journal = r.modeReglement === 'Espèces' && !r.compteTresorerie ? 'CA' : 'BQ'
+    const tiersCompte = encaissement ? COMPTES_BILAN.clients : COMPTES_BILAN.fournisseurs
+    const ajouter = (date: Date, montant: number, annulation: boolean) => {
+      if (input.exercice && date.getFullYear() !== input.exercice) return
+      const entre = encaissement ? montant > 0 : montant < 0
+      const somme = Math.abs(montant)
+      ecritures.push({ journal, date, pieceRef: r.piece || 'REG-' + r.id,
+        libelle: (annulation ? 'Annulation de saisie · ' : '') + 'Règlement · ' + r.libelle,
+        lignes: [
+          { compteNum: tresorerie.num, compteLib: tresorerie.lib, debit: entre ? somme : 0, credit: entre ? 0 : somme },
+          { compteNum: tiersCompte, compteLib: encaissement ? 'Créances clients' : 'Dettes fournisseurs', debit: entre ? 0 : somme, credit: entre ? somme : 0, tiers: r.tiers },
+        ] })
+    }
+    ajouter(r.date, r.montant, false)
+    if (r.annuleLe) ajouter(r.annuleLe, -r.montant, true)
+  }
+  for (const m of input.mouvementsInternes ?? []) {
+    if (input.exercice && m.date.getFullYear() !== input.exercice) continue
+    const sortie = m.sens === 'sortie', montant = Math.abs(m.montant)
+    ecritures.push({ journal: 'BQ', date: m.date, pieceRef: m.piece, libelle: 'Virement entre comptes · ' + m.compteTresorerie.lib,
+      lignes: [
+        { compteNum: m.compteTresorerie.num, compteLib: m.compteTresorerie.lib, debit: sortie ? 0 : montant, credit: sortie ? montant : 0 },
+        { compteNum: '580000', compteLib: 'Virements internes', debit: sortie ? montant : 0, credit: sortie ? 0 : montant },
+      ] })
   }
 
   // ============ TRI CHRONOLOGIQUE + NUMÉROTATION PAR JOURNAL ============

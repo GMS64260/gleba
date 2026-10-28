@@ -13,6 +13,8 @@
 import type { Exploitation, Prisma, PrismaClient } from '@prisma/client'
 import { adresseDeFiche, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
 import { factureSansTaxe } from '@/lib/territoires'
+import { suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
+import { cleFacture } from '@/lib/comptabilite/cle-reglement'
 
 type PrismaTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
@@ -333,7 +335,8 @@ export async function annulerFactureLiee(
   if (!facture || facture.statut === 'annulee') return { ok: true }
 
   const credite = await montantAvoirsEmis(db, userId, factureId)
-  if (facture.statut === 'payee' || credite > 0) {
+  const suivi = await suiviReglementParCle(db, userId, cleFacture(facture.id))
+  if (facture.statut === 'payee' || credite > 0 || Boolean(suivi)) {
     if (credite < facture.totalTTC - 0.005) {
       return {
         ok: false,

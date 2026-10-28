@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { clearKpiCache } from '../cache'
 
+// Ces tests isolent les calculs de CA. Les restes à payer et leur intégration
+// aux indicateurs sont vérifiés sur PostgreSQL dans reglements.integration.
+vi.mock('@/lib/comptabilite/encours', () => ({ chargerEncoursCompta: vi.fn(async () => ({ creances: { items: [], total: 0 }, dettes: { total: 0, nombre: 0 } })) }))
+
 vi.mock('@/lib/prisma', () => {
   return {
     default: {

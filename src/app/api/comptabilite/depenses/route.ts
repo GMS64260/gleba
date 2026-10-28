@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { enrichirLignesReglements } from '@/lib/comptabilite/projection-reglements'
 import { MODULES_COMPTA, bucketModuleCompta, ventilerParModule } from '@/lib/comptabilite/modules'
 import { chargerSuiviDesDepenses } from '@/lib/comptabilite/suivi-ecriture'
 
@@ -454,7 +455,7 @@ export async function GET(request: NextRequest) {
     // Limiter
     const page = filtered.slice(0, limit)
     const suivi = await chargerSuiviDesDepenses(userId, page)
-    const limited = page.map((d) => ({ ...d, ...suivi.get(d.id) }))
+    const limited = await enrichirLignesReglements(userId, 'depense', page.map((d) => ({ ...d, ...suivi.get(d.id) })), depensesManuelles)
 
     // Calculer les stats
     const comptables = filtered.filter((e) => e.comptable)

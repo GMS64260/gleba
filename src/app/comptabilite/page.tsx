@@ -55,6 +55,7 @@ import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 import { liensAlertesCompta } from "@/lib/comptabilite/alertes"
 // Modules du dashboard comptabilité (rationalisé)
 const modulesCompta = [
+  { title: "Banque", description: "Stripe, relevés et rapprochement", href: "/comptabilite/banque", icon: Wallet, color: "text-sky-700", bgColor: "bg-sky-50" },
   {
     title: "Transactions",
     description: "Revenus, dépenses, saisie",
@@ -138,7 +139,7 @@ const modulesCompta = [
 ]
 
 const groupesCompta = [
-  { title: "Au quotidien", description: "Saisir, facturer et suivre les règlements", hrefs: ["/comptabilite/transactions", "/comptabilite/factures"] },
+  { title: "Au quotidien", description: "Saisir, facturer et suivre les règlements", hrefs: ["/comptabilite/transactions", "/comptabilite/factures", "/comptabilite/banque"] },
   { title: "Mes partenaires", description: "Retrouver rapidement clients et fournisseurs", hrefs: ["/comptabilite/clients", "/comptabilite/fournisseurs"] },
   { title: "Piloter et déclarer", description: "Comprendre les résultats, les stocks et préparer les exports", hrefs: ["/comptabilite/stocks", "/comptabilite/rapports", "/comptabilite/export", "/comptabilite/couts-production"] },
   { title: "Suivi terrain", description: "Relier les opérations aux coûts et aux registres", hrefs: ["/interventions", "/tracabilite"] },

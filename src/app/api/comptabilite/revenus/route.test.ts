@@ -29,6 +29,7 @@ vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/kpi", () => ({ getKpiCompta: vi.fn().mockResolvedValue({}) }))
 vi.mock("@/lib/prisma", () => ({
   default: {
+    cibleReglement: { findMany: vi.fn().mockResolvedValue([]) },
     venteProduit: { findMany: mocks.venteProduit },
     recolteArbre: { findMany: mocks.recolteArbre },
     productionBois: { findMany: mocks.productionBois },

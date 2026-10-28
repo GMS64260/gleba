@@ -1,3 +1,4 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * API Ventes de produits
  * GET /api/elevage/ventes - Liste des ventes
@@ -8,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { enrichirVentesElevageReglements } from '@/lib/comptabilite/projection-reglements'
 import { Prisma, type VenteProduit } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import {
@@ -24,6 +26,9 @@ import { venteProduitSchema, venteProduitTypeSchema } from '@/lib/validations/el
 import { modeReglementSchema, modePaiementDepuisReglement } from '@/lib/validations/reglement'
 import { chargerSuiviDesSources, cleSource } from '@/lib/comptabilite/suivi-ecriture'
 import { ReglementVenteError } from '@/lib/comptabilite/reglement-vente'
+import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
+import { verifierPointageDetaille } from '@/lib/comptabilite/suivi-reglement-source'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { invalidateKpi } from '@/lib/kpi'
 import {
   StockOeufsVenteError,
@@ -104,7 +109,7 @@ export async function GET(request: NextRequest) {
       parType.set(s.type, ligne)
     }
     return NextResponse.json({
-      data: ventes.map((v) => ({ ...v, modeReglement: suivi.parSource.get(cleSource('vente_produit', v.id))?.suivi.modeReglement ?? null })),
+      data: (await enrichirVentesElevageReglements(session.user.id, ventes)).map((v) => ({ ...v, modeReglement: suivi.parSource.get(cleSource('vente_produit', v.id))?.suivi.modeReglement ?? null })),
       stats: {
         totalVentes: stats._sum.prixTotal || 0,
         nbVentes: stats._count,
@@ -116,6 +121,7 @@ export async function GET(request: NextRequest) {
       meta: { year: annee, total: ventes.length },
     })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/ventes error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
@@ -266,6 +272,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       // Contrôle autoritatif sous verrou : le pré-contrôle ci-dessus améliore le
       // message, celui-ci empêche deux requêtes concurrentes de sur-vendre.
       if (fromageSortie) {
@@ -409,6 +416,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result, warning }, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof StockOeufsVenteError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
@@ -454,6 +462,7 @@ export async function DELETE(request: NextRequest) {
     // rendre l'animal au cheptel (il restait 'vendu' définitivement).
     // On ne restaure que si l'animal est toujours en statut 'vendu'.
     const annulation = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       // Symétrie annulation ↔ facture + miroir dans la même transaction.
       if (existing.factureId) {
         const liee = await annulerFactureLiee(tx, session.user.id, existing.factureId)
@@ -498,6 +507,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof StockOeufsVenteError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
@@ -667,6 +677,7 @@ export async function PATCH(request: NextRequest) {
 
     // Transaction atomique : facture + update vente
     const vente = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session.user.id)
       await tx.$queryRaw`SELECT id FROM ventes_produits WHERE id = ${existing.id} AND user_id = ${userId} FOR UPDATE`
       const courante = await tx.venteProduit.findFirst({ where: { id: existing.id, userId } })
       const aChange = !courante || Object.entries(existing).some(([champ, avant]) => {
@@ -675,6 +686,10 @@ export async function PATCH(request: NextRequest) {
       })
       if (aChange) {
         throw new ReglementVenteError('Cette vente a changé. Rechargez la liste avant de la modifier.')
+      }
+      if (!courante.factureId) {
+        const projection = await verifierPointageDetaille(tx, userId, cleSourceReglement('vente', 'vente_produit', courante.id), updateData.prixTotal ?? courante.prixTotal, typeof updateData.paye === 'boolean' ? updateData.paye : undefined)
+        Object.assign(updateData, projection)
       }
       // Revue élevage 2026-07-21 — la facture était construite sur les ANCIENNES
       // valeurs (existing.*) même quand le même PATCH modifiait prix/quantité →
@@ -773,6 +788,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: vente })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ReglementVenteError) return NextResponse.json({ error: error.message }, { status: 409 })
     if (error instanceof StockOeufsVenteError) {
       return NextResponse.json({ error: error.message }, { status: error.status })

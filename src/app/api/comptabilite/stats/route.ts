@@ -9,7 +9,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { ventilerParModule } from '@/lib/comptabilite/modules'
 import { getKpiCompta } from '@/lib/kpi'
-import { construireImpayees } from '@/lib/comptabilite/impayees'
+import { chargerEncoursCompta } from '@/lib/comptabilite/encours'
 import { STATUTS_COMMANDES_EN_ATTENTE } from '@/lib/comptabilite/alertes'
 
 const MOIS_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id
     const startOfYear = new Date(year, 0, 1)
-    const endOfYear = new Date(year, 11, 31, 23, 59, 59)
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
 
     const asOf = new Date()
 
@@ -117,12 +117,6 @@ export async function GET(request: NextRequest) {
       // ========================================
       // ALERTES
       // ========================================
-
-      // Factures impayées (VenteProduit)
-      facturesImpayeesElevage,
-
-      // Factures impayées (saisies manuelles et sources sans vue brute)
-      facturesImpayeesManuelles,
 
       // Stocks bas (Aliment)
       stocksBasAliments,
@@ -314,42 +308,6 @@ export async function GET(request: NextRequest) {
 
       // === ALERTES ===
 
-      // QA cmswunx5s / cmswuotxj — la carte des impayés agrégait les tables
-      // sources brutes (avoir jamais déduit, facture manuelle invisible) et
-      // ignorait l'exercice sélectionné. On charge désormais les sources
-      // BORNÉES à l'exercice et on délègue au même helper que l'écran
-      // Factures (construireImpayees : avoirs imputés, dédoublonnage
-      // facture↔vente).
-      prisma.venteProduit.findMany({
-        where: { userId, paye: false, annule: false, date: { gte: startOfYear, lte: endOfYear } },
-        orderBy: { date: 'asc' },
-        select: { id: true, date: true, type: true, prixTotal: true, client: true, factureId: true },
-      }),
-
-      // Saisies manuelles et sources auto sans vue brute d'impayé (solde de
-      // réservation, commande boutique).
-      prisma.venteManuelle.findMany({
-        where: {
-          userId,
-          paye: false,
-          date: { gte: startOfYear, lte: endOfYear },
-          OR: [
-            { auto: { not: true } },
-            { auto: true, sourceType: { in: ['reservation_elevage', 'commande_boutique'] } },
-          ],
-        },
-        orderBy: { date: 'asc' },
-        select: {
-          id: true,
-          date: true,
-          categorie: true,
-          description: true,
-          montant: true,
-          clientNom: true,
-          sourceType: true,
-        },
-      }),
-
       // Stocks bas aliments (per-user)
       prisma.$queryRaw`
         SELECT COUNT(*) as count
@@ -386,25 +344,7 @@ export async function GET(request: NextRequest) {
     // Impayés de l'exercice : mêmes règles que l'écran Factures. La table
     // Facture porte les avoirs et les factures manuelles sans source métier ;
     // le helper impute les avoirs et dédoublonne facture↔vente.
-    const facturesExercice = await prisma.facture.findMany({
-      where: { userId, date: { gte: startOfYear, lte: endOfYear } },
-      select: {
-        id: true, type: true, statut: true, date: true, numero: true,
-        objet: true, clientNom: true, totalTTC: true, factureOrigineId: true,
-      },
-    })
-    const impayeesExercice = construireImpayees({
-      factures: facturesExercice.map(f => ({ ...f, date: f.date.toISOString() })),
-      ventes: facturesImpayeesElevage.map(v => ({ ...v, date: v.date.toISOString() })),
-      ventesManuelles: facturesImpayeesManuelles.map(m => ({
-        id: m.id,
-        date: m.date.toISOString(),
-        categorie: m.categorie,
-        description: m.description,
-        montant: m.montant,
-        client: m.clientNom,
-      })),
-    })
+    const impayeesExercice = (await chargerEncoursCompta(userId, startOfYear, endOfYear)).creances
 
     // ========================================
     // CALCULS AGRÉGÉS

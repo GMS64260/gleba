@@ -25,6 +25,7 @@ vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 vi.mock("@/lib/prisma", () => {
   const db = {
     $queryRaw: async () => [{ id: 167 }],
+    $executeRaw: async () => 0,
     venteManuelle: {
       findFirst: mocks.venteFindFirst,
       update: mocks.venteUpdate,

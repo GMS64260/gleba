@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
 import Link from "next/link"
 import { SelectNatif } from "@/components/ui/select-natif"
 import { MODES_REGLEMENT } from "@/lib/validations/reglement"
@@ -1154,6 +1155,8 @@ interface Vente {
   prixTotal: number
   client: string | null
   paye: boolean
+  montantRegle?: number | null
+  resteAPayer?: number | null
   modeReglement?: string | null
   factureId?: number | null
   tauxTVA: number
@@ -1625,12 +1628,14 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                     <TableCell>{vente.client || '-'}</TableCell>
                     <TableCell>
                       <Badge className={vente.paye ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
-                        {vente.paye ? "Encaissé" : "À encaisser"}
+                        {vente.factureId ? "Facturée" : (vente.montantRegle ?? 0) > 0 && (vente.resteAPayer ?? 0) > 0 ? "Partiellement encaissé" : vente.paye ? "Encaissé" : "À encaisser"}
                       </Badge>
+                      {!vente.factureId && vente.montantRegle != null && <p className="mt-1 text-xs">Reçu : {formatMontantDevise(vente.montantRegle)} · reste : {formatMontantDevise(vente.resteAPayer ?? 0)}</p>}
                       <p className="mt-1 text-xs text-muted-foreground">{vente.factureId ? 'Voir la facture' : vente.modeReglement || 'Mode non renseigné'}</p>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
+                        {vente.prixTotal > 0 && <ReglementsDialog type={vente.factureId ? "Facture" : "VenteProduit"} id={vente.factureId ?? vente.id} onChange={fetchData} />}
                         {vente.factureId ? <Link href="/comptabilite/factures" className="text-xs underline">Suivre la facture</Link> : <Button variant="ghost" size="sm" onClick={() => handleEdit(vente)} title="Modifier" className="text-slate-600 hover:text-slate-900">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>}

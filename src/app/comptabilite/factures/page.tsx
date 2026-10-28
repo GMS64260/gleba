@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
 import { ouvrirApercu } from "@/lib/apercu-document"
 import Link from "next/link"
 import { ArrowLeft, FileText, RefreshCw, Check, Plus, AlertCircle, Download, Printer, CreditCard, Eye } from "lucide-react"
@@ -102,6 +103,7 @@ interface FactureEmise {
   notes?: string | null
   totalHT: number
   totalTTC: number
+  montantRegle?: number | null
   statut: string
   factureOrigineId?: number | null
   /** Résolue côté API depuis `factureOrigineId` (cf. ticket cmsx5zhke). */
@@ -357,35 +359,6 @@ export default function FacturesPage() {
     const date = new Date(dateStr)
     const now = new Date()
     return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-  }
-
-  const markAsPaid = async (item: Impayee) => {
-    try {
-      // Une facture passe par sa machine à états (emise→payee, pose la date de
-      // paiement) ; les ventes brutes/manuelles par leur flag `paye`.
-      const response = item.source === 'Facture'
-        ? await fetch('/api/comptabilite/factures', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: item.id, statut: 'payee' }),
-          })
-        : await fetch(
-            item.source === 'VenteProduit' ? '/api/elevage/ventes' : '/api/comptabilite/ventes-manuelles',
-            {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: item.id, paye: true }),
-            },
-          )
-
-      if (!response.ok) throw new Error('Erreur')
-
-      toast({ title: "Marqué comme payé", description: formatEuro(item.montant) })
-      fetchImpayees()
-      fetchFacturesEmises()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de mettre à jour" })
-    }
   }
 
   // Transition de statut d'une facture émise (machine à états côté API :
@@ -782,15 +755,7 @@ export default function FacturesPage() {
                             <TableCell>{item.client || '-'}</TableCell>
                             <TableCell className="text-right font-bold text-amber-600">{formatEuro(item.montant)}</TableCell>
                             <TableCell>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => markAsPaid(item)}
-                                className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                              >
-                                <Check className="h-4 w-4 mr-1" />
-                                Payé
-                              </Button>
+                              <ReglementsDialog type={item.source} id={item.id} onChange={() => { fetchImpayees(); fetchFacturesEmises() }} />
                             </TableCell>
                           </TableRow>
                         )
@@ -884,6 +849,7 @@ export default function FacturesPage() {
                                           ? "Brouillon"
                                           : f.statut}
                             </Badge>
+                            {f.type !== 'avoir' && f.montantRegle != null && <p className="mt-1 text-xs text-muted-foreground">Versements : {formatEuro(f.montantRegle)}</p>}
                           </TableCell>
                           <TableCell className="text-right">
                             {peutEcrire && !!f.mouvementsStock?.length && (f.mouvementsStock.filter((m) => m.quantite < 0).length === f.mouvementsStock.filter((m) => m.quantite > 0).length ? <span className="block text-xs text-muted-foreground">Stock retourné</span> : <Button size="sm" variant="outline" onClick={async () => {
@@ -895,16 +861,10 @@ export default function FacturesPage() {
                             }}>Retour en stock</Button>)}
                             <div className="flex flex-wrap items-center justify-end gap-1">
                               {['emise', 'payee'].includes(f.statut) && <EnvoyerDocument type="facture" id={f.id} numero={f.numero} />}
+                              {f.type !== 'avoir' && ['emise', 'payee'].includes(f.statut) && <ReglementsDialog type="Facture" id={f.id} onChange={() => { fetchImpayees(); fetchFacturesEmises() }} />}
                               {f.statut === "emise" && (
                                 <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    title="Marquer payée"
-                                    onClick={() => updateFactureStatut(f.id, "payee", "Facture marquée payée")}
-                                  >
-                                    <Check className="h-4 w-4 text-green-600" />
-                                  </Button>
+
                                   <Button
                                     variant="ghost"
                                     size="sm"
