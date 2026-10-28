@@ -32,7 +32,7 @@ import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
 import { ReleveGpsDialog } from "@/components/verger/ReleveGpsDialog"
 import { roundCoord } from "@/lib/geolocation"
 import { adequationEspece } from "@/lib/adequation-zone"
-import { CONDUITES_ARBRE } from "@/lib/verger/arbre-constants"
+import { AVERTISSEMENT_SUPPRESSION_ARBRE, CONDUITES_ARBRE } from "@/lib/verger/arbre-constants"
 import {
   TYPES_ARBRE,
   categoriesEspecePourTypeArbre,
@@ -50,17 +50,6 @@ import { Snowflake } from "lucide-react"
 // création (`genererCalendrierEntretien`), ce que le formulaire ne disait pas.
 const AIDE_CALENDRIER_CREATION =
   "À l'enregistrement, Gleba planifie l'entretien connu pour l'espèce, à partir d'aujourd'hui ou de cette date si elle est à venir. Vous pourrez le recalculer depuis la liste des arbres (écran large)."
-
-/**
- * QA cmswxinhf — l'avertissement annonçait la purge des observations et des
- * opérations sans distinguer les traitements phyto, que la suppression effaçait
- * réellement du registre réglementaire. Ils sont désormais conservés quelle que
- * soit leur saisie d'origine (voir src/lib/verger/preserver-traces-phyto.ts).
- */
-const AVERTISSEMENT_SUPPRESSION_ARBRE =
-  "Bio/HVE : la suppression purge les récoltes, ainsi que les opérations et observations SANS traitement. " +
-  "Tous les traitements phytosanitaires restent au registre (détachés de l'arbre, nom snapshoté), comme les lots de bois. " +
-  "Préférez « Archiver » pour conserver toute la traçabilité."
 
 // Types d'arbre : liste unique dans src/lib/verger/types-arbre.ts (QA
 // 2026-10-19, les lianes fruitières manquaient à la création et aux onglets).
@@ -1071,21 +1060,17 @@ export function ArbresTab() {
         open={arbreToDelete !== null}
         onOpenChange={(open) => !open && setArbreToDelete(null)}
         entityLabel={arbreToDelete ? `l'arbre "${arbreToDelete.nom}"` : ""}
-        dependencies={
-          arbreToDelete?._count
-            ? [
-                { label: "récoltes", count: arbreToDelete._count.recoltesArbres },
-                { label: "opérations (taille, traitement, greffe…)", count: arbreToDelete._count.operationsArbres },
-                { label: "observations de santé", count: arbreToDelete._count.observationsSante },
-              ]
-            : []
-        }
         warning={AVERTISSEMENT_SUPPRESSION_ARBRE}
         onConfirm={async () => {
           if (!arbreToDelete) return
           try {
             const res = await fetch(`/api/arbres/${arbreToDelete.id}`, { method: "DELETE" })
-            if (!res.ok) throw new Error("delete failed")
+            if (!res.ok) {
+              const payload = await res.json().catch(() => null)
+              toast({ variant: "destructive", title: "Suppression refusée",
+                description: typeof payload?.error === "string" ? payload.error : "La suppression n’a pas pu être effectuée." })
+              return
+            }
             toast({ title: "Arbre supprimé" })
             fetchData()
           } catch {
