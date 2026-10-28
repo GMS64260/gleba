@@ -1031,7 +1031,7 @@ function TransactionsPageInner() {
                               {r.facture ? <Badge variant="outline">Facturée</Badge> : r.montantRegle != null && r.montantRegle > 0 && (r.resteAPayer ?? 0) > 0 ? <Badge className="bg-amber-100 text-amber-800">Partiel · reste {formatEuro(r.resteAPayer!)}</Badge> : r.paye === null ? (
                                 <Badge variant="outline">Non suivi</Badge>
                               ) : r.paye ? (
-                                <Badge className="bg-green-100 text-green-800">Encaissé</Badge>
+                                <><Badge className="bg-green-100 text-green-800">{r.montantRegle == null ? 'Déclaré encaissé' : 'Encaissé'}</Badge>{r.montantRegle == null && <p className="mt-1 text-xs text-muted-foreground">Pointage sans détail. À vérifier dans Règlements.</p>}</>
                               ) : (
                                 <Badge className="bg-orange-100 text-orange-800">À encaisser</Badge>
                               )}

@@ -78,6 +78,15 @@ describe('invariants auto-compta élevage', () => {
     })
   })
 
+  it.each([undefined, null])('ne déduit aucun encaissement d’un statut absent (%s)', async (paye) => {
+    await createVenteFromVenteProduit('user-1', {
+      id: 10, type: 'animal_vivant', prixTotal: 100, paye,
+    })
+    expect(mocks.venteCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ paye: false }),
+    })
+  })
+
   it('classe une vente de miel dans les produits de la ruche avec son taux réel', async () => {
     await createVenteFromVenteProduit('user-1', {
       id: 11,

@@ -33,7 +33,7 @@ export const venteProduitSchema = z
     prixUnitaire: z.number().min(0, 'Le prix doit être positif ou nul'),
     client: z.string().max(200).nullable().optional(),
     destinationId: z.string().nullable().optional(),
-    paye: z.boolean().default(true),
+    paye: z.boolean().default(false),
     modeReglement: modeReglementSchema,
     // Le taux par défaut dépend du produit et est appliqué par l'API. Il reste
     // facultatif ici pour préserver les appelants historiques.

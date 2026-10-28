@@ -91,6 +91,16 @@ describe("POST /api/elevage/ventes — fromage", () => {
     expect(mocks.lotUpdate).not.toHaveBeenCalled()
   })
 
+  it("une vente sans confirmation reste impayée malgré son mode virement", async () => {
+    const res = await POST(requete(corpsCave({ paye: undefined, modeReglement: 'Virement' })))
+    expect(res.status).toBe(201)
+    expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({ paye: false })
+    expect(mocks.createVente).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      paye: false, modeReglement: 'Virement',
+    }), expect.anything())
+    expect(mocks.mouvementCreate.mock.calls[0][0].data).toMatchObject({ nbPieces: 2 })
+  })
+
   it("une vente au gramme sort son poids en kg", async () => {
     const res = await POST(requete(corpsCave({ quantite: 150, unite: "g", prixUnitaire: 0.02 })))
     expect(res.status).toBe(201)

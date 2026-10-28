@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { ChampsEncaissement } from "@/components/comptabilite/ChampsEncaissement"
 import { urlApercu } from "@/lib/apercu-document"
 import { merePresenteALaNaissance } from "@/lib/elevage/sortie-animal"
 import Link from "next/link"
@@ -676,10 +677,12 @@ function AnimauxSubTab() {
   const [isSavingAbattage, setIsSavingAbattage] = React.useState(false)
 
   const [venteDialog, setVenteDialog] = React.useState<Animal | null>(null)
-  const [venteForm, setVenteForm] = React.useState({
+  const nouvelleVente = () => ({
     date: todayLocalISO(),
     prixUnitaire: "", client: "", description: "", notes: "", nExploitationDestination: "",
+    paye: false, modeReglement: "",
   })
+  const [venteForm, setVenteForm] = React.useState(nouvelleVente)
   const [isSavingVente, setIsSavingVente] = React.useState(false)
 
   const [mortDialog, setMortDialog] = React.useState<Animal | null>(null)
@@ -746,7 +749,8 @@ function AnimauxSubTab() {
           unite: "unite",
           prixUnitaire: venteForm.prixUnitaire ? parseFloat(venteForm.prixUnitaire) : 0,
           client: venteForm.client || null,
-          paye: true,
+          paye: venteForm.paye,
+          modeReglement: venteForm.modeReglement || null,
           notes: venteForm.notes || null,
         }),
       })
@@ -764,7 +768,7 @@ function AnimauxSubTab() {
       })
       toast({ title: "Vente enregistrée", description: `${venteDialog.nom || venteDialog.identifiant || ''} marque comme vendu` })
       setVenteDialog(null)
-      setVenteForm({ date: todayLocalISO(), prixUnitaire: "", client: "", description: "", notes: "", nExploitationDestination: "" })
+      setVenteForm(nouvelleVente())
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer la vente" })
@@ -1463,7 +1467,7 @@ function AnimauxSubTab() {
                         {animal.statut === "actif" ? (
                           <>
                             <DropdownMenuItem onClick={() => {
-                              setVenteForm((form) => ({ ...form, date: todayLocalISO() }))
+                              setVenteForm(nouvelleVente())
                               setVenteDialog(animal)
                             }}>
                               Vendre
@@ -1669,7 +1673,7 @@ function AnimauxSubTab() {
                                 <button
                                   type="button"
                                   aria-label={`Vendre ${nomLigneAnimal(animal)}`}
-                                  onClick={() => { setVenteForm(f => ({ ...f, date: todayLocalISO() })); setVenteDialog(animal) }}
+                                  onClick={() => { setVenteForm(nouvelleVente()); setVenteDialog(animal) }}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-blue-100 hover:text-blue-600"
                                 >
                                   <ShoppingCart className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1861,6 +1865,11 @@ function AnimauxSubTab() {
               <Label>Notes</Label>
               <Textarea value={venteForm.notes} onChange={(e) => setVenteForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
             </div>
+            <ChampsEncaissement
+              idPrefix="animal-vente"
+              value={venteForm}
+              onChange={(changement) => setVenteForm(f => ({ ...f, ...changement }))}
+            />
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setVenteDialog(null)}>Annuler</Button>
               <Button type="submit" disabled={isSavingVente}>{isSavingVente ? "Enregistrement..." : "Enregistrer la vente"}</Button>

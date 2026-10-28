@@ -849,6 +849,7 @@ export default function FacturesPage() {
                                           ? "Brouillon"
                                           : f.statut}
                             </Badge>
+                            {f.type !== 'avoir' && f.statut === 'payee' && f.montantRegle == null && <p className="mt-1 text-xs text-muted-foreground">Paiement déclaré sans détail. À vérifier dans Règlements.</p>}
                             {f.type !== 'avoir' && f.montantRegle != null && <p className="mt-1 text-xs text-muted-foreground">Versements : {formatEuro(f.montantRegle)}</p>}
                           </TableCell>
                           <TableCell className="text-right">

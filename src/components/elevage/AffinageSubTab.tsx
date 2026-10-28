@@ -7,6 +7,7 @@
  */
 
 import * as React from "react"
+import { ChampsEncaissement } from "@/components/comptabilite/ChampsEncaissement"
 import { Warehouse, ArrowDownToLine, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -53,8 +54,8 @@ export function AffinageSubTab() {
   const [inclureEcoules, setInclureEcoules] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [sortie, setSortie] = React.useState<LotCave | null>(null)
-  const [form, setForm] = React.useState({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "" })
-  const resetForm = () => setForm({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "" })
+  const [form, setForm] = React.useState({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "", paye: false, modeReglement: "" })
+  const resetForm = () => setForm({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "", paye: false, modeReglement: "" })
 
   const reload = React.useCallback(() => {
     setLoading(true)
@@ -97,7 +98,8 @@ export function AffinageSubTab() {
           prixUnitaire,
           client: form.client || null,
           lotFromageId: sortie.id,
-          paye: true,
+          paye: form.paye,
+          modeReglement: form.modeReglement || null,
         }),
       })
       const j = await res.json()
@@ -199,7 +201,7 @@ export function AffinageSubTab() {
                       )}
                     </td>
                     <td className="p-2 text-right">
-                      <Button variant="outline" size="sm" onClick={() => setSortie(l)} disabled={l.stockPieces <= 0 && l.stockKg <= 0}>
+                      <Button variant="outline" size="sm" onClick={() => { resetForm(); setSortie(l) }} disabled={l.stockPieces <= 0 && l.stockKg <= 0}>
                         <ArrowDownToLine className="h-4 w-4 mr-1" />Sortie
                       </Button>
                     </td>
@@ -233,6 +235,11 @@ export function AffinageSubTab() {
                   <div><Label>Prix unitaire (€)</Label><Input type="number" step="0.01" min="0" placeholder="par pièce ou par kg" value={form.prixUnitaire} onChange={(e) => setForm((f) => ({ ...f, prixUnitaire: e.target.value }))} /></div>
                   <div><Label>Client (optionnel)</Label><Input value={form.client} onChange={(e) => setForm((f) => ({ ...f, client: e.target.value }))} /></div>
                 </div>
+                <ChampsEncaissement
+                  idPrefix="cave-vente"
+                  value={form}
+                  onChange={(changement) => setForm(f => ({ ...f, ...changement }))}
+                />
                 {Number(form.prixUnitaire) > 0 && (Number(form.nbPieces) > 0 || Number(form.poidsKg) > 0) && (
                   <p className="text-xs text-emerald-700">
                     Recette : {((Number(form.poidsKg) > 0 ? Number(form.poidsKg) : Number(form.nbPieces)) * Number(form.prixUnitaire)).toLocaleString("fr-FR")} € — enregistrée en comptabilité et déduite du stock de cave.

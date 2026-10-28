@@ -411,7 +411,7 @@ export async function createVenteFromVenteProduit(
         montant: montantTTC,
         clientNom: venteProduit.client || null,
         module: 'elevage',
-        paye: venteProduit.paye ?? true,
+        paye: venteProduit.paye ?? false,
         sourceType: 'vente_produit',
         sourceId: venteProduit.id,
         auto: true,

@@ -62,6 +62,57 @@ describe.skipIf(!active)('Fiabilité élevage sur PostgreSQL', () => {
     expect((await db.animal.findUniqueOrThrow({ where: { id: a.id } })).statut).toBe('vendu')
   })
 
+  it('une vente par virement sans confirmation reste en créance jusqu’aux versements 30/70', async () => {
+    const a = await animal()
+    const v = (await json(await ventes.POST(req('/api/elevage/ventes', 'POST', {
+      date: '2026-10-28', type: 'animal_vivant', animalId: a.id, quantite: 1,
+      unite: 'unite', prixUnitaire: 100, client: 'Client QA', modeReglement: 'Virement',
+    })), 201)).data
+    expect(v.paye).toBe(false)
+    await db.exploitation.update({ where: { userId: auth.tenant }, data: { siren: '123456789' } })
+    const reglements = await import('@/app/api/comptabilite/reglements/route')
+    const revenus = await import('@/app/api/comptabilite/revenus/route')
+    const fec = await import('@/app/api/comptabilite/export/fec/route')
+    const { chargerEncoursCompta } = await import('@/lib/comptabilite/encours')
+    for (const regle of [0, 30, 100]) {
+      if (regle) await json(await reglements.POST(req('/api/comptabilite/reglements', 'POST', {
+        type: 'VenteProduit', id: v.id, montant: String(regle === 30 ? 30 : 70),
+        date: '2026-10-28', modeReglement: 'Virement', cleIdempotence: randomUUID(),
+      })), 201)
+      const liste = await json(await revenus.GET(req('/api/comptabilite/revenus?annee=2026', 'GET')), 200)
+      const ligne = liste.data.find((r: { source: string }) => r.source === 'VenteProduit')
+      expect(ligne.paye).toBe(regle === 100)
+      expect(ligne.ecriture.suivi.modeReglement).toBe('Virement')
+      expect((await chargerEncoursCompta(auth.tenant, null, new Date('2026-12-31T23:59:59Z'))).creances.total).toBe(100 - regle)
+      expect((await db.venteProduit.findUniqueOrThrow({ where: { id: v.id } })).paye).toBe(regle === 100)
+      const res = await fec.GET(req('/api/comptabilite/export/fec?exercice=2026', 'GET'))
+      expect(res.status).toBe(200)
+      const lignes = (await res.text()).trim().split('\n').map((l) => l.split('\t'))
+      const idx = (n: string) => lignes[0].indexOf(n)
+      const net = (prefixe: string) => lignes.slice(1).filter((l) => l[idx('CompteNum')].startsWith(prefixe))
+        .reduce((n, l) => n + Number(l[idx('Debit')].replace(',', '.')) - Number(l[idx('Credit')].replace(',', '.')), 0)
+      expect(net('411')).toBeCloseTo(100 - regle, 2)
+      expect(net('512')).toBeCloseTo(regle, 2)
+    }
+    expect(await db.venteProduit.count({ where: { userId: auth.tenant } })).toBe(1)
+    expect(await db.venteManuelle.count({ where: { userId: auth.tenant, sourceType: 'vente_produit' } })).toBe(1)
+    expect(await db.reglement.count({ where: { userId: auth.tenant } })).toBe(2)
+    expect((await db.animal.findUniqueOrThrow({ where: { id: a.id } })).statut).toBe('vendu')
+  })
+
+  it('le défaut SQL attend le règlement et les anciens pointages explicites sont conservés', async () => {
+    const colonnes = await db.$queryRaw<Array<{ column_default: string }>>`
+      SELECT column_default FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'ventes_produits' AND column_name = 'paye'`
+    expect(colonnes[0].column_default).toBe('false')
+    const data = { userId: auth.tenant, type: 'autre', quantite: 1, unite: 'unite', prixUnitaire: 100, prixTotal: 100 }
+    expect((await db.venteProduit.create({ data })).paye).toBe(false)
+    const historique = await db.venteProduit.create({ data: { ...data, paye: true } })
+    await (await import('@/lib/auto-compta')).createVenteFromVenteProduit(auth.tenant, historique)
+    expect((await db.venteManuelle.findFirstOrThrow({ where: { userId: auth.tenant, sourceType: 'vente_produit', sourceId: historique.id } })).paye).toBe(true)
+    expect(await db.reglement.count({ where: { userId: auth.tenant } })).toBe(0)
+  })
+
   it('les abattages concurrents respectent l’effectif et deux annulations ne le rendent qu’une fois', async () => {
     const body = { lotId, date: '2026-10-28', quantite: 4, destination: 'auto_consommation' }
     const reponses = await Promise.all([postAbattage(body), postAbattage(body)])
