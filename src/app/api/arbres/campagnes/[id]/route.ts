@@ -1,3 +1,4 @@
+import { invalidateKpi } from '@/lib/kpi/cache'
 import { verifierReferencesCampagne, masquerReferencesCampagnes } from "@/lib/verger/references-campagne"
 import { ErreurVerger } from "@/lib/verger/erreur"
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
@@ -145,6 +146,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return campagne
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json((await masquerReferencesCampagnes(prisma, session!.user.id, [campagne]))[0])
   } catch (err) {
     if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
@@ -182,6 +184,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       await tx.campagnePlantation.delete({ where: { id: campagneId, userId: session!.user.id } })
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json({ success: true })
   } catch (err) {
     if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })

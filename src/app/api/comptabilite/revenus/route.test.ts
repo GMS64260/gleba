@@ -1,141 +1,49 @@
-/**
- * Comptabilité > Transactions > Revenus — écriture des lignes dérivées
- * (ticket cmvgdzsf7, 2026-10-20).
- *
- * La liste affiche les sources brutes (vente d'élevage, récolte, bois) : une
- * ligne dérivée n'offrait ni bouton ni formulaire, faute de connaître son
- * miroir comptable. La route rattache désormais à chaque ligne dérivée son
- * écriture (id + suivi modifiable) ou la facture qui porte la vente.
- * Requête rejouée : celle de l'écran (`fetchData`), `?year=2026`.
- */
-
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { NextRequest } from "next/server"
-
-const mocks = vi.hoisted(() => ({
-  requireAuthApi: vi.fn(),
-  venteProduit: vi.fn(),
-  recolteArbre: vi.fn(),
-  productionBois: vi.fn(),
-  abattage: vi.fn(),
-  recolte: vi.fn(),
-  venteManuelle: vi.fn(),
-  commandeBoutique: vi.fn(),
-  paieLait: vi.fn(),
-  facture: vi.fn(),
-}))
-
-vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock("@/lib/kpi", () => ({ getKpiCompta: vi.fn().mockResolvedValue({}) }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
-    cibleReglement: { findMany: vi.fn().mockResolvedValue([]) },
-    venteProduit: { findMany: mocks.venteProduit },
-    recolteArbre: { findMany: mocks.recolteArbre },
-    productionBois: { findMany: mocks.productionBois },
-    abattage: { findMany: mocks.abattage },
-    recolte: { findMany: mocks.recolte },
-    venteManuelle: { findMany: mocks.venteManuelle },
-    commandeBoutique: { findMany: mocks.commandeBoutique },
-    paieLait: { findMany: mocks.paieLait },
-    facture: { findMany: mocks.facture },
-  },
-}))
-
-import { GET } from "./route"
-
-const d = (iso: string) => new Date(iso)
-
-/** Miroirs `auto` lus par `chargerSuiviDesLignes` (appel avec `select`). */
-const miroirs = [
-  { id: 909, sourceType: "vente_produit", sourceId: 167, modeReglement: null, numeroPiece: null, notes: null },
-  { id: 910, sourceType: "production_bois", sourceId: 34, modeReglement: "Virement", numeroPiece: "VIR-12", notes: null },
-  { id: 913, sourceType: "commande_boutique", sourceId: 103, modeReglement: null, numeroPiece: null, notes: "Retrait" },
-]
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
-  mocks.venteProduit.mockResolvedValue([
-    { id: 167, date: d("2026-10-20"), type: "oeufs", description: "v8-Nathalie 2010 Œufs marché", quantite: 72, unite: "œuf", prixUnitaire: 1.2, prixTotal: 86.4, client: null, paye: true, factureId: null },
-  ])
-  mocks.recolteArbre.mockResolvedValue([])
-  mocks.productionBois.mockResolvedValue([
-    { id: 34, date: d("2026-10-20"), dateVente: d("2026-10-20"), type: "elagage", volumeM3: 3, poidsKg: null, prixVente: 450, clientNom: null, factureId: null, arbre: { nom: "Châtaignier" } },
-  ])
-  mocks.abattage.mockResolvedValue([])
-  mocks.recolte.mockResolvedValue([
-    // Vente Dahlia facturée : pas de miroir, la facture F-2026-0007 la porte.
-    { id: 1177, date: d("2026-10-20"), dateVente: d("2026-10-20"), especeId: "Dahlia", quantite: 40, prixKg: 1.2, prixTotal: 48, clientNom: "v8-Nathalie Amap 2010", factureId: 40 },
-  ])
-  mocks.venteManuelle.mockImplementation(async (args: { select?: object }) =>
-    args.select
-      ? miroirs
-      : [
-          { id: 905, date: d("2026-10-19"), auto: false, sourceType: null, sourceId: null, module: "potager", description: "Marché samedi", quantite: null, unite: null, prixUnitaire: null, montant: 127.5, clientNom: null, paye: true, categorie: "legumes" },
-          { id: 913, date: d("2026-10-20"), auto: true, sourceType: "commande_boutique", sourceId: 103, module: "boutique", description: "Commande boutique CMD-2026-0017", quantite: null, unite: null, prixUnitaire: null, montant: 5, clientNom: null, paye: true, categorie: "epicerie" },
-        ],
-  )
-  mocks.commandeBoutique.mockResolvedValue([])
-  mocks.paieLait.mockResolvedValue([])
-  mocks.facture.mockResolvedValue([{ id: 40, numero: "F-2026-0007" }])
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { NextRequest } from 'next/server'
+const mocks = vi.hoisted(() => ({ auth:vi.fn(), ventes:vi.fn(), factures:vi.fn(), recoltes:vi.fn(),commandes:vi.fn() }))
+vi.mock('@/lib/auth-utils',()=>({requireAuthApi:mocks.auth}))
+vi.mock('@/lib/prisma',()=>({default:{
+  venteManuelle:{findMany:mocks.ventes}, facture:{findMany:mocks.factures}, recolte:{findMany:mocks.recoltes},
+  commandeBoutique:{findMany:mocks.commandes},
+  cibleReglement:{findMany:vi.fn(async()=>[])},
+}}))
+import { GET } from './route'
+const date=new Date('2026-01-10T12:00:00Z')
+const miroirs=[{id:31,userId:'qa',sourceType:'recolte_arbre',sourceId:7,sourceRef:null,auto:true,
+  date,module:'verger',categorie:'fruits',description:'Vente fruits',quantite:10,unite:'kg',prixUnitaire:2,
+  montant:20,paye:false,clientNom:'Client fictif',modeReglement:null,numeroPiece:null,tauxTVA:5.5,notes:null}]
+beforeEach(()=>{
+ vi.clearAllMocks();mocks.auth.mockResolvedValue({error:null,session:{user:{id:'qa'}}})
+ mocks.ventes.mockImplementation(async(q:{select?:object})=>q.select?miroirs:miroirs)
+ mocks.factures.mockResolvedValue([]);mocks.recoltes.mockResolvedValue([]);mocks.commandes.mockResolvedValue([])
 })
-
-describe("GET /api/comptabilite/revenus — suivi des lignes dérivées", () => {
-  it("rattache son écriture à chaque ligne dérivée, sa facture à une vente facturée", async () => {
-    const res = await GET(new NextRequest("http://localhost/api/comptabilite/revenus?year=2026"))
-
-    expect(res.status).toBe(200)
-    const { data } = await res.json()
-    const ligne = (id: string) => data.find((r: { id: string }) => r.id === id)
-
-    expect(ligne("vente-167").ecriture).toEqual({
-      id: 909,
-      suivi: { modeReglement: null, numeroPiece: null, notes: null },
-    })
-    expect(ligne("bois-34").ecriture).toEqual({
-      id: 910,
-      suivi: { modeReglement: "Virement", numeroPiece: "VIR-12", notes: null },
-    })
-    // QA cmvnp0dm9 — libellé du type, pas la valeur technique « elagage ».
-    expect(ligne("bois-34").description).toBe("Vente bois - Élagage - Châtaignier - 3 m³")
-    // Miroir affiché tel quel (commande boutique) : retrouvé par son id.
-    expect(ligne("manuel-913").ecriture.id).toBe(913)
-    expect(ligne("recolte-potager-1177")).toMatchObject({
-      ecriture: null,
-      facture: { id: 40, numero: "F-2026-0007" },
-    })
-    // Une ligne saisie à la main garde son formulaire complet, sans écriture rattachée.
-    expect(ligne("manuel-905").corrigeable).toBe(true)
-    expect(ligne("manuel-905").ecriture).toBeUndefined()
-  })
-
-  it("lit miroirs et factures dans le seul compte de la session", async () => {
-    await GET(new NextRequest("http://localhost/api/comptabilite/revenus?year=2026"))
-
-    const lectureMiroirs = mocks.venteManuelle.mock.calls.find(([args]) => args.select)?.[0]
-    expect(lectureMiroirs.where).toEqual({
-      userId: "u1",
-      auto: true,
-      OR: [
-        { id: { in: [913] } },
-        { sourceType: "vente_produit", sourceId: { in: [167] } },
-        { sourceType: "production_bois", sourceId: { in: [34] } },
-        { sourceType: "recolte", sourceId: { in: [1177] } },
-      ],
-    })
-    expect(lectureMiroirs.select).toEqual({
-      id: true,
-      paye: true,
-      sourceType: true,
-      sourceId: true,
-      modeReglement: true,
-      numeroPiece: true,
-      notes: true,
-    })
-    expect(mocks.facture).toHaveBeenCalledWith({
-      where: { userId: "u1", id: { in: [40] } },
-      select: { id: true, numero: true },
-    })
-  })
+describe('Transactions et périmètre comptable commun',()=>{
+ it('reprend le montant du miroir et conserve l’accès à la source et aux règlements',async()=>{
+  const r=await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=2026'))
+  expect(r.status).toBe(200);const j=await r.json()
+  expect(j.stats.total).toBe(20);expect(j.data).toMatchObject([{id:'recolte-arbre-7',source:'RecolteArbre',montant:20,paye:false,ecriture:{id:31}}])
+ })
+ it('facture stock et avoir figurent une seule fois avec leur signe et leur module',async()=>{
+  const fs=[{id:51,numero:'F-QA-51',date,type:'facture',statut:'emise',clientNom:'Client fictif',objet:'Pommes',totalTTC:100,factureOrigineId:null,
+   lignes:[{articleStockType:'fruit'}],_count:{}},
+   {id:52,numero:'AV-QA-52',date,type:'avoir',statut:'emise',clientNom:'Client fictif',objet:'Correction',totalTTC:20,factureOrigineId:51,lignes:[],_count:{}}]
+  mocks.ventes.mockResolvedValue([])
+  mocks.factures.mockImplementation(async(q:{select?:{numero?:boolean;totalTTC?:boolean}})=>q.select?.totalTTC?fs:fs.map(f=>({id:f.id,numero:f.numero})))
+  const r=await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=2026&module=verger'));const j=await r.json()
+  expect(j.stats.total).toBe(80);expect(j.stats.parModule.verger).toBe(80);expect(j.data).toHaveLength(2)
+  expect(j.data.find((l:{montant:number})=>l.montant===-20)).toMatchObject({source:'Facture',reglementsDisponibles:false})
+ })
+ it('conserve le nom client des anciennes commandes boutique sans modifier leur montant',async()=>{
+  mocks.ventes.mockResolvedValue([{...miroirs[0],id:91,sourceType:'commande_boutique',sourceId:11,clientNom:null,categorie:'epicerie',montant:30}])
+  mocks.commandes.mockResolvedValue([{id:11,clientNom:'Client boutique fictif'}])
+  const j=await (await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=2026'))).json()
+  expect(j.data[0]).toMatchObject({client:'Client boutique fictif',montant:30,categorie:'Épicerie'})
+  expect(mocks.commandes).toHaveBeenCalledWith({where:{userId:'qa',id:{in:[11]}},select:{id:true,clientNom:true}})
+ })
+ it('scope toutes les lectures au propriétaire et refuse une année invalide',async()=>{
+  await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=2026'))
+  expect(mocks.ventes.mock.calls.every(([q])=>q.where.userId==='qa')).toBe(true)
+  expect(mocks.factures.mock.calls.every(([q])=>q.where.userId==='qa')).toBe(true)
+  expect((await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=x'))).status).toBe(400)
+ })
 })

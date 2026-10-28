@@ -4933,6 +4933,10 @@ model MouvementStockCommercial {
   retour MouvementStockCommercial? @relation("RetourStockCommercial")
   articleStockType String @map("article_stock_type")
   articleStockId String @map("article_stock_id")
+  // Les pertes et usages internes débitent le reliquat sans modifier la production.
+  nature String @default("livraison")
+  cleIdempotence String? @map("cle_idempotence")
+  notes String?
   sourceNom String @map("source_nom")
   unite String
   quantite Float // positive = sortie ; négative = retour
@@ -4960,6 +4964,7 @@ model MouvementStockCommercial {
   mouvementRuche MouvementStockRuche? @relation(fields: [mouvementRucheId], references: [id], onDelete: NoAction)
   mouvementFromageId String? @map("mouvement_fromage_id")
   mouvementFromage MouvementFromage? @relation(fields: [mouvementFromageId], references: [id], onDelete: NoAction)
+  @@unique([userId, cleIdempotence])
   @@index([userId, date])
   @@index([documentId])
   @@index([factureId])

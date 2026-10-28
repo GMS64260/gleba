@@ -106,7 +106,7 @@ export interface SuiviDeLigne {
   facture: { id: number; numero: string } | null
 }
 
-export const MIROIR_DEPENSE_PAR_SOURCE: Record<string, string> = { LotAnimaux: 'achat_animal', Animal: 'achat_animal_individuel', OperationArbre: 'operation_arbre', Intervention: 'intervention' }
+export const MIROIR_DEPENSE_PAR_SOURCE: Record<string, string> = { LotAnimaux: 'achat_animal', Animal: 'achat_animal_individuel', OperationArbre: 'operation_arbre', Intervention: 'intervention', Arbre: 'achat_arbre', CampagnePlantation: 'campagne_plantation' }
 
 /** Les dépenses générées gardent leur suivi sur DepenseManuelle. */
 export async function chargerSuiviDesDepenses(userId: string, lignes: Array<LigneRevenuDerivable & { comptable: boolean }>) {

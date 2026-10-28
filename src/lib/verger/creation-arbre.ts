@@ -15,6 +15,7 @@
  * la règle du calendrier d'entretien, que la régénération réutilise.
  */
 
+import type { Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { findTreeCareProfile, generateCareOperations, type TreeCareProfile } from "@/lib/tree-care-calendar"
 
@@ -94,6 +95,7 @@ export function planCalendrierEntretien(
 export async function genererCalendrierEntretien(
   arbre: ArbreCalendrier & { espece: string | null; type: string },
   userId: string,
+  db: Pick<Prisma.TransactionClient, "operationArbre"> = prisma,
 ): Promise<boolean> {
   if (!arbre.espece) return false
 
@@ -103,6 +105,6 @@ export async function genererCalendrierEntretien(
   const { operations } = planCalendrierEntretien(profile, arbre, userId)
   if (operations.length === 0) return false
 
-  await prisma.operationArbre.createMany({ data: operations })
+  await db.operationArbre.createMany({ data: operations })
   return true
 }

@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       achatsLots,
       achatsAnimaux,
       achatsArbres,
+      campagnes,
       interventions,
       depensesManuelles,
     ] = await Promise.all([
@@ -148,6 +149,13 @@ export async function GET(request: NextRequest) {
         orderBy: { dateAchat: 'desc' },
       }),
 
+      prisma.campagnePlantation.findMany({
+        where: { userId, coutReel: { gt: 0 }, OR: [
+          { datePlantationReelle: { gte: startOfYear, lte: endOfYear } },
+          { datePlantationReelle: null, datePlantationPrevue: { gte: startOfYear, lte: endOfYear } },
+          { datePlantationReelle: null, datePlantationPrevue: null, createdAt: { gte: startOfYear, lte: endOfYear } },
+        ] },
+      }),
       // Intervention (travaux culturaux : intrants + main d'oeuvre)
       // Ticket cmsx69cuc — cette source manquait à la liste. Son miroir
       // comptable (DepenseManuelle auto, sourceType='intervention') est exclu
@@ -376,6 +384,13 @@ export async function GET(request: NextRequest) {
         comptable: true,
       })
     })
+
+    campagnes.forEach(c => expenses.push({
+      id: `campagne-${c.id}`, source: 'CampagnePlantation', sourceId: c.id, module: 'verger',
+      date: (c.datePlantationReelle ?? c.datePlantationPrevue ?? c.createdAt).toISOString(),
+      description: `Campagne de plantation - ${c.nom}`, quantite: null, unite: null, prixUnitaire: null,
+      montant: c.coutReel ?? 0, fournisseur: c.pepiniere, paye: null, categorie: 'Plantations', comptable: true,
+    }))
 
     // Intervention -> dépenses (miroir de createDepenseFromIntervention :
     // même montant, même module, même règle « comptable »).

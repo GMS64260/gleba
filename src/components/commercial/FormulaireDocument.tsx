@@ -30,6 +30,8 @@ export function FormulaireDocument({ type, initial, copie, preselection, onSauve
   const verrou = React.useRef(false)
   const [sauve, setSauve] = React.useState(false)
   const today = todayLocalISO()
+  const [dateBrouillon, setDateBrouillon] = React.useState(copie ? today : initial?.date.slice(0, 10) || today)
+  const [dateLivraison, setDateLivraison] = React.useState(copie ? '' : initial?.dateLivraison?.slice(0, 10) || '')
   const dans30jours = (() => { const d = new Date(); d.setDate(d.getDate() + 30); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
   const sansTaxe = factureSansTaxe(regime) || !!clients.find((c) => c.id === Number(clientId))?.exonererTVA
   const nombre = (s: string) => Number(s.replace(',', '.'))
@@ -81,14 +83,14 @@ export function FormulaireDocument({ type, initial, copie, preselection, onSauve
     <div className="grid gap-4 sm:grid-cols-2">
       <div><Label htmlFor="doc-client">Fiche client *</Label><SelectNatif id="doc-client" name="clientId" required value={clientId} onChange={(e) => setClientId(e.target.value)}><option value="">Choisir un client</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}</SelectNatif><Link href="/comptabilite/clients" className="text-sm text-primary underline">Gérer les fiches clients</Link></div>
       <div><Label htmlFor="doc-objet">Objet *</Label><Input id="doc-objet" name="objet" required maxLength={500} defaultValue={initial?.objet || ''} placeholder="Légumes pour le restaurant" /></div>
-      <div><Label htmlFor="doc-date">Date du brouillon *</Label><Input id="doc-date" name="date" type="date" required defaultValue={copie ? today : initial?.date.slice(0, 10) || today} /></div>
+      <div><Label htmlFor="doc-date">Date du brouillon *</Label><Input id="doc-date" name="date" type="date" required value={dateBrouillon} onChange={e => setDateBrouillon(e.target.value)} /></div>
       {type === 'devis' && <div><Label htmlFor="doc-validite">Valable jusqu’au *</Label><Input id="doc-validite" name="dateValidite" type="date" required defaultValue={copie ? dans30jours : initial?.dateValidite?.slice(0, 10) || dans30jours} /></div>}
-      <div><Label htmlFor="doc-livraison">Livraison prévue le</Label><Input id="doc-livraison" name="dateLivraison" type="date" defaultValue={copie ? '' : initial?.dateLivraison?.slice(0, 10) || ''} /></div>
+      <div><Label htmlFor="doc-livraison">Livraison prévue le</Label><Input id="doc-livraison" name="dateLivraison" type="date" value={dateLivraison} onChange={e => setDateLivraison(e.target.value)} /></div>
       <div><Label htmlFor="doc-categorie">Nature de l’opération</Label><SelectNatif id="doc-categorie" name="categorieOperation" defaultValue={type === 'livraison' ? 'biens' : initial?.categorieOperation || 'biens'} disabled={type === 'livraison'}><option value="biens">Livraison de biens</option><option value="services">Prestation de services</option><option value="mixte">Biens et services</option></SelectNatif></div>
     </div>
     <div><Label htmlFor="doc-adresse">Adresse de livraison</Label><Textarea id="doc-adresse" name="adresseLivraison" maxLength={500} defaultValue={initial?.adresseLivraison || ''} placeholder="Laisser vide pour reprendre l’adresse de la fiche client" /></div>
     {sansTaxe && <p className="rounded-md bg-amber-50 p-3 text-sm">TVA à 0 % : régime de l’exploitation ou exonération de la fiche client. Les prix HT saisis restent les prix à payer.</p>}
-    {!charge && <ChoisirStock onChoisir={ajouterStock} preselection={preselection} />}
+    {!charge && <ChoisirStock dateEffet={dateLivraison || dateBrouillon} onChoisir={ajouterStock} preselection={preselection} />}
     <p className="text-sm text-muted-foreground">{type === 'devis' ? 'Les quantités restent disponibles jusqu’à la livraison ou la facturation directe du devis.' : 'Les produits liés au stock seront déduits lorsque vous confirmerez la livraison.'} Les lignes libres restent possibles pour les prestations et produits sans stock suivi.</p>
     <div className="space-y-3">{lignes.map((l, index) => <fieldset key={l.cle} className="grid gap-3 rounded-lg border bg-slate-50 p-3 sm:grid-cols-6">
       <legend className="px-1 text-sm font-medium">Ligne {index + 1}{l.articleStockId ? ' · Liée au stock' : ' · Ligne libre'}</legend>

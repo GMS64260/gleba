@@ -1,3 +1,4 @@
+import { invalidateKpi } from '@/lib/kpi/cache'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -87,6 +88,7 @@ export async function POST(request: NextRequest) {
       }
       return { count: cibleIds.length, action, ignored: ids.length - cibleIds.length }
     }, { timeout: 30000 })
+    invalidateKpi(userId)
     return NextResponse.json(resultat)
   } catch (err) {
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })

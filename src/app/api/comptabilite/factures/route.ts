@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
         const existante = await tx.facture.findUnique({ where: { userId_cleCreationStock: { userId, cleCreationStock: d.cleCreationStock } }, include: { lignes: true, client: true } })
         if (existante) return existante
       }
-      const lignesValidees = await verifierLignesStock(tx, userId, d.lignes)
+      const lignesValidees = await verifierLignesStock(tx, userId, d.lignes, d.dateLivraison ?? d.date ?? new Date())
 
       if (d.type === 'avoir' && d.factureOrigineId) {
         const origine = await verrouillerOrigineAvoir(tx, userId, d.factureOrigineId)
@@ -287,7 +287,7 @@ export async function POST(request: NextRequest) {
           articleStockType: l.articleStockType, articleStockId: l.articleStockId,
         })),
       })
-      if (d.type === 'facture' && ['emise', 'payee'].includes(d.statut)) await sortirStockCommercial(tx, userId, creee.lignes, { factureId: creee.id, numero: creee.numero, date: d.dateLivraison ?? new Date() })
+      if (d.type === 'facture' && ['emise', 'payee'].includes(d.statut)) await sortirStockCommercial(tx, userId, creee.lignes, { factureId: creee.id, numero: creee.numero, date: d.dateLivraison ?? creee.date })
       return creee
     }, { timeout: 30_000 })
 

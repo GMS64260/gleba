@@ -1128,7 +1128,7 @@ export default function FacturesPage() {
                   </div>
                 )}
 
-                <ChoisirStock onChoisir={ajouterStockFacture} />
+                <ChoisirStock dateEffet={factureData.dateLivraison || factureData.date} onChoisir={ajouterStockFacture} />
                 <p className="text-sm text-muted-foreground">Les produits liés sont déduits du stock à l’émission de cette facture directe. Pour une livraison déjà enregistrée, facturez son bon depuis l’onglet Bons de livraison.</p>
                 <div>
                   <div className="flex items-center justify-between mb-2">

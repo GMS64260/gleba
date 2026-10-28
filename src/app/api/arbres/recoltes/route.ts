@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
     const recoltes = await prisma.recolteArbre.findMany({
       where,
       include: {
+        mouvementsCommerciaux: { where: { userId, nature: { not: 'livraison' } },
+          select: { id: true, nature: true, quantite: true, unite: true, date: true, notes: true }, orderBy: { date: 'desc' } },
         arbre: {
           select: {
             id: true,

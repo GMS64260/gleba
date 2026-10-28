@@ -1,3 +1,4 @@
+import { sortirReliquatVerger } from './sortie-stock'
 import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
@@ -24,7 +25,8 @@ import { TAUX_TVA_BOIS_PAR_DEFAUT } from './tva-bois'
 export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string, acteurId: string, id: number, saisie: Record<string, unknown>) {
   if (!saisie || typeof saisie !== 'object' || Array.isArray(saisie)) throw new ErreurVerger('Données invalides.')
   if (!Number.isInteger(id) || id <= 0) throw new ErreurVerger('ID invalide.')
-  if (['quantite', 'quantiteVendue', 'arbreId', 'parcelleId', 'date'].some(c => saisie[c] !== undefined)) throw new ErreurVerger('Corrigez la récolte avant sa vente. Pour une vente partielle, préparez un bon de livraison.')
+  const sortiePhysique = (type === 'fruit' ? ['perte', 'consomme'] : ['utilise']).includes(String(saisie.statut))
+  if (!sortiePhysique && ['quantite', 'quantiteVendue', 'arbreId', 'parcelleId', 'date'].some(c => saisie[c] !== undefined)) throw new ErreurVerger('Corrigez la récolte avant sa vente. Pour une vente partielle, préparez un bon de livraison.')
   const autorises = type === 'fruit' ? ['en_stock', 'vendu', 'consomme', 'perte'] : ['en_stock', 'vendu', 'utilise']
   if (saisie.statut !== undefined && !autorises.includes(String(saisie.statut))) throw new ErreurVerger('Statut invalide.', 400, 'statut')
   for (const champ of ['paye', 'creerFacture']) if (saisie[champ] !== undefined && typeof saisie[champ] !== 'boolean') throw new ErreurVerger('Valeur attendue : oui ou non.', 400, champ)
@@ -48,6 +50,7 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
     const bois = type === 'bois' ? await tx.productionBois.findUnique({ where: { id, userId }, include: { arbre: true } }) : null
     const courant = fruit ?? bois
     if (!courant) throw new ErreurVerger('Lot introuvable.', 404)
+    if (sortiePhysique) return sortirReliquatVerger(tx, userId, type, courant, saisie)
     if (courant.stockDisponibleCommercial != null) throw new ErreurVerger('Ce lot est lié à un document commercial. Utilisez le BL ou sa facture pour son reliquat et ses retours.', 409)
     const statut = saisie.statut === undefined ? courant.statut : String(saisie.statut)
     if (saisie.statut === 'vendu' && courant.statut === 'vendu') throw new ErreurVerger('Ce lot est déjà vendu. Actualisez la liste avant une nouvelle action.', 409)

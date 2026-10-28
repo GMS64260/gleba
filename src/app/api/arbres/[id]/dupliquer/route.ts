@@ -14,6 +14,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { createDepenseFromAchatArbre } from "@/lib/auto-compta"
+import { verrouillerStockCommercial } from "@/lib/stocks/verrou-commercial"
+import { ErreurReglement } from "@/lib/comptabilite/monnaie"
+import { invalidateKpi } from "@/lib/kpi/cache"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { genererCalendrierEntretien } from "@/lib/verger/creation-arbre"
 import { planCopiesArbre } from "@/lib/verger/duplication-arbre"
@@ -54,9 +58,12 @@ export async function POST(
       existants.map((a) => a.nom)
     )
 
-    const creees = await prisma.$transaction(
-      plan.map((copie) =>
-        prisma.arbre.create({
+    const { creees, calendriers } = await prisma.$transaction(async tx => {
+      await verrouillerStockCommercial(tx, userId)
+      const creees = []
+      let calendriers = 0
+      for (const copie of plan) {
+        const arbre = await tx.arbre.create({
           data: {
             userId,
             nom: copie.nom,
@@ -98,19 +105,20 @@ export async function POST(
             parcelleGeoId: source.parcelleGeoId,
           },
         })
-      )
-    )
-
-    let calendriers = 0
-    for (const arbre of creees) {
-      if (await genererCalendrierEntretien(arbre, userId)) calendriers++
-    }
+        if (await genererCalendrierEntretien(arbre, userId, tx)) calendriers++
+        await createDepenseFromAchatArbre(userId, arbre, tx)
+        creees.push(arbre)
+      }
+      return { creees, calendriers }
+    }, { timeout: 30000 })
+    invalidateKpi(userId)
 
     return NextResponse.json(
       { arbres: creees.map((a) => ({ id: a.id, nom: a.nom })), calendriers },
       { status: 201 }
     )
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("POST /api/arbres/[id]/dupliquer error:", err)
     return NextResponse.json({ error: "Erreur lors de la duplication de l'arbre" }, { status: 500 })
   }

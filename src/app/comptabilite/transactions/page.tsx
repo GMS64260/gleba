@@ -147,10 +147,12 @@ const ECRAN_SOURCE: Record<string, string> = {
   LotAnimaux: "le prix d'achat du lot, dans Élevage > Animaux & Lots",
   Animal: "le prix d'achat de l'animal, sur sa fiche",
   Arbre: "l'arbre, sur sa fiche",
+  CampagnePlantation: "la campagne, dans Verger > Plantations",
 }
 
 /** Écran de la source d'une ligne dérivée, quand il a une adresse fixe. */
 const LIEN_SOURCE: Record<string, string> = {
+  CampagnePlantation: "/verger?tab=plantations",
   Recolte: "/maraichage/recoltes",
   RecolteArbre: "/verger?tab=productions",
   ProductionBois: "/verger?tab=productions",

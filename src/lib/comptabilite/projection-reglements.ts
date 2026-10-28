@@ -70,6 +70,7 @@ export async function enrichirLignesReglements<
     sourceId: number
     montant: number
     comptable?: boolean
+    reglementsDisponibles?: boolean
     factureId?: number | null
     facture?: { id: number } | null
   },
@@ -97,7 +98,7 @@ export async function enrichirLignesReglements<
     const s = suivis.get(cle(l))
     return {
       ...l,
-      reglementsDisponibles: !(l.source === 'VenteManuelle' && parId.get(l.sourceId)?.sourceType === 'reservation_elevage'),
+      reglementsDisponibles: l.reglementsDisponibles ?? !(l.source === 'VenteManuelle' && parId.get(l.sourceId)?.sourceType === 'reservation_elevage'),
       montantRegle: s ? s.regleCentimes / 100 : null,
       resteAPayer:
         s && !l.facture && !l.factureId
