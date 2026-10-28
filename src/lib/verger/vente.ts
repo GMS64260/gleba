@@ -18,6 +18,7 @@ import { prixFruitApi, dateRecolteApi } from './creation-recolte'
 import { montantVenteFruit } from './montant-vente'
 import { libellesVenteBois } from './production-bois'
 import { avertissementsDarFruit } from './dar'
+import { TAUX_TVA_BOIS_PAR_DEFAUT } from './tva-bois'
 
 /** Lecture et décision sous le même verrou que les BL et les règlements. */
 export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string, acteurId: string, id: number, saisie: Record<string, unknown>) {
@@ -90,7 +91,7 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
     const q = fruit ? { quantite: fruit.quantite, unite: 'kg' } : quantiteBois(bois!)
     if (statut === 'vendu' && q.quantite <= 0) throw new ErreurVerger('Le lot ne contient aucune quantité vendable.')
     if (saisie.creerFacture) {
-      const tauxTVA = fruit ? 5.5 : 10
+      const tauxTVA = fruit ? 5.5 : TAUX_TVA_BOIS_PAR_DEFAUT
       const totalHT = total / (1 + tauxTVA / 100)
       const textes = bois ? libellesVenteBois({ ...bois, arbreNom: bois.arbre?.nom }) : null
       const description = fruit ? `${fruit.arbre.nom}${fruit.arbre.espece ? ` - ${fruit.arbre.espece}` : ''}` : textes!.ligneFacture

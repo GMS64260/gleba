@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { montantVenteFruit, periodeVenteVerger } from '@/lib/verger/montant-vente'
+import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { genererFec, serialiserFec, validerEquilibre, type FecInputVente, type FecInputDepense } from '@/lib/comptabilite/fec'
 import { getTerritoire, collecteTvaFrancaise } from '@/lib/territoires'
 import { chargerSuiviDesSources, cleSource } from '@/lib/comptabilite/suivi-ecriture'
@@ -237,8 +238,7 @@ async function exporterFec(request: NextRequest) {
   }))
 
   // DEV3 #5 - Injection des ventes ProductionBois (sans facture) au FEC.
-  // Catégorie 'bois' → compte 701820. TVA 20% par défaut (bois énergie : 10%
-  // si applicable mais conservons 20% en standard, l'opérateur peut éditer).
+  // Catégorie 'bois' → compte 701820 ; même taux par défaut que la vente native.
   // Numéro pièce = celle saisie sur le miroir, sinon "BOIS-{id}" pour éviter
   // la collision avec les ventes manuelles.
   function categorieBois(qualite: string | null): string {
@@ -252,7 +252,7 @@ async function exporterFec(request: NextRequest) {
     const ttc = b.prixVente as number
     // Audit compta 2026-06 : 10 % — aligné sur l'écriture auto et la facture
     // bois (auto-compta.ts, arbres/bois/[id]) ; le FEC sortait 20 %.
-    const tauxTVA = 10
+    const tauxTVA = TAUX_TVA_BOIS_PAR_DEFAUT
     const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
     const tva = Math.round((ttc - ht) * 100) / 100
     const desc = `Vente bois — ${b.arbre?.espece || b.arbre?.nom || b.qualiteBois || 'lot'} (${b.numLot ?? `#${b.id}`})`

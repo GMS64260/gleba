@@ -8,6 +8,9 @@ import { calculerStocksRuche } from '@/lib/elevage/stock-ruche'
 import { PRODUITS_RUCHE_LABELS, tauxTvaProduitRucheParDefaut } from '@/lib/elevage/produits-ruche'
 import { stockDuLotFromage } from '@/lib/elevage/stock-fromage'
 import { disponibleCommercial, quantiteBois, type ArticleStockCommercial } from './stock-types'
+import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
+import { indisponibiliteLotVerger } from '@/lib/verger/disponibilite-lot'
+import { finJourLivraison } from './dates-stock'
 
 export type DbStockCommercial = Prisma.TransactionClient
 
@@ -15,8 +18,8 @@ export type DbStockCommercial = Prisma.TransactionClient
 export async function chargerCatalogueStock(userId: string, db: DbStockCommercial = prisma, maintenant = new Date()): Promise<ArticleStockCommercial[]> {
   const [recoltes, fruits, bois, produits, oeufs, ruches, fromages, prixRecoltes, ventes] = await Promise.all([
     db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: maintenant }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
-    db.recolteArbre.findMany({ where: { userId, statut: 'en_stock', date: { lte: maintenant } }, include: { arbre: { select: { nom: true, espece: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
-    db.productionBois.findMany({ where: { userId, statut: 'en_stock', date: { lte: maintenant } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+    db.recolteArbre.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJourLivraison(maintenant) } }, include: { arbre: { select: { nom: true, espece: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+    db.productionBois.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJourLivraison(maintenant) } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.produitBoutique.findMany({ where: { userId }, include: { recolte: { select: { datePeremption: true } } }, orderBy: { nom: 'asc' } }),
     computeStockOeufsParLots(userId, maintenant, db),
     db.productionRuche.findMany({ where: { userId, date: { lte: maintenant } }, include: { mouvementsStock: { select: { quantite: true } } } }),
@@ -36,13 +39,13 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
   const avertissementsFruits = await chargerAvertissementsDarFruits(db, userId, fruits)
   for (const r of fruits) {
     const dispo = disponibleCommercial(r)
-    if (dispo <= 0 || !frais(r.datePeremption)) continue
+    if (dispo <= 0 || indisponibiliteLotVerger(r, maintenant)) continue
     articles.push({ type: 'fruit', id: String(r.id), nom: `${r.arbre.espece || 'Fruits'} · ${r.arbre.nom || `Arbre ${r.arbreId}`}`, categorie: 'Récoltes du verger', disponible: dispo, unite: 'kg', prixTTC: r.prixKg, tauxTVA: 5.5, statutBio: r.statutBioSnapshot, dateLot: dateIsoFacture(r.date), href: `/verger/${r.arbreId}`, avertissements: avertissementsFruits.get(r.id) })
   }
   for (const b of bois) {
     const q = quantiteBois(b); const dispo = b.stockDisponibleCommercial ?? q.quantite
-    if (dispo <= 0) continue
-    articles.push({ type: 'bois', id: String(b.id), nom: `${b.qualiteBois || 'Bois'}${b.numLot ? ` · ${b.numLot}` : ''}`, categorie: 'Bois', disponible: dispo, unite: q.unite, prixTTC: b.prixVente && q.quantite > 0 ? b.prixVente / q.quantite : null, tauxTVA: 20, statutBio: null, dateLot: dateIsoFacture(b.date), href: '/verger?tab=productions' })
+    if (dispo <= 0 || indisponibiliteLotVerger(b, maintenant)) continue
+    articles.push({ type: 'bois', id: String(b.id), nom: `${b.qualiteBois || 'Bois'}${b.numLot ? ` · ${b.numLot}` : ''}`, categorie: 'Bois', disponible: dispo, unite: q.unite, prixTTC: b.prixVente && q.quantite > 0 ? b.prixVente / q.quantite : null, tauxTVA: TAUX_TVA_BOIS_PAR_DEFAUT, statutBio: null, dateLot: dateIsoFacture(b.date), href: '/verger?tab=productions' })
   }
   for (const p of produits) {
     if ((p.stockDispo != null && p.stockDispo <= 0) || !frais(p.recolte?.datePeremption ?? null)) continue

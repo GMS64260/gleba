@@ -18,6 +18,7 @@
 
 import prisma from '@/lib/prisma'
 import { montantVenteFruit, periodeVenteVerger } from '@/lib/verger/montant-vente'
+import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { collecteTvaFrancaise } from '@/lib/territoires'
 
 export interface TvaParTaux {
@@ -249,8 +250,8 @@ export async function computeTvaPeriode(
   for (const b of venteBois) {
     const ttc = b.prixVente || 0
     if (ttc > 0) {
-      const ht = ttc / 1.10
-      addC('10', ht, ttc - ht)
+      const ht = ttc / (1 + TAUX_TVA_BOIS_PAR_DEFAUT / 100)
+      addC(String(TAUX_TVA_BOIS_PAR_DEFAUT), ht, ttc - ht)
       nbInfereesCollectees++
       inferencesBreakdown.venteBois++
     }

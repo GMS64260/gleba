@@ -11,6 +11,7 @@ import { creerRecolteFruit } from "@/lib/verger/creation-recolte"
 import { ErreurVerger } from "@/lib/verger/erreur"
 import { chargerAvertissementsDarFruits } from "@/lib/verger/dar"
 import { chargerSuiviDesLignes } from "@/lib/comptabilite/suivi-ecriture"
+import { chargerSuiviCommercialVerger } from "@/lib/verger/suivi-commercial"
 
 // GET /api/arbres/recoltes
 export async function GET(request: NextRequest) {
@@ -61,7 +62,9 @@ export async function GET(request: NextRequest) {
 
     const warnings = await chargerAvertissementsDarFruits(prisma, userId, recoltes)
     const suivi = await chargerSuiviDesLignes(userId, recoltes.filter(r => r.statut === 'vendu').map(r => ({ id: String(r.id), source: 'RecolteArbre', sourceId: r.id, factureId: r.factureId })))
-    return NextResponse.json(recoltes.map(r => ({ ...r, warnings: warnings.get(r.id), ecriture: suivi.get(String(r.id))?.ecriture })))
+    const commercial = await chargerSuiviCommercialVerger(userId, 'fruit', recoltes.filter(r => r.stockDisponibleCommercial != null).map(r => r.id))
+    return NextResponse.json(recoltes.map(r => ({ ...r, warnings: warnings.get(r.id), ecriture: suivi.get(String(r.id))?.ecriture,
+      ventesCommerciales: commercial.get(r.id) ?? [] })))
   } catch (err) {
     console.error("GET /api/arbres/recoltes error:", err)
     return NextResponse.json(

@@ -16,6 +16,7 @@ import { formatQuantite } from '@/lib/recolte/quantites'
 import { selectSuiviConserve, suiviConserve, type SuiviVente } from '@/lib/comptabilite/ecriture-derivee'
 import { libellesVenteBois } from '@/lib/verger/production-bois'
 import { montantVenteFruit } from '@/lib/verger/montant-vente'
+import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
 import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture } from '@/lib/comptabilite/suivi-reglement-source'
 
@@ -617,7 +618,7 @@ export async function createVenteFromProductionBois(
   const montantTTC = productionBois.prixVente || 0
   if (montantTTC <= 0) { await deleteAutoEntry('production_bois', productionBois.id, 'vente', userId, tx); return null }
 
-  const { montantHT, montantTVA } = calculTVA(montantTTC, 10) // Bois = TVA 10%
+  const { montantHT, montantTVA } = calculTVA(montantTTC, TAUX_TVA_BOIS_PAR_DEFAUT)
 
   // QA cmvnp0dm9 — même libellé que l'écran et la facture (« Élagage »).
   const { description } = libellesVenteBois({
@@ -642,7 +643,7 @@ export async function createVenteFromProductionBois(
         description,
         quantite: productionBois.volumeM3 || productionBois.poidsKg || null,
         unite: productionBois.volumeM3 ? 'm³' : (productionBois.poidsKg ? 'kg' : null),
-        tauxTVA: 10,
+        tauxTVA: TAUX_TVA_BOIS_PAR_DEFAUT,
         montantHT,
         montantTVA,
         montant: montantTTC,
