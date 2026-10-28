@@ -129,7 +129,6 @@ describe("GET /api/comptabilite/revenus — suivi des lignes dérivées", () => 
       paye: true,
       sourceType: true,
       sourceId: true,
-      paye: true,
       modeReglement: true,
       numeroPiece: true,
       notes: true,
