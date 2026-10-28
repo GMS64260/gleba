@@ -7,8 +7,7 @@
 import * as React from "react"
 import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
 import Link from "next/link"
-import { SelectNatif } from "@/components/ui/select-natif"
-import { MODES_REGLEMENT } from "@/lib/validations/reglement"
+import { ChampsEncaissement } from "@/components/comptabilite/ChampsEncaissement"
 import { useSession } from "next-auth/react"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
@@ -1573,18 +1572,11 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                   aria-required={formData.type === 'animal_vivant'}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="vente-mode-reglement">Mode de règlement</Label>
-                <SelectNatif id="vente-mode-reglement" value={formData.modeReglement} onChange={(e) => setFormData(f => ({ ...f, modeReglement: e.target.value }))}>
-                  <option value="">Non renseigné</option>
-                  {MODES_REGLEMENT.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
-                </SelectNatif>
-              </div>
-              <label htmlFor="vente-encaissee" className="flex items-center gap-2 text-sm">
-                <input id="vente-encaissee" type="checkbox" checked={formData.paye} onChange={(e) => setFormData(f => ({ ...f, paye: e.target.checked }))} />
-                Encaissement confirmé
-              </label>
-              <p className="text-xs text-muted-foreground">Cochez après vérification sur votre compte ou en caisse. Le mode de règlement ne confirme pas l&apos;encaissement.</p>
+              <ChampsEncaissement
+                idPrefix="vente"
+                value={formData}
+                onChange={(changement) => setFormData(f => ({ ...f, ...changement }))}
+              />
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
                 {/* Ticket cmsog7lrc — pas de soumission sans animal pour ce type. */}
@@ -1629,8 +1621,9 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                     <TableCell>{vente.client || '-'}</TableCell>
                     <TableCell>
                       <Badge className={vente.paye ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
-                        {vente.factureId ? "Facturée" : (vente.montantRegle ?? 0) > 0 && (vente.resteAPayer ?? 0) > 0 ? "Partiellement encaissé" : vente.paye ? "Encaissé" : "À encaisser"}
+                        {vente.factureId ? "Facturée" : (vente.montantRegle ?? 0) > 0 && (vente.resteAPayer ?? 0) > 0 ? "Partiellement encaissé" : vente.paye ? vente.montantRegle == null ? "Déclaré encaissé" : "Encaissé" : "À encaisser"}
                       </Badge>
+                      {!vente.factureId && vente.paye && vente.montantRegle == null && <p className="mt-1 text-xs text-muted-foreground">Pointage sans détail de règlement. À vérifier dans Règlements.</p>}
                       {!vente.factureId && vente.montantRegle != null && <p className="mt-1 text-xs">Reçu : {formatMontantDevise(vente.montantRegle)} · reste : {formatMontantDevise(vente.resteAPayer ?? 0)}</p>}
                       <p className="mt-1 text-xs text-muted-foreground">{vente.factureId ? 'Voir la facture' : vente.modeReglement || 'Mode non renseigné'}</p>
                     </TableCell>

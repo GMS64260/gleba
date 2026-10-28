@@ -2515,7 +2515,7 @@ model VenteProduit {
   destination          Destination?          @relation(fields: [destinationId], references: [id], onDelete: SetNull)
   factureId            Int?                  @map("facture_id")
   facture              Facture?              @relation("VenteProduitFacture", fields: [factureId], references: [id])
-  paye                 Boolean               @default(true) @map("paye")
+  paye                 Boolean               @default(false) @map("paye")
   annule               Boolean               @default(false) @map("annule")
   dateAnnulation       DateTime?             @map("date_annulation")
   // Audit élevage 2026-06-11 — lien vers l'animal pour une vente
