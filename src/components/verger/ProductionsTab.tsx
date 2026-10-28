@@ -7,6 +7,9 @@
 import * as React from "react"
 import { ReglementVente, paiementVenteInitial } from "./ReglementVente"
 import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
+import { MontantCommercial, PiecesCommerciales, QuantiteCommerciale, RevenusProductions } from './SuiviVenteCommerciale'
+import type { VenteCommercialeVerger } from '@/lib/verger/suivi-commercial-types'
+import { montantVenteFruit } from '@/lib/verger/montant-vente'
 import { quantiteBois } from "@/lib/commercial/stock-types"
 import Link from "next/link"
 import { isPast, differenceInDays } from "date-fns"
@@ -40,7 +43,7 @@ import {
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
-import { todayLocalISO } from '@/lib/format-utils'
+import { todayLocalISO, formatNombre } from '@/lib/format-utils'
 import { labelStatutRecolteArbre } from '@/lib/verger/statut-recolte-arbre'
 import { estTypeArbreFruitier } from '@/lib/verger/types-arbre'
 // QA cmsjhmi58 puis cmvnp0dm9 — type et volume d'un lot de bois affichés par
@@ -80,6 +83,7 @@ interface Client {
 }
 
 interface RecolteArbre {
+  ventesCommerciales?: VenteCommercialeVerger[]
   ecriture?: { id: number } | null
   warnings?: string[]
   stockDisponibleCommercial?: number | null
@@ -127,6 +131,7 @@ function formulaireRecolteVierge() {
 }
 
 interface ProductionBois {
+  ventesCommerciales?: VenteCommercialeVerger[]
   ecriture?: { id: number } | null
   stockDisponibleCommercial?: number | null
   id: number
@@ -248,7 +253,9 @@ function RecoltesFruitsSubTab() {
   }, [fetchData])
 
   const stockRecoltes = recoltes.filter(r => (!r.statut || r.statut === "en_stock") && (r.stockDisponibleCommercial ?? r.quantite) > 0).map(r => ({ ...r, quantite: r.stockDisponibleCommercial ?? r.quantite }))
-  const venduRecoltes = recoltes.filter(r => r.statut === "vendu")
+  const venduRecoltes = recoltes.filter(r => r.statut === "vendu" && !r.ventesCommerciales?.some(v => v.facture?.id === r.factureId))
+  const livraisonsFruits = recoltes.flatMap(lot => (lot.ventesCommerciales ?? []).map(vente => ({ lot, vente })))
+  const nombreVentesFruits = venduRecoltes.length + livraisonsFruits.length
   const perteRecoltes = recoltes.filter(r => r.statut === "perte" || r.statut === "consomme")
 
   const now = new Date()
@@ -260,8 +267,8 @@ function RecoltesFruitsSubTab() {
   }).length
 
   const stockKg = stockRecoltes.reduce((sum, r) => sum + r.quantite, 0)
-  const venduKg = venduRecoltes.reduce((sum, r) => sum + r.quantite, 0)
-  const totalCA = venduRecoltes.reduce((sum, r) => sum + (r.prixTotal || 0), 0)
+  const venduKg = venduRecoltes.reduce((sum, r) => sum + r.quantite, 0) + livraisonsFruits.reduce((sum, r) => sum + r.vente.quantiteNette, 0)
+  const totalCA = venduRecoltes.reduce((sum, r) => sum + montantVenteFruit(r), 0)
   const perteKg = perteRecoltes.reduce((sum, r) => sum + r.quantite, 0)
   const stockValeur = stockRecoltes.reduce((sum, r) => sum + r.quantite * (r.prixKg || 0), 0)
 
@@ -598,12 +605,12 @@ function RecoltesFruitsSubTab() {
           <CardHeader className="pb-1 pt-3 px-4">
             <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
               <ShoppingCart className="h-4 w-4 text-blue-600" />
-              Vendu
+              Vendu / livré
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
             <p className="text-2xl font-bold">{venduKg.toFixed(1)} kg</p>
-            <p className="text-xs text-muted-foreground">{totalCA.toFixed(0)} EUR CA</p>
+            <RevenusProductions direct={totalCA} commercial={livraisonsFruits.map(r => r.vente)} className="text-xs text-muted-foreground" />
           </CardContent>
         </Card>
         <Card>
@@ -661,7 +668,7 @@ function RecoltesFruitsSubTab() {
             </TabsTrigger>
             <TabsTrigger value="vendu" className="flex items-center gap-2">
               <ShoppingCart className="h-4 w-4" />
-              Vendu ({venduRecoltes.length})
+              Vendu / livré ({nombreVentesFruits})
             </TabsTrigger>
             <TabsTrigger value="pertes" className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
@@ -745,7 +752,7 @@ function RecoltesFruitsSubTab() {
       {activeTab === "vendu" && (
         <Card>
           <CardContent className="p-0">
-            {venduRecoltes.length === 0 ? (
+            {nombreVentesFruits === 0 ? (
               <p className="p-8 text-muted-foreground text-center">Aucune vente</p>
             ) : (
               <Table>
@@ -753,7 +760,7 @@ function RecoltesFruitsSubTab() {
                   <TableRow>
                     <TableHead>Date récolte</TableHead>
                     <TableHead>Arbre</TableHead>
-                    <TableHead className="text-right">Quantité</TableHead>
+                    <TableHead className="text-right">Quantité nette</TableHead>
                     <TableHead className="text-right">Prix/kg</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Client</TableHead>
@@ -772,6 +779,18 @@ function RecoltesFruitsSubTab() {
                       <TableCell>{r.clientNom || "-"}</TableCell>
                       <TableCell>{r.dateVente ? new Date(r.dateVente).toLocaleDateString("fr-FR") : "-"}</TableCell>
                       <TableCell>{r.factureId ? <><Link className="block text-sm text-primary underline" href={`/comptabilite/factures?id=${r.factureId}`}>Facture</Link><ReglementsDialog type="Facture" id={r.factureId} onChange={fetchData} /></> : r.ecriture ? <ReglementsDialog type="VenteManuelle" id={r.ecriture.id} onChange={fetchData} /> : "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                  {livraisonsFruits.map(({ lot, vente }) => (
+                    <TableRow key={`commercial:${vente.cle}`}>
+                      <TableCell>{new Date(lot.date).toLocaleDateString('fr-FR')}</TableCell>
+                      <TableCell className="font-medium">{lot.arbre.nom}<PiecesCommerciales vente={vente} /></TableCell>
+                      <TableCell className="text-right"><QuantiteCommerciale vente={vente} /></TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right font-bold"><MontantCommercial vente={vente} /></TableCell>
+                      <TableCell>{vente.clientNom}</TableCell>
+                      <TableCell>{new Date(vente.date).toLocaleDateString('fr-FR')}</TableCell>
+                      <TableCell>{vente.facture && ['emise', 'payee'].includes(vente.facture.statut) ? <ReglementsDialog type="Facture" id={vente.facture.id} onChange={fetchData} /> : '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1259,11 +1278,17 @@ function ProductionBoisSubTab() {
     const ratio = p.stockDisponibleCommercial == null || initial <= 0 ? 1 : p.stockDisponibleCommercial / initial
     return { ...p, volumeM3: p.volumeM3 == null ? null : p.volumeM3 * ratio, volumeStere: p.volumeStere == null ? null : p.volumeStere * ratio, poidsKg: p.poidsKg == null ? null : p.poidsKg * ratio }
   })
-  const venduProductions = productions.filter(p => p.statut === "vendu")
+  const venduProductions = productions.filter(p => p.statut === "vendu" && !p.ventesCommerciales?.some(v => v.facture?.id === p.factureId))
+  const livraisonsBois = productions.flatMap(lot => (lot.ventesCommerciales ?? []).map(vente => ({ lot, vente })))
+  const nombreVentesBois = venduProductions.length + livraisonsBois.length
   const utiliseProductions = productions.filter(p => p.statut === "utilise")
 
   const stockVolume = stockProductions.reduce((sum, p) => sum + (p.volumeM3 || 0), 0)
-  const venduVolume = venduProductions.reduce((sum, p) => sum + (p.volumeM3 || 0), 0)
+  const venduVolume = venduProductions.reduce((sum, p) => sum + (p.volumeM3 || 0), 0) + livraisonsBois.reduce((sum, { lot, vente }) => {
+    const initial = quantiteBois(lot).quantite
+    return sum + (initial > 0 ? (lot.volumeM3 ?? 0) * vente.quantiteNette / initial : 0)
+  }, 0)
+  const venduPoids = venduProductions.reduce((sum, p) => sum + (quantiteBois(p).unite === 'kg' ? p.poidsKg ?? 0 : 0), 0) + livraisonsBois.filter(r => r.vente.unite === 'kg').reduce((sum, r) => sum + r.vente.quantiteNette, 0)
   const totalVentes = venduProductions.reduce((sum, p) => sum + (p.prixVente || 0), 0)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1433,7 +1458,7 @@ function ProductionBoisSubTab() {
   return (
     <div className="space-y-4">
       {/* Stats */}
-      <div className="grid gap-3 grid-cols-3">
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-1">
@@ -1448,19 +1473,20 @@ function ProductionBoisSubTab() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-1">
               <ShoppingCart className="h-4 w-4 text-green-600" />
-              <p className="text-sm text-green-700">Vendu</p>
+              <p className="text-sm text-green-700">Vendu / livré</p>
             </div>
             <p className="text-2xl font-bold text-green-800">{libelleVolumeBois(venduVolume)}</p>
-            <p className="text-xs text-green-600">{venduProductions.length} vente(s)</p>
+            {venduPoids > 0 && <p className="text-sm text-green-700">{libellePoidsBois(venduPoids)}</p>}
+            <p className="text-xs text-green-600">{nombreVentesBois} vente(s) / livraison(s)</p>
           </CardContent>
         </Card>
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="col-span-2 border-blue-200 bg-blue-50 sm:col-span-1" data-testid="bois-revenus">
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 mb-1">
               <Euro className="h-4 w-4 text-blue-600" />
               <p className="text-sm text-blue-700">CA Ventes</p>
             </div>
-            <p className="text-2xl font-bold text-blue-800">{totalVentes.toFixed(2)} EUR</p>
+            <RevenusProductions direct={totalVentes} commercial={livraisonsBois.map(r => r.vente)} className="break-words text-2xl font-bold text-blue-800" />
           </CardContent>
         </Card>
       </div>
@@ -1476,7 +1502,7 @@ function ProductionBoisSubTab() {
             </TabsTrigger>
             <TabsTrigger value="vendu" className="flex items-center gap-2">
               <ShoppingCart className="h-4 w-4" />
-              Vendu ({venduProductions.length})
+              Vendu / livré ({nombreVentesBois})
             </TabsTrigger>
             <TabsTrigger value="utilise" className="flex items-center gap-2">
               <Axe className="h-4 w-4" />
@@ -1558,7 +1584,7 @@ function ProductionBoisSubTab() {
       {activeTab === "vendu" && (
         <Card>
           <CardContent className="p-0">
-            {venduProductions.length === 0 ? (
+            {nombreVentesBois === 0 ? (
               <p className="p-8 text-muted-foreground text-center">Aucune vente enregistrée</p>
             ) : (
               <Table>
@@ -1566,7 +1592,7 @@ function ProductionBoisSubTab() {
                   <TableRow>
                     <TableHead>Date vente</TableHead>
                     <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Volume</TableHead>
+                    <TableHead className="text-right">Quantité</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead className="text-right">Prix</TableHead>
                     <TableHead>Facture</TableHead>
@@ -1578,7 +1604,7 @@ function ProductionBoisSubTab() {
                     <TableRow key={p.id}>
                       <TableCell>{p.dateVente ? new Date(p.dateVente).toLocaleDateString("fr-FR") : "-"}</TableCell>
                       <TableCell>{libelleTypeBois(p.type)}</TableCell>
-                      <TableCell className="text-right">{p.volumeM3 ? libelleVolumeBois(p.volumeM3) : "-"}</TableCell>
+                      <TableCell className="text-right">{formatNombre(quantiteBois(p).quantite, 3)} {quantiteBois(p).unite}</TableCell>
                       <TableCell>{p.clientNom || "-"}</TableCell>
                       <TableCell className="text-right font-medium text-green-600">
                         {p.prixVente ? `${p.prixVente} EUR` : "-"}
@@ -1593,6 +1619,17 @@ function ProductionBoisSubTab() {
                         ) : "-"}
                       </TableCell>
                       <TableCell>{p.factureId ? <ReglementsDialog type="Facture" id={p.factureId} onChange={fetchData} /> : p.ecriture ? <ReglementsDialog type="VenteManuelle" id={p.ecriture.id} onChange={fetchData} /> : "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                  {livraisonsBois.map(({ lot, vente }) => (
+                    <TableRow key={`commercial:${vente.cle}`}>
+                      <TableCell>{new Date(vente.date).toLocaleDateString('fr-FR')}</TableCell>
+                      <TableCell>{libelleTypeBois(lot.type)}</TableCell>
+                      <TableCell className="text-right"><QuantiteCommerciale vente={vente} /></TableCell>
+                      <TableCell>{vente.clientNom}</TableCell>
+                      <TableCell className="text-right font-medium text-green-600"><MontantCommercial vente={vente} /></TableCell>
+                      <TableCell><PiecesCommerciales vente={vente} /></TableCell>
+                      <TableCell>{vente.facture && ['emise', 'payee'].includes(vente.facture.statut) ? <ReglementsDialog type="Facture" id={vente.facture.id} onChange={fetchData} /> : '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
