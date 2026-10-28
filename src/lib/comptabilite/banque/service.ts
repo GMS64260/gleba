@@ -11,6 +11,7 @@ import {
 } from '../reglements'
 import { entierCentimes, ErreurReglement } from '../monnaie'
 import { lireReleveCsv } from './releve'
+import { estFamilleVirement } from './familles-virement'
 export function compteDTO(c: CompteBancaire) {
   return {
     id: c.id,
@@ -259,6 +260,19 @@ export async function validerOperationRevisee(userId: string, operationId: strin
     })
     if (!op) throw new ErreurReglement('Opération introuvable.', 404)
     if (!op.aVerifier) return
+    if (op.reglements.length && op.statut !== 'comptabilisee') {
+      throw new ErreurReglement(
+        'Ce mouvement est en attente ou exclu. Conservez-le à vérifier tant que des règlements y sont affectés.',
+      )
+    }
+    if (
+      estFamilleVirement(op.famille) &&
+      op.reglements.some((r) => r.partieBancaire === 'principal')
+    ) {
+      throw new ErreurReglement(
+        'Ce mouvement est devenu un virement entre comptes. Corrigez d’abord les règlements commerciaux qui lui sont affectés ; les frais peuvent rester liés.',
+      )
+    }
     for (const partie of ['principal', 'frais']) {
       const budget = entierCentimes(partie === 'frais' ? -op.fraisCentimes : op.brutCentimes)
       const lignes = op.reglements.filter((r) => r.partieBancaire === partie)

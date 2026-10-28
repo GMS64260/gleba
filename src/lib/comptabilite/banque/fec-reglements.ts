@@ -1,3 +1,4 @@
+import { estFamilleVirement } from './familles-virement'
 import prisma from '@/lib/prisma'
 import type { CompteBancaire } from '@prisma/client'
 import {
@@ -59,6 +60,16 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
   const reglementsIn: FecInputReglement[] = reglements.map((r) => {
     verifierDeviseFec(r.dossier.devise, deviseComptable)
     if (r.operationBancaire) verifierOperation(r.operationBancaire)
+    if (r.operationBancaire && (!r.annuleLe || r.annuleLe > fin)) {
+      if (r.operationBancaire.statut !== 'comptabilisee')
+        throw new ErreurReglement(
+          'Un règlement est rapproché d’un mouvement en attente ou exclu. Corrigez ce rapprochement avant l’export FEC.',
+        )
+      if (r.partieBancaire === 'principal' && estFamilleVirement(r.operationBancaire.famille))
+        throw new ErreurReglement(
+          'Un virement entre comptes porte encore un règlement commercial. Corrigez ce rapprochement avant l’export FEC.',
+        )
+    }
     const f = parFacture.get(Number(r.dossier.cibles[0]?.reference))
     return {
       id: r.id,
@@ -102,6 +113,30 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
       },
     }),
   ])
+  // Rechercher les liaisons actives à la clôture, même annulées depuis : elles pourraient
+  // sinon compter le même flux une fois à sa saisie, puis une fois au virement.
+  const idsInternes = [
+    ...new Set([
+      ...payouts.map((o) => o.id),
+      ...virements.flatMap((v) => [v.operationSortieId, v.operationEntreeId]),
+    ]),
+  ]
+  if (
+    idsInternes.length &&
+    (await prisma.reglement.count({
+      where: {
+        userId,
+        date: { lte: fin },
+        OR: [{ annuleLe: null }, { annuleLe: { gt: fin } }],
+        partieBancaire: 'principal',
+        operationBancaireId: { in: idsInternes },
+      },
+    }))
+  ) {
+    throw new ErreurReglement(
+      'Un virement entre comptes porte encore un règlement commercial. Corrigez ce rapprochement avant l’export FEC.',
+    )
+  }
   const mouvements = new Map<string, FecInputMouvementInterne>()
   const ajouter = (o: (typeof payouts)[number]) => {
     if (o.date < debut || o.date > fin) return
