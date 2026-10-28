@@ -59,6 +59,7 @@ const LOT = {
   clientId: null,
   clientNom: null,
   dateVente: null,
+  date: new Date('2026-10-25T00:00:00Z'),
   arbre: { id: 881, nom: "Noyer 2", espece: "Noyer" },
 }
 

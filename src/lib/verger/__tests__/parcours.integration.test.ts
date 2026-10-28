@@ -22,6 +22,8 @@ import { lireReglements, annulerReglement } from '@/lib/comptabilite/reglements'
 import { DELETE as SUPPRIMER_RECOLTE } from '@/app/api/arbres/recoltes/[id]/route'
 import { PATCH as VENDRE_BOIS } from '@/app/api/arbres/bois/[id]/route'
 import { POST as CREER_BOIS } from '@/app/api/arbres/bois/route'
+import { DELETE as SUPPRIMER_ARBRE } from '@/app/api/arbres/[id]/route'
+import { createDepenseFromCampagnePlantation, createDepenseFromOperationArbre } from '@/lib/auto-compta'
 import { GET as REVENUS } from '@/app/api/comptabilite/revenus/route'
 import { chargerCatalogueStock } from '@/lib/commercial/catalogue-stock'
 const now = new Date('2026-10-28T06:00:00Z')
@@ -444,6 +446,82 @@ it.each(['fait', 'abandonne'])('un ancien geste %s déplacé hors de sa fenêtre
     datePrevue: new Date('2027-04-01T12:00:00Z'), fait: etat === 'fait', abandonneeLe: etat === 'abandonne' ? new Date('2027-04-01T12:00:00Z') : null } })
   expect((await generer()).status).toBe(200)
   expect(await db.operationArbre.count({ where: { arbreId: a.id, type: 'taille', saisonRecommandee: 'hiver', fait: false, abandonneeLe: null } })).toBe(0)
+})
+it.each(['en_stock', 'vendu'])('supprimer un arbre conserve une récolte %s et ses écritures', async statut => {
+  const r = await lot()
+  if (statut === 'vendu') expect((await vente(r.id)).status).toBe(200)
+  const res = await SUPPRIMER_ARBRE(req('/api/arbres/' + a.id, 'DELETE'), params(a.id))
+  expect(res.status).toBe(409)
+  expect(await db.arbre.findUnique({ where: { id: a.id } })).not.toBeNull()
+  expect(await db.recolteArbre.findUnique({ where: { id: r.id } })).not.toBeNull()
+  if (statut === 'vendu') expect(await db.venteManuelle.count({ where: { userId: auth.id, sourceType: 'recolte_arbre', sourceId: r.id } })).toBe(1)
+})
+it('supprimer un arbre conserve une greffe réalisée et la dépense historique', async () => {
+  const res = await OPERATION(req('/api/arbres/operations', 'POST', { arbreId: a.id, type: 'greffe', fait: true, date: hier.toISOString(), cout: 100 }))
+  const op = await res.json()
+  expect((await SUPPRIMER_ARBRE(req('/api/arbres/' + a.id, 'DELETE'), params(a.id))).status).toBe(409)
+  expect(await db.operationArbre.findUnique({ where: { id: op.id } })).not.toBeNull()
+  expect(await db.depenseManuelle.count({ where: { userId: auth.id, sourceType: 'operation_arbre', sourceId: op.id } })).toBe(1)
+})
+it('une dépense verger nouvelle reste à régler et conserve ensuite son pointage historique', async () => {
+  const op = await db.operationArbre.create({ data: { userId: auth.id, arbreId: a.id, type: 'greffe', fait: true, cout: 100, date: hier } })
+  const miroir = await createDepenseFromOperationArbre(auth.id, op)
+  expect(miroir?.paye).toBe(false)
+  await db.depenseManuelle.update({ where: { id: miroir!.id }, data: { paye: true, modeReglement: 'Virement' } })
+  expect(await createDepenseFromOperationArbre(auth.id, { ...op, description: 'Greffe corrigée' })).toMatchObject({ paye: true, modeReglement: 'Virement' })
+  const c = await db.campagnePlantation.create({ data: { userId: auth.id, nom: 'Campagne fictive', typeFormation: 'verger', coutReel: 200 } })
+  expect((await createDepenseFromCampagnePlantation(auth.id, c))?.paye).toBe(false)
+})
+it.each([{ date: new Date('2090-01-01T12:00:00Z') }, { datePeremption: new Date('2026-10-26T12:00:00Z') }])('un lot indisponible ne produit ni vente ni facture', async donnees => {
+  const r = await lot(donnees)
+  expect((await vente(r.id, { creerFacture: true })).status).toBe(409)
+  expect(await db.facture.count({ where: { userId: auth.id } })).toBe(0)
+  expect(await db.venteManuelle.count({ where: { userId: auth.id } })).toBe(0)
+  expect((await db.recolteArbre.findUniqueOrThrow({ where: { id: r.id } })).statut).toBe('en_stock')
+})
+it('la disponibilité couvre toute la journée de récolte et de péremption', async () => {
+  const r = await lot({ date: new Date('2026-10-28T20:00:00Z'), datePeremption: new Date('2026-10-28T00:00:00Z') })
+  expect((await vente(r.id)).status).toBe(200)
+})
+it('le rang automatique ne revient pas après suppression et déplacement de récoltes', async () => {
+  const recolter = async () => { const r = await RECOLTER(req('/api/arbres/recoltes', 'POST', { arbreId: a.id, date: jour, quantite: 2 })); expect(r.status).toBe(201); return r.json() }
+  const x = await recolter(), y = await recolter()
+  expect(x.numLot).toMatch(/-01$/); expect(y.numLot).toMatch(/-02$/)
+  expect((await SUPPRIMER_RECOLTE(req('/api/arbres/recoltes/' + x.id, 'DELETE'), params(x.id))).status).toBe(200)
+  const z = await recolter(); expect(z.numLot).toMatch(/-03$/)
+  expect((await CORRIGER(req('/api/arbres/recoltes/' + y.id, 'PUT', { date: '2026-10-27' }), params(y.id))).status).toBe(200)
+  expect((await recolter()).numLot).toMatch(/-04$/)
+  await db.recolteArbre.deleteMany({ where: { userId: auth.id } })
+  expect((await recolter()).numLot).toMatch(/-05$/)
+})
+it('les lots existants et le bois partagent le maximum du même préfixe normalisé', async () => {
+  await lot({ date: new Date(jour), numLot: '20261028-NA-Pommier-09' })
+  const r = await CREER_BOIS(req('/api/arbres/bois', 'POST', { arbreId: a.id, date: jour, type: 'branchage', poidsKg: 5 }))
+  expect(r.status).toBe(201)
+  expect((await r.json()).numLot).toBe('20261028-NA-Pommier-10')
+})
+it('une ancienne écriture reste protégée même si son opération est redevenue planifiée', async () => {
+  const op = await db.operationArbre.create({ data: { userId: auth.id, arbreId: a.id, type: 'greffe', fait: false, date: hier } })
+  const ecriture = await db.depenseManuelle.create({ data: { userId: auth.id, date: hier, categorie: 'main_oeuvre', montant: 100,
+    description: 'Ancienne dépense fictive', auto: true, sourceType: 'operation_arbre', sourceId: op.id } })
+  expect((await SUPPRIMER_ARBRE(req('/api/arbres/' + a.id, 'DELETE'), params(a.id))).status).toBe(409)
+  expect(await db.depenseManuelle.findUnique({ where: { id: ecriture.id } })).not.toBeNull()
+})
+it('un arbre sans production ni geste soldé peut toujours être supprimé', async () => {
+  await db.operationArbre.create({ data: { userId: auth.id, arbreId: a.id, type: 'taille', fait: false, date: hier, datePrevue: hier, notes: 'auto:calendrier' } })
+  expect((await SUPPRIMER_ARBRE(req('/api/arbres/' + a.id, 'DELETE'), params(a.id))).status).toBe(200)
+})
+it('un ancien numéro hors plage ne provoque pas un retour à un numéro déjà utilisé', async () => {
+  await lot({ numLot: '20261028-NA-Pommier-999999999999999999999' })
+  const r = await RECOLTER(req('/api/arbres/recoltes', 'POST', { arbreId: a.id, date: jour, quantite: 2 }))
+  expect(r.status).toBe(409)
+  expect(await db.recolteArbre.count({ where: { userId: auth.id } })).toBe(1)
+})
+it('deux récoltes simultanées reçoivent des numéros distincts du compteur durable', async () => {
+  const reponses = await Promise.all([1, 2].map(() => RECOLTER(req('/api/arbres/recoltes', 'POST', { arbreId: a.id, date: jour, quantite: 2 }))))
+  expect(reponses.map(r => r.status)).toEqual([201, 201])
+  const lots = await Promise.all(reponses.map(r => r.json()))
+  expect(lots.map(r => r.numLot).sort()).toEqual(['20261028-NA-Pommier-01', '20261028-NA-Pommier-02'])
 })
 
 })

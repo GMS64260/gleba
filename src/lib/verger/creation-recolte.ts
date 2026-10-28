@@ -2,7 +2,7 @@ import prisma from '@/lib/prisma'
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 import { normaliserDateApi } from '@/lib/validations/date-api'
 import { snapshotStatutBio, STATUTS_BIO } from '@/lib/statut-bio'
-import { genererNumeroLot } from '@/lib/recolte/lot'
+import { prochainNumeroLotVerger } from './numero-lot'
 import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes } from './saison-recolte-arbre'
 import { avertissementsDarFruit } from './dar'
 import { ErreurVerger } from './erreur'
@@ -57,10 +57,7 @@ export async function creerRecolteFruit(userId: string, saisie: Record<string, u
     const periodes = await chargerPeriodesRecolteVarietes(tx, userId, [arbre])
     const saison = alerteSaisonRecolteArbre({ espece: arbre.espece, variete: periodes.get(arbre), date })
     const warnings = [...(saison ? [saison.message] : []), ...await avertissementsDarFruit(tx, userId, arbreId, parcelleId, date)]
-    const jour = new Date(date); jour.setHours(0, 0, 0, 0)
-    const demain = new Date(jour); demain.setDate(demain.getDate() + 1)
-    const sequence = await tx.recolteArbre.count({ where: { userId, date: { gte: jour, lt: demain }, parcelleId, arbre: { espece: arbre.espece } } })
-    const numLot = texte('numLot') ?? genererNumeroLot({ date, parcelleNom: parcelle?.nom ?? null, espece: arbre.espece, numeroSequence: sequence + 1 })
+    const numLot = texte('numLot') ?? await prochainNumeroLotVerger(tx, userId, { date, parcelleNom: parcelle?.nom ?? null, espece: arbre.espece })
     const recolte = await tx.recolteArbre.create({ data: { userId, arbreId, quantite, date, prixKg, datePeremption,
       qualite: texte('qualite'), notes: texte('notes'), statut: 'en_stock', parcelleId, numLot, statutBioSnapshot,
       categorieCommerciale: texte('categorieCommerciale'), destinationCommerce: texte('destinationCommerce'), conditionnement: texte('conditionnement'),

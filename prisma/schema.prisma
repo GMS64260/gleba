@@ -133,6 +133,7 @@ model User {
 
   // Relations module arbres
   recoltesArbres   RecolteArbre[]
+  sequencesLotVerger SequenceLotVerger[]
   productionsBois  ProductionBois[]
   operationsArbres OperationArbre[]
 
@@ -4064,6 +4065,18 @@ model ChatMessage {
 /// Sert pour les caches externes type SoilGrids ou Hubeau : la clé inclut
 /// le préfixe (ex: 'soilgrids:lat,lng') et la valeur est un JSON arbitraire.
 /// expiresAt est utilisée par `getOrFetch()` pour décider de re-fetcher.
+/// Numéro automatique non réutilisable après suppression ou correction d'un lot du verger.
+model SequenceLotVerger {
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prefixe       String
+  dernierNumero Int      @map("dernier_numero")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@id([userId, prefixe])
+  @@map("sequences_lot_verger")
+}
+
 model GenericCache {
   key       String   @id @map("key")
   data      Json     @map("data")

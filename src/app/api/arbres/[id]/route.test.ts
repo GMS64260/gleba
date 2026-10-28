@@ -40,7 +40,7 @@ vi.mock("@/lib/prisma", () => ({
       cb({
         $executeRaw: vi.fn(),
         $queryRaw: vi.fn().mockResolvedValue([]),
-        depenseManuelle: { deleteMany: vi.fn() },
+        depenseManuelle: { deleteMany: vi.fn(), findFirst: vi.fn(async () => null) },
         mouvementStockCommercial: { count: mocks.stockCommercialCount },
         recolteArbre: { findMany: mocks.recolteFindMany },
         venteManuelle: { deleteMany: mocks.txVenteDeleteMany },

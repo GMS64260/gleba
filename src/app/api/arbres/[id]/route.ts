@@ -334,6 +334,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     return await prisma.$transaction(async (tx) => {
       await verrouillerStockCommercial(tx, session!.user.id)
+      await tx.$queryRaw`SELECT id FROM arbres WHERE id = ${arbreId} AND user_id = ${session!.user.id} FOR UPDATE`
       // Verifier propriete
       const existing = await tx.arbre.findUnique({
         where: {
@@ -348,27 +349,19 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
       if (await tx.mouvementStockCommercial.count({ where: { userId: session.user.id, OR: [{ fruit: { arbreId } }, { bois: { arbreId } }] } })) return NextResponse.json({ error: 'Cet arbre possède des lots liés à des bons ou factures. Conservez-le pour garder leur traçabilité.' }, { status: 409 })
 
-      // Audit 2026-07 (#12) : la suppression cascade sur les récoltes de l'arbre,
-      // mais laissait orphelines les écritures comptables auto (VenteManuelle
-      // sourceType='recolte_arbre') → CA fantôme non nettoyable. Et une récolte
-      // facturée disparaissait sans que la facture (document légal) soit traitée.
+      // Récoltes et écritures doivent survivre à la disparition physique
+      // de l'arbre : sa fiche ne se supprime plus lorsqu'elle porte cet historique.
       const recoltes = await tx.recolteArbre.findMany({
         where: { arbreId, userId: session!.user.id },
         select: { id: true, factureId: true },
       })
-      for (const recolte of recoltes) await verifierSuppressionSourceReglee(tx, session!.user.id, cleSourceReglement('vente', 'recolte_arbre', recolte.id))
-      const operations = await tx.operationArbre.findMany({ where: { arbreId, userId: session!.user.id }, select: { id: true } })
+      if (recoltes.length) return NextResponse.json({ error: 'Cet arbre possède des récoltes. Conservez sa fiche pour préserver le stock, les ventes et leur traçabilité.' }, { status: 409 })
+      const operations = await tx.operationArbre.findMany({ where: { arbreId, userId: session!.user.id }, select: { id: true, fait: true, cout: true, abandonneeLe: true } })
+      if (operations.some(o => o.fait || (o.cout ?? 0) > 0 || o.abandonneeLe)) return NextResponse.json({ error: 'Cet arbre possède un historique d’opérations ou de coûts. Conservez sa fiche pour préserver cet historique.' }, { status: 409 })
       for (const operation of operations) await verifierSuppressionSourceReglee(tx, session!.user.id, cleSourceReglement('depense', 'operation_arbre', operation.id))
-      const facturees = recoltes.filter((r) => r.factureId != null)
-      if (facturees.length > 0) {
-        return NextResponse.json(
-          {
-            error:
-              `Suppression impossible : ${facturees.length} récolte(s) de cet arbre sont facturées. ` +
-              `Annulez d'abord la ou les factures concernées, puis réessayez.`,
-          },
-          { status: 409 }
-        )
+      if (operations.length && await tx.depenseManuelle.findFirst({ where: { userId: session!.user.id, auto: true,
+        sourceType: 'operation_arbre', sourceId: { in: operations.map(o => o.id) } }, select: { id: true } })) {
+        return NextResponse.json({ error: 'Cet arbre possède des écritures historiques. Conservez sa fiche pour préserver la comptabilité.' }, { status: 409 })
       }
 
       // QA cmsjhogc8 — les productions de bois (arbreId onDelete:SetNull) sont du
@@ -398,22 +391,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         espece: existing.espece,
       })
 
-      const recolteIds = recoltes.map((r) => r.id)
       let tracesPhyto = { observations: 0, operations: 0 }
-      // Supprimer les écritures auto liées aux récoltes (pas de FK, sinon orphelines)
-      if (recolteIds.length > 0) {
-        await tx.venteManuelle.deleteMany({
-          where: {
-            userId: session!.user.id,
-            sourceType: "recolte_arbre",
-            sourceId: { in: recolteIds },
-            auto: true,
-          },
-        })
-      }
-      if (operations.length > 0) {
-        await tx.depenseManuelle.deleteMany({ where: { userId: session!.user.id, auto: true, sourceType: 'operation_arbre', sourceId: { in: operations.map((o) => o.id) } } })
-      }
       // Conserver la traçabilité de l'arbre sur les lots de bois avant que la
       // suppression ne mette arbreId à NULL (onDelete: SetNull).
       for (const bois of boisAOrpheliner) {
