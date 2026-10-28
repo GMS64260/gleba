@@ -1,3 +1,7 @@
+import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
+import { verifierSuppressionSourceReglee } from '@/lib/comptabilite/suivi-reglement-source'
+import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Arbre individuel
  * GET - Detail d'un arbre
@@ -328,70 +332,74 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "ID invalide" }, { status: 400 })
     }
 
-    // Verifier propriete
-    const existing = await prisma.arbre.findUnique({
-      where: {
-        id: arbreId,
-        userId: session!.user.id,
-      },
-    })
-
-    if (!existing) {
-      return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
-    }
-
-    if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, OR: [{ fruit: { arbreId } }, { bois: { arbreId } }] } })) return NextResponse.json({ error: 'Cet arbre possède des lots liés à des bons ou factures. Conservez-le pour garder leur traçabilité.' }, { status: 409 })
-
-    // Audit 2026-07 (#12) : la suppression cascade sur les récoltes de l'arbre,
-    // mais laissait orphelines les écritures comptables auto (VenteManuelle
-    // sourceType='recolte_arbre') → CA fantôme non nettoyable. Et une récolte
-    // facturée disparaissait sans que la facture (document légal) soit traitée.
-    const recoltes = await prisma.recolteArbre.findMany({
-      where: { arbreId, userId: session!.user.id },
-      select: { id: true, factureId: true },
-    })
-    const facturees = recoltes.filter((r) => r.factureId != null)
-    if (facturees.length > 0) {
-      return NextResponse.json(
-        {
-          error:
-            `Suppression impossible : ${facturees.length} récolte(s) de cet arbre sont facturées. ` +
-            `Annulez d'abord la ou les factures concernées, puis réessayez.`,
+    return await prisma.$transaction(async (tx) => {
+      await verrouillerStockCommercial(tx, session!.user.id)
+      // Verifier propriete
+      const existing = await tx.arbre.findUnique({
+        where: {
+          id: arbreId,
+          userId: session!.user.id,
         },
-        { status: 409 }
-      )
-    }
+      })
 
-    // QA cmsjhogc8 — les productions de bois (arbreId onDelete:SetNull) sont du
-    // stock réel : on ne les supprime pas (sinon perte d'inventaire), mais leur
-    // rattachement à l'arbre allait être nullé, cassant la traçabilité (« Arbre
-    // - »). On snapshote donc l'identité de l'arbre dans les notes du lot avant
-    // la coupe du lien, pour conserver l'origine au registre.
-    const boisAOrpheliner = await prisma.productionBois.findMany({
-      where: { arbreId, userId: session!.user.id },
-      select: { id: true, notes: true },
-    })
-    const origineArbre = `Arbre d'origine : ${existing.nom}${existing.espece ? ` (${existing.espece})` : ""} — fiche supprimée le ${new Date().toLocaleDateString("fr-FR")}.`
+      if (!existing) {
+        return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
+      }
 
-    // QA cmsofhlzg — Intervention.arbreId est une colonne SANS FK : la
-    // suppression de l'arbre laissait les traitements phyto « orphelins »
-    // (le registre affichait « Arbre #587 »). Le registre phyto est une
-    // traçabilité réglementaire : on ne supprime JAMAIS ces interventions.
-    // Même approche que la traçabilité bois ci-dessus : on snapshote
-    // l'identité de l'arbre dans les notes, puis on détache le lien.
-    const interventionsADetacher = await prisma.intervention.findMany({
-      where: { arbreId, userId: session!.user.id },
-      select: { id: true, notes: true },
-    })
-    const snapshotArbre = noteArbreSupprime({
-      id: arbreId,
-      nom: existing.nom,
-      espece: existing.espece,
-    })
+      if (await tx.mouvementStockCommercial.count({ where: { userId: session.user.id, OR: [{ fruit: { arbreId } }, { bois: { arbreId } }] } })) return NextResponse.json({ error: 'Cet arbre possède des lots liés à des bons ou factures. Conservez-le pour garder leur traçabilité.' }, { status: 409 })
 
-    const recolteIds = recoltes.map((r) => r.id)
-    let tracesPhyto = { observations: 0, operations: 0 }
-    await prisma.$transaction(async (tx) => {
+      // Audit 2026-07 (#12) : la suppression cascade sur les récoltes de l'arbre,
+      // mais laissait orphelines les écritures comptables auto (VenteManuelle
+      // sourceType='recolte_arbre') → CA fantôme non nettoyable. Et une récolte
+      // facturée disparaissait sans que la facture (document légal) soit traitée.
+      const recoltes = await tx.recolteArbre.findMany({
+        where: { arbreId, userId: session!.user.id },
+        select: { id: true, factureId: true },
+      })
+      for (const recolte of recoltes) await verifierSuppressionSourceReglee(tx, session!.user.id, cleSourceReglement('vente', 'recolte_arbre', recolte.id))
+      const operations = await tx.operationArbre.findMany({ where: { arbreId, userId: session!.user.id }, select: { id: true } })
+      for (const operation of operations) await verifierSuppressionSourceReglee(tx, session!.user.id, cleSourceReglement('depense', 'operation_arbre', operation.id))
+      const facturees = recoltes.filter((r) => r.factureId != null)
+      if (facturees.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              `Suppression impossible : ${facturees.length} récolte(s) de cet arbre sont facturées. ` +
+              `Annulez d'abord la ou les factures concernées, puis réessayez.`,
+          },
+          { status: 409 }
+        )
+      }
+
+      // QA cmsjhogc8 — les productions de bois (arbreId onDelete:SetNull) sont du
+      // stock réel : on ne les supprime pas (sinon perte d'inventaire), mais leur
+      // rattachement à l'arbre allait être nullé, cassant la traçabilité (« Arbre
+      // - »). On snapshote donc l'identité de l'arbre dans les notes du lot avant
+      // la coupe du lien, pour conserver l'origine au registre.
+      const boisAOrpheliner = await tx.productionBois.findMany({
+        where: { arbreId, userId: session!.user.id },
+        select: { id: true, notes: true },
+      })
+      const origineArbre = `Arbre d'origine : ${existing.nom}${existing.espece ? ` (${existing.espece})` : ""} — fiche supprimée le ${new Date().toLocaleDateString("fr-FR")}.`
+
+      // QA cmsofhlzg — Intervention.arbreId est une colonne SANS FK : la
+      // suppression de l'arbre laissait les traitements phyto « orphelins »
+      // (le registre affichait « Arbre #587 »). Le registre phyto est une
+      // traçabilité réglementaire : on ne supprime JAMAIS ces interventions.
+      // Même approche que la traçabilité bois ci-dessus : on snapshote
+      // l'identité de l'arbre dans les notes, puis on détache le lien.
+      const interventionsADetacher = await tx.intervention.findMany({
+        where: { arbreId, userId: session!.user.id },
+        select: { id: true, notes: true },
+      })
+      const snapshotArbre = noteArbreSupprime({
+        id: arbreId,
+        nom: existing.nom,
+        espece: existing.espece,
+      })
+
+      const recolteIds = recoltes.map((r) => r.id)
+      let tracesPhyto = { observations: 0, operations: 0 }
       // Supprimer les écritures auto liées aux récoltes (pas de FK, sinon orphelines)
       if (recolteIds.length > 0) {
         await tx.venteManuelle.deleteMany({
@@ -402,6 +410,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
             auto: true,
           },
         })
+      }
+      if (operations.length > 0) {
+        await tx.depenseManuelle.deleteMany({ where: { userId: session!.user.id, auto: true, sourceType: 'operation_arbre', sourceId: { in: operations.map((o) => o.id) } } })
       }
       // Conserver la traçabilité de l'arbre sur les lots de bois avant que la
       // suppression ne mette arbreId à NULL (onDelete: SetNull).
@@ -435,10 +446,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       })
       // La suppression de l'arbre cascade sur les récoltes (onDelete: Cascade)
       await tx.arbre.delete({ where: { id: arbreId } })
-    })
 
-    return NextResponse.json({ success: true, tracesPhytoConservees: tracesPhyto })
+      return NextResponse.json({ success: true, tracesPhytoConservees: tracesPhyto })
+    })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("DELETE /api/arbres/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la suppression" },

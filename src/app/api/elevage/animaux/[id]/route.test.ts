@@ -20,7 +20,7 @@ vi.mock('@/lib/elevage/animal-lot', () => ({
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn(), deleteAutoEntry: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
   default: {
-    $transaction: (callback: (tx: unknown) => unknown) => callback({ animal: { update: mocks.animalUpdate } }),
+    $transaction: (callback: (tx: unknown) => unknown) => callback({ $executeRaw: vi.fn(), animal: { update: mocks.animalUpdate } }),
     animal: { findFirst: mocks.animalFindFirst, update: mocks.animalUpdate, findMany: mocks.animalFindMany },
     // Ticket cmsoglwee — le GET fusionne les soins du lot de l'animal.
     soinAnimal: { findMany: mocks.soinFindMany },

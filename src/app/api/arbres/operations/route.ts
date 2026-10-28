@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Opérations Arbres
  * GET /api/arbres/operations - Liste des opérations
@@ -83,6 +85,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(operations)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("GET /api/arbres/operations error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la récupération des opérations" },
@@ -154,7 +157,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Date de réalisation invalide" }, { status: 400 })
     }
 
-    const operation = await prisma.operationArbre.create({
+    const operation = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, userId)
+    const operation = await tx.operationArbre.create({
       data: {
         userId,
         arbreId: body.arbreId,
@@ -193,24 +198,13 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Auto-comptabilite : creer une depense si cout > 0
-    if (operation.cout && operation.cout > 0) {
-      try {
-        await createDepenseFromOperationArbre(userId, {
-          id: operation.id,
-          type: operation.type,
-          description: operation.description,
-          cout: operation.cout,
-          date: operation.date,
-          fait: operation.fait,
-        })
-      } catch (autoComptaError) {
-        console.error('Auto-compta error (operation_arbre POST):', autoComptaError)
-      }
-    }
+      await createDepenseFromOperationArbre(userId, operation, tx)
+      return operation
+    })
 
     return NextResponse.json(operation, { status: 201 })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("POST /api/arbres/operations error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la création de l'opération" },

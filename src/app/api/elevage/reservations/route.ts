@@ -1,3 +1,4 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * API Réservations d'élevage (Phase 1 — filière compagnie).
  * Liste d'attente / acompte / suivi d'un petit réservé jusqu'à la cession.
@@ -137,6 +138,7 @@ export async function POST(request: NextRequest) {
       throw new ReservationValidationError("L'acompte ne peut pas dépasser le montant de la cession")
     }
     const data = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const created = await tx.reservationElevage.create({
         data: {
         userId,
@@ -219,6 +221,7 @@ export async function PATCH(request: NextRequest) {
       throw new ReservationValidationError("L'acompte ne peut pas dépasser le montant de la cession")
     }
     const updated = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const saved = await tx.reservationElevage.update({ where: { id: b.id }, data })
       await upsertVenteFromReservationElevage(tx, userId, saved)
       return saved
@@ -244,6 +247,7 @@ export async function DELETE(request: NextRequest) {
     const existing = await prisma.reservationElevage.findFirst({ where: { id, userId }, select: { id: true } })
     if (!existing) return NextResponse.json({ error: 'Réservation introuvable' }, { status: 404 })
     await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       await tx.venteManuelle.deleteMany({
         where: {
           userId,

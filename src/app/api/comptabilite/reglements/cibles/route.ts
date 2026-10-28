@@ -1,3 +1,4 @@
+import { deviseFactureReglement } from '@/lib/comptabilite/devise-reglement'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -90,9 +91,11 @@ export async function GET(request: NextRequest) {
         a.factureOrigineId,
         (credits.get(a.factureOrigineId) || 0) + enCentimes(a.totalTTC),
       )
+  const devise = deviseDuTerritoire(exploitation?.territoire)
   const cibles = [
     ...factures.map((f) => ({
       type: 'Facture',
+      devise: deviseFactureReglement(f.emetteurSnapshot, devise),
       id: f.id,
       cle: cleFacture(f.id),
       libelle: f.numero + ' · ' + f.clientNom,
@@ -102,6 +105,7 @@ export async function GET(request: NextRequest) {
     })),
     ...elevage.map((v) => ({
       type: 'VenteProduit',
+      devise,
       id: v.id,
       cle: cleSourceReglement('vente', 'vente_produit', v.id),
       libelle: v.description || 'Vente ' + v.type + ' · ' + (v.client || ''),
@@ -111,6 +115,7 @@ export async function GET(request: NextRequest) {
     })),
     ...ventes.map((v) => ({
       type: 'VenteManuelle',
+      devise,
       id: v.id,
       cle: cleMiroirReglement('vente', v),
       libelle: v.description,
@@ -120,6 +125,7 @@ export async function GET(request: NextRequest) {
     })),
     ...depenses.map((d) => ({
       type: 'DepenseManuelle',
+      devise,
       id: d.id,
       cle: cleMiroirReglement('depense', d),
       libelle: d.description,
@@ -131,8 +137,7 @@ export async function GET(request: NextRequest) {
   const suivis = await chargerSoldesReglements(
       userId,
       cibles.map((c) => c.cle),
-    ),
-    devise = deviseDuTerritoire(exploitation?.territoire)
+    )
   return NextResponse.json({
     data: cibles.map((c) => {
       const s = suivis.get(c.cle)
@@ -141,7 +146,7 @@ export async function GET(request: NextRequest) {
         id: c.id,
         libelle: c.libelle,
         sens: c.sens,
-        devise,
+        devise: s?.devise ?? c.devise,
         ...soldeReglement(c.total, s?.regleCentimes ?? 0, c.paye, Boolean(s)),
       }
     }),

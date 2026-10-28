@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Consommations d'aliments (elevage)
  * GET /api/elevage/consommations-aliments - Liste avec filtres
@@ -98,6 +100,7 @@ export async function GET(request: NextRequest) {
       meta: { year: annee, total: consommations.length },
     })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/consommations-aliments error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
@@ -193,6 +196,7 @@ export async function POST(request: NextRequest) {
 
     // Transaction : créer la consommation + décrémenter le stock
     const consommation = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const created = await tx.consommationAliment.create({
         data: {
           userId,
@@ -235,6 +239,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: consommation }, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('POST /api/elevage/consommations-aliments error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
@@ -291,6 +296,7 @@ export async function PATCH(request: NextRequest) {
     // Transaction interactive : on rend l'impact stock à l'ancien aliment
     // si changement, puis on applique le delta sur le nouvel.
     const updated = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       if (existing.alimentId !== alimentId) {
         await tx.userStockAliment.upsert({
           where: { userId_alimentId: { userId, alimentId: existing.alimentId } },
@@ -340,6 +346,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: updated })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/consommations-aliments error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
@@ -374,6 +381,7 @@ export async function DELETE(request: NextRequest) {
 
     // Transaction : supprimer + ré-incrémenter le stock
     await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       await deleteAutoEntry('consommation_aliment', consId, 'depense', userId, tx)
       await tx.consommationAliment.delete({
         where: { id: consId },
@@ -397,6 +405,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/elevage/consommations-aliments error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },

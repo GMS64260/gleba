@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Soins des animaux (PROMPT 19B).
  *
@@ -148,6 +150,7 @@ export async function GET(request: NextRequest) {
       meta: { year: annee, total: soins.length },
     })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/soins error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: 'Erreur interne du serveur' },
@@ -323,6 +326,7 @@ export async function POST(request: NextRequest) {
     const finOeufs = d.fait && tempsOeufs > 0 ? addDays(derniereInjection, tempsOeufs) : null
 
     const result = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const quantitePrelevee = d.fait && stockMedicament ? d.quantite ?? 0 : 0
       if (quantitePrelevee > 0) {
         const decremente = await tx.stockMedicamentElevage.updateMany({
@@ -480,6 +484,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('POST /api/elevage/soins error:', err)
     if (err instanceof Error && err.message.startsWith('STOCK_MEDICAMENT_INSUFFISANT:')) {
       const disponible = err.message.split(':')[1]
@@ -645,6 +650,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const soin = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const devientRealise = fait === true && !existing.fait && existing.quantitePreleveeStock <= 0
       const devientPlanifie = fait === false && existing.fait && existing.quantitePreleveeStock > 0
       if (devientRealise && stockEffectif) {
@@ -741,6 +747,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: soin })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/soins error:', error)
     if (error instanceof Error && error.message.startsWith('STOCK_MEDICAMENT_INSUFFISANT:')) {
       return NextResponse.json(
@@ -780,6 +787,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/elevage/soins error:', error)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }

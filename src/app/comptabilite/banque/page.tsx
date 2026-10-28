@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { MODES_REGLEMENT } from '@/lib/validations/reglement'
 import { ReglementsDialog } from '@/components/comptabilite/ReglementsDialog'
+import { useCandidatsBancaires } from '@/components/comptabilite/use-candidats-bancaires'
 import type { TypeCibleReglement } from '@/lib/comptabilite/cle-reglement'
 interface Compte {
   id: string
@@ -33,6 +34,7 @@ interface Connexion {
   resteHistorique: boolean
 }
 interface Operation {
+  virementId: string | null
   virementRapproche: boolean
   id: string
   compteId: string
@@ -50,6 +52,8 @@ interface Operation {
   motifExclusion: string | null
 }
 interface Reglement {
+  reference?: string | null
+  piece?: string | null
   id: string
   montant: number
   date: string
@@ -79,11 +83,9 @@ interface CandidatVirement {
 }
 interface Donnees {
   compteDemo: boolean
-  candidatsVirements: CandidatVirement[]
   comptes: Compte[]
   connexions: Connexion[]
   operations: Operation[]
-  reglementsNonRapproches: Reglement[]
   curseurSuivant: string | null
   peutConnecter: boolean
   configuration: { oauthDisponible: boolean; chiffrementDisponible: boolean }
@@ -117,6 +119,20 @@ export default function BanquePage() {
     [cleRapprochement, setCleRapprochement] = React.useState('')
   const [virement, setVirement] = React.useState<Operation | null>(null),
     [contrepartie, setContrepartie] = React.useState('')
+  const [rechercheVirement, setRechercheVirement] = React.useState('')
+  const reglementsCandidats = useCandidatsBancaires<Reglement>(
+    operation?.id ?? null,
+    'reglements',
+    partie,
+    recherche,
+    actualisationCibles,
+  )
+  const virementsCandidats = useCandidatsBancaires<CandidatVirement>(
+    virement?.id ?? null,
+    'virements',
+    'principal',
+    rechercheVirement,
+  )
   const [exclusion, setExclusion] = React.useState<Operation | null>(null),
     [motif, setMotif] = React.useState('')
   const charger = React.useCallback(
@@ -133,7 +149,9 @@ export default function BanquePage() {
         const d = await r.json()
         if (!r.ok) throw new Error(d.error || 'Chargement impossible.')
         setDonnees((ancien) =>
-          curseur && ancien ? { ...d, operations: [...ancien.operations, ...d.operations] } : d,
+          curseur && ancien
+            ? { ...d, operations: [...ancien.operations, ...d.operations] }
+            : d,
         )
       } catch (e) {
         setErreur(e instanceof Error ? e.message : 'Chargement impossible.')
@@ -149,9 +167,12 @@ export default function BanquePage() {
   React.useEffect(() => {
     const url = new URL(window.location.href),
       resultat = url.searchParams.get('connexion')
-    if (resultat === 'connecte') setMessage('Stripe connecté. La synchronisation peut commencer.')
+    if (resultat === 'connecte')
+      setMessage('Stripe connecté. La synchronisation peut commencer.')
     if (resultat === 'echec')
-      setErreur('La connexion Stripe n’a pas abouti. Relancez-la ou utilisez une clé restreinte.')
+      setErreur(
+        'La connexion Stripe n’a pas abouti. Relancez-la ou utilisez une clé restreinte.',
+      )
     if (resultat) {
       url.searchParams.delete('connexion')
       window.history.replaceState(null, '', url.pathname + url.search)
@@ -159,6 +180,8 @@ export default function BanquePage() {
   }, [])
   React.useEffect(() => {
     if (!operation) return
+    setCibles([])
+    setChoix('')
     const controleur = new AbortController()
     const timer = setTimeout(() => {
       fetch('/api/comptabilite/reglements/cibles?' + new URLSearchParams({ q: recherche }), {
@@ -237,17 +260,21 @@ export default function BanquePage() {
           : -1) === Math.sign(flux),
   )
   const existants =
-    donnees?.reglementsNonRapproches.filter(
+    reglementsCandidats.lignes.filter(
       (r) =>
         r.devise === compte(operation?.compteId || '')?.devise &&
         Math.sign((r.sens === 'encaissement' ? 1 : -1) * r.montant) === Math.sign(flux) &&
         Math.abs(r.montant) <=
-          (partie === 'frais' ? (operation?.resteFrais ?? 0) : (operation?.restePrincipal ?? 0)),
+          (partie === 'frais'
+            ? (operation?.resteFrais ?? 0)
+            : (operation?.restePrincipal ?? 0)),
     ) || []
   const rapprocher = () =>
     executer(async () => {
       if (!operation) return
       const reglementId = choix.startsWith('reg:') ? choix.slice(4) : undefined
+      if (reglementId && !existants.some((r) => r.id === reglementId))
+        throw new Error('Choisissez un règlement actuellement proposé.')
       if (!reglementId && !selection) throw new Error('Choisissez une pièce ou un règlement.')
       await action({
         action: 'rapprocher',
@@ -270,7 +297,9 @@ export default function BanquePage() {
       if (!file || !compteId) throw new Error('Choisissez d’abord le compte du relevé.')
       if (file.size > 1_000_000) throw new Error('Le fichier doit faire moins de 1 Mo.')
       const d = await action({ action: 'importer', compteId, csv: await file.text() })
-      setMessage(d.importees + ' opérations importées, ' + d.dejaPresentes + ' déjà présentes.')
+      setMessage(
+        d.importees + ' opérations importées, ' + d.dejaPresentes + ' déjà présentes.',
+      )
     })
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
@@ -325,7 +354,8 @@ export default function BanquePage() {
                       <p className="font-medium">{c.nom}</p>
                       <p className="text-xs text-muted-foreground">
                         {c.soldeAu
-                          ? 'Solde disponible au ' + new Date(c.soldeAu).toLocaleString('fr-FR')
+                          ? 'Solde disponible au ' +
+                            new Date(c.soldeAu).toLocaleString('fr-FR')
                           : 'Solde bancaire non renseigné'}
                       </p>
                     </div>
@@ -385,8 +415,8 @@ export default function BanquePage() {
                   </p>
                 )}
                 <p className="text-sm">
-                  Encaissements, frais et virements Stripe actualisés périodiquement. Les autres
-                  mouvements de votre banque se suivent par import de relevé.
+                  Encaissements, frais et virements Stripe actualisés périodiquement. Les
+                  autres mouvements de votre banque se suivent par import de relevé.
                 </p>
                 {donnees.connexions.map((c) => (
                   <div key={c.id} className="space-y-2 rounded border p-3">
@@ -412,7 +442,10 @@ export default function BanquePage() {
                           size="sm"
                           onClick={() =>
                             executer(async () => {
-                              const d = await action({ action: 'synchroniser', connexionId: c.id })
+                              const d = await action({
+                                action: 'synchroniser',
+                                connexionId: c.id,
+                              })
                               setMessage(
                                 d.importees +
                                   ' opérations ajoutées.' +
@@ -423,7 +456,9 @@ export default function BanquePage() {
                             })
                           }
                         >
-                          {c.resteHistorique ? 'Poursuivre la synchronisation' : 'Synchroniser'}
+                          {c.resteHistorique
+                            ? 'Poursuivre la synchronisation'
+                            : 'Synchroniser'}
                         </Button>
                       )}
                       {c.actif && donnees.peutConnecter && (
@@ -489,26 +524,29 @@ export default function BanquePage() {
                     ))}
                   </SelectNatif>
                 </div>
-                {!lectureSeule && !donnees.compteDemo && compte(compteId)?.source === 'releve' && (
-                  <div>
-                    <Label htmlFor="banque-csv">Importer un relevé CSV</Label>
-                    <Input
-                      id="banque-csv"
-                      type="file"
-                      accept=".csv,text/csv"
-                      disabled={enCours}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        e.target.value = ''
-                        if (file) void importer(file)
-                      }}
-                    />
-                  </div>
-                )}
+                {!lectureSeule &&
+                  !donnees.compteDemo &&
+                  compte(compteId)?.source === 'releve' && (
+                    <div>
+                      <Label htmlFor="banque-csv">Importer un relevé CSV</Label>
+                      <Input
+                        id="banque-csv"
+                        type="file"
+                        accept=".csv,text/csv"
+                        disabled={enCours}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          e.target.value = ''
+                          if (file) void importer(file)
+                        }}
+                      />
+                    </div>
+                  )}
               </div>
               <p className="text-xs text-muted-foreground">
-                CSV UTF-8 : Date, Libellé, Montant (ou Débit et Crédit), Référence facultative. Sans
-                référence bancaire, vérifiez les lignes identiques entre plusieurs relevés.
+                CSV UTF-8 : Date, Libellé, Montant (ou Débit et Crédit), Référence facultative.
+                Sans référence bancaire, vérifiez les lignes identiques entre plusieurs
+                relevés.
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -529,7 +567,9 @@ export default function BanquePage() {
                             {compte(o.compteId)?.nom}
                           </p>
                           <p className="font-medium">{o.libelle}</p>
-                          <p className="break-all text-xs text-muted-foreground">{o.reference}</p>
+                          <p className="break-all text-xs text-muted-foreground">
+                            {o.reference}
+                          </p>
                         </td>
                         <td className="whitespace-nowrap p-2">
                           {argent(o.montant, compte(o.compteId)?.devise)}
@@ -544,8 +584,50 @@ export default function BanquePage() {
                         </td>
                         <td className="p-2">
                           <div className="flex flex-wrap gap-2">
+                            {o.virementId && !lectureSeule && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={enCours}
+                                onClick={() =>
+                                  executer(async () => {
+                                    await action({
+                                      action: 'annuler-virement',
+                                      virementId: o.virementId,
+                                    })
+                                    setMessage(
+                                      'Les deux mouvements sont de nouveau disponibles pour le rapprochement.',
+                                    )
+                                  })
+                                }
+                              >
+                                Défaire le rapprochement
+                              </Button>
+                            )}
                             {o.aVerifier ? (
-                              <span className="text-amber-800">Données modifiées : à vérifier</span>
+                              <>
+                                <span className="text-amber-800">
+                                  Données modifiées : à vérifier
+                                </span>
+                                {!lectureSeule && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={enCours}
+                                    onClick={() =>
+                                      executer(async () => {
+                                        await action({
+                                          action: 'valider-operation',
+                                          operationId: o.id,
+                                        })
+                                        setMessage('Mouvement vérifié, règlements conservés.')
+                                      })
+                                    }
+                                  >
+                                    J’ai vérifié ce mouvement
+                                  </Button>
+                                )}
+                              </>
                             ) : o.statut === 'en_attente' ? (
                               <span>Fonds en attente</span>
                             ) : o.statut === 'ignoree' ? (
@@ -583,7 +665,10 @@ export default function BanquePage() {
                                           onClick={() => ouvrirRapprochement(o, 'principal')}
                                         >
                                           Rapprocher{' '}
-                                          {argent(o.restePrincipal, compte(o.compteId)?.devise)}
+                                          {argent(
+                                            o.restePrincipal,
+                                            compte(o.compteId)?.devise,
+                                          )}
                                         </Button>
                                       )}
                                     {o.resteFrais > 0 && !lectureSeule && (
@@ -606,6 +691,7 @@ export default function BanquePage() {
                                           disabled={enCours}
                                           onClick={() => {
                                             setVirement(o)
+                                            setRechercheVirement('')
                                             setContrepartie('')
                                           }}
                                         >
@@ -675,8 +761,8 @@ export default function BanquePage() {
           <DialogHeader>
             <DialogTitle>Connecter Stripe en lecture</DialogTitle>
             <DialogDescription>
-              Créez dans Stripe une clé restreinte autorisant la lecture du compte, du solde et des
-              opérations. Cette clé sera chiffrée sur le serveur.
+              Créez dans Stripe une clé restreinte autorisant la lecture du compte, du solde et
+              des opérations. Cette clé sera chiffrée sur le serveur.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -728,7 +814,9 @@ export default function BanquePage() {
           <p className="text-sm">
             Solde disponible :{' '}
             {argent(
-              partie === 'frais' ? (operation?.resteFrais ?? 0) : (operation?.restePrincipal ?? 0),
+              partie === 'frais'
+                ? (operation?.resteFrais ?? 0)
+                : (operation?.restePrincipal ?? 0),
               compte(operation?.compteId || '')?.devise,
             )}
             .
@@ -737,7 +825,10 @@ export default function BanquePage() {
           <Input
             id="banque-recherche"
             value={recherche}
-            onChange={(e) => setRecherche(e.target.value)}
+            onChange={(e) => {
+              setRecherche(e.target.value)
+              setChoix('')
+            }}
             placeholder="N° de facture, client ou libellé"
           />
           <label className="flex items-center gap-2 text-sm">
@@ -751,14 +842,24 @@ export default function BanquePage() {
             />
             Il s’agit d’un remboursement.
           </label>
+          {reglementsCandidats.erreur && (
+            <p role="alert" className="text-sm text-red-700">
+              {reglementsCandidats.erreur}
+            </p>
+          )}
           <Label htmlFor="banque-piece">Pièce à régler ou règlement existant</Label>
-          <SelectNatif id="banque-piece" value={choix} onChange={(e) => setChoix(e.target.value)}>
+          <SelectNatif
+            id="banque-piece"
+            value={choix}
+            onChange={(e) => setChoix(e.target.value)}
+          >
             <option value="">Choisir…</option>
             {existants.length > 0 && (
               <optgroup label="Règlements déjà saisis">
                 {existants.map((r) => (
                   <option key={r.id} value={'reg:' + r.id}>
-                    {r.libelle} · {argent(r.montant, r.devise)}
+                    {r.piece || r.libelle} · {new Date(r.date).toLocaleDateString('fr-FR')} ·{' '}
+                    {r.reference || r.libelle} · {argent(r.montant, r.devise)}
                   </option>
                 ))}
               </optgroup>
@@ -771,6 +872,17 @@ export default function BanquePage() {
               ))}
             </optgroup>
           </SelectNatif>
+          {reglementsCandidats.curseur && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={reglementsCandidats.charge}
+              onClick={reglementsCandidats.suivant}
+            >
+              Afficher d’autres règlements déjà saisis
+            </Button>
+          )}
+
           {!choix.startsWith('reg:') && (
             <>
               <Label htmlFor="banque-montant">Montant à affecter</Label>
@@ -781,7 +893,11 @@ export default function BanquePage() {
                 onChange={(e) => setMontant(e.target.value)}
               />
               <Label htmlFor="banque-mode">Mode réellement utilisé</Label>
-              <SelectNatif id="banque-mode" value={mode} onChange={(e) => setMode(e.target.value)}>
+              <SelectNatif
+                id="banque-mode"
+                value={mode}
+                onChange={(e) => setMode(e.target.value)}
+              >
                 <option value="">Choisir…</option>
                 {MODES_REGLEMENT.filter((m) => m !== 'À crédit').map((m) => (
                   <option key={m} value={m}>
@@ -807,7 +923,13 @@ export default function BanquePage() {
             règlement existant lorsqu’il a déjà été saisi.
           </p>
           <Button
-            disabled={enCours || !choix || (!choix.startsWith('reg:') && (!mode || !montant))}
+            disabled={
+              enCours ||
+              !choix ||
+              (choix.startsWith('reg:')
+                ? !reglementsCandidats.lignes.some((r) => `reg:${r.id}` === choix)
+                : !mode || !montant)
+            }
             onClick={rapprocher}
           >
             Confirmer le rapprochement
@@ -840,14 +962,32 @@ export default function BanquePage() {
             {virement?.libelle} ·{' '}
             {argent(virement?.brut ?? 0, compte(virement?.compteId || '')?.devise)}
           </p>
-          <Label htmlFor="banque-contrepartie">Mouvement correspondant de l’autre compte</Label>
+          <Label htmlFor="banque-recherche-virement">
+            Rechercher un mouvement ou un compte
+          </Label>
+          <Input
+            id="banque-recherche-virement"
+            value={rechercheVirement}
+            onChange={(e) => {
+              setRechercheVirement(e.target.value)
+              setContrepartie('')
+            }}
+          />
+          {virementsCandidats.erreur && (
+            <p role="alert" className="text-sm text-red-700">
+              {virementsCandidats.erreur}
+            </p>
+          )}
+          <Label htmlFor="banque-contrepartie">
+            Mouvement correspondant de l’autre compte
+          </Label>
           <SelectNatif
             id="banque-contrepartie"
             value={contrepartie}
             onChange={(e) => setContrepartie(e.target.value)}
           >
             <option value="">Choisir…</option>
-            {donnees?.candidatsVirements
+            {virementsCandidats.lignes
               .filter(
                 (c) =>
                   virement &&
@@ -857,16 +997,31 @@ export default function BanquePage() {
               )
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.compteNom} · {new Date(c.date).toLocaleDateString('fr-FR')} · {c.libelle} ·{' '}
-                  {argent(c.montant, c.devise)}
+                  {c.compteNom} · {new Date(c.date).toLocaleDateString('fr-FR')} · {c.libelle}{' '}
+                  · {argent(c.montant, c.devise)}
                 </option>
               ))}
           </SelectNatif>
+          {virementsCandidats.curseur && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={virementsCandidats.charge}
+              onClick={virementsCandidats.suivant}
+            >
+              Afficher plus de mouvements
+            </Button>
+          )}
+
           <p className="text-xs text-muted-foreground">
             Importez le relevé du compte destinataire si le mouvement n’est pas encore proposé.
           </p>
           <Button
-            disabled={enCours || !contrepartie}
+            disabled={
+              enCours ||
+              !contrepartie ||
+              !virementsCandidats.lignes.some((c) => c.id === contrepartie)
+            }
             onClick={() =>
               executer(async () => {
                 if (!virement) return
@@ -894,8 +1049,8 @@ export default function BanquePage() {
           <DialogHeader>
             <DialogTitle>Exclure du rapprochement commercial</DialogTitle>
             <DialogDescription>
-              Le mouvement reste dans l’historique bancaire. Indiquez pourquoi il ne règle pas une
-              facture ou une dépense.
+              Le mouvement reste dans l’historique bancaire. Indiquez pourquoi il ne règle pas
+              une facture ou une dépense.
             </DialogDescription>
           </DialogHeader>
           <Label htmlFor="banque-motif">Motif</Label>
@@ -909,7 +1064,8 @@ export default function BanquePage() {
             disabled={enCours || motif.trim().length < 3}
             onClick={() =>
               executer(async () => {
-                if (exclusion) await action({ action: 'exclure', operationId: exclusion.id, motif })
+                if (exclusion)
+                  await action({ action: 'exclure', operationId: exclusion.id, motif })
                 setExclusion(null)
               })
             }

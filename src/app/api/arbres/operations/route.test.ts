@@ -11,13 +11,16 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  const db = {
+    $executeRaw: vi.fn(),
     arbre: { findFirst: mocks.arbreFindFirst },
     operationArbre: { create: mocks.operationCreate, findMany: mocks.operationFindMany },
     membreExploitation: { findFirst: mocks.membreFindFirst },
-  },
-}))
+  }
+  return { default: { ...db, $transaction: (callback: (tx: typeof db) => unknown) => callback(db) } }
+})
+
 vi.mock("@/lib/auto-compta", () => ({
   createDepenseFromOperationArbre: mocks.createDepense,
 }))

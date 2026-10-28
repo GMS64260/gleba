@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Abattages
  * GET /api/elevage/abattages - Liste des abattages
@@ -146,6 +148,7 @@ export async function GET(request: NextRequest) {
       meta: { year: annee, total: abattages.length },
     })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/abattages error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
@@ -234,6 +237,7 @@ export async function POST(request: NextRequest) {
 
     // Transaction pour mettre à jour l'animal/lot
     const abattage = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       // Créer l'abattage
       const newAbattage = await tx.abattage.create({
         data: {
@@ -308,6 +312,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: abattage }, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('POST /api/elevage/abattages error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
@@ -417,6 +422,7 @@ export async function PATCH(request: NextRequest) {
 
     // Transaction atomique : facture + update abattage + ajustement lot
     const mutation = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       // Dé-vente d'un abattage facturé : facture, source et miroir doivent
       // basculer ensemble. Une panne ne peut plus laisser une facture annulée
       // alors que l'abattage reste encore compté comme vente.
@@ -518,6 +524,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: abattage })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/abattages error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
@@ -554,6 +561,7 @@ export async function DELETE(request: NextRequest) {
     // du POST (symétrie déjà appliquée au stock aliment) : avant, annuler un
     // abattage laissait l'animal en statut 'abattu' et le lot décrémenté.
     const annulation = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       if (existing.factureId) {
         const liee = await annulerFactureLiee(tx, session.user.id, existing.factureId)
         if (!liee.ok) return liee
@@ -602,6 +610,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/elevage/abattages error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },

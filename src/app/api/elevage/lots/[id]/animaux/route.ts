@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { composerLot } from '@/lib/elevage/composition-lot'
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
     return NextResponse.json({ data: { ajoutes: resultat.ajoutes, retires: resultat.retires } })
   } catch (e) {
+    if (e instanceof ErreurReglement) return NextResponse.json({ error: e.message }, { status: e.status })
     console.error('POST /api/elevage/lots/[id]/animaux error:', e)
     return NextResponse.json(
       { error: 'Erreur lors de la composition du lot', details: 'Erreur interne du serveur' },

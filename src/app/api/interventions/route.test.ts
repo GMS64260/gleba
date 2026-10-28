@@ -23,6 +23,7 @@ vi.mock('@/lib/planches/resolution', () => ({ resoudreIdPlanche: vi.fn(async (_p
 vi.mock('@/lib/prisma', async () => {
   const { delegueMemoire } = await import('@/lib/__tests__/fixtures/referentiel-memoire')
   const db = {
+    $executeRaw: vi.fn(),
     intervention: { create: mocks.create, findFirst: mocks.findFirst, update: mocks.update },
     culture: delegueMemoire([{ id: 461, userId: 'u1' }]),
   }

@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => {
-  const tx = { productionBois: { update: mocks.productionUpdate } }
+  const tx = { $executeRaw: vi.fn(), productionBois: { update: mocks.productionUpdate } }
   return {
     default: {
       productionBois: { findUnique: mocks.productionFindUnique, update: mocks.productionUpdate },

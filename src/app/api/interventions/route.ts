@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Interventions
  * GET /api/interventions - Liste des interventions avec filtres
@@ -524,6 +526,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: allEntries.slice(0, 500), stats })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('Erreur GET /api/interventions:', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
@@ -554,6 +557,7 @@ export async function POST(request: NextRequest) {
     const plancheIdNormalise = references.plancheId ?? null
 
     const intervention = await prisma.$transaction(async tx => {
+      await verrouillerReglements(tx, session!.user.id)
       const intervention = await tx.intervention.create({
         data: {
           userId,
@@ -627,6 +631,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(intervention, { status: 201 })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('Erreur POST /api/interventions:', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
@@ -736,6 +741,7 @@ export async function PATCH(request: NextRequest) {
     if (updates.notes !== undefined) data.notes = updates.notes || null
 
     const updated = await prisma.$transaction(async tx => {
+      await verrouillerReglements(tx, session!.user.id)
       const updated = await tx.intervention.update({ where: { id: parseInt(id), userId }, data })
       // Le helper retire aussi le miroir d'une intervention planifiée ou sans coût.
       await createDepenseFromIntervention(userId, updated, tx)
@@ -746,6 +752,7 @@ export async function PATCH(request: NextRequest) {
     irrigationCache.invalidateUser(userId)
     return NextResponse.json(updated)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('Erreur PATCH /api/interventions:', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
@@ -774,6 +781,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.$transaction(async tx => {
+      await verrouillerReglements(tx, session!.user.id)
       await deleteAutoEntry('intervention', parseInt(id), 'depense', userId, tx)
       await tx.intervention.delete({ where: { id: parseInt(id), userId } })
     })
@@ -782,6 +790,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('Erreur DELETE /api/interventions:', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }

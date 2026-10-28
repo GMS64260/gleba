@@ -11,6 +11,8 @@ import {
   importerReleve,
   rapprocherOperation,
   rapprocherVirement,
+  defaireVirement,
+  validerOperationRevisee,
 } from '@/lib/comptabilite/banque/service'
 import {
   connecterCleStripe,
@@ -20,6 +22,8 @@ import {
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { verrouillerReglements } from '@/lib/comptabilite/reglements'
 const actionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('annuler-virement'), virementId: z.string().min(1).max(100) }),
+  z.object({ action: z.literal('valider-operation'), operationId: z.string().min(1).max(100) }),
   z.object({
     action: z.literal('virement'),
     sortieId: z.string().min(1).max(100),
@@ -48,7 +52,7 @@ export async function GET(request: NextRequest) {
   const userId = session.user.id,
     compteId = request.nextUrl.searchParams.get('compteId'),
     curseur = request.nextUrl.searchParams.get('curseur')
-  const [comptes, connexions, operations, reglements, candidatsVirements, compteDemo] =
+  const [comptes, connexions, operations, compteDemo] =
     await Promise.all([
       prisma.compteBancaire.findMany({
         where: { userId, archive: false },
@@ -79,39 +83,10 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      prisma.reglement.findMany({
-        where: { userId, annuleLe: null, operationBancaireId: null },
-        orderBy: { date: 'desc' },
-        take: 100,
-        include: { dossier: { select: { libelle: true, sens: true, devise: true } } },
-      }),
-      prisma.operationBancaire.findMany({
-        where: {
-          userId,
-          statut: { in: ['comptabilisee', 'ignoree'] },
-          aVerifier: false,
-          compte: { OR: [{ connexionStripeId: null }, { connexionStripe: { modeTest: false } }] },
-          virementsSortants: { none: {} },
-          virementsEntrants: { none: {} },
-          reglements: { none: { userId, annuleLe: null, partieBancaire: 'principal' } },
-        },
-        orderBy: { date: 'desc' },
-        take: 200,
-        include: { compte: { select: { nom: true, devise: true } } },
-      }),
       estCompteDemo(userId),
     ])
   return NextResponse.json({
     compteDemo,
-    candidatsVirements: candidatsVirements.map((o) => ({
-      id: o.id,
-      compteId: o.compteId,
-      compteNom: o.compte.nom,
-      devise: o.compte.devise,
-      date: o.date,
-      libelle: o.libelle,
-      montant: Number(o.brutCentimes) / 100,
-    })),
     comptes: comptes.map(compteDTO),
     connexions: connexions.map((c) => ({
       id: c.id,
@@ -122,15 +97,6 @@ export async function GET(request: NextRequest) {
     })),
     operations: operations.slice(0, 100).map(operationDTO),
     curseurSuivant: operations.length > 100 ? operations[99].id : null,
-    reglementsNonRapproches: reglements.map((r) => ({
-      id: r.id,
-      montant: Number(r.montantCentimes) / 100,
-      date: r.date,
-      libelle: r.dossier.libelle,
-      sens: r.dossier.sens,
-      devise: r.dossier.devise,
-      reference: r.reference,
-    })),
     configuration: configurationStripe(),
     peutConnecter:
       session.user.estProprietaireExploitation && !session.user.impersonatedBy && !compteDemo,
@@ -161,6 +127,8 @@ export async function POST(request: NextRequest) {
         'Créez votre propre compte pour importer un relevé bancaire ; la démonstration est partagée.',
         403,
       )
+    if (d.action === 'annuler-virement') return NextResponse.json({ data: await defaireVirement(userId, d.virementId) })
+    if (d.action === 'valider-operation') { await validerOperationRevisee(userId, d.operationId); return NextResponse.json({ success: true }) }
     if (d.action === 'virement')
       return NextResponse.json({
         data: await rapprocherVirement(userId, acteurId, d.sortieId, d.entreeId),

@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Animaux
  * GET /api/elevage/animaux - Liste des animaux
@@ -118,6 +120,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: animaux })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/animaux error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération des animaux', details: "Erreur interne du serveur" },
@@ -248,6 +251,7 @@ export async function POST(request: NextRequest) {
     }
 
     const animal = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const created = await tx.animal.create({
         data: {
         userId: session.user.id,
@@ -333,6 +337,7 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     )
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('POST /api/elevage/animaux error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
@@ -581,6 +586,7 @@ export async function PATCH(request: NextRequest) {
     Object.assign(updateData, effacementSortieSiActif(statut))
 
     const animal = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const updated = await tx.animal.update({
         where: { id: parseInt(id) },
         data: updateData,
@@ -615,6 +621,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: animal })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/animaux error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },

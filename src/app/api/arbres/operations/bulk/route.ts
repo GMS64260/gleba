@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * POST /api/arbres/operations/bulk
  *
@@ -67,59 +69,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Isolation multi-tenant : on ne touche que les lignes du compte, et on
-    // ignore silencieusement celles déjà traitées (double appui, onglet obsolète).
-    const cibles = await prisma.operationArbre.findMany({
-      where: { id: { in: ids }, userId, fait: false, abandonneeLe: null },
-      select: { id: true, type: true, description: true, cout: true },
-    })
-
-    if (cibles.length === 0) {
-      return NextResponse.json({ count: 0, action, ignored: ids.length })
-    }
-
-    const cibleIds = cibles.map((operation) => operation.id)
-    const maintenant = new Date()
-
-    if (action === "fait") {
-      await prisma.operationArbre.updateMany({
-        where: { id: { in: cibleIds }, userId },
-        data: { fait: true, date: maintenant },
+    const resultat = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, userId)
+      const cibles = await tx.operationArbre.findMany({
+        where: { id: { in: ids }, userId, fait: false, abandonneeLe: null },
+        select: { id: true, type: true, description: true, cout: true },
       })
-
-      // Auto-comptabilité : seules les opérations portant un coût génèrent une
-      // écriture. Une erreur comptable ne doit pas annuler la validation métier.
-      for (const operation of cibles) {
-        if (!operation.cout || operation.cout <= 0) continue
-        try {
-          await createDepenseFromOperationArbre(userId, {
-            id: operation.id,
-            type: operation.type,
-            description: operation.description,
-            cout: operation.cout,
-            date: maintenant,
-            fait: true,
-          })
-        } catch (autoComptaError) {
-          console.error(
-            "Auto-compta error (operations arbres bulk):",
-            autoComptaError
-          )
-        }
+      if (!cibles.length) return { count: 0, action, ignored: ids.length }
+      const cibleIds = cibles.map((operation) => operation.id)
+      const maintenant = new Date()
+      await tx.operationArbre.updateMany({
+        where: { id: { in: cibleIds }, userId },
+        data: action === 'fait' ? { fait: true, date: maintenant } : { abandonneeLe: maintenant },
+      })
+      if (action === 'fait') for (const operation of cibles) {
+        await createDepenseFromOperationArbre(userId, { ...operation, date: maintenant, fait: true }, tx)
       }
-    } else {
-      await prisma.operationArbre.updateMany({
-        where: { id: { in: cibleIds }, userId },
-        data: { abandonneeLe: maintenant },
-      })
-    }
-
-    return NextResponse.json({
-      count: cibleIds.length,
-      action,
-      ignored: ids.length - cibleIds.length,
-    })
+      return { count: cibleIds.length, action, ignored: ids.length - cibleIds.length }
+    }, { timeout: 30000 })
+    return NextResponse.json(resultat)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("POST /api/arbres/operations/bulk error:", err)
     return NextResponse.json(
       { error: "Erreur lors du traitement en masse" },

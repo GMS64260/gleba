@@ -89,7 +89,7 @@ export async function lireReglements(
   return {
     cible: { type: cible.type, id: cible.id },
     dossierId: dossier?.id ?? null,
-    devise: cible.devise,
+    devise: dossier?.devise ?? cible.devise,
     libelle: cible.libelle,
     montantPieceAvantAvoirs: cible.brut / 100,
     historiqueDeclarePaye: dossier?.historiqueDeclarePaye ?? cible.historiquePaye,

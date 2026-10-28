@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Opération Arbre individuelle
  * GET - Détail d'une opération
@@ -49,6 +51,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     return NextResponse.json(operation)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("GET /api/arbres/operations/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la récupération de l'opération" },
@@ -83,7 +86,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const body = await request.json()
 
-    const operation = await prisma.operationArbre.update({
+    const operation = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
+      const operation = await tx.operationArbre.update({
       where: { id: operationId },
       data: {
         date: body.date ? new Date(body.date) : undefined,
@@ -128,9 +133,6 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
     })
 
-    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
-    // (le helper supprime l'ecriture si cout devient null/0)
-    try {
       await createDepenseFromOperationArbre(session!.user.id, {
         id: operation.id,
         type: operation.type,
@@ -138,13 +140,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
         cout: operation.cout,
         date: operation.date,
         fait: operation.fait,
-      })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (operation_arbre PUT):', autoComptaError)
-    }
+      }, tx)
+      return operation
+    })
 
     return NextResponse.json(operation)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("PUT /api/arbres/operations/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la mise à jour" },
@@ -177,19 +179,15 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Opération non trouvée" }, { status: 404 })
     }
 
-    // Supprimer les ecritures auto-compta liees
-    try {
-      await deleteAutoEntry('operation_arbre', operationId, 'depense')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (operation_arbre):', autoComptaError)
-    }
-
-    await prisma.operationArbre.delete({
-      where: { id: operationId },
+    await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
+      await deleteAutoEntry('operation_arbre', operationId, 'depense', session!.user.id, tx)
+      await tx.operationArbre.delete({ where: { id: operationId, userId: session!.user.id } })
     })
 
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("DELETE /api/arbres/operations/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la suppression" },

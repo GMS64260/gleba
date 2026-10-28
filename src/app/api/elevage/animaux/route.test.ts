@@ -26,6 +26,7 @@ vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
   default: {
     $transaction: (callback: (tx: unknown) => unknown) => callback({
+      $executeRaw: vi.fn(),
       animal: { create: mocks.animalCreate, update: mocks.animalUpdate },
     }),
     especeAnimale: { findUnique: mocks.especeFindUnique, findFirst: mocks.especeFindFirst },

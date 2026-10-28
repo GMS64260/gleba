@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Paie du lait mensuelle (PROMPT 26).
  * GET ?annee= / POST (upsert par mois) / DELETE?id=
@@ -9,7 +11,7 @@ import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { montantPaie } from '@/lib/elevage/paie-lait'
-import { upsertVenteFromPaieLait } from '@/lib/auto-compta'
+import { upsertVenteFromPaieLait, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 
 const schema = z.object({
@@ -58,6 +60,7 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     // Upsert par mois (une paie par mois)
     const paie = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const saved = await tx.paieLait.upsert({
         where: { userId_annee_mois: { userId, annee: d.annee, mois: d.mois } },
         update: {
@@ -95,6 +98,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: paie }, { status: 201 })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('POST /api/elevage/paies-lait error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
@@ -103,23 +107,24 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
+  try {
   const { searchParams } = new URL(request.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
   const existing = await prisma.paieLait.findFirst({ where: { id, userId: session.user.id } })
   if (!existing) return NextResponse.json({ error: 'Paie introuvable' }, { status: 404 })
   await prisma.$transaction(async (tx) => {
-    await tx.paieLait.delete({ where: { id } })
-    await tx.venteManuelle.deleteMany({
-      where: {
-        sourceType: 'paie_lait',
-        sourceId: existing.annee * 100 + existing.mois,
-        auto: true,
-        userId: existing.userId,
-      },
-    })
+    await verrouillerReglements(tx, session.user.id)
+    const courante = await tx.paieLait.findFirst({ where: { id, userId: session.user.id } })
+    if (!courante) throw new ErreurReglement('Paie introuvable.', 404)
+    await deleteAutoEntry('paie_lait', courante.annee * 100 + courante.mois, 'vente', session.user.id, tx)
+    await tx.paieLait.delete({ where: { id, userId: session.user.id } })
   })
   invalidateKpi(existing.userId)
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true })  } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
+    return NextResponse.json({ error: 'Suppression impossible.' }, { status: 500 })
+  }
+
 }
