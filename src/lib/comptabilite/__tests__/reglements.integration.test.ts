@@ -84,7 +84,10 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     const f = await facture(100.1),
       api = await import('@/app/api/comptabilite/reglements/route')
     const premier = (
-      await json(await api.POST(req('/api/comptabilite/reglements', entree(f.id, '30,03'))), 201)
+      await json(
+        await api.POST(req('/api/comptabilite/reglements', entree(f.id, '30,03'))),
+        201,
+      )
     ).data
     const suivi = await json(
       await api.GET(req('/api/comptabilite/reglements?type=Facture&id=' + f.id)),
@@ -167,7 +170,10 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     })
     const resultats = await Promise.allSettled([
       api.POST(
-        req('/api/comptabilite/reglements', { ...entree(d.id, '80'), type: 'DepenseManuelle' }),
+        req('/api/comptabilite/reglements', {
+          ...entree(d.id, '80'),
+          type: 'DepenseManuelle',
+        }),
       ),
       auto.createDepenseFromLotAnimaux(identite.id, {
         id: 990002,
@@ -197,9 +203,9 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     })
     comptes.push(autre.id)
     identite.id = autre.id
-    expect((await api.POST(req('/api/comptabilite/reglements', entree(f.id, '30')))).status).toBe(
-      404,
-    )
+    expect(
+      (await api.POST(req('/api/comptabilite/reglements', entree(f.id, '30')))).status,
+    ).toBe(404)
     expect(await db.reglement.count({ where: { userId: autre.id } })).toBe(0)
   })
   it('importe sans recette ni doublon, puis rapproche deux factures sur un seul mouvement', async () => {
@@ -252,7 +258,11 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     await json(await rapprocher(f1.id, '30'))
     await json(await rapprocher(f2.id, '70'))
     const liste = await json(await banque.GET(req('/api/comptabilite/banque')))
-    expect(liste.operations[0]).toMatchObject({ restePrincipal: 0, resteFrais: 0, montant: 100 })
+    expect(liste.operations[0]).toMatchObject({
+      restePrincipal: 0,
+      resteFrais: 0,
+      montant: 100,
+    })
     expect(
       await db.reglement.count({ where: { userId: identite.id, operationBancaireId: o.id } }),
     ).toBe(2)
@@ -318,7 +328,9 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
       description: 'Libellé corrigé fictif',
     })
     expect(
-      await json(await api.GET(req('/api/comptabilite/reglements?type=VenteProduit&id=' + v.id))),
+      await json(
+        await api.GET(req('/api/comptabilite/reglements?type=VenteProduit&id=' + v.id)),
+      ),
     ).toMatchObject({ montantRegle: 30, resteAPayer: 70 })
     const f = await facture()
     await db.$transaction(async (tx) => {
@@ -367,11 +379,15 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
       prixAchatTotal: 120,
       nom: 'Lot fictif',
     })
-    const nouveau = await db.depenseManuelle.findFirstOrThrow({ where: { userId: identite.id } })
+    const nouveau = await db.depenseManuelle.findFirstOrThrow({
+      where: { userId: identite.id },
+    })
     expect(nouveau.id).not.toBe(miroir.id)
     expect(
       await json(
-        await api.GET(req('/api/comptabilite/reglements?type=DepenseManuelle&id=' + nouveau.id)),
+        await api.GET(
+          req('/api/comptabilite/reglements?type=DepenseManuelle&id=' + nouveau.id),
+        ),
       ),
     ).toMatchObject({ montantRegle: 30, resteAPayer: 90 })
     await expect(auto.deleteAutoEntry('achat_animal', 990001, 'depense')).rejects.toThrow(
@@ -379,14 +395,212 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     )
     await json(
       await api.DELETE(
-        req('/api/comptabilite/reglements', { id: r.id, motif: 'Correction fictive' }, 'DELETE'),
+        req(
+          '/api/comptabilite/reglements',
+          { id: r.id, motif: 'Correction fictive' },
+          'DELETE',
+        ),
       ),
     )
     expect(
       await json(
-        await api.GET(req('/api/comptabilite/reglements?type=DepenseManuelle&id=' + nouveau.id)),
+        await api.GET(
+          req('/api/comptabilite/reglements?type=DepenseManuelle&id=' + nouveau.id),
+        ),
       ),
     ).toMatchObject({ montantRegle: 0, resteAPayer: 120 })
+  })
+  it('refuse le cumul d’un règlement et d’un virement après révision Stripe, même si le drapeau avait été levé', async () => {
+    const banque = await import('@/app/api/comptabilite/banque/route')
+    const reglementsApi = await import('@/app/api/comptabilite/reglements/route')
+    const { chargerFecReglements } = await import('@/lib/comptabilite/banque/fec-reglements')
+    const { genererFec } = await import('@/lib/comptabilite/fec')
+    const f = await facture(100)
+    const connexion = await db.connexionStripe.create({
+      data: {
+        userId: identite.id,
+        compteStripeId: 'acct_qa' + randomUUID(),
+        modeTest: false,
+        jetonChiffre: 'aucun-acces',
+      },
+    })
+    const compte = await db.compteBancaire.create({
+      data: {
+        userId: identite.id,
+        nom: 'Stripe fictif révisé',
+        connexionStripeId: connexion.id,
+      },
+    })
+    const op = await db.operationBancaire.create({
+      data: {
+        userId: identite.id,
+        compteId: compte.id,
+        referenceExterne: randomUUID(),
+        famille: 'charge',
+        date: new Date('2026-10-27'),
+        libelle: 'Encaissement fictif révisé',
+        montantCentimes: BigInt(10000),
+        brutCentimes: BigInt(10000),
+      },
+    })
+    const r = (
+      await json(
+        await banque.POST(
+          req('/api/comptabilite/banque', {
+            action: 'rapprocher',
+            rapprochement: {
+              operationId: op.id,
+              partie: 'principal',
+              cible: { type: 'Facture', id: f.id },
+              montant: '50',
+              modeReglement: 'CB',
+              cleIdempotence: randomUUID(),
+            },
+          }),
+        ),
+      )
+    ).data
+    await db.operationBancaire.update({
+      where: { id: op.id },
+      data: { famille: 'payout_failure', aVerifier: true },
+    })
+    await json(
+      await banque.POST(
+        req('/api/comptabilite/banque', { action: 'valider-operation', operationId: op.id }),
+      ),
+      409,
+    )
+    expect(
+      (await db.operationBancaire.findUniqueOrThrow({ where: { id: op.id } })).aVerifier,
+    ).toBe(true)
+    // Défense de l'export contre une ancienne validation incorrecte.
+    await db.operationBancaire.update({ where: { id: op.id }, data: { aVerifier: false } })
+    const debut = new Date('2026-01-01'),
+      fin = new Date('2026-12-31T23:59:59Z')
+    await expect(chargerFecReglements(identite.id, debut, fin)).rejects.toThrow('virement')
+    await json(
+      await reglementsApi.DELETE(
+        req(
+          '/api/comptabilite/reglements',
+          { id: r.id, motif: 'Rapprochement fictif incorrect' },
+          'DELETE',
+        ),
+      ),
+    )
+    const journal = await chargerFecReglements(identite.id, debut, fin)
+    const fec = genererFec({
+      ventes: [],
+      depenses: [],
+      factures: [],
+      ...journal,
+      exercice: 2026,
+    })
+    const banqueNette = fec
+      .filter((l) => l.CompteNum === '511500')
+      .reduce(
+        (n, l) => n + Number(l.Debit.replace(',', '.')) - Number(l.Credit.replace(',', '.')),
+        0,
+      )
+    expect(banqueNette).toBe(100)
+    expect(await db.reglement.count({ where: { userId: identite.id } })).toBe(1)
+  })
+  it('évalue les liaisons d’un virement à la clôture même après une annulation l’année suivante', async () => {
+    const banque = await import('@/app/api/comptabilite/banque/route')
+    const reglementsApi = await import('@/app/api/comptabilite/reglements/route')
+    const { chargerFecReglements } = await import('@/lib/comptabilite/banque/fec-reglements')
+    const { genererFec } = await import('@/lib/comptabilite/fec')
+    const f = await facture(100)
+    await db.facture.update({ where: { id: f.id }, data: { date: new Date('2025-10-27') } })
+    const connexion = await db.connexionStripe.create({
+      data: {
+        userId: identite.id,
+        compteStripeId: 'acct_qa' + randomUUID(),
+        modeTest: false,
+        jetonChiffre: 'aucun-acces',
+      },
+    })
+    const compte = await db.compteBancaire.create({
+      data: {
+        userId: identite.id,
+        nom: 'Stripe fictif clôture',
+        connexionStripeId: connexion.id,
+      },
+    })
+    const op = await db.operationBancaire.create({
+      data: {
+        userId: identite.id,
+        compteId: compte.id,
+        referenceExterne: randomUUID(),
+        famille: 'charge',
+        date: new Date('2025-10-27'),
+        libelle: 'Encaissement fictif exercice précédent',
+        montantCentimes: BigInt(10000),
+        brutCentimes: BigInt(10000),
+      },
+    })
+    const r = (
+      await json(
+        await banque.POST(
+          req('/api/comptabilite/banque', {
+            action: 'rapprocher',
+            rapprochement: {
+              operationId: op.id,
+              partie: 'principal',
+              cible: { type: 'Facture', id: f.id },
+              montant: '50',
+              modeReglement: 'CB',
+              cleIdempotence: randomUUID(),
+            },
+          }),
+        ),
+      )
+    ).data
+    await db.operationBancaire.update({
+      where: { id: op.id },
+      data: { famille: 'payout_failure', aVerifier: true },
+    })
+    await json(
+      await reglementsApi.DELETE(
+        req(
+          '/api/comptabilite/reglements',
+          { id: r.id, motif: 'Correction fictive exercice suivant' },
+          'DELETE',
+        ),
+      ),
+    )
+    await json(
+      await banque.POST(
+        req('/api/comptabilite/banque', { action: 'valider-operation', operationId: op.id }),
+      ),
+    )
+    await expect(
+      chargerFecReglements(
+        identite.id,
+        new Date('2025-01-01'),
+        new Date('2025-12-31T23:59:59Z'),
+      ),
+    ).rejects.toThrow('virement')
+    const journal = await chargerFecReglements(
+      identite.id,
+      new Date('2026-01-01'),
+      new Date('2026-12-31T23:59:59Z'),
+    )
+    const fec = genererFec({
+      ventes: [],
+      depenses: [],
+      factures: [],
+      ...journal,
+      exercice: 2026,
+    })
+    expect(journal.mouvementsInternes).toHaveLength(0)
+    expect(
+      fec
+        .filter((l) => l.CompteNum === '511500')
+        .reduce(
+          (n, l) => n + Number(l.Debit.replace(',', '.')) - Number(l.Credit.replace(',', '.')),
+          0,
+        ),
+    ).toBe(-50)
   })
   it('sépare les virements des ventes et exporte les deux côtés une seule fois au FEC', async () => {
     const banque = await import('@/app/api/comptabilite/banque/route'),
@@ -470,7 +684,11 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
       },
     })
     const compte = await db.compteBancaire.create({
-      data: { userId: identite.id, nom: 'Stripe frais fictif', connexionStripeId: connexion.id },
+      data: {
+        userId: identite.id,
+        nom: 'Stripe frais fictif',
+        connexionStripeId: connexion.id,
+      },
     })
     const op = await db.operationBancaire.create({
       data: {
@@ -539,9 +757,9 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
       banque = await import('@/app/api/comptabilite/banque/route'),
       f = await facture()
     identite.lectureSeule = true
-    expect((await api.POST(req('/api/comptabilite/reglements', entree(f.id, '30')))).status).toBe(
-      403,
-    )
+    expect(
+      (await api.POST(req('/api/comptabilite/reglements', entree(f.id, '30')))).status,
+    ).toBe(403)
     expect(
       (
         await banque.POST(
@@ -622,8 +840,12 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
         if (u.pathname === '/v1/account')
           return Response.json({ id: 'acct_qa' + identite.id.replace(/[^a-z0-9]/gi, '') })
         if (u.pathname === '/v1/balance')
-          return Response.json({ available: [{ currency: 'eur', amount: 10000 }], pending: [] })
-        if (u.pathname !== '/v1/balance_transactions') throw new Error('Chemin Stripe inattendu')
+          return Response.json({
+            available: [{ currency: 'eur', amount: 10000 }],
+            pending: [],
+          })
+        if (u.pathname !== '/v1/balance_transactions')
+          throw new Error('Chemin Stripe inattendu')
         const apres = u.searchParams.get('starting_after'),
           debut = apres ? historique.findIndex((t) => t.id === apres) + 1 : 0
         const limite = Number(u.searchParams.get('limit'))
@@ -643,11 +865,20 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     )
     const sync = () =>
       banque.POST(
-        req('/api/comptabilite/banque', { action: 'synchroniser', connexionId: connectee.data.id }),
+        req('/api/comptabilite/banque', {
+          action: 'synchroniser',
+          connexionId: connectee.data.id,
+        }),
       )
-    expect(await json(await sync())).toMatchObject({ importees: 500, historiqueComplet: false })
+    expect(await json(await sync())).toMatchObject({
+      importees: 500,
+      historiqueComplet: false,
+    })
     expect(await json(await sync())).toMatchObject({ importees: 1, historiqueComplet: true })
-    historique = [...Array.from({ length: 501 }, (_, i) => transaction(1002 - i)), ...historique]
+    historique = [
+      ...Array.from({ length: 501 }, (_, i) => transaction(1002 - i)),
+      ...historique,
+    ]
     await json(await sync())
     await json(await sync())
     await json(await sync())
@@ -690,7 +921,10 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     })
     await json(
       await api.POST(
-        req('/api/comptabilite/reglements', { ...entree(d.id, '15'), type: 'DepenseManuelle' }),
+        req('/api/comptabilite/reglements', {
+          ...entree(d.id, '15'),
+          type: 'DepenseManuelle',
+        }),
       ),
       201,
     )
@@ -705,7 +939,9 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     expect(b.passif.dettesFournisseurs).toBe(45)
     const factures = await import('@/app/api/comptabilite/factures/route')
     const r = await json(await factures.GET(req('/api/comptabilite/factures?year=2026')))
-    expect(r.data.find((l: { id: number }) => l.id === f.id)).toMatchObject({ montantRegle: 40 })
+    expect(r.data.find((l: { id: number }) => l.id === f.id)).toMatchObject({
+      montantRegle: 40,
+    })
   })
   it('lie le retour OAuth à l’acteur et consomme son état une seule fois', async () => {
     process.env.STRIPE_CONNECT_CLIENT_ID = 'ca_qa1234'
@@ -721,7 +957,8 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
           livemode: false,
           stripe_user_id: 'acct_qaOAuth',
         })
-      if (url === 'https://api.stripe.com/v1/account') return Response.json({ id: 'acct_qaOAuth' })
+      if (url === 'https://api.stripe.com/v1/account')
+        return Response.json({ id: 'acct_qaOAuth' })
       if (url === 'https://api.stripe.com/v1/balance')
         return Response.json({ available: [], pending: [] })
       return Response.json({ data: [], has_more: false })
@@ -751,9 +988,28 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     })
     const auto = await import('@/lib/auto-compta')
     for (let n = 0; n < 2; n++) {
-      const vente = await db.venteProduit.create({ data: { userId: identite.id, type: 'oeufs', quantite: 10, unite: 'douzaine', prixUnitaire: 10, prixTotal: 100, paye: false, date: new Date('2026-10-27') } })
+      const vente = await db.venteProduit.create({
+        data: {
+          userId: identite.id,
+          type: 'oeufs',
+          quantite: 10,
+          unite: 'douzaine',
+          prixUnitaire: 10,
+          prixTotal: 100,
+          paye: false,
+          date: new Date('2026-10-27'),
+        },
+      })
       await auto.createVenteFromVenteProduit(identite.id, vente)
-      await json(await api.POST(req('/api/comptabilite/reglements', { ...entree(vente.id, '20'), type: 'VenteProduit' })), 201)
+      await json(
+        await api.POST(
+          req('/api/comptabilite/reglements', {
+            ...entree(vente.id, '20'),
+            type: 'VenteProduit',
+          }),
+        ),
+        201,
+      )
     }
     const transfert = await import('@/lib/account-transfer'),
       exporte = await transfert.exportAccount(identite.id)
@@ -768,19 +1024,30 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     identite.id = cible.id
     const bilan = await transfert.importAccount(cible.id, JSON.parse(brut))
     expect(bilan.skipped.Reglement ?? 0, JSON.stringify(bilan.warnings)).toBe(0)
-    const factureReimportee = await db.facture.findFirstOrThrow({ where: { userId: cible.id } })
+    const factureReimportee = await db.facture.findFirstOrThrow({
+      where: { userId: cible.id },
+    })
     expect(factureReimportee.id).not.toBe(f.id)
     expect(
       await json(
-        await api.GET(req('/api/comptabilite/reglements?type=Facture&id=' + factureReimportee.id)),
+        await api.GET(
+          req('/api/comptabilite/reglements?type=Facture&id=' + factureReimportee.id),
+        ),
       ),
     ).toMatchObject({ montantRegle: 30, resteAPayer: 70 })
     const ventesReimportees = await db.venteProduit.findMany({ where: { userId: cible.id } })
     expect(ventesReimportees).toHaveLength(2)
     for (const vente of ventesReimportees) {
-      expect(await json(await api.GET(req('/api/comptabilite/reglements?type=VenteProduit&id=' + vente.id)))).toMatchObject({ montantRegle: 20, resteAPayer: 80 })
-      expect(await db.venteManuelle.count({ where: { userId: cible.id, sourceType: 'vente_produit', sourceId: vente.id } })).toBe(1)
+      expect(
+        await json(
+          await api.GET(req('/api/comptabilite/reglements?type=VenteProduit&id=' + vente.id)),
+        ),
+      ).toMatchObject({ montantRegle: 20, resteAPayer: 80 })
+      expect(
+        await db.venteManuelle.count({
+          where: { userId: cible.id, sourceType: 'vente_produit', sourceId: vente.id },
+        }),
+      ).toBe(1)
     }
-
   }, 20000)
 })

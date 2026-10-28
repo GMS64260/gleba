@@ -1,3 +1,4 @@
+import { estFamilleVirement } from './banque/familles-virement'
 import type { Prisma, Reglement } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import type { z } from 'zod'
@@ -128,9 +129,7 @@ export async function verifierAllocationBancaire(
     throw new ErreurReglement('Cette connexion Stripe est désactivée.')
   if (
     lien.partie === 'principal' &&
-    ['payout', 'payout_cancel', 'payout_failure', 'transfer', 'transfer_cancel'].includes(
-      op.famille,
-    )
+    estFamilleVirement(op.famille)
   )
     throw new ErreurReglement(
       'Ce mouvement est un virement entre comptes, pas une recette ou une charge. Rapprochez-le avec le mouvement correspondant de votre banque.',

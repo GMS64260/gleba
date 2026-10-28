@@ -1,6 +1,7 @@
 'use client'
 import * as React from 'react'
 import Link from 'next/link'
+import { FAMILLES_VIREMENT as VIREMENTS } from '@/lib/comptabilite/banque/familles-virement'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -90,7 +91,6 @@ interface Donnees {
   peutConnecter: boolean
   configuration: { oauthDisponible: boolean; chiffrementDisponible: boolean }
 }
-const VIREMENTS = ['payout', 'payout_cancel', 'payout_failure', 'transfer', 'transfer_cancel']
 const argent = (n: number, devise = 'EUR') =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: devise }).format(n)
 export default function BanquePage() {
