@@ -3,6 +3,9 @@ const nextConfig = {
   // Output standalone pour Docker
   output: 'standalone',
 
+  // Générer les pages en série pour borner la mémoire du constructeur Docker.
+  experimental: { cpus: 1 },
+
   // Docker vérifie les types avant la compilation pour libérer toute la mémoire
   // du vérificateur. Les autres builds gardent la vérification Next habituelle.
   typescript: {
