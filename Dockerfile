@@ -38,7 +38,11 @@ RUN npx prisma generate
 # Le contrôle TypeScript du référentiel dépasse le tas V8 implicite de 2 Go.
 # Ce plafond concerne le compilateur ; le builder garde ses limites Docker.
 ARG GLEBA_BUILD_NODE_HEAP_MB=3072
-RUN NODE_OPTIONS="--max-old-space-size=${GLEBA_BUILD_NODE_HEAP_MB}" npm run build
+# Exécuter le contrôle complet avant Turbopack : leurs mémoires ne se cumulent
+# plus. Un échec de typegen ou tsc interdit la compilation de l'image.
+RUN NODE_OPTIONS="--max-old-space-size=${GLEBA_BUILD_NODE_HEAP_MB}" node node_modules/next/dist/bin/next typegen \
+    && NODE_OPTIONS="--max-old-space-size=${GLEBA_BUILD_NODE_HEAP_MB}" node node_modules/typescript/bin/tsc --noEmit \
+    && GLEBA_TYPECHECK_PREALABLE=1 NODE_OPTIONS="--max-old-space-size=${GLEBA_BUILD_NODE_HEAP_MB}" node node_modules/next/dist/bin/next build
 
 # ==========================================
 # Stage 3: Runner (Production)
