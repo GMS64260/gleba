@@ -1448,7 +1448,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                 <div className="space-y-2">
                   <Label>Type *</Label>
                   {/* Ticket cms1vqsqu — quitter « Animal vivant » décoche la cession gratuite. */}
-                  <Select value={formData.type} onValueChange={(v) => setFormData(f => ({
+                  <Select value={formData.type} disabled={editingId !== null} onValueChange={(v) => setFormData(f => ({
                     ...f,
                     type: v,
                     unite: TYPE_VENTE_UNITE_DEFAUT[v] ?? f.unite,
@@ -1472,6 +1472,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                       <SelectItem value="autre">Autre</SelectItem>
                     </SelectContent>
                   </Select>
+                  {editingId !== null && <p className="text-xs text-muted-foreground">Pour changer le type de produit, annulez cette vente puis saisissez une nouvelle vente.</p>}
                 </div>
               </div>
               <div className="space-y-2">
@@ -1975,6 +1976,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
                 </div>
                 <div className="space-y-2"><Label>Prix vente</Label><Input type="number" step="0.01" value={formData.prixVente} onChange={(e) => setFormData(f => ({ ...f, prixVente: e.target.value }))} disabled={formData.destination !== 'vente'} /></div>
               </div>
+              {formData.destination === 'vente' && <p className="text-sm text-muted-foreground">Le paiement se suit dans Comptabilité. Une nouvelle vente reste à encaisser tant que son règlement n&apos;est pas enregistré.</p>}
               {/* Ticket cmsog52qx — lieu et notes étaient persistés (formData/API) mais absents du dialog. */}
               <div className="space-y-2"><Label>Lieu</Label><Input value={formData.lieu} onChange={(e) => setFormData(f => ({ ...f, lieu: e.target.value }))} placeholder="Abattoir, à la ferme…" /></div>
               <div className="space-y-2">

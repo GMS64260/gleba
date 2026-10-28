@@ -1041,7 +1041,9 @@ function CellSaisie(props: {
           ? props.causeAttente
             ? `Lait exclu — ${props.causeAttente.traitement}, délai jusqu'au ${new Date(props.causeAttente.finAttenteLait).toLocaleDateString("fr-FR")} inclus`
             : "Lait exclu manuellement"
-          : undefined
+          : props.affecte
+            ? 'Lait déjà affecté à une fabrication. Annulez cette fabrication avant de corriger le volume.'
+            : undefined
       }
     >
       <input
@@ -1050,7 +1052,7 @@ function CellSaisie(props: {
         min="0"
         max="100"
         value={v}
-        disabled={props.saving}
+        disabled={props.saving || props.affecte}
         onChange={(e) => setV(e.target.value)}
         onBlur={() => {
           const n = parseFloat(v)

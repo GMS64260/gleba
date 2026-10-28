@@ -421,6 +421,7 @@ export async function GET(request: NextRequest) {
     const limited = await enrichirLignesReglements(userId, 'vente', page.map((r) => ({
       ...r,
       ...suiviParLigne.get(r.id),
+      ...(r.source === 'Abattage' && !r.factureId ? { paye: suiviParLigne.get(r.id)?.ecriture?.paye ?? false } : {}),
     })), ventesManuelles)
 
     // Total agrégé : on s'aligne sur la source unique de vérité (getKpiCompta).

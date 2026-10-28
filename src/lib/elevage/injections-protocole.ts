@@ -150,6 +150,7 @@ export function fenetresAttenteDepuisInjections(injections: InjectionEtat[], del
 // ---------------------------------------------------------------------------
 
 import prisma from '@/lib/prisma'
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ciblesAffectees, resyncEcartementLait } from './attente-lait'
 import { fenetreSoin } from './suppression-soin'
 import { invalidateKpi } from '@/lib/kpi'
@@ -211,6 +212,7 @@ export async function daterInjection(
   const beforeMax = soin.finAttenteLait
   try {
     const result = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, userId)
       await tx.$executeRaw`
         UPDATE injections_soins
         SET statut = ${statut}, date_realisee = ${dateRealisee}, updated_at = NOW()
@@ -339,6 +341,7 @@ export async function mettreAJourProtocoleSoin(
   }
 
   const result = await prisma.$transaction(async (tx) => {
+    await verrouillerReglements(tx, userId)
     await tx.soinAnimal.update({ where: { id: soinId }, data })
     const avant = await lireInjections(tx, userId, soinId)
     const premiereRealisee = avant.some((i) => i.numero === 1 && i.statut === 'realisee')

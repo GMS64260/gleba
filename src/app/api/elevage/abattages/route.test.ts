@@ -30,9 +30,9 @@ vi.mock("@/lib/auto-compta", () => ({ createVenteFromAbattage: vi.fn(), deleteAu
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 vi.mock("@/lib/facture-utils", () => ({ creerFacture: vi.fn(), annulerFactureLiee: vi.fn() }))
 vi.mock("@/lib/prisma", () => {
-  const tx = { $executeRaw: vi.fn(),
-    abattage: { create: mocks.abattageCreate, update: mocks.abattageUpdate },
-    animal: { findFirst: vi.fn(), update: vi.fn() },
+  const tx = { $executeRaw: vi.fn(), $queryRaw: vi.fn().mockResolvedValue([]), soinAnimal: { findMany: mocks.soinFindMany },
+    abattage: { create: mocks.abattageCreate, update: mocks.abattageUpdate, findFirst: async () => Object.fromEntries(Object.entries(await mocks.abattageFindFirst()).filter(([k]) => k !== 'animal' && k !== 'lot')) },
+    animal: { findFirst: vi.fn().mockResolvedValue({ id: 500, statut: 'actif', lotId: 71 }), update: vi.fn() },
     lotAnimaux: { findFirst: mocks.lotFindFirst, update: mocks.lotUpdate },
   }
   return {
@@ -94,7 +94,7 @@ describe("POST /api/elevage/abattages — plafond d'un abattage de lot", () => {
     const res = await post(corpsEcranLot(71, 5))
     const json = await res.json()
 
-    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith("user-1", [PINTADES])
+    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith("user-1", [PINTADES], expect.anything())
     expect(res.status).toBe(422)
     expect(json.code).toBe("ABATTAGE_OVER_EFFECTIF")
     expect(json.details).toMatchObject({ quantite: 5, effectifActuel: 4, effectifCollectif: 4, nominatifsActifs: 0 })
@@ -172,6 +172,7 @@ describe("PATCH /api/elevage/abattages — même plafond que le POST sur la quan
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    mocks.soinFindMany.mockResolvedValue([])
     mocks.lotFindFirst.mockResolvedValue(PINTADES_APRES)
     mocks.abattageFindFirst.mockResolvedValue(ABATTAGE_EXISTANT)
     mocks.abattageUpdate.mockImplementation(async ({ data }: { data: object }) => ({ ...ABATTAGE_EXISTANT, ...data }))
@@ -184,7 +185,7 @@ describe("PATCH /api/elevage/abattages — même plafond que le POST sur la quan
     const res = await patch(corpsEcranModif(4))
 
     expect(res.status).toBe(200)
-    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith("user-1", [PINTADES_APRES])
+    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith("user-1", [PINTADES_APRES], expect.anything())
     expect(mocks.lotUpdate).toHaveBeenCalledWith({ where: { id: 71 }, data: { quantiteActuelle: 1, statut: "actif" } })
     expect(mocks.abattageUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 31 }, data: expect.objectContaining({ quantite: 4 }) }),
@@ -226,7 +227,7 @@ describe("PATCH /api/elevage/abattages — même plafond que le POST sur la quan
     expect(mocks.abattageUpdate).toHaveBeenCalledTimes(1)
   })
 
-  it("ne plafonne pas l'abattage d'une fiche nominative, même rattachée au lot", async () => {
+  it("refuse plusieurs têtes sur une seule fiche nominative", async () => {
     mocks.abattageFindFirst.mockResolvedValue({
       ...ABATTAGE_EXISTANT,
       animalId: 500,
@@ -234,7 +235,7 @@ describe("PATCH /api/elevage/abattages — même plafond que le POST sur la quan
       animal: { id: 500, nom: "Gertrude", identifiant: null, race: null },
     })
     const res = await patch(corpsEcranModif(5))
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(400)
     expect(mocks.reconstituerEffectifsLots).not.toHaveBeenCalled()
   })
 })

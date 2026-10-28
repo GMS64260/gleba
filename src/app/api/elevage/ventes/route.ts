@@ -30,6 +30,7 @@ import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
 import { verifierPointageDetaille } from '@/lib/comptabilite/suivi-reglement-source'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { invalidateKpi } from '@/lib/kpi'
+import { ErreurElevage } from '@/lib/elevage/erreurs'
 import {
   StockOeufsVenteError,
   supprimerStockOeufsVente,
@@ -233,6 +234,9 @@ export async function POST(request: NextRequest) {
     // alors qu'aucun animal ne s'appelle Clochette). On laisse les autres
     // types (oeufs/viande/lait/autre) passer sans contrainte animal.
     if (type === 'animal_vivant') {
+      if (quantite !== 1) {
+        return NextResponse.json({ error: 'Une vente individuelle porte sur un seul animal.' }, { status: 400 })
+      }
       if (!parsed.data.animalId) {
         return NextResponse.json(
           { error: 'Pour une vente d\'animal vivant, sélectionnez un animal du cheptel.' },
@@ -273,6 +277,13 @@ export async function POST(request: NextRequest) {
 
     const result = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session.user.id)
+      if (type === 'animal_vivant' && parsed.data.animalId) {
+        await tx.$queryRaw`SELECT id FROM animaux WHERE id = ${parsed.data.animalId} AND user_id = ${session.user.id} FOR UPDATE`
+        const animal = await tx.animal.findFirst({ where: { id: parsed.data.animalId, userId: session.user.id } })
+        if (!animal || animal.statut !== 'actif') {
+          throw new ErreurElevage("Cet animal n'est plus disponible à la vente. Rechargez le cheptel.")
+        }
+      }
       // Contrôle autoritatif sous verrou : le pré-contrôle ci-dessus améliore le
       // message, celui-ci empêche deux requêtes concurrentes de sur-vendre.
       if (fromageSortie) {
@@ -416,6 +427,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result, warning }, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof StockOeufsVenteError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
@@ -463,9 +475,12 @@ export async function DELETE(request: NextRequest) {
     // On ne restaure que si l'animal est toujours en statut 'vendu'.
     const annulation = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session.user.id)
+      await tx.$queryRaw`SELECT id FROM ventes_produits WHERE id = ${existing.id} AND user_id = ${session.user.id} FOR UPDATE`
+      const courante = await tx.venteProduit.findFirst({ where: { id: existing.id, userId: session.user.id } })
+      if (!courante || courante.annule) throw new ErreurElevage('Vente déjà annulée ou introuvable. Rechargez la liste.')
       // Symétrie annulation ↔ facture + miroir dans la même transaction.
-      if (existing.factureId) {
-        const liee = await annulerFactureLiee(tx, session.user.id, existing.factureId)
+      if (courante.factureId) {
+        const liee = await annulerFactureLiee(tx, session.user.id, courante.factureId)
         if (!liee.ok) return liee
       }
       await deleteAutoEntry('vente_produit', existing.id, 'vente', session.user.id, tx)
@@ -475,16 +490,16 @@ export async function DELETE(request: NextRequest) {
         where: { id: existing.id },
         data: { annule: true, dateAnnulation: new Date() },
       })
-      if (existing.type === 'oeufs') {
+      if (courante.type === 'oeufs') {
         await supprimerStockOeufsVente(tx, session.user.id, existing.id)
       }
-      if (estVenteProduitRuche(existing.type)) {
+      if (estVenteProduitRuche(courante.type)) {
         await supprimerStockRucheVente(tx, session.user.id, existing.id)
       }
 
-      if (existing.type === 'animal_vivant' && existing.animalId) {
+      if (courante.type === 'animal_vivant' && courante.animalId) {
         await tx.animal.updateMany({
-          where: { id: existing.animalId, userId: session.user.id, statut: 'vendu' },
+          where: { id: courante.animalId, userId: session.user.id, statut: 'vendu' },
           data: { statut: 'actif', dateSortie: null, causeSortie: null },
         })
       }
@@ -492,11 +507,11 @@ export async function DELETE(request: NextRequest) {
       // Vente de fromage annulée : supprimer la (les) sortie(s) de cave liée(s)
       // pour restaurer le stock, puis recalculer l'état du lot (un lot passé à
       // 'ecoule' par cette vente redevient 'pret' s'il reste du stock).
-      if (existing.type === 'fromage' && existing.lotFromageId) {
+      if (courante.type === 'fromage' && courante.lotFromageId) {
         await tx.mouvementFromage.deleteMany({
           where: { venteProduitId: existing.id, userId: session.user.id },
         })
-        await recalerEtatLotFromage(tx, session.user.id, existing.lotFromageId, 'retour')
+        await recalerEtatLotFromage(tx, session.user.id, courante.lotFromageId, 'retour')
       }
       return { ok: true as const }
     })
@@ -507,6 +522,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof StockOeufsVenteError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
@@ -595,6 +611,9 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Type de vente invalide' }, { status: 400 })
       }
       updateData.type = typeParse.data
+      if (typeParse.data !== existing.type) {
+        return NextResponse.json({ error: 'Pour changer le type de produit, annulez cette vente puis saisissez une nouvelle vente.' }, { status: 409 })
+      }
       if (body.tauxTVA === undefined && typeParse.data !== existing.type) {
         updateData.tauxTVA = tauxTvaVenteProduitParDefaut(typeParse.data)
       }

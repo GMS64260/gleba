@@ -31,8 +31,8 @@ vi.mock('@/lib/elevage/cibles-collecte-lait', () => ({
   plafondCollecteLait: mocks.plafondCollecteLait,
 }))
 vi.mock('@/lib/elevage/effectif', () => ({ reconstituerEffectifsLots: mocks.reconstituerEffectifsLots }))
-vi.mock('@/lib/prisma', () => ({
-  default: {
+vi.mock('@/lib/prisma', () => {
+  const db = {
     collecteLait: {
       findFirst: mocks.collecteFindFirst,
       update: mocks.collecteUpdate,
@@ -41,8 +41,8 @@ vi.mock('@/lib/prisma', () => ({
     lotFromage: { findFirst: mocks.lotFromageFindFirst },
     animal: { findFirst: mocks.animalFindFirst },
     lotAnimaux: { findFirst: mocks.lotFindFirst },
-  },
-}))
+  }; return { default: { ...db, $transaction: (fn: (tx: unknown) => unknown) => fn({ ...db, $executeRaw: vi.fn() }) } }
+})
 
 import { PATCH, POST } from './route'
 
