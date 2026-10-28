@@ -104,6 +104,18 @@ export default function ConfidentialitePage() {
           reproduction, productions, stocks, tâches et notes.
         </p>
 
+        <p>
+          Si vous configurez un connecteur de capteurs, Gleba reçoit les mesures que
+          votre serveur de réseau ou votre outil lui envoie : valeur, unité, date,
+          identifiant du capteur et, lorsqu&apos;ils sont transmis, position géographique,
+          batterie et qualité du signal. Le nom, le fuseau horaire, les règles de
+          décodage et le rattachement du capteur sont conservés dans votre exploitation.
+          Les mesures et positions restent privées à celle-ci et sont accessibles à
+          ses membres selon leurs droits. La connexion est facultative et peut être
+          désactivée ou supprimée depuis les paramètres. Le jeton du connecteur est
+          stocké sous forme d&apos;empreinte, jamais en clair.
+        </p>
+
         <h3>2.4 Données financières</h3>
         <ul>
           <li>
@@ -254,6 +266,13 @@ export default function ConfidentialitePage() {
         <h2>6. Durée de conservation</h2>
         <ul>
           <li>Compte et données d&apos;exploitation : tant que le compte existe, puis 3 ans après le dernier accès.</li>
+          <li>
+            Capteurs connectés : les mesures détaillées sont purgées par journées
+            complètes après le seuil de 90 jours, après conservation des agrégats
+            journaliers. Ceux-ci, ainsi que les réglages et la dernière position
+            transmise, restent jusqu&apos;à la suppression du capteur, du connecteur
+            ou des données de l&apos;exploitation.
+          </li>
           <li>Données comptables : 10 ans (Code de commerce, art. L123-22).</li>
           <li>Journaux de connexion : 12 mois.</li>
           <li>Consentement aux cookies : 13 mois au maximum (délibération CNIL 2020-091).</li>
@@ -332,7 +351,7 @@ export default function ConfidentialitePage() {
         </p>
 
         <p className="text-xs text-slate-500 mt-12">
-          Dernière mise à jour : 2026-10-26 — version 2.3.
+          Dernière mise à jour : 2026-10-28 — version 2.4.
         </p>
       </main>
     </div>

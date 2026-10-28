@@ -7,7 +7,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell, Search, ShieldCheck, ChevronRight } from 'lucide-react'
+import { Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell, Search, ShieldCheck, ChevronRight, Satellite } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -38,7 +38,7 @@ const RUBRIQUES_PARAMETRES = [
   { id: 'carnet', titre: 'Mon carnet', description: 'Choisissez les activités et les modes d’élevage que vous utilisez.', icone: Layers, mots: 'modules actifs navigation maraîchage verger comptabilité élevage animaux compagnie équin nac' },
   { id: 'exploitation', titre: 'Exploitation et équipe', description: 'Retrouvez l’identité de votre exploitation et les accès de votre équipe.', icone: Building2, mots: 'identité légale raison sociale siret fiscal coordonnées bancaires factures associés salariés comptable devise unités' },
   { id: 'jardin', titre: 'Plan du jardin', description: 'Réglez les dimensions et l’apparence de votre plan.', icone: ImageIcon, mots: 'planches largeur longueur hauteur grille couleurs image fond satellite drone calibration' },
-  { id: 'meteo', titre: 'Météo', description: 'Reliez votre station pour suivre la météo au plus près de vos parcelles.', icone: CloudSun, mots: 'station personnelle température pluie vent capteurs météo' },
+  { id: 'meteo', titre: 'Météo et capteurs', description: 'Reliez votre station ou vos capteurs aux parcelles de votre exploitation.', icone: CloudSun, mots: 'station personnelle température pluie vent capteurs météo' },
   { id: 'notifications', titre: 'Assistant et notifications', description: 'Choisissez quand Gleba vous accompagne et ce que vous souhaitez recevoir.', icone: Bell, mots: 'ia briefing automatique alertes email courriel push navigateur météo tâches stocks récoltes irrigations itp géolocalisation' },
   { id: 'donnees', titre: 'Sauvegardes et données', description: 'Sauvegardez, exportez ou restaurez les données de votre exploitation.', icone: Download, mots: 'portabilité migration serveur raspberry nas import export json csv zip tableur archive restauration sauvegarde' },
   { id: 'connexions', titre: 'Connexions', description: 'Connectez un assistant externe avec votre jeton personnel.', icone: Key, mots: 'mcp ia api token jeton claude desktop configuration intégrer révoquer régénérer' },
@@ -983,6 +983,23 @@ function ParametresContent() {
           </CardHeader>
           <CardContent>
             <StationMeteoConfig />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Satellite className="h-5 w-5" />
+              Capteurs connectés
+            </CardTitle>
+            <CardDescription>
+              Recevez les mesures de vos capteurs LoRaWAN (The Things Network, ChirpStack) ou d&apos;un outil de la ferme,
+              puis rattachez-les à vos planches, parcelles, arbres ou lots.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/parametres/capteurs">
+              <Button variant="outline"><Satellite className="h-4 w-4 mr-2" />Gérer les capteurs</Button>
+            </Link>
           </CardContent>
         </Card>
             </PanneauParametres>

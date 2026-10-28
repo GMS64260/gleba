@@ -37,20 +37,23 @@ beforeEach(() => {
     error: null,
     session: { user: { id: "u1", role: "USER", estProprietaireExploitation: true } },
   })
-  mocks.transaction.mockImplementation((callback: (tx: unknown) => unknown) =>
-    callback({
-      irrigationPlanifiee: compteur(),
-      recolte: compteur(),
-      culture: compteur(),
-      fertilisation: compteur(),
-      analyseSol: compteur(),
-      planche: compteur(),
-      objetJardin: compteur(),
-      arbre: compteur(),
-      note: compteur(),
-    })
-  )
+  mocks.transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(transactionComplete()))
 })
+
+function transactionComplete() {
+  return {
+    irrigationPlanifiee: compteur(),
+    recolte: compteur(),
+    culture: compteur(),
+    fertilisation: compteur(),
+    analyseSol: compteur(),
+    planche: compteur(),
+    objetJardin: compteur(),
+    arbre: compteur(),
+    note: compteur(),
+    connecteurCapteurs: compteur(),
+  }
+}
 
 describe("DELETE /api/user/delete-data — compte de démonstration", () => {
   it("refuse en 403 avec un message qui explique, et ne supprime RIEN", async () => {
@@ -89,8 +92,18 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.success).toBe(true)
-    expect(json.message).toBe("18 enregistrements supprimés")
+    expect(json.message).toBe("20 enregistrements supprimés")
     expect(mocks.transaction).toHaveBeenCalledTimes(1)
+  })
+
+  it("supprime les connecteurs de capteurs : capteurs, positions et mesures partent en cascade, le jeton ne sert plus", async () => {
+    mocks.userFindUnique.mockResolvedValue({ email: "maraicher@example.com" })
+    const tx = transactionComplete()
+    mocks.transaction.mockImplementationOnce((callback: (t: unknown) => unknown) => callback(tx))
+
+    await DELETE()
+
+    expect(tx.connecteurCapteurs.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } })
   })
 
   it("garde le refus des invités avant toute lecture", async () => {

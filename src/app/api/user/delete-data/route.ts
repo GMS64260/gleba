@@ -74,6 +74,13 @@ export async function DELETE() {
         where: { userId },
       })
 
+      // 10. Capteurs connectés (2026-10-23) : les connecteurs, et en cascade
+      // leurs capteurs, positions et mesures. Leurs jetons cessent aussitôt
+      // de fonctionner : un webhook resté branché ne réécrit rien.
+      const connecteursCapteurs = await tx.connecteurCapteurs.deleteMany({
+        where: { userId },
+      })
+
       return {
         irrigations: irrigations.count,
         recoltes: recoltes.count,
@@ -84,6 +91,7 @@ export async function DELETE() {
         objets: objets.count,
         arbres: arbres.count,
         notes: notes.count,
+        connecteursCapteurs: connecteursCapteurs.count,
       }
     })
 
