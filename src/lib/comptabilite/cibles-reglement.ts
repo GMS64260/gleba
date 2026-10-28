@@ -1,3 +1,4 @@
+import { deviseFactureReglement } from './devise-reglement'
 import { modePaiementDepuisReglement } from '@/lib/validations/reglement'
 import { Prisma } from '@prisma/client'
 import { deviseDuTerritoire } from '@/lib/territoires'
@@ -68,7 +69,7 @@ export async function resoudreCibleReglement(
       sens: 'encaissement',
       total: Math.max(0, brut - enCentimes(avoirs._sum.totalTTC ?? 0)),
       brut,
-      devise,
+      devise: deviseFactureReglement(f.emetteurSnapshot, devise),
       libelle: f.objet || 'Facture ' + f.numero,
       tiers: f.clientNom,
       piece: f.numero,

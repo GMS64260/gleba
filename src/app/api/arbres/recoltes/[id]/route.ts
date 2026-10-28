@@ -1,3 +1,5 @@
+import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Récolte Arbre individuelle (avec gestion stock/vente)
  * GET - Détail d'une recolte
@@ -54,6 +56,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     return NextResponse.json(recolte)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("GET /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(
@@ -247,6 +250,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     return NextResponse.json(warnings.length > 0 ? { ...recolte, warnings } : recolte)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("PUT /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(
@@ -335,6 +339,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     // Transaction atomique : facture + update recolte arbre
     const recolte = await prisma.$transaction(async (tx) => {
+      await verrouillerStockCommercial(tx, userId)
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
         const totalHT = body.prixTotal / 1.055
         const totalTVA = body.prixTotal - totalHT
@@ -372,7 +377,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         updateData.dateVente = updateData.dateVente || new Date()
       }
 
-      return tx.recolteArbre.update({
+      const updated = await tx.recolteArbre.update({
         where: { id: recolteId },
         data: updateData,
         include: {
@@ -381,31 +386,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           },
         },
       })
-    })
-
-    // Auto-comptabilite : gerer les ecritures automatiques
-    try {
-      if (body.statut === 'vendu' && (body.prixTotal || body.prixKg)) {
-        await createVenteFromRecolteArbre(userId, {
-          id: recolteId,
-          quantite: existing.quantite,
-          prixKg: body.prixKg ?? existing.prixKg,
-          prixTotal: body.prixTotal ?? existing.prixTotal,
-          clientNom: body.clientNom ?? existing.clientNom,
-          clientId: body.clientId ?? existing.clientId,
-          dateVente: body.dateVente ?? existing.dateVente,
-          arbre: existing.arbre ? { nom: existing.arbre.nom, espece: existing.arbre.espece } : null,
-          factureId: recolte.factureId,
-        })
-      } else if (existing.statut === 'vendu' && body.statut && body.statut !== 'vendu') {
-        await deleteAutoEntry('recolte_arbre', recolteId, 'vente')
+      if (updated.statut === 'vendu') {
+        await createVenteFromRecolteArbre(userId, { ...updated, arbre: existing.arbre ? { nom: existing.arbre.nom, espece: existing.arbre.espece } : null }, tx)
+      } else if (existing.statut === 'vendu') {
+        await deleteAutoEntry('recolte_arbre', recolteId, 'vente', userId, tx)
       }
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (recolte_arbre):', autoComptaError)
-    }
+      return updated
+    })
 
     return NextResponse.json(recolte)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("PATCH /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(
@@ -436,30 +427,22 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
     }
 
-    // Supprimer une récolte facturée laisserait une facture orpheline comptée
-    // dans KPI/TVA/FEC : la facture doit être annulée (ou couverte par un avoir).
-    if (existing.factureId) {
-      const liee = await annulerFactureLiee(prisma, session!.user.id, existing.factureId)
-      if (!liee.ok) {
-        return NextResponse.json({ error: liee.raison }, { status: 409 })
+    await prisma.$transaction(async (tx) => {
+      await verrouillerStockCommercial(tx, session!.user.id)
+      const courante = await tx.recolteArbre.findFirst({ where: { id: recolteId, userId: session!.user.id } })
+      if (!courante) throw new ErreurReglement('Pièce introuvable.', 404)
+      if (courante.stockDisponibleCommercial != null) throw new ErreurReglement('Ce lot est lié à un document commercial. Conservez ses mouvements de stock.')
+      if (courante.factureId) {
+        const liee = await annulerFactureLiee(tx, session!.user.id, courante.factureId)
+        if (!liee.ok) throw new ErreurReglement(liee.raison)
       }
-    }
-
-    // Supprimer les ecritures auto-compta liees
-    if (existing.statut === 'vendu') {
-      try {
-        await deleteAutoEntry('recolte_arbre', recolteId, 'vente')
-      } catch (autoComptaError) {
-        console.error('Auto-compta cleanup error (recolte_arbre):', autoComptaError)
-      }
-    }
-
-    await prisma.recolteArbre.delete({
-      where: { id: recolteId },
+      await deleteAutoEntry('recolte_arbre', recolteId, 'vente', session!.user.id, tx)
+      await tx.recolteArbre.delete({ where: { id: recolteId, userId: session!.user.id } })
     })
 
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("DELETE /api/arbres/recoltes/[id] error:", err)
     return NextResponse.json(

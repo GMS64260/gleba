@@ -1,14 +1,37 @@
 import prisma from '@/lib/prisma'
 import type { CompteBancaire } from '@prisma/client'
-import { auxiliaireClient, type FecInputReglement, type FecInputMouvementInterne } from '../fec'
-import { entierCentimes } from '../monnaie'
+import {
+  auxiliaireClient,
+  type FecInputReglement,
+  type FecInputMouvementInterne,
+} from '../fec'
+import { entierCentimes, ErreurReglement } from '../monnaie'
+import { deviseDuTerritoire } from '@/lib/territoires'
 export function tresorerieCompte(c: Pick<CompteBancaire, 'connexionStripeId' | 'nom'>) {
   return {
     num: c.connexionStripeId ? '511500' : '512000',
     lib: c.connexionStripeId ? 'Encaissements Stripe · ' + c.nom : 'Banque · ' + c.nom,
   }
 }
+export function verifierDeviseFec(devise: string, attendue: string) {
+  if (devise !== attendue)
+    throw new ErreurReglement(
+      `Le FEC en ${attendue} contient des mouvements en ${devise} qui nécessitent une conversion. Consultez ces mouvements dans Comptabilité → Banque ; aucun taux de change implicite n’est appliqué.`,
+    )
+}
 export async function chargerFecReglements(userId: string, debut: Date, fin: Date) {
+  const exploitation = await prisma.exploitation.findUnique({
+    where: { userId },
+    select: { devise: true, territoire: true },
+  })
+  const deviseComptable = exploitation?.devise || deviseDuTerritoire(exploitation?.territoire)
+  const verifierOperation = (op: { aVerifier: boolean; compte: { devise: string } }) => {
+    verifierDeviseFec(op.compte.devise, deviseComptable)
+    if (op.aVerifier)
+      throw new ErreurReglement(
+        'Une opération bancaire modifiée doit être vérifiée dans Comptabilité → Banque avant cet export FEC.',
+      )
+  }
   const reglements = await prisma.reglement.findMany({
     where: {
       userId,
@@ -34,6 +57,8 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
     : []
   const parFacture = new Map(factures.map((f) => [f.id, f]))
   const reglementsIn: FecInputReglement[] = reglements.map((r) => {
+    verifierDeviseFec(r.dossier.devise, deviseComptable)
+    if (r.operationBancaire) verifierOperation(r.operationBancaire)
     const f = parFacture.get(Number(r.dossier.cibles[0]?.reference))
     return {
       id: r.id,
@@ -44,7 +69,9 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
       piece: r.reference || r.dossier.referencePiece,
       libelle: r.dossier.libelle,
       annuleLe: r.annuleLe,
-      tiers: f ? { num: auxiliaireClient(f.clientId, f.clientNom), lib: f.clientNom } : undefined,
+      tiers: f
+        ? { num: auxiliaireClient(f.clientId, f.clientNom), lib: f.clientNom }
+        : undefined,
       compteTresorerie: r.operationBancaire
         ? tresorerieCompte(r.operationBancaire.compte)
         : undefined,
@@ -78,6 +105,7 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
   const mouvements = new Map<string, FecInputMouvementInterne>()
   const ajouter = (o: (typeof payouts)[number]) => {
     if (o.date < debut || o.date > fin) return
+    verifierOperation(o)
     const n = entierCentimes(o.brutCentimes)
     mouvements.set(o.id, {
       id: o.id,

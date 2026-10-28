@@ -48,10 +48,12 @@ export function operationDTO(
     aVerifier: o.aVerifier,
     motifExclusion: o.motifExclusion,
     virementRapproche,
+    virementId: o.virementsSortants?.[0]?.id ?? o.virementsEntrants?.[0]?.id ?? null,
     restePrincipal: virementRapproche
       ? 0
       : Math.max(0, Math.abs(entierCentimes(o.brutCentimes)) - utilise('principal')) / 100,
-    resteFrais: Math.max(0, Math.abs(entierCentimes(o.fraisCentimes)) - utilise('frais')) / 100,
+    resteFrais:
+      Math.max(0, Math.abs(entierCentimes(o.fraisCentimes)) - utilise('frais')) / 100,
   }
 }
 export async function importerReleve(userId: string, compteId: string, texte: string) {
@@ -170,7 +172,10 @@ export async function rapprocherVirement(
     if (sortieId === entreeId)
       throw new ErreurReglement('Choisissez deux opérations distinctes.', 400)
     const deja = await db.virementBancaire.findFirst({
-      where: { userId, OR: [{ operationSortieId: sortieId }, { operationEntreeId: entreeId }] },
+      where: {
+        userId,
+        OR: [{ operationSortieId: sortieId }, { operationEntreeId: entreeId }],
+      },
     })
     if (deja) {
       if (deja.operationSortieId === sortieId && deja.operationEntreeId === entreeId)
@@ -206,7 +211,9 @@ export async function rapprocherVirement(
           o.compte.connexionStripe?.modeTest,
       )
     )
-      throw new ErreurReglement('Ces opérations ne sont pas disponibles pour un virement réel.')
+      throw new ErreurReglement(
+        'Ces opérations ne sont pas disponibles pour un virement réel.',
+      )
     const v = await db.virementBancaire.create({
       data: { userId, acteurId, operationSortieId: sortie.id, operationEntreeId: entree.id },
     })
@@ -215,5 +222,84 @@ export async function rapprocherVirement(
       data: { statut: 'comptabilisee', motifExclusion: null },
     })
     return { id: v.id }
+  })
+}
+
+/** Défaire une association conserve les deux mouvements et tous les versements. */
+export async function defaireVirement(userId: string, virementId: string) {
+  return prisma.$transaction(async (db) => {
+    await verrouillerReglements(db, userId)
+    const virement = await db.virementBancaire.findFirst({ where: { id: virementId, userId } })
+    if (!virement)
+      throw new ErreurReglement(
+        'Ce rapprochement a déjà changé. Actualisez les mouvements.',
+        404,
+      )
+    await db.virementBancaire.delete({ where: { id: virement.id, userId } })
+    return {
+      operationSortieId: virement.operationSortieId,
+      operationEntreeId: virement.operationEntreeId,
+    }
+  })
+}
+
+/** Accepter les données révisées seulement si les liens existants restent cohérents. */
+export async function validerOperationRevisee(userId: string, operationId: string) {
+  await prisma.$transaction(async (db) => {
+    await verrouillerReglements(db, userId)
+    const op = await db.operationBancaire.findFirst({
+      where: { id: operationId, userId },
+      include: {
+        compte: true,
+        reglements: {
+          where: { userId, annuleLe: null },
+          include: { dossier: { select: { sens: true, devise: true } } },
+        },
+      },
+    })
+    if (!op) throw new ErreurReglement('Opération introuvable.', 404)
+    if (!op.aVerifier) return
+    for (const partie of ['principal', 'frais']) {
+      const budget = entierCentimes(partie === 'frais' ? -op.fraisCentimes : op.brutCentimes)
+      const lignes = op.reglements.filter((r) => r.partieBancaire === partie)
+      const total = lignes.reduce((n, r) => n + Math.abs(entierCentimes(r.montantCentimes)), 0)
+      if (
+        total > Math.abs(budget) ||
+        lignes.some(
+          (r) =>
+            r.dossier.devise !== op.compte.devise ||
+            Math.sign(
+              (r.dossier.sens === 'encaissement' ? 1 : -1) * entierCentimes(r.montantCentimes),
+            ) !== Math.sign(budget),
+        )
+      ) {
+        throw new ErreurReglement(
+          'Les règlements ne correspondent plus au mouvement révisé. Corrigez d’abord leur journal, puis vérifiez à nouveau ce mouvement.',
+        )
+      }
+    }
+    const virement = await db.virementBancaire.findFirst({
+      where: { userId, OR: [{ operationSortieId: op.id }, { operationEntreeId: op.id }] },
+      include: {
+        operationSortie: { include: { compte: true } },
+        operationEntree: { include: { compte: true } },
+      },
+    })
+    if (virement) {
+      const { operationSortie: sortie, operationEntree: entree } = virement
+      if (
+        sortie.brutCentimes >= BigInt(0) ||
+        entree.brutCentimes <= BigInt(0) ||
+        sortie.brutCentimes !== -entree.brutCentimes ||
+        sortie.compte.devise !== entree.compte.devise
+      )
+        throw new ErreurReglement(
+          'Défaites d’abord le rapprochement de ce virement : ses deux montants ne correspondent plus.',
+        )
+    }
+    await db.operationBancaire.update({
+      where: { id: op.id, userId },
+      data: { aVerifier: false },
+    })
   })
 }

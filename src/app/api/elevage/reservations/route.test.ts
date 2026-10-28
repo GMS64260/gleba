@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock('@/lib/prisma', () => ({
   default: (() => {
-    const tx = {
+    const tx = { $executeRaw: vi.fn(),
     naissanceAnimale: { findFirst: mocks.naissanceFindFirst },
     petitNaissance: { findFirst: mocks.petitFindFirst },
     reservationElevage: {

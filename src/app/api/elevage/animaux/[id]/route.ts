@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Animal individuel
  * GET /api/elevage/animaux/[id] - Détails d'un animal
@@ -135,6 +137,7 @@ export async function GET(
       data: masquerReferentielsEmbarques({ ...animal, soins }, session.user.id),
     })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
@@ -187,6 +190,7 @@ export async function PATCH(
 
     return NextResponse.json({ data: masquerReferentielsEmbarques(animal, session.user.id) })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
@@ -373,6 +377,7 @@ export async function PUT(
     }
 
     const animal = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const updated = await tx.animal.update({
         where: { id: parseInt(id) },
         data: {
@@ -439,6 +444,7 @@ export async function PUT(
 
     return NextResponse.json({ data: masquerReferentielsEmbarques(animal, session.user.id) })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PUT /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
@@ -478,6 +484,7 @@ export async function DELETE(
     }
 
     await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       await deleteAutoEntry(
         'achat_animal_individuel',
         existing.id,
@@ -491,6 +498,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },

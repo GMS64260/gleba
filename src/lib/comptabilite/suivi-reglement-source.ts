@@ -1,3 +1,4 @@
+import { deviseFactureReglement } from './devise-reglement'
 import { verrouillerReglements } from './verrou-reglements'
 /** Adaptateur utilisé par les générateurs de miroirs, dans leur transaction. */
 import type { Prisma } from '@prisma/client'
@@ -23,6 +24,10 @@ export async function synchroniserReglementSource(
   const suivi = await suiviReglementParCle(db, userId, cle)
   if (!suivi) return {}
   const total = enCentimes(montant)
+  if (total <= 0)
+    throw new ErreurReglement(
+      'Cette pièce possède un historique de règlements. Conservez sa référence et son journal au lieu d’effacer son montant.',
+    )
   if (total < suivi.regle)
     throw new ErreurReglement(
       'Des règlements dépassent le nouveau montant. Enregistrez d’abord le remboursement ou annulez la saisie erronée dans Règlements.',
@@ -65,6 +70,17 @@ export async function rattacherReglementsFacture(
   const f = await db.facture.findFirst({ where: { id: factureId, userId } })
   if (!f || f.type === 'avoir' || !['emise', 'payee'].includes(f.statut))
     throw new ErreurReglement('La facture de remplacement est introuvable ou invalide.')
+  const dossier = await db.dossierReglement.findFirst({
+    where: { id: suivi.dossierId, userId },
+    select: { devise: true },
+  })
+  if (
+    !dossier ||
+    deviseFactureReglement(f.emetteurSnapshot, dossier.devise) !== dossier.devise
+  )
+    throw new ErreurReglement(
+      'La devise de la facture ne correspond pas aux règlements déjà saisis. Conservez leurs montants dans leur devise d’origine.',
+    )
   if (enCentimes(f.totalTTC) < suivi.regle)
     throw new ErreurReglement('La facture est inférieure aux règlements déjà reçus.')
   const cle = cleFacture(f.id)
@@ -74,7 +90,13 @@ export async function rattacherReglementsFacture(
   await db.cibleReglement.upsert({
     where: { userId_cle: { userId, cle } },
     update: {},
-    create: { userId, cle, type: 'Facture', reference: String(f.id), dossierId: suivi.dossierId },
+    create: {
+      userId,
+      cle,
+      type: 'Facture',
+      reference: String(f.id),
+      dossierId: suivi.dossierId,
+    },
   })
   const paye = suivi.regle >= enCentimes(f.totalTTC)
   await db.dossierReglement.update({

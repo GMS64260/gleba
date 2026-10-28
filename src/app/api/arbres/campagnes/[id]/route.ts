@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Campagne individuelle
  * GET - Détail (avec etapes et observations)
@@ -46,6 +48,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
     return NextResponse.json(campagne)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("GET /api/arbres/campagnes/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la récupération" },
@@ -75,7 +78,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const body = await request.json()
 
-    const campagne = await prisma.campagnePlantation.update({
+    const campagne = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
+      const campagne = await tx.campagnePlantation.update({
       where: { id: campagneId },
       data: {
         nom: body.nom !== undefined ? body.nom : undefined,
@@ -125,22 +130,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
     })
 
-    // Auto-comptabilite : resynchroniser la depense auto (coutReel) avec les
-    // valeurs finales (le helper supprime l'ecriture si coutReel devient null/0)
-    try {
       await createDepenseFromCampagnePlantation(session!.user.id, {
         id: campagne.id,
         nom: campagne.nom,
         coutReel: campagne.coutReel,
         datePlantationReelle: campagne.datePlantationReelle,
         datePlantationPrevue: campagne.datePlantationPrevue,
-      })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (campagne_plantation PUT):', autoComptaError)
-    }
+      }, tx)
+      return campagne
+    })
 
     return NextResponse.json(campagne)
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("PUT /api/arbres/campagnes/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la mise à jour" },
@@ -168,16 +170,15 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Campagne non trouvée" }, { status: 404 })
     }
 
-    // Supprimer les ecritures auto-compta liees
-    try {
-      await deleteAutoEntry('campagne_plantation', campagneId, 'depense')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (campagne_plantation):', autoComptaError)
-    }
+    await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
+      await deleteAutoEntry('campagne_plantation', campagneId, 'depense', session!.user.id, tx)
+      await tx.campagnePlantation.delete({ where: { id: campagneId, userId: session!.user.id } })
+    })
 
-    await prisma.campagnePlantation.delete({ where: { id: campagneId } })
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("DELETE /api/arbres/campagnes/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la suppression" },

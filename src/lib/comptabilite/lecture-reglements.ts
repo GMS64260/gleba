@@ -8,7 +8,7 @@ export async function chargerSoldesReglements(
   db: DbReglement = prisma,
   borne?: Date,
 ) {
-  const resultat = new Map<string, { dossierId: string; regleCentimes: number }>()
+  const resultat = new Map<string, { dossierId: string; regleCentimes: number; devise: string }>()
   if (!cles.length) return resultat
   const aliases = await db.cibleReglement.findMany({
     where: { userId, cle: { in: [...new Set(cles)] } },
@@ -31,6 +31,7 @@ export async function chargerSoldesReglements(
   for (const a of aliases)
     resultat.set(a.cle, {
       dossierId: a.dossierId,
+      devise: a.dossier.devise,
       regleCentimes: a.dossier.reglements.reduce(
         (n, r) => entierCentimes(n + entierCentimes(r.montantCentimes)),
         0,

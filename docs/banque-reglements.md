@@ -73,8 +73,16 @@ se rapprochent d’une dépense comptable préalablement saisie, avec sa TVA ré
 **Virement entre comptes** relie le débit Stripe et le crédit bancaire
 correspondant, ou deux mouvements de comptes de relevés. Le montant et la devise
 doivent correspondre. Ce virement ne crée ni chiffre d’affaires ni charge.
+**Défaire le rapprochement** permet de corriger le choix de la contrepartie :
+les deux mouvements redeviennent disponibles, sans supprimer de versement.
+La recherche des règlements et contreparties propose les résultats par pages ;
+changer la recherche efface la sélection précédente.
+
 Les opérations hors rapprochement commercial peuvent être exclues avec un
-motif puis rétablies ; l’historique bancaire reste conservé.
+motif puis rétablies ; l’historique bancaire reste conservé. Si Stripe révise
+un mouvement déjà importé, Gleba le signale à vérifier. La confirmation est
+refusée lorsque les règlements ou le virement liés dépassent le montant révisé
+ou ne correspondent plus à son sens et sa devise.
 
 ## Règlements partiels et comptabilité
 
@@ -102,3 +110,8 @@ date de correction. Les impayés et créances/dettes utilisent le reste à payer
 y compris à la clôture de l’exercice consulté. Les soldes disponibles Stripe
 affichés dans Banque ne constituent pas un bilan bancaire complet : ils
 n’initialisent pas les soldes d’ouverture des comptes de relevés.
+
+La devise d’une facture reste celle figée lors de son émission. Le FEC refuse
+les versements et mouvements dans une autre devise que celle de l’exploitation,
+ainsi que les mouvements signalés à vérifier : Gleba ne les convertit pas
+silencieusement et n’invente aucun taux de change.

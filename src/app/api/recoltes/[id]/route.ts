@@ -1,3 +1,4 @@
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { verrouillerRecolteLibre } from '@/lib/commercial/verrou-lot'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
 /**
@@ -77,6 +78,7 @@ export async function GET(
     // partagée par un autre compte (revue 2026-10-20).
     return NextResponse.json(masquerReferentielsEmbarques(recolte, session!.user.id))
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('GET /api/recoltes/[id] error:', error)
@@ -132,6 +134,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     invalidateKpi(userId)
     return NextResponse.json(masquerReferentielsEmbarques(resultat.recolte, userId))
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PUT /api/recoltes/[id] error:', error)
     return NextResponse.json({ error: 'Erreur lors de la mise à jour de la récolte' }, { status: 500 })
@@ -256,6 +259,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     invalidateKpi(userId)
     return NextResponse.json(masquerReferentielsEmbarques(resultat.recolte, userId))
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('PATCH /api/recoltes/[id] error:', error)
@@ -285,6 +289,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     invalidateKpi(userId)
     return NextResponse.json({ success: true, deleted: recolteId })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/recoltes/[id] error:', error)
     return NextResponse.json({ error: 'La suppression de la récolte et de sa vente n’a pas été enregistrée.' }, { status: 500 })

@@ -38,15 +38,21 @@ vi.mock("@/lib/prisma", () => ({
     intervention: { findMany: mocks.interventionFindMany },
     $transaction: (cb: (tx: unknown) => Promise<unknown>) =>
       cb({
+        $executeRaw: vi.fn(),
+        $queryRaw: vi.fn().mockResolvedValue([]),
+        depenseManuelle: { deleteMany: vi.fn() },
+        mouvementStockCommercial: { count: mocks.stockCommercialCount },
+        recolteArbre: { findMany: mocks.recolteFindMany },
         venteManuelle: { deleteMany: mocks.txVenteDeleteMany },
-        productionBois: { update: mocks.txBoisUpdate },
+        productionBois: { findMany: mocks.boisFindMany, update: mocks.txBoisUpdate },
         intervention: {
+          findMany: mocks.interventionFindMany,
           update: mocks.txInterventionUpdate,
           create: mocks.txInterventionCreate,
         },
         observationSante: { findMany: mocks.txObservationFindMany },
         operationArbre: { findMany: mocks.txOperationFindMany },
-        arbre: { delete: mocks.txArbreDelete },
+        arbre: { findUnique: mocks.arbreFindUnique, delete: mocks.txArbreDelete },
       }),
   },
 }))

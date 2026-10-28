@@ -1,3 +1,5 @@
+import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
  * API Lots d'animaux
  * GET /api/elevage/lots - Liste des lots
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: enriched })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/lots error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération des lots', details: "Erreur interne du serveur" },
@@ -134,6 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     const lot = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const created = await tx.lotAnimaux.create({
         data: {
           userId: session.user.id,
@@ -174,6 +178,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: lot }, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('POST /api/elevage/lots error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
@@ -306,6 +311,7 @@ export async function PATCH(request: NextRequest) {
     if (parcelleGeoId !== undefined) updateData.parcelleGeoId = parcelleGeoId || null
 
     const lot = await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       const updated = await tx.lotAnimaux.update({
         where: { id: parseInt(id) },
         data: updateData,
@@ -353,6 +359,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: lot })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/lots error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
@@ -462,6 +469,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.$transaction(async (tx) => {
+      await verrouillerReglements(tx, session!.user.id)
       if (animauxSortis > 0) {
         const dateEffet = new Date()
         const sortis = await tx.animal.findMany({
@@ -488,6 +496,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true, deleted: parseInt(id) })
   } catch (error) {
+    if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/elevage/lots error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },

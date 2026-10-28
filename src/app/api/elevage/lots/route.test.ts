@@ -31,6 +31,7 @@ vi.mock('@/lib/auto-compta', () => ({
 vi.mock('@/lib/prisma', () => ({
   default: {
     $transaction: (callback: (tx: unknown) => unknown) => callback({
+      $executeRaw: vi.fn(),
       lotAnimaux: { update: mocks.lotUpdate },
       mouvementCheptel: { create: vi.fn() },
       animal: { findMany: mocks.animalFindMany, updateMany: mocks.animalUpdateMany },

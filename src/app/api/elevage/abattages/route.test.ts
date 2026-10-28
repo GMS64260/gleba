@@ -30,7 +30,7 @@ vi.mock("@/lib/auto-compta", () => ({ createVenteFromAbattage: vi.fn(), deleteAu
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 vi.mock("@/lib/facture-utils", () => ({ creerFacture: vi.fn(), annulerFactureLiee: vi.fn() }))
 vi.mock("@/lib/prisma", () => {
-  const tx = {
+  const tx = { $executeRaw: vi.fn(),
     abattage: { create: mocks.abattageCreate, update: mocks.abattageUpdate },
     animal: { findFirst: vi.fn(), update: vi.fn() },
     lotAnimaux: { findFirst: mocks.lotFindFirst, update: mocks.lotUpdate },

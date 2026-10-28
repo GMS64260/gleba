@@ -19,9 +19,19 @@ import { chargerSuiviDesSources, cleSource } from '@/lib/comptabilite/suivi-ecri
 import { formatMontantFec } from '@/lib/comptabilite/fec-affichage'
 import { chargerSoldesReglements } from '@/lib/comptabilite/reglements'
 import { cleMiroirReglement, cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
-import { chargerFecReglements } from '@/lib/comptabilite/banque/fec-reglements'
+import { chargerFecReglements, verifierDeviseFec } from '@/lib/comptabilite/banque/fec-reglements'
+import { deviseFactureReglement } from '@/lib/comptabilite/devise-reglement'
+import { deviseDuTerritoire } from '@/lib/territoires'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 
 export async function GET(request: NextRequest) {
+  try { return await exporterFec(request) }
+  catch (e) {
+    if (e instanceof ErreurReglement) return NextResponse.json({ error: e.message }, { status: e.status })
+    throw e
+  }
+}
+async function exporterFec(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
 
@@ -183,6 +193,8 @@ export async function GET(request: NextRequest) {
    * sont saisis, sinon la référence technique (`ELEV-<id>`…) et aucun mode.
    * La référence de la source reste lisible dans le libellé.
    */
+  const deviseComptable = exploitation?.devise || deviseDuTerritoire(exploitation?.territoire)
+  for (const f of factures) verifierDeviseFec(deviseFactureReglement(f.emetteurSnapshot, deviseComptable), deviseComptable)
   const [soldesDetail, journalReglements] = await Promise.all([
     chargerSoldesReglements(userId, [
       ...ventes.map((v) => cleMiroirReglement('vente', v)),
