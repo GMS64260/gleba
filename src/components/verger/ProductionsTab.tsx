@@ -5,6 +5,8 @@
  */
 
 import * as React from "react"
+import { ReglementVente, paiementVenteInitial } from "./ReglementVente"
+import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
 import { quantiteBois } from "@/lib/commercial/stock-types"
 import Link from "next/link"
 import { isPast, differenceInDays } from "date-fns"
@@ -78,6 +80,8 @@ interface Client {
 }
 
 interface RecolteArbre {
+  ecriture?: { id: number } | null
+  warnings?: string[]
   stockDisponibleCommercial?: number | null
   id: number
   arbreId: number
@@ -123,6 +127,7 @@ function formulaireRecolteVierge() {
 }
 
 interface ProductionBois {
+  ecriture?: { id: number } | null
   stockDisponibleCommercial?: number | null
   id: number
   arbreId: number | null
@@ -206,7 +211,7 @@ function RecoltesFruitsSubTab() {
     clientId: "",
     clientNom: "",
     prixKg: "",
-    creerFacture: false,
+    creerFacture: false, ...paiementVenteInitial(),
   })
   // DEV3 #4 — Champs traçabilité AB (audit Marc 2026-05-14)
   const [newRecolte, setNewRecolte] = React.useState(formulaireRecolteVierge)
@@ -489,16 +494,19 @@ function RecoltesFruitsSubTab() {
       clientId: "",
       clientNom: "",
       prixKg: recolte.prixKg?.toString() || "",
-      creerFacture: false,
+      creerFacture: false, ...paiementVenteInitial(),
     })
     setShowVenteDialog(true)
   }
 
+  const [venteEnCours, setVenteEnCours] = React.useState(false)
+
   const handleVendre = async () => {
-    if (!selectedRecolte) return
+    if (!selectedRecolte || venteEnCours) return
     const prixKg = parseFloat(venteData.prixKg) || 0
     const prixTotal = prixKg * selectedRecolte.quantite
-
+    if (!Number.isFinite(prixKg) || prixKg <= 0) { toast({ title: "Saisissez un prix supérieur à zéro", variant: "destructive" }); return }
+    setVenteEnCours(true)
     try {
       const res = await fetch(`/api/arbres/recoltes/${selectedRecolte.id}`, {
         method: "PATCH",
@@ -510,6 +518,9 @@ function RecoltesFruitsSubTab() {
           clientId: venteData.clientId ? parseInt(venteData.clientId) : null,
           clientNom: venteData.clientNom || null,
           creerFacture: venteData.creerFacture,
+          paye: venteData.paye,
+          modeReglement: venteData.modeReglement || null,
+          datePaiement: venteData.paye ? venteData.datePaiement : undefined,
         }),
       })
       if (res.ok) {
@@ -522,7 +533,7 @@ function RecoltesFruitsSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
-    }
+    } finally { setVenteEnCours(false) }
   }
 
   const handlePerte = async (id: number) => {
@@ -689,7 +700,7 @@ function RecoltesFruitsSubTab() {
                   {stockRecoltes.map((r) => (
                     <TableRow key={r.id} className={r.datePeremption && isPast(new Date(r.datePeremption)) ? "bg-red-50" : ""}>
                       <TableCell>{celluleDate(r)}</TableCell>
-                      <TableCell className="font-medium">{r.arbre.nom}</TableCell>
+                      <TableCell className="font-medium">{r.arbre.nom}{r.warnings?.map(message => <p key={message} className="mt-1 max-w-sm text-xs text-amber-800">{message}</p>)}</TableCell>
                       <TableCell className="text-right">{r.quantite} kg</TableCell>
                       <TableCell className="capitalize">{r.qualite || "-"}</TableCell>
                       <TableCell className="text-right">{r.prixKg ? `${r.prixKg} EUR` : "-"}</TableCell>
@@ -747,18 +758,20 @@ function RecoltesFruitsSubTab() {
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Client</TableHead>
                     <TableHead>Date vente</TableHead>
+                    <TableHead>Règlements</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {venduRecoltes.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>{new Date(r.date).toLocaleDateString("fr-FR")}</TableCell>
-                      <TableCell className="font-medium">{r.arbre.nom}</TableCell>
+                      <TableCell className="font-medium">{r.arbre.nom}{r.warnings?.map(message => <p key={message} className="mt-1 max-w-sm text-xs text-amber-800">{message}</p>)}</TableCell>
                       <TableCell className="text-right">{r.quantite} kg</TableCell>
                       <TableCell className="text-right">{r.prixKg ? `${r.prixKg} EUR` : "-"}</TableCell>
                       <TableCell className="text-right font-bold">{r.prixTotal ? `${r.prixTotal.toFixed(2)} EUR` : "-"}</TableCell>
                       <TableCell>{r.clientNom || "-"}</TableCell>
                       <TableCell>{r.dateVente ? new Date(r.dateVente).toLocaleDateString("fr-FR") : "-"}</TableCell>
+                      <TableCell>{r.factureId ? <><Link className="block text-sm text-primary underline" href={`/comptabilite/factures?id=${r.factureId}`}>Facture</Link><ReglementsDialog type="Facture" id={r.factureId} onChange={fetchData} /></> : r.ecriture ? <ReglementsDialog type="VenteManuelle" id={r.ecriture.id} onChange={fetchData} /> : "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -790,7 +803,7 @@ function RecoltesFruitsSubTab() {
                   {perteRecoltes.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>{celluleDate(r)}</TableCell>
-                      <TableCell className="font-medium">{r.arbre.nom}</TableCell>
+                      <TableCell className="font-medium">{r.arbre.nom}{r.warnings?.map(message => <p key={message} className="mt-1 max-w-sm text-xs text-amber-800">{message}</p>)}</TableCell>
                       <TableCell className="text-right">{r.quantite} kg</TableCell>
                       <TableCell className="capitalize">{r.qualite || "-"}</TableCell>
                       <TableCell>
@@ -1108,6 +1121,7 @@ function RecoltesFruitsSubTab() {
                 <Input
                   type="number"
                   step="0.01"
+                  min="0.01"
                   value={venteData.prixKg}
                   onChange={(e) => setVenteData({ ...venteData, prixKg: e.target.value })}
                 />
@@ -1117,6 +1131,8 @@ function RecoltesFruitsSubTab() {
                   Total : {(parseFloat(venteData.prixKg) * selectedRecolte.quantite).toFixed(2)} EUR
                 </p>
               )}
+              {selectedRecolte.warnings?.map(message => <p key={message} role="alert" className="text-sm text-amber-800">{message}</p>)}
+              <ReglementVente value={venteData} onChange={v => setVenteData({ ...venteData, ...v })} />
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="creerFactureRecolte"
@@ -1131,7 +1147,7 @@ function RecoltesFruitsSubTab() {
                 <Button variant="outline" onClick={() => setShowVenteDialog(false)}>
                   Annuler
                 </Button>
-                <Button onClick={handleVendre} disabled={!venteData.prixKg}>
+                <Button onClick={handleVendre} disabled={venteEnCours || !venteData.prixKg || (venteData.paye && (!venteData.modeReglement || !venteData.datePaiement))}>
                   Valider la vente
                 </Button>
               </div>
@@ -1177,7 +1193,7 @@ function ProductionBoisSubTab() {
     clientId: "",
     clientNom: "",
     prixVente: "",
-    creerFacture: false,
+    creerFacture: false, ...paiementVenteInitial(),
   })
 
   const [utiliseData, setUtiliseData] = React.useState({
@@ -1322,8 +1338,12 @@ function ProductionBoisSubTab() {
     }
   }
 
+  const [venteEnCours, setVenteEnCours] = React.useState(false)
+
   const handleVendre = async () => {
-    if (!selectedProduction) return
+    if (!selectedProduction || venteEnCours) return
+    if (!Number.isFinite(Number(venteData.prixVente)) || Number(venteData.prixVente) <= 0) { toast({ title: "Saisissez un prix supérieur à zéro", variant: "destructive" }); return }
+    setVenteEnCours(true)
     try {
       const res = await fetch(`/api/arbres/bois/${selectedProduction.id}`, {
         method: "PATCH",
@@ -1336,12 +1356,15 @@ function ProductionBoisSubTab() {
           clientNom: venteData.clientNom || null,
           destination: "vente",
           creerFacture: venteData.creerFacture,
+          paye: venteData.paye,
+          modeReglement: venteData.modeReglement || null,
+          datePaiement: venteData.paye ? venteData.datePaiement : undefined,
         }),
       })
       if (res.ok) {
         setShowVenteDialog(false)
         setSelectedProduction(null)
-        setVenteData({ clientId: "", clientNom: "", prixVente: "", creerFacture: false })
+        setVenteData({ clientId: "", clientNom: "", prixVente: "", creerFacture: false, ...paiementVenteInitial() })
         toast({ title: "Vente enregistrée" })
         fetchData()
       } else {
@@ -1350,7 +1373,7 @@ function ProductionBoisSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
-    }
+    } finally { setVenteEnCours(false) }
   }
 
   const handleUtiliser = async () => {
@@ -1397,7 +1420,7 @@ function ProductionBoisSubTab() {
 
   const openVenteDialog = (p: ProductionBois) => {
     setSelectedProduction(p)
-    setVenteData({ clientId: "", clientNom: "", prixVente: "", creerFacture: false })
+    setVenteData({ clientId: "", clientNom: "", prixVente: "", creerFacture: false, ...paiementVenteInitial() })
     setShowVenteDialog(true)
   }
 
@@ -1547,6 +1570,7 @@ function ProductionBoisSubTab() {
                     <TableHead>Client</TableHead>
                     <TableHead className="text-right">Prix</TableHead>
                     <TableHead>Facture</TableHead>
+                    <TableHead>Règlements</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1568,6 +1592,7 @@ function ProductionBoisSubTab() {
                           </Link>
                         ) : "-"}
                       </TableCell>
+                      <TableCell>{p.factureId ? <ReglementsDialog type="Facture" id={p.factureId} onChange={fetchData} /> : p.ecriture ? <ReglementsDialog type="VenteManuelle" id={p.ecriture.id} onChange={fetchData} /> : "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1777,6 +1802,7 @@ function ProductionBoisSubTab() {
                   placeholder="Ex: 150.00"
                 />
               </div>
+              <ReglementVente value={venteData} onChange={v => setVenteData({ ...venteData, ...v })} />
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="creerFactureBois"
@@ -1790,7 +1816,7 @@ function ProductionBoisSubTab() {
               <Button
                 onClick={handleVendre}
                 className="w-full bg-green-600 hover:bg-green-700"
-                disabled={!venteData.prixVente}
+                disabled={venteEnCours || !venteData.prixVente || (venteData.paye && (!venteData.modeReglement || !venteData.datePaiement))}
               >
                 Confirmer la vente
               </Button>

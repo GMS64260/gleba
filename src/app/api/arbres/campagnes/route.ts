@@ -1,3 +1,5 @@
+import { verifierReferencesCampagne, masquerReferencesCampagnes } from "@/lib/verger/references-campagne"
+import { ErreurVerger } from "@/lib/verger/erreur"
 /**
  * API Routes pour les Campagnes de plantation (replantation forestière, haie, agroforesterie, verger)
  * GET /api/arbres/campagnes - Liste
@@ -38,8 +40,9 @@ export async function GET(request: NextRequest) {
       orderBy: [{ datePlantationPrevue: "desc" }, { createdAt: "desc" }],
     })
 
-    return NextResponse.json(campagnes)
+    return NextResponse.json(await masquerReferencesCampagnes(prisma, session!.user.id, campagnes))
   } catch (err) {
+    if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     console.error("GET /api/arbres/campagnes error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la récupération des campagnes" },
@@ -92,6 +95,7 @@ export async function POST(request: NextRequest) {
       if (!ok) return NextResponse.json({ error: "Production bois introuvable" }, { status: 400 })
     }
 
+    await verifierReferencesCampagne(prisma, uid, body)
     const campagne = await prisma.campagnePlantation.create({
       data: {
         userId: session!.user.id,
@@ -180,6 +184,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
+    if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     console.error("POST /api/arbres/campagnes error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la création de la campagne" },

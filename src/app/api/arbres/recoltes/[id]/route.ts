@@ -1,3 +1,7 @@
+import { prixFruitApi, dateRecolteApi } from "@/lib/verger/creation-recolte"
+import { avertissementsDarFruit } from "@/lib/verger/dar"
+import { modifierVenteVerger } from "@/lib/verger/vente"
+import { ErreurVerger } from "@/lib/verger/erreur"
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -10,10 +14,9 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
-import { Prisma } from "@prisma/client"
 import { requireAuthApi } from "@/lib/auth-utils"
-import { createVenteFromRecolteArbre, deleteAutoEntry } from "@/lib/auto-compta"
-import { creerFacture, annulerFactureLiee } from "@/lib/facture-utils"
+import { deleteAutoEntry } from "@/lib/auto-compta"
+import { annulerFactureLiee } from "@/lib/facture-utils"
 import { estNumeroLotAuto, genererNumeroLot } from "@/lib/recolte/lot"
 import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes, retirerMarqueSaison } from "@/lib/verger/saison-recolte-arbre"
 
@@ -79,177 +82,183 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const userId = session!.user.id
-    const existing = await prisma.recolteArbre.findUnique({
-      where: { id: recolteId, userId },
-      include: { arbre: { select: { espece: true } } },
-    })
-
-    if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
-    if (!existing) {
-      return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
-    }
-
-    const body = await request.json()
-
-    // Production 2026-09-04 : un maraîcher a saisi deux fois la même récolte à
-    // une minute d'écart, seule la date différait — l'écran n'offrait aucune
-    // modification, seulement la suppression. La route acceptait déjà PUT,
-    // mais sans contrôle : on valide ici ce que le formulaire peut désormais
-    // corriger (arbre, date, quantité, qualité, prix, péremption, parcelle
-    // d'origine, catégorie, destination, conditionnement, notes, n° de lot).
-    if (body.quantite !== undefined) {
-      if (typeof body.quantite !== "number" || !isFinite(body.quantite) || body.quantite <= 0) {
-        return NextResponse.json(
-          { error: "La quantité doit être un nombre supérieur à 0" },
-          { status: 400 }
-        )
-      }
-    }
-
-    // QA cmv2ebsdk — l'arbre se corrige comme le reste : la route l'ignorait,
-    // le formulaire l'envoyait. L'arbre doit appartenir au compte ; l'espèce
-    // suit, et avec elle le numéro de lot automatique.
-    let nouvelArbre: { id: number; espece: string | null } | undefined
-    if (body.arbreId !== undefined && body.arbreId !== null && body.arbreId !== "") {
-      const arbreId = typeof body.arbreId === "number" ? body.arbreId : Number(body.arbreId)
-      if (!Number.isInteger(arbreId) || arbreId <= 0) {
-        return NextResponse.json({ error: "Arbre invalide" }, { status: 400 })
-      }
-      if (arbreId !== existing.arbreId) {
-        const arbre = await prisma.arbre.findFirst({
-          where: { id: arbreId, userId },
-          select: { id: true, espece: true },
-        })
-        if (!arbre) {
-          return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
-        }
-        nouvelArbre = arbre
-      }
-    }
-    const especeLot = nouvelArbre ? nouvelArbre.espece : existing.arbre?.espece ?? null
-
-    let nouvelleDate: Date | undefined
-    if (body.date !== undefined && body.date !== null && body.date !== "") {
-      nouvelleDate = new Date(body.date)
-      if (isNaN(nouvelleDate.getTime())) {
-        return NextResponse.json({ error: "Date de récolte invalide" }, { status: 400 })
-      }
-    }
-
-    // Parcelle d'origine : `null` explicite la retire, `undefined` la laisse.
-    let nouvelleParcelleId: string | null | undefined
-    let nouvelleParcelleNom: string | null = null
-    if (body.parcelleId !== undefined) {
-      if (body.parcelleId === null || body.parcelleId === "") {
-        nouvelleParcelleId = null
-      } else {
-        const parcelle = await prisma.parcelleGeo.findFirst({
-          where: { id: String(body.parcelleId), userId },
-          select: { id: true, nom: true },
-        })
-        if (!parcelle) {
-          return NextResponse.json({ error: "Parcelle non trouvée" }, { status: 404 })
-        }
-        nouvelleParcelleId = parcelle.id
-        nouvelleParcelleNom = parcelle.nom
-      }
-    }
-
-    // Numéro de lot : un numéro saisi explicitement gagne toujours. Sinon, si
-    // la date, la parcelle ou l'espèce change et que le lot courant est
-    // automatique, on le régénère (le lot encode date, parcelle et espèce) ; un
-    // lot saisi à la main par l'utilisateur n'est jamais écrasé.
-    // Le formulaire renvoie toujours le lot qu'il affiche : un lot identique au
-    // lot stocké n'est pas une saisie, sinon un lot automatique ne suivrait
-    // jamais un changement d'arbre, de date ou de parcelle (revue cmv2ebsdk).
-    let numLot: string | undefined
-    const lotSaisi = typeof body.numLot === "string" ? body.numLot.trim() : ""
-    if (lotSaisi && lotSaisi !== existing.numLot) {
-      numLot = lotSaisi
-    } else {
-      const dateChange = nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime()
-      const parcelleChange = nouvelleParcelleId !== undefined && nouvelleParcelleId !== existing.parcelleId
-      const especeChange = especeLot !== (existing.arbre?.espece ?? null)
-      if ((dateChange || parcelleChange || especeChange) && estNumeroLotAuto(existing.numLot)) {
-        const dateLot = nouvelleDate ?? existing.date
-        const parcelleIdLot = nouvelleParcelleId !== undefined ? nouvelleParcelleId : existing.parcelleId
-        let parcelleNomLot = nouvelleParcelleNom
-        if (!parcelleNomLot && parcelleIdLot) {
-          parcelleNomLot =
-            (await prisma.parcelleGeo.findUnique({ where: { id: parcelleIdLot }, select: { nom: true } }))?.nom ??
-            null
-        }
-        const dayStart = new Date(dateLot)
-        dayStart.setHours(0, 0, 0, 0)
-        const dayEnd = new Date(dateLot)
-        dayEnd.setHours(23, 59, 59, 999)
-        const sameDayCount = await prisma.recolteArbre.count({
-          where: {
-            userId,
-            id: { not: recolteId },
-            date: { gte: dayStart, lte: dayEnd },
-            ...(parcelleIdLot ? { parcelleId: parcelleIdLot } : {}),
-            arbre: { espece: especeLot ?? undefined },
-          },
-        })
-        numLot = genererNumeroLot({
-          date: dateLot,
-          parcelleNom: parcelleNomLot,
-          espece: especeLot,
-          numeroSequence: sameDayCount + 1,
-        })
-      }
-    }
-
-    const texteOuNull = (v: unknown): string | null | undefined =>
-      v === undefined ? undefined : typeof v === "string" && v.trim() ? v.trim() : null
-
-    const recolte = await prisma.recolteArbre.update({
-      where: { id: recolteId },
-      data: {
-        arbreId: nouvelArbre?.id,
-        date: nouvelleDate,
-        quantite: body.quantite,
-        qualite: texteOuNull(body.qualite),
-        prixKg: body.prixKg === undefined ? undefined : typeof body.prixKg === "number" ? body.prixKg : null,
-        datePeremption: body.datePeremption !== undefined
-          ? (body.datePeremption ? new Date(body.datePeremption) : null)
-          : undefined,
-        notes: texteOuNull(body.notes === undefined ? undefined : retirerMarqueSaison(body.notes)),
-        parcelleId: nouvelleParcelleId,
-        numLot,
-        categorieCommerciale: texteOuNull(body.categorieCommerciale),
-        destinationCommerce: texteOuNull(body.destinationCommerce),
-        conditionnement: texteOuNull(body.conditionnement),
-        statutBioSnapshot: texteOuNull(body.statutBioSnapshot),
-      },
-      include: {
-        arbre: {
-          select: { id: true, nom: true, type: true, espece: true, especeId: true, variete: true },
-        },
-        parcelle: { select: { id: true, nom: true } },
-      },
-    })
-
-    // QA cmvkoxe5o (2026-10-23) — la modification ne contrôlait pas la saison :
-    // une récolte de Mirabelle (mi-août) déplacée au 10 juillet passait sans
-    // un mot. Même règle que la création, sur l'arbre et la date finaux.
-    // L'écran renvoie toujours la date : seul un changement réel (date ou
-    // arbre) relance le contrôle, sinon corriger un prix redonnait l'alerte.
-    const warnings: string[] = []
-    const dateChangee = nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime()
-    if ((dateChangee || nouvelArbre) && recolte.arbre) {
-      const periodes = await chargerPeriodesRecolteVarietes(prisma, userId, [recolte.arbre])
-      const alerte = alerteSaisonRecolteArbre({
-        espece: recolte.arbre.espece,
-        variete: periodes.get(recolte.arbre),
-        date: recolte.date,
+    return await prisma.$transaction(async (tx) => {
+      await verrouillerStockCommercial(tx, session!.user.id)
+      const existing = await tx.recolteArbre.findUnique({
+        where: { id: recolteId, userId },
+        include: { arbre: { select: { espece: true } } },
       })
-      if (alerte) warnings.push(alerte.message)
-    }
 
-    return NextResponse.json(warnings.length > 0 ? { ...recolte, warnings } : recolte)
+      if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
+      if (!existing) {
+        return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
+      }
+
+      if (existing.statut === 'vendu' || existing.factureId) return NextResponse.json({ error: 'Ce lot est vendu. Corrigez la vente ou sa facture, ou annulez sa vente avant de modifier la récolte.' }, { status: 409 })
+      const body = await request.json()
+
+      // Production 2026-09-04 : un maraîcher a saisi deux fois la même récolte à
+      // une minute d'écart, seule la date différait — l'écran n'offrait aucune
+      // modification, seulement la suppression. La route acceptait déjà PUT,
+      // mais sans contrôle : on valide ici ce que le formulaire peut désormais
+      // corriger (arbre, date, quantité, qualité, prix, péremption, parcelle
+      // d'origine, catégorie, destination, conditionnement, notes, n° de lot).
+      if (body.quantite !== undefined) {
+        if (typeof body.quantite !== "number" || !isFinite(body.quantite) || body.quantite <= 0) {
+          return NextResponse.json(
+            { error: "La quantité doit être un nombre supérieur à 0" },
+            { status: 400 }
+          )
+        }
+      }
+
+      // QA cmv2ebsdk — l'arbre se corrige comme le reste : la route l'ignorait,
+      // le formulaire l'envoyait. L'arbre doit appartenir au compte ; l'espèce
+      // suit, et avec elle le numéro de lot automatique.
+      let nouvelArbre: { id: number; espece: string | null } | undefined
+      if (body.arbreId !== undefined && body.arbreId !== null && body.arbreId !== "") {
+        const arbreId = typeof body.arbreId === "number" ? body.arbreId : Number(body.arbreId)
+        if (!Number.isInteger(arbreId) || arbreId <= 0) {
+          return NextResponse.json({ error: "Arbre invalide" }, { status: 400 })
+        }
+        if (arbreId !== existing.arbreId) {
+          const arbre = await tx.arbre.findFirst({
+            where: { id: arbreId, userId },
+            select: { id: true, espece: true },
+          })
+          if (!arbre) {
+            return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
+          }
+          nouvelArbre = arbre
+        }
+      }
+      const especeLot = nouvelArbre ? nouvelArbre.espece : existing.arbre?.espece ?? null
+
+      let nouvelleDate: Date | undefined
+      if (body.date !== undefined && body.date !== null && body.date !== "") {
+        nouvelleDate = dateRecolteApi(body.date, 'date') ?? undefined
+        if (!nouvelleDate) {
+          return NextResponse.json({ error: "Date de récolte invalide" }, { status: 400 })
+        }
+      }
+
+      // Parcelle d'origine : `null` explicite la retire, `undefined` la laisse.
+      let nouvelleParcelleId: string | null | undefined
+      let nouvelleParcelleNom: string | null = null
+      if (body.parcelleId !== undefined) {
+        if (body.parcelleId === null || body.parcelleId === "") {
+          nouvelleParcelleId = null
+        } else {
+          const parcelle = await tx.parcelleGeo.findFirst({
+            where: { id: String(body.parcelleId), userId },
+            select: { id: true, nom: true },
+          })
+          if (!parcelle) {
+            return NextResponse.json({ error: "Parcelle non trouvée" }, { status: 404 })
+          }
+          nouvelleParcelleId = parcelle.id
+          nouvelleParcelleNom = parcelle.nom
+        }
+      }
+
+      // Numéro de lot : un numéro saisi explicitement gagne toujours. Sinon, si
+      // la date, la parcelle ou l'espèce change et que le lot courant est
+      // automatique, on le régénère (le lot encode date, parcelle et espèce) ; un
+      // lot saisi à la main par l'utilisateur n'est jamais écrasé.
+      // Le formulaire renvoie toujours le lot qu'il affiche : un lot identique au
+      // lot stocké n'est pas une saisie, sinon un lot automatique ne suivrait
+      // jamais un changement d'arbre, de date ou de parcelle (revue cmv2ebsdk).
+      let numLot: string | undefined
+      const lotSaisi = typeof body.numLot === "string" ? body.numLot.trim() : ""
+      if (lotSaisi && lotSaisi !== existing.numLot) {
+        numLot = lotSaisi
+      } else {
+        const dateChange = nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime()
+        const parcelleChange = nouvelleParcelleId !== undefined && nouvelleParcelleId !== existing.parcelleId
+        const especeChange = especeLot !== (existing.arbre?.espece ?? null)
+        if ((dateChange || parcelleChange || especeChange) && estNumeroLotAuto(existing.numLot)) {
+          const dateLot = nouvelleDate ?? existing.date
+          const parcelleIdLot = nouvelleParcelleId !== undefined ? nouvelleParcelleId : existing.parcelleId
+          let parcelleNomLot = nouvelleParcelleNom
+          if (!parcelleNomLot && parcelleIdLot) {
+            parcelleNomLot =
+              (await tx.parcelleGeo.findFirst({ where: { id: parcelleIdLot, userId }, select: { nom: true } }))?.nom ??
+              null
+          }
+          const dayStart = new Date(dateLot)
+          dayStart.setHours(0, 0, 0, 0)
+          const dayEnd = new Date(dateLot)
+          dayEnd.setHours(23, 59, 59, 999)
+          const sameDayCount = await tx.recolteArbre.count({
+            where: {
+              userId,
+              id: { not: recolteId },
+              date: { gte: dayStart, lte: dayEnd },
+              ...(parcelleIdLot ? { parcelleId: parcelleIdLot } : {}),
+              arbre: { espece: especeLot ?? undefined },
+            },
+          })
+          numLot = genererNumeroLot({
+            date: dateLot,
+            parcelleNom: parcelleNomLot,
+            espece: especeLot,
+            numeroSequence: sameDayCount + 1,
+          })
+        }
+      }
+
+      const texteOuNull = (v: unknown): string | null | undefined =>
+        v === undefined ? undefined : typeof v === "string" && v.trim() ? v.trim() : null
+
+      const recolte = await tx.recolteArbre.update({
+        where: { id: recolteId },
+        data: {
+          arbreId: nouvelArbre?.id,
+          date: nouvelleDate,
+          quantite: body.quantite,
+          qualite: texteOuNull(body.qualite),
+          prixKg: prixFruitApi(body.prixKg, "prixKg"),
+          datePeremption: body.datePeremption !== undefined
+            ? dateRecolteApi(body.datePeremption, 'datePeremption')
+            : undefined,
+          notes: texteOuNull(body.notes === undefined ? undefined : retirerMarqueSaison(body.notes)),
+          parcelleId: nouvelleParcelleId,
+          numLot,
+          categorieCommerciale: texteOuNull(body.categorieCommerciale),
+          destinationCommerce: texteOuNull(body.destinationCommerce),
+          conditionnement: texteOuNull(body.conditionnement),
+          statutBioSnapshot: texteOuNull(body.statutBioSnapshot),
+        },
+        include: {
+          arbre: {
+            select: { id: true, nom: true, type: true, espece: true, especeId: true, variete: true },
+          },
+          parcelle: { select: { id: true, nom: true } },
+        },
+      })
+
+      // QA cmvkoxe5o (2026-10-23) — la modification ne contrôlait pas la saison :
+      // une récolte de Mirabelle (mi-août) déplacée au 10 juillet passait sans
+      // un mot. Même règle que la création, sur l'arbre et la date finaux.
+      // L'écran renvoie toujours la date : seul un changement réel (date ou
+      // arbre) relance le contrôle, sinon corriger un prix redonnait l'alerte.
+      const warnings: string[] = []
+      const dateChangee = nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime()
+      if ((dateChangee || nouvelArbre) && recolte.arbre) {
+        const periodes = await chargerPeriodesRecolteVarietes(tx, userId, [recolte.arbre])
+        const alerte = alerteSaisonRecolteArbre({
+          espece: recolte.arbre.espece,
+          variete: periodes.get(recolte.arbre),
+          date: recolte.date,
+        })
+        if (alerte) warnings.push(alerte.message)
+      }
+
+      warnings.push(...await avertissementsDarFruit(tx, userId, recolte.arbreId, recolte.parcelleId, recolte.date))
+      return NextResponse.json(warnings.length > 0 ? { ...recolte, warnings } : recolte)
+    })
   } catch (err) {
+    if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("PUT /api/arbres/recoltes/[id] error:", err)
@@ -260,149 +269,18 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 }
 
-// PATCH /api/arbres/recoltes/[id] - Transition de statut
+// PATCH : état relu sous verrou, source/facture/miroir/règlement atomiques.
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { error, session } = await requireAuthApi()
   if (error) return error
-
   try {
     const { id } = await params
-    const recolteId = parseInt(id, 10)
-    if (isNaN(recolteId)) {
-      return NextResponse.json({ error: "ID invalide" }, { status: 400 })
-    }
-
-    const userId = session!.user.id
-
-    const existing = await prisma.recolteArbre.findUnique({
-      where: { id: recolteId, userId },
-      include: {
-        arbre: {
-          select: { id: true, nom: true, espece: true, variete: true },
-        },
-      },
-    })
-
-    if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
-    if (!existing) {
-      return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
-    }
-
-    const body = await request.json()
-
-    // Préparer les données de mise à jour
-    const updateData: Prisma.RecolteArbreUncheckedUpdateInput = {}
-    if (body.statut !== undefined) updateData.statut = body.statut
-    if (body.dateVente !== undefined) updateData.dateVente = body.dateVente ? new Date(body.dateVente) : null
-    if (body.prixKg !== undefined) updateData.prixKg = body.prixKg
-    if (body.prixTotal !== undefined) updateData.prixTotal = body.prixTotal
-    if (body.clientId !== undefined) updateData.clientId = body.clientId
-    if (body.clientNom !== undefined) updateData.clientNom = body.clientNom
-    if (body.datePeremption !== undefined) updateData.datePeremption = body.datePeremption ? new Date(body.datePeremption) : null
-    if (body.notes !== undefined) updateData.notes = body.notes
-
-    // Sécurité multi-tenant : un clientId fourni doit appartenir à l'utilisateur
-    // (il est persisté sur la récolte, l'écriture auto et la facture).
-    if (body.clientId) {
-      const clientOk = await prisma.client.findFirst({
-        where: { id: body.clientId, userId },
-        select: { id: true },
-      })
-      if (!clientOk) {
-        return NextResponse.json({ error: 'Client introuvable' }, { status: 400 })
-      }
-    }
-
-    // Anti-double-facture : une récolte déjà facturée ne peut pas générer
-    // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
-    if (body.creerFacture && existing.factureId) {
-      return NextResponse.json(
-        { error: 'Cette récolte est déjà facturée', factureId: existing.factureId },
-        { status: 409 }
-      )
-    }
-
-    // Dé-vente d'une récolte facturée (retour en stock) : la facture doit
-    // suivre, sinon le CA reste compté via la facture (CA fantôme).
-    if (
-      existing.factureId &&
-      existing.statut === 'vendu' &&
-      body.statut &&
-      body.statut !== 'vendu'
-    ) {
-      const liee = await annulerFactureLiee(prisma, userId, existing.factureId)
-      if (!liee.ok) {
-        return NextResponse.json({ error: liee.raison }, { status: 409 })
-      }
-      updateData.factureId = null
-    }
-
-    // Transaction atomique : facture + update recolte arbre
-    const recolte = await prisma.$transaction(async (tx) => {
-      await verrouillerStockCommercial(tx, userId)
-      if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
-        const totalHT = body.prixTotal / 1.055
-        const totalTVA = body.prixTotal - totalHT
-        const arbreNom = existing.arbre?.nom || 'Fruits'
-        const especeNom = existing.arbre?.espece || ''
-
-        const facture = await creerFacture(tx, {
-          userId,
-          type: 'facture',
-          clientId: body.clientId || null,
-          clientNom: body.clientNom,
-          objet: `Vente de ${arbreNom}${especeNom ? ` (${especeNom})` : ''}`,
-          totalHT,
-          totalTVA,
-          totalTTC: body.prixTotal,
-          statut: 'payee',
-          datePaiement: new Date(),
-          modePaiement: 'especes',
-          lignes: [{
-            description: `${arbreNom}${especeNom ? ` - ${especeNom}` : ''}`,
-            quantite: existing.quantite,
-            unite: 'kg',
-            prixUnitaire: (body.prixKg || 0) / 1.055,
-            tauxTVA: 5.5,
-            montantHT: totalHT,
-            montantTVA: totalTVA,
-            montantTTC: body.prixTotal,
-          }],
-        })
-
-        updateData.factureId = facture.id
-      }
-
-      if (body.statut === "vendu") {
-        updateData.dateVente = updateData.dateVente || new Date()
-      }
-
-      const updated = await tx.recolteArbre.update({
-        where: { id: recolteId },
-        data: updateData,
-        include: {
-          arbre: {
-            select: { id: true, nom: true, type: true, espece: true },
-          },
-        },
-      })
-      if (updated.statut === 'vendu') {
-        await createVenteFromRecolteArbre(userId, { ...updated, arbre: existing.arbre ? { nom: existing.arbre.nom, espece: existing.arbre.espece } : null }, tx)
-      } else if (existing.statut === 'vendu') {
-        await deleteAutoEntry('recolte_arbre', recolteId, 'vente', userId, tx)
-      }
-      return updated
-    })
-
-    return NextResponse.json(recolte)
+    return NextResponse.json(await modifierVenteVerger('fruit', session!.user.id, session!.user.acteurId ?? session!.user.id, Number(id), await request.json()))
   } catch (err) {
-    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
-    if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
-    console.error("PATCH /api/arbres/recoltes/[id] error:", err)
-    return NextResponse.json(
-      { error: "Erreur lors de la mise à jour" },
-      { status: 500 }
-    )
+    if (err instanceof ErreurVerger || err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
+    if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
+    console.error('PATCH /api/arbres/recoltes/[id] error:', err)
+    return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 })
   }
 }
 

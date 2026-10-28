@@ -20,7 +20,7 @@ vi.mock("@/lib/prisma", () => ({
   default: {
     productionBois: { create: mocks.productionCreate, count: mocks.productionCount },
     arbre: { findFirst: mocks.arbreFindFirst },
-    parcelleGeo: { findUnique: mocks.parcelleFindUnique },
+    parcelleGeo: { findFirst: mocks.parcelleFindUnique },
   },
 }))
 

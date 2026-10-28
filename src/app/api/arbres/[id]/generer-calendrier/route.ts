@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { startOfDay, endOfDay } from 'date-fns'
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { findTreeCareProfile } from "@/lib/tree-care-calendar"
@@ -86,37 +87,70 @@ export async function POST(
     // calendrier) laissait dans « À faire » des gestes antérieurs à la mise en
     // terre (revue du 2026-10-25).
     const startOfYear = new Date(year, 0, 1)
-    const endOfYear = new Date(year, 11, 31, 23, 59, 59)
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
     const plantation = jourDePlantation(arbre.datePlantation)
 
-    await prisma.operationArbre.deleteMany({
-      where: {
-        arbreId,
-        userId: session!.user.id,
-        notes: "auto:calendrier",
-        // On ne supprime que les opérations non faites : les ops
-        // auto-générées déjà réalisées sont de l'historique à préserver.
-        fait: false,
-        // Une fenêtre soldée explicitement ne doit pas être ressuscitée par une
-        // régénération : l'utilisateur a acté qu'il ne la ferait pas cette année.
-        abandonneeLe: null,
-        OR: [
-          { datePrevue: { gte: startOfYear, lte: endOfYear } },
-          ...(plantation ? [{ datePrevue: { lt: plantation } }] : []),
-        ],
-      },
-    })
+    const restantes = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:calendrier:${session!.user.id}:${arbreId}`}))`
+      await tx.$queryRaw`SELECT id FROM operations_arbres WHERE arbre_id = ${arbreId} AND user_id = ${session!.user.id} AND notes = 'auto:calendrier' FOR UPDATE`
+      const soldes = await tx.operationArbre.findMany({ where: { arbreId, userId: session!.user.id, notes: 'auto:calendrier',
+        OR: [{ fait: true }, { abandonneeLe: { not: null } }] },
+        select: { type: true, description: true, date: true, fenetreDebut: true, dateLimite: true, datePrevue: true, saisonRecommandee: true } })
+      const dejaSoldes = new Set<(typeof operations)[number]>()
+      for (const solde of soldes) {
+        const prevue = solde.datePrevue ?? solde.date
+        const libelle = solde.description?.split(' — ')[0].trim()
+        const identifies = !solde.fenetreDebut && libelle ? operations.filter(op =>
+          op.type === solde.type && op.description.split(' — ')[0].trim() === libelle
+          && op.datePrevue.getFullYear() === prevue.getFullYear()
+        ) : []
+        const candidats = operations.filter(op => {
+          if (dejaSoldes.has(op)) return false
+          if (solde.type !== op.type) return false
+          if (solde.fenetreDebut && solde.dateLimite) return solde.fenetreDebut.getTime() === op.fenetreDebut.getTime() && solde.dateLimite.getTime() === op.dateLimite.getTime()
+          // L'ancien calendrier n'avait pas de fenêtres : son libellé et
+          // l'année du geste conservent l'identité même après un report.
+          if (identifies.length) return identifies.includes(op)
+          return (!solde.saisonRecommandee || solde.saisonRecommandee === op.saisonRecommandee) && startOfDay(prevue) >= startOfDay(op.fenetreDebut) && startOfDay(prevue) <= startOfDay(op.dateLimite)
+        })
+        // Une ancienne ligne sans fenêtres solde un seul geste. Le début de
+        // fenêtre le plus proche distingue par exemple les deux tailles d'été.
+        const candidat = candidats.sort((a, b) => b.fenetreDebut.getTime() - a.fenetreDebut.getTime())[0]
+        if (candidat) dejaSoldes.add(candidat)
+      }
+      const restantes = operations.filter(op => !dejaSoldes.has(op))
+      await tx.operationArbre.deleteMany({
+        where: {
+          arbreId,
+          userId: session!.user.id,
+          notes: "auto:calendrier",
+          // On ne supprime que les opérations non faites : les ops
+          // auto-générées déjà réalisées sont de l'historique à préserver.
+          fait: false,
+          // Une fenêtre soldée explicitement ne doit pas être ressuscitée par une
+          // régénération : l'utilisateur a acté qu'il ne la ferait pas cette année.
+          abandonneeLe: null,
+          OR: [
+            { fenetreDebut: { gte: startOfYear, lte: endOfYear } },
+            // Une récolte de janvier peut appartenir à l'hiver commencé
+            // l'année précédente. Les anciennes lignes sans fenêtre sont
+            // remplacées seulement dans les fenêtres de l'année générée.
+            ...operations.map(op => ({
+              type: op.type, fenetreDebut: null,
+              datePrevue: { gte: startOfDay(op.fenetreDebut), lte: endOfDay(op.dateLimite) },
+            })),
+            ...(plantation ? [{ datePrevue: { lt: plantation } }] : []),
+          ],
+        },
+      })
 
-    if (operations.length > 0) {
-      await prisma.operationArbre.createMany({ data: operations })
-    }
+      if (restantes.length > 0) {
+        await tx.operationArbre.createMany({ data: restantes })
+      }
 
-    return NextResponse.json({
-      count: operations.length,
-      espece: profile.espece,
-      year,
-      operations,
+      return restantes
     })
+    return NextResponse.json({ count: restantes.length, espece: profile.espece, year, operations: restantes })
   } catch (err) {
     console.error("POST /api/arbres/[id]/generer-calendrier error:", err)
     return NextResponse.json(

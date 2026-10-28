@@ -1,3 +1,4 @@
+vi.mock("@/lib/stocks/verrou-commercial", () => ({ verrouillerStockCommercial: vi.fn(async () => undefined) }))
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -21,11 +22,16 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => {
-  const tx = { $executeRaw: vi.fn(), productionBois: { update: mocks.productionUpdate } }
+  const tx = {
+    $executeRaw: vi.fn(), $queryRaw: vi.fn(async () => []),
+    productionBois: { findUnique: mocks.productionFindUnique, update: mocks.productionUpdate },
+    client: { findFirst: mocks.clientFindFirst },
+    venteManuelle: { findFirst: vi.fn(async () => null) },
+    facture: { findFirst: vi.fn(async () => ({ id: 9, numero: 'F-2026-0009', statut: 'emise' })) },
+  }
   return {
     default: {
-      productionBois: { findUnique: mocks.productionFindUnique, update: mocks.productionUpdate },
-      client: { findFirst: mocks.clientFindFirst },
+      ...tx,
       $transaction: (callback: (client: typeof tx) => unknown) => callback(tx),
     },
   }

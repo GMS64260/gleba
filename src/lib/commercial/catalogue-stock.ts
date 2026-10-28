@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { chargerAvertissementsDarFruits } from '@/lib/verger/dar'
 import { dateIsoFacture } from '@/lib/facture-regles'
 import { chargerPrixVentesMoyens, prixProposeDeVente, valoriserLot } from '@/lib/recolte/valorisation'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
@@ -32,10 +33,11 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
     const prix = prixProposeDeVente(valoriserLot({ acteurId: userId, especeId: r.especeId, unite: r.unite, quantite: dispo, prixLot: r.prixKg, espece: r.espece }, prixRecoltes))
     articles.push({ type: 'recolte', id: String(r.id), nom: `${r.espece.nom || r.especeId}${r.culture.variete?.nom ? ` · ${r.culture.variete.nom}` : ''}`, categorie: 'Récoltes maraîchères', disponible: dispo, unite: r.unite || 'kg', prixTTC: prix, tauxTVA: 5.5, statutBio: r.statutBioSnapshot, dateLot: dateIsoFacture(r.date), href: '/maraichage/recoltes' })
   }
+  const avertissementsFruits = await chargerAvertissementsDarFruits(db, userId, fruits)
   for (const r of fruits) {
     const dispo = disponibleCommercial(r)
     if (dispo <= 0 || !frais(r.datePeremption)) continue
-    articles.push({ type: 'fruit', id: String(r.id), nom: `${r.arbre.espece || 'Fruits'} · ${r.arbre.nom || `Arbre ${r.arbreId}`}`, categorie: 'Récoltes du verger', disponible: dispo, unite: 'kg', prixTTC: r.prixKg, tauxTVA: 5.5, statutBio: r.statutBioSnapshot, dateLot: dateIsoFacture(r.date), href: `/verger/${r.arbreId}` })
+    articles.push({ type: 'fruit', id: String(r.id), nom: `${r.arbre.espece || 'Fruits'} · ${r.arbre.nom || `Arbre ${r.arbreId}`}`, categorie: 'Récoltes du verger', disponible: dispo, unite: 'kg', prixTTC: r.prixKg, tauxTVA: 5.5, statutBio: r.statutBioSnapshot, dateLot: dateIsoFacture(r.date), href: `/verger/${r.arbreId}`, avertissements: avertissementsFruits.get(r.id) })
   }
   for (const b of bois) {
     const q = quantiteBois(b); const dispo = b.stockDisponibleCommercial ?? q.quantite

@@ -19,6 +19,7 @@ export interface ArticleStockCommercial {
   statutBio: string | null
   href: string
   dateLot?: string
+  avertissements?: string[]
 }
 export function cleArticle(a: Pick<ArticleStockCommercial, 'type' | 'id'>) { return `${a.type}:${a.id}` }
 export function disponibleCommercial(lot: { quantite: number; stockDisponibleCommercial?: number | null }) {

@@ -29,7 +29,7 @@ export function ChoisirStock({ onChoisir, preselection }: { onChoisir: (a: Artic
       .then((liste) => {
         setArticles(liste)
         const a = liste.find((a) => cleArticle(a) === preselection)
-        if (a && !preselectionFaite.current) { preselectionFaite.current = true; callback.current(a) }
+        if (a && !preselectionFaite.current) { preselectionFaite.current = true; setChoix(cleArticle(a)); callback.current(a) }
       })
       .catch((e) => { if (!controller.signal.aborted) setErreur(e.message) })
       .finally(() => { if (!controller.signal.aborted) setCharge(false) })
@@ -48,6 +48,7 @@ export function ChoisirStock({ onChoisir, preselection }: { onChoisir: (a: Artic
     </div>
     <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={!selection || charge} onClick={() => { if (selection) onChoisir(selection) }}>Ajouter ce produit</Button><Button type="button" variant="ghost" disabled={charge} onClick={() => setVersion((v) => v + 1)}>Actualiser les stocks</Button></div>
     <p className="text-xs text-muted-foreground">La désignation, l’unité et le prix connu sont repris. Ajustez la quantité et le prix HT avant d’enregistrer.</p>
+    {selection?.avertissements?.map((message) => <p key={message} role="alert" className="text-sm text-amber-800">{message}</p>)}
     {erreur && <p role="alert" className="text-sm text-red-700">{erreur}</p>}
   </div>
 }

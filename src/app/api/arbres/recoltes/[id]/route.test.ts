@@ -1,3 +1,4 @@
+vi.mock("@/lib/stocks/verrou-commercial", () => ({ verrouillerStockCommercial: vi.fn(async () => undefined) }))
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
@@ -20,6 +21,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
+    $transaction: async (fn: (tx: unknown) => unknown) => { const { default: db } = await import("@/lib/prisma"); return fn(db) },
+    $executeRaw: vi.fn(),
+    $queryRaw: vi.fn(),
     recolteArbre: {
       findUnique: mocks.recolteFindUnique,
       update: mocks.recolteUpdate,
@@ -33,6 +37,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/auto-compta", () => ({ createVenteFromRecolteArbre: vi.fn(), deleteAutoEntry: vi.fn() }))
 vi.mock("@/lib/facture-utils", () => ({ creerFacture: vi.fn(), annulerFactureLiee: vi.fn() }))
 
+vi.mock("@/lib/verger/dar", () => ({ avertissementsDarFruit: vi.fn(async () => []) }))
 import { PUT } from "./route"
 
 const RECOLTE = {
@@ -62,9 +67,10 @@ describe("PUT /api/arbres/recoltes/[id] — changement d'arbre", () => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
     mocks.recolteFindUnique.mockResolvedValue(RECOLTE)
-    mocks.recolteUpdate.mockImplementation(async ({ data }) => ({ ...RECOLTE, ...data }))
+    mocks.recolteUpdate.mockImplementation(async ({ data }) => ({ ...RECOLTE, ...Object.fromEntries(Object.entries(data).filter(([,v]) => v !== undefined)) }))
     mocks.recolteCount.mockResolvedValue(0)
     mocks.parcelleFindUnique.mockResolvedValue({ nom: "Verger" })
+    mocks.parcelleFindFirst.mockResolvedValue({ id: "parc-1", nom: "Verger" })
   })
 
   it("enregistre le nouvel arbre, vérifié dans le compte", async () => {

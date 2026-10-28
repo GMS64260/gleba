@@ -17,6 +17,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { montantVenteFruit, periodeVenteVerger } from '@/lib/verger/montant-vente'
 import { collecteTvaFrancaise } from '@/lib/territoires'
 
 export interface TvaParTaux {
@@ -137,11 +138,11 @@ export async function computeTvaPeriode(
       select: { prixTotal: true, prixKg: true, quantite: true },
     }),
     prisma.recolteArbre.findMany({
-      where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, prixKg: { not: null }, factureId: null },
-      select: { quantite: true, prixKg: true },
+      where: { userId, statut: 'vendu', ...periodeVenteVerger(startDate, endDate), factureId: null },
+      select: { quantite: true, prixKg: true, prixTotal: true },
     }),
     prisma.productionBois.findMany({
-      where: { userId, dateVente: { gte: startDate, lte: endDate }, prixVente: { not: null }, factureId: null },
+      where: { userId, statut: 'vendu', ...periodeVenteVerger(startDate, endDate), prixVente: { not: null }, factureId: null },
       select: { prixVente: true },
     }),
     prisma.abattage.findMany({
@@ -237,7 +238,7 @@ export async function computeTvaPeriode(
     }
   }
   for (const r of recoltesArbres) {
-    const ttc = r.quantite * (r.prixKg || 0)
+    const ttc = montantVenteFruit(r)
     if (ttc > 0) {
       const ht = ttc / 1.055
       addC('5.5', ht, ttc - ht)

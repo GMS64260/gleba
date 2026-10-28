@@ -31,6 +31,7 @@ export const MIROIR_VENTE_PAR_SOURCE: Record<string, string> = {
 
 export interface EcritureDeLigne {
   id: number
+  paye?: boolean
   suivi: Record<ChampSuiviSaisiVente, string | null>
 }
 
@@ -79,10 +80,10 @@ export async function chargerSuiviDesSources(
 
   const miroirs = await prisma.venteManuelle.findMany({
     where: { userId, auto: true, OR: cles },
-    select: { id: true, sourceType: true, sourceId: true, ...SELECT_SUIVI },
+    select: { id: true, sourceType: true, sourceId: true, paye: true, ...SELECT_SUIVI },
   })
   for (const m of miroirs) {
-    const ecriture = { id: m.id, suivi: suiviDe(m) }
+    const ecriture = { id: m.id, paye: m.paye, suivi: suiviDe(m) }
     resultat.parId.set(m.id, ecriture)
     if (m.sourceType && m.sourceId != null) resultat.parSource.set(cleSource(m.sourceType, m.sourceId), ecriture)
   }
