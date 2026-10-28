@@ -13,6 +13,7 @@
  */
 
 import cron from "node-cron"
+import { agregerEtPurgerMesures } from "@/lib/capteurs/agregats"
 import { estHeureResume, getMeteoCronExpression, getMeteoIntervalMinutes, getResumeCronExpression } from "./config"
 import {
   envoyerAlertesMeteoTempsReel,
@@ -99,6 +100,19 @@ export async function initNotifScheduler(): Promise<void> {
           }
         })
         .catch((error) => console.error("[cache] Purge de generic_cache en échec:", error))
+    })
+
+    // Capteurs connectés (2026-10-23) : agrégats de tous les jours
+    // disponibles du lieu, puis purge du brut au-delà de la rétention. Minute décalée
+    // de la purge du cache.
+    cron.schedule("47 3 * * *", () => {
+      agregerEtPurgerMesures()
+        .then(({ agregats, purgees }) => {
+          if (agregats > 0 || purgees > 0) {
+            console.log(`[capteurs] ${agregats} agrégat(s) journalier(s) recalculé(s), ${purgees} mesure(s) brute(s) purgée(s)`)
+          }
+        })
+        .catch((error) => console.error("[capteurs] Agrégation ou purge des mesures en échec:", error))
     })
 
     // Vérification chaque minute pour appliquer immédiatement les réglages

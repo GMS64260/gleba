@@ -138,9 +138,10 @@ interface ModelMeta {
   /** propriété du client Prisma (ex. "ITP" → "iTP", "Culture" → "culture") */
   delegate: string
   pkField: string | null
-  pkIsInt: boolean
+  pkIsInteger: boolean
+  pkType: string
   /** champs scalaires à copier (hors PK entière, hors champs relationnels) */
-  scalarFields: { name: string; type: string }[]
+  scalarFields: { name: string; type: string; isList: boolean }[]
   /** clés étrangères (champ scalaire → modèle cible) */
   rels: RelMeta[]
   hasUserId: boolean
@@ -175,11 +176,11 @@ function buildManifest(): Map<string, ModelMeta> {
     const hasCompositePk = !!m.primaryKey && (m.primaryKey.fields?.length ?? 0) > 0
     const hasUserId = m.fields.some((f) => f.name === "userId" && f.kind === "scalar")
 
-    // Champs scalaires (hors relations et listes), avec indicateur de nullité
-    const scalarFieldNames = new Map<string, { type: string; required: boolean }>()
+    // Les listes scalaires font aussi partie des réglages à restaurer.
+    const scalarFieldNames = new Map<string, { type: string; required: boolean; isList: boolean }>()
     for (const f of m.fields) {
-      if (f.kind === "scalar" && !f.isList) {
-        scalarFieldNames.set(f.name, { type: f.type, required: f.isRequired })
+      if (f.kind === "scalar") {
+        scalarFieldNames.set(f.name, { type: f.type, required: f.isRequired, isList: f.isList })
       }
     }
 
@@ -209,16 +210,17 @@ function buildManifest(): Map<string, ModelMeta> {
     // Champs scalaires à copier : on exclut la PK entière (autoincrement) pour
     // laisser la base régénérer ; on garde la PK string (préservée).
     const pkField = idField?.name ?? null
-    const pkIsInt = idField?.type === "Int"
+    const pkIsInteger = idField?.type === "Int" || idField?.type === "BigInt"
     const scalarFields = [...scalarFieldNames.entries()]
-      .filter(([name]) => !(pkIsInt && name === pkField))
-      .map(([name, meta]) => ({ name, type: meta.type }))
+      .filter(([name]) => !(pkIsInteger && name === pkField))
+      .map(([name, meta]) => ({ name, type: meta.type, isList: meta.isList }))
 
     manifest.set(m.name, {
       name: m.name,
       delegate: delegateName(m.name),
       pkField,
-      pkIsInt,
+      pkIsInteger,
+      pkType: idField?.type ?? "String",
       scalarFields,
       rels,
       hasUserId,
@@ -319,7 +321,18 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
       )
       if (waitingOnChild) continue
 
-      const allRows = await delegue(prisma, meta.delegate).findMany()
+      const parents = (model: string) => [...(ownedIds.get(model) ?? childExportedIds.get(model) ?? [])]
+      // Filtrer en base : les mesures peuvent être nombreuses. Ne jamais
+      // charger celles de toutes les exploitations avant de trier en mémoire.
+      const allRows = ownerRels.length ? await delegue(prisma, meta.delegate).findMany({
+        where: {
+          AND: ownerRels.map((r) => ({ OR: [
+            { [r.fkField]: { in: parents(r.targetModel) } },
+            ...(r.nullable ? [{ [r.fkField]: null }] : []),
+          ] })),
+          OR: ownerRels.map((r) => ({ [r.fkField]: { in: parents(r.targetModel) } })),
+        },
+      }) : []
       const kept = allRows.filter((row) => {
         // garder la ligne si, pour chaque FK propriétaire non nulle, l'id
         // référencé fait partie des données exportées de l'utilisateur
@@ -360,6 +373,15 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
       data[meta.name] = []
       stats[meta.name] = 0
     }
+  }
+
+  // JSON n'a pas d'entier 64 bits : une chaîne décimale conserve la précision
+  // des BigInt (PK et FK), sans modifier les identifiants utilisés ci-dessus
+  // pour sélectionner les enfants. L'import les relit selon le DMMF.
+  for (const [model, rows] of Object.entries(data)) {
+    data[model] = rows.map((row) => Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [key, typeof value === "bigint" ? value.toString() : value]),
+    ))
   }
 
   return {
@@ -437,7 +459,12 @@ function coerceValue(value: unknown, type: string): unknown {
   if (type === "DateTime") {
     return value instanceof Date ? value : new Date(value as string)
   }
-  if (type === 'BigInt') return BigInt(String(value))
+  if (type === "BigInt") {
+    if (typeof value === "bigint") return value
+    if (typeof value === "string" && /^-?\d+$/.test(value)) return BigInt(value)
+    if (typeof value === "number" && Number.isSafeInteger(value)) return BigInt(value)
+    throw new Error("Entier BigInt invalide ou sans précision suffisante dans la sauvegarde")
+  }
   return value
 }
 
@@ -521,7 +548,7 @@ export async function importAccount(
       const map = ensureMap(meta.name)
       let count = 0
       for (const row of rows) {
-        const pk = row[meta.pkField]
+        const pk = coerceValue(row[meta.pkField], meta.pkType)
         if (pk === null || pk === undefined) continue
         const createData = buildScalarData(meta, row)
         const updateData = { ...createData }
@@ -564,12 +591,12 @@ export async function importAccount(
       let skip = 0
 
       for (const row of rows) {
-        const oldPk = row[meta.pkField]
+        const oldPk = coerceValue(row[meta.pkField], meta.pkType)
         const createData = buildScalarData(meta, row)
         if (meta.name === 'ConnexionStripe') Object.assign(createData, { jetonChiffre: '', actif: false, verrouSynchroJusqua: null })
         if (meta.name === 'CibleReglement') createData.cle = 'transfert:' + String(row.id)
         // PK : on retire l'entière (autoincrement) ; on garde la string (cuid).
-        if (meta.pkIsInt) {
+        if (meta.pkIsInteger) {
           delete createData[meta.pkField]
         }
 
@@ -680,7 +707,8 @@ export async function importAccount(
     }
     for (const reference of referencesStock) {
       const cible = MODELES_STOCK_COMMERCIAL[reference.type]
-      const sourceId = manifest.get(cible)?.pkIsInt ? Number(reference.oldId) : reference.oldId
+      const typeSource = manifest.get(cible)?.pkType
+      const sourceId = typeSource === "Int" ? Number(reference.oldId) : coerceValue(reference.oldId, typeSource ?? "String")
       const nouveau = idMap.get(cible)?.get(sourceId)
       if (nouveau !== undefined) await delegue(tx, reference.delegate).update({ where: { [reference.pkField]: reference.newPk }, data: { articleStockType: reference.type, articleStockId: String(nouveau) } })
     }
@@ -747,7 +775,10 @@ function buildScalarData(meta: ModelMeta, row: Row): Row {
   const out: Row = {}
   for (const f of meta.scalarFields) {
     if (!(f.name in row)) continue
-    out[f.name] = coerceValue(row[f.name], f.type)
+    const value = row[f.name]
+    out[f.name] = f.isList && Array.isArray(value)
+      ? value.map((v) => coerceValue(v, f.type))
+      : coerceValue(value, f.type)
   }
   return out
 }

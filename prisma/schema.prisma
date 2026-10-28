@@ -208,6 +208,8 @@ model User {
 
   // Relations module météo
   stationsMeteo StationMeteo[]
+  connecteursCapteurs ConnecteurCapteurs[]
+  capteurs            Capteur[]
 
   // Logs de connexion
   loginLogs LoginLog[]
@@ -1208,6 +1210,8 @@ model Planche {
   fertilisations Fertilisation[]
   analyses       AnalyseSol[]
 
+
+  capteurs Capteur[]
   @@unique([nom, userId])
   @@index([userId])
   @@index([userId, ilot])
@@ -1301,6 +1305,8 @@ model ParcelleGeo {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+
+  capteurs Capteur[]
   @@index([userId])
   @@map("parcelles_geo")
 }
@@ -1586,6 +1592,8 @@ model ObjetJardin {
   notes         String?      @map("notes")
   createdAt     DateTime     @default(now()) @map("created_at")
 
+
+  capteurs Capteur[]
   @@index([userId])
   @@map("objets_jardin")
 }
@@ -1664,6 +1672,8 @@ model Arbre {
   pollinisateurDe      PollinisationArbre[] @relation("ArbrePollinisateur")
   observationsSante    ObservationSante[]
 
+
+  capteurs Capteur[]
   @@index([userId])
   @@index([type])
   @@index([especeId])
@@ -2338,6 +2348,8 @@ model Animal {
   ficheNaissance              PetitNaissance?                  @relation("PetitFiche")
   statutsSanitairesStructures StatutSanitaireElevage[]
 
+
+  capteurs Capteur[]
   @@index([userId])
   @@index([especeAnimaleId])
   @@index([statut])
@@ -2387,6 +2399,8 @@ model LotAnimaux {
   naissances                  NaissanceAnimale[]       @relation("LotNaissances")
   statutsSanitairesStructures StatutSanitaireElevage[]
 
+
+  capteurs Capteur[]
   @@index([userId])
   @@index([especeAnimaleId])
   @@index([statut])
@@ -4138,6 +4152,134 @@ model StationMeteo {
 
   @@index([userId])
   @@map("stations_meteo")
+}
+
+// ============================================================
+// CAPTEURS CONNECTÉS (LoRaWAN, Meshtastic, JSON générique)
+// Plan : vault Projets/gleba/Gleba-capteurs-LoRa.md (2026-10-23)
+// ============================================================
+
+/// Source d'envoi de mesures : serveur de réseau LoRaWAN (TTN, ChirpStack),
+/// pont Meshtastic ou script. Une seule porte d'entrée,
+/// POST /api/capteurs/ingestion, authentifiée par le jeton du connecteur :
+/// montré une seule fois, stocké haché (SHA-256), jamais en clair.
+model ConnecteurCapteurs {
+  id                 String    @id @default(cuid())
+  /// Tenant (propriétaire de l'exploitation), comme toutes les tables métier.
+  userId             String    @map("user_id")
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom                String    @map("nom")
+  /// Format attendu des envois (src/lib/capteurs/connecteurs.ts) : ttn, chirpstack, generique.
+  type               String    @map("type")
+  jetonHash          String    @unique @map("jeton_hash")
+  /// Début du jeton, pour le reconnaître à l'écran (« glc_3f9a1c02… »).
+  jetonPrefixe       String    @map("jeton_prefixe")
+  /// Fuseau IANA du lieu : les agrégats journaliers sont comptés en jours du lieu.
+  fuseau             String    @default("Europe/Paris") @map("fuseau")
+  actif              Boolean   @default(true) @map("actif")
+  derniereReceptionA DateTime? @map("derniere_reception_a")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  capteurs Capteur[]
+
+  @@index([userId])
+  @@map("connecteurs_capteurs")
+}
+
+/// Capteur vu par un connecteur. Créé « à rattacher » à sa première mesure,
+/// identifié par son identifiant externe normalisé (DevEUI, nœud Meshtastic),
+/// jamais par son nom. Rattaché au plus à UNE cible, par id.
+model Capteur {
+  id                 String             @id @default(cuid())
+  userId             String             @map("user_id")
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connecteurId       String             @map("connecteur_id")
+  connecteur         ConnecteurCapteurs @relation(fields: [connecteurId], references: [id], onDelete: Cascade)
+  identifiantExterne String             @map("identifiant_externe")
+  nom                String?            @map("nom")
+  /// Profil de décodage, par id `marque/modèle` (« dragino/lht65n »,
+  /// src/lib/capteurs/decodage.ts) : annoncé par TTN à la création, sinon
+  /// choisi à l'écran ; jamais tiré d'un libellé.
+  modele             String?            @map("modele")
+  plancheId          String?            @map("planche_id")
+  planche            Planche?           @relation(fields: [plancheId], references: [id], onDelete: SetNull)
+  parcelleGeoId      String?            @map("parcelle_geo_id")
+  parcelleGeo        ParcelleGeo?       @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
+  arbreId            Int?               @map("arbre_id")
+  arbre              Arbre?             @relation(fields: [arbreId], references: [id], onDelete: SetNull)
+  lotAnimauxId       Int?               @map("lot_animaux_id")
+  lotAnimaux         LotAnimaux?        @relation(fields: [lotAnimauxId], references: [id], onDelete: SetNull)
+  animalId           Int?               @map("animal_id")
+  animal             Animal?            @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  objetJardinId      Int?               @map("objet_jardin_id")
+  objetJardin        ObjetJardin?       @relation(fields: [objetJardinId], references: [id], onDelete: SetNull)
+  /// Surcharges saisies par l'utilisateur : { "clé reçue": "grandeur" | null }.
+  /// Priment sur le profil du modèle et sur le dictionnaire commun.
+  correspondances    Json?              @map("correspondances")
+  /// Clés numériques reçues qu'aucune règle ne reconnaît : affichées pour
+  /// être rattachées à la main, jamais devinées.
+  clesInconnues      String[]           @default([]) @map("cles_inconnues")
+  /// Toutes les clés numériques déjà reçues : l'écran montre la règle de
+  /// chacune et permet de la corriger (64 au plus).
+  clesRecues         String[]           @default([]) @map("cles_recues")
+  /// Dernier avertissement de réception (trame non décodée, uplink simulé…),
+  /// effacé par la première trame qui produit des mesures.
+  avertissement      String?            @map("avertissement")
+  /// Dernières valeurs refusées (hors bornes, date impossible) : [{ cle, valeur, raison, a }].
+  refus              Json?              @map("refus")
+  lat                Float?             @map("lat")
+  lng                Float?             @map("lng")
+  derniereVueA       DateTime?          @map("derniere_vue_a")
+  batterie           Float?             @map("batterie") // %
+  rssi               Float?             @map("rssi") // dBm, meilleure passerelle de la dernière trame
+  snr                Float?             @map("snr") // dB
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  mesures      MesureCapteur[]
+  mesuresJours MesureCapteurJour[]
+
+  @@unique([connecteurId, identifiantExterne])
+  @@index([userId])
+  @@map("capteurs")
+}
+
+/// Mesure brute, en unité canonique de sa grandeur (src/lib/capteurs/grandeurs.ts).
+/// Purgée après la durée de rétention ; les agrégats journaliers restent.
+/// Rejouer une trame déjà reçue ne crée pas de doublon (clé unique).
+model MesureCapteur {
+  id        BigInt   @id @default(autoincrement())
+  capteurId String   @map("capteur_id")
+  capteur   Capteur  @relation(fields: [capteurId], references: [id], onDelete: Cascade)
+  grandeur  String   @map("grandeur")
+  valeur    Float    @map("valeur")
+  unite     String   @map("unite")
+  mesureeA  DateTime @map("mesuree_a")
+  recueA    DateTime @default(now()) @map("recue_a")
+
+  @@unique([capteurId, grandeur, mesureeA])
+  @@index([mesureeA])
+  @@map("mesures_capteurs")
+}
+
+/// Agrégat d'un jour civil DU LIEU (fuseau du connecteur), recalculé la nuit
+/// sur tout le brut disponible, avant purge de journées complètes. Pas de somme : une pluie « sur 1 h » glissante
+/// ne s'additionne pas, le cumul de pluie se calculera grandeur par grandeur.
+model MesureCapteurJour {
+  id        Int      @id @default(autoincrement())
+  capteurId String   @map("capteur_id")
+  capteur   Capteur  @relation(fields: [capteurId], references: [id], onDelete: Cascade)
+  grandeur  String   @map("grandeur")
+  jour      DateTime @map("jour") @db.Date
+  min       Float    @map("min")
+  max       Float    @map("max")
+  moyenne   Float    @map("moyenne")
+  nombre    Int      @map("nombre")
+  unite     String   @map("unite")
+
+  @@unique([capteurId, grandeur, jour])
+  @@map("mesures_capteurs_jours")
 }
 
 // ============================================================

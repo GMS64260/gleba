@@ -29,6 +29,7 @@ export const MESSAGES_REFUS_DEMO = {
   exploitation: `${PARTAGE} : l'identité de son exploitation (nom, SIRET, coordonnées) est figée, elle s'imprime sur les factures de démonstration. Créez un compte gratuit pour renseigner la vôtre.`,
   inviterMembre: `${PARTAGE} : il ne peut pas inviter de membres, un courriel partirait au nom de la ferme de démonstration. Créez un compte gratuit pour inviter votre équipe.`,
   jetonApi: `${PARTAGE} : son jeton d'accès (MCP) ne se génère ni ne se révoque, il est commun à tous les visiteurs. Créez un compte gratuit pour obtenir le vôtre.`,
+  connecteurCapteurs: `${PARTAGE} : on ne peut pas y brancher de capteurs, leurs mesures s'afficheraient chez tous les visiteurs. Créez un compte gratuit pour connecter les vôtres.`,
   /** Encadré de la « Zone de danger » de l'écran Paramètres (vider + supprimer). */
   zoneDanger: `${PARTAGE} : ses données ne peuvent pas être vidées ni le compte supprimé. Créez un compte gratuit pour essayer ces actions sur votre propre ferme.`,
   /** Onglet « Salon » de la page Communauté : ni lecture ni écriture. */
