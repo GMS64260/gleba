@@ -17,7 +17,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { clientDesigneParNom, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
 import { noteLibreDeFacture } from '@/lib/facture-structuree'
 import { cleFacture } from '@/lib/comptabilite/cle-reglement'
-import { suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
+import { suiviReglementActif, suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
 import { enCentimes } from '@/lib/comptabilite/monnaie'
 
 async function nombreVentesLiees(db: Pick<Prisma.TransactionClient, 'facture' | 'recolte'>, userId: string, id: number) {
@@ -31,7 +31,8 @@ async function nombreVentesLiees(db: Pick<Prisma.TransactionClient, 'facture' | 
 }
 
 async function verifierAnnulationFacture(db: Prisma.TransactionClient, userId: string, facture: { id: number; statut: string }) {
-  const reglements = await suiviReglementParCle(db, userId, cleFacture(facture.id))
+  // Un dossier dont tous les versements sont annulés ne bloque plus l'annulation.
+  const reglements = await suiviReglementActif(db, userId, cleFacture(facture.id))
   if (reglements) throw new ErreurCommerciale('Cette facture a des règlements. Régularisez son journal avant de l’annuler.')
   if (facture.statut === 'payee') throw new ErreurCommerciale('Conservez cette facture payée et émettez un avoir pour la régulariser.')
   if (await montantAvoirsEmis(db, userId, facture.id) > 0) throw new ErreurCommerciale('Cette facture est déjà corrigée par un avoir émis. Conservez la facture et ses avoirs pour préserver leur revenu net.')
@@ -333,7 +334,9 @@ export async function PATCH(request: NextRequest) {
       const TRANSITIONS: Record<string, string[]> = {
         brouillon: ['emise', 'payee'], // payee direct passe par le circuit d'émission
         emise: ['payee', 'annulee'],
-        payee: ['emise', 'annulee'], // emise = correction de pointage ; annulation vérifiée sous verrou
+        // emise = correction de pointage. Une facture payée ne s'annule jamais
+        // (verifierAnnulationFacture) : elle se régularise par un avoir.
+        payee: ['emise'],
         annulee: [],
       }
       const autorisees = TRANSITIONS[existing.statut] ?? []

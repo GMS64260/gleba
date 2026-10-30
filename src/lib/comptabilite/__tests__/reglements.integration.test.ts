@@ -501,7 +501,10 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
         (n, l) => n + Number(l.Debit.replace(',', '.')) - Number(l.Credit.replace(',', '.')),
         0,
       )
-    expect(banqueNette).toBe(100)
+    // Revue du 2026-10-29 : sans encaissement rapproché sur ce compte Stripe,
+    // son versement reste hors FEC ; le règlement et son annulation s'annulent.
+    expect(journal.mouvementsInternes).toHaveLength(0)
+    expect(banqueNette).toBe(0)
     expect(await db.reglement.count({ where: { userId: identite.id } })).toBe(1)
   })
   it('évalue les liaisons d’un virement à la clôture même après une annulation l’année suivante', async () => {
@@ -663,9 +666,42 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
       ).status,
     ).toBe(409)
     expect(await db.reglement.count({ where: { userId: identite.id } })).toBe(0)
-    const fec = await (
+    // Revue du 2026-10-29 : le versement n'entre au FEC que si les encaissements
+    // de ce compte Stripe passent eux-mêmes par 511500.
+    const encaissement = await db.operationBancaire.create({
+      data: {
+        userId: identite.id,
+        compteId: stripe.id,
+        referenceExterne: 'txn_qa_encaissement',
+        libelle: 'Encaissement fictif',
+        date: new Date('2026-10-26'),
+        montantCentimes: BigInt(9700),
+        brutCentimes: BigInt(9700),
+        famille: 'charge',
+      },
+    })
+    const chargerFec = (
       await import('@/lib/comptabilite/banque/fec-reglements')
-    ).chargerFecReglements(identite.id, new Date('2026-01-01'), new Date('2026-12-31'))
+    ).chargerFecReglements
+    expect(
+      (await chargerFec(identite.id, new Date('2026-01-01'), new Date('2026-12-31')))
+        .mouvementsInternes,
+    ).toHaveLength(0)
+    await json(
+      await banque.POST(
+        req('/api/comptabilite/banque', {
+          action: 'rapprocher',
+          rapprochement: {
+            operationId: encaissement.id,
+            cible: { type: 'Facture', id: f.id },
+            montant: '97',
+            modeReglement: 'CB',
+            cleIdempotence: randomUUID(),
+          },
+        }),
+      ),
+    )
+    const fec = await chargerFec(identite.id, new Date('2026-01-01'), new Date('2026-12-31'))
     expect(fec.mouvementsInternes).toHaveLength(2)
     expect(fec.mouvementsInternes.map((m) => m.compteTresorerie.num).sort()).toEqual([
       '511500',

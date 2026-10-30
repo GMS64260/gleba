@@ -40,6 +40,12 @@ describe('Transactions et périmètre comptable commun',()=>{
   expect(j.data[0]).toMatchObject({client:'Client boutique fictif',montant:30,categorie:'Épicerie'})
   expect(mocks.commandes).toHaveBeenCalledWith({where:{userId:'qa',id:{in:[11]}},select:{id:true,clientNom:true}})
  })
+ it('lit l’exercice en cours jusqu’au 31/12 comme les dépenses : une vente datée de demain reste visible',async()=>{
+  const annee=new Date().getFullYear(),fin=new Date(annee,11,31,23,59,59,999)
+  await GET(new NextRequest('http://localhost/api/comptabilite/revenus'))
+  expect(mocks.ventes.mock.calls[0][0].where.date.lte).toEqual(fin)
+  expect(mocks.factures.mock.calls[0][0].where.date.lte).toEqual(fin)
+ })
  it('scope toutes les lectures au propriétaire et refuse une année invalide',async()=>{
   await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=2026'))
   expect(mocks.ventes.mock.calls.every(([q])=>q.where.userId==='qa')).toBe(true)

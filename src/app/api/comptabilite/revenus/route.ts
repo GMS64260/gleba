@@ -40,7 +40,9 @@ export async function GET(request: NextRequest) {
     if (!Number.isInteger(year) || year < 1900 || year > 9999) return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
     const userId = session.user.id
     const debut = new Date(year, 0, 1)
-    const fin = year === maintenant.getFullYear() ? maintenant : new Date(year, 11, 31, 23, 59, 59, 999)
+    // Exercice entier, comme Transactions > Dépenses : borner l'année en cours à
+    // « maintenant » faisait disparaître une vente datée de demain (revue du 2026-10-29).
+    const fin = new Date(year, 11, 31, 23, 59, 59, 999)
     const [ventes, factures] = await Promise.all([
       prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debut, fin), orderBy: { date: 'desc' } }),
       chargerFacturesRevenus(userId, debut, fin),

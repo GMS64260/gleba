@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   creerFacture: vi.fn(),
   clientFindMany: vi.fn(),
   clientFindFirst: vi.fn(),
+  dossierFacture: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -36,7 +37,7 @@ vi.mock('@/lib/prisma', () => ({
         mouvementStockCommercial: { count: async () => 0 },
         recolte: { count: async () => 0 },
         facture: { findUnique: async () => null, update: mocks.txFactureUpdate, findFirstOrThrow: async () => ({ ...(await mocks.factureFindFirst()), lignes: [] }) },
-        $queryRaw: async () => [{ id: 5 }],
+        $queryRaw: async (sql: TemplateStringsArray) => sql.join('?').includes('cibles_reglement') ? mocks.dossierFacture() : [{ id: 5 }],
         $executeRaw: async () => 0,
         venteProduit: { updateMany: mocks.txVenteProduitUpdateMany },
       }),
@@ -59,6 +60,7 @@ describe('PATCH /api/comptabilite/factures — propagation paiement', () => {
     mocks.factureFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', statut: 'emise', type: 'facture' })
     mocks.txFactureUpdate.mockResolvedValue({ id: 5, statut: 'payee', lignes: [], client: null })
     mocks.txVenteProduitUpdateMany.mockResolvedValue({ count: 1 })
+    mocks.dossierFacture.mockResolvedValue([])
   })
 
   it('propage paye=true aux VenteProduit liées quand la facture passe à payee', async () => {
@@ -104,6 +106,26 @@ describe('PATCH /api/comptabilite/factures — propagation paiement', () => {
     mocks.factureFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', statut: 'annulee', type: 'facture' })
     expect((await PATCH(request({ id: 5, categorieOperation: 'biens' }))).status).toBe(409)
     expect(mocks.txFactureUpdate).not.toHaveBeenCalled()
+  })
+
+  it('ne propose plus l’annulation d’une facture payée, toujours refusée : elle se régularise par un avoir', async () => {
+    mocks.factureFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', statut: 'payee', type: 'facture' })
+
+    const res = await PATCH(request({ id: 5, statut: 'annulee' }))
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).details).toBe('Transitions possibles : emise')
+    expect(mocks.txFactureUpdate).not.toHaveBeenCalled()
+  })
+
+  it('annule une facture émise dont l’unique versement a été annulé, pas une facture qui en porte un', async () => {
+    mocks.dossierFacture.mockResolvedValue([{ dossier_id: 'dossier-qa', regle: BigInt(0), actifs: BigInt(1) }])
+    expect((await PATCH(request({ id: 5, statut: 'annulee' }))).status).toBe(409)
+    expect(mocks.txFactureUpdate).not.toHaveBeenCalled()
+
+    mocks.dossierFacture.mockResolvedValue([{ dossier_id: 'dossier-qa', regle: BigInt(0), actifs: BigInt(0) }])
+    expect((await PATCH(request({ id: 5, statut: 'annulee' }))).status).toBe(200)
+    expect(mocks.txFactureUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ statut: 'annulee' }) }))
   })
 
   it('refuse toujours une transition invalide (annulee → payee) sans toucher aux ventes', async () => {

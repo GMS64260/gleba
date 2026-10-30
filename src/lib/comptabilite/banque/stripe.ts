@@ -5,7 +5,26 @@ import { ErreurReglement, entierCentimes } from '../monnaie'
 import { verrouillerReglements } from '../reglements'
 
 const API_VERSION = '2025-06-30.basil'
-const CLEFS = /^rk_(test|live)_[A-Za-z0-9_]{10,}$/
+export const CLEFS = /^rk_(test|live)_[A-Za-z0-9_]{10,}$/
+/**
+ * Jeton enregistré illisible avec la clé de chiffrement actuelle : la clé
+ * (`STRIPE_TOKEN_ENCRYPTION_KEY`, ou `AUTH_SECRET`/`NEXTAUTH_SECRET` de repli)
+ * a changé depuis l'enregistrement. Seule une reconnexion le remplace (revue du
+ * 2026-10-29 : une rotation cassait les connexions en silence).
+ */
+export class ErreurJetonStripe extends ErreurReglement {
+  constructor() {
+    super(
+      'L’accès Stripe enregistré ne peut plus être lu : la clé de chiffrement du serveur a changé. Reconnectez Stripe pour reprendre la synchronisation.',
+      409,
+    )
+    this.name = 'ErreurJetonStripe'
+  }
+}
+/** Désactivée sans déconnexion volontaire (qui efface le jeton) : jeton devenu illisible. */
+export function erreurConnexionStripe(c: { actif: boolean; jetonChiffre: string }) {
+  return !c.actif && c.jetonChiffre !== '' ? new ErreurJetonStripe().message : null
+}
 function cleChiffrement() {
   const secret =
     process.env.STRIPE_TOKEN_ENCRYPTION_KEY ||
@@ -32,6 +51,8 @@ export function chiffrerJeton(jeton: string) {
   ].join(':')
 }
 export function dechiffrerJeton(texte: string) {
+  // Configuration absente : erreur serveur explicite, pas un jeton à renouveler.
+  const cle = cleChiffrement()
   try {
     const [version, iv, tag, chiffre] = texte.split(':')
     if (
@@ -41,13 +62,13 @@ export function dechiffrerJeton(texte: string) {
       !/^(?:[0-9a-f]{2})+$/.test(chiffre)
     )
       throw new Error('Format')
-    const decipher = createDecipheriv('aes-256-gcm', cleChiffrement(), Buffer.from(iv, 'hex'))
+    const decipher = createDecipheriv('aes-256-gcm', cle, Buffer.from(iv, 'hex'))
     decipher.setAuthTag(Buffer.from(tag, 'hex'))
     return Buffer.concat([decipher.update(Buffer.from(chiffre, 'hex')), decipher.final()]).toString(
       'utf8',
     )
   } catch {
-    throw new ErreurReglement('La connexion doit être renouvelée depuis les réglages Stripe.', 409)
+    throw new ErreurJetonStripe()
   }
 }
 export async function lireStripe<T>(chemin: string, jeton: string): Promise<T> {
@@ -222,7 +243,23 @@ export async function synchroniserStripe(userId: string, connexionId: string) {
     const connexion = await prisma.connexionStripe.findFirstOrThrow({
       where: { id: connexionId, userId },
     })
-    const jeton = dechiffrerJeton(connexion.jetonChiffre)
+    let jeton: string
+    try {
+      jeton = dechiffrerJeton(connexion.jetonChiffre)
+    } catch (e) {
+      if (e instanceof ErreurJetonStripe) {
+        // Connexion mise en erreur : désactivée, jeton illisible conservé comme
+        // marqueur (une déconnexion volontaire l'efface). Ni jeton ni clé au journal.
+        console.error(
+          `[banque] Connexion Stripe ${connexion.id} : jeton indéchiffrable, la clé de chiffrement (STRIPE_TOKEN_ENCRYPTION_KEY, ou AUTH_SECRET/NEXTAUTH_SECRET de repli) a changé depuis son enregistrement. Connexion désactivée ; le propriétaire doit reconnecter Stripe.`,
+        )
+        await prisma.connexionStripe.updateMany({
+          where: { id: connexion.id, userId, verrouSynchroJusqua: bail },
+          data: { actif: false },
+        })
+      }
+      throw e
+    }
     const compteVerifie = await lireStripe<CompteStripe>('/v1/account', jeton)
     if (compteVerifie.id !== connexion.compteStripeId)
       throw new ErreurReglement('Le compte renvoyé ne correspond plus à cette connexion.')

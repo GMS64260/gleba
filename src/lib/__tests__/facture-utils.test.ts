@@ -4,7 +4,7 @@
  * Régression du 2026-08-12 : trois 500 d'affilée sur un avoir du compte démo.
  */
 import { describe, it, expect, vi } from "vitest"
-import { creerFacture, reserverProchainNumeroForEmission } from "@/lib/facture-utils"
+import { annulerFactureLiee, creerFacture, reserverProchainNumeroForEmission } from "@/lib/facture-utils"
 
 function fauxTx(opts: { prochainNum: number; maxExistant: number | null }) {
   const executeRaw = vi.fn().mockResolvedValue(1)
@@ -122,5 +122,40 @@ describe("creerFacture — identité de l'acheteur figée depuis la fiche", () =
       clientId: null, clientSiret: null, clientSiren: null, clientTvaIntra: null,
       clientNom: "Restaurant du Port", clientAdresse: "2 quai des Pêcheurs, 64500 Ciboure",
     })
+  })
+})
+
+/**
+ * Revue du 2026-10-29 : une facture émise dont l'unique versement a été annulé
+ * gardait son dossier de règlements ; annuler la vente exigeait alors des
+ * avoirs couvrant toute la facture. Seul un versement actif l'impose.
+ */
+describe("annulerFactureLiee — dossier de règlements", () => {
+  function fauxDossier(actifs: number) {
+    const update = vi.fn().mockResolvedValue({})
+    const tx = {
+      $queryRaw: vi.fn(async (sql: TemplateStringsArray) =>
+        sql.join("?").includes("cibles_reglement")
+          ? [{ dossier_id: "dossier-qa", regle: BigInt(actifs ? 5000 : 0), actifs: BigInt(actifs) }]
+          : [{ id: 9 }]),
+      facture: {
+        findFirst: vi.fn().mockResolvedValue({ id: 9, numero: "F-QA-9", statut: "emise", totalTTC: 50 }),
+        aggregate: vi.fn().mockResolvedValue({ _sum: { totalTTC: null } }),
+        update,
+      },
+    }
+    return { tx: tx as never, update }
+  }
+
+  it("annule la facture d'une vente dont tous les versements sont annulés", async () => {
+    const { tx, update } = fauxDossier(0)
+    await expect(annulerFactureLiee(tx, "u1", 9)).resolves.toEqual({ ok: true })
+    expect(update).toHaveBeenCalledWith({ where: { id: 9 }, data: { statut: "annulee" } })
+  })
+
+  it("exige toujours un avoir quand un versement actif reste enregistré", async () => {
+    const { tx, update } = fauxDossier(1)
+    await expect(annulerFactureLiee(tx, "u1", 9)).resolves.toMatchObject({ ok: false })
+    expect(update).not.toHaveBeenCalled()
   })
 })
