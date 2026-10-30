@@ -76,6 +76,8 @@ export interface FichierExport {
 export function construireArchiveTabulaire(args: {
   tables: Array<{ modele: string; nomTable?: string | null; rows: Row[] }>
   dateExport: Date
+  /** Contenu omis par `exportAccount` (brut des capteurs au-delà du seuil). */
+  avertissements?: string[]
 }): { archive: Uint8Array; fichiers: FichierExport[] } {
   const contenu: Zippable = {}
   const fichiers: FichierExport[] = []
@@ -98,23 +100,32 @@ export function construireArchiveTabulaire(args: {
     fichiers.length === 0 ? "Aucune donnée à exporter." : "Contenu :",
     ...fichiers.map((f) => `- ${f.fichier} : ${f.lignes} ligne${f.lignes > 1 ? "s" : ""}`),
     "",
+    ...(args.avertissements?.length ? ["Avertissements :", ...args.avertissements.map((a) => `- ${a}`), ""] : []),
   ].join("\r\n")
   contenu["LISEZMOI.txt"] = strToU8(lisezMoi)
 
   return { archive: zipSync(contenu, { level: 6 }), fichiers }
 }
 
+/**
+ * Même moteur que la sauvegarde complète, donc même seuil : au-delà, le brut
+ * des capteurs n'est pas chargé en mémoire et le LISEZMOI le dit.
+ */
 export async function exporterDonneesTabulaires(userId: string, dateExport = new Date()) {
   const { byClass } = describeManifest()
   const modeles = [...byClass.owned, ...byClass.child].filter((m) => !TABLES_HORS_EXPORT.has(m))
-  const { data } = await exportAccount(userId)
+  const { data, avertissements = [] } = await exportAccount(userId)
   const nomsTables = new Map(Prisma.dmmf.datamodel.models.map((m) => [m.name, m.dbName]))
-  return construireArchiveTabulaire({
-    tables: modeles.map((modele) => ({
-      modele,
-      nomTable: nomsTables.get(modele),
-      rows: data[modele] ?? [],
-    })),
-    dateExport,
-  })
+  return {
+    ...construireArchiveTabulaire({
+      tables: modeles.map((modele) => ({
+        modele,
+        nomTable: nomsTables.get(modele),
+        rows: data[modele] ?? [],
+      })),
+      dateExport,
+      avertissements,
+    }),
+    avertissements,
+  }
 }

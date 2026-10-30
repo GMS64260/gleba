@@ -93,6 +93,20 @@ describe("/api/capteurs/connecteurs/[id]", () => {
     expect(mocks.agregatsDeleteMany).not.toHaveBeenCalled()
   })
 
+  it("corrige un fuseau stocké invalide (sauvegarde importée) sans le passer au SQL ni effacer d'agrégat", async () => {
+    mocks.connecteurFindFirst.mockResolvedValue({ id: "conn-1", fuseau: "Mars/Olympus" })
+    const reponse = await patch({ fuseau: "Europe/Paris" })
+    expect(reponse.status).toBe(200)
+    expect(mocks.connecteurUpdate.mock.calls[0][0].data).toEqual({ fuseau: "Europe/Paris" })
+    expect(mocks.agregatsDeleteMany).not.toHaveBeenCalled()
+    // Seule l'agrégation du connecteur, dans le nouveau fuseau stocké.
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1)
+    const [requete] = mocks.queryRaw.mock.calls[0]
+    expect(requete.sql).toContain('INSERT INTO "mesures_capteurs_jours"')
+    expect(requete.values).toContain("conn-1")
+    expect(mocks.queryRaw.mock.calls.flat(2).some((v) => JSON.stringify(v ?? null).includes("Mars/Olympus"))).toBe(false)
+  })
+
   it("ne reconstruit pas les agrégats si le fuseau est inchangé", async () => {
     expect((await patch({ fuseau: "Europe/Paris" })).status).toBe(200)
     expect(mocks.agregatsDeleteMany).not.toHaveBeenCalled()

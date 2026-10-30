@@ -10,6 +10,7 @@ import * as React from "react"
 import { CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts"
 import { Loader2 } from "lucide-react"
 import { ResponsiveContainer } from "@/components/ui/responsive-container"
+import { fuseauAffichable } from "@/lib/capteurs/connecteurs"
 
 type Serie =
   | { type: "brut"; unite: string; tronque: boolean; points: Array<{ t: string; v: number }> }
@@ -17,9 +18,10 @@ type Serie =
 
 const formatJour = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })
 
-export function CourbeCapteur({ capteurId, grandeur, jours, fuseau }: { capteurId: string; grandeur: string; jours: number; fuseau: string }) {
+export function CourbeCapteur({ capteurId, grandeur, jours, fuseau: fuseauStocke }: { capteurId: string; grandeur: string; jours: number; fuseau: string }) {
   const [serie, setSerie] = React.useState<Serie | null>(null)
   const [erreur, setErreur] = React.useState<string | null>(null)
+  const fuseau = fuseauAffichable(fuseauStocke)
   const formatHeure = React.useMemo(
     () => new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: fuseau }),
     [fuseau],

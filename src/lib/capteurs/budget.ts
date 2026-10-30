@@ -49,6 +49,16 @@ export function consommerBudgets(
   return { ok: true }
 }
 
+/**
+ * Lecture seule : secondes avant la fin de la fenêtre si la clé a atteint son
+ * plafond, sinon null. Permet de refuser avant un travail coûteux sans rien consommer.
+ */
+export function budgetEpuise(cle: string, max: number, maintenant: number = Date.now()): number | null {
+  const f = fenetres.get(cle)
+  if (!f || maintenant >= f.finA || f.utilise < max) return null
+  return Math.max(1, Math.ceil((f.finA - maintenant) / 1000))
+}
+
 /** Tests seulement. */
 export function viderBudgets() {
   fenetres.clear()
