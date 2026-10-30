@@ -14,6 +14,7 @@
 import { getOrFetch } from '@/lib/cache-helper'
 import { fetchOpenMeteoHistory, type MeteoJournaliere } from '@/lib/meteo'
 import type { JourMeteoBilan } from './bilan-sol'
+import { SEUIL_PLUIE_SIGNIFICATIVE } from './seuils'
 
 export interface MeteoBilan {
   historique: JourMeteoBilan[]
@@ -153,6 +154,18 @@ export async function chargerMeteoBilan(lat: number, lng: number, maintenant: Da
 /** Pluie des 7 derniers jours, hier compris, aujourd'hui exclu : la définition commune. */
 export function pluieSeptDerniersJours(meteo: Pick<MeteoBilan, 'historique'>): number {
   return meteo.historique.slice(-7).reduce((s, j) => s + j.pluie, 0)
+}
+
+/**
+ * Jours sans pluie significative REÇUE, aujourd'hui compris : la pluie du jour
+ * n'est qu'un cumul annoncé (revue du 2026-10-28, même définition que le
+ * bilan), elle ne remet donc pas le compteur à zéro avant d'être tombée.
+ * Puis les jours passés, jusqu'au dernier qui a reçu au moins 3 mm.
+ */
+export function joursSansPluieRecue(meteo: Pick<MeteoBilan, 'historique'>): number {
+  let jours = 1
+  for (let i = meteo.historique.length - 1; i >= 0 && meteo.historique[i].pluie < SEUIL_PLUIE_SIGNIFICATIVE; i--) jours++
+  return jours
 }
 
 /**

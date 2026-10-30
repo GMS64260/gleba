@@ -5,11 +5,10 @@
  */
 
 import type { MeteoJournaliere, MeteoPrevision } from './meteo'
-import { SEUIL_PLUIE_SIGNIFICATIVE } from './irrigation/seuils'
 import { kcAuStade, phraseVolume, profilEspece, volumeArrosage } from './irrigation/bilan-sol'
 import { bilanCulture, joursDepuisArrosage, type CultureBilan } from './irrigation/bilan-culture'
 import type { ArrosageSaisi } from './irrigation/arrosages-saisis'
-import { pluieSeptDerniersJours, type MeteoBilan } from './irrigation/meteo-bilan'
+import { joursSansPluieRecue, pluieSeptDerniersJours, type MeteoBilan } from './irrigation/meteo-bilan'
 
 // ============================================================
 // TYPES
@@ -187,15 +186,9 @@ export function genererRecommandationIrrigation(
   const pluie7j = sousAbri ? 0 : pluieSeptDerniersJours(meteo)
   const bilanHydrique7j = Math.round((pluie7j - res.etcPotentielleMoyenne7j * 7) * 10) / 10
 
-  // Jours sans pluie significative.
-  let joursSansPluie = 0
-  if (!sousAbri && meteo.aujourdhui.pluie < SEUIL_PLUIE_SIGNIFICATIVE) {
-    joursSansPluie = 1
-    for (let i = meteo.historique.length - 1; i >= 0; i--) {
-      if (meteo.historique[i].pluie < SEUIL_PLUIE_SIGNIFICATIVE) joursSansPluie++
-      else break
-    }
-  }
+  // Jours sans pluie significative reçue : la pluie annoncée pour aujourd'hui
+  // ne compte pas comme tombée (revue du 2026-10-28, même règle que le bilan).
+  const joursSansPluie = sousAbri ? 0 : joursSansPluieRecue(meteo)
   const prochainePluie = sousAbri ? null : meteo.previsions.find((j) => j.pluie >= 5)?.date ?? null
 
   // Dose : remplir la réserve, à l'efficacité du système près.

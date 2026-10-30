@@ -23,6 +23,7 @@ import { formatNombre } from "@/lib/format-utils"
 import { libelleIrrigation } from "@/lib/planches/libelle-irrigation"
 import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
 import { aideQuantite, detailArrosageNote, lireLitres, litresConseilles } from "@/lib/irrigation/quantite-versee"
+import { afficheMesuresMeteo, bandeauMeteoIndisponible, type CauseSansMeteo } from "@/lib/irrigation/meteo-indisponible"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 
 // ============================================================
@@ -53,6 +54,8 @@ interface RecommandationIrrigation {
   surfaceM2: number
   /** Champs de la planche à renseigner pour un conseil sûr (« type », « sol »). */
   plancheACompleter: string[]
+  /** Conseil au repli, sans bilan hydrique : météo muette ou parcelle à géolocaliser. */
+  sansMeteo?: CauseSansMeteo | null
 }
 
 interface IrrigationData {
@@ -60,6 +63,10 @@ interface IrrigationData {
   total: number
   totalCultures?: number
   urgentes: number
+  /** Zones sans météo et panne totale (revue du 2026-10-28). */
+  zonesIndisponibles?: number
+  culturesSansMeteo?: number
+  indisponible?: boolean
   cached: boolean
   cachedAt: string
   cacheAgeMinutes: number
@@ -249,6 +256,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
 
   // Compter celles qui n'ont pas besoin d'arrosage
   const okCount = data.recommandations.filter(r => r.urgence === 'aucune').length
+  const bandeauMeteo = bandeauMeteoIndisponible(data)
   const displayed = showAll ? data.recommandations : data.recommandations.slice(0, 5)
 
   return (
@@ -377,6 +385,13 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
         </div>
       )}
 
+      {bandeauMeteo && (
+        <div className="px-3 py-1.5 border-b bg-slate-50 flex items-start gap-2 text-xs text-slate-600" role="status">
+          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-slate-400" aria-hidden />
+          <span>{bandeauMeteo}</span>
+        </div>
+      )}
+
       {/* Recommandations */}
       <div className="border-b bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
         Les conseils tiennent compte des arrosages notés. Un équipement automatique
@@ -460,6 +475,7 @@ function RecoRow({
     if (await onWater(reco, quantite)) setLitres(null)
   }
   const aCompleter = (reco.plancheACompleter ?? []).map((champ) => CHAMPS_PLANCHE[champ] ?? champ)
+  const mesuresMeteo = afficheMesuresMeteo(reco)
 
   return (
     <div>
@@ -552,9 +568,12 @@ function RecoRow({
         <div className="border-b border-lin-doux px-4 pb-3 pl-7">
           <p className="text-xs text-slate-600 leading-relaxed">{reco.conseilMessage}</p>
           <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-400">
-            <span>Bilan 7 j : {reco.bilanHydrique7j > 0 ? "+" : ""}{formatNombre(reco.bilanHydrique7j, 1)} mm</span>
+            {/* Sans météo (repli), ni bilan ni compteur : la route y met 0. */}
+            {mesuresMeteo && (
+              <span>Bilan 7 j : {reco.bilanHydrique7j > 0 ? "+" : ""}{formatNombre(reco.bilanHydrique7j, 1)} mm</span>
+            )}
             {/* Sous abri, il ne pleut pas : « 0 j sans pluie » n'avait pas de sens. */}
-            {reco.sousAbri ? <span>Sous abri</span> : <span>{reco.joursSansPluie} j sans pluie</span>}
+            {reco.sousAbri ? <span>Sous abri</span> : mesuresMeteo && <span>{reco.joursSansPluie} j sans pluie</span>}
             {reco.conseilQuantite > 0 && (
               <span className="font-medium text-blue-600">{formatNombre(reco.conseilQuantite, 1)} L/m²</span>
             )}

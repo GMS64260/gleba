@@ -8,7 +8,16 @@ import { todayLocalISO } from "@/lib/format-utils"
 import { cn } from "@/lib/utils"
 
 import { LuneSvg } from "./LuneSvg"
-import { ANCRE_CALENDRIER_LUNAIRE, TYPE_JOUR_CFG, configTypeJour, estCroissante, libelleSensDuJour, lireJourLunaire, type JourLunaire } from "./lecture"
+import {
+  ANCRE_CALENDRIER_LUNAIRE,
+  TYPE_JOUR_CFG,
+  configTypeJour,
+  estCroissante,
+  libelleSensDuJour,
+  lireJourLunaire,
+  parametreFuseau,
+  type JourLunaire,
+} from "./lecture"
 
 /**
  * Calendrier lunaire : la Lune du jour (phase, type de jour, conseils) et le
@@ -19,6 +28,18 @@ import { ANCRE_CALENDRIER_LUNAIRE, TYPE_JOUR_CFG, configTypeJour, estCroissante,
 interface CalendrierData {
   calendrier: { year: number; month: number; jours: JourLunaire[] }
   stats: Record<string, number>
+}
+
+/**
+ * Un calendrier exploitable, sinon null. Revue du 2026-10-28 : le JSON d'une
+ * erreur (`{ error }` en 401, 500 ou 503) était gardé comme calendrier, puis
+ * `calendrier.jours` cassait le rendu de la carte.
+ */
+function lireCalendrier(json: unknown): CalendrierData | null {
+  const data = json as Partial<CalendrierData> | null
+  const calendrier = data?.calendrier
+  if (!calendrier || !Array.isArray(calendrier.jours)) return null
+  return { calendrier, stats: data?.stats ?? {} }
 }
 
 const MOIS_COURTS = ["", "Janv.", "Fév.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
@@ -54,10 +75,11 @@ export function CalendrierLunaire({ variante, className }: CalendrierLunaireProp
     const numero = ++requete.current
     setCalLoading(true)
     setSelectedDay(null)
-    fetch(`/api/lunaire?year=${annee}&month=${m}`)
-      .then((r) => r.json())
+    // Jours découpés au fuseau du lecteur, comme `todayStr` qui les marque.
+    fetch(`/api/lunaire?year=${annee}&month=${m}${parametreFuseau()}`)
+      .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
-        if (numero === requete.current) setCalData(json)
+        if (numero === requete.current) setCalData(lireCalendrier(json))
       })
       .catch(() => {
         if (numero === requete.current) setCalData(null)
@@ -272,7 +294,18 @@ export function CalendrierLunaire({ variante, className }: CalendrierLunaireProp
           </div>
         </>
       ) : (
-        <p className={cn("text-center text-slate-400", page ? "py-10 text-sm" : "py-4 text-xs")}>Calendrier indisponible</p>
+        <div className={cn("text-center text-slate-400", page ? "py-10 text-sm" : "py-4 text-xs")}>
+          <p>Calendrier indisponible</p>
+          {mois && (
+            <button
+              type="button"
+              onClick={() => fetchCalendar(mois.annee, mois.mois)}
+              className="mt-1 font-medium text-slate-600 underline underline-offset-2 hover:text-slate-800"
+            >
+              Réessayer
+            </button>
+          )}
+        </div>
       )}
     </>
   )

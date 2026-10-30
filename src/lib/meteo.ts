@@ -400,14 +400,34 @@ export async function fetchWundergroundData(
 // ============================================================
 
 /**
+ * Provenance des lignes de `meteo_cache` (revue du 2026-10-28). Les
+ * prévisions de la météo parcelle étaient rangées sous `open-meteo`, la clé
+ * des archives : le jour passé, l'historique servait la prévision (0 mm
+ * prévus) pour définitive, sans consulter l'archive (35 mm). Les prévisions
+ * ont désormais leur propre source ; `open-meteo` reste celle des archives.
+ */
+export const SOURCE_ARCHIVE = 'open-meteo'
+export const SOURCE_PREVISION = 'open-meteo-prevision'
+
+/**
+ * Une archive lue moins de tant de jours après le jour qu'elle décrit peut
+ * être provisoire : Open-Meteo publie la réanalyse avec quelques jours de
+ * retard et `fetchOpenMeteoHistory` met alors 0 à la place des valeurs
+ * absentes. Une telle ligne (comme une prévision rangée sous `open-meteo` avant
+ * la revue) ne sert qu'une heure, puis le jour est relu dans l'archive.
+ */
+const JOURS_CONSOLIDATION_ARCHIVE = 7
+
+/**
  * Récupère les données météo depuis le cache ou l'API
- * Cache: 1h pour les prévisions, indéfini pour l'historique
+ * Cache: 1h pour les prévisions et les jours passés pas encore consolidés,
+ * indéfini pour une archive consolidée
  */
 export async function getMeteoWithCache(
   lat: number,
   lng: number,
   date: string,
-  source: string = 'open-meteo'
+  source: string = SOURCE_ARCHIVE
 ): Promise<MeteoJournaliere | null> {
   const rLat = roundCoord(lat)
   const rLng = roundCoord(lng)
@@ -428,8 +448,11 @@ export async function getMeteoWithCache(
     // Vérifier fraîcheur (1h pour forecast)
     const ageMs = Date.now() - cached.createdAt.getTime()
     const isHistorique = new Date(date) < new Date(new Date().toISOString().split('T')[0])
+    // Archive écrite assez longtemps après son jour : définitive.
+    const consolide = source === SOURCE_ARCHIVE &&
+      cached.createdAt.getTime() - new Date(date).getTime() >= JOURS_CONSOLIDATION_ARCHIVE * 86_400_000
 
-    if (isHistorique || ageMs < 3600_000) {
+    if ((isHistorique && consolide) || ageMs < 3600_000) {
       return {
         date: cached.date.toISOString().split('T')[0],
         tempMin: cached.tempMin ?? 0,
@@ -456,7 +479,7 @@ export async function saveMeteoCache(
   lat: number,
   lng: number,
   data: MeteoJournaliere,
-  source: string = 'open-meteo'
+  source: string = SOURCE_ARCHIVE
 ): Promise<void> {
   const rLat = roundCoord(lat)
   const rLng = roundCoord(lng)
@@ -540,7 +563,7 @@ export async function getMeteoForParcelle(
   let source = 'open-meteo'
 
   // Vérifier le cache d'abord (prévisions < 1h)
-  const cachedToday = await getMeteoWithCache(lat, lng, new Date().toISOString().split('T')[0])
+  const cachedToday = await getMeteoWithCache(lat, lng, new Date().toISOString().split('T')[0], SOURCE_PREVISION)
 
   // Historique 7 derniers jours : indépendant du forecast, on le lance en
   // parallèle au lieu de l'attendre en série (il pesait 30 à 50 % du temps
@@ -565,9 +588,10 @@ export async function getMeteoForParcelle(
   let current = forecast.current
   const daily = forecast.daily
 
-  // Sauvegarder en cache seulement si le cache est périmé ou absent
+  // Sauvegarder en cache seulement si le cache est périmé ou absent. Source
+  // propre : une prévision ne devient jamais l'archive de son jour.
   if (!cachedToday) {
-    await Promise.all(daily.map(day => saveMeteoCache(lat, lng, day, 'open-meteo')))
+    await Promise.all(daily.map(day => saveMeteoCache(lat, lng, day, SOURCE_PREVISION)))
   }
 
   // Si station perso, enrichir les données du jour
@@ -614,8 +638,9 @@ export async function getMeteoForParcelle(
   // Historique 7 derniers jours (lancé en parallèle plus haut)
   const historique7j = await historiqueSafe
   if (historique7j.length > 0) {
-    // Sauvegarder l'historique en cache (batch)
-    await Promise.all(historique7j.map(day => saveMeteoCache(lat, lng, day, 'open-meteo')))
+    // Sauvegarder l'historique en cache (batch) ; les derniers jours restent
+    // provisoires (`JOURS_CONSOLIDATION_ARCHIVE`) et seront relus.
+    await Promise.all(historique7j.map(day => saveMeteoCache(lat, lng, day, SOURCE_ARCHIVE)))
   }
 
   return {
@@ -661,7 +686,10 @@ export async function getMeteoHistorique(
     dates.push(d.toISOString().split('T')[0])
   }
 
-  const cachedResults = await Promise.all(dates.map(date => getMeteoWithCache(lat, lng, date)))
+  // Seules les archives consolidées (ou relues dans l'heure) comptent : un
+  // jour devenu passé avec une prévision ou des zéros provisoires est relu
+  // dans l'archive, avec toute la période (revue du 2026-10-28).
+  const cachedResults = await Promise.all(dates.map(date => getMeteoWithCache(lat, lng, date, SOURCE_ARCHIVE)))
   const allCached = cachedResults.every(r => r !== null)
 
   let donnees: MeteoJournaliere[]
@@ -672,7 +700,7 @@ export async function getMeteoHistorique(
   } else {
     // Fetch API + sauvegarder en cache (batch)
     donnees = await fetchOpenMeteoHistory(lat, lng, startDate, endDate)
-    await Promise.all(donnees.map(day => saveMeteoCache(lat, lng, day, 'open-meteo')))
+    await Promise.all(donnees.map(day => saveMeteoCache(lat, lng, day, SOURCE_ARCHIVE)))
   }
 
   return {

@@ -64,6 +64,16 @@ describe("resumeMeteo", () => {
     })
     expect(r.pluie48hPassees).toBe(10)
     expect(r.pluie7jPassees).toBe(10)
+    // Annoncée, pas reçue (revue du 2026-10-28) : la pluie du jour est prévue.
+    expect(r.pluiePrevue48h).toBe(12)
+    // …et aujourd'hui reste un jour sans pluie reçue (6 mm hier : 1 jour).
+    expect(r.joursSansPluie).toBe(1)
+  })
+
+  it("jours sans pluie : la pluie annoncée pour aujourd'hui ne compte pas comme tombée", () => {
+    const sec = Array.from({ length: 5 }, (_, i) => ({ date: `2026-10-0${i + 2}`, pluie: 0, et0: 2 }))
+    const r = resumeMeteo({ historique: sec, aujourdhui: { date: "2026-10-07", pluie: 20, et0: 2 }, previsions: [], decalageUtcS: 7200 })
+    expect(r.joursSansPluie).toBe(6)
   })
 })
 

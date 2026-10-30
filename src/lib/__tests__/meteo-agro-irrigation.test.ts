@@ -57,6 +57,15 @@ describe('recommandation irrigation (moteur de bilan hydrique)', () => {
     expect(avecArrosage.conseilQuantite).toBe(0)
   })
 
+  // Revue du 2026-10-28 : la pluie du jour n'est qu'annoncée, comme dans le bilan.
+  it("jours sans pluie : un orage annoncé pour ce soir ne remet pas le compteur à zéro", () => {
+    const orage = meteoSeche()
+    orage.aujourdhui = { ...orage.aujourdhui, pluie: 25 }
+    const r = genererRecommandationIrrigation(orage, { ...culture, derniereIrrigation: null, arrosages: [] }, planche)
+    expect(r.joursSansPluie).toBe(31)
+    expect(genererRecommandationIrrigation(meteoSeche(), { ...culture, derniereIrrigation: null, arrosages: [] }, planche).joursSansPluie).toBe(31)
+  })
+
   it('sous abri : ni pluie ni prochaine pluie, message dit une seule fois « Sous abri »', () => {
     const pluvieux = meteoSeche()
     pluvieux.previsions = pluvieux.previsions.map((j) => ({ ...j, pluie: 12 }))

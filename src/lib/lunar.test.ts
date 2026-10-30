@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fetchMoonPhase, instantPhaseVraie, phaseVraieDuJour } from './lunar'
+import { fetchMoonPhase, fuseauValide, getLunarCalendar, getMoonPhaseToday, instantPhaseVraie, jourDansFuseau, midiDansFuseau, phaseVraieDuJour } from './lunar'
 import { estCroissante, libelleSensDuJour } from '@/components/lunaire/lecture'
 
 // TICKET cmsoglmwb — le modèle d'âge moyen plaçait la nouvelle lune d'août
@@ -170,5 +170,42 @@ describe('sens et illumination tirés des instants vrais (cmvno0s5d)', () => {
     expect(bascules).toBe(3)
     // Nouvelle lune du 10/10, pleine lune du 26/10, nouvelle lune du 09/11.
     expect(syzygies).toEqual([0, 4, 0])
+  })
+})
+
+// Revue du 2026-10-28 (témoin lune-fuseau) : le jour civil est celui du
+// LECTEUR. Les instants des phases sont communs ; seul le découpage en jours
+// dépend du fuseau, qui entre donc dans la clé du cache.
+describe('jour civil au fuseau du lecteur', () => {
+  it('midi local et jour civil d’un fuseau, heure d’été comprise', () => {
+    expect(midiDansFuseau('2026-07-01', 'Europe/Paris').toISOString()).toBe('2026-07-01T10:00:00.000Z')
+    expect(midiDansFuseau('2026-10-25', 'Europe/Paris').toISOString()).toBe('2026-10-25T11:00:00.000Z')
+    expect(midiDansFuseau('2026-08-12', 'America/Guadeloupe').toISOString()).toBe('2026-08-12T16:00:00.000Z')
+    expect(midiDansFuseau('2026-11-25', 'Pacific/Noumea').toISOString()).toBe('2026-11-25T01:00:00.000Z')
+    expect(jourDansFuseau(new Date('2026-08-13T02:00:00Z'), 'America/Guadeloupe')).toBe('2026-08-12')
+    expect(jourDansFuseau(new Date('2026-08-12T22:30:00Z'), 'Europe/Paris')).toBe('2026-08-13')
+    expect(fuseauValide('America/Guadeloupe')).toBe('America/Guadeloupe')
+    expect(fuseauValide('Mars/Olympus')).toBeNull()
+    expect(fuseauValide('')).toBeNull()
+  })
+
+  it('un même jour, deux fuseaux : deux réponses, pas celle du premier lecteur servie au second', async () => {
+    const midi = midiDansFuseau('2026-11-25', 'Europe/Paris')
+    const paris = await fetchMoonPhase(midi, 'Europe/Paris')
+    const noumea = await fetchMoonPhase(midiDansFuseau('2026-11-25', 'Pacific/Noumea'), 'Pacific/Noumea')
+    expect(paris.date).toBe('2026-11-25')
+    expect(noumea.date).toBe('2026-11-25')
+    // Pleine lune du 24/11 à 14:53 UTC : le 25 à Nouméa, la veille à Paris.
+    expect(paris.phaseIndex).toBe(5)
+    expect(noumea.phaseIndex).toBe(4)
+    expect(noumea.instantEvenement).toBe(new Date(instantPhaseVraie(332.5)).toISOString())
+  })
+
+  it('le jour du lecteur fait foi pour « aujourd’hui »', async () => {
+    const j = await getMoonPhaseToday({ jour: '2026-08-12', fuseau: 'America/Guadeloupe' })
+    expect(j.date).toBe('2026-08-12')
+    expect(j.phaseIndex).toBe(0)
+    const cal = await getLunarCalendar(2026, 8, 'America/Guadeloupe')
+    expect(cal.jours.find((d) => d.date === '2026-08-12')?.phaseIndex).toBe(0)
   })
 })
