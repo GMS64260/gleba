@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
   transaction: vi.fn(),
   stockCommercialCount: vi.fn(),
+  executeRaw: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -22,10 +23,12 @@ vi.mock("@/lib/prisma", () => ({
     mouvementStockCommercial: { count: mocks.stockCommercialCount },
     user: { findUnique: mocks.userFindUnique },
     $transaction: mocks.transaction,
+    $executeRaw: mocks.executeRaw,
   },
 }))
 
 import { DELETE } from "./route"
+import { LOT_SUPPRESSION_MESURES } from "@/lib/capteurs/agregats"
 
 // L'écran Paramètres envoie un DELETE sans corps.
 const compteur = () => ({ deleteMany: vi.fn().mockResolvedValue({ count: 2 }) })
@@ -38,6 +41,7 @@ beforeEach(() => {
     session: { user: { id: "u1", role: "USER", estProprietaireExploitation: true } },
   })
   mocks.transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(transactionComplete()))
+  mocks.executeRaw.mockResolvedValue(0)
 })
 
 function transactionComplete() {
@@ -52,6 +56,7 @@ function transactionComplete() {
     arbre: compteur(),
     note: compteur(),
     connecteurCapteurs: compteur(),
+    mouvementStockCommercial: compteur(),
   }
 }
 
@@ -106,6 +111,22 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
     expect(tx.connecteurCapteurs.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } })
   })
 
+  it("supprime d'abord le brut des capteurs par lots, hors de la transaction principale", async () => {
+    mocks.userFindUnique.mockResolvedValue({ email: "maraicher@example.com" })
+    mocks.executeRaw.mockResolvedValueOnce(LOT_SUPPRESSION_MESURES).mockResolvedValueOnce(7)
+
+    const res = await DELETE()
+
+    expect(res.status).toBe(200)
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(2)
+    expect(mocks.executeRaw.mock.calls[0][0].join("?")).toMatch(/DELETE FROM "mesures_capteurs"[\s\S]*LIMIT/)
+    expect(mocks.executeRaw.mock.calls[0]).toContain("u1")
+    expect(mocks.executeRaw.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.transaction.mock.invocationCallOrder[0])
+    const json = await res.json()
+    expect(json.details.mesuresCapteurs).toBe(LOT_SUPPRESSION_MESURES + 7)
+    expect(json.message).toBe(`${20 + LOT_SUPPRESSION_MESURES + 7} enregistrements supprimés`)
+  })
+
   it("garde le refus des invités avant toute lecture", async () => {
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
@@ -127,4 +148,18 @@ it("conserve les lots liés à des documents commerciaux au lieu de déclencher 
   expect(res.status).toBe(409)
   expect((await res.json()).error).toContain("bons ou factures")
   expect(mocks.transaction).not.toHaveBeenCalled()
+  // Rien n'est supprimé, pas même le brut des capteurs.
+  expect(mocks.executeRaw).not.toHaveBeenCalled()
+})
+
+it("une perte du verger ne bloque pas l'effacement : seules les livraisons comptent, les sorties physiques partent avec leurs lots", async () => {
+  mocks.userFindUnique.mockResolvedValue({ email: "ferme@example.test" })
+  const tx = transactionComplete()
+  mocks.transaction.mockImplementation((callback: (t: unknown) => unknown) => callback(tx))
+  const res = await DELETE()
+  expect(res.status).toBe(200)
+  expect(mocks.stockCommercialCount).toHaveBeenCalledWith({ where: { userId: "u1", nature: "livraison" } })
+  expect(tx.mouvementStockCommercial.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1", nature: { not: "livraison" } } })
+  // Avant les arbres, dont les lots portent ces sorties sans cascade.
+  expect(tx.mouvementStockCommercial.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(tx.arbre.deleteMany.mock.invocationCallOrder[0])
 })
