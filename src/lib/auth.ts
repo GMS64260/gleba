@@ -225,6 +225,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   pages: {
     signIn: "/login",
+    // Sans page d'erreur, toute erreur hors de la courte liste « client »
+    // d'Auth.js (dont le contrôle PKCE `InvalidCheck`) finit sur sa page par
+    // défaut, en anglais (« Server error ») : vu le 2026-10-27 sur un second
+    // retour Google, une seconde après celui qui avait créé le compte. Sur
+    // /login, le middleware renvoie une session déjà ouverte vers l'accueil ;
+    // sinon `LoginForm` affiche le message de `OAUTH_ERROR_MESSAGES`.
+    error: "/login",
   },
   providers: [
     Credentials({

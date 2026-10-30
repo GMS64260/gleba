@@ -58,3 +58,22 @@ describe("middleware : lien profond sans session (QA cmvnout4y)", () => {
     expect(res.status).toBe(200)
   })
 })
+
+// Inscription Google du 2026-10-27 : le premier retour de Google avait ouvert
+// la session, le second a échoué. Auth.js renvoie désormais ses erreurs sur
+// /login (`pages.error`) ; une session ouverte doit y passer sans s'arrêter.
+describe("middleware : erreur Auth.js renvoyée sur /login", () => {
+  it("avec une session déjà ouverte, /login?error=Configuration mène à l'accueil", () => {
+    session.courante = { user: { id: "u1", role: "USER" } }
+    const res = visiter("https://gleba.fr/login?error=Configuration")
+    expect(res.status).toBe(307)
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/")
+  })
+
+  it("sans session, /login?error=Configuration est servie pour afficher le message", () => {
+    session.courante = null
+    const res = visiter("https://gleba.fr/login?error=Configuration")
+    expect(res.headers.get("location")).toBeNull()
+    expect(res.status).toBe(200)
+  })
+})
