@@ -181,7 +181,9 @@ function labelDestinationBois(destination: string | null): string {
 export function ProductionsTab() {
   return (
     <Tabs defaultValue="recoltes" className="space-y-4">
-      <TabsList>
+      {/* Trois onglets dépassent 390 px : ils passent à la ligne plutôt que
+          d'élargir la page (sonde de production du 2026-10-30). */}
+      <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="recoltes" className="flex items-center gap-1.5">
           <Apple className="h-4 w-4" />
           Récoltes Fruits
