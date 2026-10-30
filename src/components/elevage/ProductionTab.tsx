@@ -56,6 +56,7 @@ import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
 import { confirmDialog } from "@/lib/global-dialog"
 import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { tauxTvaVenteProduitParDefaut } from '@/lib/elevage/produits-ruche'
+import { jourCivilStocke } from '@/lib/jour-civil'
 
 // ============================================================
 // Composant principal
@@ -1715,7 +1716,9 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
     setEditingId(a.id)
     setFormData({
       lotId: a.lot?.id ? a.lot.id.toString() : "",
-      date: a.date.split('T')[0],
+      // Jour civil, celui que le PATCH compare : `split('T')` lisait la veille
+      // d'un abattage horodaté entre minuit et 2 h (heure de Paris).
+      date: jourCivilStocke(a.date) ?? "",
       quantite: a.quantite.toString(),
       poidsVif: a.poidsVif ? a.poidsVif.toString() : "",
       poidsCarcasse: a.poidsCarcasse ? a.poidsCarcasse.toString() : "",

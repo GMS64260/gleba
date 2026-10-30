@@ -94,4 +94,30 @@ describe("GET /api/elevage/stats — répartition par espèce", () => {
     // La répartition retombe sur le total du cheptel de la même tuile.
     expect(json.stats.animauxTotal).toBe(8)
   })
+
+  // Revue du 2026-10-29 — numérateur et dénominateur sur les mêmes fiches :
+  // les pertes d'un lot (simple baisse de son compteur) ne sont pas des morts
+  // datées, ses têtes ne diluent plus le taux ni l'alerte « > 5 % ».
+  it("rapporte les fiches mortes de l'année aux seules fiches, pas aux têtes des lots", async () => {
+    const poules = { id: 80, especeAnimaleId: "poule", quantiteInitiale: 100, quantiteActuelle: 100 }
+    mocks.lotFindMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      where.especeAnimale ? [] : [poules],
+    )
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([
+      [80, { effectifCalcule: 100, nominatifsActifs: 0, effectifCollectif: 100 }],
+    ]))
+    mocks.animalGroupBy.mockResolvedValue([{ especeAnimaleId: "chevre", _count: 6 }])
+    // Six chèvres actives hors lot ; une septième morte en mai.
+    mocks.animalCount.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      where.statut === "actif" ? 6 : where.statut === "mort" ? 1 : 0,
+    )
+    mocks.especeFindMany.mockResolvedValue([
+      { id: "poule", nom: "Poule pondeuse", couleur: null, production: "oeufs", productions: [] },
+      { id: "chevre", nom: "Chèvre Alpine", couleur: null, production: "lait", productions: [] },
+    ])
+
+    const json = await (await GET(new NextRequest("http://localhost/api/elevage/stats?annee=2026"))).json()
+
+    expect(json.stats).toMatchObject({ animauxTotal: 106, mortaliteAnnee: 1, tauxMortalite: 14.3 })
+  })
 })

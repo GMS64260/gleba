@@ -20,6 +20,8 @@ import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { Prisma } from '@prisma/client'
 import { ErreurElevage } from '@/lib/elevage/erreurs'
 import { verifierAttenteViande } from '@/lib/elevage/attente-viande'
+import { JOUR_SEUL } from '@/lib/elevage/date-soin'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { modePaiementDepuisReglement } from '@/lib/validations/reglement'
 
 const LOT_ABATTAGE_SELECT = {
@@ -319,7 +321,10 @@ export async function PATCH(request: NextRequest) {
     if (date !== undefined) {
       const d = new Date(date)
       if (Number.isNaN(d.getTime())) return NextResponse.json({ error: 'Date invalide' }, { status: 400 })
-      updateData.date = d
+      // Le formulaire renvoie le jour seul affiché : le jour civil de l'abattage
+      // n'est pas une nouvelle date (heure d'un abattage horodaté conservée).
+      const memeJour = typeof date === 'string' && JOUR_SEUL.test(date.trim()) && date.trim() === jourCivilStocke(existing.date)
+      if (!memeJour) updateData.date = d
     }
     if (quantite !== undefined) {
       const q = parseInt(quantite)
@@ -371,7 +376,12 @@ export async function PATCH(request: NextRequest) {
         const { collectif, fiches } = await partCollectiveLot(userId, lot, tx)
         if (updateData.quantite > collectif + courante.quantite) throw refusAbattageHorsEffectif(lot, updateData.quantite, collectif + courante.quantite, fiches)
       }
-      await verifierAttenteViande(tx, userId, { animalId: courante.animalId, lotId: courante.lotId, date: updateData.date ?? courante.date })
+      // Attente viande rejouée seulement si la date change (l'animal et le lot
+      // ne se modifient pas ici) : un soin saisi après coup ne bloque pas la
+      // correction d'un poids, d'un prix ou d'une note.
+      if (updateData.date && updateData.date.getTime() !== courante.date.getTime()) {
+        await verifierAttenteViande(tx, userId, { animalId: courante.animalId, lotId: courante.lotId, date: updateData.date })
+      }
       // Créer une facture si demandé et si prixVente existe
       const prixTotalTTC = updateData.prixVente !== undefined ? updateData.prixVente : existing.prixVente
       if (body.creerFacture && prixTotalTTC) {

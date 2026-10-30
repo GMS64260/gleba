@@ -10,7 +10,14 @@ import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 import { fenetrePonteGlissante, tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
-import { ageEntreePonteJours, calculerTetesNonPondeuses, effectifPondeuses, nominatifPondeur } from '@/lib/elevage/pondeuses'
+import {
+  ageEntreePonteJours,
+  calculerTetesNonPondeuses,
+  effectifPondeuses,
+  nominatifPondeur,
+  SELECT_NOMINATIF_PONDEUR_HORS_LOT,
+  whereNominatifsPondeursHorsLot,
+} from '@/lib/elevage/pondeuses'
 import {
   aUneActiviteOeufsDashboard,
   agregerProductionsLaitieresDashboard,
@@ -203,15 +210,11 @@ export async function GET(request: NextRequest) {
       }),
 
       // Les pondeuses suivies individuellement hors lot actif ne sont pas
-      // dans l'effectif reconstitué des lots. Même règle d'âge et de sexe.
+      // dans l'effectif reconstitué des lots. Même règle d'âge et de sexe,
+      // même lecture que l'assistant (`whereNominatifsPondeursHorsLot`).
       prisma.animal.findMany({
-        where: {
-          userId,
-          statut: 'actif',
-          OR: [{ lotId: null }, { lot: { statut: { not: 'actif' } } }],
-          especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
-        },
-        select: { sexe: true, dateNaissance: true, especeAnimale: { select: { nom: true, dureeElevage: true } } },
+        where: whereNominatifsPondeursHorsLot(userId),
+        select: SELECT_NOMINATIF_PONDEUR_HORS_LOT,
       }),
 
       // BUG #5 — Lots pondeuses détaillés (espèce + effectif) pour le
@@ -408,8 +411,12 @@ export async function GET(request: NextRequest) {
     // FCR = kg aliment / kg carcasse
     const fcr = poidsCarcasseTotal > 0 ? consoAlimentsKg / poidsCarcasseTotal : null
 
-    // Taux de mortalité
-    const totalAnimauxEver = animauxTotal + mortaliteAnnee
+    // Taux de mortalité des FICHES : fiches mortes de l'année rapportées aux
+    // fiches (actives + ces mortes). Une perte dans un lot ne s'enregistre
+    // qu'en baissant son compteur, sans date ni nombre de morts : compter ses
+    // têtes au dénominateur seul diluait le taux (6 chèvres dont 1 morte et un
+    // lot de 100 poules : 0,9 % au lieu de 14,3 %, alerte « > 5 % » muette).
+    const totalAnimauxEver = animauxActifs + mortaliteAnnee
     const tauxMortalite = totalAnimauxEver > 0
       ? (mortaliteAnnee / totalAnimauxEver) * 100
       : 0

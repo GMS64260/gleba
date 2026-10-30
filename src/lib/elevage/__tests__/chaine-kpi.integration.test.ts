@@ -323,7 +323,7 @@ describe.skipIf(!active)('chaîne naissance → calculs élevage → comptabilit
     const vente = (await resultat(await ventes.POST(request('/api/elevage/ventes', { date: '2026-10-27', type: 'oeufs', description: 'Vente des œufs QA', quantite: 2, unite: 'douzaine', prixUnitaire: 3, paye: false, modeReglement: 'Chèque' })), 201)).data
     const dashboard = await import('@/app/api/elevage/stats/route')
     const { stats, animauxParType } = await resultat(await dashboard.GET(request('/api/elevage/stats?annee=2026')))
-    expect.soft(stats).toMatchObject({ animauxActifs: 4, animauxHorsLot: 0, animauxRattachesLots: 4, lotsActifs: 1, animauxEnLots: 12, animauxTotal: 12, productionOeufsAnnee: 63, productionOeufsAnneePrecedente: 0, ventesAnnee: 6, ventesAnneePrecedente: 0, nbVentes: 1, stockOeufs: 37, stockOeufsCommercialisables: 37, nbPondeuses: 9, nbOeufsPeriode7j: 63, tauxPonte: 100, tauxPonteSaisonAttendu: 40, tauxPonteRatio: 2.5, alimentsStockBas: 1, consoAlimentsKg: 20, mortaliteAnnee: 1, tauxMortalite: 7.7, fcr: null, laitTotalAnnee: 0, nbCollectesAnnee: 0 })
+    expect.soft(stats).toMatchObject({ animauxActifs: 4, animauxHorsLot: 0, animauxRattachesLots: 4, lotsActifs: 1, animauxEnLots: 12, animauxTotal: 12, productionOeufsAnnee: 63, productionOeufsAnneePrecedente: 0, ventesAnnee: 6, ventesAnneePrecedente: 0, nbVentes: 1, stockOeufs: 37, stockOeufsCommercialisables: 37, nbPondeuses: 9, nbOeufsPeriode7j: 63, tauxPonte: 100, tauxPonteSaisonAttendu: 40, tauxPonteRatio: 2.5, alimentsStockBas: 1, consoAlimentsKg: 20, mortaliteAnnee: 1, tauxMortalite: 20, fcr: null, laitTotalAnnee: 0, nbCollectesAnnee: 0 })
     expect.soft(animauxParType.reduce((s: number, e: { count: number }) => s + e.count, 0)).toBe(12)
     const economie = await import('@/app/api/elevage/analyse-couts/route')
     const eco = await resultat(await economie.GET(request('/api/elevage/analyse-couts?annee=2026')))
@@ -337,7 +337,7 @@ describe.skipIf(!active)('chaîne naissance → calculs élevage → comptabilit
     const detailTva = await tva.computeTvaPeriode(farm.user.id, new Date('2026-01-01'), new Date('2027-01-01'))
     expect.soft(detailTva).toMatchObject({ collectee: { total: 0.31 }, deductible: { total: 7.5 }, solde: { creditTVA: 7.19, tvaAPayer: 0 } })
     const mortalites = await import('@/app/api/elevage/mortalites/route')
-    expect.soft((await resultat(await mortalites.GET(request('/api/elevage/mortalites?annee=2026')))).stats).toMatchObject({ total: 1, tauxMortalite: 7.7 })
+    expect.soft((await resultat(await mortalites.GET(request('/api/elevage/mortalites?annee=2026')))).stats).toMatchObject({ total: 1, tauxMortalite: 20 })
     const impayees = await import('@/lib/comptabilite/impayees')
     const miroirs = await db.venteManuelle.findMany({ where: { userId: farm.user.id, paye: false } })
     expect.soft(impayees.construireImpayees({ ventes: [vente], ventesManuelles: miroirs.map((m) => ({ ...m, date: m.date.toISOString() })) }).total).toBe(6)

@@ -100,6 +100,18 @@ describe('Fiabilité des abattages', () => {
     expect(m.abattageUpdate).not.toHaveBeenCalled()
   })
 
+  // Revue du 2026-10-29 — le PATCH rejouait l'attente viande à chaque
+  // correction : un soin saisi après coup bloquait un poids ou une note.
+  it('corrige le poids et la note malgré un soin saisi après coup, date renvoyée au même jour', async () => {
+    m.soins.mockResolvedValue([{ id: 81, animalId: 501, lotId: null, date: new Date('2026-10-29'), type: 'traitement', finAttenteViande: new Date('2026-11-05') }])
+    // Corps du crayon d'Élevage > Production > Abattages : jour seul affiché.
+    const res = await PATCH(request('PATCH', { id: 31, date: '2026-10-31', quantite: 1, poidsCarcasse: 42, destination: 'vente', prixVente: 100, notes: 'Pesée corrigée' }))
+    expect(res.status).toBe(200)
+    expect(courante).toMatchObject({ poidsCarcasse: 42, notes: 'Pesée corrigée' })
+    expect(new Date(courante.date as Date).toISOString()).toBe('2026-10-31T12:00:00.000Z')
+    expect(m.soins).not.toHaveBeenCalled()
+  })
+
   it('P1 : deux abattages de 4 têtes ne consomment jamais plus des 6 disponibles', async () => {
     const body = { lotId: 71, date: '2026-10-28', quantite: 4, destination: 'auto_consommation' }
     const reponses = await Promise.all([POST(request('POST', body)), POST(request('POST', body))])

@@ -7,7 +7,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { chargerCheptelEnStock } from '@/lib/elevage/stock-cheptel'
 
 const currentYear = () => new Date().getUTCFullYear()
 const yearSchema = z.coerce.number().int().min(1990).max(currentYear() + 1)
@@ -72,9 +71,12 @@ export async function GET(request: NextRequest) {
       parEspece[id].count++
     })
 
-    // Taux de mortalite global
-    const cheptel = await chargerCheptelEnStock(userId)
-    const totalActifs = [...cheptel.individuels, ...cheptel.lots].reduce((sum, groupe) => sum + groupe.tetes, 0)
+    // Taux de mortalite des fiches, même règle que le tableau de bord
+    // (/api/elevage/stats) : les pertes d'un lot ne sont enregistrées nulle
+    // part comme des morts datées, ses têtes n'entrent donc pas au dénominateur.
+    const totalActifs = await prisma.animal.count({
+      where: { userId, statut: 'actif' },
+    })
     const totalMorts = mortalites.length
     const tauxMortalite = (totalActifs + totalMorts) > 0
       ? (totalMorts / (totalActifs + totalMorts)) * 100
