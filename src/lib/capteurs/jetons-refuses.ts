@@ -5,7 +5,8 @@
  * régénéré a une empreinte neuve (192 bits aléatoires), absente d'ici.
  *
  * Empreintes acceptées, gardées 24 h : quand une adresse a atteint son plafond
- * d'échecs, seules elles valent encore une lecture en base. Les webhooks TTN
+ * d'échecs, elles lisent encore la base sans attendre, quand les autres se
+ * partagent une lecture toutes les 10 s (`route.ts`). Les webhooks TTN
  * partagent leurs adresses entre tous les comptes : un jeton qui fonctionnait
  * continue de passer. Elles n'ouvrent qu'une lecture, jamais l'accès : un jeton
  * régénéré entre-temps est refusé par la base, puis oublié ici.

@@ -130,8 +130,70 @@ describe("POST /api/capteurs/ingestion", () => {
     await epuiserAdresse()
     mocks.connecteurFindUnique.mockResolvedValue(connecteur("ttn"))
     expect((await POST(requete(UPLINK_TTN_LHT65N))).status).toBe(200)
-    // Un jeton valide jamais vu attend la fin de la fenêtre (15 min au plus).
-    expect((await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))).status).toBe(429)
+    // Un jeton valide jamais vu attend le prochain créneau de lecture (10 s au plus).
+    const r = await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))
+    expect(r.status).toBe(429)
+    expect(r.headers.get("Retry-After")).toBe("10")
+  })
+
+  it("au plafond, un jeton valide jamais vu passe au créneau suivant, que Retry-After annonce (TTN, ChirpStack partagés)", async () => {
+    const t0 = MAINTENANT_FIXTURES.getTime()
+    await epuiserAdresse()
+    const nouveau = `Bearer ${genererJeton().jeton}`
+    vi.setSystemTime(t0 + 3000)
+    const refus = await POST(requete(UPLINK_TTN_LHT65N, { auth: nouveau }))
+    expect(refus.status).toBe(429)
+    expect(refus.headers.get("Retry-After")).toBe("7")
+    expect(mocks.connecteurFindUnique).toHaveBeenCalledTimes(300)
+
+    vi.setSystemTime(t0 + 10_000)
+    mocks.connecteurFindUnique.mockResolvedValue(connecteur("ttn"))
+    expect((await POST(requete(UPLINK_TTN_LHT65N, { auth: nouveau }))).status).toBe(200)
+    // Désormais accepté : il n'attend plus de créneau, même s'il vient d'être pris.
+    expect((await POST(requete(UPLINK_TTN_LHT65N, { auth: nouveau }))).status).toBe(200)
+  })
+
+  it("au plafond, une rafale de jetons inconnus ne lit pas la base plus d'une fois par 10 s", async () => {
+    const t0 = MAINTENANT_FIXTURES.getTime()
+    await epuiserAdresse()
+    const lectures: number[] = []
+    mocks.connecteurFindUnique.mockImplementation(async () => {
+      lectures.push(Date.now() - t0)
+      return null
+    })
+    const attentes = new Set<string | null>()
+    // 60 s de rafale : 3 jetons neufs toutes les 200 ms, 900 requêtes.
+    for (let t = 0; t <= 60_000; t += 200) {
+      vi.setSystemTime(t0 + t)
+      for (let k = 0; k < 3; k++) {
+        const r = await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))
+        if (r.status === 429) attentes.add(r.headers.get("Retry-After"))
+        else expect(r.status).toBe(401)
+      }
+    }
+    expect(lectures).toEqual([10_000, 20_000, 30_000, 40_000, 50_000, 60_000])
+    // Retry-After annonce toujours le prochain créneau : jamais au-delà de 10 s.
+    expect([...attentes].every((a) => /^\d+$/.test(a ?? "") && Number(a) >= 1 && Number(a) <= 10)).toBe(true)
+  })
+
+  it("des jetons inconnus envoyés simultanément ne lisent pas la base au-delà du plafond", async () => {
+    mocks.connecteurFindUnique.mockResolvedValue(null)
+    const reponses = await Promise.all(
+      Array.from({ length: 400 }, () => POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))),
+    )
+    expect(mocks.connecteurFindUnique).toHaveBeenCalledTimes(300)
+    expect(reponses.filter((r) => r.status === 401)).toHaveLength(300)
+    expect(reponses.filter((r) => r.status === 429)).toHaveLength(100)
+  })
+
+  it("la lecture d'un jeton valide jamais vu n'entame pas le plafond de l'adresse", async () => {
+    await epuiserAdresse(299)
+    mocks.connecteurFindUnique.mockResolvedValue(connecteur("ttn"))
+    expect((await POST(requete(UPLINK_TTN_LHT65N))).status).toBe(200)
+    expect(budgetEpuise("echecs:203.0.113.7", 300)).toBeNull()
+    mocks.connecteurFindUnique.mockResolvedValue(null)
+    expect((await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))).status).toBe(401)
+    expect(budgetEpuise("echecs:203.0.113.7", 300)).not.toBeNull()
   })
 
   it("un jeton périmé déjà refusé n'entame pas le plafond de l'adresse (webhook resté sur un jeton régénéré)", async () => {

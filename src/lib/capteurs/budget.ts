@@ -59,7 +59,54 @@ export function budgetEpuise(cle: string, max: number, maintenant: number = Date
   return Math.max(1, Math.ceil((f.finA - maintenant) / 1000))
 }
 
+/**
+ * Rend des unités prises d'avance (travail finalement non compté). Sans effet
+ * si la fenêtre est close : la suivante repart de zéro.
+ */
+export function rendreBudget(cle: string, quantite: number, maintenant: number = Date.now()) {
+  const f = fenetres.get(cle)
+  if (f && maintenant < f.finA) f.utilise = Math.max(0, f.utilise - quantite)
+}
+
+/** Instant du dernier passage accordé par `consommerOuEspacer`, par clé. */
+const derniersPassages = new Map<string, number>()
+
+/**
+ * Plafond à débit limité plutôt que blocage dur. Sous `max`, prend une unité
+ * D'AVANCE (des requêtes simultanées ne dépassent pas le plafond) ; au
+ * plafond, accorde encore un passage si le précédent date d'au moins
+ * `intervalleMs`, sans rien consommer. Chaque passage accordé est daté, ceux
+ * d'avant le plafond compris : le premier passage au plafond attend donc
+ * `intervalleMs` après le dernier. Le délai annoncé est celui du prochain
+ * passage possible, ou la fin de la fenêtre si elle vient avant.
+ *
+ * `unite` dit si une unité a été prise : la rendre (`rendreBudget`) si le
+ * travail ne doit finalement pas compter.
+ */
+export function consommerOuEspacer(
+  cle: string,
+  max: number,
+  fenetreMs: number,
+  intervalleMs: number,
+  maintenant: number = Date.now(),
+): { ok: true; unite: boolean } | { ok: false; reessayerDansS: number } {
+  if (derniersPassages.size > NETTOYAGE_AU_DELA) {
+    for (const [c, t] of derniersPassages) if (maintenant - t >= intervalleMs) derniersPassages.delete(c)
+  }
+  const prise = consommerBudgets([{ cle, quantite: 1, max }], fenetreMs, maintenant)
+  if (!prise.ok) {
+    const dernier = derniersPassages.get(cle)
+    if (dernier !== undefined && maintenant - dernier < intervalleMs) {
+      const prochainDansS = Math.ceil((dernier + intervalleMs - maintenant) / 1000)
+      return { ok: false, reessayerDansS: Math.max(1, Math.min(prochainDansS, prise.reessayerDansS)) }
+    }
+  }
+  derniersPassages.set(cle, maintenant)
+  return { ok: true, unite: prise.ok }
+}
+
 /** Tests seulement. */
 export function viderBudgets() {
   fenetres.clear()
+  derniersPassages.clear()
 }
