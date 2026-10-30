@@ -33,6 +33,8 @@ interface Connexion {
   modeTest: boolean
   derniereSynchro: string | null
   resteHistorique: boolean
+  /** Jeton devenu illisible côté serveur : la connexion doit être refaite. */
+  erreur: string | null
 }
 interface Operation {
   virementId: string | null
@@ -102,7 +104,8 @@ export default function BanquePage() {
     [charge, setCharge] = React.useState(false),
     [enCours, setEnCours] = React.useState(false)
   const [erreur, setErreur] = React.useState<string | null>(null),
-    [message, setMessage] = React.useState<string | null>(null)
+    [message, setMessage] = React.useState<string | null>(null),
+    [avertissement, setAvertissement] = React.useState<string | null>(null)
   const [nomCompte, setNomCompte] = React.useState(''),
     [devise, setDevise] = React.useState('EUR'),
     [cleStripe, setCleStripe] = React.useState(''),
@@ -216,6 +219,7 @@ export default function BanquePage() {
     setEnCours(true)
     setErreur(null)
     setMessage(null)
+    setAvertissement(null)
     try {
       await fn()
     } catch (e) {
@@ -332,6 +336,11 @@ export default function BanquePage() {
           {message}
         </p>
       )}
+      {avertissement && (
+        <p role="status" className="rounded bg-amber-50 p-3 text-sm text-amber-800">
+          {avertissement}
+        </p>
+      )}
       {donnees && (
         <>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -422,7 +431,7 @@ export default function BanquePage() {
                   <div key={c.id} className="space-y-2 rounded border p-3">
                     <p className="font-medium">
                       {c.modeTest ? 'Connexion de test' : 'Connexion réelle'} ·{' '}
-                      {c.actif ? 'active' : 'désactivée'}
+                      {c.actif ? 'active' : c.erreur ? 'à reconnecter' : 'désactivée'}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {c.derniereSynchro
@@ -430,6 +439,11 @@ export default function BanquePage() {
                           new Date(c.derniereSynchro).toLocaleString('fr-FR')
                         : 'Synchronisation à lancer'}
                     </p>
+                    {c.erreur && (
+                      <p role="alert" className="text-xs text-red-700">
+                        {c.erreur}
+                      </p>
+                    )}
                     {c.modeTest && (
                       <p className="text-xs text-amber-800">
                         Ces opérations de test ne règlent aucune pièce réelle.
@@ -468,8 +482,10 @@ export default function BanquePage() {
                           size="sm"
                           onClick={() =>
                             executer(async () => {
-                              await action({ action: 'deconnecter', connexionId: c.id })
-                              setMessage('Accès Stripe retiré, historique conservé.')
+                              const d = await action({ action: 'deconnecter', connexionId: c.id })
+                              setMessage(d.message || 'Accès Stripe retiré, historique conservé.')
+                              // Révocation non confirmée par Stripe : l'accès local est retiré quand même.
+                              if (d.avertissement) setAvertissement(d.avertissement)
                             })
                           }
                         >

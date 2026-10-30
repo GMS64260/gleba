@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 const mock = vi.hoisted(() => ({ choisir: vi.fn(), synchroniser: vi.fn(), planifier: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({ default: { connexionStripe: { findFirst: mock.choisir } } }))
-vi.mock('./stripe', () => ({ synchroniserStripe: mock.synchroniser }))
+vi.mock('./stripe', () => ({
+  synchroniserStripe: mock.synchroniser,
+  ErreurJetonStripe: class ErreurJetonStripe extends Error {},
+}))
 vi.mock('node-cron', () => ({ default: { schedule: mock.planifier } }))
 afterEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
+  vi.restoreAllMocks()
   vi.unstubAllEnvs()
 })
 
@@ -46,5 +50,29 @@ describe('synchronisation périodique Stripe', () => {
     await synchroniserProchaineConnexion()
     expect(mock.choisir.mock.calls[1][0].where.id).toEqual({ gt: 'a' })
     expect(mock.synchroniser.mock.calls[1]).toEqual(['u-b', 'b'])
+  })
+})
+
+describe('journal des échecs de synchronisation', () => {
+  it('nomme une configuration absente, ne prétend pas différer un jeton illisible', async () => {
+    const { synchroniserProchaineConnexion } = await import('./scheduler')
+    const { ErreurJetonStripe } = await import('./stripe')
+    const { ErreurReglement } = await import('../monnaie')
+    const avertir = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const erreur = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mock.choisir.mockResolvedValue({ id: 'c', userId: 'u-c' })
+
+    mock.synchroniser.mockRejectedValueOnce(new ErreurJetonStripe())
+    await synchroniserProchaineConnexion()
+    expect(avertir).not.toHaveBeenCalled()
+
+    mock.synchroniser.mockRejectedValueOnce(new ErreurReglement('Le chiffrement des connexions doit être configuré sur le serveur.', 503))
+    await synchroniserProchaineConnexion()
+    expect(erreur).toHaveBeenCalledWith(expect.stringContaining('chiffrement des connexions'))
+    expect(avertir).not.toHaveBeenCalled()
+
+    mock.synchroniser.mockRejectedValueOnce(new Error('panne réseau fictive'))
+    await synchroniserProchaineConnexion()
+    expect(avertir).toHaveBeenCalledWith(expect.stringContaining('différée'))
   })
 })

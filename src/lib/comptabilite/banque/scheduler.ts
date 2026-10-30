@@ -1,6 +1,7 @@
 import cron from 'node-cron'
 import prisma from '@/lib/prisma'
-import { synchroniserStripe } from './stripe'
+import { ErreurJetonStripe, synchroniserStripe } from './stripe'
+import { ErreurReglement } from '../monnaie'
 
 let initialise = false
 let enCours = false
@@ -37,9 +38,14 @@ export async function synchroniserProchaineConnexion() {
     if (!connexion) return
     dernierId = connexion.id
     await synchroniserStripe(connexion.userId, connexion.id)
-  } catch {
+  } catch (e) {
     // Aucune charge bancaire, identité ou réponse du fournisseur dans les logs.
-    console.warn('[banque] Synchronisation Stripe différée ; réessai au prochain cycle.')
+    // Jeton illisible : déjà journalisé et connexion mise en erreur par
+    // synchroniserStripe ; elle ne sera pas retentée, rien n'est « différé ».
+    if (e instanceof ErreurJetonStripe) return
+    if (e instanceof ErreurReglement && e.status === 503)
+      console.error('[banque] Synchronisation Stripe impossible : ' + e.message)
+    else console.warn('[banque] Synchronisation Stripe différée ; réessai au prochain cycle.')
   } finally {
     enCours = false
   }

@@ -9,7 +9,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { enrichirMiroirsReglements } from '@/lib/comptabilite/projection-reglements'
 import { cleMiroirReglement } from '@/lib/comptabilite/cle-reglement'
-import { verifierPointageDetaille, suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
+import { verifierPointageDetaille, suiviReglementActif } from '@/lib/comptabilite/suivi-reglement-source'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { Prisma } from '@prisma/client'
 import { createDepenseManuelleSchema, updateDepenseManuelleSchema } from '@/lib/validations/depense-manuelle'
@@ -276,7 +276,8 @@ export async function DELETE(request: NextRequest) {
     await prisma.$transaction(async (db) => {
       await verrouillerReglements(db, session.user.id)
       await db.$queryRaw`SELECT id FROM depenses_manuelles WHERE id = ${existing.id} AND user_id = ${session.user.id} FOR UPDATE`
-      const suivi = await suiviReglementParCle(db, session.user.id, cleMiroirReglement('depense', existing))
+      // Un dossier dont tous les versements sont annulés ne bloque plus la suppression.
+      const suivi = await suiviReglementActif(db, session.user.id, cleMiroirReglement('depense', existing))
       if (suivi) throw new ErreurReglement('Régularisez les règlements avant de supprimer cette pièce.')
       await db.depenseManuelle.delete({ where: { id: existing.id, userId: session.user.id } })
     })

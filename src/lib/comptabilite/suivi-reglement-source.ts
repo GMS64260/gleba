@@ -7,13 +7,24 @@ import { enCentimes, entierCentimes, ErreurReglement } from './monnaie'
 
 type Db = Prisma.TransactionClient
 export async function suiviReglementParCle(db: Db, userId: string, cle: string) {
-  const lignes = await db.$queryRaw<Array<{ dossier_id: string; regle: bigint }>>`
-    SELECT c.dossier_id, COALESCE((SELECT SUM(r.montant_centimes) FROM reglements r WHERE r.dossier_id = c.dossier_id AND r.user_id = ${userId} AND r.annule_le IS NULL), 0)::bigint AS regle
+  const lignes = await db.$queryRaw<Array<{ dossier_id: string; regle: bigint; actifs: bigint }>>`
+    SELECT c.dossier_id, COALESCE((SELECT SUM(r.montant_centimes) FROM reglements r WHERE r.dossier_id = c.dossier_id AND r.user_id = ${userId} AND r.annule_le IS NULL), 0)::bigint AS regle,
+      (SELECT COUNT(*) FROM reglements r WHERE r.dossier_id = c.dossier_id AND r.user_id = ${userId} AND r.annule_le IS NULL)::bigint AS actifs
     FROM cibles_reglement c WHERE c.user_id = ${userId} AND c.cle = ${cle}`
   const row = lignes[0]
   return row && typeof row.dossier_id === 'string'
-    ? { dossierId: row.dossier_id, regle: entierCentimes(row.regle) }
+    ? { dossierId: row.dossier_id, regle: entierCentimes(row.regle), actifs: Number(row.actifs ?? 0) }
     : null
+}
+/**
+ * Revue du 2026-10-29 : un dossier dont tous les versements sont annulés ne
+ * suit plus aucun paiement. Pour supprimer la pièce, la ramener à 0 ou repasser
+ * sa source en planifiée, il se comporte comme une pièce non suivie ; sinon
+ * l'annulation de l'unique versement laissait la pièce dans une impasse.
+ */
+export async function suiviReglementActif(db: Db, userId: string, cle: string) {
+  const suivi = await suiviReglementParCle(db, userId, cle)
+  return suivi && suivi.actifs > 0 ? suivi : null
 }
 export async function synchroniserReglementSource(
   db: Db,
@@ -24,6 +35,8 @@ export async function synchroniserReglementSource(
   const suivi = await suiviReglementParCle(db, userId, cle)
   if (!suivi) return {}
   const total = enCentimes(montant)
+  // Sans versement actif, rien n'empêche d'effacer la pièce : son miroir disparaît.
+  if (total <= 0 && !suivi.actifs) return {}
   if (total <= 0)
     throw new ErreurReglement(
       'Cette pièce possède un historique de règlements. Conservez sa référence et son journal au lieu d’effacer son montant.',
@@ -39,7 +52,7 @@ export async function synchroniserReglementSource(
   return { paye: suivi.regle >= total }
 }
 export async function verifierSuppressionSourceReglee(db: Db, userId: string, cle: string) {
-  const suivi = await suiviReglementParCle(db, userId, cle)
+  const suivi = await suiviReglementActif(db, userId, cle)
   if (!suivi) return
   // Une facture remplace la source au moment de la facturation ; le journal
   // de paiement reste sur le même dossier, sans dépendre du miroir supprimé.

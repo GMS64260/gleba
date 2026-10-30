@@ -2,7 +2,7 @@ import { estCompteDemo } from '@/lib/demo-garde'
 import { createHash, randomBytes } from 'node:crypto'
 import prisma from '@/lib/prisma'
 import { ErreurReglement } from '../monnaie'
-import { enregistrerConnexionStripe } from './stripe'
+import { CLEFS, dechiffrerJeton, enregistrerConnexionStripe } from './stripe'
 function origine() {
   const url = new URL(process.env.NEXTAUTH_URL || process.env.AUTH_URL || 'https://gleba.fr')
   if (
@@ -93,4 +93,88 @@ export async function terminerConnexionStripe(
 }
 export function retourBanqueStripe(resultat: 'connecte' | 'echec') {
   return origine() + '/comptabilite/banque?connexion=' + resultat
+}
+
+/**
+ * Révoque chez Stripe l'autorisation OAuth `read_write` donnée à la plateforme
+ * (revue du 2026-10-29 : la déconnexion effaçait seulement le jeton local).
+ * Renvoie `false` si Stripe ne confirme pas la révocation.
+ */
+export async function revoquerAutorisationStripe(compteStripeId: string) {
+  const clientId = process.env.STRIPE_CONNECT_CLIENT_ID,
+    secret = process.env.STRIPE_SECRET_KEY
+  if (!clientId || !secret || !/^acct_[A-Za-z0-9]+$/.test(compteStripeId)) return false
+  try {
+    const response = await fetch('https://connect.stripe.com/oauth/deauthorize', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + secret,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ client_id: clientId, stripe_user_id: compteStripeId }),
+      cache: 'no-store',
+      redirect: 'error',
+      signal: AbortSignal.timeout(10000),
+    })
+    if (!response.ok) {
+      console.warn(`[banque] Révocation Stripe refusée (HTTP ${response.status}).`)
+      return false
+    }
+    const donnees: unknown = await response.json()
+    return Boolean(
+      donnees &&
+        typeof donnees === 'object' &&
+        (donnees as Record<string, unknown>).stripe_user_id === compteStripeId,
+    )
+  } catch {
+    console.warn('[banque] Révocation Stripe injoignable.')
+    return false
+  }
+}
+
+/**
+ * Déconnexion par le propriétaire : l'accès local est toujours retiré (jeton
+ * effacé, historique conservé). Une connexion OAuth est aussi révoquée chez
+ * Stripe ; un échec n'empêche pas la déconnexion mais revient en avertissement.
+ * Une clé restreinte appartient au compte Stripe : Gleba ne peut pas la
+ * supprimer, le message invite à la révoquer dans le tableau de bord.
+ */
+export async function deconnecterStripe(userId: string, connexionId: string) {
+  const connexion = await prisma.connexionStripe.findFirst({
+    where: { id: connexionId, userId },
+    select: { compteStripeId: true, jetonChiffre: true },
+  })
+  const refus = 'Connexion introuvable ou synchronisation en cours. Réessayez après sa fin.'
+  if (!connexion) throw new ErreurReglement(refus)
+  let nature: 'cle' | 'oauth' | 'inconnue' = 'inconnue'
+  if (connexion.jetonChiffre) {
+    try {
+      nature = CLEFS.test(dechiffrerJeton(connexion.jetonChiffre)) ? 'cle' : 'oauth'
+    } catch {
+      // Jeton illisible : la nature de l'accès n'est plus connue.
+    }
+  }
+  const resultat = await prisma.connexionStripe.updateMany({
+    where: {
+      id: connexionId,
+      userId,
+      OR: [{ verrouSynchroJusqua: null }, { verrouSynchroJusqua: { lt: new Date() } }],
+    },
+    data: { actif: false, jetonChiffre: '' },
+  })
+  if (!resultat.count) throw new ErreurReglement(refus)
+  if (nature === 'cle')
+    return {
+      message:
+        'Accès retiré de Gleba, historique conservé. Révoquez aussi la clé restreinte dans votre tableau de bord Stripe (Développeurs, Clés API) : Gleba ne peut pas la supprimer.',
+    }
+  if (await revoquerAutorisationStripe(connexion.compteStripeId))
+    return { message: 'Accès Stripe révoqué et retiré de Gleba, historique conservé.' }
+  return {
+    message: 'Accès retiré de Gleba, historique conservé.',
+    avertissement:
+      nature === 'oauth'
+        ? 'Stripe n’a pas confirmé la révocation de l’accès. Retirez Gleba des applications autorisées dans votre tableau de bord Stripe.'
+        : 'Stripe n’a pas confirmé de révocation. Retirez l’accès de Gleba dans votre tableau de bord Stripe : application autorisée ou clé restreinte.',
+  }
 }

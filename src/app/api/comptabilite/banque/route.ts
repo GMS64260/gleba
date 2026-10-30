@@ -18,7 +18,9 @@ import {
   connecterCleStripe,
   synchroniserStripe,
   configurationStripe,
+  erreurConnexionStripe,
 } from '@/lib/comptabilite/banque/stripe'
+import { deconnecterStripe } from '@/lib/comptabilite/banque/stripe-oauth'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { verrouillerReglements } from '@/lib/comptabilite/reglements'
 const actionSchema = z.discriminatedUnion('action', [
@@ -67,6 +69,8 @@ export async function GET(request: NextRequest) {
           derniereSynchro: true,
           historiqueComplet: true,
           curseurNouveaux: true,
+          // Lu pour l'état d'erreur seulement, jamais renvoyé.
+          jetonChiffre: true,
         },
       }),
       prisma.operationBancaire.findMany({
@@ -94,6 +98,7 @@ export async function GET(request: NextRequest) {
       modeTest: c.modeTest,
       derniereSynchro: c.derniereSynchro,
       resteHistorique: !c.historiqueComplet || Boolean(c.curseurNouveaux),
+      erreur: erreurConnexionStripe(c),
     })),
     operations: operations.slice(0, 100).map(operationDTO),
     curseurSuivant: operations.length > 100 ? operations[99].id : null,
@@ -146,21 +151,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: await connecterCleStripe(userId, d.cle) })
     if (d.action === 'synchroniser')
       return NextResponse.json(await synchroniserStripe(userId, d.connexionId))
-    if (d.action === 'deconnecter') {
-      const resultat = await prisma.connexionStripe.updateMany({
-        where: {
-          id: d.connexionId,
-          userId,
-          OR: [{ verrouSynchroJusqua: null }, { verrouSynchroJusqua: { lt: new Date() } }],
-        },
-        data: { actif: false, jetonChiffre: '' },
-      })
-      if (!resultat.count)
-        throw new ErreurReglement(
-          'Connexion introuvable ou synchronisation en cours. Réessayez après sa fin.',
-        )
-      return NextResponse.json({ success: true })
-    }
+    if (d.action === 'deconnecter')
+      return NextResponse.json({ success: true, ...(await deconnecterStripe(userId, d.connexionId)) })
     if (d.action === 'importer')
       return NextResponse.json(await importerReleve(userId, d.compteId, d.csv))
     if (d.action === 'rapprocher')
@@ -198,6 +190,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
   } catch (e) {
+    // Erreur inattendue : journalisée côté serveur comme les autres routes.
+    // Seule l'erreur l'est, jamais le corps de la requête qui peut porter une
+    // clé Stripe (celle-ci n'atteint ni la base ni les messages d'erreur).
+    if (!(e instanceof ErreurReglement)) console.error('POST /api/comptabilite/banque error:', e)
     return NextResponse.json(
       {
         error:

@@ -109,6 +109,9 @@ export async function GET(request: NextRequest) {
       // Achats arbres
       achatsArbres,
 
+      // Coûts réels des campagnes de plantation
+      campagnesPlantation,
+
       // Dépenses manuelles
       depensesManuellesParCategorie,
       depensesManuellesParModule,
@@ -207,12 +210,14 @@ export async function GET(request: NextRequest) {
         _sum: { cout: true },
       }),
 
-      // Opérations arbres
+      // Opérations arbres réalisées : une opération planifiée n'est pas une
+      // dépense (même règle que son miroir et que Transactions).
       prisma.operationArbre.aggregate({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
           cout: { not: null },
+          NOT: { fait: false },
         },
         _sum: { cout: true },
       }),
@@ -261,7 +266,8 @@ export async function GET(request: NextRequest) {
         _sum: { prixAchat: true },
       }),
 
-      // Achats arbres (verger)
+      // Achats arbres (verger), datés comme leur miroir : achat, sinon
+      // plantation, sinon création.
       prisma.arbre.aggregate({
         where: {
           userId,
@@ -269,9 +275,22 @@ export async function GET(request: NextRequest) {
           OR: [
             { dateAchat: { gte: startOfYear, lte: endOfYear } },
             { datePlantation: { gte: startOfYear, lte: endOfYear }, dateAchat: null },
+            { dateAchat: null, datePlantation: null, createdAt: { gte: startOfYear, lte: endOfYear } },
           ],
         },
         _sum: { prixAchat: true },
+      }),
+
+      // Coûts réels des campagnes de plantation (revue du 2026-10-29) : comptés
+      // par le KPI et Transactions, ils manquaient au verger des Rapports. Même
+      // date que la liste et le miroir ; le miroir auto est exclu plus bas.
+      prisma.campagnePlantation.aggregate({
+        where: { userId, coutReel: { gt: 0 }, OR: [
+          { datePlantationReelle: { gte: startOfYear, lte: endOfYear } },
+          { datePlantationReelle: null, datePlantationPrevue: { gte: startOfYear, lte: endOfYear } },
+          { datePlantationReelle: null, datePlantationPrevue: null, createdAt: { gte: startOfYear, lte: endOfYear } },
+        ] },
+        _sum: { coutReel: true },
       }),
 
       // Dépenses manuelles par categorie (exclure auto=true)
@@ -409,6 +428,7 @@ export async function GET(request: NextRequest) {
                (achatsLots._sum.prixAchatTotal || 0) + (achatsAnimaux._sum.prixAchat || 0)
                + depensesManuellesVentilees.elevage + interventionsVentilees.elevage,
       verger: (depensesOperations._sum.cout || 0) + (achatsArbres._sum.prixAchat || 0)
+               + (campagnesPlantation._sum.coutReel || 0)
                + depensesManuellesVentilees.verger + interventionsVentilees.verger,
       potager: depensesFertilisation
                + depensesManuellesVentilees.potager + interventionsVentilees.potager,
@@ -653,6 +673,7 @@ export async function GET(request: NextRequest) {
       { categorie: 'Fertilisation', montant: depensesFertilisation, couleur: COLORS.fertilisation },
       { categorie: 'Achats animaux', montant: (achatsLots._sum.prixAchatTotal || 0) + (achatsAnimaux._sum.prixAchat || 0), couleur: COLORS.achats },
       { categorie: 'Achats arbres', montant: achatsArbres._sum.prixAchat || 0, couleur: '#15803d' },
+      { categorie: 'Plantations', montant: campagnesPlantation._sum.coutReel || 0, couleur: '#166534' },
       ...depensesManuellesParCategorie.map(d => ({
         categorie: d.categorie === 'materiel' ? 'Matériel' :
                    d.categorie === 'carburant' ? 'Carburant' :

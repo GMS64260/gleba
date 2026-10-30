@@ -18,18 +18,21 @@ const mocks = vi.hoisted(() => ({
   venteCreate: vi.fn(),
   sourceUpdateMany: vi.fn(),
   clientFindFirst: vi.fn(),
+  queryRaw: vi.fn(),
+  venteDelete: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 vi.mock("@/lib/prisma", () => {
   const db = {
-    $queryRaw: async () => [{ id: 167 }],
+    $queryRaw: (...args: unknown[]) => mocks.queryRaw(...args),
     $executeRaw: async () => 0,
     venteManuelle: {
       findFirst: mocks.venteFindFirst,
       update: mocks.venteUpdate,
       create: mocks.venteCreate,
+      delete: mocks.venteDelete,
     },
     venteProduit: { updateMany: mocks.sourceUpdateMany },
     client: { findFirst: mocks.clientFindFirst },
@@ -37,7 +40,7 @@ vi.mock("@/lib/prisma", () => {
   return { default: { ...db, $transaction: (callback: (tx: unknown) => unknown) => callback(db) } }
 })
 
-import { PATCH, POST } from "./route"
+import { DELETE, PATCH, POST } from "./route"
 
 const requete = (method: "POST" | "PATCH", body: object) =>
   new NextRequest("http://localhost/api/comptabilite/ventes-manuelles", {
@@ -58,6 +61,8 @@ const venteManuelle = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.queryRaw.mockImplementation(async () => [{ id: 167 }])
+  mocks.venteDelete.mockResolvedValue({ id: 12 })
   mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
   mocks.sourceUpdateMany.mockResolvedValue({ count: 1 })
   mocks.venteFindFirst.mockResolvedValue(venteManuelle)
@@ -220,5 +225,27 @@ describe("pointage et source d’élevage", () => {
     expect((await PATCH(requete("PATCH", { id: 12, paye: true }))).status).toBe(409)
     expect(mocks.sourceUpdateMany).not.toHaveBeenCalled()
     expect(mocks.venteUpdate).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Revue du 2026-10-29 : l'annulation de l'unique versement laissait le dossier
+ * de règlements en place, et la pièce ne pouvait plus être supprimée.
+ */
+describe("DELETE /api/comptabilite/ventes-manuelles — dossier de règlements", () => {
+  const dossier = (actifs: number) =>
+    mocks.queryRaw.mockImplementation(async (sql: TemplateStringsArray) =>
+      sql.join("?").includes("cibles_reglement") ? [{ dossier_id: "dossier-qa", regle: BigInt(0), actifs: BigInt(actifs) }] : [{ id: 167 }])
+  const supprimer = () => DELETE(new NextRequest("http://localhost/api/comptabilite/ventes-manuelles?id=12", { method: "DELETE" }))
+
+  it("supprime une pièce dont tous les versements sont annulés", async () => {
+    dossier(0)
+    expect((await supprimer()).status).toBe(200)
+    expect(mocks.venteDelete).toHaveBeenCalledWith({ where: { id: 12, userId: "u1" } })
+  })
+  it("refuse toujours une pièce qui porte un versement actif", async () => {
+    dossier(1)
+    expect((await supprimer()).status).toBe(409)
+    expect(mocks.venteDelete).not.toHaveBeenCalled()
   })
 })

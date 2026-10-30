@@ -19,13 +19,26 @@ import { libellesVenteBois } from '@/lib/verger/production-bois'
 import { montantVenteFruit } from '@/lib/verger/montant-vente'
 import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
-import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture, suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
+import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture, suiviReglementActif } from '@/lib/comptabilite/suivi-reglement-source'
 
 // ============================================================
 // HELPERS
 // ============================================================
 
 type AutoComptaTx = Prisma.TransactionClient
+
+/**
+ * Sources dont l'app crée le miroir NON payé : « payé » y est une déclaration
+ * de l'utilisateur. Corriger le montant d'une telle pièce sans versement
+ * détaillé ferait passer pour payé un montant que personne n'a déclaré (garde
+ * du 2026-10-28). Les autres miroirs (soins, interventions, fertilisations,
+ * aliments, achats d'animaux, de lots et d'arbres) naissent payés par défaut :
+ * ce booléen n'apprend rien, et refuser leur correction de coût bloquait toute
+ * modification de la source (régression P1, revue du 2026-10-29). Pour eux, une
+ * correction garde le pointage existant comme avant le 2026-10-28 ; un journal
+ * de versements détaillés reste géré par `synchroniserReglementSource`.
+ */
+const SOURCES_DEPENSE_PAIEMENT_DECLARE: ReadonlySet<string> = new Set(['operation_arbre', 'campagne_plantation'])
 
 async function suiviDuMiroirDepense(db: AutoComptaTx, where: { userId: string; sourceType: string; sourceId: number; auto: true }, montant?: number) {
   await verrouillerReglements(db, where.userId)
@@ -35,11 +48,10 @@ async function suiviDuMiroirDepense(db: AutoComptaTx, where: { userId: string; s
     select: { montant: true, paye: true, modeReglement: true, numeroPiece: true, journal: true, pjUrl: true, notes: true, refFacture: true, dateEcheance: true },
   })
   const cle = cleSourceReglement('depense', where.sourceType, where.sourceId)
-  if (ancienne?.paye && montant !== undefined && typeof ancienne.montant === 'number'
-    && enCentimes(ancienne.montant) !== enCentimes(montant)) {
-    const dossier = await suiviReglementParCle(db, where.userId, cle)
-    const versements = dossier ? await db.reglement.count({ where: { userId: where.userId, dossierId: dossier.dossierId, annuleLe: null } }) : 0
-    if (!versements) throw new ErreurReglement('Précisez les versements historiques dans Règlements avant de corriger le montant de cette dépense déclarée payée.')
+  if (SOURCES_DEPENSE_PAIEMENT_DECLARE.has(where.sourceType) && ancienne?.paye && montant !== undefined
+    && typeof ancienne.montant === 'number' && enCentimes(ancienne.montant) !== enCentimes(montant)
+    && !await suiviReglementActif(db, where.userId, cle)) {
+    throw new ErreurReglement('Précisez les versements historiques dans Règlements avant de corriger le montant de cette dépense déclarée payée.')
   }
   const reglement = montant !== undefined ? await synchroniserReglementSource(db, where.userId, cle, montant) : {}
   // Le montant appartient à la source ; seul le suivi est reporté.
@@ -684,7 +696,13 @@ export async function createVenteFromProductionBois(
  * stats, coûts de production) excluent les écritures auto correspondantes.
  */
 
-/** Achat d'un arbre : même date et montant que la fiche, sans présumer son paiement. */
+/**
+ * Achat d'un arbre : même date et montant que la fiche. Présumé réglé comme les
+ * achats d'animaux et de lots (décision du 2026-10-30) : hors de la garde des
+ * paiements déclarés. Une régénération garde le taux, la catégorie et le
+ * pointage du miroir existant (la reprise de mai l'avait classé à 5,5 % en
+ * « achats ») ; seuls montant, HT et TVA suivent la fiche.
+ */
 export async function createDepenseFromAchatArbre(userId: string, arbre: {
   id: number; nom: string; prixAchat: number | null; fournisseur: string | null;
   dateAchat: Date | null; datePlantation: Date | null; createdAt: Date
@@ -694,14 +712,16 @@ export async function createDepenseFromAchatArbre(userId: string, arbre: {
   return inAutoComptaTransaction(tx, async db => {
     const where = { userId, sourceType: 'achat_arbre', sourceId: arbre.id, auto: true as const }
     const suivi = await suiviDuMiroirDepense(db, where, montant)
+    const existant = await db.depenseManuelle.findFirst({ where, select: { tauxTVA: true, categorie: true } })
     await db.depenseManuelle.deleteMany({ where })
     if (montant === 0) return null
-    const tva = calculTVA(montant, 10)
+    const tauxTVA = typeof existant?.tauxTVA === 'number' && Number.isFinite(existant.tauxTVA) ? existant.tauxTVA : 10
+    const tva = calculTVA(montant, tauxTVA)
     return db.depenseManuelle.create({ data: {
       ...where, date: arbre.dateAchat ?? arbre.datePlantation ?? arbre.createdAt,
-      categorie: 'plants', description: `Achat ${arbre.nom}`,
+      categorie: existant?.categorie || 'plants', description: `Achat ${arbre.nom}`,
       fournisseurNom: arbre.fournisseur, montant, montantHT: tva.montantHT, montantTVA: tva.montantTVA,
-      tauxTVA: 10, tvaInferee: true, journal: 'AC', module: 'verger', comptable: true, paye: false, ...suivi,
+      tauxTVA, tvaInferee: true, journal: 'AC', module: 'verger', comptable: true, paye: true, ...suivi,
     } })
   })
 }
@@ -766,6 +786,7 @@ export async function createDepenseFromCampagnePlantation(
     coutReel?: number | null
     datePlantationReelle?: Date | string | null
     datePlantationPrevue?: Date | string | null
+    createdAt?: Date | string | null
   },
   tx?: AutoComptaTx,
 ) {
@@ -777,6 +798,10 @@ export async function createDepenseFromCampagnePlantation(
     })
     if (montantTTC <= 0) return null
     const { montantHT, montantTVA } = calculTVA(montantTTC, 10)
+    // Sans date de plantation, la date de création de la campagne, comme la
+    // liste Transactions : la date du jour déplaçait la dépense à chaque sauvegarde.
+    const creation = campagne.datePlantationReelle || campagne.datePlantationPrevue ? null
+      : campagne.createdAt ?? (await tx.campagnePlantation.findFirst({ where: { id: campagne.id, userId }, select: { createdAt: true } }))?.createdAt
     return tx.depenseManuelle.create({
       data: {
         userId,
@@ -784,7 +809,7 @@ export async function createDepenseFromCampagnePlantation(
           ? new Date(campagne.datePlantationReelle)
           : campagne.datePlantationPrevue
             ? new Date(campagne.datePlantationPrevue)
-            : new Date(),
+            : creation ? new Date(creation) : new Date(),
         categorie: 'plants',
         description: `Campagne de plantation - ${campagne.nom || `#${campagne.id}`}`,
         tauxTVA: 10,

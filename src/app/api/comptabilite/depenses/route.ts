@@ -136,7 +136,8 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // Arbre (achats)
+      // Arbre (achats) : même date que son miroir comptable (achat, sinon
+      // plantation, sinon création) ; sans date, il manquait à la liste.
       prisma.arbre.findMany({
         where: {
           userId,
@@ -144,6 +145,7 @@ export async function GET(request: NextRequest) {
           OR: [
             { dateAchat: { gte: startOfYear, lte: endOfYear } },
             { datePlantation: { gte: startOfYear, lte: endOfYear }, dateAchat: null },
+            { dateAchat: null, datePlantation: null, createdAt: { gte: startOfYear, lte: endOfYear } },
           ],
         },
         orderBy: { dateAchat: 'desc' },
