@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { retourBanqueStripe, terminerConnexionStripe } from '@/lib/comptabilite/banque/stripe-oauth'
+import { ErreurStripeActifAilleurs } from '@/lib/comptabilite/banque/stripe'
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -18,7 +19,11 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get('code') || '',
     )
     return NextResponse.redirect(retourBanqueStripe('connecte'))
-  } catch {
-    return NextResponse.redirect(retourBanqueStripe('echec'))
+  } catch (e) {
+    // Revue du 2026-10-30 : compte actif dans une autre exploitation, refus
+    // dédié pour que l'écran en donne la raison au lieu d'un échec générique.
+    return NextResponse.redirect(
+      retourBanqueStripe(e instanceof ErreurStripeActifAilleurs ? 'deja-active' : 'echec'),
+    )
   }
 }

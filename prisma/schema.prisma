@@ -5059,7 +5059,15 @@ model ConnexionStripe {
   verrouSynchroJusqua DateTime? @map("verrou_synchro_jusqua")
   createdAt DateTime @default(now()) @map("created_at")
   comptes CompteBancaire[]
-  @@unique([compteStripeId, modeTest])
+  // Unicité par exploitation (revue du 2026-10-30) : une connexion déconnectée
+  // d'une exploitation ne bloque plus le même compte Stripe ailleurs.
+  // Une seule connexion ACTIVE par compte Stripe sur toute l'instance : index
+  // unique PARTIEL SQL, que Prisma 5 ne sait pas modéliser (migration
+  // 20261030140000_stripe_connexion_unique_active) :
+  //   connexions_stripe_compte_stripe_id_mode_test_actif_key
+  //     UNIQUE (compte_stripe_id, mode_test) WHERE actif
+  // Ne pas le laisser supprimer par une migration générée (`migrate dev`).
+  @@unique([userId, compteStripeId, modeTest])
   @@unique([id, userId])
   @@index([userId])
   @@map("connexions_stripe")

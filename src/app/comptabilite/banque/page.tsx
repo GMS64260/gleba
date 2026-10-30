@@ -176,6 +176,11 @@ export default function BanquePage() {
       setErreur(
         'La connexion Stripe n’a pas abouti. Relancez-la ou utilisez une clé restreinte.',
       )
+    // Même texte que MESSAGE_STRIPE_ACTIF_AILLEURS (module serveur, non importable ici).
+    if (resultat === 'deja-active')
+      setErreur(
+        'Ce compte Stripe est déjà connecté à une autre exploitation Gleba. Déconnectez-le de cette exploitation avant de le relier ici.',
+      )
     if (resultat) {
       url.searchParams.delete('connexion')
       window.history.replaceState(null, '', url.pathname + url.search)

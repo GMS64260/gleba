@@ -91,7 +91,7 @@ export async function terminerConnexionStripe(
   // L'identité est vérifiée par GET /account avec le jeton réellement délivré.
   return enregistrerConnexionStripe(userId, d.access_token, !d.livemode)
 }
-export function retourBanqueStripe(resultat: 'connecte' | 'echec') {
+export function retourBanqueStripe(resultat: 'connecte' | 'echec' | 'deja-active') {
   return origine() + '/comptabilite/banque?connexion=' + resultat
 }
 
@@ -136,6 +136,8 @@ export async function revoquerAutorisationStripe(compteStripeId: string) {
  * Déconnexion par le propriétaire : l'accès local est toujours retiré (jeton
  * effacé, historique conservé). Une connexion OAuth est aussi révoquée chez
  * Stripe ; un échec n'empêche pas la déconnexion mais revient en avertissement.
+ * Jamais de révocation tant qu'une autre connexion active de l'instance utilise
+ * le même compte Stripe.
  * Une clé restreinte appartient au compte Stripe : Gleba ne peut pas la
  * supprimer, le message invite à la révoquer dans le tableau de bord.
  */
@@ -168,6 +170,18 @@ export async function deconnecterStripe(userId: string, connexionId: string) {
       message:
         'Accès retiré de Gleba, historique conservé. Révoquez aussi la clé restreinte dans votre tableau de bord Stripe (Développeurs, Clés API) : Gleba ne peut pas la supprimer.',
     }
+  // Revue du 2026-10-30 : l'unicité est désormais par exploitation, plusieurs
+  // lignes (déconnectées, ou importées sans jeton) peuvent viser le même compte
+  // Stripe, alors que l'autorisation OAuth de la plateforme est unique par
+  // compte. Tant qu'une autre connexion ACTIVE de l'instance l'utilise, ne pas
+  // la révoquer : une ligne inactive ou importée couperait sinon l'accès d'une
+  // autre exploitation.
+  if (
+    await prisma.connexionStripe.count({
+      where: { compteStripeId: connexion.compteStripeId, actif: true, id: { not: connexionId } },
+    })
+  )
+    return { message: 'Accès retiré de Gleba, historique conservé.' }
   if (await revoquerAutorisationStripe(connexion.compteStripeId))
     return { message: 'Accès Stripe révoqué et retiré de Gleba, historique conservé.' }
   return {
