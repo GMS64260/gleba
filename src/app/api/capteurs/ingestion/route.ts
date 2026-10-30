@@ -8,21 +8,23 @@
  *
  * Débit : requêtes et TRAMES par connecteur, MESURES par compte
  * (`budget.ts`) pour les envois valides. Par adresse, un plafond de LECTURES
- * EN BASE RATÉES (jeton inconnu), vérifié avant la lecture (revue du
- * 2026-10-30 : vérifié après, il n'épargnait rien à la base). Les webhooks TTN
- * partagent leurs adresses entre tous les comptes, d'où deux règles pour ne
- * pas faire payer à tous le jeton périmé d'un seul :
+ * EN BASE RATÉES (jeton inconnu), pris AVANT la lecture et rendu si le jeton
+ * est bon (revue du 2026-10-30 : vérifié après, il n'épargnait rien à la
+ * base). Les serveurs de réseau LoRaWAN (TTN, ChirpStack hébergé) envoient
+ * les trames de nombreuses fermes depuis les mêmes adresses, d'où trois
+ * règles pour ne pas faire payer à toutes l'erreur ou le balayage d'une seule :
  * - un jeton absent ou déjà refusé (cache de 10 min) ne lit pas la base et
  *   n'entame pas le plafond ;
- * - un jeton accepté dans les 24 dernières heures passe même au plafond.
- * Seul un jeton valide JAMAIS VU attend la fin de la fenêtre sur une adresse
- * épuisée (15 min au plus).
+ * - un jeton accepté dans les 24 dernières heures passe même au plafond ;
+ * - au plafond, l'adresse garde une lecture toutes les 10 s
+ *   (`LECTURE_AU_PLAFOND_MS`, 2026-10-30) : un jeton valide jamais vu n'attend
+ *   plus la fin de la fenêtre (15 min) mais le prochain créneau.
  */
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { adapter } from "@/lib/capteurs/adaptateurs"
-import { budgetEpuise, consommerBudgets } from "@/lib/capteurs/budget"
+import { consommerBudgets, consommerOuEspacer, rendreBudget } from "@/lib/capteurs/budget"
 import { estTypeConnecteur } from "@/lib/capteurs/connecteurs"
 import { ingererTrames } from "@/lib/capteurs/ingestion"
 import { hacherJeton, lireJetonBearer } from "@/lib/capteurs/jeton"
@@ -34,6 +36,19 @@ const TAILLE_MAX_OCTETS = 256 * 1024
 const FENETRE_MS = 15 * 60 * 1000
 const ENVOIS_MAX_PAR_CONNECTEUR = 1200
 const ECHECS_MAX_PAR_ADRESSE = 300
+/**
+ * Au plafond d'échecs, une lecture en base toutes les 10 s par adresse, quelle
+ * qu'en soit l'issue. Côté base : 90 lectures de plus par fenêtre au pire (390
+ * au lieu de 300), soit 0,1 par seconde, trois fois moins que le rythme moyen
+ * déjà toléré sous le plafond (300 en 15 min) : un balayage reste freiné.
+ * Côté fermes : un jeton nouveau passe au plus 10 s après la dernière lecture
+ * (`Retry-After` le dit), bien en deçà de l'intervalle d'émission d'un capteur
+ * LoRaWAN (quelques minutes), et un essai à la main passe en relançant.
+ * Limite : le créneau va au premier arrivé ; sous un flot continu de jetons
+ * jamais vus venant de la même adresse, un jeton valide peut attendre plus
+ * longtemps, jamais plus qu'avant ce débit (fin de la fenêtre).
+ */
+const LECTURE_AU_PLAFOND_MS = 10_000
 /** 50 capteurs toutes les 5 min = 150 trames par quart d'heure : marge de 4. */
 const TRAMES_MAX_PAR_CONNECTEUR = 600
 
@@ -77,9 +92,14 @@ export async function POST(request: NextRequest) {
   const empreinte = hacherJeton(jeton)
   if (empreinteRefusee(empreinte)) return refusJeton()
   const echecs = `echecs:${getClientIP(request)}`
-  if (!empreinteAcceptee(empreinte)) {
-    const attente = budgetEpuise(echecs, ECHECS_MAX_PAR_ADRESSE)
-    if (attente !== null) return tropDEchecs(attente)
+  const dejaAccepte = empreinteAcceptee(empreinte)
+  // Unité du plafond prise avant la lecture (des requêtes simultanées ne le
+  // dépassent pas), rendue plus bas si le jeton est bon.
+  let unitePrise = false
+  if (!dejaAccepte) {
+    const passage = consommerOuEspacer(echecs, ECHECS_MAX_PAR_ADRESSE, FENETRE_MS, LECTURE_AU_PLAFOND_MS)
+    if (!passage.ok) return tropDEchecs(passage.reessayerDansS)
+    unitePrise = passage.unite
   }
   const connecteur = await prisma.connecteurCapteurs.findUnique({
     where: { jetonHash: empreinte },
@@ -87,9 +107,11 @@ export async function POST(request: NextRequest) {
   })
   if (!connecteur) {
     noterEmpreinteRefusee(empreinte)
-    consommerBudgets([{ cle: echecs, quantite: 1, max: ECHECS_MAX_PAR_ADRESSE }], FENETRE_MS)
+    // Jeton accepté naguère puis régénéré : lecture ratée comptée après coup.
+    if (dejaAccepte) consommerBudgets([{ cle: echecs, quantite: 1, max: ECHECS_MAX_PAR_ADRESSE }], FENETRE_MS)
     return refusJeton()
   }
+  if (unitePrise) rendreBudget(echecs, 1)
   noterEmpreinteAcceptee(empreinte)
   if (!connecteur.actif) {
     return NextResponse.json({ error: "Connecteur désactivé dans Gleba (Paramètres > Capteurs)" }, { status: 403 })
