@@ -22,10 +22,15 @@ import { useIsDemoAccount } from "@/hooks/use-is-demo"
 import { useExploitation } from "@/hooks/use-exploitation"
 import { confirmDialog } from "@/lib/global-dialog"
 import { MESSAGES_REFUS_DEMO } from "@/lib/demo"
-import { FUSEAUX_PROPOSES, TYPES_CONNECTEUR, TYPES_CONNECTEUR_IDS, type TypeConnecteur } from "@/lib/capteurs/connecteurs"
+import {
+  FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MESURES_BRUTES_EXPORT, TYPES_CONNECTEUR, TYPES_CONNECTEUR_IDS, type TypeConnecteur,
+} from "@/lib/capteurs/connecteurs"
 import { GRANDEURS, GRANDEURS_IDS, estGrandeur } from "@/lib/capteurs/grandeurs"
 import { LIBELLES_PROFILS, PROFILS_IDS, lireCorrespondances, regleDe, type SourceRegle } from "@/lib/capteurs/decodage"
 import { TYPES_CIBLE, type Cible, type OptionCible, type TypeCible } from "@/lib/capteurs/rattachement-types"
+
+/** « 50 000 » formaté à la main : identique au rendu serveur et navigateur (pas d'écart d'hydratation). */
+const SEUIL_EXPORT_AFFICHE = String(SEUIL_MESURES_BRUTES_EXPORT).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f")
 
 interface Connecteur {
   id: string
@@ -164,6 +169,11 @@ export default function CapteursPage() {
               mesure, puis se rattache à une planche, une parcelle, un arbre, un lot ou un élément du plan. Un outil de la
               ferme (Home Assistant, Node-RED, script) peut aussi envoyer ses mesures au format JSON générique. Meshtastic
               arrive dans une étape suivante.
+            </CardDescription>
+            <CardDescription>
+              Chaque mesure est gardée {RETENTION_MESURES_JOURS} jours, puis résumée par jour (minimum, maximum, moyenne).
+              Au-delà de {SEUIL_EXPORT_AFFICHE} mesures, la sauvegarde complète n&apos;emporte que
+              ces résumés journaliers : le fichier resterait sinon trop lourd pour être restauré.
             </CardDescription>
           </CardHeader>
         </Card>

@@ -16,13 +16,17 @@ export const TYPES_CIBLE = {
 
 export type TypeCible = keyof typeof TYPES_CIBLE
 
+/** Colonnes `Int` (int4) : au-delà, Prisma échouait en 500 au lieu d'un refus 400. */
+const INT4_MAX = 2_147_483_647
+const idEntier = z.number().int().positive().max(INT4_MAX)
+
 export const schemaCible = z.discriminatedUnion("type", [
   z.object({ type: z.literal("planche"), id: z.string().min(1).max(40) }),
   z.object({ type: z.literal("parcelle"), id: z.string().min(1).max(40) }),
-  z.object({ type: z.literal("arbre"), id: z.number().int().positive() }),
-  z.object({ type: z.literal("lot"), id: z.number().int().positive() }),
-  z.object({ type: z.literal("animal"), id: z.number().int().positive() }),
-  z.object({ type: z.literal("objet"), id: z.number().int().positive() }),
+  z.object({ type: z.literal("arbre"), id: idEntier }),
+  z.object({ type: z.literal("lot"), id: idEntier }),
+  z.object({ type: z.literal("animal"), id: idEntier }),
+  z.object({ type: z.literal("objet"), id: idEntier }),
 ])
 
 export type Cible = z.infer<typeof schemaCible>

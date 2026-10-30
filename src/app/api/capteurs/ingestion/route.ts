@@ -7,21 +7,26 @@
  * compte. Déclarée publique dans `middleware.ts`.
  *
  * Débit : requêtes et TRAMES par connecteur, MESURES par compte
- * (`budget.ts`) pour les envois valides ; par adresse pour les jetons refusés
- * seulement. Les webhooks TTN partagent leurs adresses entre tous les comptes :
- * un plafond par adresse vérifié avant le jeton ferait payer à tous les
- * utilisateurs de TTN le jeton périmé d'un seul (régénéré sans être reporté
- * dans la console). Une recherche ratée ne coûte qu'une lecture d'index unique.
+ * (`budget.ts`) pour les envois valides. Par adresse, un plafond de LECTURES
+ * EN BASE RATÉES (jeton inconnu), vérifié avant la lecture (revue du
+ * 2026-10-30 : vérifié après, il n'épargnait rien à la base). Les webhooks TTN
+ * partagent leurs adresses entre tous les comptes, d'où deux règles pour ne
+ * pas faire payer à tous le jeton périmé d'un seul :
+ * - un jeton absent ou déjà refusé (cache de 10 min) ne lit pas la base et
+ *   n'entame pas le plafond ;
+ * - un jeton accepté dans les 24 dernières heures passe même au plafond.
+ * Seul un jeton valide JAMAIS VU attend la fin de la fenêtre sur une adresse
+ * épuisée (15 min au plus).
  */
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { adapter } from "@/lib/capteurs/adaptateurs"
-import { consommerBudgets } from "@/lib/capteurs/budget"
+import { budgetEpuise, consommerBudgets } from "@/lib/capteurs/budget"
 import { estTypeConnecteur } from "@/lib/capteurs/connecteurs"
 import { ingererTrames } from "@/lib/capteurs/ingestion"
 import { hacherJeton, lireJetonBearer } from "@/lib/capteurs/jeton"
-import { empreinteRefusee, noterEmpreinteRefusee } from "@/lib/capteurs/jetons-refuses"
+import { empreinteAcceptee, empreinteRefusee, noterEmpreinteAcceptee, noterEmpreinteRefusee } from "@/lib/capteurs/jetons-refuses"
 
 export const dynamic = "force-dynamic"
 
@@ -32,9 +37,15 @@ const ECHECS_MAX_PAR_ADRESSE = 300
 /** 50 capteurs toutes les 5 min = 150 trames par quart d'heure : marge de 4. */
 const TRAMES_MAX_PAR_CONNECTEUR = 600
 
-function refusJeton(request: NextRequest) {
-  const limite = checkRateLimit(`capteurs-echec:${getClientIP(request)}`, { windowMs: FENETRE_MS, max: ECHECS_MAX_PAR_ADRESSE })
-  return limite ?? NextResponse.json({ error: "Jeton de connecteur absent ou invalide" }, { status: 401 })
+function refusJeton() {
+  return NextResponse.json({ error: "Jeton de connecteur absent ou invalide" }, { status: 401 })
+}
+
+function tropDEchecs(reessayerDansS: number) {
+  return NextResponse.json(
+    { error: "Trop de jetons invalides depuis cette adresse : réessayez plus tard." },
+    { status: 429, headers: { "Retry-After": String(reessayerDansS) } },
+  )
 }
 
 /** Arrête la lecture dès le plafond, y compris sans Content-Length (flux HTTP). */
@@ -61,18 +72,25 @@ async function lireCorpsBorne(request: NextRequest): Promise<string | null> {
 
 export async function POST(request: NextRequest) {
   const jeton = lireJetonBearer(request.headers.get("authorization"))
-  if (!jeton) return refusJeton(request)
+  if (!jeton) return refusJeton()
 
   const empreinte = hacherJeton(jeton)
-  if (empreinteRefusee(empreinte)) return refusJeton(request)
+  if (empreinteRefusee(empreinte)) return refusJeton()
+  const echecs = `echecs:${getClientIP(request)}`
+  if (!empreinteAcceptee(empreinte)) {
+    const attente = budgetEpuise(echecs, ECHECS_MAX_PAR_ADRESSE)
+    if (attente !== null) return tropDEchecs(attente)
+  }
   const connecteur = await prisma.connecteurCapteurs.findUnique({
     where: { jetonHash: empreinte },
     select: { id: true, userId: true, type: true, actif: true },
   })
   if (!connecteur) {
     noterEmpreinteRefusee(empreinte)
-    return refusJeton(request)
+    consommerBudgets([{ cle: echecs, quantite: 1, max: ECHECS_MAX_PAR_ADRESSE }], FENETRE_MS)
+    return refusJeton()
   }
+  noterEmpreinteAcceptee(empreinte)
   if (!connecteur.actif) {
     return NextResponse.json({ error: "Connecteur désactivé dans Gleba (Paramètres > Capteurs)" }, { status: 403 })
   }

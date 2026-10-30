@@ -506,9 +506,19 @@ function ParametresContent() {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
+      // Contenu volontairement omis (brut des capteurs au-delà du seuil) :
+      // le fichier ne contient alors pas « toutes » les données, on le dit.
+      let avertissement = ''
+      try {
+        avertissement = decodeURIComponent(response.headers.get('X-Gleba-Avertissements') ?? '')
+      } catch {
+        avertissement = ''
+      }
       toast({
         title: 'Sauvegarde complète téléchargée',
-        description: 'Conservez ce fichier précieusement. Il contient toutes vos données.',
+        description: avertissement
+          ? `${avertissement} Conservez ce fichier précieusement.`
+          : 'Conservez ce fichier précieusement. Il contient toutes vos données.',
       })
     } catch {
       toast({

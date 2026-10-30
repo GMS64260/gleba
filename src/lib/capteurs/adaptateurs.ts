@@ -55,6 +55,20 @@ function nombre(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null
 }
 
+/**
+ * Métadonnées radio et batterie annoncées par le serveur de réseau : une
+ * valeur hors bornes est ignorée (la trame reste lue), comme une valeur non
+ * numérique. RSSI : la sensibilité LoRa s'arrête vers -148 dBm et 0 dBm (1 mW
+ * reçu) n'est pas atteint à la puissance légale en 868 MHz ; SNR : démodulé
+ * jusqu'à -20 dB, rapporté sous +20 dB. Batterie ChirpStack : pourcentage.
+ */
+const BORNES = { rssi: [-160, 0], snr: [-30, 30], batterie: [0, 100] } as const
+
+function nombreBorne(v: unknown, [min, max]: readonly [number, number]): number | null {
+  const n = nombre(v)
+  return n !== null && n >= min && n <= max ? n : null
+}
+
 /** `2026-02-30` passerait chez V8 (2 mars) : le jour, l'heure et la minute doivent exister. */
 function dateCalendaireValide(texte: string): boolean {
   const [a, m, j, h, min] = [texte.slice(0, 4), texte.slice(5, 7), texte.slice(8, 10), texte.slice(11, 13), texte.slice(14, 16)].map(Number)
@@ -76,8 +90,8 @@ function meilleureReception(liste: unknown): { rssi: number | null; snr: number 
   if (!Array.isArray(liste)) return meilleur
   for (const r of liste) {
     const o = objet(r)
-    const rssi = nombre(o?.rssi) ?? nombre(o?.channel_rssi)
-    if (rssi !== null && (meilleur.rssi === null || rssi > meilleur.rssi)) meilleur = { rssi, snr: nombre(o?.snr) }
+    const rssi = nombreBorne(o?.rssi, BORNES.rssi) ?? nombreBorne(o?.channel_rssi, BORNES.rssi)
+    if (rssi !== null && (meilleur.rssi === null || rssi > meilleur.rssi)) meilleur = { rssi, snr: nombreBorne(o?.snr, BORNES.snr) }
   }
   return meilleur
 }
@@ -165,7 +179,7 @@ export function adapterChirpstack(corps: unknown, evenement: string | null, main
   const estStatut = evenement === "status" || (!("object" in racine) && !("data" in racine) && "margin" in racine)
   if (estStatut) {
     const sansBatterie = racine.batteryLevelUnavailable === true || racine.externalPowerSource === true
-    const batterie = sansBatterie ? null : nombre(racine.batteryLevel)
+    const batterie = sansBatterie ? null : nombreBorne(racine.batteryLevel, BORNES.batterie)
     return {
       ok: true,
       ignore: null,

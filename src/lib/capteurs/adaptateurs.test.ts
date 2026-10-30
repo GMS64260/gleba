@@ -101,6 +101,25 @@ describe("adapterChirpstack", () => {
     expect(r.ok && r.trames[0].batterie).toBeNull()
   })
 
+  it("ignore une batterie hors de 0 à 100 % (255 : mesure impossible en LoRaWAN), sans refuser la trame", () => {
+    for (const batteryLevel of [255, -1, 100.5]) {
+      const r = adapterChirpstack({ ...STATUS_CHIRPSTACK, batteryLevel }, "status", MAINTENANT)
+      expect(r.ok && r.trames[0]).toMatchObject({ identifiantExterne: "00000000000050a1", batterie: null })
+    }
+    const r = adapterChirpstack({ ...STATUS_CHIRPSTACK, batteryLevel: 100 }, "status", MAINTENANT)
+    expect(r.ok && r.trames[0].batterie).toBe(100)
+  })
+
+  it("ignore un RSSI ou un SNR hors bornes : une passerelle aberrante ne devient pas la meilleure", () => {
+    const rxInfo = [
+      { gatewayId: "0016c001ff10abcd", rssi: 9999, snr: 9 },
+      { gatewayId: "0016c001ff10abce", rssi: -104, snr: 500 },
+      { gatewayId: "0016c001ff10abcf", rssi: -250, snr: 2 },
+    ]
+    const r = adapterChirpstack({ ...UP_CHIRPSTACK_EM500, rxInfo }, "up", MAINTENANT)
+    expect(r.ok && r.trames[0]).toMatchObject({ rssi: -104, snr: null })
+  })
+
   it("ignore les autres événements (join, ack, log…)", () => {
     const r = adapterChirpstack(UP_CHIRPSTACK_EM500, "join", MAINTENANT)
     expect(r).toMatchObject({ ok: true, trames: [] })

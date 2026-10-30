@@ -32,6 +32,12 @@ export async function GET(request: Request) {
         "Content-Type": "application/json",
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "no-store",
+        // Contenu omis (brut des capteurs au-delà du seuil) : aussi dans le
+        // fichier, et ici pour que l'écran le montre au téléchargement.
+        // Encodé : un en-tête HTTP ne porte pas d'accents.
+        ...(result.avertissements?.length
+          ? { "X-Gleba-Avertissements": encodeURIComponent(result.avertissements.join("\n")) }
+          : {}),
       },
     })
   } catch (e) {

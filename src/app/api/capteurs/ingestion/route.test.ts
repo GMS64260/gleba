@@ -10,11 +10,12 @@ const mocks = vi.hoisted(() => ({
   capteurUpdate: vi.fn(),
   capteurFindUniqueOrThrow: vi.fn(),
   mesuresCreateMany: vi.fn(),
+  verrouCapteur: vi.fn(),
   checkRateLimit: vi.fn(),
 }))
 
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  const client = {
     connecteurCapteurs: { findUnique: mocks.connecteurFindUnique, update: mocks.connecteurUpdate },
     capteur: {
       findUnique: mocks.capteurFindUnique,
@@ -24,13 +25,15 @@ vi.mock("@/lib/prisma", () => ({
       findUniqueOrThrow: mocks.capteurFindUniqueOrThrow,
     },
     mesureCapteur: { createMany: mocks.mesuresCreateMany },
-  },
-}))
+    $queryRaw: mocks.verrouCapteur,
+  }
+  return { default: { ...client, $transaction: (action: (tx: typeof client) => Promise<unknown>) => action(client) } }
+})
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mocks.checkRateLimit, getClientIP: () => "203.0.113.7" }))
 
 import { POST } from "./route"
 import { genererJeton, hacherJeton } from "@/lib/capteurs/jeton"
-import { consommerBudgets, viderBudgets } from "@/lib/capteurs/budget"
+import { budgetEpuise, consommerBudgets, viderBudgets } from "@/lib/capteurs/budget"
 import { viderEmpreintesRefusees } from "@/lib/capteurs/jetons-refuses"
 import { FENETRE_BUDGET_MS, MAX_CAPTEURS_PAR_CONNECTEUR, MESURES_MAX_PAR_COMPTE } from "@/lib/capteurs/ingestion"
 import { JOIN_TTN, MAINTENANT_FIXTURES, UPLINK_TTN_LHT65N, UP_CHIRPSTACK_EM500 } from "@/lib/capteurs/__fixtures__/charges"
@@ -54,6 +57,12 @@ function capteurEnBase(surcharges: Record<string, unknown> = {}) {
   return { id: "cap-1", modele: null, correspondances: null, clesInconnues: [], clesRecues: [], refus: null, ...surcharges }
 }
 
+/** Échecs d'authentification depuis l'adresse de test : jetons inconnus de la base. */
+async function epuiserAdresse(n = 300) {
+  mocks.connecteurFindUnique.mockResolvedValue(null)
+  for (let i = 0; i < n; i++) await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))
+}
+
 describe("POST /api/capteurs/ingestion", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -64,9 +73,13 @@ describe("POST /api/capteurs/ingestion", () => {
     viderBudgets()
     viderEmpreintesRefusees()
     mocks.checkRateLimit.mockReturnValue(null)
-    mocks.capteurFindUnique.mockResolvedValue(null)
+    // Un capteur créé est relu tel quel sous le verrou de la trame.
+    let enBase: ReturnType<typeof capteurEnBase> | null = null
+    // mockReset : une valeur « Once » non consommée ne fuit pas dans le test suivant.
+    mocks.capteurFindUnique.mockReset().mockImplementation(async () => enBase)
     mocks.capteurCount.mockResolvedValue(0)
-    mocks.capteurCreate.mockImplementation(async ({ data }: { data: { modele: string | null } }) => capteurEnBase({ modele: data.modele }))
+    mocks.capteurCreate.mockImplementation(async ({ data }: { data: { modele: string | null } }) => (enBase = capteurEnBase({ modele: data.modele })))
+    mocks.verrouCapteur.mockResolvedValue([{ id: "cap-1" }])
     mocks.mesuresCreateMany.mockImplementation(async ({ data }: { data: unknown[] }) => ({ count: data.length }))
   })
 
@@ -74,11 +87,10 @@ describe("POST /api/capteurs/ingestion", () => {
     vi.useRealTimers()
   })
 
-  it("refuse sans jeton, sans interroger la base, et compte l'échec par adresse", async () => {
-    const r = await POST(requete(UPLINK_TTN_LHT65N, { auth: null }))
-    expect(r.status).toBe(401)
+  it("refuse sans jeton, sans interroger la base ni entamer le plafond d'échecs de l'adresse", async () => {
+    for (let i = 0; i < 400; i++) expect((await POST(requete(UPLINK_TTN_LHT65N, { auth: null }))).status).toBe(401)
     expect(mocks.connecteurFindUnique).not.toHaveBeenCalled()
-    expect(mocks.checkRateLimit).toHaveBeenCalledWith("capteurs-echec:203.0.113.7", expect.any(Object))
+    expect(budgetEpuise("echecs:203.0.113.7", 1)).toBeNull()
   })
 
   it("cherche le connecteur par l'empreinte du jeton, jamais par le jeton en clair", async () => {
@@ -103,12 +115,31 @@ describe("POST /api/capteurs/ingestion", () => {
     expect((await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${autre}` }))).status).toBe(200)
   })
 
-  it("un jeton valide passe même quand l'adresse a épuisé son quota d'échecs (adresses TTN partagées)", async () => {
-    mocks.checkRateLimit.mockImplementation((cle: string) =>
-      cle.startsWith("capteurs-echec:") ? NextResponse.json({ error: "Trop de requêtes" }, { status: 429 }) : null,
-    )
+  it("au plafond d'échecs de l'adresse, un jeton inconnu est refusé AVANT toute lecture en base", async () => {
+    await epuiserAdresse()
+    expect(mocks.connecteurFindUnique).toHaveBeenCalledTimes(300)
+    const r = await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))
+    expect(r.status).toBe(429)
+    expect(r.headers.get("Retry-After")).toMatch(/^\d+$/)
+    expect(mocks.connecteurFindUnique).toHaveBeenCalledTimes(300)
+  })
+
+  it("un jeton déjà accepté passe même quand l'adresse a épuisé son plafond (adresses TTN partagées)", async () => {
     mocks.connecteurFindUnique.mockResolvedValue(connecteur("ttn"))
     expect((await POST(requete(UPLINK_TTN_LHT65N))).status).toBe(200)
+    await epuiserAdresse()
+    mocks.connecteurFindUnique.mockResolvedValue(connecteur("ttn"))
+    expect((await POST(requete(UPLINK_TTN_LHT65N))).status).toBe(200)
+    // Un jeton valide jamais vu attend la fin de la fenêtre (15 min au plus).
+    expect((await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))).status).toBe(429)
+  })
+
+  it("un jeton périmé déjà refusé n'entame pas le plafond de l'adresse (webhook resté sur un jeton régénéré)", async () => {
+    mocks.connecteurFindUnique.mockResolvedValue(null)
+    for (let i = 0; i < 500; i++) expect((await POST(requete(UPLINK_TTN_LHT65N))).status).toBe(401)
+    expect(mocks.connecteurFindUnique).toHaveBeenCalledTimes(1)
+    mocks.connecteurFindUnique.mockResolvedValue(connecteur("ttn"))
+    expect((await POST(requete(UPLINK_TTN_LHT65N, { auth: `Bearer ${genererJeton().jeton}` }))).status).toBe(200)
   })
 
   it("refuse un connecteur désactivé", async () => {
@@ -151,6 +182,33 @@ describe("POST /api/capteurs/ingestion", () => {
     // Le profil n'est posé qu'à la création : un choix fait à l'écran n'est jamais écrasé.
     expect(maj.data).not.toHaveProperty("modele")
     expect(mocks.connecteurUpdate).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "conn-1" } }))
+  })
+
+  it("lit les règles du capteur APRÈS le verrou de sa ligne : une clé rattachée pendant la trame ne redevient pas inconnue", async () => {
+    mocks.connecteurFindUnique.mockResolvedValue(connecteur("ttn"))
+    const avant = capteurEnBase({ modele: "dragino/lht65n", clesRecues: ["TempC_DS"], clesInconnues: ["TempC_DS"] })
+    // PATCH validé entre la recherche du capteur et sa relecture sous verrou.
+    const apres = { ...avant, correspondances: { TempC_DS: "temperature_sol", Bat_status: null }, clesInconnues: [] }
+    mocks.capteurFindUnique.mockResolvedValueOnce(avant).mockResolvedValueOnce(apres)
+    const bilan = await (await POST(requete(UPLINK_TTN_LHT65N))).json()
+
+    expect(mocks.verrouCapteur.mock.calls[0][0].join("?")).toMatch(/FROM "capteurs" WHERE "id" = \? FOR NO KEY UPDATE/)
+    expect(mocks.verrouCapteur.mock.calls[0][1]).toBe("cap-1")
+    expect(mocks.verrouCapteur.mock.invocationCallOrder[0]).toBeLessThan(mocks.capteurFindUnique.mock.invocationCallOrder[1])
+    // TempC_DS suit la correspondance validée (327,67 °C : sonde débranchée, refusée), Bat_status est ignorée.
+    expect(bilan).toMatchObject({ inconnues: [], refusees: 1 })
+    const { data } = mocks.capteurUpdate.mock.calls[0][0]
+    expect(data).not.toHaveProperty("clesInconnues")
+    expect(data.refus[0]).toMatchObject({ cle: "TempC_DS", raison: expect.stringMatching(/hors bornes/) })
+  })
+
+  it("n'écrit rien pour un capteur supprimé pendant la trame", async () => {
+    mocks.connecteurFindUnique.mockResolvedValue(connecteur("ttn"))
+    mocks.capteurFindUnique.mockResolvedValueOnce(capteurEnBase()).mockResolvedValueOnce(null)
+    const bilan = await (await POST(requete(UPLINK_TTN_LHT65N))).json()
+    expect(bilan).toMatchObject({ mesures: 0, refusees: 5 })
+    expect(mocks.mesuresCreateMany).not.toHaveBeenCalled()
+    expect(mocks.capteurUpdate).not.toHaveBeenCalled()
   })
 
   it("le même DevEUI envoyé par le connecteur d'un autre compte reste chez cet autre compte", async () => {

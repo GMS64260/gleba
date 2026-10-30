@@ -8,6 +8,12 @@
  * webhook TTN ou ChirpStack rejoué porte le même instant réseau et n'écrit
  * rien. Un envoi générique SANS `mesureeA` prend l'instant de réception : le
  * renvoyer écrit une seconde mesure (le guide de l'écran le dit).
+ *
+ * Chaque trame est traitée sous le verrou de la ligne du capteur, pris avant
+ * de lire ses règles, comme PATCH /api/capteurs/[id] (revue du 2026-10-30) :
+ * relues hors verrou puis réécrites, une clé tout juste rattachée à l'écran
+ * réapparaissait « inconnue », et deux trames simultanées perdaient des clés
+ * reçues ou des refus.
  */
 import { Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
@@ -55,7 +61,7 @@ const SELECTION = { id: true, modele: true, correspondances: true, clesInconnues
 /** Le capteur de la trame, créé à sa première trame ; null si le plafond du connecteur est atteint. */
 async function capteurDe(connecteur: { id: string; userId: string }, trame: TrameNormalisee) {
   const ou = { connecteurId_identifiantExterne: { connecteurId: connecteur.id, identifiantExterne: trame.identifiantExterne } }
-  const existant = await prisma.capteur.findUnique({ where: ou, select: SELECTION })
+  const existant = await prisma.capteur.findUnique({ where: ou, select: { id: true } })
   if (existant) return existant
   if ((await prisma.capteur.count({ where: { connecteurId: connecteur.id } })) >= MAX_CAPTEURS_PAR_CONNECTEUR) return null
   try {
@@ -68,12 +74,12 @@ async function capteurDe(connecteur: { id: string; userId: string }, trame: Tram
         // un choix fait ensuite à l'écran n'est jamais écrasé.
         modele: trame.modele,
       },
-      select: SELECTION,
+      select: { id: true },
     })
   } catch (e) {
     // Deux premières trames simultanées du même capteur : l'autre l'a créé.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return prisma.capteur.findUniqueOrThrow({ where: ou, select: SELECTION })
+      return prisma.capteur.findUniqueOrThrow({ where: ou, select: { id: true } })
     }
     throw e
   }
@@ -90,8 +96,8 @@ export async function ingererTrames(
   }
 
   for (const trame of trames) {
-    const capteur = await capteurDe(connecteur, trame)
-    if (!capteur) {
+    const trouve = await capteurDe(connecteur, trame)
+    if (!trouve) {
       bilan.refusees += trame.valeurs.length
       avertir(`Plafond de ${MAX_CAPTEURS_PAR_CONNECTEUR} capteurs atteint pour ce connecteur : nouveaux capteurs refusés.`)
       continue
@@ -100,62 +106,77 @@ export async function ingererTrames(
     const horsFenetre =
       ecart > AVANCE_MAX_MS ? "date dans le futur (horloge du capteur ?)" : ecart < -RETARD_MAX_MS ? "date de plus de 7 jours" : null
 
-    const resolution = resoudreMesures(trame.valeurs, {
-      modele: capteur.modele,
-      correspondances: lireCorrespondances(capteur.correspondances),
-      nomsGleba: connecteur.type === "generique",
-    })
-    const refus: RefusMesure[] = horsFenetre
-      ? resolution.mesures.map((m) => ({ cle: m.cle, valeur: m.valeur, raison: horsFenetre }))
-      : resolution.refus
-    const mesures = horsFenetre ? [] : resolution.mesures
-
-    if (mesures.length > 0) {
-      const budget = consommerBudgets(
-        [{ cle: `mesures:${connecteur.userId}`, quantite: mesures.length, max: MESURES_MAX_PAR_COMPTE }],
-        FENETRE_BUDGET_MS,
-      )
-      if (!budget.ok) {
-        bilan.limite = { reessayerDansS: budget.reessayerDansS }
-        break
+    const arret = await prisma.$transaction(async (tx) => {
+      // FOR NO KEY UPDATE : exclut le FOR UPDATE du PATCH et les autres
+      // trames du capteur, sans bloquer les clés étrangères (FOR KEY SHARE)
+      // des agrégats nocturnes.
+      await tx.$queryRaw`SELECT "id" FROM "capteurs" WHERE "id" = ${trouve.id} FOR NO KEY UPDATE`
+      const capteur = await tx.capteur.findUnique({ where: { id: trouve.id }, select: SELECTION })
+      if (!capteur) {
+        // Supprimé à l'écran pendant la trame : il revient « à rattacher » à la suivante.
+        bilan.refusees += trame.valeurs.length
+        return null
       }
-    }
 
-    let enregistrees = 0
-    if (mesures.length > 0) {
-      const { count } = await prisma.mesureCapteur.createMany({
-        data: mesures.map((m) => ({ capteurId: capteur.id, grandeur: m.grandeur, valeur: m.valeur, unite: m.unite, mesureeA: trame.mesureeA })),
-        skipDuplicates: true,
+      const resolution = resoudreMesures(trame.valeurs, {
+        modele: capteur.modele,
+        correspondances: lireCorrespondances(capteur.correspondances),
+        nomsGleba: connecteur.type === "generique",
       })
-      enregistrees = count
-    }
-    bilan.mesures += enregistrees
-    bilan.doublons += mesures.length - enregistrees
-    bilan.refusees += refus.length
-    for (const cle of resolution.inconnues) if (!bilan.inconnues.includes(cle)) bilan.inconnues.push(cle)
-    if (trame.avertissement) avertir(trame.avertissement)
+      const refus: RefusMesure[] = horsFenetre
+        ? resolution.mesures.map((m) => ({ cle: m.cle, valeur: m.valeur, raison: horsFenetre }))
+        : resolution.refus
+      const mesures = horsFenetre ? [] : resolution.mesures
 
-    const batterieMesuree = mesures.find((m) => m.grandeur === "batterie")?.valeur ?? null
-    const clesTrame = trame.valeurs.map(([cle]) => cle).filter((cle) => !CLES_POSITION.has(cle))
-    const clesRecues = [...new Set([...capteur.clesRecues, ...clesTrame])].slice(0, CLES_MAX)
-    const inconnues = [...new Set([...capteur.clesInconnues, ...resolution.inconnues])].slice(0, CLES_MAX)
-    const refusDates: RefusDate[] = refus.map((r) => ({ ...r, a: maintenant.toISOString() }))
-    await prisma.capteur.update({
-      where: { id: capteur.id },
-      data: {
-        derniereVueA: maintenant,
-        // Le dernier avertissement reste affiché jusqu'à une trame qui produit des mesures.
-        ...(trame.avertissement ? { avertissement: trame.avertissement } : mesures.length > 0 ? { avertissement: null } : {}),
-        ...(trame.batterie !== null || batterieMesuree !== null ? { batterie: trame.batterie ?? batterieMesuree } : {}),
-        ...(trame.rssi !== null ? { rssi: trame.rssi, snr: trame.snr } : {}),
-        ...(trame.position ? { lat: trame.position.lat, lng: trame.position.lng } : {}),
-        ...(clesTrame.length > 0 ? { clesRecues } : {}),
-        ...(resolution.inconnues.length > 0 ? { clesInconnues: inconnues } : {}),
-        ...(refusDates.length > 0
-          ? { refus: [...refusDates, ...lireRefus(capteur.refus)].slice(0, MAX_REFUS_GARDES) as unknown as Prisma.InputJsonValue }
-          : {}),
-      },
+      if (mesures.length > 0) {
+        const budget = consommerBudgets(
+          [{ cle: `mesures:${connecteur.userId}`, quantite: mesures.length, max: MESURES_MAX_PAR_COMPTE }],
+          FENETRE_BUDGET_MS,
+        )
+        if (!budget.ok) return { reessayerDansS: budget.reessayerDansS }
+      }
+
+      let enregistrees = 0
+      if (mesures.length > 0) {
+        const { count } = await tx.mesureCapteur.createMany({
+          data: mesures.map((m) => ({ capteurId: capteur.id, grandeur: m.grandeur, valeur: m.valeur, unite: m.unite, mesureeA: trame.mesureeA })),
+          skipDuplicates: true,
+        })
+        enregistrees = count
+      }
+      bilan.mesures += enregistrees
+      bilan.doublons += mesures.length - enregistrees
+      bilan.refusees += refus.length
+      for (const cle of resolution.inconnues) if (!bilan.inconnues.includes(cle)) bilan.inconnues.push(cle)
+      if (trame.avertissement) avertir(trame.avertissement)
+
+      const batterieMesuree = mesures.find((m) => m.grandeur === "batterie")?.valeur ?? null
+      const clesTrame = trame.valeurs.map(([cle]) => cle).filter((cle) => !CLES_POSITION.has(cle))
+      const clesRecues = [...new Set([...capteur.clesRecues, ...clesTrame])].slice(0, CLES_MAX)
+      const inconnues = [...new Set([...capteur.clesInconnues, ...resolution.inconnues])].slice(0, CLES_MAX)
+      const refusDates: RefusDate[] = refus.map((r) => ({ ...r, a: maintenant.toISOString() }))
+      await tx.capteur.update({
+        where: { id: capteur.id },
+        data: {
+          derniereVueA: maintenant,
+          // Le dernier avertissement reste affiché jusqu'à une trame qui produit des mesures.
+          ...(trame.avertissement ? { avertissement: trame.avertissement } : mesures.length > 0 ? { avertissement: null } : {}),
+          ...(trame.batterie !== null || batterieMesuree !== null ? { batterie: trame.batterie ?? batterieMesuree } : {}),
+          ...(trame.rssi !== null ? { rssi: trame.rssi, snr: trame.snr } : {}),
+          ...(trame.position ? { lat: trame.position.lat, lng: trame.position.lng } : {}),
+          ...(clesTrame.length > 0 ? { clesRecues } : {}),
+          ...(resolution.inconnues.length > 0 ? { clesInconnues: inconnues } : {}),
+          ...(refusDates.length > 0
+            ? { refus: [...refusDates, ...lireRefus(capteur.refus)].slice(0, MAX_REFUS_GARDES) as unknown as Prisma.InputJsonValue }
+            : {}),
+        },
+      })
+      return null
     })
+    if (arret) {
+      bilan.limite = arret
+      break
+    }
   }
 
   await prisma.connecteurCapteurs.update({ where: { id: connecteur.id }, data: { derniereReceptionA: maintenant } })

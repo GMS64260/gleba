@@ -71,6 +71,15 @@ describe("PATCH /api/capteurs/[id]", () => {
     })
   })
 
+  it("refuse en 400 un id de cible hors des entiers int4 de la base, sans la chercher", async () => {
+    expect((await patch({ cible: { type: "arbre", id: 2_147_483_648 } })).status).toBe(400)
+    expect((await patch({ cible: { type: "objet", id: Number.MAX_SAFE_INTEGER } })).status).toBe(400)
+    expect(mocks.arbreFindFirst).not.toHaveBeenCalled()
+    expect(mocks.capteurUpdate).not.toHaveBeenCalled()
+    mocks.arbreFindFirst.mockResolvedValue({ id: 2_147_483_647 })
+    expect((await patch({ cible: { type: "arbre", id: 2_147_483_647 } })).status).toBe(200)
+  })
+
   it("détache le capteur avec une cible nulle", async () => {
     await patch({ cible: null })
     expect(mocks.capteurUpdate.mock.calls[0][0].data).toMatchObject({ plancheId: null, arbreId: null })

@@ -33,6 +33,7 @@ import { MODELES_STOCK_COMMERCIAL } from '@/lib/commercial/stock-types'
 import { Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
+import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MESURES_BRUTES_EXPORT } from "@/lib/capteurs/connecteurs"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -104,6 +105,9 @@ const REFERENTIAL = new Set<string>([
 
 export const EXPORT_FORMAT_VERSION = "2.0"
 
+/** Brut des capteurs réimporté par lots plutôt que ligne par ligne. */
+const LOT_IMPORT_MESURES = 1000
+
 type Row = Record<string, unknown>
 
 /**
@@ -113,7 +117,9 @@ type Row = Record<string, unknown>
  */
 interface DelegueDynamique {
   findMany: (args?: { where?: Row }) => Promise<Row[]>
+  count: (args?: { where?: Row }) => Promise<number>
   create: (args: { data: Row }) => Promise<Row>
+  createMany: (args: { data: Row[]; skipDuplicates?: boolean }) => Promise<{ count: number }>
   upsert: (args: { where: Row; create: Row; update: Row }) => Promise<Row>
   update: (args: { where: Row; data: Row }) => Promise<Row>
 }
@@ -252,12 +258,15 @@ export interface ExportResult {
   /** données : { Modèle: Row[] } */
   data: Record<string, Row[]>
   stats: Record<string, number>
+  /** Contenu volontairement omis (brut des capteurs au-delà du seuil), à montrer à l'utilisateur. */
+  avertissements?: string[]
 }
 
 export async function exportAccount(userId: string, appVersion = "1.0.0"): Promise<ExportResult> {
   const manifest = buildManifest()
   const data: Record<string, Row[]> = {}
   const stats: Record<string, number> = {}
+  const avertissements: string[] = []
 
   // 1) Référentiels : tout, SAUF le privé d'autrui dans les référentiels
   //    communautaires (cf. REFERENTIAL_COMMUNAUTAIRE).
@@ -324,15 +333,31 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
       const parents = (model: string) => [...(ownedIds.get(model) ?? childExportedIds.get(model) ?? [])]
       // Filtrer en base : les mesures peuvent être nombreuses. Ne jamais
       // charger celles de toutes les exploitations avant de trier en mémoire.
-      const allRows = ownerRels.length ? await delegue(prisma, meta.delegate).findMany({
-        where: {
-          AND: ownerRels.map((r) => ({ OR: [
-            { [r.fkField]: { in: parents(r.targetModel) } },
-            ...(r.nullable ? [{ [r.fkField]: null }] : []),
-          ] })),
-          OR: ownerRels.map((r) => ({ [r.fkField]: { in: parents(r.targetModel) } })),
-        },
-      }) : []
+      const where = {
+        AND: ownerRels.map((r) => ({ OR: [
+          { [r.fkField]: { in: parents(r.targetModel) } },
+          ...(r.nullable ? [{ [r.fkField]: null }] : []),
+        ] })),
+        OR: ownerRels.map((r) => ({ [r.fkField]: { in: parents(r.targetModel) } })),
+      }
+      // Au-delà du seuil (`SEUIL_MESURES_BRUTES_EXPORT`), le brut des capteurs
+      // rendrait la sauvegarde irrestaurable : compté sans être chargé, il
+      // reste hors du fichier.
+      if (meta.name === "MesureCapteur" && ownerRels.length) {
+        const nombre = await delegue(prisma, meta.delegate).count({ where })
+        if (nombre > SEUIL_MESURES_BRUTES_EXPORT) {
+          avertissements.push(
+            `Mesures brutes des capteurs non incluses : ${nombre.toLocaleString("fr-FR")} mesures dépassent le seuil de ${SEUIL_MESURES_BRUTES_EXPORT.toLocaleString("fr-FR")} de la sauvegarde. Les connecteurs, les capteurs et leurs agrégats journaliers (minimum, maximum, moyenne) sont sauvegardés ; le détail des mesures brutes (${RETENTION_MESURES_JOURS} derniers jours au plus) ne sera pas restauré.`,
+          )
+          data[meta.name] = []
+          stats[meta.name] = 0
+          childExportedIds.set(meta.name, new Set())
+          done.add(meta.name)
+          progress = true
+          continue
+        }
+      }
+      const allRows = ownerRels.length ? await delegue(prisma, meta.delegate).findMany({ where }) : []
       const kept = allRows.filter((row) => {
         // garder la ligne si, pour chaque FK propriétaire non nulle, l'id
         // référencé fait partie des données exportées de l'utilisateur
@@ -391,6 +416,7 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
     sourceUserId: userId,
     data,
     stats,
+    avertissements,
   }
 }
 
@@ -589,12 +615,39 @@ export async function importAccount(
       const map = ensureMap(meta.name)
       let count = 0
       let skip = 0
+      // Brut des capteurs : inséré par lots, pas ligne par ligne (trois
+      // allers-retours par ligne dans une transaction de 120 s). Aucune table
+      // ne le référence : ni id à reporter, ni patch différé.
+      const lot: Row[] = []
+      const viderLot = async () => {
+        const lignes = lot.splice(0)
+        if (!lignes.length) return
+        try {
+          await tx.$executeRawUnsafe("SAVEPOINT sp_lot")
+          const { count: crees } = await delegue(tx, meta.delegate).createMany({ data: lignes, skipDuplicates: true })
+          await tx.$executeRawUnsafe("RELEASE SAVEPOINT sp_lot")
+          count += crees
+          skip += lignes.length - crees
+        } catch (e) {
+          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_lot").catch(() => {})
+          skip += lignes.length
+          warnings.push(`${meta.name} : ${lignes.length} ligne(s) ignorée(s) (${(e as Error).message.split("\n")[0]})`)
+        }
+      }
 
       for (const row of rows) {
         const oldPk = coerceValue(row[meta.pkField], meta.pkType)
         const createData = buildScalarData(meta, row)
         if (meta.name === 'ConnexionStripe') Object.assign(createData, { jetonChiffre: '', actif: false, verrouSynchroJusqua: null })
         if (meta.name === 'CibleReglement') createData.cle = 'transfert:' + String(row.id)
+        // Fuseau recopié dans `AT TIME ZONE` par l'agrégation nocturne : seule
+        // la liste fermée de l'écran est acceptée, comme par la route du connecteur.
+        if (meta.name === 'ConnecteurCapteurs' && !FUSEAUX_PROPOSES.includes(String(createData.fuseau))) {
+          if (createData.fuseau !== undefined) {
+            warnings.push(`Connecteur de capteurs « ${String(row.nom ?? '').slice(0, 80)} » : fuseau « ${String(createData.fuseau).slice(0, 64)} » inconnu, remplacé par ${FUSEAU_PAR_DEFAUT}. Corrigez-le si besoin dans Paramètres > Capteurs.`)
+          }
+          createData.fuseau = FUSEAU_PAR_DEFAUT
+        }
         // PK : on retire l'entière (autoincrement) ; on garde la string (cuid).
         if (meta.pkIsInteger) {
           delete createData[meta.pkField]
@@ -646,6 +699,12 @@ export async function importAccount(
           continue
         }
 
+        if (meta.name === 'MesureCapteur') {
+          lot.push(createData)
+          if (lot.length >= LOT_IMPORT_MESURES) await viderLot()
+          continue
+        }
+
         try {
           // Savepoint par ligne : sinon la 1re erreur avorte toute la
           // transaction et les créations suivantes échouent en silence tandis
@@ -681,6 +740,8 @@ export async function importAccount(
           )
         }
       }
+
+      await viderLot()
 
       imported[meta.name] = count
       if (skip) skipped[meta.name] = skip
