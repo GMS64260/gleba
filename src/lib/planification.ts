@@ -20,7 +20,7 @@ import {
   type QuantiteParUnite,
 } from './recolte/quantites'
 import { chargerSurchargesRendement, rendementEffectif } from './recolte/rendement-effectif'
-import { quantiteEntiereAvecMarge, type StatutSemence } from './semences/calcul'
+import { quantiteEntiereAvecMarge, type BesoinSemenceInput, type StatutSemence } from './semences/calcul'
 import { zoneEffectiveUser } from './terroir'
 import { etapeCycleRotation } from './rotation/etape-cycle'
 import { evaluerOccupationPlanche } from './planche-validation'
@@ -188,6 +188,11 @@ export interface BesoinSemence {
   doseSemis: number | null
   /** Plusieurs conduites : dose moyenne pondérée par surface ou nombre de plants. */
   doseMoyenne?: boolean
+  /**
+   * Une partie des cultures du couple n'a pas de dose : le besoin ne compte que
+   * les cultures dosées. Le statut reste `DONNEE_MANQUANTE` et `doseSemis` null.
+   */
+  besoinPartiel?: boolean
   /** Unité dans laquelle est exprimée la dose (cf. Espece.uniteDose). */
   uniteDose: 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2' | null
   /** Taux de germination réaliste (mémo pour tooltip marge). */
@@ -1156,17 +1161,19 @@ export async function getBesoinsSemences(
     // la sienne — substituer des g/m² à des pièces/m² changerait la grandeur.
     const uniteEspece = (espece?.uniteDose ?? null) as UniteDoseSemence
     const poidsTotal = uniteEspece === 'graines_plant' ? acc.nbPlants : acc.surfaceTotale
-    const doseEffective = acc.doseManquante ? null : poidsTotal > 0
+    // Une culture sans dose n'annule plus le besoin de tout son couple : comptée
+    // à dose nulle, la moyenne sur toute la surface (ou tous les plants) redonne
+    // la somme des seules cultures dosées. Aucune culture dosée : pas de dose.
+    const doseEffective = acc.doseManquante && acc.sommeDosePonderee <= 0 ? null : poidsTotal > 0
       ? acc.sommeDosePonderee / poidsTotal
       : acc.doses.values().next().value ?? null
     const uniteEffective: UniteDoseSemence =
       acc.aDoseItp && uniteEspece === null ? 'g_m2' : uniteEspece
 
-    const calc = calculerBesoin({
+    const entree: BesoinSemenceInput = {
       mode: (espece?.modeSemis ?? 'graine_directe') as 'graine_directe' | 'plant_repique' | 'bulbe_caieu' | 'bouture',
       surfaceM2: acc.surfaceTotale,
       nbPlants: acc.nbPlants,
-      doseGParM2: doseEffective,
       uniteDose: uniteEffective,
       tauxGerminationPct: espece?.tauxGermination ?? null,
       // Fallback PMG par espèce si la variété n'a pas de graines/g saisi
@@ -1175,7 +1182,13 @@ export async function getBesoinsSemences(
       margeSecuritePct: espece?.margeSecuritePct ?? 15,
       stockGrammes: stock?.stockGraines ?? 0,
       stockUnites: stock?.stockPlants ?? 0,
-    })
+    }
+    const calc = calculerBesoin({ ...entree, doseGParM2: doseEffective })
+    // Besoin partiel : sans les cultures dosées, la dose manquante l'annulait.
+    // Il garde le statut « Dose manquante » (bandeau qui renvoie au référentiel,
+    // jamais de « OK » sur un besoin sous-estimé) et n'affiche pas de dose.
+    const besoinPartiel = acc.doseManquante && calc.statut !== 'DONNEE_MANQUANTE' &&
+      calculerBesoin({ ...entree, doseGParM2: null }).statut === 'DONNEE_MANQUANTE'
 
     results.push({
       especeId: acc.especeId,
@@ -1194,13 +1207,15 @@ export async function getBesoinsSemences(
       // On expose la valeur réellement utilisée + un flag « estimé » pour la transparence.
       nbGrainesG: variete?.nbGrainesG ?? defaultGrainesParGramme(acc.especeId),
       nbGrainesGEstime: variete?.nbGrainesG == null,
-      doseSemis: doseEffective,
+      // Diluée par les cultures sans dose, la moyenne n'est pas une dose : « - ».
+      doseSemis: acc.doseManquante ? null : doseEffective,
       doseMoyenne: acc.doses.size > 1,
+      besoinPartiel,
       uniteDose: uniteEffective,
       tauxGerminationPct: espece?.tauxGermination ?? null,
       aCommander: calc.manqueGrammes,
       caieuxACommander: calc.manqueCaieux,
-      statut: calc.statut,
+      statut: besoinPartiel ? 'DONNEE_MANQUANTE' : calc.statut,
       stockDateMaj: stock?.dateStock?.toISOString() ?? null,
     })
   }

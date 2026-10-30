@@ -56,3 +56,19 @@ it('les graines par plant sont ponderees par les plants, pas par la surface', as
     expect(b.grainesNecessaires).toBe(4)
   } finally {Object.assign(espece,avant);Object.assign(itps[0],i0);Object.assign(itps[1],i1)}
 })
+// Revue du 2026-10-29 — une seule culture sans dose annulait le besoin de tout
+// son couple espèce + variété (0 g à commander pour les cultures dosées).
+it('une culture sans dose n annule plus le besoin des cultures dosees : besoin partiel signale', async () => {
+  const avant = { ...espece }
+  try {
+    Object.assign(espece, { doseSemis: null })
+    m.cultures[1] = { ...m.cultures[1], itpId: null, itp: null }
+    m.db.userStockVariete.findMany.mockResolvedValue([{ varieteId: 'radis-var', stockGraines: 50, stockPlants: 0, dateStock: null }])
+    const [b] = await getBesoinsSemences('moi', 2026)
+    // 1 g/m² sur les 10 m² dosés ; le stock couvrirait ce besoin sous-estimé, pas de « OK ».
+    expect(b).toMatchObject({ surfaceTotale: 20, grainesNecessaires: 10, aCommander: 0, besoinPartiel: true, statut: 'DONNEE_MANQUANTE', doseSemis: null })
+    m.cultures[0] = { ...m.cultures[0], itpId: null, itp: null }
+    const [aucune] = await getBesoinsSemences('moi', 2026)
+    expect(aucune).toMatchObject({ grainesNecessaires: 0, besoinPartiel: false, statut: 'DONNEE_MANQUANTE' })
+  } finally { Object.assign(espece, avant) }
+})

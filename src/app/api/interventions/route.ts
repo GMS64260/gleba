@@ -671,10 +671,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Intervention non trouvée' }, { status: 404 })
     }
 
+    // Seules les références modifiées sont revalidées : sans clé étrangère, une
+    // culture supprimée ou une planche renommée depuis la saisie reste stockée,
+    // le formulaire la renvoie telle quelle et toute correction tombait en 400.
+    const referenceChange = (champ: 'cultureId' | 'arbreId' | 'plancheId') =>
+      champ in updates && (parsedUpdates.data[champ] ?? null) !== existing[champ]
     const references = await verifierReferencesIntervention(prisma, userId, {
-      ...('cultureId' in updates ? { cultureId: parsedUpdates.data.cultureId } : {}),
-      ...('arbreId' in updates ? { arbreId: parsedUpdates.data.arbreId } : {}),
-      ...('plancheId' in updates ? { plancheId: parsedUpdates.data.plancheId } : {}),
+      ...(referenceChange('cultureId') ? { cultureId: parsedUpdates.data.cultureId } : {}),
+      ...(referenceChange('arbreId') ? { arbreId: parsedUpdates.data.arbreId } : {}),
+      ...(referenceChange('plancheId') ? { plancheId: parsedUpdates.data.plancheId } : {}),
     })
     if (!references.ok) return NextResponse.json({ error: references.error, champ: references.champ }, { status: 400 })
 
@@ -714,7 +719,8 @@ export async function PATCH(request: NextRequest) {
     if (updates.coutTotal !== undefined) data.coutTotal = updates.coutTotal ? parseFloat(updates.coutTotal) : null
     if (updates.fait !== undefined) data.fait = updates.fait
     if (updates.cultureId !== undefined) data.cultureId = updates.cultureId || null
-    if (updates.plancheId !== undefined) {
+    // Planche inchangée : la valeur stockée (ancien nom compris) est gardée.
+    if (referenceChange('plancheId')) {
       data.plancheId = references.plancheId ?? null
     }
     if (updates.arbreId !== undefined) data.arbreId = updates.arbreId || null
