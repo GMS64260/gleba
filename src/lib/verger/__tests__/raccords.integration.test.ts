@@ -29,8 +29,7 @@ import { contenuDocumentSchema } from '@/lib/commercial/regles'
 import { creerFacture } from '@/lib/facture-utils'
 import { getKpiCompta } from '@/lib/kpi/compta'
 import { clearKpiCache } from '@/lib/kpi/cache'
-import { enregistrerReglement, assurerDossier } from '@/lib/comptabilite/reglements'
-import { resoudreCibleReglement } from '@/lib/comptabilite/cibles-reglement'
+import { enregistrerReglement } from '@/lib/comptabilite/reglements'
 import { nouveauReglementSchema } from '@/lib/validations/reglements'
 import { exportAccount, importAccount } from '@/lib/account-transfer'
 
@@ -146,7 +145,7 @@ describe.skipIf(!process.env.GLEBA_VERGER_RACCORDS_QA_DATABASE_URL)('Raccords ve
     expect((await corrigerCampagne(req('/api/arbres/campagnes/'+c.id,'PUT',{coutReel:250}),params(c.id))).status).toBe(200)
     const list = await (await depenses(req('/api/comptabilite/depenses?year=2026'))).json()
     expect(list.stats.totalComptable).toBe(250); expect((await kpi()).depensesYtd).toBe(250)
-    expect(list.data).toMatchObject([{ source:'CampagnePlantation', ecriture:{ id:expect.any(Number) }, paye:false }])
+    expect(list.data).toMatchObject([{ source:'CampagnePlantation', ecriture:{ id:expect.any(Number) }, paye:true }])
   })
 
   it('vente par BL, facture et avoir : les revenus de Transactions suivent exactement le KPI', async () => {
@@ -228,18 +227,21 @@ describe.skipIf(!process.env.GLEBA_VERGER_RACCORDS_QA_DATABASE_URL)('Raccords ve
     expect((await db.mouvementStockCommercial.findFirstOrThrow({where:{userId:auth.id,fruitId:r.id}})).date.toISOString().slice(0,10)).toBe('2026-10-22')
   })
 
-  it('ancien coût payé : changement refusé jusqu’à précision des versements ; historique conservé', async () => {
+  // Décision du 2026-10-30 : une opération d'arbre naît payée, comme un soin ;
+  // corriger son coût garde le pointage, sauf journal de versements détaillés.
+  it('coût payé corrigé : pointage gardé sans journal, solde recalculé avec versements détaillés', async () => {
     const reponse=await creerOperation(req('/api/arbres/operations','POST',{arbreId:arbre.id,type:'taille',fait:true,cout:100,date:date.toISOString()}))
     expect(reponse.status).toBe(201); const op=await reponse.json()
-    const miroir=await db.depenseManuelle.findFirstOrThrow({where:{userId:auth.id,sourceType:'operation_arbre',sourceId:op.id}})
-    await db.depenseManuelle.update({where:{id:miroir.id},data:{paye:true}})
-    expect((await corrigerOperation(req('/api/arbres/operations/'+op.id,'PUT',{cout:150}),params(op.id))).status).toBe(409)
-    expect((await db.operationArbre.findUniqueOrThrow({where:{id:op.id}})).cout).toBe(100)
-    await db.$transaction(async tx => assurerDossier(tx,auth.id,await resoudreCibleReglement(tx,auth.id,{type:'DepenseManuelle',id:miroir.id})))
-    expect((await corrigerOperation(req('/api/arbres/operations/'+op.id,'PUT',{cout:150}),params(op.id))).status).toBe(409)
-    await enregistrerReglement(auth.id,auth.id,nouveauReglementSchema.parse({type:'DepenseManuelle',id:miroir.id,montant:100,date,modeReglement:'Virement',cleIdempotence:randomUUID()}))
+    const miroir=()=>db.depenseManuelle.findFirstOrThrow({where:{userId:auth.id,sourceType:'operation_arbre',sourceId:op.id}})
+    const { id } = await miroir()
+    await db.depenseManuelle.update({where:{id},data:{modeReglement:'Chèque',numeroPiece:'CHQ-QA'}})
     expect((await corrigerOperation(req('/api/arbres/operations/'+op.id,'PUT',{cout:150}),params(op.id))).status).toBe(200)
-    expect(await db.depenseManuelle.findFirstOrThrow({where:{userId:auth.id,sourceType:'operation_arbre',sourceId:op.id}})).toMatchObject({montant:150,paye:false})
+    expect((await db.operationArbre.findUniqueOrThrow({where:{id:op.id}})).cout).toBe(150)
+    const corrige=await miroir()
+    expect(corrige).toMatchObject({montant:150,paye:true,modeReglement:'Chèque',numeroPiece:'CHQ-QA'})
+    await enregistrerReglement(auth.id,auth.id,nouveauReglementSchema.parse({type:'DepenseManuelle',id:corrige.id,montant:100,date,modeReglement:'Virement',cleIdempotence:randomUUID()}))
+    expect((await corrigerOperation(req('/api/arbres/operations/'+op.id,'PUT',{cout:200}),params(op.id))).status).toBe(200)
+    expect(await miroir()).toMatchObject({montant:200,paye:false})
   })
 
   // Revue du 2026-10-29 : la correction du lot suppose la migration qui borne

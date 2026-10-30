@@ -108,7 +108,7 @@ describe.skipIf(!process.env.GLEBA_VERGER_QA_DATABASE_URL)('Contre-vérification
   it('conserve un versement partiel de dépense à la correction et refuse une baisse sous le montant payé', async () => {
     const operation = await db.operationArbre.create({ data: { userId: auth.id, arbreId, type: 'greffe', fait: true, cout: 100, date: hier } })
     const miroir = await createDepenseFromOperationArbre(auth.id, operation)
-    expect(miroir).toMatchObject({ montant: 100, paye: false })
+    expect(miroir).toMatchObject({ montant: 100, paye: true })
     await enregistrerReglement(auth.id, auth.id, nouveauReglementSchema.parse({ type: 'DepenseManuelle', id: miroir!.id,
       montant: 40, date: maintenant, modeReglement: 'Virement', cleIdempotence: randomUUID() }))
     const corrigee = await createDepenseFromOperationArbre(auth.id, { ...operation, description: 'Libellé corrigé' })
