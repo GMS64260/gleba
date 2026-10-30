@@ -31,6 +31,8 @@ import {
 type BugType = "BUG" | "EVOLUTION" | "AUTRE"
 type BugStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "EVOLUTION_PRODUIT" | "HORS_PERIMETRE"
 type BugPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+/** Choix du sélecteur de statut : RESOLVED sans le mail automatique à l'auteur. */
+const RESOLU_SANS_MAIL = "RESOLVED_SANS_MAIL"
 
 interface StatusLog {
   id: string
@@ -175,6 +177,7 @@ export function BugsDashboard({ initialBugs, stats }: Props) {
       priority?: BugPriority
       adminNote?: string | null
       statusNote?: string
+      notifier?: boolean
     }
   ) => {
     setSavingId(id)
@@ -397,6 +400,7 @@ function BugCard({
     priority?: BugPriority
     adminNote?: string | null
     statusNote?: string
+    notifier?: boolean
   }) => void
   onDelete: () => void
   saving: boolean
@@ -503,13 +507,19 @@ function BugCard({
                 value={bug.status}
                 disabled={saving}
                 onChange={(e) =>
-                  onUpdate({ status: e.target.value as BugStatus })
+                  e.target.value === RESOLU_SANS_MAIL
+                    ? onUpdate({ status: "RESOLVED", notifier: false })
+                    : onUpdate({ status: e.target.value as BugStatus })
                 }
                 className="mt-1 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
               >
                 <option value="OPEN">Ouvert</option>
                 <option value="IN_PROGRESS">En cours</option>
                 <option value="RESOLVED">Résolu</option>
+                {/* Auteur déjà remercié à la main : pas de second mail. */}
+                {bug.status !== "RESOLVED" && (
+                  <option value={RESOLU_SANS_MAIL}>Résolu sans mail</option>
+                )}
               </select>
             </div>
             <div>

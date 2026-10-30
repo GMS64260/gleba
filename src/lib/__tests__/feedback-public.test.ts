@@ -43,4 +43,10 @@ describe("feedback public", () => {
     expect(shouldSendResolutionEmail("RESOLVED", "RESOLVED", false)).toBe(false)
     expect(shouldSendResolutionEmail("OPEN", "IN_PROGRESS", false)).toBe(false)
   })
+
+  // FB-8CXUUN (2026-10-30) : auteur remercié à la main avant la résolution.
+  it("« Résolu sans mail » ne prévient pas l'auteur", () => {
+    expect(shouldSendResolutionEmail("OPEN", "RESOLVED", false, false)).toBe(false)
+    expect(shouldSendResolutionEmail("OPEN", "RESOLVED", false, true)).toBe(true)
+  })
 })
