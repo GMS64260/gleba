@@ -154,3 +154,49 @@ describe("sauvegarde restaurable des capteurs (revue du 2026-10-30)", () => {
     expect(resultat.warnings.filter((w) => w.includes("fuseau"))).toEqual([])
   })
 })
+
+describe("connexion Stripe transférée (revue du 2026-10-30)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.rows = {
+      connexionStripe: [{
+        id: "cx-source", userId: "source", compteStripeId: "acct_QAPARTAGE", jetonChiffre: "v1:jeton-chiffre-fictif",
+        modeTest: false, actif: true, verrouSynchroJusqua: new Date("2026-10-30T12:00:00Z"), historiqueComplet: true, dernierTransactionId: "txn_qa1",
+      }],
+      compteBancaire: [{ id: "cb-source", userId: "source", nom: "Stripe · EUR", devise: "EUR", connexionStripeId: "cx-source" }],
+    }
+    mocks.findMany.mockImplementation(async (name: string) => mocks.rows[name] ?? [])
+    mocks.count.mockResolvedValue(0)
+    mocks.create.mockImplementation(async (name: string, { data }: { data: Record<string, unknown> }) => ({
+      ...data, id: data.id ?? (name === "connexionStripe" ? "cx-nouvelle" : 1),
+    }))
+  })
+
+  it("arrive inactive, sans jeton ni bail, sous un nouvel id suivi par ses comptes bancaires", async () => {
+    const sauvegarde = JSON.parse(JSON.stringify(await exportAccount("source")))
+    expect(sauvegarde.data.ConnexionStripe[0]).toMatchObject({ actif: false, jetonChiffre: "", verrouSynchroJusqua: null })
+
+    const resultat = await importAccount("cible", sauvegarde)
+
+    expect(resultat.imported.ConnexionStripe).toBe(1)
+    const connexion = mocks.create.mock.calls.find(([name]) => name === "connexionStripe")![1].data
+    // Nouvel id : la source peut encore exister sur la même instance.
+    expect(connexion).not.toHaveProperty("id")
+    expect(connexion).toMatchObject({
+      userId: "cible", compteStripeId: "acct_QAPARTAGE", modeTest: false,
+      actif: false, jetonChiffre: "", verrouSynchroJusqua: null, dernierTransactionId: "txn_qa1",
+    })
+    const compte = mocks.create.mock.calls.find(([name]) => name === "compteBancaire")![1].data
+    expect(compte).toMatchObject({ id: "cb-source", userId: "cible", connexionStripeId: "cx-nouvelle" })
+  })
+
+  it("neutralise aussi un fichier forgé qui porterait un jeton actif", async () => {
+    const sauvegarde = JSON.parse(JSON.stringify(await exportAccount("source")))
+    Object.assign(sauvegarde.data.ConnexionStripe[0], { actif: true, jetonChiffre: "v1:jeton-force", verrouSynchroJusqua: "2099-01-01T00:00:00.000Z" })
+
+    await importAccount("cible", sauvegarde)
+
+    const connexion = mocks.create.mock.calls.find(([name]) => name === "connexionStripe")![1].data
+    expect(connexion).toMatchObject({ actif: false, jetonChiffre: "", verrouSynchroJusqua: null })
+  })
+})

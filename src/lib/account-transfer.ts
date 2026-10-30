@@ -638,7 +638,15 @@ export async function importAccount(
       for (const row of rows) {
         const oldPk = coerceValue(row[meta.pkField], meta.pkType)
         const createData = buildScalarData(meta, row)
-        if (meta.name === 'ConnexionStripe') Object.assign(createData, { jetonChiffre: '', actif: false, verrouSynchroJusqua: null })
+        // Connexion Stripe : arrive inactive, sans jeton ni bail. Nouvel id
+        // (revue du 2026-10-30) : sur la même instance, la source peut encore
+        // exister ; l'unicité par exploitation et l'index partiel `WHERE actif`
+        // laissent coexister cette ligne inactive, l'id d'origine non. Les
+        // comptes bancaires suivent le nouvel id par idMap.
+        if (meta.name === 'ConnexionStripe') {
+          Object.assign(createData, { jetonChiffre: '', actif: false, verrouSynchroJusqua: null })
+          delete createData[meta.pkField]
+        }
         if (meta.name === 'CibleReglement') createData.cle = 'transfert:' + String(row.id)
         // Fuseau recopié dans `AT TIME ZONE` par l'agrégation nocturne : seule
         // la liste fermée de l'écran est acceptée, comme par la route du connecteur.

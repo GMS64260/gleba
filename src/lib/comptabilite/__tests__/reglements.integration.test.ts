@@ -1086,4 +1086,98 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
       ).toBe(1)
     }
   }, 20000)
+  // Revue du 2026-10-30 : unicité par exploitation et une seule connexion
+  // ACTIVE par compte Stripe sur l'instance (index partiel SQL).
+  it('n’accepte qu’une connexion Stripe active par compte sur l’instance, sans bloquer après déconnexion', async () => {
+    process.env.STRIPE_TOKEN_ENCRYPTION_KEY =
+      'cle-de-test-synthetique-longue-au-moins-32-caracteres'
+    process.env.STRIPE_CONNECT_CLIENT_ID = 'ca_qa1234'
+    process.env.STRIPE_SECRET_KEY = 'sk_test_entierement_fictive'
+    const banque = await import('@/app/api/comptabilite/banque/route'),
+      transfert = await import('@/lib/account-transfer')
+    const compteStripe = 'acct_qaPartage' + randomUUID().replace(/-/g, '')
+    const sortant = vi.fn(async (url: string) => {
+      const u = new URL(url)
+      if (u.origin !== 'https://api.stripe.com') return Response.json({}, { status: 500 })
+      if (u.pathname === '/v1/account') return Response.json({ id: compteStripe })
+      if (u.pathname === '/v1/balance') return Response.json({ available: [], pending: [] })
+      return Response.json({ data: [], has_more: false })
+    })
+    vi.stubGlobal('fetch', sortant)
+    const connecter = () =>
+      banque.POST(
+        req('/api/comptabilite/banque', {
+          action: 'stripe-cle',
+          cle: 'rk_test_cle_strictement_fictive',
+        }),
+      )
+    const deconnecter = (connexionId: string) =>
+      banque.POST(req('/api/comptabilite/banque', { action: 'deconnecter', connexionId }))
+    const nouvelleExploitation = async () => {
+      const u = await db.user.create({
+        data: { email: 'banque-' + randomUUID() + '@example.test', emailVerified: true },
+      })
+      comptes.push(u.id)
+      return u.id
+    }
+    const a = identite.id,
+      b = await nouvelleExploitation()
+
+    // A active puis B : refus explicite.
+    const cxA = (await json(await connecter())).data.id
+    identite.id = b
+    expect((await json(await connecter(), 409)).error).toMatch(
+      /déjà connecté à une autre exploitation/,
+    )
+    expect(await db.connexionStripe.count({ where: { userId: b } })).toBe(0)
+
+    // A déconnectée puis B : accepté, la ligne inactive de A reste.
+    identite.id = a
+    await json(await deconnecter(cxA))
+    identite.id = b
+    const cxB = (await json(await connecter())).data.id
+    expect(cxB).not.toBe(cxA)
+    const lignes = await db.connexionStripe.findMany({
+      where: { compteStripeId: compteStripe },
+      select: { userId: true, actif: true },
+    })
+    expect(lignes).toHaveLength(2)
+    expect(lignes).toEqual(
+      expect.arrayContaining([
+        { userId: a, actif: false },
+        { userId: b, actif: true },
+      ]),
+    )
+
+    // A ne peut plus réactiver sa ligne tant que B est active…
+    identite.id = a
+    expect((await json(await connecter(), 409)).error).toMatch(
+      /déjà connecté à une autre exploitation/,
+    )
+    // … même hors de l'application : l'index partiel SQL tient.
+    await expect(
+      db.connexionStripe.update({ where: { id: cxA }, data: { actif: true } }),
+    ).rejects.toMatchObject({ code: 'P2002' })
+    // Re-déconnecter la ligne inactive de A ne révoque pas l'autorisation
+    // Stripe dont B se sert.
+    await json(await deconnecter(cxA))
+    expect(
+      sortant.mock.calls.some(([url]) => String(url).startsWith('https://connect.stripe.com')),
+    ).toBe(false)
+    expect(
+      await db.connexionStripe.findUniqueOrThrow({ where: { id: cxB }, select: { actif: true } }),
+    ).toEqual({ actif: true })
+
+    // Import sur la même instance, source encore présente : la connexion
+    // arrive inactive, sans jeton, sous un nouvel id, sans conflit.
+    const c = await nouvelleExploitation()
+    const bilan = await transfert.importAccount(
+      c,
+      JSON.parse(JSON.stringify(await transfert.exportAccount(b))),
+    )
+    expect(bilan.imported.ConnexionStripe, JSON.stringify(bilan.warnings)).toBe(1)
+    const importee = await db.connexionStripe.findFirstOrThrow({ where: { userId: c } })
+    expect(importee).toMatchObject({ compteStripeId: compteStripe, actif: false, jetonChiffre: '' })
+    expect(importee.id).not.toBe(cxB)
+  }, 20000)
 })

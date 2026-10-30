@@ -162,6 +162,16 @@ export function verifierTransactionStripe(t: TransactionStripe) {
     throw new ErreurReglement('Le brut, les frais et le net Stripe sont incohérents.', 502)
   return { brut, frais, net }
 }
+/** Refus 409 : le compte Stripe est actif dans une autre exploitation de l'instance. */
+export const MESSAGE_STRIPE_ACTIF_AILLEURS =
+  'Ce compte Stripe est déjà connecté à une autre exploitation Gleba. Déconnectez-le de cette exploitation avant de le relier ici.'
+/** Classe dédiée : le retour OAuth la reconnaît pour afficher ce refus à l'écran. */
+export class ErreurStripeActifAilleurs extends ErreurReglement {
+  constructor() {
+    super(MESSAGE_STRIPE_ACTIF_AILLEURS, 409)
+    this.name = 'ErreurStripeActifAilleurs'
+  }
+}
 export async function enregistrerConnexionStripe(userId: string, jeton: string, modeTest: boolean) {
   if (await estCompteDemo(userId))
     throw new ErreurReglement(
@@ -175,25 +185,45 @@ export async function enregistrerConnexionStripe(userId: string, jeton: string, 
   // Vérifier les droits avant d'enregistrer un accès inutilisable.
   await lireStripe<SoldeStripe>('/v1/balance', jeton)
   await lireStripe<PageStripe>('/v1/balance_transactions?limit=1', jeton)
-  return prisma.$transaction(async (db) => {
-    await verrouillerReglements(db, userId)
-    const existante = await db.connexionStripe.findUnique({
-      where: { compteStripeId_modeTest: { compteStripeId: compte.id, modeTest } },
-    })
-    if (existante && existante.userId !== userId)
-      throw new ErreurReglement('Ce compte est déjà rattaché à une autre exploitation.')
-    if (existante?.verrouSynchroJusqua && existante.verrouSynchroJusqua > new Date())
-      throw new ErreurReglement(
-        'Attendez la fin de la synchronisation avant de renouveler la connexion.',
-      )
-    const data = { jetonChiffre: chiffrerJeton(jeton), actif: true }
-    const connexion = existante
-      ? await db.connexionStripe.update({ where: { id: existante.id, userId }, data })
-      : await db.connexionStripe.create({
-          data: { userId, compteStripeId: compte.id, modeTest, ...data },
+  // Revue du 2026-10-30 : une ligne par exploitation (userId, compte, mode) et
+  // une seule connexion ACTIVE par compte Stripe sur l'instance (index partiel
+  // SQL `connexions_stripe_compte_stripe_id_mode_test_actif_key`). Une
+  // connexion déconnectée ailleurs ne bloque plus ; une connexion active
+  // ailleurs est refusée explicitement.
+  const cle = { userId, compteStripeId: compte.id, modeTest }
+  try {
+    return await prisma.$transaction(async (db) => {
+      await verrouillerReglements(db, userId)
+      if (
+        await db.connexionStripe.count({
+          where: { compteStripeId: compte.id, modeTest, actif: true, userId: { not: userId } },
         })
-    return { id: connexion.id, modeTest: connexion.modeTest, actif: connexion.actif }
-  })
+      )
+        throw new ErreurStripeActifAilleurs()
+      const existante = await db.connexionStripe.findUnique({
+        where: { userId_compteStripeId_modeTest: cle },
+        select: { verrouSynchroJusqua: true },
+      })
+      if (existante?.verrouSynchroJusqua && existante.verrouSynchroJusqua > new Date())
+        throw new ErreurReglement(
+          'Attendez la fin de la synchronisation avant de renouveler la connexion.',
+        )
+      const data = { jetonChiffre: chiffrerJeton(jeton), actif: true }
+      const connexion = await db.connexionStripe.upsert({
+        where: { userId_compteStripeId_modeTest: cle },
+        create: { ...cle, ...data },
+        update: data,
+      })
+      return { id: connexion.id, modeTest: connexion.modeTest, actif: connexion.actif }
+    })
+  } catch (e) {
+    // Deux exploitations qui connectent le même compte au même instant : le
+    // verrou des règlements est propre à chaque exploitation, l'index partiel
+    // tranche. Le perdant reçoit le même refus explicite.
+    if ((e as { code?: string } | null)?.code === 'P2002')
+      throw new ErreurStripeActifAilleurs()
+    throw e
+  }
 }
 export async function connecterCleStripe(userId: string, cle: string) {
   const m = CLEFS.exec(cle)

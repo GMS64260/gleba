@@ -6,9 +6,9 @@
  * bord Stripe : le message y invite.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ findFirst: vi.fn(), updateMany: vi.fn(), fetch: vi.fn() }))
+const mocks = vi.hoisted(() => ({ findFirst: vi.fn(), updateMany: vi.fn(), count: vi.fn(), fetch: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
-  default: { connexionStripe: { findFirst: mocks.findFirst, updateMany: mocks.updateMany } },
+  default: { connexionStripe: { findFirst: mocks.findFirst, updateMany: mocks.updateMany, count: mocks.count } },
 }))
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: vi.fn() }))
 import { chiffrerJeton } from './stripe'
@@ -25,6 +25,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', mocks.fetch)
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   mocks.updateMany.mockResolvedValue({ count: 1 })
+  mocks.count.mockResolvedValue(0)
 })
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -82,5 +83,37 @@ describe('déconnexion Stripe', () => {
 
     await expect(deconnecterStripe('u1', 'cx-qa')).rejects.toMatchObject({ status: 409 })
     expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Revue du 2026-10-30 : l'unicité devient par exploitation ; une ligne
+ * déconnectée ou importée (sans jeton) peut viser un compte Stripe actif dans
+ * une autre exploitation. L'autorisation OAuth de la plateforme étant unique
+ * par compte, sa révocation couperait l'accès de cette autre exploitation.
+ */
+describe('déconnexion d’un compte Stripe actif ailleurs sur l’instance', () => {
+  it('retire l’accès local sans révoquer l’autorisation utilisée par une autre connexion active', async () => {
+    mocks.findFirst.mockResolvedValue({ compteStripeId: 'acct_QA123', jetonChiffre: '' })
+    mocks.count.mockResolvedValue(1)
+
+    const resultat = await deconnecterStripe('u1', 'cx-importee')
+
+    expect(mocks.updateMany).toHaveBeenCalled()
+    expect(mocks.count).toHaveBeenCalledWith({
+      where: { compteStripeId: 'acct_QA123', actif: true, id: { not: 'cx-importee' } },
+    })
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(resultat).toEqual({ message: 'Accès retiré de Gleba, historique conservé.' })
+  })
+
+  it('révoque toujours quand aucune autre connexion active n’utilise le compte', async () => {
+    mocks.findFirst.mockResolvedValue({ compteStripeId: 'acct_QA123', jetonChiffre: '' })
+    mocks.fetch.mockResolvedValue(reponse(200, { stripe_user_id: 'acct_QA123' }))
+
+    const resultat = await deconnecterStripe('u1', 'cx-qa')
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    expect(resultat.message).toMatch(/^Accès Stripe révoqué/)
   })
 })
