@@ -17,11 +17,15 @@ vi.mock('@/lib/elevage/animal-lot', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/elevage/animal-lot')>()),
   enregistrerChangementLot: mocks.enregistrerChangementLot,
 }))
+// `composerLot` prend le verrou des règlements puis relit le lot et les
+// animaux DANS la transaction : toutes ses lectures passent par `tx`.
 vi.mock('@/lib/prisma', () => ({
   default: {
-    lotAnimaux: { findFirst: mocks.lotFindFirst },
-    animal: { findMany: mocks.animalFindMany },
-    $transaction: (callback: (tx: unknown) => unknown) => callback({ animal: { update: mocks.animalUpdate } }),
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      $executeRaw: vi.fn(),
+      lotAnimaux: { findFirst: mocks.lotFindFirst },
+      animal: { findMany: mocks.animalFindMany, update: mocks.animalUpdate },
+    }),
   },
 }))
 

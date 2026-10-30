@@ -29,9 +29,12 @@ vi.mock("@/lib/prisma", () => ({
       findMany: mocks.especeFindMany,
       findFirst: mocks.especeFindFirst,
     },
-    userStockEspece: {
-      upsert: mocks.userStockEspeceUpsert,
-    },
+    // Le comptage s'écrit en transaction, après les verrous des règlements et
+    // du stock commercial (`verrouillerStockCommercial`, deux `$executeRaw`).
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      $executeRaw: vi.fn(),
+      userStockEspece: { upsert: mocks.userStockEspeceUpsert },
+    }),
   },
 }))
 vi.mock("@/lib/stocks-helpers", () => ({

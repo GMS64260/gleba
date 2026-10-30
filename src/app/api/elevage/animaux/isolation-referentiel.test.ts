@@ -90,6 +90,8 @@ beforeEach(() => {
   mocks.requireAuthApi.mockResolvedValue(sessionDe(MOI))
   animaux = delegueMemoire([animal()])
   const tx = {
+    // Verrou des règlements pris en tête de transaction (`verrouillerReglements`).
+    $executeRaw: vi.fn(),
     animal: {
       ...animaux,
       // Comme Prisma : la ligne créée revient avec ses relations incluses.

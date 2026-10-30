@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   animalDelete: vi.fn(),
   deleteAutoEntry: vi.fn(),
   compterTracesAnimal: vi.fn(),
+  executeRaw: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -27,7 +28,9 @@ vi.mock('@/lib/elevage/traces-animal', async (importOriginal) => ({
 }))
 vi.mock('@/lib/prisma', () => ({
   default: {
-    $transaction: (callback: (tx: unknown) => unknown) => callback({ animal: { delete: mocks.animalDelete } }),
+    // Comme Prisma : la transaction prend le verrou des règlements (`$executeRaw`).
+    $transaction: (callback: (tx: unknown) => unknown) =>
+      callback({ $executeRaw: mocks.executeRaw, animal: { delete: mocks.animalDelete } }),
     animal: { findFirst: mocks.animalFindFirst },
   },
 }))
@@ -84,6 +87,7 @@ describe('DELETE /api/elevage/animaux/[id]', () => {
     const res = await supprimer()
 
     expect(res.status).toBe(200)
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(1)
     expect(mocks.deleteAutoEntry).toHaveBeenCalledWith('achat_animal_individuel', 7, 'depense', 'user-1', expect.anything())
     expect(mocks.animalDelete).toHaveBeenCalledWith({ where: { id: 7 } })
   })
