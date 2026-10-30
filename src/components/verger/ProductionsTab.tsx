@@ -39,6 +39,7 @@ import {
   Sprout,
   Home,
   Pencil,
+  RotateCcw,
 } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
@@ -87,6 +88,8 @@ interface SortieVerger { id: string; nature: string; quantite: number; unite: st
 interface RecolteArbre {
   ventesCommerciales?: VenteCommercialeVerger[]
   mouvementsCommerciaux?: SortieVerger[]
+  /** Lot livré par BL ou facture : ni correction ni suppression (calculé par l'API). */
+  figeCommercial?: boolean
   ecriture?: { id: number } | null
   warnings?: string[]
   stockDisponibleCommercial?: number | null
@@ -136,6 +139,8 @@ function formulaireRecolteVierge() {
 interface ProductionBois {
   ventesCommerciales?: VenteCommercialeVerger[]
   mouvementsCommerciaux?: SortieVerger[]
+  /** Lot livré par BL ou facture : ni correction ni suppression (calculé par l'API). */
+  figeCommercial?: boolean
   ecriture?: { id: number } | null
   stockDisponibleCommercial?: number | null
   id: number
@@ -262,8 +267,8 @@ function RecoltesFruitsSubTab() {
   const livraisonsFruits = recoltes.flatMap(lot => (lot.ventesCommerciales ?? []).map(vente => ({ lot, vente })))
   const nombreVentesFruits = venduRecoltes.length + livraisonsFruits.length
   const perteRecoltes = [
-    ...recoltes.filter(r => r.statut === "perte" || r.statut === "consomme").map(r => ({ ...r, cleHistorique: `lot-${r.id}` })),
-    ...recoltes.flatMap(r => (r.mouvementsCommerciaux ?? []).map(m => ({ ...r, cleHistorique: m.id,
+    ...recoltes.filter(r => r.statut === "perte" || r.statut === "consomme").map(r => ({ ...r, cleHistorique: `lot-${r.id}`, sortieId: null as string | null })),
+    ...recoltes.flatMap(r => (r.mouvementsCommerciaux ?? []).map(m => ({ ...r, cleHistorique: m.id, sortieId: m.id as string | null,
       statut: m.nature, date: m.date, quantite: m.quantite, notes: m.notes }))),
   ].sort((a, b) => b.date.localeCompare(a.date))
 
@@ -489,7 +494,9 @@ function RecoltesFruitsSubTab() {
   const arbreSansParcelle = Boolean(arbreSelectionne) && !arbreSelectionne?.parcelleGeo && !newRecolte.parcelleId
 
   const handleDelete = async (id: number) => {
-    if (!(await confirmDialog("Supprimer cette récolte ?"))) return
+    // Revue du 2026-10-29 : un lot sans BL ni facture se supprime avec ses sorties.
+    const sorties = recoltes.find((r) => r.id === id)?.mouvementsCommerciaux?.length ?? 0
+    if (!(await confirmDialog(`Supprimer cette récolte ?${sorties ? " Ses pertes et usages internes enregistrés seront supprimés aussi." : ""}`))) return
     try {
       const res = await fetch(`/api/arbres/recoltes/${id}`, { method: "DELETE" })
       if (res.ok) {
@@ -550,6 +557,21 @@ function RecoltesFruitsSubTab() {
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
     } finally { setVenteEnCours(false) }
+  }
+
+  // Revue du 2026-10-29 : une perte ou une consommation se rattrape ; la
+  // quantité revient au reliquat (route idempotente, mêmes verrous que la sortie).
+  const handleAnnulerSortie = async (lotId: number, sortie: { id: string; quantite: number; statut: string }) => {
+    if (sortieEnCours) return
+    setSortieEnCours(true)
+    try {
+      if (!(await confirmDialog(`Annuler ${sortie.statut === 'perte' ? 'cette perte' : 'cet usage interne'} de ${sortie.quantite} kg ? La quantité revient en stock.`))) return
+      const res = await fetch(`/api/arbres/recoltes/${lotId}/sorties/${encodeURIComponent(sortie.id)}`, { method: 'DELETE' })
+      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `Erreur ${res.status}`) }
+      toast({ title: 'Sortie annulée', description: 'La quantité est revenue en stock.' })
+      await fetchData()
+    } catch (e) { toast({ title: 'Annulation refusée', description: e instanceof Error ? e.message : 'Erreur', variant: 'destructive' }) }
+    finally { setSortieEnCours(false) }
   }
 
   const handleSortie = async (id: number, statut: 'perte' | 'consomme') => {
@@ -715,10 +737,11 @@ function RecoltesFruitsSubTab() {
                           <Button disabled={sortieEnCours} variant="ghost" size="sm" onClick={() => handleSortie(r.id, "perte")} title="Perte">
                             <AlertTriangle className="h-4 w-4 text-orange-500" />
                           </Button>
-                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => ouvrirModification(r)} title="Modifier (date, quantité, parcelle…)">
+                          {/* La ligne affiche le reliquat : on corrige la récolte d'origine. */}
+                          <Button disabled={!!r.figeCommercial} variant="ghost" size="sm" onClick={() => ouvrirModification(recoltes.find((x) => x.id === r.id) ?? r)} title="Modifier (date, quantité, parcelle…)">
                             <Pencil className="h-4 w-4 text-slate-600" />
                           </Button>
-                          <Button disabled={r.stockDisponibleCommercial != null} variant="ghost" size="sm" onClick={() => handleDelete(r.id)} title="Supprimer">
+                          <Button disabled={!!r.figeCommercial} variant="ghost" size="sm" onClick={() => handleDelete(r.id)} title="Supprimer">
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>
@@ -800,6 +823,7 @@ function RecoltesFruitsSubTab() {
                     <TableHead>Qualité</TableHead>
                     <TableHead>Statut</TableHead>
                     <TableHead>Notes</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -815,6 +839,14 @@ function RecoltesFruitsSubTab() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{retirerMarqueSaison(r.notes) || "-"}</TableCell>
+                      <TableCell className="text-right">
+                        {r.sortieId && (
+                          <Button disabled={sortieEnCours} variant="ghost" size="sm" onClick={() => handleAnnulerSortie(r.id, { id: r.sortieId!, quantite: r.quantite, statut: r.statut })} title="Annuler cette sortie : la quantité revient en stock">
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            Annuler
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1266,8 +1298,8 @@ function ProductionBoisSubTab() {
   const livraisonsBois = productions.flatMap(lot => (lot.ventesCommerciales ?? []).map(vente => ({ lot, vente })))
   const nombreVentesBois = venduProductions.length + livraisonsBois.length
   const utiliseProductions = [
-    ...productions.filter(p => p.statut === "utilise").map(p => ({ ...p, cleHistorique: `lot-${p.id}`, quantiteUtilisee: quantiteBois(p) })),
-    ...productions.flatMap(p => (p.mouvementsCommerciaux ?? []).map(m => ({ ...p, cleHistorique: m.id, date: m.date,
+    ...productions.filter(p => p.statut === "utilise").map(p => ({ ...p, cleHistorique: `lot-${p.id}`, sortieId: null as string | null, quantiteUtilisee: quantiteBois(p) })),
+    ...productions.flatMap(p => (p.mouvementsCommerciaux ?? []).map(m => ({ ...p, cleHistorique: m.id, sortieId: m.id as string | null, date: m.date,
       destination: m.notes, quantiteUtilisee: { quantite: m.quantite, unite: m.unite } }))),
   ].sort((a, b) => b.date.localeCompare(a.date))
 
@@ -1389,6 +1421,22 @@ function ProductionBoisSubTab() {
     } finally { setVenteEnCours(false) }
   }
 
+  // Revue du 2026-10-29 : un usage interne se rattrape ; le volume revient au
+  // reliquat (route idempotente, mêmes verrous que la sortie).
+  const handleAnnulerUsage = async (lotId: number, sortie: { id: string; quantite: number; unite: string }) => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    try {
+      if (!(await confirmDialog(`Annuler cet usage interne de ${sortie.quantite.toLocaleString("fr-FR")} ${sortie.unite} ? La quantité revient en stock.`))) return
+      const res = await fetch(`/api/arbres/bois/${lotId}/sorties/${encodeURIComponent(sortie.id)}`, { method: "DELETE" })
+      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `Erreur ${res.status}`) }
+      toast({ title: "Usage annulé", description: "La quantité est revenue en stock." })
+      fetchData()
+    } catch (e) {
+      toast({ title: "Annulation refusée", description: e instanceof Error ? e.message : "Erreur", variant: "destructive" })
+    } finally { setIsSubmitting(false) }
+  }
+
   const handleUtiliser = async () => {
     if (!selectedProduction || isSubmitting) return
     setIsSubmitting(true)
@@ -1418,7 +1466,9 @@ function ProductionBoisSubTab() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!(await confirmDialog("Supprimer cette production ?"))) return
+    // Revue du 2026-10-29 : un lot sans BL ni facture se supprime avec ses sorties.
+    const sorties = productions.find((p) => p.id === id)?.mouvementsCommerciaux?.length ?? 0
+    if (!(await confirmDialog(`Supprimer cette production ?${sorties ? " Ses usages internes enregistrés seront supprimés aussi." : ""}`))) return
     try {
       const res = await fetch(`/api/arbres/bois/${id}`, { method: "DELETE" })
       if (res.ok) {
@@ -1556,7 +1606,7 @@ function ProductionBoisSubTab() {
                           <Button variant="ghost" size="sm" disabled={isSubmitting} onClick={() => openUtiliseDialog(p)}>
                             Utiliser
                           </Button>
-                          <Button variant="ghost" size="sm" disabled={p.stockDisponibleCommercial != null} onClick={() => handleDelete(p.id)}>
+                          <Button variant="ghost" size="sm" disabled={!!p.figeCommercial} onClick={() => handleDelete(p.id)}>
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>
@@ -1643,6 +1693,7 @@ function ProductionBoisSubTab() {
                     <TableHead>Type</TableHead>
                     <TableHead className="text-right">Volume</TableHead>
                     <TableHead>Destination</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1652,6 +1703,14 @@ function ProductionBoisSubTab() {
                       <TableCell>{libelleTypeBois(p.type)}</TableCell>
                       <TableCell className="text-right">{p.quantiteUtilisee.quantite.toLocaleString("fr-FR")} {p.quantiteUtilisee.unite}</TableCell>
                       <TableCell>{labelDestinationBois(p.destination)}</TableCell>
+                      <TableCell className="text-right">
+                        {p.sortieId && (
+                          <Button disabled={isSubmitting} variant="ghost" size="sm" onClick={() => handleAnnulerUsage(p.id, { id: p.sortieId!, ...p.quantiteUtilisee })} title="Annuler cet usage : la quantité revient en stock">
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            Annuler
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

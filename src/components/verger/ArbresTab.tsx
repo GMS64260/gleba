@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
 import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, Grape, CalendarPlus, Copy, Map as MapIcon, MapPin, type LucideIcon } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { MenuDuplicationArbre } from "@/components/verger/MenuDuplicationArbre"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -32,7 +32,7 @@ import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
 import { ReleveGpsDialog } from "@/components/verger/ReleveGpsDialog"
 import { roundCoord } from "@/lib/geolocation"
 import { adequationEspece } from "@/lib/adequation-zone"
-import { AVERTISSEMENT_SUPPRESSION_ARBRE, CONDUITES_ARBRE } from "@/lib/verger/arbre-constants"
+import { avertissementSuppressionArbre, CONDUITES_ARBRE } from "@/lib/verger/arbre-constants"
 import {
   TYPES_ARBRE,
   categoriesEspecePourTypeArbre,
@@ -91,6 +91,8 @@ interface Arbre {
   etat: string | null
   productif: boolean
   fournisseur?: string | null
+  prixAchat?: number | null
+  dateAchat?: string | null
   // PROMPT 10 — fiche complète
   portGreffe?: string | null
   porteGreffeId?: string | null
@@ -153,7 +155,7 @@ type VarieteApi = { id: string; nom?: string | null; especeId: string }
 
 function makeColumns(
   onGenererCalendrier: (arbre: Arbre) => void,
-  onDupliquer: (arbre: Arbre, nombre: number) => void,
+  onDupliquer: (arbre: Arbre, nombre: number, recopierAchat: boolean) => void,
 ): ColumnDef<Arbre>[] {
   return [
     {
@@ -272,27 +274,18 @@ function makeColumns(
         return (
           <div className="flex items-center gap-1">
             {/* Friction 2026-10-05 : 52 arbres saisis un par un faute de copie. */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={(e) => e.stopPropagation()}
-                  title="Dupliquer l'arbre"
-                  aria-label={`Dupliquer ${arbre.nom}`}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                {[1, 2, 3, 5, 10].map((n) => (
-                  <DropdownMenuItem key={n} onClick={() => onDupliquer(arbre, n)}>
-                    {n === 1 ? "Dupliquer" : `Dupliquer ×${n}`}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <MenuDuplicationArbre arbre={arbre} onDupliquer={(n, recopierAchat) => onDupliquer(arbre, n, recopierAchat)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                onClick={(e) => e.stopPropagation()}
+                title="Dupliquer l'arbre"
+                aria-label={`Dupliquer ${arbre.nom}`}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            </MenuDuplicationArbre>
             {arbre.espece && (
           <Button
             variant="ghost"
@@ -506,12 +499,12 @@ export function ArbresTab() {
     fetchData()
   }, [fetchData])
 
-  const handleDupliquer = React.useCallback(async (arbre: Arbre, nombre: number) => {
+  const handleDupliquer = React.useCallback(async (arbre: Arbre, nombre: number, recopierAchat: boolean) => {
     try {
       const res = await fetch(`/api/arbres/${arbre.id}/dupliquer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre }),
+        body: JSON.stringify({ nombre, recopierAchat }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || "Duplication impossible")
@@ -525,9 +518,12 @@ export function ArbresTab() {
           : calendriers === 1
             ? "Calendrier d'entretien généré."
             : `Calendrier d'entretien généré pour ${calendriers} arbres.`
+      const achats = Number(data?.achatsRecopies) || 0
+      const annonceAchats =
+        achats === 0 ? null : achats === 1 ? "1 dépense d'achat créée" : `${achats} dépenses d'achat créées`
       toast({
         title: noms.length > 1 ? `${noms.length} arbres créés` : "Arbre dupliqué",
-        description: [noms.join(", "), annonceCalendrier].filter(Boolean).join(". "),
+        description: [noms.join(", "), annonceCalendrier, annonceAchats].filter(Boolean).join(". "),
       })
       fetchData()
     } catch (e) {
@@ -1060,7 +1056,7 @@ export function ArbresTab() {
         open={arbreToDelete !== null}
         onOpenChange={(open) => !open && setArbreToDelete(null)}
         entityLabel={arbreToDelete ? `l'arbre "${arbreToDelete.nom}"` : ""}
-        warning={AVERTISSEMENT_SUPPRESSION_ARBRE}
+        warning={avertissementSuppressionArbre(arbreToDelete)}
         onConfirm={async () => {
           if (!arbreToDelete) return
           try {

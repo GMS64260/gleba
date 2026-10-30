@@ -1,4 +1,4 @@
-import { sortirReliquatVerger } from './sortie-stock'
+import { etatSortiesLotVerger, sortirReliquatVerger } from './sortie-stock'
 import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
@@ -8,7 +8,7 @@ import { annulerFactureLiee, creerFacture } from '@/lib/facture-utils'
 import { ajouterReglementTx } from '@/lib/comptabilite/reglements'
 import { modeReglementSchema, modePaiementDepuisReglement } from '@/lib/validations/reglement'
 import { nouveauReglementSchema } from '@/lib/validations/reglements'
-import { suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
+import { suiviReglementActif, suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
 import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import { indisponibiliteLotVerger } from './disponibilite-lot'
@@ -51,7 +51,11 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
     const courant = fruit ?? bois
     if (!courant) throw new ErreurVerger('Lot introuvable.', 404)
     if (sortiePhysique) return sortirReliquatVerger(tx, userId, type, courant, saisie)
-    if (courant.stockDisponibleCommercial != null) throw new ErreurVerger('Ce lot est lié à un document commercial. Utilisez le BL ou sa facture pour son reliquat et ses retours.', 409)
+    if (courant.stockDisponibleCommercial != null) {
+      // Une vente directe porte le lot entier : un lot entamé se vend par BL.
+      if ((await etatSortiesLotVerger(tx, userId, type, courant)).fige) throw new ErreurVerger('Ce lot est lié à un document commercial. Utilisez le BL ou sa facture pour son reliquat et ses retours.', 409)
+      throw new ErreurVerger('Ce lot a des pertes ou usages internes enregistrés. Vendez son reliquat par un bon de livraison, ou annulez ces sorties depuis l’historique pour vendre le lot entier.', 409)
+    }
     const statut = saisie.statut === undefined ? courant.statut : String(saisie.statut)
     if (saisie.statut === 'vendu' && courant.statut === 'vendu') throw new ErreurVerger('Ce lot est déjà vendu. Actualisez la liste avant une nouvelle action.', 409)
     const nouvelleVente = statut === 'vendu' && courant.statut !== 'vendu'
@@ -86,8 +90,10 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
     const historique = courant.statut === 'vendu' ? await tx.venteManuelle.findFirst({
       where: { userId, auto: true, sourceType, sourceId: id }, select: { paye: true, modeReglement: true, montant: true },
     }) : null
+    // Même garde que les dépenses : un dossier sans versement actif ne prouve
+    // pas le paiement historique (revue du 2026-10-29).
     if (statut === 'vendu' && historique?.paye && Math.abs(historique.montant - total) > 0.005
-      && !await suiviReglementParCle(tx, userId, cleSourceReglement('vente', sourceType, id))) throw new ErreurVerger('Précisez les versements historiques dans Règlements avant de corriger le montant de cette vente déclarée payée.', 409)
+      && !await suiviReglementActif(tx, userId, cleSourceReglement('vente', sourceType, id))) throw new ErreurVerger('Précisez les versements historiques dans Règlements avant de corriger le montant de cette vente déclarée payée.', 409)
     if (saisie.creerFacture && statut !== 'vendu') throw new ErreurVerger('Seule une vente peut être facturée.')
     const clientId = saisie.clientId === undefined ? courant.clientId : saisie.clientId === null ? null : Number(saisie.clientId)
     const clientNom = texte('clientNom') === undefined ? courant.clientNom : texte('clientNom')

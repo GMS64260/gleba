@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { chargerSuiviDesLignes } from "@/lib/comptabilite/suivi-ecriture"
 import { chargerSuiviCommercialVerger } from "@/lib/verger/suivi-commercial"
+import { lotVergerFige } from "@/lib/verger/sortie-stock"
+import { quantiteBois } from "@/lib/commercial/stock-types"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { m3PleinToStere, stereToM3Plein } from "@/lib/recolte/lot"
 // Types de production bois : liste unique partagée avec l'écran (QA cmvnp0dm9).
@@ -77,6 +79,7 @@ export async function GET(request: NextRequest) {
       include: {
         mouvementsCommerciaux: { where: { userId, nature: { not: 'livraison' } },
           select: { id: true, nature: true, quantite: true, unite: true, date: true, notes: true }, orderBy: { date: 'desc' } },
+        _count: { select: { mouvementsCommerciaux: { where: { userId, nature: 'livraison' } } } },
         arbre: {
           select: {
             id: true,
@@ -91,7 +94,10 @@ export async function GET(request: NextRequest) {
 
     const suivi = await chargerSuiviDesLignes(userId, productions.filter(p => p.statut === 'vendu').map(p => ({ id: String(p.id), source: 'ProductionBois', sourceId: p.id, factureId: p.factureId })))
     const commercial = await chargerSuiviCommercialVerger(userId, 'bois', productions.filter(p => p.stockDisponibleCommercial != null).map(p => p.id))
-    return NextResponse.json(productions.map(p => ({ ...p, ecriture: suivi.get(String(p.id))?.ecriture, ventesCommerciales: commercial.get(p.id) ?? [] })))
+    // `figeCommercial` : seul un BL ou une facture interdit de corriger ou de
+    // supprimer le lot ; ses usages internes s'annulent un à un.
+    return NextResponse.json(productions.map(p => ({ ...p, ecriture: suivi.get(String(p.id))?.ecriture, ventesCommerciales: commercial.get(p.id) ?? [],
+      figeCommercial: lotVergerFige(quantiteBois(p), p.stockDisponibleCommercial, p.mouvementsCommerciaux, p._count.mouvementsCommerciaux) })))
   } catch (err) {
     console.error("GET /api/arbres/bois error:", err)
     return NextResponse.json(

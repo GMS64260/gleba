@@ -2,6 +2,7 @@ import { prixFruitApi, dateRecolteApi } from "@/lib/verger/creation-recolte"
 import { avertissementsDarFruit } from "@/lib/verger/dar"
 import { modifierVenteVerger } from "@/lib/verger/vente"
 import { ErreurVerger } from "@/lib/verger/erreur"
+import { etatSortiesLotVerger, reliquatApresCorrection } from "@/lib/verger/sortie-stock"
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -90,10 +91,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
         include: { arbre: { select: { espece: true } } },
       })
 
-      if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
       if (!existing) {
         return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
       }
+      // Revue du 2026-10-29 : seul un BL ou une facture fige le lot ; une
+      // perte ou un usage interne laisse corriger la récolte (voir plus bas).
+      const sorties = await etatSortiesLotVerger(tx, userId, 'fruit', existing)
+      if (sorties.fige) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
 
       if (existing.statut === 'vendu' || existing.factureId) return NextResponse.json({ error: 'Ce lot est vendu. Corrigez la vente ou sa facture, ou annulez sa vente avant de modifier la récolte.' }, { status: 409 })
       const body = await request.json()
@@ -197,12 +201,18 @@ export async function PUT(request: NextRequest, { params }: Params) {
       const texteOuNull = (v: unknown): string | null | undefined =>
         v === undefined ? undefined : typeof v === "string" && v.trim() ? v.trim() : null
 
+      // Lot déjà entamé par des sorties physiques : la production corrigée
+      // doit les couvrir, et le reliquat suit la nouvelle quantité.
+      const stockDisponibleCommercial = existing.stockDisponibleCommercial == null ? undefined
+        : reliquatApresCorrection(sorties, { quantite: body.quantite ?? existing.quantite, unite: 'kg', date: nouvelleDate ?? existing.date })
+
       const recolte = await tx.recolteArbre.update({
         where: { id: recolteId },
         data: {
           arbreId: nouvelArbre?.id,
           date: nouvelleDate,
           quantite: body.quantite,
+          stockDisponibleCommercial,
           qualite: texteOuNull(body.qualite),
           prixKg: prixFruitApi(body.prixKg, "prixKg"),
           datePeremption: body.datePeremption !== undefined
@@ -287,7 +297,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       where: { id: recolteId, userId: session!.user.id },
     })
 
-    if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
     if (!existing) {
       return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
     }
@@ -296,7 +305,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       await verrouillerStockCommercial(tx, session!.user.id)
       const courante = await tx.recolteArbre.findFirst({ where: { id: recolteId, userId: session!.user.id } })
       if (!courante) throw new ErreurReglement('Pièce introuvable.', 404)
-      if (courante.stockDisponibleCommercial != null) throw new ErreurReglement('Ce lot est lié à un document commercial. Conservez ses mouvements de stock.')
+      // Un lot sans BL ni facture se supprime avec son journal de pertes et
+      // d'usages internes (revue du 2026-10-29) ; un lot livré est conservé.
+      const sorties = await etatSortiesLotVerger(tx, session!.user.id, 'fruit', courante)
+      if (sorties.fige) throw new ErreurReglement('Ce lot est lié à un document commercial. Conservez ses mouvements de stock.')
+      if (sorties.sorties.length) await tx.mouvementStockCommercial.deleteMany({ where: { userId: session!.user.id, id: { in: sorties.sorties.map(m => m.id) } } })
       if (courante.factureId) {
         const liee = await annulerFactureLiee(tx, session!.user.id, courante.factureId)
         if (!liee.ok) throw new ErreurReglement(liee.raison)

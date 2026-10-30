@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   txObservationFindMany: vi.fn(),
   txOperationFindMany: vi.fn(),
   txArbreDelete: vi.fn(),
+  txQueryRaw: vi.fn(),
+  txDepenseFindFirst: vi.fn(),
+  txDepenseDeleteMany: vi.fn(),
+  createDepenseFromAchatArbre: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -39,8 +43,8 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: (cb: (tx: unknown) => Promise<unknown>) =>
       cb({
         $executeRaw: vi.fn(),
-        $queryRaw: vi.fn().mockResolvedValue([]),
-        depenseManuelle: { deleteMany: vi.fn(), findFirst: vi.fn(async () => null) },
+        $queryRaw: mocks.txQueryRaw,
+        depenseManuelle: { deleteMany: mocks.txDepenseDeleteMany, findFirst: mocks.txDepenseFindFirst },
         mouvementStockCommercial: { count: mocks.stockCommercialCount },
         recolteArbre: { findMany: mocks.recolteFindMany },
         venteManuelle: { deleteMany: mocks.txVenteDeleteMany },
@@ -57,7 +61,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }))
 
-vi.mock("@/lib/auto-compta", () => ({ createDepenseFromAchatArbre: vi.fn() }))
+vi.mock("@/lib/auto-compta", () => ({ createDepenseFromAchatArbre: mocks.createDepenseFromAchatArbre }))
 
 import { DELETE, PUT } from "./route"
 
@@ -74,6 +78,8 @@ describe("PUT /api/arbres/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.stockCommercialCount.mockResolvedValue(0)
+    mocks.txQueryRaw.mockResolvedValue([])
+    mocks.txDepenseFindFirst.mockResolvedValue(null)
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },
@@ -244,6 +250,57 @@ describe("PUT /api/arbres/[id]", () => {
     )
   })
 
+  // Revue du 2026-10-29 : chaque modification (même un relevé GPS) supprimait
+  // puis recréait la dépense d'achat. Seuls les champs qui l'alimentent la
+  // resynchronisent : prix, date d'achat, plantation en repli, nom, fournisseur.
+  describe("dépense d'achat", () => {
+    const achat = {
+      id: 42, userId: "user-1", nom: "Pêcher", espece: "Pêcher", parcelleGeoId: null,
+      gpsLat: null, gpsLng: null, prixAchat: 30, fournisseur: "Pépinière",
+      dateAchat: new Date("2026-03-01T00:00:00Z"), datePlantation: new Date("2026-03-10T00:00:00Z"),
+      createdAt: new Date("2026-03-11T00:00:00Z"),
+    }
+    beforeEach(() => {
+      mocks.arbreFindUnique.mockResolvedValue(achat)
+    })
+
+    it("ne régénère pas la dépense d'achat pour un relevé GPS", async () => {
+      mocks.arbreUpdate.mockResolvedValue({ ...achat, gpsLat: 43.1, gpsLng: -0.3 })
+      const response = await PUT(request({ gpsLat: 43.1, gpsLng: -0.3 }) as never, params)
+      expect(response.status).toBe(200)
+      expect(mocks.createDepenseFromAchatArbre).not.toHaveBeenCalled()
+    })
+
+    it("ne régénère pas la dépense quand la plantation change alors qu'une date d'achat est saisie", async () => {
+      mocks.arbreUpdate.mockResolvedValue({ ...achat, datePlantation: new Date("2026-04-01T00:00:00Z") })
+      const response = await PUT(request({ datePlantation: "2026-04-01" }) as never, params)
+      expect(response.status).toBe(200)
+      expect(mocks.createDepenseFromAchatArbre).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ["prix d'achat", { prixAchat: 45 }],
+      ["date d'achat", { dateAchat: new Date("2026-02-01T00:00:00Z") }],
+      ["nom", { nom: "Pêcher de vigne" }],
+      ["fournisseur", { fournisseur: "Autre pépinière" }],
+    ])("resynchronise la dépense quand le %s change", async (_champ, changement) => {
+      mocks.arbreUpdate.mockResolvedValue({ ...achat, ...changement })
+      const response = await PUT(request(changement) as never, params)
+      expect(response.status).toBe(200)
+      expect(mocks.createDepenseFromAchatArbre).toHaveBeenCalledWith(
+        "user-1", expect.objectContaining(changement), expect.anything()
+      )
+    })
+
+    it("resynchronise la dépense quand la plantation sert de date d'achat", async () => {
+      mocks.arbreFindUnique.mockResolvedValue({ ...achat, dateAchat: null })
+      mocks.arbreUpdate.mockResolvedValue({ ...achat, dateAchat: null, datePlantation: new Date("2026-04-01T00:00:00Z") })
+      const response = await PUT(request({ datePlantation: "2026-04-01" }) as never, params)
+      expect(response.status).toBe(200)
+      expect(mocks.createDepenseFromAchatArbre).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it("refuse une année à trois chiffres au lieu de laisser Prisma répondre 500", async () => {
     const response = await PUT(
       request({ datePlantation: "0120-10-06" }) as never,
@@ -265,6 +322,8 @@ describe("DELETE /api/arbres/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.stockCommercialCount.mockResolvedValue(0)
+    mocks.txQueryRaw.mockResolvedValue([])
+    mocks.txDepenseFindFirst.mockResolvedValue(null)
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },
@@ -388,13 +447,60 @@ describe("DELETE /api/arbres/[id]", () => {
     expect(mocks.txArbreDelete).toHaveBeenCalledWith({ where: { id: 42 } })
   })
 
-  it("refuse la suppression si des récoltes sont facturées", async () => {
+  it("refuse la suppression si des récoltes sont facturées, en proposant l'archivage", async () => {
     mocks.recolteFindMany.mockResolvedValue([{ id: 1, factureId: 9 }])
 
     const response = await DELETE(deleteRequest() as never, params)
 
     expect(response.status).toBe(409)
+    expect((await response.json()).error).toContain("Archivez")
     expect(mocks.txArbreDelete).not.toHaveBeenCalled()
+  })
+
+  // Revue du 2026-10-29 : la seule existence d'une dépense d'achat bloquait la
+  // suppression, même sans aucun versement, et rien n'indiquait comment faire.
+  describe("dépense d'achat", () => {
+    const miroirAchat = () => mocks.txDepenseFindFirst.mockImplementation(async ({ where }: { where: { sourceType: string } }) =>
+      where.sourceType === "achat_arbre" ? { id: 5 } : null)
+    const suppressionAchat = { where: { userId: "user-1", auto: true, sourceType: "achat_arbre", sourceId: 42 } }
+
+    it("supprime l'arbre et sa dépense d'achat sans versement, dans la même transaction", async () => {
+      miroirAchat()
+      const response = await DELETE(deleteRequest() as never, params)
+
+      expect(response.status).toBe(200)
+      expect(mocks.txDepenseDeleteMany).toHaveBeenCalledWith(suppressionAchat)
+      expect(mocks.txArbreDelete).toHaveBeenCalledWith({ where: { id: 42 } })
+    })
+
+    it("supprime aussi quand tous les versements de son dossier sont annulés", async () => {
+      miroirAchat()
+      mocks.txQueryRaw.mockResolvedValue([{ dossier_id: "dossier-1", regle: BigInt(0), actifs: BigInt(0) }])
+      const response = await DELETE(deleteRequest() as never, params)
+
+      expect(response.status).toBe(200)
+      expect(mocks.txDepenseDeleteMany).toHaveBeenCalledWith(suppressionAchat)
+    })
+
+    it("refuse quand l'achat a des versements actifs, et propose d'archiver", async () => {
+      miroirAchat()
+      mocks.txQueryRaw.mockResolvedValue([{ dossier_id: "dossier-1", regle: BigInt(3000), actifs: BigInt(1) }])
+      const response = await DELETE(deleteRequest() as never, params)
+
+      expect(response.status).toBe(409)
+      expect((await response.json()).error).toContain("Archivez")
+      expect(mocks.txDepenseDeleteMany).not.toHaveBeenCalled()
+      expect(mocks.txArbreDelete).not.toHaveBeenCalled()
+    })
+
+    it("conserve la dépense d'achat quand un autre historique bloque la suppression", async () => {
+      miroirAchat()
+      mocks.recolteFindMany.mockResolvedValue([{ id: 1, factureId: null }])
+      const response = await DELETE(deleteRequest() as never, params)
+
+      expect(response.status).toBe(409)
+      expect(mocks.txDepenseDeleteMany).not.toHaveBeenCalled()
+    })
   })
 })
 
@@ -402,6 +508,8 @@ describe("PUT /api/arbres/[id] — type d'arbre (QA 2026-10-19)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.stockCommercialCount.mockResolvedValue(0)
+    mocks.txQueryRaw.mockResolvedValue([])
+    mocks.txDepenseFindFirst.mockResolvedValue(null)
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },

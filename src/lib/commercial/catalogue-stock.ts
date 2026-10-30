@@ -14,16 +14,25 @@ import { finJourLivraison } from './dates-stock'
 
 export type DbStockCommercial = Prisma.TransactionClient
 
-/** Seulement des stocks du tenant, jamais les projections de cultures ou les prix de référence. */
+/**
+ * Seulement des stocks du tenant, jamais les projections de cultures ou les prix de référence.
+ *
+ * Un lot existe à la date d'effet s'il a été produit ce jour civil (Paris) ou
+ * avant, pour tous les ateliers. Revue du 2026-10-29 : un document passe midi
+ * UTC de son jour ; une récolte maraîchère ou une ponte horodatée à l'instant
+ * réel de sa saisie (tableau de bord, tâches, accueil, assistant) disparaissait
+ * l'après-midi du BL du jour même.
+ */
 export async function chargerCatalogueStock(userId: string, db: DbStockCommercial = prisma, maintenant = new Date()): Promise<ArticleStockCommercial[]> {
+  const finJour = finJourLivraison(maintenant)
   const [recoltes, fruits, bois, produits, oeufs, ruches, fromages, prixRecoltes, ventes] = await Promise.all([
-    db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: maintenant }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
-    db.recolteArbre.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJourLivraison(maintenant) } }, include: { arbre: { select: { nom: true, espece: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
-    db.productionBois.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJourLivraison(maintenant) } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+    db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+    db.recolteArbre.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, include: { arbre: { select: { nom: true, espece: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+    db.productionBois.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.produitBoutique.findMany({ where: { userId }, include: { recolte: { select: { datePeremption: true } } }, orderBy: { nom: 'asc' } }),
     computeStockOeufsParLots(userId, maintenant, db),
-    db.productionRuche.findMany({ where: { userId, date: { lte: maintenant } }, include: { mouvementsStock: { select: { quantite: true } } } }),
-    db.lotFromage.findMany({ where: { userId, etat: 'pret', dateFabrication: { lte: maintenant } }, include: { mouvements: { select: { nbPieces: true, poidsKg: true } } }, orderBy: { dateFabrication: 'asc' } }),
+    db.productionRuche.findMany({ where: { userId, date: { lte: finJour } }, include: { mouvementsStock: { select: { quantite: true } } } }),
+    db.lotFromage.findMany({ where: { userId, etat: 'pret', dateFabrication: { lte: finJour } }, include: { mouvements: { select: { nbPieces: true, poidsKg: true } } }, orderBy: { dateFabrication: 'asc' } }),
     chargerPrixVentesMoyens(db, userId),
     db.venteProduit.findMany({ where: { userId, annule: false }, orderBy: { date: 'desc' }, take: 100, select: { type: true, unite: true, prixUnitaire: true, lotFromageId: true } }),
   ])
@@ -51,7 +60,7 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
     if ((p.stockDispo != null && p.stockDispo <= 0) || !frais(p.recolte?.datePeremption ?? null)) continue
     articles.push({ type: 'boutique', id: String(p.id), nom: p.nom, categorie: p.actif ? 'Catalogue de la boutique' : 'Catalogue hors ligne', disponible: p.stockDispo, unite: p.unite, prixTTC: p.prix, tauxTVA: p.categorie === 'autre' ? 20 : 5.5, statutBio: p.statutBio, href: '/boutique?tab=produits' })
   }
-  const oeufsDisponibles = oeufs.data.filter((lot) => lot.statut === 'commercialisable' && lot.datePonte <= maintenant).reduce((s, lot) => s + lot.restant, 0)
+  const oeufsDisponibles = oeufs.data.filter((lot) => lot.statut === 'commercialisable' && lot.datePonte <= finJour).reduce((s, lot) => s + lot.restant, 0)
   if (oeufsDisponibles > 0) {
     const derniere = ventes.find((v) => v.type === 'oeufs' && ['unite', 'unité'].includes(v.unite))
     articles.push({ type: 'oeufs', id: 'stock', nom: 'Œufs commercialisables', categorie: 'Élevage', disponible: oeufsDisponibles, unite: 'pièce', prixTTC: derniere?.prixUnitaire ?? null, tauxTVA: 5.5, statutBio: null, href: '/elevage?tab=production&sub=oeufs' })
