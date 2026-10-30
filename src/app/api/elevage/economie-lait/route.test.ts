@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
   animalFindMany: vi.fn(),
   lotAnimauxFindMany: vi.fn(),
+  lotsClosFindMany: vi.fn(),
   collecteFindMany: vi.fn(),
   lotFromageFindMany: vi.fn(),
   venteFindMany: vi.fn(),
@@ -18,7 +19,11 @@ vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
     animal: { findMany: mocks.animalFindMany },
-    lotAnimaux: { findMany: mocks.lotAnimauxFindMany },
+    // Lots actifs d'un côté, lots clos dans l'exercice de l'autre.
+    lotAnimaux: {
+      findMany: (args: { where: { statut: unknown } }) =>
+        args.where.statut === "actif" ? mocks.lotAnimauxFindMany(args) : mocks.lotsClosFindMany(args),
+    },
     collecteLait: { findMany: mocks.collecteFindMany },
     lotFromage: { findMany: mocks.lotFromageFindMany },
     venteProduit: { findMany: mocks.venteFindMany },
@@ -51,6 +56,7 @@ describe("GET /api/elevage/economie-lait", () => {
     })
     mocks.animalFindMany.mockResolvedValue([])
     mocks.lotAnimauxFindMany.mockResolvedValue([])
+    mocks.lotsClosFindMany.mockResolvedValue([])
     mocks.collecteFindMany.mockResolvedValue([])
     mocks.lotFromageFindMany.mockResolvedValue([])
     mocks.venteFindMany.mockResolvedValue([])
@@ -151,5 +157,73 @@ describe("GET /api/elevage/economie-lait", () => {
     expect(json.couts.alimentaire).toBe(5)
     // Le prorata des charges globales reste sur les têtes présentes.
     expect(json.methode).toMatchObject({ tetesLaitieres: 1, tetesTotales: 1 })
+  })
+
+  // Revue du 2026-10-29 — un lot laitier clos dans l'année (ici par son
+  // dernier abattage, sans date de réforme) tombait à 0 € : seuls les lots
+  // actifs étaient lus.
+  it("garde la ration d'un lot laitier clos en mai jusqu'à sa clôture, lot actif inchangé", async () => {
+    mocks.lotAnimauxFindMany.mockResolvedValue([
+      { id: 58, quantiteInitiale: 4, quantiteActuelle: 4, especeAnimale: especeLait },
+    ])
+    mocks.lotsClosFindMany.mockResolvedValue([
+      {
+        id: 70,
+        dateReforme: null,
+        especeAnimale: especeLait,
+        abattages: [{ date: new Date("2026-05-12T00:00:00.000Z") }],
+        animaux: [{ dateSortie: new Date("2026-04-02T00:00:00.000Z") }],
+      },
+    ])
+    const ration = (lotId: number, jour: string, quantite: number) => ({
+      quantite, date: new Date(`${jour}T00:00:00.000Z`), lotId, animalId: null, aliment: { prix: 1, userStocks: [] },
+    })
+    mocks.consommationFindMany.mockResolvedValue([
+      ration(70, "2026-03-10", 100), // avant la clôture
+      ration(70, "2026-05-12", 20), // le jour du dernier abattage
+      ration(70, "2026-06-01", 7), // après : hors du lot
+      ration(58, "2026-01-15", 30), // lot actif, toute l'année
+      ration(58, "2026-11-20", 40),
+    ])
+    mocks.soinFindMany.mockResolvedValue([
+      { cout: 15, date: new Date("2026-02-01T00:00:00.000Z"), animalId: null, lotId: 70 },
+      { cout: 9, date: new Date("2026-08-01T00:00:00.000Z"), animalId: null, lotId: 70 },
+    ])
+
+    const json = await (await GET(new NextRequest("http://localhost/api/elevage/economie-lait?annee=2026"))).json()
+
+    expect(mocks.lotsClosFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ userId: "user-1", statut: { not: "actif" } }) }),
+    )
+    expect(json.couts.alimentaire).toBe(100 + 20 + 30 + 40)
+    expect(json.couts.sanitaire).toBe(15)
+    // Le prorata des charges globales reste sur les têtes présentes.
+    expect(json.methode).toMatchObject({ tetesLaitieres: 4, tetesTotales: 4 })
+  })
+
+  it("préfère la date de réforme saisie et laisse à 0 € un lot clos sans date fiable", async () => {
+    mocks.lotsClosFindMany.mockResolvedValue([
+      {
+        id: 71,
+        dateReforme: new Date("2026-05-31T09:30:00.000Z"),
+        especeAnimale: especeLait,
+        abattages: [{ date: new Date("2026-05-10T00:00:00.000Z") }],
+        animaux: [],
+      },
+      // Clos par des pertes non datées (forçage) : comportement antérieur.
+      { id: 72, dateReforme: null, especeAnimale: especeLait, abattages: [], animaux: [] },
+    ])
+    const ration = (lotId: number, jour: string, quantite: number) => ({
+      quantite, date: new Date(`${jour}T00:00:00.000Z`), lotId, animalId: null, aliment: { prix: 1, userStocks: [] },
+    })
+    mocks.consommationFindMany.mockResolvedValue([
+      ration(71, "2026-05-20", 11), // après le dernier abattage, avant la réforme
+      ration(71, "2026-06-02", 5),
+      ration(72, "2026-03-01", 50),
+    ])
+
+    const json = await (await GET(new NextRequest("http://localhost/api/elevage/economie-lait?annee=2026"))).json()
+
+    expect(json.couts.alimentaire).toBe(11)
   })
 })
