@@ -32,8 +32,10 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   OAuthAccountNotLinked:
     "Cet email est déjà associé à un compte. Connectez-vous avec votre mot de passe.",
   OAuthCallbackError: "La connexion Google a échoué. Réessayez.",
+  // Code unique d'Auth.js pour tout incident non « client », passager compris
+  // (retour Google rejoué, cookie de contrôle périmé) : inviter à réessayer.
   Configuration:
-    "La connexion est momentanément indisponible. Contactez contact@gleba.fr.",
+    "La connexion n'a pas abouti. Réessayez ; si cela se reproduit, écrivez à contact@gleba.fr.",
 }
 
 export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
