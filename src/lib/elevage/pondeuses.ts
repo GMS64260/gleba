@@ -35,6 +35,7 @@
  * `effectifPondeuses()`, `effectifsPondeursLots()` l'enchaîne avec l'effectif
  * reconstitué pour un appelant qui n'en a pas déjà un.
  */
+import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { reconstituerEffectifsLots, type LotEffectifInput } from '@/lib/elevage/effectif'
 
@@ -104,6 +105,28 @@ export function nominatifPondeur(
   if (animal.dateNaissance && ageJours(animal.dateNaissance, reference) < agePonteJours) return false
   return true
 }
+
+/**
+ * Fiches actives d'une espèce pondeuse hors lot ACTIF (sans lot, ou restées
+ * dans un lot terminé) : absentes de l'effectif reconstitué des lots, celles
+ * qui pondent (`nominatifPondeur`) s'ajoutent aux « N pondeuses » du tableau
+ * de bord (/api/elevage/stats) et de l'assistant. Même lecture pour les deux.
+ */
+export function whereNominatifsPondeursHorsLot(userId: string) {
+  return {
+    userId,
+    statut: 'actif',
+    OR: [{ lotId: null }, { lot: { statut: { not: 'actif' } } }],
+    especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
+  } satisfies Prisma.AnimalWhereInput
+}
+
+export const SELECT_NOMINATIF_PONDEUR_HORS_LOT = {
+  especeAnimaleId: true,
+  sexe: true,
+  dateNaissance: true,
+  especeAnimale: { select: { nom: true, dureeElevage: true } },
+} satisfies Prisma.AnimalSelect
 
 /**
  * Nombre de têtes non pondeuses par lot (à retrancher de l'effectif

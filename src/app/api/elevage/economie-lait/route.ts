@@ -45,9 +45,13 @@ export async function GET(request: NextRequest) {
     const fin = new Date(annee, 11, 31, 23, 59, 59, 999)
 
     const [animaux, lots, collectes, fabrications, ventes, consommations, soins, paies] = await Promise.all([
+      // Animaux présents pendant l'exercice : actifs, ou sortis (vendus,
+      // réformés, morts) après son début. Une laitière vendue sans collecte
+      // dans l'année garde ses consommations et soins affectés au lait ; seules
+      // les têtes actives entrent dans le prorata des charges globales.
       prisma.animal.findMany({
-        where: { userId, statut: 'actif' },
-        select: { id: true, lotId: true, especeAnimale: { select: { production: true, productions: true } } },
+        where: { userId, OR: [{ statut: 'actif' }, { dateSortie: { gte: debut } }] },
+        select: { id: true, lotId: true, statut: true, especeAnimale: { select: { production: true, productions: true } } },
       }),
       prisma.lotAnimaux.findMany({
         where: { userId, statut: 'actif' },
@@ -110,7 +114,7 @@ export async function GET(request: NextRequest) {
     const effectifsLots = await reconstituerEffectifsLots(userId, lots)
     const effectifLot = (l: { id: number; quantiteActuelle: number }) =>
       effectifsLots.get(l.id)?.effectifCalcule ?? (l.quantiteActuelle || 0)
-    const animauxHorsLot = animaux.filter((a) => a.lotId == null)
+    const animauxHorsLot = animaux.filter((a) => a.statut === 'actif' && a.lotId == null)
     const tetesLaitieres =
       animauxHorsLot.filter((a) => animauxLaitiers.has(a.id)).length +
       lots.filter((l) => lotsLaitiers.has(l.id)).reduce((s, l) => s + effectifLot(l), 0)

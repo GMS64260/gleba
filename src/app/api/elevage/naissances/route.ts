@@ -10,12 +10,24 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { naissanceSchema } from '@/lib/validations/elevage-naissance'
 import { erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
+import { jourCivilStocke } from '@/lib/jour-civil'
 
 class NaissanceLieeError extends Error {}
 
-function detailPetit(petit: object) {
-  const p = petit as Record<string, unknown>
-  return Object.fromEntries(['sexe', 'boucleProvisoire', 'boucleDefinitive', 'modeElevage', 'poids', 'couleur', 'vivant', 'notes'].map((champ) => [champ, p[champ] ?? (champ === 'vivant' ? true : null)]))
+const CHAMPS_PETIT = ['sexe', 'boucleProvisoire', 'boucleDefinitive', 'modeElevage', 'poids', 'couleur', 'vivant', 'notes']
+
+function valeurPetit(petit: object, champ: string) {
+  return (petit as Record<string, unknown>)[champ] ?? (champ === 'vivant' ? true : null)
+}
+
+/**
+ * Le détail transmis diffère-t-il des petits enregistrés ? Seuls les champs
+ * présents dans la requête comptent : le formulaire n'envoie pas les notes
+ * des petits, qu'une comparaison complète prenait pour un effacement (409).
+ */
+function detailPetitsChange(transmis: object[], enregistres: object[]) {
+  return transmis.length !== enregistres.length || transmis.some((petit, i) =>
+    Object.keys(petit).some((champ) => CHAMPS_PETIT.includes(champ) && valeurPetit(petit, champ) !== valeurPetit(enregistres[i], champ)))
 }
 
 export async function GET(request: NextRequest) {
@@ -289,18 +301,21 @@ export async function PATCH(request: NextRequest) {
     const nouveauLot = parsed.data.lotId ?? null
     const ancienVivants = existing.nombreVivants
     const nouveauVivants = parsed.data.nombreVivants
+    // Le formulaire renvoie un jour seul (minuit UTC) : une naissance horodatée
+    // (08:00 UTC) garde sa date si le jour civil saisi est le sien.
+    const dateRetenue = parsed.data.date && jourCivilStocke(parsed.data.date) !== jourCivilStocke(existing.date)
+      ? parsed.data.date
+      : existing.date
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM naissances_animales WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`
       const courante = await tx.naissanceAnimale.findFirst({ where: { id, userId }, include: { petits: { orderBy: { numero: 'asc' } } } })
       const individualisee = courante?.petits.some((p) => p.animalId != null) ?? false
       if (individualisee && courante) {
-        const cible = { mereId: parsed.data.mereId ?? null, lotId: nouveauLot, date: parsed.data.date ?? courante.date, nombreNes: parsed.data.nombreNes, nombreVivants: nouveauVivants, nombreMales: parsed.data.nombreMales ?? null, nombreFemelles: parsed.data.nombreFemelles ?? null }
-        const change = Object.entries(cible).some(([champ, valeur]) => {
-          const avant = courante[champ as keyof typeof courante]
-          return valeur instanceof Date && avant instanceof Date ? valeur.getTime() !== avant.getTime() : valeur !== avant
-        })
-        const petitsChanges = parsed.data.petits !== undefined && JSON.stringify(parsed.data.petits.map(detailPetit)) !== JSON.stringify(courante.petits.map(detailPetit))
+        const cible = { mereId: parsed.data.mereId ?? null, lotId: nouveauLot, nombreNes: parsed.data.nombreNes, nombreVivants: nouveauVivants, nombreMales: parsed.data.nombreMales ?? null, nombreFemelles: parsed.data.nombreFemelles ?? null }
+        const change = jourCivilStocke(dateRetenue) !== jourCivilStocke(courante.date) ||
+          Object.entries(cible).some(([champ, valeur]) => valeur !== courante[champ as keyof typeof courante])
+        const petitsChanges = parsed.data.petits !== undefined && detailPetitsChange(parsed.data.petits, courante.petits)
         if (change || petitsChanges) throw new NaissanceLieeError('Des fiches de petits existent déjà. Corrigez ces fiches ; les effectifs, la date et le détail de cette naissance ne peuvent plus être remplacés ici. Les notes restent modifiables.')
       }
       if (ancienLot !== nouveauLot || ancienVivants !== nouveauVivants) {
@@ -332,7 +347,7 @@ export async function PATCH(request: NextRequest) {
           pereIdentifiant: parsed.data.pereIdentifiant ?? null,
           identifiantsProvisoires: parsed.data.identifiantsProvisoires ?? null,
           identifiantsDefinitifs: parsed.data.identifiantsDefinitifs ?? null,
-          date: parsed.data.date ?? existing.date,
+          date: dateRetenue,
           nombreNes: parsed.data.nombreNes,
           nombreVivants: parsed.data.nombreVivants,
           nombreMales: parsed.data.nombreMales ?? null,
@@ -358,7 +373,9 @@ export async function PATCH(request: NextRequest) {
               poids: p.poids ?? null,
               couleur: p.couleur ?? null,
               vivant: p.vivant ?? true,
-              notes: p.notes ?? null,
+              // Le formulaire n'envoie pas les notes des petits : absentes de
+              // la requête, celles du petit de même numéro sont conservées.
+              notes: 'notes' in p ? p.notes ?? null : courante?.petits.find((avant) => avant.numero === i + 1)?.notes ?? null,
             })),
           })
         }
