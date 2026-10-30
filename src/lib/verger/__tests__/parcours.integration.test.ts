@@ -465,14 +465,16 @@ it('supprimer un arbre conserve une greffe réalisée et la dépense historique'
   expect(await db.operationArbre.findUnique({ where: { id: op.id } })).not.toBeNull()
   expect(await db.depenseManuelle.count({ where: { userId: auth.id, sourceType: 'operation_arbre', sourceId: op.id } })).toBe(1)
 })
-it('une dépense verger nouvelle reste à régler et conserve ensuite son pointage historique', async () => {
+// Décision du 2026-10-30 : présumée payée, comme un soin ; un impayé saisi
+// ensuite dans Transactions survit à la régénération.
+it('une dépense verger nouvelle naît payée et conserve ensuite son pointage, même impayé', async () => {
   const op = await db.operationArbre.create({ data: { userId: auth.id, arbreId: a.id, type: 'greffe', fait: true, cout: 100, date: hier } })
   const miroir = await createDepenseFromOperationArbre(auth.id, op)
-  expect(miroir?.paye).toBe(false)
-  await db.depenseManuelle.update({ where: { id: miroir!.id }, data: { paye: true, modeReglement: 'Virement' } })
-  expect(await createDepenseFromOperationArbre(auth.id, { ...op, description: 'Greffe corrigée' })).toMatchObject({ paye: true, modeReglement: 'Virement' })
+  expect(miroir?.paye).toBe(true)
+  await db.depenseManuelle.update({ where: { id: miroir!.id }, data: { paye: false, modeReglement: 'Virement' } })
+  expect(await createDepenseFromOperationArbre(auth.id, { ...op, description: 'Greffe corrigée' })).toMatchObject({ paye: false, modeReglement: 'Virement' })
   const c = await db.campagnePlantation.create({ data: { userId: auth.id, nom: 'Campagne fictive', typeFormation: 'verger', coutReel: 200 } })
-  expect((await createDepenseFromCampagnePlantation(auth.id, c))?.paye).toBe(false)
+  expect((await createDepenseFromCampagnePlantation(auth.id, c))?.paye).toBe(true)
 })
 it.each([{ date: new Date('2090-01-01T12:00:00Z') }, { datePeremption: new Date('2026-10-26T12:00:00Z') }])('un lot indisponible ne produit ni vente ni facture', async donnees => {
   const r = await lot(donnees)

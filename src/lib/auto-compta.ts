@@ -1,4 +1,4 @@
-import { enCentimes, ErreurReglement } from '@/lib/comptabilite/monnaie'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * Auto-Comptabilite - Generation automatique d'ecritures comptables
@@ -19,7 +19,7 @@ import { libellesVenteBois } from '@/lib/verger/production-bois'
 import { montantVenteFruit } from '@/lib/verger/montant-vente'
 import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
-import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture, suiviReglementActif } from '@/lib/comptabilite/suivi-reglement-source'
+import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture } from '@/lib/comptabilite/suivi-reglement-source'
 
 // ============================================================
 // HELPERS
@@ -28,31 +28,22 @@ import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacher
 type AutoComptaTx = Prisma.TransactionClient
 
 /**
- * Sources dont l'app crée le miroir NON payé : « payé » y est une déclaration
- * de l'utilisateur. Corriger le montant d'une telle pièce sans versement
- * détaillé ferait passer pour payé un montant que personne n'a déclaré (garde
- * du 2026-10-28). Les autres miroirs (soins, interventions, fertilisations,
- * aliments, achats d'animaux, de lots et d'arbres) naissent payés par défaut :
- * ce booléen n'apprend rien, et refuser leur correction de coût bloquait toute
- * modification de la source (régression P1, revue du 2026-10-29). Pour eux, une
- * correction garde le pointage existant comme avant le 2026-10-28 ; un journal
- * de versements détaillés reste géré par `synchroniserReglementSource`.
+ * Tous les miroirs de dépense naissent payés : « payé » n'y apprend rien
+ * (opérations d'arbre et campagnes de plantation alignées le 2026-10-30). La
+ * garde du 2026-10-28, qui refusait de corriger le coût d'un miroir payé sans
+ * versement détaillé, bloquait donc toute modification de la source
+ * (régression P1, revue du 2026-10-29) : une correction garde le pointage
+ * existant ; un journal de versements détaillés reste géré par
+ * `synchroniserReglementSource`.
  */
-const SOURCES_DEPENSE_PAIEMENT_DECLARE: ReadonlySet<string> = new Set(['operation_arbre', 'campagne_plantation'])
-
 async function suiviDuMiroirDepense(db: AutoComptaTx, where: { userId: string; sourceType: string; sourceId: number; auto: true }, montant?: number) {
   await verrouillerReglements(db, where.userId)
   await db.$queryRaw`SELECT id FROM depenses_manuelles WHERE user_id = ${where.userId} AND source_type = ${where.sourceType} AND source_id = ${where.sourceId} AND auto = true FOR UPDATE`
   const ancienne = await db.depenseManuelle.findFirst({
     where,
-    select: { montant: true, paye: true, modeReglement: true, numeroPiece: true, journal: true, pjUrl: true, notes: true, refFacture: true, dateEcheance: true },
+    select: { paye: true, modeReglement: true, numeroPiece: true, journal: true, pjUrl: true, notes: true, refFacture: true, dateEcheance: true },
   })
   const cle = cleSourceReglement('depense', where.sourceType, where.sourceId)
-  if (SOURCES_DEPENSE_PAIEMENT_DECLARE.has(where.sourceType) && ancienne?.paye && montant !== undefined
-    && typeof ancienne.montant === 'number' && enCentimes(ancienne.montant) !== enCentimes(montant)
-    && !await suiviReglementActif(db, where.userId, cle)) {
-    throw new ErreurReglement('Précisez les versements historiques dans Règlements avant de corriger le montant de cette dépense déclarée payée.')
-  }
   const reglement = montant !== undefined ? await synchroniserReglementSource(db, where.userId, cle, montant) : {}
   // Le montant appartient à la source ; seul le suivi est reporté.
   const suivi = ancienne ? { paye: ancienne.paye, modeReglement: ancienne.modeReglement, numeroPiece: ancienne.numeroPiece,
@@ -738,6 +729,7 @@ export async function createDepenseFromAchatArbre(userId: string, arbre: {
 /**
  * Cree une DepenseManuelle quand une OperationArbre a un coût (taille,
  * traitement, greffe...). TVA : 20 % traitement (intrants), 10 % sinon (service).
+ * Présumée réglée comme les soins et les interventions (2026-10-30).
  */
 export async function createDepenseFromOperationArbre(
   userId: string,
@@ -773,7 +765,7 @@ export async function createDepenseFromOperationArbre(
         montant: montantTTC,
         journal: 'AC',
         module: 'verger',
-        paye: false,
+        paye: true,
         sourceType: 'operation_arbre',
         sourceId: operation.id,
         auto: true,
@@ -785,7 +777,8 @@ export async function createDepenseFromOperationArbre(
 
 /**
  * Cree une DepenseManuelle quand une CampagnePlantation a un coût réel.
- * TVA 10 % (végétaux vivants).
+ * TVA 10 % (végétaux vivants). Présumée réglée comme les achats d'arbres
+ * (2026-10-30).
  */
 export async function createDepenseFromCampagnePlantation(
   userId: string,
@@ -827,7 +820,7 @@ export async function createDepenseFromCampagnePlantation(
         montant: montantTTC,
         journal: 'AC',
         module: 'verger',
-        paye: false,
+        paye: true,
         sourceType: 'campagne_plantation',
         sourceId: campagne.id,
         auto: true,

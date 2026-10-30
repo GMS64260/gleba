@@ -306,9 +306,9 @@ describe('suivi des achats d’élevage', () => {
 
 /**
  * Régression P1 de la revue du 2026-10-29 : la garde des paiements déclarés
- * refusait la correction du coût de tout miroir payé, y compris ceux que l'app
- * crée elle-même payés (soins, interventions…). Elle ne vaut plus que pour les
- * sources créées à régler, où « payé » vient de l'utilisateur.
+ * refusait la correction du coût de tout miroir payé (soins, interventions…).
+ * Depuis le 2026-10-30, opérations d'arbre et campagnes naissent payées aussi :
+ * la garde est retirée, une correction garde le pointage existant.
  */
 describe('correction du coût d’un miroir de dépense payé', () => {
   const pointage = { paye: true, modeReglement: 'Virement', numeroPiece: 'PIECE-QA', journal: 'AC', pjUrl: null, notes: null, refFacture: null, dateEcheance: null }
@@ -326,10 +326,19 @@ describe('correction du coût d’un miroir de dépense payé', () => {
     await expect(createDepenseFromIntervention('user-1', { id: 82, type: 'amendement', coutTotal: 80, intrantCout: 80 })).resolves.toMatchObject({ montant: 80, paye: true, numeroPiece: 'PIECE-QA' })
   })
 
-  it('refuse toujours de corriger une opération d’arbre déclarée payée sans versement', async () => {
-    await expect(createDepenseFromOperationArbre('user-1', { id: 83, type: 'taille', cout: 80, fait: true })).rejects.toMatchObject({ name: 'ErreurReglement', status: 409 })
-    expect(mocks.depenseDeleteMany).not.toHaveBeenCalled()
-    expect(mocks.depenseCreate).not.toHaveBeenCalled()
+  it('accepte la correction d’une opération d’arbre payée et garde son pointage', async () => {
+    await expect(createDepenseFromOperationArbre('user-1', { id: 83, type: 'taille', cout: 80, fait: true })).resolves.toMatchObject({ montant: 80, paye: true, numeroPiece: 'PIECE-QA' })
+  })
+
+  it('accepte la correction d’une campagne payée et garde son pointage', async () => {
+    await expect(createDepenseFromCampagnePlantation('user-1', { id: 84, nom: 'Haie QA', coutReel: 80, datePlantationReelle: '2026-03-01' })).resolves.toMatchObject({ montant: 80, paye: true, modeReglement: 'Virement' })
+  })
+
+  it('crée payées une nouvelle opération d’arbre et une nouvelle campagne', async () => {
+    mocks.depenseFindFirst.mockResolvedValue(null)
+    await createDepenseFromOperationArbre('user-1', { id: 85, type: 'greffe', cout: 40, fait: true })
+    await createDepenseFromCampagnePlantation('user-1', { id: 86, nom: 'Verger QA', coutReel: 220, datePlantationReelle: '2026-03-01' })
+    expect(mocks.depenseCreate.mock.calls.map(([{ data }]) => [data.sourceType, data.paye])).toEqual([['operation_arbre', true], ['campagne_plantation', true]])
   })
 })
 
