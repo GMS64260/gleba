@@ -22,6 +22,8 @@ import {
   type CategorieLunaire,
 } from "@/lib/calendrier-climat"
 import type { ZoneClimat } from "@/lib/terroir"
+import { todayLocalISO } from "@/lib/format-utils"
+import { parametreFuseau } from "@/components/lunaire/lecture"
 
 interface JourLunaire {
   date: string
@@ -95,7 +97,8 @@ export function SemisLunaireEncart({
       try {
         const reps = await Promise.all(
           mois.map((x) =>
-            fetch(`/api/lunaire?year=${x.y}&month=${x.m}`)
+            // Jours du lecteur (revue du 2026-10-28), pas ceux du serveur.
+            fetch(`/api/lunaire?year=${x.y}&month=${x.m}${parametreFuseau()}`)
               .then((r) => (r.ok ? r.json() : null))
               .catch(() => null)
           )
@@ -117,7 +120,9 @@ export function SemisLunaireEncart({
 
   const now = new Date()
   const semaineCourante = semaineISO(now)
-  const todayStr = now.toISOString().split("T")[0]
+  // Jour civil du lecteur, comme les jours du calendrier (le jour UTC
+  // retenait la veille entre minuit et 2 h à Paris).
+  const todayStr = todayLocalISO()
 
   // 1) Semis dus dans la fenêtre [maintenant, +horizon], regroupés par catégorie.
   const semisParCat = React.useMemo(() => {

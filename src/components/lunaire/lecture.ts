@@ -49,18 +49,40 @@ export function configTypeJour(type: string) {
 }
 
 /**
- * Lecture du jour partagée entre les instances d'une même page (petite lune
- * de l'accueil, en-tête, calendrier) : une seule requête par jour civil.
+ * Fuseau IANA du navigateur, transmis à `/api/lunaire` (`tz`) : sans lui, le
+ * serveur découpait les jours au sien (Europe/Paris) et un lecteur des
+ * Antilles recevait le lendemain de Paris (revue du 2026-10-28).
  */
-let lectureDuJour: { jour: string; promesse: Promise<JourLunaire | null> } | null = null
+export function fuseauDuLecteur(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null
+  } catch {
+    return null
+  }
+}
+
+/** Paramètre `&tz=…` des requêtes `/api/lunaire`, vide si le navigateur ne le dit pas. */
+export function parametreFuseau(): string {
+  const fuseau = fuseauDuLecteur()
+  return fuseau ? `&tz=${encodeURIComponent(fuseau)}` : ""
+}
+
+/**
+ * Lecture du jour partagée entre les instances d'une même page (petite lune
+ * de l'accueil, en-tête, calendrier) : une seule requête par jour civil et
+ * par fuseau du lecteur, qui les transmet tous deux au serveur.
+ */
+let lectureDuJour: { cle: string; promesse: Promise<JourLunaire | null> } | null = null
 
 export function lireJourLunaire(jour: string): Promise<JourLunaire | null> {
-  if (lectureDuJour?.jour !== jour) {
-    const promesse = fetch("/api/lunaire?today=1")
-      .then((r) => r.json())
-      .then((json) => (json.jour ?? null) as JourLunaire | null)
+  const fuseau = parametreFuseau()
+  const cle = `${jour}${fuseau}`
+  if (lectureDuJour?.cle !== cle) {
+    const promesse = fetch(`/api/lunaire?today=1&jour=${encodeURIComponent(jour)}${fuseau}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => (json?.jour?.date === jour ? (json.jour as JourLunaire) : null))
       .catch(() => null)
-    lectureDuJour = { jour, promesse }
+    lectureDuJour = { cle, promesse }
     // Un échec ne se mémorise pas : la prochaine instance retente.
     promesse.then((j) => {
       if (j === null && lectureDuJour?.promesse === promesse) lectureDuJour = null

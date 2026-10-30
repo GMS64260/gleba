@@ -45,7 +45,11 @@ export interface JourMeteoBilan {
 export interface EntreeBilanSol {
   /** Jours passés, du plus ancien à HIER inclus. */
   historique: JourMeteoBilan[]
-  /** Aujourd'hui (pluie et ET0 de la prévision du jour). */
+  /**
+   * Aujourd'hui (pluie et ET0 de la prévision du jour). La pluie du jour est un
+   * cumul PRÉVU sur 24 h, pas une eau reçue : elle n'entre que dans la
+   * projection, comme celle de demain (revue du 2026-10-28).
+   */
   aujourdhui: JourMeteoBilan
   /** Jours suivants (demain d'abord). */
   previsions: JourMeteoBilan[]
@@ -95,9 +99,9 @@ export interface ResultatBilanSol {
   etcPotentielleMoyenne7j: number
   kc: number
   profondeurRacinesM: number
-  /** Pluie (mm) attendue sur les deux prochains jours, 0 sous abri. */
+  /** Pluie (mm) attendue aujourd'hui (pas encore comptée) et les deux prochains jours, 0 sous abri. */
   pluiePrevue48h: number
-  /** Dernier apport ayant rechargé le sol (pluie utile ≥ 10 mm ou arrosage noté). */
+  /** Dernier apport ayant rechargé le sol (pluie utile ≥ 10 mm reçue ou arrosage noté). */
   dernierApport: { type: 'pluie' | 'arrosage'; date: string; mm: number | null } | null
   /** Sol connu (planche ou parcelle) ; sinon la réserve est celle d'un sol moyen. */
   solRenseigne: boolean
@@ -516,14 +520,20 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
   const etcReels: number[] = []
   let duJour: Pas | null = null
 
-  for (const jour of [...e.historique, e.aujourdhui]) {
+  // Bilan ACQUIS : aujourd'hui compte sa consommation et les arrosages saisis,
+  // pas sa pluie. Le cumul du jour d'Open-Meteo est une prévision sur 24 h,
+  // même à 6 h du matin : compté au passé, un orage annoncé pour le soir
+  // effaçait une urgence critique avant d'être tombé (revue du 2026-10-28).
+  // Il ouvre la projection ; demain, l'historique le compte s'il est tombé.
+  const aujourdhuiSansPluie: JourMeteoBilan = { ...e.aujourdhui, pluie: 0 }
+  for (const jour of [...e.historique, aujourdhuiSansPluie]) {
     // Une culture pas encore en terre ne consomme rien sur sa planche.
     if (!enPlace(e, jour.date)) continue
     const arrose = arroses.has(jour.date)
     const apport = apportsDuJour.get(jour.date) ?? 0
     const r = avancer(etat, jour, arrose, apport)
     etcReels.push(r.etc)
-    if (jour === e.aujourdhui) duJour = r
+    if (jour === aujourdhuiSansPluie) duJour = r
     if (arrose) dernierApport = { type: 'arrosage', date: jour.date, mm: null }
     else if (apport > 0) dernierApport = { type: 'arrosage', date: jour.date, mm: Math.round(apport * 10) / 10 }
     else if (pluieDe(jour) >= PLUIE_RECHARGE_MM) dernierApport = { type: 'pluie', date: jour.date, mm: Math.round(jour.pluie) }
@@ -543,10 +553,13 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
   const etcPotentielleMoyenne7j = moyenne(etat.potentielles.slice(-JOURS_MOYENNE_DEMANDE))
   const etcMoyenne7j = moyenne(etcReels.slice(-JOURS_MOYENNE_DEMANDE))
 
-  // Projection : pluie et ET0 prévues, sans arrosage, à partir de la mise en place.
-  const proj: EtatBilan = { depletion, p: etat.p, potentielles: [...etat.potentielles] }
+  // Projection : pluie et ET0 prévues, sans arrosage, à partir de la mise en
+  // place. Elle s'ouvre sur la pluie annoncée pour aujourd'hui (la
+  // consommation du jour est déjà dans le bilan acquis).
+  const pluieDuJour = enPlace(e, e.aujourdhui.date) ? pluieDe(e.aujourdhui) : 0
+  const proj: EtatBilan = { depletion: Math.max(0, depletion - pluieDuJour), p: etat.p, potentielles: [...etat.potentielles] }
   let joursAvantSeuil: number | null = enPlace(e, e.aujourdhui.date) && depletion >= raw ? 0 : null
-  let depletion48h = depletion
+  let depletion48h = proj.depletion
   e.previsions.slice(0, HORIZON_PROJECTION_JOURS).forEach((jour, i) => {
     if (enPlace(e, jour.date)) {
       avancer(proj, jour, false)
@@ -554,7 +567,7 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
     }
     if (i <= 1) depletion48h = proj.depletion
   })
-  const pluiePrevue48h = e.culture.sousAbri ? 0 : e.previsions.slice(0, 2).reduce((s, j) => s + j.pluie, 0)
+  const pluiePrevue48h = e.culture.sousAbri ? 0 : [e.aujourdhui, ...e.previsions.slice(0, 2)].reduce((s, j) => s + j.pluie, 0)
 
   const taux = raw > 0 ? depletion / raw : 0
   const seuilCritique = raw + 0.5 * (taw - raw)
@@ -603,6 +616,8 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
   else if (urgence === 'moyenne') raison = `${dans ?? 'À surveiller'} : ${reserve}, ${apport}.`
   else if (urgence === 'faible') raison = `${dans ?? 'Sol encore pourvu'} : ${reserve}, ${apport}.`
   else raison = `Sol bien pourvu : ${reserve}, ${apport}.`
+  // Il pleut peut-être déjà : on dit pourquoi le conseil ne le compte pas encore.
+  if (aFaire && pluieDuJour > 0) raison += ` ${formatNombre(e.aujourdhui.pluie, 1)} mm annoncés aujourd'hui, comptés une fois tombés.`
   // La dose est plafonnée à la réserve facile : verser la dose conseillée
   // peut laisser la planche « à arroser ». On le dit dès le conseil. Le
   // complément n'est redemandé que si la quantité versée est notée : noté

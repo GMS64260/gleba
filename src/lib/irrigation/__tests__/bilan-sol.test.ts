@@ -375,7 +375,13 @@ describe("bilanReserveSol", () => {
     const base = entree({ joursArroses: ["2026-07-10"] })
     const hier = bilanReserveSol({ ...base, historique: base.historique.slice(0, -1), aujourdhui: base.historique[29] })
     expect(hier.urgence).toBe("haute")
-    const bruine = bilanReserveSol({ ...base, aujourdhui: { date: AUJOURDHUI, pluie: 4.5, et0: 1 } })
+    // La bruine est TOMBÉE (historique) : la pluie du jour n'est qu'annoncée
+    // (revue du 2026-10-28). Le jour suivant, sans ET0, n'y ajoute rien.
+    const bruine = bilanReserveSol({
+      ...base,
+      historique: [...base.historique, { date: AUJOURDHUI, pluie: 4.5, et0: 1 }],
+      aujourdhui: { date: "2026-07-21", pluie: 0, et0: 0 },
+    })
     const trou = bilanReserveSol({ ...base, aujourdhui: { date: AUJOURDHUI, pluie: 0, et0: 0 } })
     for (const r of [bruine, trou]) {
       expect(r.reserveFacileMm).toBeLessThanOrEqual(hier.reserveFacileMm)
@@ -469,5 +475,39 @@ describe("bilanReserveSol", () => {
         })
       }
     }
+  })
+})
+
+// Revue du 2026-10-28 (témoin bilan-pluie) : le cumul du jour d'Open-Meteo est
+// une PRÉVISION sur 24 h, même à 6 h du matin. Compté au passé, l'orage annoncé
+// pour le soir effaçait une urgence critique avant d'être tombé.
+describe("pluie du jour : annoncée, pas encore reçue", () => {
+  it("une pluie encore PRÉVUE ce soir ne doit pas être un apport déjà reçu ni effacer une urgence critique", () => {
+    const sec = bilanReserveSol(entree())
+    expect(sec.urgence).toBe("critique")
+    // Orage de 70 mm prévu le soir : aucune de ces gouttes n'est encore reçue.
+    const annonce = bilanReserveSol(entree({ aujourdhui: { date: AUJOURDHUI, pluie: 70, et0: 5 } }))
+    expect(annonce.urgence).toBe("critique")
+    expect(annonce.depletionMm).toBe(sec.depletionMm)
+    expect(annonce.doseMm).toBe(sec.doseMm)
+    expect(annonce.dernierApport).toBeNull()
+    expect(annonce.raison).toMatch(/70 mm annoncés aujourd'hui, comptés une fois tombés\./)
+  })
+
+  it("la pluie annoncée pour aujourd'hui dispense, comme celle de demain, d'un arrosage dû non critique", () => {
+    const base = entree({ joursArroses: ["2026-07-12"] })
+    expect(bilanReserveSol(base).urgence).toBe("haute")
+    const r = bilanReserveSol({ ...base, aujourdhui: { date: AUJOURDHUI, pluie: 25, et0: 5 } })
+    expect(r.urgence).toBe("moyenne")
+    expect(r.doseMm).toBe(0)
+    expect(r.pluiePrevue48h).toBe(25)
+    expect(r.raison).toMatch(/^25 mm de pluie prévus/)
+    // Demain, la même pluie tombée (historique) est un apport reçu.
+    const lendemain = bilanReserveSol({
+      ...base,
+      historique: [...base.historique, { date: AUJOURDHUI, pluie: 25, et0: 5 }],
+      aujourdhui: { date: "2026-07-21", pluie: 0, et0: 5 },
+    })
+    expect(lendemain.dernierApport).toEqual({ type: "pluie", date: AUJOURDHUI, mm: 25 })
   })
 })

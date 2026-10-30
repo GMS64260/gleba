@@ -22,7 +22,7 @@ import { joursEntre, volumeArrosage, type ResultatBilanSol } from '@/lib/irrigat
 import { bilanCulture, dernierArrosageDuLieu } from '@/lib/irrigation/bilan-culture'
 import { typeSousAbri } from '@/lib/irrigation/abri'
 import { chargerArrosagesSaisis, dernierArrosage } from '@/lib/irrigation/arrosages-saisis'
-import { chargerMeteoBilan, debutArrosagesBilan, jourLocalIso, pluieSeptDerniersJours, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
+import { chargerMeteoBilan, debutArrosagesBilan, joursSansPluieRecue, jourLocalIso, pluieSeptDerniersJours, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
 import {
   getIrrigationFactors,
   calculerConsommationEauAvecSol,
@@ -42,8 +42,8 @@ interface MeteoParCoord {
   pluie48hPassees: number  // mm d'hier et d'avant-hier (aujourd'hui exclu, comme pluie7jPassees)
   pluie7jPassees: number   // mm des 7 derniers jours, aujourd'hui exclu (définition de /meteo)
   et0_7j: number           // mm ET0 des 7 derniers jours, aujourd'hui exclu
-  joursSansPluie: number   // jours consécutifs sans pluie significative
-  pluiePrevue48h: number   // mm prévus demain et après-demain
+  joursSansPluie: number   // jours consécutifs sans pluie significative reçue, aujourd'hui compris
+  pluiePrevue48h: number   // mm annoncés aujourd'hui (pas encore reçus), demain et après-demain, comme le moteur
   pluiePrevue5j: number    // mm prévus dans les 5 prochains jours
   joursAvantPluie: number  // jours avant la prochaine pluie significative (99 = aucune)
 }
@@ -64,15 +64,8 @@ type Urgence = 'critique' | 'haute' | 'moyenne' | 'faible' | 'aucune'
  */
 export function resumeMeteo(bilan: MeteoBilan): Omit<MeteoParCoord, 'lat' | 'lng' | 'bilan'> {
   const derniers7 = bilan.historique.slice(-7)
-  const pluieAujourdhui = bilan.aujourdhui.pluie
-  let joursSansPluie = 0
-  if (pluieAujourdhui < SEUIL_PLUIE_SIGNIFICATIVE) {
-    joursSansPluie = 1
-    for (let i = bilan.historique.length - 1; i >= 0; i--) {
-      if (bilan.historique[i].pluie < SEUIL_PLUIE_SIGNIFICATIVE) joursSansPluie++
-      else break
-    }
-  }
+  // La pluie du jour n'est qu'annoncée : elle ne remet pas le compteur à zéro.
+  const joursSansPluie = joursSansPluieRecue(bilan)
   const idx = bilan.previsions.findIndex((j) => j.pluie >= SEUIL_PLUIE_SIGNIFICATIVE)
   return {
     pluie48hPassees: bilan.historique.slice(-2).reduce((s, j) => s + j.pluie, 0),
@@ -80,7 +73,9 @@ export function resumeMeteo(bilan: MeteoBilan): Omit<MeteoParCoord, 'lat' | 'lng
     pluie7jPassees: pluieSeptDerniersJours(bilan),
     et0_7j: derniers7.reduce((s, j) => s + j.et0, 0),
     joursSansPluie,
-    pluiePrevue48h: bilan.previsions.slice(0, 2).reduce((s, j) => s + j.pluie, 0),
+    // La pluie du jour n'est qu'annoncée (revue du 2026-10-28) : comptée ici,
+    // jamais dans les cumuls passés, comme dans `bilanReserveSol`.
+    pluiePrevue48h: [bilan.aujourdhui, ...bilan.previsions.slice(0, 2)].reduce((s, j) => s + j.pluie, 0),
     pluiePrevue5j: bilan.previsions.slice(0, 5).reduce((s, j) => s + j.pluie, 0),
     joursAvantPluie: idx >= 0 ? idx + 1 : 99,
   }
@@ -109,7 +104,9 @@ export function urgenceFallback(
   if (joursSansEau * factors.urgenceFactor >= seuil) {
     return { urgence: 'moyenne', raison: `${joursSansEau}j sans arrosage. ${conseil}` }
   }
-  return { urgence: 'faible', raison: 'Arrosé récemment.' }
+  // Le motif dit aussi pourquoi il n'y a pas de bilan : sans cela, le
+  // conseiller (`/api/meteo/irrigation`) aurait lu « Arrosé récemment. » comme un conseil calculé.
+  return { urgence: 'faible', raison: `Arrosé récemment. ${conseil}` }
 }
 
 /**
