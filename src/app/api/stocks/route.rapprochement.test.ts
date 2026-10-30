@@ -84,6 +84,8 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
     consommation: { findMany: vi.fn(async () => []) },
+    // Sorties commerciales (livraisons, factures directes) : aucune dans le ticket.
+    mouvementStockCommercial: { findMany: vi.fn(async () => []) },
   },
 }))
 

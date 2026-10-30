@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   recolteFindMany: vi.fn(),
   consommationCreate: vi.fn(),
   consommationFindMany: vi.fn(),
+  mouvementStockCommercialFindMany: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -28,6 +29,8 @@ vi.mock('@/lib/prisma', () => ({
     produitBoutique: { findMany: mocks.produitBoutiqueFindMany },
     recolte: { findMany: mocks.recolteFindMany },
     consommation: { create: mocks.consommationCreate, findMany: mocks.consommationFindMany },
+    // Sorties commerciales (livraisons, factures directes) que le stock net retranche.
+    mouvementStockCommercial: { findMany: mocks.mouvementStockCommercialFindMany },
   },
 }))
 
@@ -74,6 +77,7 @@ beforeEach(() => {
   mocks.produitBoutiqueFindMany.mockResolvedValue([])
   mocks.recolteFindMany.mockResolvedValue([])
   mocks.consommationFindMany.mockResolvedValue([])
+  mocks.mouvementStockCommercialFindMany.mockResolvedValue([])
   mocks.consommationCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: 9,
     ...data,

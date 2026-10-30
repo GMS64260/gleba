@@ -32,6 +32,8 @@ vi.mock('@/lib/auto-compta', () => ({
 }))
 vi.mock('@/lib/prisma', () => {
   const tx = {
+    // Verrou des règlements pris en tête de transaction (`verrouillerReglements`).
+    $executeRaw: vi.fn(),
     animal: { findMany: mocks.animalFindMany, updateMany: mocks.animalUpdateMany },
     consommationAliment: { findMany: mocks.consoFindMany, deleteMany: mocks.consoDeleteMany },
     soinAnimal: { findMany: mocks.soinFindMany, deleteMany: mocks.soinDeleteMany },
