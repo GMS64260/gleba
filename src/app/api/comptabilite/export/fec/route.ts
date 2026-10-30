@@ -364,7 +364,8 @@ async function exporterFec(request: NextRequest) {
       montantHT: ht,
       montantTVA: tva,
       clientNom: null, // Abattage n'a pas de clientNom au modèle
-      paye: suiviSources.parSource.get(cleSource('abattage', a.id))?.paye ?? false,
+      // Pointage du miroir ; sans miroir, vente présumée payée (décision du 2026-10-30).
+      paye: suiviSources.parSource.get(cleSource('abattage', a.id))?.paye ?? true,
     })
   }
 

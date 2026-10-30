@@ -389,7 +389,11 @@ export async function PATCH(request: NextRequest) {
         if (!Number.isFinite(tva) || tva < 0 || tva > 100) throw new ErreurElevage('TVA invalide', 400)
         const totalHT = prixTotalTTC / (1 + tva / 100)
         const totalTVA = prixTotalTTC - totalHT
+        // La facture suit le pointage du miroir. Sans pointage contraire, la
+        // vente d'abattage est présumée réglée, comme avant le 2026-10-28
+        // (décision du 2026-10-30) ; aucun mode n'est inventé.
         const suivi = await tx.venteManuelle.findFirst({ where: { userId, auto: true, sourceType: 'abattage', sourceId: existing.id }, select: { paye: true, modeReglement: true } })
+        const reglee = suivi?.paye !== false
 
         const animalInfo = existing.animal?.nom || existing.lot?.nom || 'Abattage'
         const quantiteAbattue = updateData.quantite !== undefined ? updateData.quantite : existing.quantite
@@ -404,8 +408,8 @@ export async function PATCH(request: NextRequest) {
           totalHT,
           totalTVA,
           totalTTC: prixTotalTTC,
-          statut: suivi?.paye ? 'payee' : 'emise',
-          datePaiement: suivi?.paye ? new Date() : null,
+          statut: reglee ? 'payee' : 'emise',
+          datePaiement: reglee ? new Date() : null,
           modePaiement: modePaiementDepuisReglement(suivi?.modeReglement),
           lignes: [{
             description: animalInfo,

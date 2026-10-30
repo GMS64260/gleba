@@ -21,10 +21,12 @@ beforeEach(() => {
 })
 
 describe('Suivi du règlement des abattages', () => {
-  it('P1 : une vente d’abattage est à encaisser par défaut', async () => {
+  // Décision du 2026-10-30 : présumée payée à sa création, comme avant le 2026-10-28.
+  it('une nouvelle vente d’abattage est présumée payée, sans mode inventé', async () => {
     const result = await createVenteFromAbattage('review', source, tx as never)
-    expect(result?.paye).toBe(false)
+    expect(result?.paye).toBe(true)
     expect(result?.montant).toBe(100)
+    expect(result?.modeReglement ?? null).toBeNull()
   })
 
   it('P1 : régénérer le miroir conserve un abattage explicitement dépointé', async () => {

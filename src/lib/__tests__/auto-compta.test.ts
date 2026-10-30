@@ -85,13 +85,25 @@ describe('invariants auto-compta élevage', () => {
     })
   })
 
-  it.each([undefined, null])('ne déduit aucun encaissement d’un statut absent (%s)', async (paye) => {
+  // Décision du 2026-10-30 : une vente démarre payée, comme avant le 2026-10-28.
+  it.each([undefined, null])('présume payée une vente au statut absent (%s)', async (paye) => {
     await createVenteFromVenteProduit('user-1', {
       id: 10, type: 'animal_vivant', prixTotal: 100, paye,
     })
     expect(mocks.venteCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ paye: false }),
+      data: expect.objectContaining({ paye: true }),
     })
+  })
+
+  it('une vente maraîchère reste présumée payée', async () => {
+    await createVenteFromRecolte('user-1', { id: 12, especeId: 'Radis', quantite: 10, unite: 'botte', prixKg: 2, prixTotal: 20 })
+    expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({ sourceType: 'recolte', paye: true, montant: 20 })
+  })
+
+  it('une vente maraîchère dépointée le reste quand la récolte est régénérée', async () => {
+    mocks.venteFindFirst.mockResolvedValue({ paye: false })
+    await createVenteFromRecolte('user-1', { id: 12, especeId: 'Radis', quantite: 10, unite: 'botte', prixKg: 2, prixTotal: 20 })
+    expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({ sourceType: 'recolte', paye: false, montant: 20 })
   })
 
   it('classe une vente de miel dans les produits de la ruche avec son taux réel', async () => {

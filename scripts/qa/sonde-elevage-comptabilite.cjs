@@ -97,7 +97,8 @@ async function main() {
     await page.goto(`${base}/elevage?tab=production&sub=ventes`, { waitUntil: 'networkidle' })
     await page.getByRole('button', { name: /Nouvelle vente/ }).click()
     const nouveau = page.getByRole('dialog')
-    assert.equal(await nouveau.getByLabel('Encaissement confirmé', { exact: true }).isChecked(), false)
+    // Décision du 2026-10-30 : une vente démarre payée, sans mode proposé d'office.
+    assert.equal(await nouveau.getByLabel('Vente payée', { exact: true }).isChecked(), true)
     assert.equal(await nouveau.getByLabel('Mode de règlement', { exact: true }).inputValue(), '')
     await page.setViewportSize({ width: 390, height: 844 })
     await page.screenshot({ path: '/tmp/gleba-reglements-captures/vente-mobile.png', fullPage: true })

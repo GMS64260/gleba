@@ -8,6 +8,7 @@
 
 import * as React from "react"
 import { ChampsEncaissement } from "@/components/comptabilite/ChampsEncaissement"
+import { encaissementVenteInitial } from "@/lib/comptabilite/encaissement-vente"
 import { Warehouse, ArrowDownToLine, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -54,8 +55,8 @@ export function AffinageSubTab() {
   const [inclureEcoules, setInclureEcoules] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [sortie, setSortie] = React.useState<LotCave | null>(null)
-  const [form, setForm] = React.useState({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "", paye: false, modeReglement: "" })
-  const resetForm = () => setForm({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "", paye: false, modeReglement: "" })
+  const [form, setForm] = React.useState({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "", ...encaissementVenteInitial() })
+  const resetForm = () => setForm({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "", ...encaissementVenteInitial() })
 
   const reload = React.useCallback(() => {
     setLoading(true)

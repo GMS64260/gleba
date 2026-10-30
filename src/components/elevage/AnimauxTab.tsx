@@ -6,6 +6,7 @@
 
 import * as React from "react"
 import { ChampsEncaissement } from "@/components/comptabilite/ChampsEncaissement"
+import { encaissementVenteInitial } from "@/lib/comptabilite/encaissement-vente"
 import { urlApercu } from "@/lib/apercu-document"
 import { merePresenteALaNaissance } from "@/lib/elevage/sortie-animal"
 import Link from "next/link"
@@ -680,7 +681,7 @@ function AnimauxSubTab() {
   const nouvelleVente = () => ({
     date: todayLocalISO(),
     prixUnitaire: "", client: "", description: "", notes: "", nExploitationDestination: "",
-    paye: false, modeReglement: "",
+    ...encaissementVenteInitial(),
   })
   const [venteForm, setVenteForm] = React.useState(nouvelleVente)
   const [isSavingVente, setIsSavingVente] = React.useState(false)

@@ -8,6 +8,7 @@ import * as React from "react"
 import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
 import Link from "next/link"
 import { ChampsEncaissement } from "@/components/comptabilite/ChampsEncaissement"
+import { encaissementVenteInitial } from "@/lib/comptabilite/encaissement-vente"
 import { useSession } from "next-auth/react"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
@@ -1205,7 +1206,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
   const [formData, setFormData] = React.useState({
     date: todayLocalISO(),
     type: "oeufs", description: "", quantite: "", unite: "douzaine",
-    prixUnitaire: "", client: "", paye: false, notes: "", modeReglement: "",
+    prixUnitaire: "", client: "", notes: "", ...encaissementVenteInitial(),
     tauxTVA: "5.5",
     // Ticket cms1vqsqu — don / autoconsommation d'un animal vivant.
     cessionGratuite: false,
@@ -1216,7 +1217,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
 
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: false, notes: "", modeReglement: "", tauxTVA: "5.5", cessionGratuite: false, animalId: "" })
+    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", notes: "", ...encaissementVenteInitial(), tauxTVA: "5.5", cessionGratuite: false, animalId: "" })
   }
 
   // Ticket cmsog7lrc — animaux actifs pour le sélecteur « Animal vendu »,
@@ -1972,7 +1973,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
                 </div>
                 <div className="space-y-2"><Label>Prix vente</Label><Input type="number" step="0.01" value={formData.prixVente} onChange={(e) => setFormData(f => ({ ...f, prixVente: e.target.value }))} disabled={formData.destination !== 'vente'} /></div>
               </div>
-              {formData.destination === 'vente' && <p className="text-sm text-muted-foreground">Le paiement se suit dans Comptabilité. Une nouvelle vente reste à encaisser tant que son règlement n&apos;est pas enregistré.</p>}
+              {formData.destination === 'vente' && <p className="text-sm text-muted-foreground">La vente est enregistrée payée. Pour une vente à crédit, décochez « Encaissement confirmé » depuis Comptabilité &gt; Transactions, bouton « Règlement et pièce ».</p>}
               {/* Ticket cmsog52qx — lieu et notes étaient persistés (formData/API) mais absents du dialog. */}
               <div className="space-y-2"><Label>Lieu</Label><Input value={formData.lieu} onChange={(e) => setFormData(f => ({ ...f, lieu: e.target.value }))} placeholder="Abattoir, à la ferme…" /></div>
               <div className="space-y-2">

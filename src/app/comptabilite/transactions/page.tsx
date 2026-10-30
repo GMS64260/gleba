@@ -336,7 +336,9 @@ function TransactionsPageInner() {
   const [erreurSuivi, setErreurSuivi] = React.useState<string | null>(null)
   const [isSavingSuivi, setIsSavingSuivi] = React.useState(false)
   const [suiviPaye, setSuiviPaye] = React.useState(false)
-  const peutPointer = (t: Transaction) => t.source === 'VenteProduit' || (t.source !== 'VenteManuelle' && t.comptable === true)
+  // Un abattage n'a pas de pointage à la source : son miroir le porte et le
+  // conserve. Le décocher ici en fait une vente à crédit (décision du 2026-10-30).
+  const peutPointer = (t: Transaction) => t.source === 'VenteProduit' || t.source === 'Abattage' || (t.source !== 'VenteManuelle' && t.comptable === true)
 
   const endpointFor = (t: Transaction) =>
     t.source === "VenteManuelle"
