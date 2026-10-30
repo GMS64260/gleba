@@ -292,6 +292,7 @@ model User {
 
   @@map("users")
   mouvementsStockCommerciaux MouvementStockCommercial[]
+  lotsTransformes       LotTransforme[]
 
 }
 
@@ -4964,6 +4965,12 @@ model MouvementStockCommercial {
   mouvementRuche MouvementStockRuche? @relation(fields: [mouvementRucheId], references: [id], onDelete: NoAction)
   mouvementFromageId String? @map("mouvement_fromage_id")
   mouvementFromage MouvementFromage? @relation(fields: [mouvementFromageId], references: [id], onDelete: NoAction)
+  // Fruits utilisés (nature « transforme ») : lot transformé qu'ils ont produit.
+  transformationId Int? @map("transformation_id")
+  transformation LotTransforme? @relation("SourcesLotTransforme", fields: [transformationId], references: [id], onDelete: NoAction)
+  // Livraison ou retour d'un lot transformé.
+  lotTransformeId Int? @map("lot_transforme_id")
+  lotTransforme LotTransforme? @relation("MouvementsLotTransforme", fields: [lotTransformeId], references: [id], onDelete: NoAction)
   @@unique([userId, cleIdempotence])
   @@index([userId, date])
   @@index([documentId])
@@ -4975,7 +4982,40 @@ model MouvementStockCommercial {
   @@index([ponteId])
   @@index([rucheId])
   @@index([fromageId])
+  @@index([transformationId])
+  @@index([lotTransformeId])
   @@map("mouvements_stock_commerciaux")
+}
+
+/// Produit transformé à la ferme (jus, compote, confiture…) à partir de lots
+/// de fruits du verger (2026-10-30, retour FB-8CXUUN). Les fruits utilisés
+/// sortent de leur lot par un mouvement « transforme » ; le produit obtenu entre
+/// en stock commercial (BL, facture) comme un fromage prêt.
+model LotTransforme {
+  id Int @id @default(autoincrement())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  produit String
+  numLot String @map("num_lot")
+  date DateTime
+  quantite Float
+  unite String
+  stockDisponibleCommercial Float @map("stock_disponible_commercial")
+  datePeremption DateTime? @map("date_peremption")
+  prixUnitaire Float? @map("prix_unitaire") // TTC, proposé sur le BL ou la facture
+  tauxTVA Float @default(5.5) @map("taux_tva")
+  statutBioSnapshot String? @map("statut_bio_snapshot") // le plus bas de ses sources
+  notes String?
+  cleIdempotence String @map("cle_idempotence")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  sources MouvementStockCommercial[] @relation("SourcesLotTransforme")
+  mouvements MouvementStockCommercial[] @relation("MouvementsLotTransforme")
+
+  @@unique([userId, numLot])
+  @@unique([userId, cleIdempotence])
+  @@index([userId, date])
+  @@map("lots_transformes")
 }
 
 // Journal de règlements : les cibles utilisent une identité stable, même si

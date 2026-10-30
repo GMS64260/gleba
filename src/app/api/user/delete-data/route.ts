@@ -39,9 +39,12 @@ export async function DELETE() {
     // Supprimer toutes les données utilisateur
     // Ordre important pour respecter les contraintes de clés étrangères
     const results = await prisma.$transaction(async (tx) => {
-      // 0. Sorties physiques des lots du verger (pertes, usages internes) :
-      // elles référencent leurs lots sans cascade (revue du 2026-10-30).
+      // 0. Sorties physiques des lots du verger (pertes, usages internes,
+      // fruits transformés) : elles référencent leurs lots sans cascade (revue
+      // du 2026-10-30). Puis les produits transformés jamais livrés, issus de
+      // ces fruits.
       await tx.mouvementStockCommercial.deleteMany({ where: { userId, nature: { not: 'livraison' } } })
+      const lotsTransformes = await tx.lotTransforme.deleteMany({ where: { userId } })
 
       // 1. Irrigations planifiées (dépendent de cultures)
       const irrigations = await tx.irrigationPlanifiee.deleteMany({
@@ -107,6 +110,7 @@ export async function DELETE() {
         arbres: arbres.count,
         notes: notes.count,
         connecteursCapteurs: connecteursCapteurs.count,
+        lotsTransformes: lotsTransformes.count,
       }
     })
 

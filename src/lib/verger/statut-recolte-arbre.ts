@@ -11,6 +11,7 @@ export const STATUT_RECOLTE_ARBRE_LABELS: Record<string, string> = {
   vendu: "Vendu",
   consomme: "Usage interne",
   perte: "Perte",
+  transforme: "Transformé",
 }
 
 /** Libellé lisible ; un statut absent vaut « En stock » (défaut du schéma). */

@@ -25,7 +25,7 @@ export type DbStockCommercial = Prisma.TransactionClient
  */
 export async function chargerCatalogueStock(userId: string, db: DbStockCommercial = prisma, maintenant = new Date()): Promise<ArticleStockCommercial[]> {
   const finJour = finJourLivraison(maintenant)
-  const [recoltes, fruits, bois, produits, oeufs, ruches, fromages, prixRecoltes, ventes] = await Promise.all([
+  const [recoltes, fruits, bois, produits, oeufs, ruches, fromages, transformes, prixRecoltes, ventes] = await Promise.all([
     db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.recolteArbre.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, include: { arbre: { select: { nom: true, espece: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.productionBois.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
@@ -33,6 +33,7 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
     computeStockOeufsParLots(userId, maintenant, db),
     db.productionRuche.findMany({ where: { userId, date: { lte: finJour } }, include: { mouvementsStock: { select: { quantite: true } } } }),
     db.lotFromage.findMany({ where: { userId, etat: 'pret', dateFabrication: { lte: finJour } }, include: { mouvements: { select: { nbPieces: true, poidsKg: true } } }, orderBy: { dateFabrication: 'asc' } }),
+    db.lotTransforme.findMany({ where: { userId, stockDisponibleCommercial: { gt: 0 }, date: { lte: finJour } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     chargerPrixVentesMoyens(db, userId),
     db.venteProduit.findMany({ where: { userId, annule: false }, orderBy: { date: 'desc' }, take: 100, select: { type: true, unite: true, prixUnitaire: true, lotFromageId: true } }),
   ])
@@ -75,6 +76,10 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
     if (stock.restantPieces <= 0 || !frais(f.dlc) || !frais(f.dluo)) continue
     const prix = ventes.find((v) => v.lotFromageId === f.id && ['piece', 'pièce', 'unite', 'unité'].includes(v.unite))?.prixUnitaire ?? null
     articles.push({ type: 'fromage', id: f.id, nom: `${f.typeFromage} · ${f.numeroLot}`, categorie: 'Fromages prêts', disponible: stock.restantPieces, unite: 'pièce', prixTTC: prix, tauxTVA: 5.5, statutBio: f.statutBioSnapshot, href: '/elevage?tab=production&sub=fromage' })
+  }
+  for (const t of transformes) {
+    if (!frais(t.datePeremption)) continue
+    articles.push({ type: 'transforme', id: String(t.id), nom: `${t.produit} · ${t.numLot}`, categorie: 'Produits transformés', disponible: t.stockDisponibleCommercial, unite: t.unite, prixTTC: t.prixUnitaire, tauxTVA: t.tauxTVA, statutBio: t.statutBioSnapshot, dateLot: dateIsoFacture(t.date), href: '/verger?tab=productions' })
   }
   return articles
 }
