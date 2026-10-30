@@ -91,14 +91,35 @@ describe("POST /api/elevage/ventes — fromage", () => {
     expect(mocks.lotUpdate).not.toHaveBeenCalled()
   })
 
-  it("une vente sans confirmation reste impayée malgré son mode virement", async () => {
+  // Décision du 2026-10-30 : une vente démarre payée, sauf vente à crédit.
+  it("une sortie de cave vendue sans statut explicite est présumée payée, avec son mode", async () => {
     const res = await POST(requete(corpsCave({ paye: undefined, modeReglement: 'Virement' })))
+    expect(res.status).toBe(201)
+    expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({ paye: true })
+    expect(mocks.createVente).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      paye: true, modeReglement: 'Virement',
+    }), expect.anything())
+    expect(mocks.mouvementCreate.mock.calls[0][0].data).toMatchObject({ nbPieces: 2 })
+  })
+
+  it.each([
+    [{ paye: false, modeReglement: 'Chèque' }, 'Chèque'],
+    [{ paye: undefined, modeReglement: 'À crédit' }, 'À crédit'],
+  ])("une vente décochée ou « À crédit » reste à encaisser (%o)", async (encaissement, mode) => {
+    const res = await POST(requete(corpsCave(encaissement)))
     expect(res.status).toBe(201)
     expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({ paye: false })
     expect(mocks.createVente).toHaveBeenCalledWith('user-1', expect.objectContaining({
-      paye: false, modeReglement: 'Virement',
+      paye: false, modeReglement: mode,
     }), expect.anything())
-    expect(mocks.mouvementCreate.mock.calls[0][0].data).toMatchObject({ nbPieces: 2 })
+  })
+
+  it("refuse une vente déclarée payée et « À crédit » à la fois, sans sortie de cave", async () => {
+    const res = await POST(requete(corpsCave({ paye: true, modeReglement: 'À crédit' })))
+    expect(res.status).toBe(400)
+    expect((await res.json()).details.fieldErrors.modeReglement).toBeDefined()
+    expect(mocks.venteCreate).not.toHaveBeenCalled()
+    expect(mocks.mouvementCreate).not.toHaveBeenCalled()
   })
 
   it("une vente au gramme sort son poids en kg", async () => {

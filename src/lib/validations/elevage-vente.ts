@@ -20,7 +20,7 @@ export const venteProduitTypeSchema = caseInsensitiveEnum([
 // Bug cmp8rzcjc (Marc 2026-05-16) — une vente fantôme (animal inexistant,
 // prix unitaire 0, statut Payé) pouvait être créée. On verrouille :
 //  - prix unitaire > 0 sauf si paye=false (don/échantillon en attente)
-//  - une vente "Payé" à 0 € est rejetée (incohérent en compta)
+//  - une vente payée à 0 € est rejetée (incohérent en compta)
 //  - animalId, si fourni, est validé en API contre le cheptel
 export const venteProduitSchema = z
   .object({
@@ -33,7 +33,10 @@ export const venteProduitSchema = z
     prixUnitaire: z.number().min(0, 'Le prix doit être positif ou nul'),
     client: z.string().max(200).nullable().optional(),
     destinationId: z.string().nullable().optional(),
-    paye: z.boolean().default(false),
+    // Décision du 2026-10-30 : une vente démarre payée, comme avant le
+    // 2026-10-28 ; `paye: false` en fait une vente à crédit. Absent, le statut
+    // se déduit du mode : « À crédit » reste à encaisser.
+    paye: z.boolean().optional(),
     modeReglement: modeReglementSchema,
     // Le taux par défaut dépend du produit et est appliqué par l'API. Il reste
     // facultatif ici pour préserver les appelants historiques.
@@ -55,8 +58,14 @@ export const venteProduitSchema = z
     validationVente: z.boolean().optional(),
     notes: z.string().max(5000).nullable().optional(),
   })
+  .transform((d) => ({ ...d, paye: d.paye ?? d.modeReglement !== 'À crédit' }))
+  .refine((d) => !(d.paye && d.modeReglement === 'À crédit'), {
+    message:
+      'Une vente à crédit reste à encaisser : décochez « Vente payée » ou choisissez le mode du règlement reçu.',
+    path: ['modeReglement'],
+  })
   .refine((d) => !(d.paye === true && d.prixUnitaire === 0 && !d.cessionGratuite), {
     message:
-      'Une vente marquée "Payé" ne peut pas avoir un prix unitaire de 0 € (incohérent en comptabilité). Décochez "Payé" ou saisissez un prix.',
+      'Une vente payée ne peut pas avoir un prix unitaire de 0 € (incohérent en comptabilité). Décochez « Vente payée » ou saisissez un prix.',
     path: ['prixUnitaire'],
   })

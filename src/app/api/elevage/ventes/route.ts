@@ -663,7 +663,7 @@ export async function PATCH(request: NextRequest) {
     const notesFinales = String((updateData.notes ?? existing.notes) ?? '')
     if (payeFinal === true && prixTotalFinal === 0 && !notesFinales.startsWith('[Cession gratuite]')) {
       return NextResponse.json(
-        { error: 'Une vente "Payé" ne peut pas être à 0 € — décochez "Payé" ou saisissez un prix.' },
+        { error: 'Une vente payée ne peut pas être à 0 € : décochez « Vente payée » ou saisissez un prix.' },
         { status: 400 }
       )
     }

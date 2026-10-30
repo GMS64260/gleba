@@ -214,7 +214,10 @@ export async function createVenteFromRecolte(
   return inAutoComptaTransaction(tx, async (tx) => {
     // Scopé au compte, comme la lecture du suivi (revue du 2026-10-20).
     const miroir = { userId, sourceType: 'recolte', sourceId: recolte.id, auto: true }
-    const suivi = await suiviDuMiroirVente(tx, miroir, montantTTC)
+    // La récolte ne porte pas son paiement : le miroir le porte. Une
+    // régénération garde le pointage (une vente dépointée restait sinon
+    // repassée payée), comme les ventes du verger (2026-10-30).
+    const suivi = await suiviDuMiroirVente(tx, miroir, montantTTC, true)
     await tx.venteManuelle.deleteMany({ where: miroir })
 
     return tx.venteManuelle.create({
@@ -434,7 +437,8 @@ export async function createVenteFromVenteProduit(
         montant: montantTTC,
         clientNom: venteProduit.client || null,
         module: 'elevage',
-        paye: venteProduit.paye ?? false,
+        // Vente présumée payée sans statut explicite (décision du 2026-10-30).
+        paye: venteProduit.paye ?? true,
         sourceType: 'vente_produit',
         sourceId: venteProduit.id,
         auto: true,
@@ -543,6 +547,11 @@ export async function upsertVenteFromPaieLait(
 
 /**
  * Cree une VenteManuelle quand un Abattage a une vente (destination = "vente")
+ *
+ * Une nouvelle vente d'abattage est présumée payée, comme avant le 2026-10-28
+ * (décision du 2026-10-30). La source ne porte pas de pointage : celui du
+ * miroir existant est conservé à chaque régénération, un impayé saisi ne
+ * redevient jamais payé.
  */
 export async function createVenteFromAbattage(
   userId: string,
@@ -601,7 +610,7 @@ export async function createVenteFromAbattage(
         montantTVA,
         montant: montantTTC,
         module: 'elevage',
-        paye: false,
+        paye: true,
         sourceType: 'abattage',
         sourceId: abattage.id,
         auto: true,

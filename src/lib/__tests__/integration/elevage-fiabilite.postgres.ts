@@ -62,11 +62,39 @@ describe.skipIf(!active)('Fiabilité élevage sur PostgreSQL', () => {
     expect((await db.animal.findUniqueOrThrow({ where: { id: a.id } })).statut).toBe('vendu')
   })
 
-  it('une vente par virement sans confirmation reste en créance jusqu’aux versements 30/70', async () => {
+  // Décision du 2026-10-30 : une vente démarre payée ; décochée, elle part à crédit.
+  it('une vente sans statut explicite est présumée payée en banque ; « À crédit » reste à encaisser', async () => {
+    await db.exploitation.update({ where: { userId: auth.tenant }, data: { siren: '123456789' } })
+    const vendre = async (modeReglement: string) => (await json(await ventes.POST(req('/api/elevage/ventes', 'POST', {
+      date: '2026-10-28', type: 'animal_vivant', animalId: (await animal()).id, quantite: 1,
+      unite: 'unite', prixUnitaire: 100, client: 'Client QA', modeReglement,
+    })), 201)).data
+    const payee = await vendre('Virement')
+    expect(payee.paye).toBe(true)
+    const miroir = await db.venteManuelle.findFirstOrThrow({ where: { userId: auth.tenant, sourceType: 'vente_produit', sourceId: payee.id } })
+    expect(miroir).toMatchObject({ paye: true, modeReglement: 'Virement' })
+    const { chargerEncoursCompta } = await import('@/lib/comptabilite/encours')
+    expect((await chargerEncoursCompta(auth.tenant, null, new Date('2026-12-31T23:59:59Z'))).creances.total).toBe(0)
+    const fec = await import('@/app/api/comptabilite/export/fec/route')
+    const res = await fec.GET(req('/api/comptabilite/export/fec?exercice=2026', 'GET'))
+    expect(res.status).toBe(200)
+    const lignes = (await res.text()).trim().split('\n').map((l) => l.split('\t'))
+    const idx = (n: string) => lignes[0].indexOf(n)
+    const net = (prefixe: string) => lignes.slice(1).filter((l) => l[idx('CompteNum')].startsWith(prefixe))
+      .reduce((n, l) => n + Number(l[idx('Debit')].replace(',', '.')) - Number(l[idx('Credit')].replace(',', '.')), 0)
+    expect(net('512')).toBeCloseTo(100, 2)
+    expect(net('411')).toBeCloseTo(0, 2)
+    const aCredit = await vendre('À crédit')
+    expect(aCredit.paye).toBe(false)
+    expect((await chargerEncoursCompta(auth.tenant, null, new Date('2026-12-31T23:59:59Z'))).creances.total).toBe(100)
+    expect(await db.reglement.count({ where: { userId: auth.tenant } })).toBe(0)
+  })
+
+  it('une vente décochée (à crédit) reste en créance jusqu’aux versements 30/70', async () => {
     const a = await animal()
     const v = (await json(await ventes.POST(req('/api/elevage/ventes', 'POST', {
       date: '2026-10-28', type: 'animal_vivant', animalId: a.id, quantite: 1,
-      unite: 'unite', prixUnitaire: 100, client: 'Client QA', modeReglement: 'Virement',
+      unite: 'unite', prixUnitaire: 100, client: 'Client QA', paye: false, modeReglement: 'Virement',
     })), 201)).data
     expect(v.paye).toBe(false)
     await db.exploitation.update({ where: { userId: auth.tenant }, data: { siren: '123456789' } })
@@ -100,16 +128,17 @@ describe.skipIf(!active)('Fiabilité élevage sur PostgreSQL', () => {
     expect((await db.animal.findUniqueOrThrow({ where: { id: a.id } })).statut).toBe('vendu')
   })
 
-  it('le défaut SQL attend le règlement et les anciens pointages explicites sont conservés', async () => {
+  // Migration 20261030150000_ventes_payees_par_defaut.
+  it('le défaut SQL présume la vente payée et les impayés explicites sont conservés', async () => {
     const colonnes = await db.$queryRaw<Array<{ column_default: string }>>`
       SELECT column_default FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = 'ventes_produits' AND column_name = 'paye'`
-    expect(colonnes[0].column_default).toBe('false')
+    expect(colonnes[0].column_default).toBe('true')
     const data = { userId: auth.tenant, type: 'autre', quantite: 1, unite: 'unite', prixUnitaire: 100, prixTotal: 100 }
-    expect((await db.venteProduit.create({ data })).paye).toBe(false)
-    const historique = await db.venteProduit.create({ data: { ...data, paye: true } })
-    await (await import('@/lib/auto-compta')).createVenteFromVenteProduit(auth.tenant, historique)
-    expect((await db.venteManuelle.findFirstOrThrow({ where: { userId: auth.tenant, sourceType: 'vente_produit', sourceId: historique.id } })).paye).toBe(true)
+    expect((await db.venteProduit.create({ data })).paye).toBe(true)
+    const impayee = await db.venteProduit.create({ data: { ...data, paye: false } })
+    await (await import('@/lib/auto-compta')).createVenteFromVenteProduit(auth.tenant, impayee)
+    expect((await db.venteManuelle.findFirstOrThrow({ where: { userId: auth.tenant, sourceType: 'vente_produit', sourceId: impayee.id } })).paye).toBe(false)
     expect(await db.reglement.count({ where: { userId: auth.tenant } })).toBe(0)
   })
 
@@ -136,10 +165,22 @@ describe.skipIf(!active)('Fiabilité élevage sur PostgreSQL', () => {
     expect((await db.abattage.findUniqueOrThrow({ where: { id: admis.id } })).date.toISOString()).toBe('2026-10-31T00:00:00.000Z')
   })
 
-  it('une facture d’abattage non encaissée reste émise, à TVA zéro, et fige prix, quantité et date', async () => {
+  // Décision du 2026-10-30 : miroir et facture présumés réglés, comme avant le 2026-10-28.
+  it('une vente d’abattage est présumée payée, sa facture aussi, sans mode inventé', async () => {
     const a = (await json(await postAbattage({ lotId, quantite: 1, date: '2026-10-28', destination: 'vente', prixVente: 100 }), 201)).data
     const miroir = await db.venteManuelle.findFirstOrThrow({ where: { userId: auth.tenant, sourceType: 'abattage', sourceId: a.id } })
-    expect(miroir.paye).toBe(false)
+    expect(miroir).toMatchObject({ paye: true, modeReglement: null })
+    const facturee = (await json(await patchAbattage({ id: a.id, creerFacture: true }), 200)).data
+    const f = await db.facture.findUniqueOrThrow({ where: { id: facturee.factureId } })
+    expect(f).toMatchObject({ statut: 'payee', modePaiement: null, totalTTC: 100 })
+    expect(f.datePaiement).not.toBeNull()
+    expect(await db.venteManuelle.count({ where: { userId: auth.tenant, sourceType: 'abattage', sourceId: a.id } })).toBe(0)
+    expect(await db.reglement.count({ where: { userId: auth.tenant } })).toBe(0)
+  })
+
+  it('une facture d’abattage dépointé reste émise, à TVA zéro, et fige prix, quantité et date', async () => {
+    const a = (await json(await postAbattage({ lotId, quantite: 1, date: '2026-10-28', destination: 'vente', prixVente: 100 }), 201)).data
+    await db.venteManuelle.updateMany({ where: { userId: auth.tenant, sourceType: 'abattage', sourceId: a.id }, data: { paye: false } })
     const facturee = (await json(await patchAbattage({ id: a.id, creerFacture: true, tauxTVA: 0 }), 200)).data
     const f = await db.facture.findUniqueOrThrow({ where: { id: facturee.factureId } })
     expect(f).toMatchObject({ statut: 'emise', modePaiement: null, datePaiement: null, totalTTC: 100, totalTVA: 0 })

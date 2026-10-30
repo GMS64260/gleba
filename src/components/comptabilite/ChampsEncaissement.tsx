@@ -3,10 +3,12 @@
 import { Label } from "@/components/ui/label"
 import { SelectNatif } from "@/components/ui/select-natif"
 import { MODES_REGLEMENT } from "@/lib/validations/reglement"
+import { changerEncaissement, type Encaissement } from "@/lib/comptabilite/encaissement-vente"
 
-type Encaissement = { paye: boolean; modeReglement: string }
-
-/** Mêmes choix explicites pour une vente saisie depuis chaque atelier. */
+/**
+ * Mêmes choix pour une vente saisie depuis chaque atelier. La vente démarre
+ * payée (décision du 2026-10-30) ; la décocher en fait une vente à crédit.
+ */
 export function ChampsEncaissement({
   idPrefix,
   value,
@@ -23,7 +25,7 @@ export function ChampsEncaissement({
         <SelectNatif
           id={`${idPrefix}-mode-reglement`}
           value={value.modeReglement}
-          onChange={(e) => onChange({ modeReglement: e.target.value })}
+          onChange={(e) => onChange(changerEncaissement(value, { modeReglement: e.target.value }))}
         >
           <option value="">Non renseigné</option>
           {MODES_REGLEMENT.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
@@ -34,12 +36,14 @@ export function ChampsEncaissement({
           id={`${idPrefix}-encaissee`}
           type="checkbox"
           checked={value.paye}
-          onChange={(e) => onChange({ paye: e.target.checked })}
+          onChange={(e) => onChange(changerEncaissement(value, { paye: e.target.checked }))}
         />
-        Encaissement confirmé
+        Vente payée
       </label>
       <p className="text-xs text-muted-foreground">
-        Cochez après vérification sur votre compte ou en caisse. Le mode de règlement ne confirme pas l&apos;encaissement.
+        {value.paye
+          ? "Décochez pour une vente à crédit : elle restera à encaisser jusqu’à son règlement."
+          : "Vente à crédit : elle reste à encaisser. Saisissez ses versements dans Comptabilité > Règlements."}
       </p>
     </div>
   )

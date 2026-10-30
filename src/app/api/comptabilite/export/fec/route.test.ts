@@ -23,6 +23,7 @@ const etat = vi.hoisted(() => ({
   recoltes: [] as Array<Record<string, unknown>>,
   miroirs: [] as Array<Record<string, unknown>>,
   ventesElevage: [] as Array<Record<string, unknown>>,
+  abattages: [] as Array<Record<string, unknown>>,
 }))
 
 const mocks = vi.hoisted(() => ({
@@ -51,7 +52,7 @@ vi.mock("@/lib/prisma", () => ({
     recolteArbre: { findMany: vi.fn().mockResolvedValue([]) },
     venteProduit: { findMany: vi.fn(async () => etat.ventesElevage) },
     recolte: { findMany: vi.fn(async ({ where }) => etat.recoltes.filter(r => correspond(r, where))) },
-    abattage: { findMany: vi.fn().mockResolvedValue([]) },
+    abattage: { findMany: vi.fn(async () => etat.abattages) },
   },
 }))
 
@@ -95,6 +96,7 @@ beforeEach(() => {
   mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
   etat.ventesElevage = [venteOeufs(true)]
   etat.recoltes = []
+  etat.abattages = []
   // État APRÈS l'enregistrement du formulaire « Règlement et pièce » (PATCH ventes-manuelles).
   etat.miroirs = [
     miroir({ id: 909, sourceType: "vente_produit", sourceId: 167, description: "v8 Œufs marché", categorie: "oeufs", montant: 86.4, montantHT: 81.9, montantTVA: 4.5, tauxTVA: 5.5, modeReglement: "Chèque", numeroPiece: "CHQ-0042" }),
@@ -172,4 +174,20 @@ it('le FEC conserve aussi la dernière seconde de l’exercice civil de Paris', 
     prixTotal: 20, date: new Date('2026-12-31T22:59:59.500Z'), dateVente: new Date('2026-12-31T22:59:59.500Z'),
     especeId: 'Radis', espece: { id: 'Radis' }, clientNom: 'Marché' }]
   expect((await exporter()).some(l => l.PieceRef === 'RECOLTE-7')).toBe(true)
+})
+
+// Décision du 2026-10-30 : une vente d'abattage est présumée payée ; seul un
+// dépointage saisi sur son miroir la laisse en créance. Réglée sans mode
+// connu, la contrepartie reste le tiers au journal de banque (`contrepartieReglement`).
+it.each([
+  ['sans miroir, présumée payée sans mode', null, '411000', 'BQ'],
+  ['pointée payée par virement', { paye: true, modeReglement: 'Virement' }, '512100', 'BQ'],
+  ['dépointée sur son miroir', { paye: false, modeReglement: 'Virement' }, '411000', 'VE'],
+])('une vente d’abattage %s', async (_cas, pointage, compte, journal) => {
+  etat.ventesElevage = []
+  etat.abattages = [{ id: 31, userId: 'u1', date: new Date('2026-10-28'), prixVente: 100, poidsCarcasse: null, factureId: null, annule: false, destination: 'vente' }]
+  etat.miroirs = pointage ? [miroir({ id: 911, sourceType: 'abattage', sourceId: 31, montant: 100, numeroPiece: null, ...pointage })] : []
+  const ecriture = (await exporter()).filter((l) => l.PieceRef === 'ABATT-31')
+  expect(ecriture.find((l) => l.Debit !== '0,00')?.CompteNum).toBe(compte)
+  expect(ecriture[0].JournalCode).toBe(journal)
 })

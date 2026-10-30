@@ -131,9 +131,23 @@ describe('Fiabilité des abattages', () => {
   })
 
   it('une facture reprend le statut non encaissé et ne suppose aucun paiement en espèces', async () => {
+    tx.venteManuelle.findFirst.mockResolvedValue({ paye: false, modeReglement: null })
     m.facture.mockResolvedValue({ id: 77 })
     const res = await PATCH(request('PATCH', { id: 31, creerFacture: true, tauxTVA: 0 }))
     expect(res.status).toBe(200)
     expect(m.facture).toHaveBeenCalledWith(tx, expect.objectContaining({ statut: 'emise', datePaiement: null, modePaiement: null, totalTVA: 0 }))
+  })
+
+  // Décision du 2026-10-30 : sans pointage contraire, la vente d'abattage et
+  // sa facture sont présumées réglées, comme avant le 2026-10-28.
+  it.each([
+    ['miroir présumé payé', { paye: true, modeReglement: 'Chèque' }, 'cheque'],
+    ['sans miroir', null, null],
+  ])('une facture d’abattage %s est émise réglée, sans mode inventé', async (_cas, suivi, mode) => {
+    tx.venteManuelle.findFirst.mockResolvedValue(suivi)
+    m.facture.mockResolvedValue({ id: 77 })
+    const res = await PATCH(request('PATCH', { id: 31, creerFacture: true }))
+    expect(res.status).toBe(200)
+    expect(m.facture).toHaveBeenCalledWith(tx, expect.objectContaining({ statut: 'payee', datePaiement: expect.any(Date), modePaiement: mode }))
   })
 })
