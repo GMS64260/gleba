@@ -1,6 +1,8 @@
 import { prixFruitApi } from "@/lib/verger/creation-recolte"
 import { modifierVenteVerger } from "@/lib/verger/vente"
 import { ErreurVerger } from "@/lib/verger/erreur"
+import { etatSortiesLotVerger, reliquatApresCorrection } from "@/lib/verger/sortie-stock"
+import { quantiteBois } from "@/lib/commercial/stock-types"
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -89,10 +91,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
         },
       })
 
-      if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
       if (!existing) {
         return NextResponse.json({ error: "Production non trouvée" }, { status: 404 })
       }
+      // Revue du 2026-10-29 : seul un BL ou une facture fige le lot ; un usage
+      // interne laisse corriger la production (voir plus bas).
+      const sorties = await etatSortiesLotVerger(tx, session!.user.id, 'bois', existing)
+      if (sorties.fige) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
 
       if (existing.statut === 'vendu' || existing.factureId) return NextResponse.json({ error: 'Ce lot est vendu. Corrigez la vente ou sa facture, ou annulez sa vente avant de modifier la récolte.' }, { status: 409 })
       const body = await request.json()
@@ -104,16 +109,31 @@ export async function PUT(request: NextRequest, { params }: Params) {
         return NextResponse.json({ error: refusType, champ: "type" }, { status: 400 })
       }
 
+      // Lot déjà entamé par un usage interne : la production corrigée doit le
+      // couvrir dans la même mesure, et le reliquat suit la nouvelle quantité.
+      const volumeStere = body.volumeM3 !== undefined ? m3PleinToStere(body.volumeM3) : undefined
+      const date = body.date ? new Date(body.date) : undefined
+      const stockDisponibleCommercial = existing.stockDisponibleCommercial == null ? undefined
+        : reliquatApresCorrection(sorties, {
+          ...quantiteBois({
+            volumeStere: volumeStere !== undefined ? volumeStere : existing.volumeStere,
+            volumeM3: body.volumeM3 !== undefined ? body.volumeM3 : existing.volumeM3,
+            poidsKg: body.poidsKg !== undefined ? body.poidsKg : existing.poidsKg,
+          }),
+          date: date ?? existing.date,
+        })
+
       const production = await tx.productionBois.update({
         where: { id: productionId },
         data: {
-          date: body.date ? new Date(body.date) : undefined,
+          date,
           type: body.type,
           volumeM3: body.volumeM3,
           // Cohérence avec le POST : quand volumeM3 change, on recalcule
           // volumeStere via la même conversion (m3PleinToStere).
-          volumeStere: body.volumeM3 !== undefined ? m3PleinToStere(body.volumeM3) : undefined,
+          volumeStere,
           poidsKg: body.poidsKg,
+          stockDisponibleCommercial,
           destination: body.destination,
           prixVente: prixFruitApi(body.prixVente, "prixVente"),
           notes: body.notes,
@@ -178,7 +198,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       },
     })
 
-    if (existing?.stockDisponibleCommercial != null) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Préparez un BL pour livrer son reliquat ou utilisez Retour en stock sur le document.' }, { status: 409 })
     if (!existing) {
       return NextResponse.json({ error: "Production non trouvée" }, { status: 404 })
     }
@@ -187,7 +206,11 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       await verrouillerStockCommercial(tx, session!.user.id)
       const courante = await tx.productionBois.findFirst({ where: { id: productionId, userId: session!.user.id } })
       if (!courante) throw new ErreurReglement('Pièce introuvable.', 404)
-      if (courante.stockDisponibleCommercial != null) throw new ErreurReglement('Ce lot est lié à un document commercial. Conservez ses mouvements de stock.')
+      // Un lot sans BL ni facture se supprime avec son journal d'usages
+      // internes (revue du 2026-10-29) ; un lot livré est conservé.
+      const sorties = await etatSortiesLotVerger(tx, session!.user.id, 'bois', courante)
+      if (sorties.fige) throw new ErreurReglement('Ce lot est lié à un document commercial. Conservez ses mouvements de stock.')
+      if (sorties.sorties.length) await tx.mouvementStockCommercial.deleteMany({ where: { userId: session!.user.id, id: { in: sorties.sorties.map(m => m.id) } } })
       if (courante.factureId) {
         const liee = await annulerFactureLiee(tx, session!.user.id, courante.factureId)
         if (!liee.ok) throw new ErreurReglement(liee.raison)

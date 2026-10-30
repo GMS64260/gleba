@@ -1,12 +1,17 @@
 /**
- * POST /api/arbres/:id/dupliquer   body: { nombre?: number }  (1 à 20)
+ * POST /api/arbres/:id/dupliquer   body: { nombre?: number, recopierAchat?: boolean }  (1 à 20)
  *
  * Crée `nombre` copies de l'arbre : mêmes caractéristiques (type, espèce,
- * variété, porte-greffe, conduite, plantation, achat, parcelle, envergure),
+ * variété, porte-greffe, conduite, plantation, parcelle, envergure),
  * noms numérotés depuis le nom de base, positions alignées à droite de la
  * source sur le plan. Ce qui est propre à un individu n'est pas copié : GPS,
  * circonférence, notes, état, historique. Chaque copie reçoit son calendrier
  * d'entretien comme à la création (même geste que POST /api/arbres).
+ *
+ * L'achat (prix, date) n'est recopié que sur demande explicite
+ * (`recopierAchat: true`) : chaque copie porte alors sa propre dépense
+ * d'achat. Revue du 2026-10-29 : « Dupliquer ×10 » créait sans un mot dix
+ * dépenses datées de l'achat de l'arbre source.
  *
  * Une seule route pour le plan du jardin et la liste du verger : voir
  * `src/lib/verger/duplication-arbre.ts` pour l'origine (friction 2026-10-05).
@@ -45,6 +50,10 @@ export async function POST(
         { status: 400 }
       )
     }
+    const recopierAchat = body?.recopierAchat ?? false
+    if (typeof recopierAchat !== "boolean") {
+      return NextResponse.json({ error: "recopierAchat attend oui ou non" }, { status: 400 })
+    }
 
     const source = await prisma.arbre.findFirst({ where: { id: arbreId, userId } })
     if (!source) {
@@ -76,8 +85,8 @@ export async function POST(
             portGreffe: source.portGreffe,
             porteGreffeId: source.porteGreffeId,
             fournisseur: source.fournisseur,
-            dateAchat: source.dateAchat,
-            prixAchat: source.prixAchat,
+            dateAchat: recopierAchat ? source.dateAchat : null,
+            prixAchat: recopierAchat ? source.prixAchat : null,
             datePlantation: source.datePlantation,
             age: source.age,
             envergure: source.envergure,
@@ -106,7 +115,7 @@ export async function POST(
           },
         })
         if (await genererCalendrierEntretien(arbre, userId, tx)) calendriers++
-        await createDepenseFromAchatArbre(userId, arbre, tx)
+        if (recopierAchat) await createDepenseFromAchatArbre(userId, arbre, tx)
         creees.push(arbre)
       }
       return { creees, calendriers }
@@ -114,7 +123,11 @@ export async function POST(
     invalidateKpi(userId)
 
     return NextResponse.json(
-      { arbres: creees.map((a) => ({ id: a.id, nom: a.nom })), calendriers },
+      {
+        arbres: creees.map((a) => ({ id: a.id, nom: a.nom })),
+        calendriers,
+        achatsRecopies: recopierAchat && (source.prixAchat ?? 0) > 0 ? creees.length : 0,
+      },
       { status: 201 }
     )
   } catch (err) {

@@ -98,6 +98,7 @@ import { CONDUITES_ARBRE, ETATS_ARBRE } from "@/lib/verger/arbre-constants"
 import { TYPES_ARBRE, couleurTypeArbre } from "@/lib/verger/types-arbre"
 import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
 import { ChampPorteGreffe } from "@/components/verger/ChampPorteGreffe"
+import { MenuDuplicationArbre } from "@/components/verger/MenuDuplicationArbre"
 
 interface PlancheWithCulture {
   id: string
@@ -1950,21 +1951,25 @@ function JardinContent() {
   // par un, et un visiteur de la démo qui demandait comment faire). Les
   // positions et noms sont calculés côté serveur, la sauvegarde en attente est
   // d'abord écrite pour que la copie parte de la position affichée.
-  const handleDuplicateArbre = async (nombre = 1) => {
+  // L'achat n'est recopié que si la case du menu est cochée (revue du
+  // 2026-10-29 : une dépense d'achat par copie naissait sans prévenir).
+  const handleDuplicateArbre = async (nombre = 1, recopierAchat = false) => {
     if (!selectedArbre) return
     try {
       if (hasChanges) await handleSave()
       const response = await fetch(`/api/arbres/${selectedArbre}/dupliquer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre }),
+        body: JSON.stringify({ nombre, recopierAchat }),
       })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.error || "Erreur duplication")
       const noms: string[] = (data?.arbres ?? []).map((a: { nom: string }) => a.nom)
+      const achats = Number(data?.achatsRecopies) || 0
       toast({
         title: noms.length > 1 ? `${noms.length} arbres créés` : "Arbre dupliqué",
-        description: noms.join(", "),
+        description: [noms.join(", "), achats === 0 ? null : achats === 1 ? "1 dépense d'achat créée" : `${achats} dépenses d'achat créées`]
+          .filter(Boolean).join(". "),
       })
       await Promise.all([fetchArbres(), fetchArbresSansParcelle()])
       const dernier = data?.arbres?.[data.arbres.length - 1]
@@ -1983,7 +1988,9 @@ function JardinContent() {
   const handleDeleteArbre = async () => {
     if (!selectedArbre) return
     const arbre = arbres.find(a => a.id === selectedArbre)
-    if (!(await confirmDialog(`Supprimer l'arbre "${arbre?.nom}" ?`))) return
+    // Revue du 2026-10-29 : la dépense d'achat sans versement part avec l'arbre.
+    const achat = (arbre?.prixAchat ?? 0) > 0 ? " Sa dépense d'achat sera supprimée aussi." : ""
+    if (!(await confirmDialog(`Supprimer l'arbre "${arbre?.nom}" ?${achat}`))) return
 
     try {
       const response = await fetch(`/api/arbres/${selectedArbre}`, {
@@ -3613,21 +3620,12 @@ function JardinContent() {
                       </Button>
 
                       <div className="flex gap-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="flex-1">
-                              <Copy className="h-4 w-4 mr-2" />
-                              Dupliquer
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            {[1, 2, 3, 5, 10].map(n => (
-                              <DropdownMenuItem key={n} onClick={() => handleDuplicateArbre(n)}>
-                                {n === 1 ? "Dupliquer" : `Dupliquer ×${n}`}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <MenuDuplicationArbre arbre={selectedArbreData} align="start" onDupliquer={handleDuplicateArbre}>
+                          <Button variant="outline" size="sm" className="flex-1">
+                            <Copy className="h-4 w-4 mr-2" />
+                            Dupliquer
+                          </Button>
+                        </MenuDuplicationArbre>
                         <Button variant="destructive" size="sm" onClick={handleDeleteArbre} className="flex-1">
                           <Trash2 className="h-4 w-4 mr-2" />
                           Supprimer

@@ -18,6 +18,7 @@ import { computeTvaPeriode } from '@/lib/kpi/tva'
 import { computeCoutsProduction } from '@/lib/comptabilite/couts-production'
 import { creerDocument, agirSurDocument, facturerDocuments } from '@/lib/commercial/service'
 import { contenuDocumentSchema } from '@/lib/commercial/regles'
+import { dateIsoFacture } from '@/lib/facture-regles'
 import { lireReglements, annulerReglement } from '@/lib/comptabilite/reglements'
 import { DELETE as SUPPRIMER_RECOLTE } from '@/app/api/arbres/recoltes/[id]/route'
 import { PATCH as VENDRE_BOIS } from '@/app/api/arbres/bois/[id]/route'
@@ -176,7 +177,8 @@ it('un BL de fruits facturé contribue une seule fois aux revenus du verger', as
   const bl = await creerDocument(auth.id, randomUUID(), contenu)
   await agirSurDocument(auth.id, bl.id, 'emettre')
   await agirSurDocument(auth.id, bl.id, 'livrer', jour)
-  await facturerDocuments(auth.id, [bl.id], jour)
+  // Échéance au jour de facturation : le service refuse une échéance passée.
+  await facturerDocuments(auth.id, [bl.id], dateIsoFacture(new Date()))
   const couts = await computeCoutsProduction(auth.id, annee)
   const observation = { CA: couts.totaux.revenus, revenusVerger: couts.parModule.verger.revenus,
     restant: (await db.recolteArbre.findUniqueOrThrow({ where: { id: r.id } })).stockDisponibleCommercial }

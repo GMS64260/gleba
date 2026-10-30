@@ -1,5 +1,5 @@
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
-import { verifierSuppressionSourceReglee } from '@/lib/comptabilite/suivi-reglement-source'
+import { suiviReglementActif, verifierSuppressionSourceReglee } from '@/lib/comptabilite/suivi-reglement-source'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -25,6 +25,21 @@ import { estTypeArbre, messageTypeArbreInvalide } from "@/lib/verger/types-arbre
 
 interface Params {
   params: Promise<{ id: string }>
+}
+
+type SourceAchat = {
+  nom: string; prixAchat: number | null; fournisseur: string | null
+  dateAchat: Date | null; datePlantation: Date | null; createdAt: Date
+}
+/**
+ * Ce que la dépense d'achat recopie de l'arbre (`createDepenseFromAchatArbre`) :
+ * la plantation ne compte que lorsqu'elle sert de date d'achat. Revue du
+ * 2026-10-29 : la dépense était supprimée puis recréée à chaque modification,
+ * même un simple relevé GPS.
+ */
+function empreinteAchat(a: SourceAchat) {
+  const date = a.dateAchat ?? a.datePlantation ?? a.createdAt
+  return JSON.stringify([a.prixAchat ?? 0, date ? new Date(date).getTime() : null, a.nom, a.fournisseur ?? null])
 }
 
 // GET /api/arbres/[id]
@@ -239,6 +254,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const arbre = await prisma.$transaction(async tx => {
       await verrouillerStockCommercial(tx, session!.user.id)
+      // Relu sous le verrou : une modification concurrente du prix ne peut pas
+      // faire croire que rien n'a changé.
+      const avant = await tx.arbre.findUnique({ where: { id: arbreId, userId: session!.user.id } }) ?? existing
       const arbre = await tx.arbre.update({
       where: { id: arbreId },
       data: {
@@ -314,7 +332,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
     })
 
-      await createDepenseFromAchatArbre(session!.user.id, arbre, tx)
+      if (empreinteAchat(avant) !== empreinteAchat(arbre)) await createDepenseFromAchatArbre(session!.user.id, arbre, tx)
       return arbre
     })
     invalidateKpi(session!.user.id)
@@ -356,10 +374,16 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
       }
 
-      if (await tx.mouvementStockCommercial.count({ where: { userId: session.user.id, OR: [{ fruit: { arbreId } }, { bois: { arbreId } }] } })) return NextResponse.json({ error: 'Cet arbre possède des lots liés à des bons ou factures. Conservez-le pour garder leur traçabilité.' }, { status: 409 })
+      // Seuls les BL et factures comptent ici ; pertes et usages internes
+      // suivent leur lot (récoltes ci-dessous, bois conservé).
+      if (await tx.mouvementStockCommercial.count({ where: { userId: session.user.id, nature: 'livraison', OR: [{ fruit: { arbreId } }, { bois: { arbreId } }] } })) return NextResponse.json({ error: 'Cet arbre possède des lots liés à des bons ou factures. Archivez-le depuis la liste du verger pour garder leur traçabilité.' }, { status: 409 })
 
-      if (await tx.depenseManuelle.findFirst({ where: { userId: session!.user.id, auto: true, sourceType: 'achat_arbre', sourceId: arbreId }, select: { id: true } })) {
-        return NextResponse.json({ error: 'Cet arbre possède une écriture d’achat. Archivez sa fiche pour conserver cet achat et ses règlements.' }, { status: 409 })
+      // Revue du 2026-10-29 : la dépense d'achat ne bloque que si des
+      // versements actifs la règlent ; sinon elle disparaît avec l'arbre, dans
+      // cette transaction (verrous des règlements déjà pris ci-dessus).
+      const miroirAchat = await tx.depenseManuelle.findFirst({ where: { userId: session!.user.id, auto: true, sourceType: 'achat_arbre', sourceId: arbreId }, select: { id: true } })
+      if (miroirAchat && await suiviReglementActif(tx, session!.user.id, cleSourceReglement('depense', 'achat_arbre', arbreId))) {
+        return NextResponse.json({ error: 'L’achat de cet arbre a des versements enregistrés. Archivez-le depuis la liste du verger pour conserver cet achat et ses règlements.' }, { status: 409 })
       }
       // Récoltes et écritures doivent survivre à la disparition physique
       // de l'arbre : sa fiche ne se supprime plus lorsqu'elle porte cet historique.
@@ -367,13 +391,13 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         where: { arbreId, userId: session!.user.id },
         select: { id: true, factureId: true },
       })
-      if (recoltes.length) return NextResponse.json({ error: 'Cet arbre possède des récoltes. Conservez sa fiche pour préserver le stock, les ventes et leur traçabilité.' }, { status: 409 })
+      if (recoltes.length) return NextResponse.json({ error: 'Cet arbre possède des récoltes. Archivez-le depuis la liste du verger pour préserver le stock, les ventes et leur traçabilité.' }, { status: 409 })
       const operations = await tx.operationArbre.findMany({ where: { arbreId, userId: session!.user.id }, select: { id: true, fait: true, cout: true, abandonneeLe: true } })
-      if (operations.some(o => o.fait || (o.cout ?? 0) > 0 || o.abandonneeLe)) return NextResponse.json({ error: 'Cet arbre possède un historique d’opérations ou de coûts. Conservez sa fiche pour préserver cet historique.' }, { status: 409 })
+      if (operations.some(o => o.fait || (o.cout ?? 0) > 0 || o.abandonneeLe)) return NextResponse.json({ error: 'Cet arbre possède un historique d’opérations ou de coûts. Archivez-le depuis la liste du verger pour préserver cet historique.' }, { status: 409 })
       for (const operation of operations) await verifierSuppressionSourceReglee(tx, session!.user.id, cleSourceReglement('depense', 'operation_arbre', operation.id))
       if (operations.length && await tx.depenseManuelle.findFirst({ where: { userId: session!.user.id, auto: true,
         sourceType: 'operation_arbre', sourceId: { in: operations.map(o => o.id) } }, select: { id: true } })) {
-        return NextResponse.json({ error: 'Cet arbre possède des écritures historiques. Conservez sa fiche pour préserver la comptabilité.' }, { status: 409 })
+        return NextResponse.json({ error: 'Cet arbre possède des écritures historiques. Archivez-le depuis la liste du verger pour préserver la comptabilité.' }, { status: 409 })
       }
 
       // QA cmsjhogc8 — les productions de bois (arbreId onDelete:SetNull) sont du
@@ -434,6 +458,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         nom: existing.nom,
         espece: existing.espece,
       })
+      if (miroirAchat) await tx.depenseManuelle.deleteMany({ where: { userId: session!.user.id, auto: true, sourceType: 'achat_arbre', sourceId: arbreId } })
       // La suppression de l'arbre cascade sur les récoltes (onDelete: Cascade)
       await tx.arbre.delete({ where: { id: arbreId } })
 

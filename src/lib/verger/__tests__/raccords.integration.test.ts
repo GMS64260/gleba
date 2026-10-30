@@ -10,6 +10,8 @@ import db from '@/lib/prisma'
 import * as calendrier from '@/lib/verger/creation-arbre'
 import { POST as planter } from '@/app/api/arbres/route'
 import { PUT as corrigerArbre, DELETE as supprimerArbre } from '@/app/api/arbres/[id]/route'
+import { PUT as corrigerFruit, DELETE as supprimerFruit } from '@/app/api/arbres/recoltes/[id]/route'
+import { DELETE as annulerSortieFruit } from '@/app/api/arbres/recoltes/[id]/sorties/[sortieId]/route'
 import { POST as dupliquer } from '@/app/api/arbres/[id]/dupliquer/route'
 import { PUT as corrigerCampagne } from '@/app/api/arbres/campagnes/[id]/route'
 import { POST as creerOperation } from '@/app/api/arbres/operations/route'
@@ -79,7 +81,8 @@ describe.skipIf(!process.env.GLEBA_VERGER_RACCORDS_QA_DATABASE_URL)('Raccords ve
     const r = await planter(req('/api/arbres', 'POST', payloadArbre)); expect(r.status).toBe(201)
     const a = await r.json()
     const mirrors = () => db.depenseManuelle.findMany({ where: { userId: auth.id, sourceType: 'achat_arbre', sourceId: a.id } })
-    expect(await mirrors()).toMatchObject([{ montant: 500, paye: false, comptable: true }])
+    // Présumé réglé comme les achats d'animaux (décision du 2026-10-30).
+    expect(await mirrors()).toMatchObject([{ montant: 500, paye: true, comptable: true }])
     expect((await kpi()).depensesYtd).toBe(500)
     const list = await (await depenses(req('/api/comptabilite/depenses?year=2026'))).json()
     expect(list.stats.totalComptable).toBe(500); expect(list.data.find((l: { source: string }) => l.source === 'Arbre').ecriture.id).toBe((await mirrors())[0].id)
@@ -87,15 +90,34 @@ describe.skipIf(!process.env.GLEBA_VERGER_RACCORDS_QA_DATABASE_URL)('Raccords ve
     expect(f.ventilation.depenses).toBe(1); expect(f.validation.valide).not.toBe(false)
     const edited = await corrigerArbre(req('/api/arbres/'+a.id, 'PUT', { prixAchat: 600 }), params(a.id)); expect(edited.status).toBe(200)
     expect((await mirrors()).map(m => m.montant)).toEqual([600]); expect((await kpi()).depensesYtd).toBe(600)
-    expect((await supprimerArbre(req('/api/arbres/'+a.id, 'DELETE'), params(a.id))).status).toBe(409)
+    // Revue du 2026-10-29 : un achat sans versement part avec l'arbre, dans la même transaction.
+    expect((await supprimerArbre(req('/api/arbres/'+a.id, 'DELETE'), params(a.id))).status).toBe(200)
+    expect(await mirrors()).toEqual([]); expect((await kpi()).depensesYtd).toBe(0)
   })
 
-  it('reprise des achats antérieurs : idempotente, sans inventer de paiement', async () => {
+  it('achat réglé par un versement actif : suppression refusée, arbre et dépense conservés', async () => {
+    const a = await (await planter(req('/api/arbres', 'POST', payloadArbre))).json()
+    const miroir = await db.depenseManuelle.findFirstOrThrow({ where: { userId: auth.id, sourceType: 'achat_arbre', sourceId: a.id } })
+    await enregistrerReglement(auth.id,auth.id,nouveauReglementSchema.parse({type:'DepenseManuelle',id:miroir.id,montant:500,date,modeReglement:'Virement',cleIdempotence:randomUUID()}))
+    const refus = await supprimerArbre(req('/api/arbres/'+a.id, 'DELETE'), params(a.id))
+    expect(refus.status).toBe(409); expect((await refus.json()).error).toContain('Archivez')
+    expect(await db.arbre.count({ where: { id: a.id } })).toBe(1)
+    expect(await db.depenseManuelle.count({ where: { id: miroir.id } })).toBe(1)
+  })
+
+  it('reprise des achats antérieurs : idempotente, puis présumée réglée par la migration du 2026-10-30', async () => {
     const ancien = await db.arbre.update({ where: { id: arbre.id }, data: { prixAchat: 90, dateAchat: date } })
     const sql = readFileSync('prisma/migrations/20261028193000_verger_raccords_comptables/migration.sql','utf8').split('INSERT INTO depenses_manuelles')[1]
     await db.$executeRawUnsafe('INSERT INTO depenses_manuelles'+sql)
     await db.$executeRawUnsafe('INSERT INTO depenses_manuelles'+sql)
-    expect(await db.depenseManuelle.findMany({ where: { userId: auth.id, sourceType: 'achat_arbre', sourceId: ancien.id } })).toMatchObject([{ montant: 90, paye: false }])
+    const achat = () => db.depenseManuelle.findMany({ where: { userId: auth.id, sourceType: 'achat_arbre', sourceId: ancien.id } })
+    expect(await achat()).toMatchObject([{ montant: 90, paye: false }])
+    const reglee = readFileSync('prisma/migrations/20261030090000_achats_arbres_presumes_regles/migration.sql','utf8')
+    await db.$executeRawUnsafe(reglee)
+    await db.$executeRawUnsafe(reglee)
+    expect(await achat()).toMatchObject([{ montant: 90, paye: true, montantHT: 81.82, notes: "Achat repris depuis la fiche arbre ; présumé réglé à l'achat." }])
+    const [ligne] = await achat()
+    expect(Math.round(((ligne.montantHT ?? 0) + (ligne.montantTVA ?? 0)) * 100) / 100).toBe(90)
   })
 
   it('panne calendrier : création annulée et reprise sans doublon', async () => {
@@ -113,7 +135,7 @@ describe.skipIf(!process.env.GLEBA_VERGER_RACCORDS_QA_DATABASE_URL)('Raccords ve
     await db.arbre.update({ where: { id: arbre.id }, data: { prixAchat: 30, dateAchat: date } })
     const spy = vi.spyOn(calendrier, 'genererCalendrierEntretien').mockResolvedValueOnce(true).mockRejectedValueOnce(new Error('Panne synthétique'))
     const erreur = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try { expect((await dupliquer(req('/api/arbres/1/dupliquer','POST',{nombre:2}),params(arbre.id))).status).toBe(500) }
+    try { expect((await dupliquer(req('/api/arbres/1/dupliquer','POST',{nombre:2,recopierAchat:true}),params(arbre.id))).status).toBe(500) }
     finally { spy.mockRestore(); erreur.mockRestore() }
     expect(await db.arbre.count({ where: { userId: auth.id } })).toBe(1)
     expect(await db.depenseManuelle.count({ where: { userId: auth.id } })).toBe(0)
@@ -218,6 +240,23 @@ describe.skipIf(!process.env.GLEBA_VERGER_RACCORDS_QA_DATABASE_URL)('Raccords ve
     await enregistrerReglement(auth.id,auth.id,nouveauReglementSchema.parse({type:'DepenseManuelle',id:miroir.id,montant:100,date,modeReglement:'Virement',cleIdempotence:randomUUID()}))
     expect((await corrigerOperation(req('/api/arbres/operations/'+op.id,'PUT',{cout:150}),params(op.id))).status).toBe(200)
     expect(await db.depenseManuelle.findFirstOrThrow({where:{userId:auth.id,sourceType:'operation_arbre',sourceId:op.id}})).toMatchObject({montant:150,paye:false})
+  })
+
+  // Revue du 2026-10-29 : la correction du lot suppose la migration qui borne
+  // le trigger `proteger_lot_commercial` aux lots livrés par BL ou facture.
+  it('perte sur un lot jamais livré : annulable, lot corrigeable puis supprimable', async () => {
+    const r=await fruit(); await sortie(r.id,'perte',{quantite:2})
+    const { id: sortieId } = await db.mouvementStockCommercial.findFirstOrThrow({where:{userId:auth.id,fruitId:r.id,nature:'perte'}})
+    const annuler = () => annulerSortieFruit(req(`/api/arbres/recoltes/${r.id}/sorties/${sortieId}`,'DELETE'),{params:Promise.resolve({id:String(r.id),sortieId})})
+    expect((await annuler()).status).toBe(200)
+    expect(await (await annuler()).json()).toMatchObject({dejaAnnulee:true})
+    expect(await db.recolteArbre.findUniqueOrThrow({where:{id:r.id}})).toMatchObject({quantite:10,stockDisponibleCommercial:null})
+    await sortie(r.id,'perte',{quantite:3})
+    expect((await corrigerFruit(req('/api/arbres/recoltes/'+r.id,'PUT',{quantite:2}),params(r.id))).status).toBe(409)
+    expect((await corrigerFruit(req('/api/arbres/recoltes/'+r.id,'PUT',{quantite:12}),params(r.id))).status).toBe(200)
+    expect(await db.recolteArbre.findUniqueOrThrow({where:{id:r.id}})).toMatchObject({quantite:12,stockDisponibleCommercial:9})
+    expect((await supprimerFruit(req('/api/arbres/recoltes/'+r.id,'DELETE'),params(r.id))).status).toBe(200)
+    expect(await db.mouvementStockCommercial.count({where:{userId:auth.id,fruitId:r.id}})).toBe(0)
   })
 
   it('export puis import gardent motif, clé et quantité des sorties physiques', async () => {

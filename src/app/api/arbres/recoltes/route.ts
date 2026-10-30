@@ -12,6 +12,7 @@ import { ErreurVerger } from "@/lib/verger/erreur"
 import { chargerAvertissementsDarFruits } from "@/lib/verger/dar"
 import { chargerSuiviDesLignes } from "@/lib/comptabilite/suivi-ecriture"
 import { chargerSuiviCommercialVerger } from "@/lib/verger/suivi-commercial"
+import { lotVergerFige } from "@/lib/verger/sortie-stock"
 
 // GET /api/arbres/recoltes
 export async function GET(request: NextRequest) {
@@ -50,6 +51,7 @@ export async function GET(request: NextRequest) {
       include: {
         mouvementsCommerciaux: { where: { userId, nature: { not: 'livraison' } },
           select: { id: true, nature: true, quantite: true, unite: true, date: true, notes: true }, orderBy: { date: 'desc' } },
+        _count: { select: { mouvementsCommerciaux: { where: { userId, nature: 'livraison' } } } },
         arbre: {
           select: {
             id: true,
@@ -65,8 +67,11 @@ export async function GET(request: NextRequest) {
     const warnings = await chargerAvertissementsDarFruits(prisma, userId, recoltes)
     const suivi = await chargerSuiviDesLignes(userId, recoltes.filter(r => r.statut === 'vendu').map(r => ({ id: String(r.id), source: 'RecolteArbre', sourceId: r.id, factureId: r.factureId })))
     const commercial = await chargerSuiviCommercialVerger(userId, 'fruit', recoltes.filter(r => r.stockDisponibleCommercial != null).map(r => r.id))
+    // `figeCommercial` : seul un BL ou une facture interdit de corriger ou de
+    // supprimer le lot ; ses pertes et usages internes s'annulent un à un.
     return NextResponse.json(recoltes.map(r => ({ ...r, warnings: warnings.get(r.id), ecriture: suivi.get(String(r.id))?.ecriture,
-      ventesCommerciales: commercial.get(r.id) ?? [] })))
+      ventesCommerciales: commercial.get(r.id) ?? [],
+      figeCommercial: lotVergerFige({ quantite: r.quantite, unite: 'kg' }, r.stockDisponibleCommercial, r.mouvementsCommerciaux, r._count.mouvementsCommerciaux) })))
   } catch (err) {
     console.error("GET /api/arbres/recoltes error:", err)
     return NextResponse.json(

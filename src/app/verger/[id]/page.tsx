@@ -20,7 +20,7 @@ import { GpsPositionButton } from "@/components/gps/GpsPositionButton"
 import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
 import { roundCoord } from "@/lib/geolocation"
 import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
-import { AVERTISSEMENT_SUPPRESSION_ARBRE, CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-constants"
+import { avertissementSuppressionArbre, CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-constants"
 import { labelStatutRecolteArbre } from "@/lib/verger/statut-recolte-arbre"
 import { TYPES_ARBRE, categoriesEspecePourTypeArbre, estTypeArbre, libelleTypeArbre } from "@/lib/verger/types-arbre"
 import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
@@ -853,7 +853,7 @@ export default function DetailArbrePage() {
         open={confirmDeleteOpen}
         onOpenChange={setConfirmDeleteOpen}
         entityLabel={`l'arbre "${arbre.nom}"`}
-        warning={AVERTISSEMENT_SUPPRESSION_ARBRE}
+        warning={avertissementSuppressionArbre(arbre)}
         onConfirm={performDelete}
       />
 
