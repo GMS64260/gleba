@@ -12,8 +12,12 @@ type TypeLot = 'fruit' | 'bois'
 type Tx = Prisma.TransactionClient
 type Sortie = { id: string; nature: string; quantite: number; unite: string; date: Date }
 
-/** Natures du journal physique : jamais un BL ni une facture. */
+/** Natures du journal physique saisies et annulées une à une : jamais un BL ni une facture. */
 export const NATURES_SORTIE_VERGER: Record<TypeLot, readonly string[]> = { fruit: ['perte', 'consomme'], bois: ['utilise'] }
+/** Fruits utilisés par une transformation : annulés avec leur produit transformé. */
+export const NATURE_TRANSFORMATION = 'transforme'
+/** Tout le journal physique, comme les pertes pour le reliquat, la correction et le gel. */
+const NATURES_PHYSIQUES: Record<TypeLot, readonly string[]> = { fruit: [...NATURES_SORTIE_VERGER.fruit, NATURE_TRANSFORMATION], bois: NATURES_SORTIE_VERGER.bois }
 const EPSILON = 1e-6
 // Le reliquat reste entre zéro et la production (contraintes CHECK de la base).
 const borner = (reliquat: number, production: number) => Math.min(production, Math.max(0, Math.round(reliquat * 1e6) / 1e6))
@@ -49,7 +53,7 @@ export async function etatSortiesLotVerger(tx: Tx, userId: string, type: TypeLot
   if (lot.stockDisponibleCommercial == null) return { fige: false, sorties: [] as Sortie[], total: 0, production }
   const mouvements: Sortie[] = await tx.mouvementStockCommercial.findMany({ where: { userId, ...filtreLot(type, lot.id) },
     select: { id: true, nature: true, quantite: true, unite: true, date: true } })
-  const sorties = mouvements.filter(m => NATURES_SORTIE_VERGER[type].includes(m.nature))
+  const sorties = mouvements.filter(m => NATURES_PHYSIQUES[type].includes(m.nature))
   return {
     fige: lotVergerFige(production, lot.stockDisponibleCommercial, sorties, mouvements.length - sorties.length),
     sorties, total: sorties.reduce((n, s) => n + s.quantite, 0), production,
@@ -117,38 +121,53 @@ export async function sortirReliquatVerger(tx: Prisma.TransactionClient, userId:
   return { ...updated, sortieStock }
 }
 
+/** Verrou du lot après celui de la ferme, puis sa lecture : null s'il n'est pas à ce compte. */
+export async function verrouillerLotVerger(tx: Tx, userId: string, type: TypeLot, id: number): Promise<Lot | null> {
+  const table = type === 'fruit' ? 'recoltes_arbres' : 'production_bois'
+  await tx.$queryRaw(Prisma.sql`SELECT id FROM ${Prisma.raw(table)} WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`)
+  return type === 'fruit'
+    ? tx.recolteArbre.findUnique({ where: { id, userId } })
+    : tx.productionBois.findUnique({ where: { id, userId } })
+}
+
+/**
+ * Supprime une sortie physique et rend sa quantité au lot verrouillé : un lot
+ * sans plus aucun mouvement redevient libre comme avant sa première sortie.
+ */
+export async function restituerSortieVerger(tx: Tx, userId: string, type: TypeLot, lot: Lot, sortie: { id: string; quantite: number }) {
+  await tx.mouvementStockCommercial.delete({ where: { id: sortie.id } })
+  const production = quantiteLotVerger(type, lot)
+  const reliquat = borner((lot.stockDisponibleCommercial ?? production.quantite) + sortie.quantite, production.quantite)
+  const restants = await tx.mouvementStockCommercial.count({ where: { userId, ...filtreLot(type, lot.id) } })
+  const stockDisponibleCommercial = restants === 0 && Math.abs(reliquat - production.quantite) <= EPSILON ? null : reliquat
+  return type === 'fruit'
+    ? tx.recolteArbre.update({ where: { id: lot.id, userId }, data: { stockDisponibleCommercial } })
+    : tx.productionBois.update({ where: { id: lot.id, userId }, data: { stockDisponibleCommercial } })
+}
+
 /**
  * Annule une perte, une consommation ou un usage interne : la quantité revient
- * au reliquat, et un lot sans plus aucun mouvement redevient libre comme avant
- * sa première sortie. Mêmes verrous que la sortie (ferme puis lot). La sortie
- * est désignée par son identifiant : une reprise réseau la trouve déjà
- * retirée et ne restitue rien une seconde fois.
+ * au reliquat (`restituerSortieVerger`). Mêmes verrous que la sortie (ferme
+ * puis lot). La sortie est désignée par son identifiant : une reprise réseau
+ * la trouve déjà retirée et ne restitue rien une seconde fois.
  */
 export async function annulerSortieVerger(type: TypeLot, userId: string, id: number, sortieId: string) {
   if (!Number.isInteger(id) || id <= 0) throw new ErreurVerger('ID invalide.')
   if (typeof sortieId !== 'string' || !sortieId || sortieId.length > 120) throw new ErreurVerger('Sortie invalide.')
   const resultat = await prisma.$transaction(async tx => {
     await verrouillerStockCommercial(tx, userId)
-    const table = type === 'fruit' ? 'recoltes_arbres' : 'production_bois'
-    await tx.$queryRaw(Prisma.sql`SELECT id FROM ${Prisma.raw(table)} WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`)
-    const lot = type === 'fruit'
-      ? await tx.recolteArbre.findUnique({ where: { id, userId } })
-      : await tx.productionBois.findUnique({ where: { id, userId } })
+    const lot = await verrouillerLotVerger(tx, userId, type, id)
     if (!lot) throw new ErreurVerger('Lot introuvable.', 404)
     const sortie = await tx.mouvementStockCommercial.findFirst({ where: { id: sortieId, userId } })
     if (!sortie) return { ...lot, sortieAnnulee: null, dejaAnnulee: true }
     if ((type === 'fruit' ? sortie.fruitId : sortie.boisId) !== id) throw new ErreurVerger('Cette référence désigne une autre sortie.', 409)
+    if (sortie.nature === NATURE_TRANSFORMATION) {
+      throw new ErreurVerger('Ces fruits ont servi à un produit transformé. Annulez la transformation depuis Productions > Produits transformés.', 409)
+    }
     if (!NATURES_SORTIE_VERGER[type].includes(sortie.nature) || sortie.documentId || sortie.factureId) {
       throw new ErreurVerger('Ce mouvement vient d’un bon de livraison ou d’une facture. Utilisez Retour en stock sur le document.', 409)
     }
-    await tx.mouvementStockCommercial.delete({ where: { id: sortie.id } })
-    const production = quantiteLotVerger(type, lot)
-    const reliquat = borner((lot.stockDisponibleCommercial ?? production.quantite) + sortie.quantite, production.quantite)
-    const restants = await tx.mouvementStockCommercial.count({ where: { userId, ...filtreLot(type, id) } })
-    const stockDisponibleCommercial = restants === 0 && Math.abs(reliquat - production.quantite) <= EPSILON ? null : reliquat
-    const updated = type === 'fruit'
-      ? await tx.recolteArbre.update({ where: { id, userId }, data: { stockDisponibleCommercial } })
-      : await tx.productionBois.update({ where: { id, userId }, data: { stockDisponibleCommercial } })
+    const updated = await restituerSortieVerger(tx, userId, type, lot, sortie)
     return { ...updated, sortieAnnulee: { id: sortie.id, nature: sortie.nature, quantite: sortie.quantite, unite: sortie.unite }, dejaAnnulee: false }
   })
   invalidateKpi(userId)

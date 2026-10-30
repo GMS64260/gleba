@@ -33,6 +33,7 @@ function base(recoltes: Ligne[]) {
     produitBoutique: { findMany: async () => [] },
     productionRuche: { findMany: jusqua('date', []) },
     lotFromage: { findMany: jusqua('dateFabrication', []) },
+    lotTransforme: { findMany: jusqua('date', []) },
     venteProduit: { findMany: async () => [] },
   } as unknown as DbStockCommercial
 }

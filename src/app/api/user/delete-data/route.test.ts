@@ -57,6 +57,7 @@ function transactionComplete() {
     note: compteur(),
     connecteurCapteurs: compteur(),
     mouvementStockCommercial: compteur(),
+    lotTransforme: compteur(),
   }
 }
 
@@ -97,7 +98,7 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.success).toBe(true)
-    expect(json.message).toBe("20 enregistrements supprimés")
+    expect(json.message).toBe("22 enregistrements supprimés")
     expect(mocks.transaction).toHaveBeenCalledTimes(1)
   })
 
@@ -124,7 +125,7 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
     expect(mocks.executeRaw.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.transaction.mock.invocationCallOrder[0])
     const json = await res.json()
     expect(json.details.mesuresCapteurs).toBe(LOT_SUPPRESSION_MESURES + 7)
-    expect(json.message).toBe(`${20 + LOT_SUPPRESSION_MESURES + 7} enregistrements supprimés`)
+    expect(json.message).toBe(`${22 + LOT_SUPPRESSION_MESURES + 7} enregistrements supprimés`)
   })
 
   it("garde le refus des invités avant toute lecture", async () => {
@@ -162,4 +163,7 @@ it("une perte du verger ne bloque pas l'effacement : seules les livraisons compt
   expect(tx.mouvementStockCommercial.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1", nature: { not: "livraison" } } })
   // Avant les arbres, dont les lots portent ces sorties sans cascade.
   expect(tx.mouvementStockCommercial.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(tx.arbre.deleteMany.mock.invocationCallOrder[0])
+  // Les produits transformés jamais livrés partent après les fruits qui les tracent.
+  expect(tx.lotTransforme.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } })
+  expect(tx.mouvementStockCommercial.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(tx.lotTransforme.deleteMany.mock.invocationCallOrder[0])
 })

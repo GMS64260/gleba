@@ -86,6 +86,10 @@ export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Lign
         trace.boisId = Number(a.id)
       }
       if (!modifie) throw new ErreurCommerciale(`Le lot « ${a.nom} » a changé ou n'existait pas à la date de livraison. Actualisez le document.`)
+    } else if (a.type === 'transforme') {
+      const modifie = await tx.$executeRaw`UPDATE lots_transformes SET stock_disponible_commercial = GREATEST(0, stock_disponible_commercial - ${l.quantite}), updated_at = CURRENT_TIMESTAMP WHERE id = ${Number(a.id)} AND user_id = ${userId} AND date <= ${dateLimite} AND stock_disponible_commercial >= ${l.quantite}`
+      if (!modifie) throw new ErreurCommerciale(`Le lot « ${a.nom} » a changé ou n'existait pas à la date de livraison. Actualisez le document.`)
+      trace.lotTransformeId = Number(a.id)
     } else if (a.type === 'boutique') {
       const lignes = await tx.$queryRaw<Array<{ stock_dispo: number | null }>>`UPDATE produits_boutique SET stock_dispo = CASE WHEN stock_dispo IS NULL THEN NULL ELSE stock_dispo - ${l.quantite} END WHERE id = ${Number(a.id)} AND user_id = ${userId} AND (stock_dispo IS NULL OR stock_dispo >= ${l.quantite}) RETURNING stock_dispo`
       if (!lignes.length) throw new ErreurCommerciale(`Le stock boutique de « ${a.nom} » a changé. Actualisez le document.`)
@@ -123,10 +127,11 @@ export async function retournerStockCommercial(tx: Tx, userId: string, origine: 
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${userId}`}))`
   const mouvements = await tx.mouvementStockCommercial.findMany({ where: { userId, ...origine, origineRetourId: null, retour: null }, orderBy: { id: 'asc' } })
   for (const m of mouvements) {
-    if (m.stockSuivi && ![m.recolteId, m.fruitId, m.boisId, m.produitBoutiqueId, m.ponteId, m.rucheId, m.fromageId].some(Boolean)) throw new ErreurCommerciale('Le stock d’origine de ce document n’a pas été transféré dans ce compte. Rapprochez les stocks avant d’enregistrer ce retour.')
+    if (m.stockSuivi && ![m.recolteId, m.fruitId, m.boisId, m.produitBoutiqueId, m.ponteId, m.rucheId, m.fromageId, m.lotTransformeId].some(Boolean)) throw new ErreurCommerciale('Le stock d’origine de ce document n’a pas été transféré dans ce compte. Rapprochez les stocks avant d’enregistrer ce retour.')
     if (m.recolteId) await tx.recolte.update({ where: { id: m.recolteId }, data: { stockDisponibleCommercial: { increment: m.quantite } } })
     if (m.fruitId) await tx.recolteArbre.update({ where: { id: m.fruitId }, data: { stockDisponibleCommercial: { increment: m.quantite } } })
     if (m.boisId) await tx.productionBois.update({ where: { id: m.boisId }, data: { stockDisponibleCommercial: { increment: m.quantite } } })
+    if (m.lotTransformeId) await tx.$executeRaw`UPDATE lots_transformes SET stock_disponible_commercial = LEAST(quantite, stock_disponible_commercial + ${m.quantite}), updated_at = CURRENT_TIMESTAMP WHERE id = ${m.lotTransformeId} AND user_id = ${userId}`
     if (m.produitBoutiqueId && m.stockSuivi) await tx.produitBoutique.updateMany({ where: { id: m.produitBoutiqueId, stockDispo: { not: null } }, data: { stockDispo: { increment: m.quantite } } })
     const instantRetour = new Date()
     const data: Prisma.MouvementStockCommercialUncheckedCreateInput = {
@@ -134,7 +139,7 @@ export async function retournerStockCommercial(tx: Tx, userId: string, origine: 
       userId, documentId: m.documentId, factureId: m.factureId, ligneDocumentId: m.ligneDocumentId, ligneFactureId: m.ligneFactureId,
       origineRetourId: m.id, articleStockType: m.articleStockType, articleStockId: m.articleStockId, sourceNom: m.sourceNom,
       quantite: -m.quantite, unite: m.unite, poidsKg: m.poidsKg == null ? null : -m.poidsKg, stockSuivi: m.stockSuivi,
-      recolteId: m.recolteId, fruitId: m.fruitId, boisId: m.boisId, produitBoutiqueId: m.produitBoutiqueId, ponteId: m.ponteId, rucheId: m.rucheId, fromageId: m.fromageId,
+      recolteId: m.recolteId, fruitId: m.fruitId, boisId: m.boisId, produitBoutiqueId: m.produitBoutiqueId, ponteId: m.ponteId, rucheId: m.rucheId, fromageId: m.fromageId, lotTransformeId: m.lotTransformeId,
     }
     const notes = 'Retour en stock du document commercial'
     if (m.ponteId) data.mouvementOeufId = (await tx.mouvementStockOeuf.create({ data: { userId, productionId: m.ponteId, type: 'retour_commercial', quantite: -m.quantite, notes } })).id

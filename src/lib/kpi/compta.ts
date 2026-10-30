@@ -236,7 +236,7 @@ export async function chargerFacturesRevenus(userId: string, debut: Date, fin: D
 
   const moduleParFacture = new Map<number, ModuleCompta | null>()
   for (const f of [...factures, ...origines]) {
-    const modulesStock = [...new Set(f.lignes.filter((l) => l.articleStockType).map((l): ModuleCompta => l.articleStockType === 'recolte' ? 'potager' : ['fruit', 'bois'].includes(l.articleStockType!) ? 'verger' : ['oeufs', 'ruche', 'fromage'].includes(l.articleStockType!) ? 'elevage' : 'autre'))]
+    const modulesStock = [...new Set(f.lignes.filter((l) => l.articleStockType).map((l): ModuleCompta => l.articleStockType === 'recolte' ? 'potager' : ['fruit', 'bois', 'transforme'].includes(l.articleStockType!) ? 'verger' : ['oeufs', 'ruche', 'fromage'].includes(l.articleStockType!) ? 'elevage' : 'autre'))]
     if (modulesStock.length) { moduleParFacture.set(f.id, modulesStock.length === 1 ? modulesStock[0] : 'autre'); continue }
     moduleParFacture.set(f.id, moduleDesVentesPortees({ ...f._count, recoltes: recoltesParFacture.get(f.id) ?? 0 }))
   }

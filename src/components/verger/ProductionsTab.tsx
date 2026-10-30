@@ -40,7 +40,9 @@ import {
   Home,
   Pencil,
   RotateCcw,
+  FlaskConical,
 } from "lucide-react"
+import { ProduitsTransformesSubTab, TransformationDialog } from "./ProduitsTransformes"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
@@ -188,6 +190,10 @@ export function ProductionsTab() {
           <Axe className="h-4 w-4" />
           Production Bois
         </TabsTrigger>
+        <TabsTrigger value="transformes" className="flex items-center gap-1.5">
+          <FlaskConical className="h-4 w-4" />
+          Produits transformés
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="recoltes">
@@ -195,6 +201,9 @@ export function ProductionsTab() {
       </TabsContent>
       <TabsContent value="bois">
         <ProductionBoisSubTab />
+      </TabsContent>
+      <TabsContent value="transformes">
+        <ProduitsTransformesSubTab />
       </TabsContent>
     </Tabs>
   )
@@ -217,6 +226,8 @@ function RecoltesFruitsSubTab() {
   // supprimer, d'où un doublon en stock. Le même dialogue sert désormais à
   // modifier une récolte existante.
   const [sortieEnCours, setSortieEnCours] = React.useState(false)
+  // Retour FB-8CXUUN (2026-10-30) : le produit obtenu entre en stock.
+  const [lotATransformer, setLotATransformer] = React.useState<number | null>(null)
   const [editingRecolte, setEditingRecolte] = React.useState<RecolteArbre | null>(null)
   const [parcelles, setParcelles] = React.useState<ParcelleOption[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -734,6 +745,9 @@ function RecoltesFruitsSubTab() {
                           <Button disabled={sortieEnCours} variant="ghost" size="sm" onClick={() => handleSortie(r.id, "consomme")} title="Usage interne (auto-consommation)">
                             <Home className="h-4 w-4 text-blue-600" />
                           </Button>
+                          <Button disabled={sortieEnCours} variant="ghost" size="sm" onClick={() => setLotATransformer(r.id)} title="Transformer (jus, compote…) : le produit obtenu entre en stock">
+                            <FlaskConical className="h-4 w-4 text-purple-600" />
+                          </Button>
                           <Button disabled={sortieEnCours} variant="ghost" size="sm" onClick={() => handleSortie(r.id, "perte")} title="Perte">
                             <AlertTriangle className="h-4 w-4 text-orange-500" />
                           </Button>
@@ -840,7 +854,9 @@ function RecoltesFruitsSubTab() {
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{retirerMarqueSaison(r.notes) || "-"}</TableCell>
                       <TableCell className="text-right">
-                        {r.sortieId && (
+                        {r.sortieId && r.statut === "transforme" ? (
+                          <span className="text-xs text-muted-foreground">Annulable depuis Produits transformés</span>
+                        ) : r.sortieId && (
                           <Button disabled={sortieEnCours} variant="ghost" size="sm" onClick={() => handleAnnulerSortie(r.id, { id: r.sortieId!, quantite: r.quantite, statut: r.statut })} title="Annuler cette sortie : la quantité revient en stock">
                             <RotateCcw className="h-4 w-4 mr-1" />
                             Annuler
@@ -855,6 +871,8 @@ function RecoltesFruitsSubTab() {
           </CardContent>
         </Card>
       )}
+
+      <TransformationDialog open={lotATransformer != null} onOpenChange={(ouvert) => { if (!ouvert) setLotATransformer(null) }} lotInitialId={lotATransformer} onCree={fetchData} />
 
       {/* Dialog Nouvelle recolte */}
       <Dialog open={showDialog} onOpenChange={(ouvert) => (ouvert ? setShowDialog(true) : fermerDialogue())}>

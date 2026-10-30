@@ -2,7 +2,7 @@ import { prixFruitApi, dateRecolteApi } from "@/lib/verger/creation-recolte"
 import { avertissementsDarFruit } from "@/lib/verger/dar"
 import { modifierVenteVerger } from "@/lib/verger/vente"
 import { ErreurVerger } from "@/lib/verger/erreur"
-import { etatSortiesLotVerger, reliquatApresCorrection } from "@/lib/verger/sortie-stock"
+import { etatSortiesLotVerger, NATURE_TRANSFORMATION, reliquatApresCorrection } from "@/lib/verger/sortie-stock"
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -309,6 +309,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       // d'usages internes (revue du 2026-10-29) ; un lot livré est conservé.
       const sorties = await etatSortiesLotVerger(tx, session!.user.id, 'fruit', courante)
       if (sorties.fige) throw new ErreurReglement('Ce lot est lié à un document commercial. Conservez ses mouvements de stock.')
+      // Un produit transformé garde la trace de ses fruits (2026-10-30).
+      if (sorties.sorties.some(m => m.nature === NATURE_TRANSFORMATION)) throw new ErreurReglement('Ces fruits ont servi à un produit transformé. Annulez d’abord la transformation depuis Productions > Produits transformés.')
       if (sorties.sorties.length) await tx.mouvementStockCommercial.deleteMany({ where: { userId: session!.user.id, id: { in: sorties.sorties.map(m => m.id) } } })
       if (courante.factureId) {
         const liee = await annulerFactureLiee(tx, session!.user.id, courante.factureId)
