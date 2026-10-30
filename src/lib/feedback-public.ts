@@ -38,10 +38,17 @@ export const publicFeedbackSelect = {
   updatedAt: true,
 } as const
 
+/**
+ * `notifier: false` (« Résolu sans mail », 2026-10-30) : l'auteur a déjà été
+ * remercié à la main. Le passage à RESOLVED est journalisé quand même, ce qui
+ * compte ensuite comme « déjà prévenu » : aucune résolution ultérieure ne
+ * l'écrira.
+ */
 export function shouldSendResolutionEmail(
   previousStatus: BugStatus,
   nextStatus: BugStatus | undefined,
-  alreadyNotified: boolean
+  alreadyNotified: boolean,
+  notifier = true
 ) {
-  return nextStatus === "RESOLVED" && previousStatus !== "RESOLVED" && !alreadyNotified
+  return notifier && nextStatus === "RESOLVED" && previousStatus !== "RESOLVED" && !alreadyNotified
 }

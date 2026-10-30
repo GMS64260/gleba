@@ -15,6 +15,8 @@ const patchSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   adminNote: z.string().max(2000).nullable().optional(),
   statusNote: z.string().max(500).optional(),
+  // false : résoudre sans le mail automatique à l'auteur (déjà remercié à la main).
+  notifier: z.boolean().optional(),
 })
 
 export async function PATCH(
@@ -41,7 +43,7 @@ export async function PATCH(
     )
   }
 
-  const { status, priority, adminNote, statusNote } = parsed.data
+  const { status, priority, adminNote, statusNote, notifier = true } = parsed.data
 
   const existing = await prisma.bugReport.findUnique({
     where: { id },
@@ -83,12 +85,12 @@ export async function PATCH(
         fromStatus: existing.status,
         toStatus: status as BugStatus,
         changedById: session!.user.id,
-        note: statusNote ?? null,
+        note: statusNote ?? (!notifier && status === "RESOLVED" ? "Résolu sans mail à l'auteur." : null),
       },
     })
   }
 
-  if (shouldSendResolutionEmail(existing.status, status, existing.statusLogs.length > 0)) {
+  if (shouldSendResolutionEmail(existing.status, status, existing.statusLogs.length > 0, notifier)) {
     const email = feedbackResolvedEmail(existing.user.name)
     try {
       await sendMail({ to: existing.user.email, subject: email.subject, html: email.html })
