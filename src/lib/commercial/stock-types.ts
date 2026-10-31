@@ -27,6 +27,7 @@ export function disponibleCommercial(lot: { quantite: number; stockDisponibleCom
 }
 /** Ces identifiants sont remappés lors du transfert d'un compte entre instances. */
 export const MODELES_STOCK_COMMERCIAL: Record<string, string> = {
+  // eslint-disable-next-line no-restricted-syntax -- noms de modèles Prisma, sans accent par construction
   recolte: 'Recolte', fruit: 'RecolteArbre', bois: 'ProductionBois', boutique: 'ProduitBoutique', fromage: 'LotFromage', transforme: 'LotTransforme',
 }
 export function stockEstDenombrable(unite: string) {

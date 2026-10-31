@@ -40,11 +40,11 @@ export function computeStocksTotaux(stocks: StockItem[]): StocksTotaux {
   const parModule: Record<string, number> = { potager: 0, verger: 0, elevage: 0, autre: 0 }
   const items: Record<string, number> = { potager: 0, verger: 0, elevage: 0, autre: 0 }
   for (const s of stocks) {
-    const module = s.module in items ? s.module : 'autre'
-    items[module]++
+    const cle = s.module in items ? s.module : 'autre'
+    items[cle]++
     if (s.valeur != null && Number.isFinite(s.valeur)) {
       total += s.valeur
-      parModule[module] += s.valeur
+      parModule[cle] += s.valeur
     }
   }
   return {
