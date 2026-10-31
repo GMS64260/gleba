@@ -49,6 +49,17 @@ export function violationsOnAddedLines(results, addedLines, cwd = root) {
   });
 }
 
+export function formatMessages(results, cwd = root) {
+  return results.flatMap((result) => {
+    const relative = path.relative(cwd, result.filePath).split(path.sep).join("/");
+    return result.messages.map(
+      (message) =>
+        `${relative}:${message.line}:${message.column} ${message.severity === 2 ? "error" : "warning"} ` +
+        `${message.ruleId ?? "eslint"} ${message.message}`,
+    );
+  });
+}
+
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes("--help")) {
@@ -87,6 +98,9 @@ async function main() {
     regressions.push(`warnings ${totals.warnings} > baseline ${baseline.warnings}`);
   }
 
+  // Sans la liste, un dépassement de la base ne dit pas quel fichier corriger.
+  const overBaseline = regressions.length > 0;
+
   if (base && !/^0+$/.test(base)) {
     const diff = spawnSync(
       "git",
@@ -112,6 +126,9 @@ async function main() {
 
   if (regressions.length > 0) {
     console.error("Lint quality gate failed:\n" + regressions.map((item) => `- ${item}`).join("\n"));
+    if (overBaseline) {
+      console.error("Current ESLint debt:\n" + formatMessages(results).map((item) => `- ${item}`).join("\n"));
+    }
     process.exit(1);
   }
 }

@@ -9,6 +9,7 @@ describe("export tabulaire", () => {
       tables: [
         { modele: "Animal", nomTable: "animaux", rows: [{ id: 1, userId: "u1", nom: "Truffe", statut: "actif" }] },
         { modele: "SoinAnimal", nomTable: "soins_animaux", rows: [{ id: 3, userId: "u1", produit: "Valbazen", date: new Date("2025-04-12T00:00:00Z") }] },
+        // eslint-disable-next-line no-restricted-syntax -- nom de modèle Prisma
         { modele: "Recolte", nomTable: "récoltes", rows: [{ id: 9, quantite: 2.5 }] },
         { modele: "Planche", nomTable: "planches", rows: [] },
       ],
@@ -50,6 +51,7 @@ describe("export tabulaire", () => {
 
   it("dérive un nom de fichier du modèle quand la table n'a pas de nom SQL", () => {
     expect(nomFichierTable("HistoriqueLotAnimal")).toBe("historique_lot_animal.csv")
+    // eslint-disable-next-line no-restricted-syntax -- nom de modèle Prisma
     expect(nomFichierTable("Recolte", "récoltes")).toBe("recoltes.csv")
   })
 })

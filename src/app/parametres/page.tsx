@@ -32,7 +32,7 @@ import {
   BRIEFING_AUTO_PAR_DEFAUT,
   CLE_PREF_BRIEFING_AUTO,
   briefingAutoActive,
-} from '@/lib/chat/daily-opening'
+} from '@/lib/briefing-prefs'
 
 const RUBRIQUES_PARAMETRES = [
   { id: 'carnet', titre: 'Mon carnet', description: 'Choisissez les activités et les modes d’élevage que vous utilisez.', icone: Layers, mots: 'modules actifs navigation maraîchage verger comptabilité élevage animaux compagnie équin nac' },

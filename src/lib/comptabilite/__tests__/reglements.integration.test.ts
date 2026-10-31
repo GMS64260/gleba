@@ -222,6 +222,7 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
         201,
       )
     ).data
+    // eslint-disable-next-line no-restricted-syntax -- en-têtes d'un relevé bancaire, sans accent
     const csv = 'Date;Libelle;Montant;Reference\n2026-10-27;Virement fictif;100;REF-FICTIVE'
     expect(
       await json(

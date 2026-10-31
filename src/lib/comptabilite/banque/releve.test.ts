@@ -23,6 +23,7 @@ describe('relevé bancaire', () => {
   )
   it('refuse les références répétées et les colonnes déséquilibrées', () => {
     expect(() =>
+      // eslint-disable-next-line no-restricted-syntax -- en-têtes d'un relevé bancaire, sans accent
       lireReleveCsv('Date;Libelle;Montant;Reference\n2026-10-27;A;10;R\n2026-10-27;B;20;R'),
     ).toThrow()
     expect(() => lireReleveCsv('Date;Libelle;Montant\n2026-10-27;A;10;surplus')).toThrow()
