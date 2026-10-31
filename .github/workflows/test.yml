@@ -6,8 +6,60 @@ on:
   pull_request:
     branches: [main]
 
+# Quatre jobs indépendants, chacun requis sur `main` : un lint en échec ne
+# doit plus empêcher les tests et le typage de tourner (rouge du 2026-08-27
+# au 2026-10-31 sans qu'aucun test ne s'exécute sur GitHub).
 jobs:
-  test:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/preparer
+
+      - name: Lint gate tests
+        run: npm run test:lint-gate
+
+      - name: Lint quality gate
+        run: npm run lint:ci -- --base "$LINT_BASE_SHA"
+        env:
+          # PR: compare aux lignes ajoutées depuis la branche cible.
+          # Push: compare au commit précédant le push; la baseline protège aussi le total.
+          LINT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/preparer
+
+      - name: Run vitest
+        run: npm test
+
+  typage:
+    name: typage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: ./.github/actions/preparer
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+  base-neuve:
+    name: base-neuve
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -26,24 +78,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        # legacy-peer-deps pour cohabitation Shepherd.js / cmdk / react 18
-        run: npm ci --legacy-peer-deps
-
-      - name: Generate Prisma client
-        run: npx prisma generate
-        env:
-          # URL bidon : on n'a pas besoin de connexion DB pour `prisma generate`
-          DATABASE_URL: "postgresql://x:x@localhost:5432/x"
+      - uses: ./.github/actions/preparer
 
       - name: Validate fresh database bootstrap
         run: |
@@ -55,16 +91,3 @@ jobs:
           ADMIN_EMAIL: "admin@example.test"
           ADMIN_NAME: "Test Admin"
           ADMIN_PASSWORD: "ci-only-password"
-
-      - name: Lint quality gate
-        run: npm run lint:ci -- --base "$LINT_BASE_SHA"
-        env:
-          # PR: compare aux lignes ajoutées depuis la branche cible.
-          # Push: compare au commit précédant le push; la baseline protège aussi le total.
-          LINT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-
-      - name: Run vitest
-        run: npm test
-
-      - name: Type check
-        run: npx tsc --noEmit
