@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAddedLines, summarize, violationsOnAddedLines } from "./lint-baseline.mjs";
+import { formatMessages, parseAddedLines, summarize, violationsOnAddedLines } from "./lint-baseline.mjs";
 
 test("parseAddedLines records only new-side hunk lines", () => {
   const diff = [
@@ -29,4 +29,21 @@ test("violationsOnAddedLines rejects a new violation but permits legacy debt", (
 
   assert.equal(violationsOnAddedLines(results, new Map([["src/example.ts", new Set([3])]]), "/repo").length, 1);
   assert.deepEqual(summarize(results), { errors: 2, warnings: 0 });
+});
+
+test("formatMessages lists every message with its location and severity", () => {
+  const results = [{
+    filePath: "/repo/src/example.ts",
+    errorCount: 1,
+    warningCount: 1,
+    messages: [
+      { line: 3, column: 1, severity: 2, ruleId: "no-unused-vars", message: "unused" },
+      { line: 9, column: 5, severity: 1, ruleId: null, message: "parsing" },
+    ],
+  }];
+
+  assert.deepEqual(formatMessages(results, "/repo"), [
+    "src/example.ts:3:1 error no-unused-vars unused",
+    "src/example.ts:9:5 warning eslint parsing",
+  ]);
 });
