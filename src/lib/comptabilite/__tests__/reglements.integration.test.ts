@@ -208,6 +208,82 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     ).toBe(404)
     expect(await db.reglement.count({ where: { userId: autre.id } })).toBe(0)
   })
+  it('retrouve recettes et dépenses manuelles par client, fournisseur, référence et pièce, sans sortir du compte', async () => {
+    const { GET } = await import('@/app/api/comptabilite/reglements/cibles/route')
+    const chercher = async (q: string) =>
+      (
+        await json(
+          await GET(req('/api/comptabilite/reglements/cibles?' + new URLSearchParams({ q }))),
+        )
+      ).data as { type: string; id: number; libelle: string }[]
+    const trouve = (lignes: { type: string; id: number }[], type: string, id: number) =>
+      lignes.some((l) => l.type === type && l.id === id)
+    const autre = await db.user.create({
+      data: { email: 'autre-' + randomUUID() + '@example.test' },
+    })
+    comptes.push(autre.id)
+    const fiche = await db.client.create({ data: { userId: identite.id, nom: 'FicheClientQA' } })
+    const ficheAutre = await db.client.create({ data: { userId: autre.id, nom: 'FicheAutreQA' } })
+    const base = {
+      userId: identite.id,
+      categorie: 'legumes',
+      montant: 30,
+      date: new Date('2026-10-27'),
+      paye: false,
+    }
+    const saisie = await db.venteManuelle.create({
+      data: {
+        ...base,
+        description: 'Panier fictif',
+        clientNom: 'ClientSaisiQA',
+        numeroPiece: 'REC-PIECE-QA',
+      },
+    })
+    const parFiche = await db.venteManuelle.create({
+      data: { ...base, description: 'Caisse fictive', clientId: fiche.id },
+    })
+    // Rattachement incohérent (fiche d'un autre compte) : ni recherche ni affichage.
+    const incoherente = await db.venteManuelle.create({
+      data: { ...base, description: 'Vente rattachée ailleurs', clientId: ficheAutre.id },
+    })
+    const ailleurs = await db.venteManuelle.create({
+      data: { ...base, userId: autre.id, description: 'Panier autre', clientNom: 'ClientSaisiQA' },
+    })
+    const depense = await db.depenseManuelle.create({
+      data: {
+        userId: identite.id,
+        categorie: 'materiel',
+        description: 'Petit outillage fictif',
+        montant: 25,
+        date: new Date('2026-10-27'),
+        paye: false,
+        fournisseurNom: 'FournisseurQA',
+        refFacture: 'FOUR-REF-QA',
+        numeroPiece: 'ACH-PIECE-QA',
+      },
+    })
+    const parClient = await chercher('clientsaisiqa')
+    expect(trouve(parClient, 'VenteManuelle', saisie.id)).toBe(true)
+    expect(trouve(parClient, 'VenteManuelle', ailleurs.id)).toBe(false)
+    expect(parClient.find((l) => l.id === saisie.id)?.libelle).toBe(
+      'REC-PIECE-QA · Panier fictif · ClientSaisiQA',
+    )
+    expect(trouve(await chercher('REC-PIECE'), 'VenteManuelle', saisie.id)).toBe(true)
+    const parFicheClient = await chercher('FicheClient')
+    expect(trouve(parFicheClient, 'VenteManuelle', parFiche.id)).toBe(true)
+    expect(parFicheClient.find((l) => l.id === parFiche.id)?.libelle).toBe(
+      'Caisse fictive · FicheClientQA',
+    )
+    expect(trouve(await chercher('FicheAutreQA'), 'VenteManuelle', incoherente.id)).toBe(false)
+    expect(
+      (await chercher('rattachée ailleurs')).find((l) => l.id === incoherente.id)?.libelle,
+    ).toBe('Vente rattachée ailleurs')
+    for (const q of ['FOUR-REF-QA', 'fournisseurqa', 'ACH-PIECE', 'outillage'])
+      expect(trouve(await chercher(q), 'DepenseManuelle', depense.id), q).toBe(true)
+    expect((await chercher('FOUR-REF-QA')).find((l) => l.id === depense.id)?.libelle).toBe(
+      'ACH-PIECE-QA · Petit outillage fictif · FournisseurQA · réf. FOUR-REF-QA',
+    )
+  })
   it('importe sans recette ni doublon, puis rapproche deux factures sur un seul mouvement', async () => {
     const banque = await import('@/app/api/comptabilite/banque/route')
     const c = (

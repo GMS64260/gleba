@@ -138,6 +138,13 @@ export default function BanquePage() {
   )
   const [exclusion, setExclusion] = React.useState<Operation | null>(null),
     [motif, setMotif] = React.useState('')
+  // Compte demandé en dernier : une réponse chargée pour un autre compte
+  // (rechargement lancé juste avant un changement de sélection) est ignorée.
+  const compteVoulu = React.useRef('')
+  const choisirCompte = (id: string) => {
+    compteVoulu.current = id
+    setCompteId(id)
+  }
   const charger = React.useCallback(
     async (curseur?: string) => {
       setCharge(true)
@@ -150,6 +157,7 @@ export default function BanquePage() {
             }),
         )
         const d = await r.json()
+        if (compteId !== compteVoulu.current) return
         if (!r.ok) throw new Error(d.error || 'Chargement impossible.')
         setDonnees((ancien) =>
           curseur && ancien
@@ -157,7 +165,8 @@ export default function BanquePage() {
             : d,
         )
       } catch (e) {
-        setErreur(e instanceof Error ? e.message : 'Chargement impossible.')
+        if (compteId === compteVoulu.current)
+          setErreur(e instanceof Error ? e.message : 'Chargement impossible.')
       } finally {
         setCharge(false)
       }
@@ -244,6 +253,11 @@ export default function BanquePage() {
       window.location.assign(d.url)
     })
   const compte = (id: string) => donnees?.comptes.find((c) => c.id === id)
+  // L'import CSV vise un compte de relevés précis : il n'apparaît qu'une fois ce
+  // compte choisi dans « Compte », d'où les explications ci-dessous.
+  const peutImporter = !lectureSeule && !donnees?.compteDemo
+  const comptesReleve = donnees?.comptes.filter((c) => c.source === 'releve') ?? []
+  const compteReleveChoisi = compte(compteId)?.source === 'releve'
   const ouvrirRapprochement = (o: Operation, p: 'principal' | 'frais') => {
     setOperation(o)
     setPartie(p)
@@ -370,7 +384,9 @@ export default function BanquePage() {
                         {c.soldeAu
                           ? 'Solde disponible au ' +
                             new Date(c.soldeAu).toLocaleString('fr-FR')
-                          : 'Solde bancaire non renseigné'}
+                          : c.source === 'releve'
+                            ? 'Relevé CSV : mouvements suivis, solde non importé'
+                            : 'Solde bancaire non renseigné'}
                       </p>
                     </div>
                     <p>{c.solde == null ? '—' : argent(c.solde, c.devise)}</p>
@@ -382,9 +398,14 @@ export default function BanquePage() {
                     onSubmit={(e) => {
                       e.preventDefault()
                       void executer(async () => {
-                        await action({ action: 'compte', nom: nomCompte, devise })
+                        const d = await action({ action: 'compte', nom: nomCompte, devise })
                         setNomCompte('')
-                        setMessage('Compte ajouté.')
+                        // Le nouveau compte est sélectionné pour que son import
+                        // CSV soit tout de suite proposé.
+                        if (d?.data?.id) choisirCompte(d.data.id)
+                        setMessage(
+                          'Compte ajouté et sélectionné. Importez son relevé CSV dans « Opérations à rapprocher ».',
+                        )
                       })
                     }}
                   >
@@ -535,7 +556,7 @@ export default function BanquePage() {
                   <SelectNatif
                     id="banque-compte"
                     value={compteId}
-                    onChange={(e) => setCompteId(e.target.value)}
+                    onChange={(e) => choisirCompte(e.target.value)}
                   >
                     <option value="">Tous les comptes</option>
                     {donnees.comptes.map((c) => (
@@ -545,24 +566,41 @@ export default function BanquePage() {
                     ))}
                   </SelectNatif>
                 </div>
-                {!lectureSeule &&
-                  !donnees.compteDemo &&
-                  compte(compteId)?.source === 'releve' && (
-                    <div>
-                      <Label htmlFor="banque-csv">Importer un relevé CSV</Label>
-                      <Input
-                        id="banque-csv"
-                        type="file"
-                        accept=".csv,text/csv"
+                {peutImporter && compteReleveChoisi && (
+                  <div>
+                    <Label htmlFor="banque-csv">Importer un relevé CSV</Label>
+                    <Input
+                      id="banque-csv"
+                      type="file"
+                      accept=".csv,text/csv"
+                      disabled={enCours}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        e.target.value = ''
+                        if (file) void importer(file)
+                      }}
+                    />
+                  </div>
+                )}
+                {peutImporter && !compteReleveChoisi && (
+                  <div className="max-w-md space-y-2 text-sm text-muted-foreground">
+                    <p>
+                      {comptesReleve.length
+                        ? 'Pour importer un relevé CSV, choisissez d’abord son compte de relevés dans la liste « Compte ».'
+                        : 'Pour importer un relevé CSV, ajoutez d’abord un compte de relevés dans « Comptes suivis ».'}
+                    </p>
+                    {comptesReleve.length === 1 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
                         disabled={enCours}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          e.target.value = ''
-                          if (file) void importer(file)
-                        }}
-                      />
-                    </div>
-                  )}
+                        onClick={() => choisirCompte(comptesReleve[0].id)}
+                      >
+                        Importer sur « {comptesReleve[0].nom} »
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
                 CSV UTF-8 : Date, Libellé, Montant (ou Débit et Crédit), Référence facultative.
@@ -754,7 +792,13 @@ export default function BanquePage() {
               </div>
               {!donnees.operations.length && !charge && (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  Aucune opération. Importez un relevé ou synchronisez Stripe.
+                  {!peutImporter
+                    ? 'Aucune opération.'
+                    : compteReleveChoisi
+                      ? 'Aucune opération sur ce compte. Importez son relevé CSV avec le champ ci-dessus.'
+                      : comptesReleve.length
+                        ? 'Aucune opération. Choisissez un compte de relevés pour importer son CSV, ou synchronisez Stripe.'
+                        : 'Aucune opération. Ajoutez un compte de relevés pour importer un CSV, ou connectez Stripe.'}
                 </p>
               )}
               {donnees.curseurSuivant && (
@@ -850,7 +894,7 @@ export default function BanquePage() {
               setRecherche(e.target.value)
               setChoix('')
             }}
-            placeholder="N° de facture, client ou libellé"
+            placeholder="N° de pièce, client, fournisseur ou libellé"
           />
           <label className="flex items-center gap-2 text-sm">
             <input

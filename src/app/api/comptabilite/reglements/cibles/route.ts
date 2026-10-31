@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
   if (error) return error
   const userId = session.user.id,
     q = (request.nextUrl.searchParams.get('q') || '').trim().slice(0, 100)
+  const contient = { contains: q, mode: 'insensitive' as const }
   const [factures, elevage, ventes, depenses, exploitation] = await Promise.all([
     prisma.facture.findMany({
       where: {
@@ -57,8 +58,21 @@ export async function GET(request: NextRequest) {
           { auto: true, sourceType: 'vente_produit' },
           { auto: true, sourceType: 'reservation_elevage' },
         ],
-        ...(q ? { description: { contains: q, mode: 'insensitive' as const } } : {}),
+        // Le formulaire annonce une recherche par numéro, client ou libellé :
+        // une recette manuelle se retrouve aussi par son client (saisi ou fiche
+        // du même compte) et par son numéro de pièce.
+        ...(q
+          ? {
+              OR: [
+                { description: contient },
+                { clientNom: contient },
+                { numeroPiece: contient },
+                { client: { is: { userId, nom: contient } } },
+              ],
+            }
+          : {}),
       },
+      include: { client: { select: { nom: true, userId: true } } },
       orderBy: [{ paye: 'asc' }, { date: 'desc' }],
       take: 100,
     }),
@@ -66,7 +80,19 @@ export async function GET(request: NextRequest) {
       where: {
         userId,
         comptable: true,
-        ...(q ? { description: { contains: q, mode: 'insensitive' as const } } : {}),
+        // Une dépense se retrouve aussi par la référence de la facture
+        // fournisseur, par son fournisseur et par son numéro de pièce.
+        ...(q
+          ? {
+              OR: [
+                { description: contient },
+                { refFacture: contient },
+                { fournisseurNom: contient },
+                { fournisseurId: contient },
+                { numeroPiece: contient },
+              ],
+            }
+          : {}),
       },
       orderBy: [{ paye: 'asc' }, { date: 'desc' }],
       take: 100,
@@ -118,7 +144,15 @@ export async function GET(request: NextRequest) {
       devise,
       id: v.id,
       cle: cleMiroirReglement('vente', v),
-      libelle: v.description,
+      // Le libellé montre ce qui a pu être cherché (pièce, client) pour que la
+      // pièce trouvée se reconnaisse dans la liste.
+      libelle: [
+        v.numeroPiece,
+        v.description,
+        v.clientNom || (v.client?.userId === userId ? v.client.nom : null),
+      ]
+        .filter(Boolean)
+        .join(' · '),
       sens: 'encaissement',
       total: enCentimes(v.montant),
       paye: v.paye,
@@ -128,7 +162,14 @@ export async function GET(request: NextRequest) {
       devise,
       id: d.id,
       cle: cleMiroirReglement('depense', d),
-      libelle: d.description,
+      libelle: [
+        d.numeroPiece,
+        d.description,
+        d.fournisseurNom || d.fournisseurId,
+        d.refFacture ? 'réf. ' + d.refFacture : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
       sens: 'decaissement',
       total: enCentimes(d.montant),
       paye: d.paye,
