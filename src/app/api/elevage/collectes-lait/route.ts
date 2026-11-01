@@ -45,6 +45,77 @@ async function refusLotFromageHorsCompte(lotFromageId: string, userId: string): 
   )
 }
 
+type CibleCollecte = {
+  type: 'animal' | 'lot'
+  nomEspece: string | null
+  effectif: number
+  collectable: boolean
+}
+
+/**
+ * Cible d'une traite (animal ou lot du compte) avec ce qu'il faut pour son
+ * plafond indicatif ; `null` si elle n'existe pas dans le compte.
+ */
+async function chargerCibleCollecte(
+  userId: string,
+  animalId: number | null | undefined,
+  lotId: number | null | undefined,
+): Promise<CibleCollecte | null> {
+  if (animalId) {
+    const a = await prisma.animal.findFirst({
+      where: { id: animalId, userId },
+      select: {
+        id: true,
+        sexe: true,
+        orientationProduction: true,
+        especeAnimale: {
+          select: { nom: true, production: true, productions: true },
+        },
+      },
+    })
+    if (!a) return null
+    return { type: 'animal', nomEspece: a.especeAnimale.nom, effectif: 1, collectable: estAnimalCollectableLait(a) }
+  }
+  if (lotId) {
+    const l = await prisma.lotAnimaux.findFirst({
+      where: { id: lotId, userId },
+      select: {
+        id: true,
+        quantiteInitiale: true,
+        quantiteActuelle: true,
+        especeAnimale: {
+          select: { nom: true, production: true, productions: true },
+        },
+      },
+    })
+    if (!l) return null
+    // Revue 2026-10-20 — plafond sur l'effectif reconstitué (celui de
+    // l'écran Lots), pas sur le compteur stocké qui dérive.
+    const effectifs = await reconstituerEffectifsLots(userId, [l])
+    return {
+      type: 'lot',
+      nomEspece: l.especeAnimale.nom,
+      effectif: Math.max(1, effectifs.get(l.id)?.effectifCalcule ?? l.quantiteActuelle),
+      collectable: estLotCollectableLait(l),
+    }
+  }
+  return null
+}
+
+/** Refus d'un volume au-dessus du plafond indicatif non confirmé, sinon `null`. */
+function refusVolumeInhabituel(cible: CibleCollecte, quantite: number, confirme: boolean): NextResponse | null {
+  const plafond = plafondCollecteLait(cible.nomEspece, cible.type, cible.effectif)
+  if (quantite <= plafond || confirme) return null
+  return NextResponse.json(
+    {
+      error: `Volume inhabituel : ${quantite} L dépasse le plafond indicatif de ${plafond} L pour cette traite. Confirmez explicitement pour l’enregistrer.`,
+      code: 'VOLUME_LAIT_INHABITUEL',
+      details: { plafond, quantite, espece: cible.nomEspece },
+    },
+    { status: 422 },
+  )
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -120,74 +191,22 @@ export async function POST(request: NextRequest) {
 
     // Audit élevage 2026-06-11 — validation tenant : l'animal/le lot
     // référencé doit appartenir au user (même règle que mouvements-cheptel).
-    let cible: {
-      type: 'animal' | 'lot'
-      nomEspece: string | null
-      effectif: number
-    } | null = null
-    if (data.animalId) {
-      const a = await prisma.animal.findFirst({
-        where: { id: data.animalId, userId: session.user.id },
-        select: {
-          id: true,
-          sexe: true,
-          orientationProduction: true,
-          especeAnimale: {
-            select: { nom: true, production: true, productions: true },
-          },
+    const cible = await chargerCibleCollecte(session.user.id, data.animalId, data.lotId)
+    if (!cible) {
+      return NextResponse.json({ error: data.animalId ? 'Animal introuvable' : 'Lot introuvable' }, { status: 404 })
+    }
+    if (!cible.collectable) {
+      return NextResponse.json(
+        {
+          error: cible.type === 'animal'
+            ? 'La collecte de lait est réservée aux femelles d’un atelier laitier ou mixte.'
+            : 'La collecte de lait est réservée aux lots d’un atelier laitier ou mixte.',
         },
-      })
-      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
-      if (!estAnimalCollectableLait(a)) {
-        return NextResponse.json(
-          { error: 'La collecte de lait est réservée aux femelles d’un atelier laitier ou mixte.' },
-          { status: 422 },
-        )
-      }
-      cible = { type: 'animal', nomEspece: a.especeAnimale.nom, effectif: 1 }
+        { status: 422 },
+      )
     }
-    if (data.lotId) {
-      const l = await prisma.lotAnimaux.findFirst({
-        where: { id: data.lotId, userId: session.user.id },
-        select: {
-          id: true,
-          quantiteInitiale: true,
-          quantiteActuelle: true,
-          especeAnimale: {
-            select: { nom: true, production: true, productions: true },
-          },
-        },
-      })
-      if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
-      if (!estLotCollectableLait(l)) {
-        return NextResponse.json(
-          { error: 'La collecte de lait est réservée aux lots d’un atelier laitier ou mixte.' },
-          { status: 422 },
-        )
-      }
-      // Revue 2026-10-20 — plafond sur l'effectif reconstitué (celui de
-      // l'écran Lots), pas sur le compteur stocké qui dérive.
-      const effectifs = await reconstituerEffectifsLots(session.user.id, [l])
-      cible = {
-        type: 'lot',
-        nomEspece: l.especeAnimale.nom,
-        effectif: Math.max(1, effectifs.get(l.id)?.effectifCalcule ?? l.quantiteActuelle),
-      }
-    }
-
-    if (cible) {
-      const plafond = plafondCollecteLait(cible.nomEspece, cible.type, cible.effectif)
-      if (data.quantiteLitres > plafond && !data.confirmerVolumeInhabituel) {
-        return NextResponse.json(
-          {
-            error: `Volume inhabituel : ${data.quantiteLitres} L dépasse le plafond indicatif de ${plafond} L pour cette traite. Confirmez explicitement pour l’enregistrer.`,
-            code: 'VOLUME_LAIT_INHABITUEL',
-            details: { plafond, quantite: data.quantiteLitres, espece: cible.nomEspece },
-          },
-          { status: 422 },
-        )
-      }
-    }
+    const refusVolume = refusVolumeInhabituel(cible, data.quantiteLitres, data.confirmerVolumeInhabituel)
+    if (refusVolume) return refusVolume
 
     // Normalise la date au jour (00:00 UTC)
     const day = new Date(data.date)
@@ -267,10 +286,24 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
-    const { id, ...updates } = parsed.data
+    const { id, confirmerVolumeInhabituel, ...updates } = parsed.data
     if (updates.lotFromageId) {
       const refusLot = await refusLotFromageHorsCompte(updates.lotFromageId, session.user.id)
       if (refusLot) return refusLot
+    }
+
+    // Revue du 2026-11-01 — une correction de volume passe par le même plafond
+    // indicatif que la saisie, au lieu de la seule borne fixe de 100 L.
+    if (updates.quantiteLitres !== undefined) {
+      const actuelle = await prisma.collecteLait.findFirst({
+        where: { id, userId: session.user.id },
+        select: { quantiteLitres: true, animalId: true, lotId: true },
+      })
+      if (actuelle && Number(actuelle.quantiteLitres) !== updates.quantiteLitres) {
+        const cible = await chargerCibleCollecte(session.user.id, actuelle.animalId, actuelle.lotId)
+        const refusVolume = cible && refusVolumeInhabituel(cible, updates.quantiteLitres, confirmerVolumeInhabituel)
+        if (refusVolume) return refusVolume
+      }
     }
 
     // Ticket cms1v9rj5 — règle métier : une collecte dont la date est couverte
