@@ -1,3 +1,4 @@
+import { versCentimes } from '@/lib/comptabilite/fec'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * API Ventes Manuelles
@@ -255,9 +256,11 @@ export async function PATCH(request: NextRequest) {
     ) {
       const montant = updateData.montant ?? existing.montant
       const taux = updateData.tauxTVA ?? existing.tauxTVA ?? 5.5
-      const ht = montant / (1 + taux / 100)
-      updateData.montantHT = Math.round(ht * 100) / 100
-      updateData.montantTVA = Math.round((montant - ht) * 100) / 100
+      // Revue du 2026-11-01 — TVA = TTC − HT arrondi : arrondis séparément,
+      // 24,99 € à 20 % donnaient 20,82 + 4,16 = 24,98 € (FEC déséquilibré).
+      const ht = versCentimes(montant / (1 + taux / 100))
+      updateData.montantHT = ht / 100
+      updateData.montantTVA = (versCentimes(montant) - ht) / 100
     }
     if (envoyes.has('journal') && updates.journal !== undefined) updateData.journal = updates.journal
     if (updates.modeReglement !== undefined) updateData.modeReglement = updates.modeReglement
