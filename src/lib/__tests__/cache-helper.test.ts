@@ -139,14 +139,18 @@ describe("purgeExpired — ne mange pas la fenêtre de grâce", () => {
     // les lignes tout juste périmées, c'est-à-dire exactement celles dont le
     // stale-while-error a besoin : une panne d'origine redeviendrait une erreur.
     mocks.deleteMany.mockResolvedValue({ count: 3 })
+    // La purge lit l'horloge APRÈS `avant` : comparer `avant - limite` à 24 h
+    // échouait dès qu'une milliseconde passait (CI du 2026-11-01). La limite
+    // doit tomber à 24 h avant un instant compris entre `avant` et `apres`.
     const avant = Date.now()
 
     await expect(purgeExpired()).resolves.toBe(3)
 
+    const apres = Date.now()
     const where = mocks.deleteMany.mock.calls[0][0].where
     const limite = (where.expiresAt.lt as Date).getTime()
-    expect(avant - limite).toBeGreaterThanOrEqual(24 * HEURE)
-    expect(avant - limite).toBeLessThan(24 * HEURE + 5_000)
+    expect(limite).toBeGreaterThanOrEqual(avant - 24 * HEURE)
+    expect(limite).toBeLessThanOrEqual(apres - 24 * HEURE)
   })
 })
 
