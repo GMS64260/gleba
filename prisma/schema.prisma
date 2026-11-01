@@ -113,6 +113,7 @@ model User {
   reglements Reglement[]
   comptesBancaires CompteBancaire[]
   operationsBancaires OperationBancaire[]
+  tentativesImportReleve TentativeImportReleve[]
   virementsBancaires VirementBancaire[]
   connexionsStripe ConnexionStripe[]
   etatsConnexionStripe EtatConnexionStripe[]
@@ -5142,6 +5143,33 @@ model CompteBancaire {
   @@unique([connexionStripeId, devise])
   @@index([userId])
   @@map("comptes_bancaires")
+}
+
+/// Fichier soumis à l'import CSV d'un relevé, réussi ou non, avec ses octets
+/// d'origine : assistance et rejeu d'un lecteur corrigé. Purgé après 30 jours
+/// (src/lib/comptabilite/banque/tentatives.ts), effacé avec le compte.
+model TentativeImportReleve {
+  id String @id @default(cuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Compte de relevés visé, sans clé étrangère : la trace survit à un compte archivé.
+  compteId String? @map("compte_id")
+  nomFichier String? @map("nom_fichier")
+  /// Octets reçus ; null quand le plafond quotidien de conservation est atteint.
+  contenu Bytes?
+  tailleOctets Int @map("taille_octets")
+  empreinte String
+  /// « fichier » : octets d'origine ; « texte » : texte déjà décodé par un ancien client.
+  source String
+  /// « importe », « refuse » (relevé illisible ou incohérent) ou « erreur » (panne).
+  statut String
+  message String?
+  importees Int?
+  dejaPresentes Int? @map("deja_presentes")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("tentatives_import_releve")
 }
 
 model OperationBancaire {
