@@ -2,6 +2,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { FAMILLES_VIREMENT as VIREMENTS } from '@/lib/comptabilite/banque/familles-virement'
+import { decoderReleve } from '@/lib/comptabilite/banque/decodage-releve'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -319,7 +320,11 @@ export default function BanquePage() {
     executer(async () => {
       if (!file || !compteId) throw new Error('Choisissez d’abord le compte du relevé.')
       if (file.size > 1_000_000) throw new Error('Le fichier doit faire moins de 1 Mo.')
-      const d = await action({ action: 'importer', compteId, csv: await file.text() })
+      const d = await action({
+        action: 'importer',
+        compteId,
+        csv: decoderReleve(await file.arrayBuffer()),
+      })
       setMessage(
         d.importees + ' opérations importées, ' + d.dejaPresentes + ' déjà présentes.',
       )
