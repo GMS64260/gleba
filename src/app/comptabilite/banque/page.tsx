@@ -2,7 +2,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { FAMILLES_VIREMENT as VIREMENTS } from '@/lib/comptabilite/banque/familles-virement'
-import { decoderReleve } from '@/lib/comptabilite/banque/decodage-releve'
+import { octetsEnBase64 } from '@/lib/comptabilite/banque/decodage-releve'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -323,7 +323,8 @@ export default function BanquePage() {
       const d = await action({
         action: 'importer',
         compteId,
-        csv: decoderReleve(await file.arrayBuffer()),
+        fichier: octetsEnBase64(await file.arrayBuffer()),
+        nomFichier: file.name,
       })
       setMessage(
         d.importees + ' opérations importées, ' + d.dejaPresentes + ' déjà présentes.',
@@ -585,6 +586,10 @@ export default function BanquePage() {
                         if (file) void importer(file)
                       }}
                     />
+                    <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                      Le fichier est conservé 30 jours pour vous aider en cas de problème
+                      d’import, puis effacé.
+                    </p>
                   </div>
                 )}
                 {peutImporter && !compteReleveChoisi && (

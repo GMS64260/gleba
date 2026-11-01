@@ -22,6 +22,8 @@ import {
 } from '@/lib/comptabilite/banque/stripe'
 import { deconnecterStripe } from '@/lib/comptabilite/banque/stripe-oauth'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
+import { decoderReleve } from '@/lib/comptabilite/banque/decodage-releve'
+import { enregistrerTentativeImport } from '@/lib/comptabilite/banque/tentatives'
 import { verrouillerReglements } from '@/lib/comptabilite/reglements'
 const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('annuler-virement'), virementId: z.string().min(1).max(100) }),
@@ -38,7 +40,16 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('importer'),
     compteId: z.string().min(1).max(100),
-    csv: z.string().min(1).max(1_000_000),
+    // Octets d'origine du fichier en base64 (1 Mo au plus une fois décodés) ;
+    // `csv` (texte déjà décodé) reste accepté pour une page restée ouverte.
+    fichier: z
+      .string()
+      .min(1)
+      .max(1_400_000)
+      .regex(/^[A-Za-z0-9+/]+={0,2}$/)
+      .optional(),
+    nomFichier: z.string().max(255).optional(),
+    csv: z.string().min(1).max(1_000_000).optional(),
   }),
   z.object({ action: z.literal('rapprocher'), rapprochement: rapprochementSchema }),
   z.object({
@@ -107,13 +118,49 @@ export async function GET(request: NextRequest) {
       session.user.estProprietaireExploitation && !session.user.impersonatedBy && !compteDemo,
   })
 }
+// Tout import, réussi ou non, est conservé 30 jours avec ses octets d'origine
+// (assistance, rejeu d'un lecteur corrigé) : voir tentatives.ts.
+async function importerAvecTrace(
+  userId: string,
+  d: { compteId: string; fichier?: string; nomFichier?: string; csv?: string },
+) {
+  if (!d.fichier === !d.csv) throw new ErreurReglement('Joignez le fichier du relevé.', 400)
+  const octets = d.fichier ? Buffer.from(d.fichier, 'base64') : Buffer.from(d.csv!, 'utf8')
+  if (!octets.byteLength) throw new ErreurReglement('Le fichier du relevé est vide.', 400)
+  if (octets.byteLength > 1_000_000)
+    throw new ErreurReglement('Le relevé doit faire moins de 1 Mo.', 413)
+  const trace = {
+    userId,
+    compteId: d.compteId,
+    nomFichier: d.nomFichier,
+    octets,
+    source: d.fichier ? ('fichier' as const) : ('texte' as const),
+  }
+  try {
+    const r = await importerReleve(userId, d.compteId, d.fichier ? decoderReleve(octets) : d.csv!)
+    await enregistrerTentativeImport({
+      ...trace,
+      statut: 'importe',
+      importees: r.importees,
+      dejaPresentes: r.dejaPresentes,
+    })
+    return NextResponse.json(r)
+  } catch (e) {
+    await enregistrerTentativeImport({
+      ...trace,
+      statut: e instanceof ErreurReglement ? 'refuse' : 'erreur',
+      message: e instanceof ErreurReglement ? e.message : null,
+    })
+    throw e
+  }
+}
 export async function POST(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
   if (session.user.peutEcrireExploitation === false || session.user.impersonatedBy)
     return NextResponse.json({ error: 'Cette session est en lecture seule.' }, { status: 403 })
   try {
-    const entree = actionSchema.safeParse(await lireJsonBorne(request, 1_200_000))
+    const entree = actionSchema.safeParse(await lireJsonBorne(request, 1_450_000))
     if (!entree.success)
       return NextResponse.json(
         { error: 'Données invalides', details: entree.error.flatten() },
@@ -153,8 +200,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(await synchroniserStripe(userId, d.connexionId))
     if (d.action === 'deconnecter')
       return NextResponse.json({ success: true, ...(await deconnecterStripe(userId, d.connexionId)) })
-    if (d.action === 'importer')
-      return NextResponse.json(await importerReleve(userId, d.compteId, d.csv))
+    if (d.action === 'importer') return await importerAvecTrace(userId, d)
     if (d.action === 'rapprocher')
       return NextResponse.json({
         data: await rapprocherOperation(userId, acteurId, d.rapprochement),

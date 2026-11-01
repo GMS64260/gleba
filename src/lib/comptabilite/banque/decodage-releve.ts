@@ -12,3 +12,13 @@ export function decoderReleve(contenu: ArrayBuffer | Uint8Array): string {
     return new TextDecoder('windows-1252').decode(octets)
   }
 }
+
+// Le fichier part tel quel (octets d'origine, en base64) : le serveur le décode
+// avec decoderReleve et le conserve pour un rejeu fidèle (tentatives.ts).
+export function octetsEnBase64(contenu: ArrayBuffer | Uint8Array): string {
+  const octets = contenu instanceof Uint8Array ? contenu : new Uint8Array(contenu)
+  let binaire = ''
+  for (let i = 0; i < octets.length; i += 0x8000)
+    binaire += String.fromCharCode(...octets.subarray(i, i + 0x8000))
+  return btoa(binaire)
+}
