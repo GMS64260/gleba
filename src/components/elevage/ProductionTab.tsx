@@ -11,6 +11,8 @@ import { ChampsEncaissement } from "@/components/comptabilite/ChampsEncaissement
 import { encaissementVenteInitial } from "@/lib/comptabilite/encaissement-vente"
 import { useSession } from "next-auth/react"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
+import { useSearchParams } from "next/navigation"
+import { ONGLETS_PRODUCTION, ongletProductionDepuisSub } from "@/lib/elevage/onglets-production"
 import {
   Egg,
   ShoppingCart,
@@ -67,7 +69,7 @@ import { jourCivilStocke } from '@/lib/jour-civil'
 // pour que Dashboard et Production partagent la même fenêtre temporelle.
 
 const PROD_TAB_KEY = "gleba:elevage:production-tab"
-const PROD_TABS = ["oeufs", "lait", "ruche", "ventes", "abattages", "economie"] as const
+const PROD_TABS = ONGLETS_PRODUCTION
 
 // QA cmswug6di — un Select Radix contrôlé à "" n'émet AUCUNE <option value="">
 // dans son <select> natif caché : le navigateur retombe sur la première option
@@ -86,6 +88,7 @@ export function ProductionTab({ year }: { year?: number } = {}) {
   const productionTabKey = sessionStatus === "loading"
     ? null
     : `${PROD_TAB_KEY}:user:${session?.user?.id || "anonymous"}`
+  const subUrl = useSearchParams().get("sub")
 
   React.useEffect(() => {
     if (!productionTabKey) return
@@ -93,6 +96,13 @@ export function ProductionTab({ year }: { year?: number } = {}) {
     // ouvre l'onglet Abattages, quel que soit le dernier onglet mémorisé.
     if (new URLSearchParams(window.location.search).get("editAbattage")) {
       setActive("abattages")
+      return
+    }
+    // Revue du 2026-11-01 — un lien direct (`?sub=ventes`, catalogue des
+    // stocks…) prime sur l'onglet mémorisé et sur le profil du cheptel.
+    const cible = ongletProductionDepuisSub(subUrl)
+    if (cible) {
+      setActive(cible)
       return
     }
     let annule = false
@@ -114,11 +124,18 @@ export function ProductionTab({ year }: { year?: number } = {}) {
       })
       .catch(() => {})
     return () => { annule = true }
-  }, [productionTabKey])
+  }, [productionTabKey, subUrl])
 
   const handleChange = (v: string) => {
     setActive(v)
     if (productionTabKey) window.localStorage.setItem(productionTabKey, v)
+    // Une URL arrivée par lien direct suit l'onglet choisi : un rechargement
+    // ne ramène pas sur l'ancienne cible.
+    const params = new URLSearchParams(window.location.search)
+    if (params.has("sub")) {
+      params.set("sub", v)
+      updateDashboardSearchParams(params, "replace")
+    }
   }
 
   return (
@@ -242,7 +259,9 @@ interface StockTraceOeufs {
     perimes: number
     stockPhysique: number
     bloquesVeto?: number
+    aVenir?: number
   }
+  pontesFutures?: { id: number; datePonte: string; lot: { id: number; nom: string } | null; oeufs: number }[]
 }
 
 // Ticket cms1vcc6f — taux de ponte remonté par /api/elevage/stats (observé
@@ -991,6 +1010,18 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               )}
               <div className="rounded-md border p-2"><strong>{stockTrace.stats.stockPhysique}</strong><br /><span className="text-muted-foreground">stock physique</span></div>
             </div>
+            {(stockTrace.stats.aVenir ?? 0) > 0 && (
+              <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900" data-testid="pontes-futures">
+                {(() => {
+                  const n = stockTrace.stats.aVenir ?? 0
+                  const pontes = stockTrace.pontesFutures ?? []
+                  const detail = pontes.length > 0
+                    ? ` (${pontes.length > 1 ? "pontes du" : "ponte du"} ${pontes.map((p) => `${new Date(p.datePonte).toLocaleDateString("fr-FR")}${p.lot ? ` · ${p.lot.nom}` : ""}`).join(", ")})`
+                    : ""
+                  return `${n} œuf${n > 1 ? "s" : ""} daté${n > 1 ? "s" : ""} après aujourd’hui ${n > 1 ? "ne sont" : "n’est"} pas compté${n > 1 ? "s" : ""} dans le stock${detail}. Vérifiez la date de ${pontes.length > 1 ? "ces collectes" : "cette collecte"}.`
+                })()}
+              </p>
+            )}
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>

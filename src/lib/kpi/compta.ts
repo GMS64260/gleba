@@ -43,6 +43,25 @@ export function whereVentesRevenus(userId: string, debut: Date, fin: Date): Pris
 }
 
 /**
+ * Périmètre des dépenses : les seules charges comptables. Les coûts analytiques
+ * internes (`comptable: false` : soins, consommations d'aliments…) en sont
+ * exclus. Partagé par le total et par sa ventilation mensuelle.
+ */
+export function whereDepensesComptables(userId: string, debut: Date, fin: Date): Prisma.DepenseManuelleWhereInput {
+  return { userId, date: { gte: debut, lte: fin }, comptable: true }
+}
+
+/**
+ * Bornes de l'exercice lu par les KPI. Ticket DEV2 #1 — pour l'année en cours,
+ * on s'arrête à `asOf` ; pour une année passée, on lit l'année entière.
+ */
+export function bornesExerciceKpi(year: number, asOf: Date): { debut: Date; fin: Date } {
+  const debut = new Date(year, 0, 1, 0, 0, 0, 0)
+  const finAnnee = new Date(year, 11, 31, 23, 59, 59, 999)
+  return { debut, fin: asOf.getFullYear() === year ? asOf : finAnnee }
+}
+
+/**
  * Statuts d'une facture qui n'est pas (ou plus) une vente : ni comptée dans les
  * revenus, ni au compteur de ventes d'un client (`compterVentesParClient`).
  */
@@ -67,15 +86,13 @@ async function computeKpiCompta(
   year: number,
   asOf: Date
 ): Promise<KPICompta> {
-  const startOfYear = new Date(year, 0, 1, 0, 0, 0, 0)
-  const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
   const startOfYearN1 = new Date(year - 1, 0, 1, 0, 0, 0, 0)
   const endOfYearN1 = new Date(year - 1, 11, 31, 23, 59, 59, 999)
   // Ticket DEV2 #1 — Borne haute "YTD" : pour l'année passée, on lit
   // l'année entière. Sinon une sélection 2024 retournait tout depuis
   // 2024 jusqu'à `now`.
   const isCurrentYear = asOf.getFullYear() === year
-  const upperBound = isCurrentYear ? asOf : endOfYear
+  const { debut: startOfYear, fin: upperBound } = bornesExerciceKpi(year, asOf)
   const asOfN1 = isCurrentYear ? shiftToPrevYear(asOf) : endOfYearN1
 
   // ============================================================
@@ -157,10 +174,36 @@ async function sumDepenseManuelle(
   end: Date
 ): Promise<number> {
   const r = await prisma.depenseManuelle.aggregate({
-    where: { userId, date: { gte: start, lte: end }, comptable: true },
+    where: whereDepensesComptables(userId, start, end),
     _sum: { montant: true },
   })
   return r._sum.montant ?? 0
+}
+
+/**
+ * Revenus et dépenses comptables mois par mois (index 0 = janvier), sur les
+ * mêmes écritures et les mêmes bornes que `getKpiCompta` : la somme des mois
+ * redonne les totaux affichés. Revue du 2026-11-01 : le graphique mensuel
+ * relisait les tables brutes (consommations d'aliments, fertilisations et
+ * soins, qui sont des coûts analytiques ; ni l'achat d'un lot ni les factures)
+ * et la somme de ses mois s'écartait des dépenses comptables affichées.
+ */
+export async function chargerMensuelCompta(
+  userId: string,
+  year: number,
+  asOf: Date = new Date(),
+): Promise<Array<{ revenus: number; depenses: number }>> {
+  const { debut, fin } = bornesExerciceKpi(year, asOf)
+  const [ventes, factures, depenses] = await Promise.all([
+    prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debut, fin), select: { date: true, montant: true } }),
+    prisma.facture.findMany({ where: whereFacturesRevenus(userId, debut, fin), select: { date: true, type: true, totalTTC: true } }),
+    prisma.depenseManuelle.findMany({ where: whereDepensesComptables(userId, debut, fin), select: { date: true, montant: true } }),
+  ])
+  const mois = Array.from({ length: 12 }, () => ({ revenus: 0, depenses: 0 }))
+  for (const v of ventes) mois[v.date.getMonth()].revenus += v.montant
+  for (const f of factures) mois[f.date.getMonth()].revenus += (f.type === 'avoir' ? -1 : 1) * f.totalTTC
+  for (const d of depenses) mois[d.date.getMonth()].depenses += d.montant
+  return mois.map((m) => ({ revenus: round2(m.revenus), depenses: round2(m.depenses) }))
 }
 
 /**

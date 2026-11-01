@@ -9,6 +9,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { ventilerParModule } from '@/lib/comptabilite/modules'
 import { getKpiCompta } from '@/lib/kpi'
+import { bornesExerciceKpi, chargerMensuelCompta, whereDepensesComptables } from '@/lib/kpi/compta'
 import { chargerEncoursCompta } from '@/lib/comptabilite/encours'
 import { STATUTS_COMMANDES_EN_ATTENTE } from '@/lib/comptabilite/alertes'
 
@@ -39,6 +40,28 @@ const COLORS = {
   main_oeuvre: '#ec4899',
 }
 
+/** Libellés des catégories de dépenses (saisies et miroirs automatiques). */
+const LABELS_CATEGORIE_DEPENSE: Record<string, string> = {
+  semences: 'Semences et plants',
+  plants: 'Plants',
+  engrais: 'Engrais et amendements',
+  intrants: 'Intrants',
+  phyto: 'Produits phytosanitaires',
+  carburant: 'Carburant',
+  energie: 'Énergie',
+  materiel: 'Matériel',
+  petit_outillage: 'Petit outillage',
+  prestation: 'Prestations',
+  veterinaire: 'Vétérinaire',
+  alimentation: 'Alimentation animale',
+  achats: 'Achats d’animaux',
+  animal_vivant: 'Achats d’animaux',
+  msa: 'Cotisations MSA',
+  main_oeuvre: 'Main d’œuvre',
+  abonnement: 'Abonnements',
+  autre: 'Autre',
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -59,6 +82,7 @@ export async function GET(request: NextRequest) {
     // proviennent désormais de `getKpiCompta`, alignant la page d'accueil
     // Compta, le module Rapports et le module Coûts de production.
     const kpiCompta = await getKpiCompta(userId, year, asOf)
+    const bornesComptables = bornesExerciceKpi(year, asOf)
 
     // ========================================
     // REVENUS
@@ -293,10 +317,12 @@ export async function GET(request: NextRequest) {
         _sum: { coutReel: true },
       }),
 
-      // Dépenses manuelles par categorie (exclure auto=true)
+      // Dépenses comptables par catégorie. Revue du 2026-11-01 — le camembert
+      // suit le total comptable : miroirs d'achats compris, coûts analytiques
+      // (`comptable: false`) exclus.
       prisma.depenseManuelle.groupBy({
         by: ['categorie'],
-        where: { userId, date: { gte: startOfYear, lte: endOfYear }, auto: { not: true } },
+        where: whereDepensesComptables(userId, bornesComptables.debut, bornesComptables.fin),
         _sum: { montant: true },
       }),
 
@@ -440,200 +466,18 @@ export async function GET(request: NextRequest) {
     // GRAPHIQUES
     // ========================================
 
-    // Données mensuelles (requêtes raw pour revenus et dépenses par mois).
-    // PERF 2026-08-11 — ces 12 agrégats étaient exécutés en séquence (awaits
-    // successifs) ; ils sont indépendants, donc regroupés dans un Promise.all
-    // (requêtes strictement inchangées).
-    const [
-      revenusParMois,
-      ventesManuParMois,
-      revenusElevageSpeciauxParMois,
-      depensesManuParMois,
-      recoltesPotagerParMois,
-      soinsParMois,
-      // Récoltes arbres vendues par mois (fruits)
-      recoltesArbresParMois,
-      // Production bois vendu par mois
-      venteBoisParMois,
-      // Abattages vendus par mois
-      abattageParMois,
-      // Consommation aliments par mois (coût = quantité × prix aliment)
-      consommationAlimentsParMois,
-      // Fertilisation par mois (coût = quantité × prix fertilisant)
-      fertilisationParMois,
-      // Opérations arbres par mois (coût direct)
-      operationsArbresParMois,
-    ] = (await Promise.all([
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(prix_total) as total
-        FROM ventes_produits
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          AND annule = false
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(montant) as total
-        FROM ventes_manuelles
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          -- QA cmswtznh2 : les ventes boutique auto n'ont pas de table brute,
-          -- même périmètre que la ventilation annuelle.
-          AND ((auto IS NULL OR auto = false)
-            OR (auto = true AND source_type = 'commande_boutique'))
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(montant) as total
-        FROM ventes_manuelles
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          AND auto = true
-          AND source_type IN ('paie_lait', 'reservation_elevage')
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(montant) as total
-        FROM depenses_manuelles
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          AND (auto IS NULL OR auto = false)
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date_vente) as mois,
-          SUM(prix_total) as total
-        FROM recoltes
-        WHERE user_id = ${userId}
-          AND statut = 'vendu'
-          AND date_vente >= ${startOfYear}
-          AND date_vente <= ${endOfYear}
-          AND prix_total IS NOT NULL
-        GROUP BY EXTRACT(MONTH FROM date_vente)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(cout) as total
-        FROM soins_animaux
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          AND cout IS NOT NULL
-          AND fait = true
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(COALESCE(prix_total, quantite * COALESCE(prix_kg, 0))) as total
-        FROM recoltes_arbres
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          AND statut = 'vendu'
-          AND (prix_total IS NOT NULL OR prix_kg IS NOT NULL)
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(prix_vente) as total
-        FROM production_bois
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          AND destination = 'vente'
-          AND prix_vente IS NOT NULL
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(prix_vente) as total
-        FROM abattages
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          AND destination = 'vente'
-          AND prix_vente IS NOT NULL
-          AND annule = false
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM ca.date) as mois,
-          SUM(ca.quantite * COALESCE(usa.cout_unitaire, usa.prix, a.prix, 0)) as total
-        FROM consommations_aliments ca
-        JOIN aliments a ON ca.aliment_id = a.aliment
-        LEFT JOIN user_stock_aliments usa
-          ON usa.user_id = ca.user_id AND usa.aliment_id = ca.aliment_id
-        WHERE ca.user_id = ${userId}
-          AND ca.date >= ${startOfYear}
-          AND ca.date <= ${endOfYear}
-        GROUP BY EXTRACT(MONTH FROM ca.date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM f.date) as mois,
-          SUM(f.quantite * COALESCE(fe.prix, 0)) as total
-        FROM fertilisations f
-        JOIN fertilisants fe ON f.fertilisant = fe.fertilisant
-        WHERE f.user_id = ${userId}
-          AND f.date >= ${startOfYear}
-          AND f.date <= ${endOfYear}
-        GROUP BY EXTRACT(MONTH FROM f.date)
-      `,
-      prisma.$queryRaw`
-        SELECT
-          EXTRACT(MONTH FROM date) as mois,
-          SUM(cout) as total
-        FROM operations_arbres
-        WHERE user_id = ${userId}
-          AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
-          AND cout IS NOT NULL
-        GROUP BY EXTRACT(MONTH FROM date)
-      `,
-    ])) as { mois: number; total: number }[][]
-
-    // Construire données mensuelles
+    // Données mensuelles — revue du 2026-11-01 : mêmes écritures et mêmes
+    // bornes que les totaux (`getKpiCompta`), la somme des mois redonne donc
+    // le total comptable. Les tables brutes (consommations, fertilisations,
+    // soins) restent des coûts analytiques, exposés à part.
+    const mensuelComptable = await chargerMensuelCompta(userId, year, asOf)
     const mensuel = MOIS_LABELS.map((label, i) => {
-      const mois = i + 1
-      const rev1 = revenusParMois.find(r => Number(r.mois) === mois)?.total || 0
-      const rev2 = ventesManuParMois.find(r => Number(r.mois) === mois)?.total || 0
-      const rev3 = recoltesPotagerParMois.find(r => Number(r.mois) === mois)?.total || 0
-      const rev4 = recoltesArbresParMois.find(r => Number(r.mois) === mois)?.total || 0
-      const rev5 = venteBoisParMois.find(r => Number(r.mois) === mois)?.total || 0
-      const rev6 = abattageParMois.find(r => Number(r.mois) === mois)?.total || 0
-      const rev7 = revenusElevageSpeciauxParMois.find(r => Number(r.mois) === mois)?.total || 0
-      const dep1 = depensesManuParMois.find(d => Number(d.mois) === mois)?.total || 0
-      const dep2 = soinsParMois.find(d => Number(d.mois) === mois)?.total || 0
-      const dep3 = consommationAlimentsParMois.find(d => Number(d.mois) === mois)?.total || 0
-      const dep4 = fertilisationParMois.find(d => Number(d.mois) === mois)?.total || 0
-      const dep5 = operationsArbresParMois.find(d => Number(d.mois) === mois)?.total || 0
-
-      const revenus = Number(rev1) + Number(rev2) + Number(rev3) + Number(rev4) + Number(rev5) + Number(rev6) + Number(rev7)
-      const depenses = Number(dep1) + Number(dep2) + Number(dep3) + Number(dep4) + Number(dep5)
-
+      const { revenus, depenses } = mensuelComptable[i]
       return {
         mois: label,
         revenus,
         depenses,
-        benefice: revenus - depenses,
+        benefice: Math.round((revenus - depenses) * 100) / 100,
       }
     })
 
@@ -665,24 +509,16 @@ export async function GET(request: NextRequest) {
       })),
     ].filter(r => r.montant > 0)
 
-    // Dépenses par categorie
-    const depensesParCategorie = [
-      { categorie: 'Soins animaux', montant: depensesSoins._sum.cout || 0, couleur: COLORS.soins },
-      { categorie: 'Aliments', montant: depensesAliments, couleur: COLORS.aliments },
-      { categorie: 'Opérations arbres', montant: depensesOperations._sum.cout || 0, couleur: COLORS.operations },
-      { categorie: 'Fertilisation', montant: depensesFertilisation, couleur: COLORS.fertilisation },
-      { categorie: 'Achats animaux', montant: (achatsLots._sum.prixAchatTotal || 0) + (achatsAnimaux._sum.prixAchat || 0), couleur: COLORS.achats },
-      { categorie: 'Achats arbres', montant: achatsArbres._sum.prixAchat || 0, couleur: '#15803d' },
-      { categorie: 'Plantations', montant: campagnesPlantation._sum.coutReel || 0, couleur: '#166534' },
-      ...depensesManuellesParCategorie.map(d => ({
-        categorie: d.categorie === 'materiel' ? 'Matériel' :
-                   d.categorie === 'carburant' ? 'Carburant' :
-                   d.categorie === 'main_oeuvre' ? 'Main d\'oeuvre' :
-                   d.categorie.charAt(0).toUpperCase() + d.categorie.slice(1),
-        montant: d._sum.montant || 0,
+    // Dépenses par categorie — mêmes charges que le total comptable.
+    const depensesParCategorie = depensesManuellesParCategorie
+      .map(d => ({
+        categorie: LABELS_CATEGORIE_DEPENSE[d.categorie] ||
+                   d.categorie.charAt(0).toUpperCase() + d.categorie.slice(1).replace(/_/g, ' '),
+        montant: Math.round((d._sum.montant || 0) * 100) / 100,
         couleur: COLORS[d.categorie as keyof typeof COLORS] || COLORS.autre,
-      })),
-    ].filter(d => d.montant > 0)
+      }))
+      .filter(d => d.montant > 0)
+      .sort((a, b) => b.montant - a.montant)
 
     // Par module
     const parModule = [

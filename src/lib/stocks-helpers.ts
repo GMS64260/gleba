@@ -4,7 +4,7 @@
  */
 
 import prisma from '@/lib/prisma'
-import { dateEffetStockCommercial } from '@/lib/commercial/dates-stock'
+import { dateEffetStockCommercial, finJourLivraison } from '@/lib/commercial/dates-stock'
 import type { Prisma } from '@prisma/client'
 import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
 import type { UniteQuantite } from '@/lib/recolte/projection'
@@ -323,14 +323,17 @@ export async function calculerStockOeufs(
   stockNet: number
   detail: { produits: number; casses: number; sales: number; vendus: number; autresSorties: number }
 }> {
+  // Revue du 2026-11-01 — même borne que le stock : une ponte datée après
+  // aujourd'hui n'entre ni dans le stock ni dans son détail.
+  const finJour = finJourLivraison(new Date())
   const [production, sorties, lotsCalcules] = await Promise.all([
     prisma.productionOeuf.aggregate({
-      where: { userId },
+      where: { userId, date: { lte: finJour } },
       _sum: { quantite: true, casses: true, sales: true },
     }),
     prisma.mouvementStockOeuf.groupBy({
       by: ['type'],
-      where: { userId },
+      where: { userId, production: { date: { lte: finJour } } },
       _sum: { quantite: true },
     }),
     lots ?? computeStockOeufsParLots(userId),

@@ -131,9 +131,18 @@ function ymd(d: Date): string {
   return `${y}${m}${day}`
 }
 
-function fmtMontant(n: number): string {
+/**
+ * Montant en centimes entiers, arrondi au plus proche (demi-centime vers le
+ * haut sur la valeur décimale voulue : 20,825 € donne 2083 et non 2082, que
+ * donnerait la représentation binaire 20,82499…).
+ */
+export function versCentimes(n: number): number {
+  return Math.round(Number((n * 100).toFixed(6)))
+}
+
+function fmtCentimes(centimes: number): string {
   // FEC : virgule décimale, pas de séparateur de milliers
-  return n.toFixed(2).replace('.', ',')
+  return (centimes / 100).toFixed(2).replace('.', ',')
 }
 
 function ecritureBase(
@@ -159,7 +168,7 @@ function ecritureBase(
   }
 }
 
-function line(base: Partial<FecLine>, compteNum: string, compteLib: string, debit: number, credit: number, tiers?: { num: string; lib: string }): FecLine {
+function line(base: Partial<FecLine>, compteNum: string, compteLib: string, debitCentimes: number, creditCentimes: number, tiers?: { num: string; lib: string }): FecLine {
   return {
     JournalCode: base.JournalCode!,
     JournalLib: base.JournalLib!,
@@ -172,8 +181,8 @@ function line(base: Partial<FecLine>, compteNum: string, compteLib: string, debi
     PieceRef: base.PieceRef!,
     PieceDate: base.PieceDate!,
     EcritureLib: base.EcritureLib!,
-    Debit: fmtMontant(debit),
-    Credit: fmtMontant(credit),
+    Debit: fmtCentimes(debitCentimes),
+    Credit: fmtCentimes(creditCentimes),
     EcritureLet: base.EcritureLet || '',
     DateLet: base.DateLet || '',
     ValidDate: base.ValidDate!,
@@ -428,10 +437,50 @@ export function genererFec(input: {
   for (const e of triees) {
     numParJournal[e.journal] = (numParJournal[e.journal] ?? 0) + 1
     const base = ecritureBase(e.journal, numParJournal[e.journal], e.date, e.pieceRef, e.libelle)
-    for (const l of e.lignes) {
-      out.push(line(base, l.compteNum, l.compteLib, l.debit, l.credit, l.tiers))
+    for (const l of equilibrerArrondis(e.lignes)) {
+      out.push(line(base, l.compteNum, l.compteLib, l.debitCentimes, l.creditCentimes, l.tiers))
     }
   }
+  return out
+}
+
+/**
+ * Comptes qui portent un montant calculé (HT en charge, produit ou
+ * immobilisation, TVA), par opposition aux flux réels : tiers (40x, 41x) et
+ * trésorerie ou virements internes (5x).
+ */
+const estCompteCalcule = (compteNum: string) => !/^(40|41|5)/.test(compteNum)
+
+/**
+ * Revue du 2026-11-01 — chaque ligne était arrondie séparément : une dépense de
+ * 24,99 € TTC à 20 % donnait 20,82 € HT + 4,16 € de TVA au débit contre 24,99 €
+ * au crédit, et le contrôle tolérait ce centime. Les lignes passent en
+ * centimes ; quand les montants d'origine s'équilibrent aux arrondis près
+ * (un demi-centime par ligne calculée), l'écart est porté par la TVA (sinon la
+ * plus grosse charge ou le plus gros produit), comme on calcule TVA = TTC − HT.
+ * Les comptes de trésorerie et de tiers gardent le montant réellement payé. Un
+ * déséquilibre plus large des montants d'origine n'est jamais absorbé :
+ * `validerEquilibre` le refuse.
+ */
+function equilibrerArrondis<T extends { compteNum: string; debit: number; credit: number }>(
+  lignes: T[],
+): Array<T & { debitCentimes: number; creditCentimes: number }> {
+  const out = lignes.map((l) => ({ ...l, debitCentimes: versCentimes(l.debit), creditCentimes: versCentimes(l.credit) }))
+  // Écart des montants d'origine toléré comme arrondi : un demi-centime par
+  // ligne calculée (HT 20,82 + TVA 4,16 déjà arrondis séparément pour 24,99 TTC).
+  const nbCalculees = lignes.filter((l) => estCompteCalcule(l.compteNum)).length
+  const brut = lignes.reduce((ecart, l) => ecart + l.debit - l.credit, 0)
+  if (Math.abs(brut) > 0.005 * Math.max(1, nbCalculees) + 1e-9) return out
+  const ecart = out.reduce((total, l) => total + l.debitCentimes - l.creditCentimes, 0)
+  if (ecart === 0) return out
+  const montant = (l: (typeof out)[number]) => l.debitCentimes + l.creditCentimes
+  const candidates = out
+    .filter((l) => estCompteCalcule(l.compteNum) && montant(l) > Math.abs(ecart))
+    .sort((a, b) => Number(b.compteNum.startsWith('445')) - Number(a.compteNum.startsWith('445')) || montant(b) - montant(a))
+  const cible = candidates[0]
+  if (!cible) return out
+  if (cible.debitCentimes > 0) cible.debitCentimes -= ecart
+  else cible.creditCentimes += ecart
   return out
 }
 
@@ -442,7 +491,11 @@ export function serialiserFec(lines: FecLine[]): string {
   return [header, ...rows].join('\n') + '\n'
 }
 
-/** Valide l'équilibre Débit = Crédit par écriture et au global. */
+/**
+ * Valide l'équilibre Débit = Crédit par écriture et au global, au centime
+ * exact (revue du 2026-11-01 : la tolérance d'un centime laissait télécharger
+ * un FEC déséquilibré annoncé « équilibré »).
+ */
 export function validerEquilibre(lines: FecLine[]): {
   equilibre: boolean
   ecart: number
@@ -450,12 +503,13 @@ export function validerEquilibre(lines: FecLine[]): {
   totalCredit: number
   erreursParEcriture: Array<{ ecriture: string; debit: number; credit: number; ecart: number }>
 } {
+  const centimes = (montant: string) => versCentimes(parseFloat(montant.replace(',', '.')) || 0)
   const parEcr: Record<string, { debit: number; credit: number }> = {}
   let totalD = 0
   let totalC = 0
   for (const l of lines) {
-    const d = parseFloat(l.Debit.replace(',', '.'))
-    const c = parseFloat(l.Credit.replace(',', '.'))
+    const d = centimes(l.Debit)
+    const c = centimes(l.Credit)
     totalD += d
     totalC += c
     // EcritureNum est séquentiel PAR JOURNAL : la clé d'écriture inclut le journal.
@@ -466,17 +520,15 @@ export function validerEquilibre(lines: FecLine[]): {
   }
   const erreurs: Array<{ ecriture: string; debit: number; credit: number; ecart: number }> = []
   for (const [num, t] of Object.entries(parEcr)) {
-    const ecart = Math.round((t.debit - t.credit) * 100) / 100
-    if (Math.abs(ecart) > 0.01) {
-      erreurs.push({ ecriture: num, debit: t.debit, credit: t.credit, ecart })
+    if (t.debit !== t.credit) {
+      erreurs.push({ ecriture: num, debit: t.debit / 100, credit: t.credit / 100, ecart: (t.debit - t.credit) / 100 })
     }
   }
-  const globalEcart = Math.round((totalD - totalC) * 100) / 100
   return {
-    equilibre: erreurs.length === 0 && Math.abs(globalEcart) <= 0.01,
-    ecart: globalEcart,
-    totalDebit: Math.round(totalD * 100) / 100,
-    totalCredit: Math.round(totalC * 100) / 100,
+    equilibre: erreurs.length === 0 && totalD === totalC,
+    ecart: (totalD - totalC) / 100,
+    totalDebit: totalD / 100,
+    totalCredit: totalC / 100,
     erreursParEcriture: erreurs,
   }
 }

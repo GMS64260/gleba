@@ -75,7 +75,7 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
     const stock = stockDuLotFromage(f)
     if (stock.restantPieces <= 0 || !frais(f.dlc) || !frais(f.dluo)) continue
     const prix = ventes.find((v) => v.lotFromageId === f.id && ['piece', 'pièce', 'unite', 'unité'].includes(v.unite))?.prixUnitaire ?? null
-    articles.push({ type: 'fromage', id: f.id, nom: `${f.typeFromage} · ${f.numeroLot}`, categorie: 'Fromages prêts', disponible: stock.restantPieces, unite: 'pièce', prixTTC: prix, tauxTVA: 5.5, statutBio: f.statutBioSnapshot, href: '/elevage?tab=production&sub=fromage' })
+    articles.push({ type: 'fromage', id: f.id, nom: `${f.typeFromage} · ${f.numeroLot}`, categorie: 'Fromages prêts', disponible: stock.restantPieces, unite: 'pièce', prixTTC: prix, tauxTVA: 5.5, statutBio: f.statutBioSnapshot, href: '/elevage?tab=production&sub=cave' })
   }
   for (const t of transformes) {
     if (!frais(t.datePeremption)) continue

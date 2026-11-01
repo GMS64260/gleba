@@ -13,6 +13,7 @@
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { useSearchParams } from "next/navigation"
+import { ongletLaitDepuisSub } from "@/lib/elevage/onglets-production"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { Milk, FileText, LineChart, Plus, Copy, Loader2, Trash2, ShieldAlert, TrendingUp, TrendingDown, Minus, Trophy, Truck, Warehouse } from "lucide-react"
 import { LivraisonLaitSubTab } from "./LivraisonLaitSubTab"
@@ -118,8 +119,10 @@ function addDaysIso(iso: string, n: number): string {
 }
 
 export function LaitSubTab() {
+  // Lien direct (`?sub=cave`, catalogue des stocks) : ouvre ce sous-onglet.
+  const ongletUrl = ongletLaitDepuisSub(useSearchParams().get("sub"))
   return (
-    <Tabs defaultValue="collecte" className="space-y-4">
+    <Tabs defaultValue={ongletUrl ?? "collecte"} className="space-y-4">
       <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="collecte" className="flex items-center gap-1.5">
           <Milk className="h-4 w-4" />
@@ -1050,7 +1053,6 @@ function CellSaisie(props: {
         type="number"
         step="0.1"
         min="0"
-        max="100"
         value={v}
         disabled={props.saving || props.affecte}
         onChange={(e) => setV(e.target.value)}

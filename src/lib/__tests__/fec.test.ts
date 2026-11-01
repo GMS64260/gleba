@@ -364,3 +364,79 @@ describe("fec", () => {
     })
   })
 })
+
+// Revue du 2026-11-01 — un FEC déséquilibré d'un centime était annoncé
+// équilibré et restait téléchargeable : chaque ligne était
+// arrondie à part (24,99 € TTC à 20 % → 20,82 + 4,16 au débit) et le contrôle
+// tolérait un centime.
+describe("fec — arrondis au centime (revue 2026-11-01)", () => {
+  const depense = (overrides: Record<string, unknown> = {}) => ({
+    id: 14,
+    date: new Date("2026-06-10"),
+    description: "Petit matériel",
+    categorie: "materiel",
+    modeReglement: "Carte bancaire",
+    numeroPiece: null,
+    tauxTVA: 20,
+    montant: 24.99,
+    montantHT: null,
+    montantTVA: null,
+    fournisseurNom: null,
+    paye: true,
+    ...overrides,
+  })
+  const debitCredit = (lignes: ReturnType<typeof genererFec>) => ({
+    debit: lignes.map((l) => l.Debit),
+    credit: lignes.map((l) => l.Credit),
+  })
+
+  it("porte l'arrondi sur la TVA quand HT et TVA sont calculés depuis le TTC", () => {
+    const lignes = genererFec({ ventes: [], depenses: [depense()], factures: [] })
+
+    expect(debitCredit(lignes)).toEqual({
+      debit: ["20,83", "4,16", "0,00"],
+      credit: ["0,00", "0,00", "24,99"],
+    })
+    expect(validerEquilibre(lignes)).toMatchObject({ equilibre: true, ecart: 0, totalDebit: 24.99, totalCredit: 24.99 })
+  })
+
+  it("équilibre aussi HT et TVA déjà arrondis séparément à l'enregistrement", () => {
+    const lignes = genererFec({ ventes: [], depenses: [depense({ montantHT: 20.82, montantTVA: 4.16 })], factures: [] })
+
+    expect(debitCredit(lignes).debit).toEqual(["20,82", "4,17", "0,00"])
+    expect(validerEquilibre(lignes).equilibre).toBe(true)
+  })
+
+  it("équilibre une vente dont le HT non arrondi tombe sur un demi-centime", () => {
+    const lignes = genererFec({
+      ventes: [{
+        id: 3, date: new Date("2026-06-11"), description: "Vente", categorie: "legumes", modeReglement: "Espèces",
+        numeroPiece: null, tauxTVA: 20, montant: 24.99, montantHT: null, montantTVA: null, clientNom: null, paye: true,
+      }],
+      depenses: [],
+      factures: [],
+    })
+
+    expect(validerEquilibre(lignes)).toMatchObject({ equilibre: true, ecart: 0 })
+  })
+
+  it("n'absorbe pas un vrai déséquilibre des montants enregistrés", () => {
+    const lignes = genererFec({ ventes: [], depenses: [depense({ montantHT: 20, montantTVA: 4 })], factures: [] })
+
+    const v = validerEquilibre(lignes)
+    expect(v.equilibre).toBe(false)
+    expect(v.ecart).toBe(-0.99)
+    expect(v.erreursParEcriture).toHaveLength(1)
+  })
+
+  it("refuse un écart d'un seul centime au lieu de le tolérer", () => {
+    const lignes = genererFec({ ventes: [], depenses: [depense()], factures: [] })
+    lignes[0] = { ...lignes[0], Debit: "20,82" }
+
+    const v = validerEquilibre(lignes)
+    expect(v.equilibre).toBe(false)
+    expect(v.ecart).toBe(-0.01)
+    expect(v.totalDebit).toBe(24.98)
+    expect(v.totalCredit).toBe(24.99)
+  })
+})
