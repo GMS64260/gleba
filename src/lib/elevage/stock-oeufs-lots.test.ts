@@ -135,3 +135,50 @@ describe("stock d'œufs par lots — délai d'attente vétérinaire (cmsoeyhs5)"
     expect(stock.stats.bloquesVeto).toBe(0)
   })
 })
+
+// Revue du 2026-11-01 — une ponte datée de la fin du mois était comptée
+// commercialisable dès le 1er : stock et valorisation étaient surestimés.
+describe("stock d'œufs par lots — pontes futures (revue 2026-11-01)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.soinFindMany.mockResolvedValue([])
+    mocks.animalFindFirst.mockResolvedValue(null)
+    mocks.animalFindMany.mockResolvedValue([])
+  })
+
+  it("exclut du stock à date une ponte datée après aujourd'hui et la signale", async () => {
+    mocks.productionFindMany.mockResolvedValue([
+      ponte(10, "2026-10-30T00:00:00Z"),
+      ponte(11, "2026-11-28T00:00:00Z"),
+    ])
+
+    const stock = await computeStockOeufsParLots("user-1", new Date("2026-11-01T10:00:00Z"))
+
+    expect(stock.data.map((lot) => lot.id)).toEqual([10])
+    expect(stock.stats.commercialisables).toBe(12)
+    expect(stock.stats.stockPhysique).toBe(12)
+    expect(stock.stats.aVenir).toBe(12)
+    expect(stock.pontesFutures).toEqual([
+      expect.objectContaining({ id: 11, oeufs: 12, datePonte: new Date("2026-11-28T00:00:00Z") }),
+    ])
+  })
+
+  it("garde une ponte du jour même saisie avant minuit (heure de Paris)", async () => {
+    // 2026-11-01 23:30 à Paris = 22:30 UTC ; ponte datée du jour civil.
+    mocks.productionFindMany.mockResolvedValue([ponte(12, "2026-11-01T00:00:00Z")])
+
+    const stock = await computeStockOeufsParLots("user-1", new Date("2026-11-01T22:30:00Z"))
+
+    expect(stock.stats.commercialisables).toBe(12)
+    expect(stock.stats.aVenir).toBe(0)
+  })
+
+  it("ne croise pas les pontes futures avec les délais vétérinaires", async () => {
+    mocks.productionFindMany.mockResolvedValue([ponte(13, "2026-11-28T00:00:00Z")])
+
+    const stock = await computeStockOeufsParLots("user-1", new Date("2026-11-01T10:00:00Z"))
+
+    expect(stock.data).toHaveLength(0)
+    expect(mocks.soinFindMany).not.toHaveBeenCalled()
+  })
+})

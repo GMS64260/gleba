@@ -67,6 +67,18 @@ export async function POST(request: NextRequest) {
         if (ecartees.length > 0) {
           throw new Error(`${ecartees.length} collecte(s) sont écartées (temps d'attente vétérinaire) — non transformables.`)
         }
+        // Revue du 2026-11-01 — une collecte est affectée entière à un seul lot :
+        // le volume déclaré doit être celui des collectes choisies. L'API
+        // acceptait 1 L déclaré pour une collecte de 10 L, qui disparaissait
+        // ensuite du lait disponible. L'écran envoie déjà cette somme.
+        const volumeCollectes = collectes.reduce((total, c) => total + Number(c.quantiteLitres), 0)
+        if (Math.abs(volumeCollectes - data.volumeLaitUtiliseL) > 0.01) {
+          const litres = (v: number) => `${Math.round(v * 100) / 100} L`
+          throw new ErreurElevage(
+            `Le volume déclaré (${litres(data.volumeLaitUtiliseL)}) ne correspond pas aux collectes choisies (${litres(volumeCollectes)}). Une collecte est affectée en entier à une fabrication : déclarez ${litres(volumeCollectes)} ou changez la sélection.`,
+            422,
+          )
+        }
         collectesValides = collectes.map((c) => c.id)
       }
 
@@ -100,6 +112,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (err) {
+    if (err instanceof ErreurElevage) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('POST /api/elevage/lots-fromage error:', err)
     return NextResponse.json({ error: (err instanceof Error && err.message) || 'Erreur interne du serveur' }, { status: 400 })
   }

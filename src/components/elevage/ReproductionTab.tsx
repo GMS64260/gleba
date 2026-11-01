@@ -2014,7 +2014,9 @@ function SailliesSubTab({ year }: { year?: number } = {}) {
                 Alerte consanguinité au moment de la création.
               </CardDescription>
             </div>
-            <div className="flex items-end gap-2">
+            {/* Revue du 2026-11-01 — à 390 px ce groupe débordait (page de
+                472 px) : il passe à la ligne. */}
+            <div className="flex flex-wrap items-end gap-2">
               <select
                 className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
                 value={filtreStatut}

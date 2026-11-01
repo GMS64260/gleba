@@ -123,3 +123,86 @@ describe('PATCH /api/elevage/collectes-lait — lotFromageId', () => {
     }))
   })
 })
+
+// Revue du 2026-11-01 — la traite d'un grand lot de chèvres (120 L) était refusée
+// par une borne fixe de 100 L, même confirmée ; seul le plafond indicatif par
+// espèce et effectif doit demander confirmation, en saisie comme en correction.
+describe('collectes-lait — traite collective au-delà de 100 L', () => {
+  const troupeau = {
+    id: 77,
+    quantiteInitiale: 90,
+    quantiteActuelle: 90,
+    especeAnimale: { nom: 'Chèvre Alpine', production: 'lait', productions: ['Lait'] },
+  }
+  const post = (body: object) => POST(new NextRequest('http://localhost/api/elevage/collectes-lait', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ date: '2026-11-01', traite: 'Matin', lotId: 77, ...body }),
+  }))
+
+  beforeEach(() => {
+    mocks.lotFindFirst.mockResolvedValue(troupeau)
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([[77, { effectifCalcule: 90 }]]))
+    mocks.collecteCreate.mockImplementation(async ({ data }: { data: object }) => ({ id: 'n1', ...data }))
+  })
+
+  it('enregistre 120 L sous le plafond du troupeau sans confirmation', async () => {
+    mocks.plafondCollecteLait.mockReturnValue(720)
+    mocks.collecteFindFirst.mockResolvedValue(null)
+
+    const res = await post({ quantiteLitres: 120 })
+
+    expect(res.status).toBe(201)
+    expect(mocks.collecteCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ quantiteLitres: 120, lotId: 77 }) })
+  })
+
+  it('demande confirmation au-dessus du plafond, puis enregistre une fois confirmé', async () => {
+    mocks.plafondCollecteLait.mockReturnValue(100)
+    mocks.collecteFindFirst.mockResolvedValue(null)
+
+    const refus = await post({ quantiteLitres: 120 })
+    expect(refus.status).toBe(422)
+    expect((await refus.json()).code).toBe('VOLUME_LAIT_INHABITUEL')
+
+    const confirme = await post({ quantiteLitres: 120, confirmerVolumeInhabituel: true })
+    expect(confirme.status).toBe(201)
+  })
+
+  it('garde une borne technique contre les saisies absurdes', async () => {
+    const res = await post({ quantiteLitres: 25000, confirmerVolumeInhabituel: true })
+
+    expect(res.status).toBe(400)
+    expect(mocks.collecteCreate).not.toHaveBeenCalled()
+  })
+
+  it('applique le plafond indicatif à la correction du volume', async () => {
+    mocks.plafondCollecteLait.mockReturnValue(100)
+    mocks.collecteFindFirst.mockResolvedValue({
+      id: 'c1', userId: 'user-1', animalId: null, lotId: 77, quantiteLitres: 90, lotFromageId: null,
+      date: new Date('2026-11-01T00:00:00Z'),
+    })
+
+    const refus = await patch({ id: 'c1', quantiteLitres: 120 })
+    expect(refus.status).toBe(422)
+    expect(mocks.collecteUpdate).not.toHaveBeenCalled()
+
+    const confirme = await patch({ id: 'c1', quantiteLitres: 120, confirmerVolumeInhabituel: true })
+    expect(confirme.status).toBe(200)
+    const data = mocks.collecteUpdate.mock.calls[0][0].data
+    expect(data.quantiteLitres).toBe(120)
+    expect(data).not.toHaveProperty('confirmerVolumeInhabituel')
+  })
+
+  it('ne replafonne pas une correction qui ne change pas le volume', async () => {
+    mocks.plafondCollecteLait.mockReturnValue(100)
+    mocks.collecteFindFirst.mockResolvedValue({
+      id: 'c1', userId: 'user-1', animalId: null, lotId: 77, quantiteLitres: 150, lotFromageId: null,
+      date: new Date('2026-11-01T00:00:00Z'),
+    })
+
+    const res = await patch({ id: 'c1', quantiteLitres: 150, notes: 'traite confirmée' })
+
+    expect(res.status).toBe(200)
+    expect(mocks.plafondCollecteLait).not.toHaveBeenCalled()
+  })
+})
