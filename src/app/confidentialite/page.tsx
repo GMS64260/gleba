@@ -128,6 +128,13 @@ export default function ConfidentialitePage() {
             uniquement à cet affichage : Gleba n&apos;exécute aucun paiement et
             n&apos;a accès à aucun moyen de paiement.
           </li>
+          <li>
+            Relevés bancaires que vous importez au format CSV : leurs opérations
+            rejoignent votre comptabilité. Le fichier lui-même est conservé 30 jours
+            pour vous aider en cas d&apos;échec d&apos;import et améliorer sa lecture,
+            puis effacé automatiquement. Seul l&apos;administrateur de Gleba peut
+            l&apos;ouvrir, et uniquement pour l&apos;assistance.
+          </li>
         </ul>
 
         <h3>2.5 Photos, fichiers et documents</h3>
@@ -195,6 +202,7 @@ export default function ConfidentialitePage() {
           <li>Traiter les commandes et la facturation des boutiques.</li>
           <li>Vous envoyer les e-mails nécessaires au service (vérification d&apos;adresse, réinitialisation de mot de passe, confirmations).</li>
           <li>Vous adresser des informations sur le produit, uniquement si vous ne vous y êtes pas opposé, avec un lien de désabonnement en un clic dans chaque envoi.</li>
+          <li>Vous assister en cas de difficulté et corriger les défauts du service, par exemple un relevé bancaire que l&apos;import ne sait pas lire.</li>
           <li>Respecter les obligations légales, notamment comptables.</li>
         </ul>
         <p>
@@ -207,7 +215,7 @@ export default function ConfidentialitePage() {
           <li><strong>Exécution du contrat</strong> : compte, fonctionnalités, commandes.</li>
           <li><strong>Obligation légale</strong> : comptabilité, traçabilité, registres réglementaires.</li>
           <li><strong>Consentement</strong> : géolocalisation, notifications, cookies de mesure d&apos;audience, assistant IA.</li>
-          <li><strong>Intérêt légitime</strong> : sécurité du service et prévention des abus.</li>
+          <li><strong>Intérêt légitime</strong> : sécurité du service, prévention des abus, assistance et correction des défauts (fichiers de relevés bancaires conservés 30 jours).</li>
         </ul>
 
         <h2>5. Destinataires et sous-traitants</h2>
@@ -274,6 +282,7 @@ export default function ConfidentialitePage() {
             ou des données de l&apos;exploitation.
           </li>
           <li>Données comptables : 10 ans (Code de commerce, art. L123-22).</li>
+          <li>Fichiers de relevés bancaires importés : 30 jours, puis effacement automatique.</li>
           <li>Journaux de connexion : 12 mois.</li>
           <li>Consentement aux cookies : 13 mois au maximum (délibération CNIL 2020-091).</li>
         </ul>
@@ -351,7 +360,7 @@ export default function ConfidentialitePage() {
         </p>
 
         <p className="text-xs text-slate-500 mt-12">
-          Dernière mise à jour : 2026-10-28 — version 2.4.
+          Dernière mise à jour : 2026-11-01 — version 2.5.
         </p>
       </main>
     </div>

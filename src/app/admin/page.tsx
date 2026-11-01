@@ -7,7 +7,7 @@ import prisma from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp, Flag, Bell, ShieldAlert } from "lucide-react"
+import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp, Flag, Bell, ShieldAlert, FileSpreadsheet } from "lucide-react"
 import { AdminTabs } from "@/components/admin/AdminTabs"
 
 export default async function AdminPage() {
@@ -220,6 +220,26 @@ export default async function AdminPage() {
                 <Button variant="outline" className="w-full">
                   <ShieldAlert className="mr-2 h-4 w-4" />
                   Journal des erreurs
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5 text-emerald-700" />
+                Imports de relevés
+              </CardTitle>
+              <CardDescription>
+                Relevés CSV importés ou refusés, fichiers gardés 30 jours pour les rejouer
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/imports-releve">
+                <Button variant="outline" className="w-full">
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  Tentatives d’import
                 </Button>
               </Link>
             </CardContent>

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   importerReleve: vi.fn(),
   deconnecter: vi.fn(),
   connexions: vi.fn(),
+  tracer: vi.fn(),
 }))
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.auth }))
 vi.mock('@/lib/demo-garde', () => ({ estCompteDemo: vi.fn(async () => false) }))
@@ -24,6 +25,7 @@ vi.mock('@/lib/comptabilite/banque/service', () => ({
   validerOperationRevisee: vi.fn(),
 }))
 vi.mock('@/lib/comptabilite/banque/stripe-oauth', () => ({ deconnecterStripe: mocks.deconnecter }))
+vi.mock('@/lib/comptabilite/banque/tentatives', () => ({ enregistrerTentativeImport: mocks.tracer }))
 vi.mock('@/lib/prisma', () => ({
   default: {
     compteBancaire: { findMany: async () => [] },
@@ -32,6 +34,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }))
 import { GET, POST } from './route'
+import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 
 const session = { user: { id: 'u1', acteurId: 'u1', estProprietaireExploitation: true, peutEcrireExploitation: true } }
 const poster = async (corps: object) => {
@@ -61,6 +64,40 @@ describe('POST /api/comptabilite/banque', () => {
     expect((await res.json()).error).toBe('L’opération bancaire n’a pas pu être terminée.')
     expect(journal).toHaveBeenCalledWith('POST /api/comptabilite/banque error:', expect.objectContaining({ message: 'panne base fictive' }))
     expect(journal.mock.calls.flat().map(String).join(' ')).not.toContain('IBAN-FICTIF')
+    // La panne est tracée sans message interne ; le fichier reste rejouable.
+    expect(mocks.tracer).toHaveBeenCalledWith(expect.objectContaining({ statut: 'erreur', message: null, source: 'texte' }))
+  })
+
+  // 2026-11-01 : un relevé refusé ne laissait aucune trace ; le fichier part
+  // maintenant tel quel et chaque tentative est conservée 30 jours.
+  const releve = 'Date;Libellé;Débit;Crédit\n02/10/2026;Coop fictive;45,60;\n'
+  const fichier = Buffer.from(releve, 'latin1')
+  it('décode le fichier d’origine côté serveur et trace un import réussi avec ses octets', async () => {
+    mocks.importerReleve.mockResolvedValue({ importees: 1, dejaPresentes: 0 })
+    const res = await poster({ action: 'importer', compteId: 'compte-qa', fichier: fichier.toString('base64'), nomFichier: 'releve.csv' })
+    expect(res.status).toBe(200)
+    expect(mocks.importerReleve).toHaveBeenCalledWith('u1', 'compte-qa', releve)
+    const trace = mocks.tracer.mock.calls[0][0]
+    expect(trace).toMatchObject({ userId: 'u1', compteId: 'compte-qa', nomFichier: 'releve.csv', source: 'fichier', statut: 'importe', importees: 1, dejaPresentes: 0 })
+    expect(Buffer.from(trace.octets).equals(fichier)).toBe(true)
+  })
+  it('trace un relevé refusé avec le message montré à l’utilisateur', async () => {
+    mocks.importerReleve.mockRejectedValue(new ErreurReglement('Ligne 2 : Montant nul.', 400))
+    const res = await poster({ action: 'importer', compteId: 'compte-qa', fichier: fichier.toString('base64') })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Ligne 2 : Montant nul.')
+    expect(mocks.tracer).toHaveBeenCalledWith(expect.objectContaining({ statut: 'refuse', message: 'Ligne 2 : Montant nul.', source: 'fichier' }))
+  })
+  it.each([
+    ['sans fichier', {}, 400],
+    ['fichier et texte à la fois', { fichier: fichier.toString('base64'), csv: releve }, 400],
+    ['base64 invalide', { fichier: 'pas du base64 !' }, 400],
+    ['plus d’1 Mo une fois décodé', { fichier: Buffer.alloc(1_000_001, 65).toString('base64') }, 413],
+  ])('refuse un envoi %s sans rien tracer', async (_cas, corps, statut) => {
+    const res = await poster({ action: 'importer', compteId: 'compte-qa', ...corps })
+    expect(res.status).toBe(statut)
+    expect(mocks.importerReleve).not.toHaveBeenCalled()
+    expect(mocks.tracer).not.toHaveBeenCalled()
   })
 
   it('rend à l’écran le message et l’avertissement de la déconnexion Stripe', async () => {

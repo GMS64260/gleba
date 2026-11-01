@@ -6,10 +6,13 @@ export interface LigneReleve {
   montantCentimes: number
   reference: string
 }
+// Les exports bancaires commencent souvent par quelques lignes d'information
+// (titulaire, compte, solde) avant la ligne d'en-tête.
+const LIGNES_AVANT_ENTETE = 40
 function normaliser(s: string) {
   return s
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
@@ -45,12 +48,16 @@ function cellules(texte: string, separateur: string) {
   return lignes
 }
 function lireDate(s: string) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim())
-  const f = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim())
+  // Une heure éventuelle (export horodaté) est ignorée : seule la date compte.
+  const texte = s
+    .trim()
+    .replace(/[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/, '')
+  const m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(texte)
+  const f = /^(\d{1,2})([/.-])(\d{1,2})\2(\d{4}|\d{2})$/.exec(texte)
   if (!m && !f) throw new ErreurReglement('Date attendue au format AAAA-MM-JJ ou JJ/MM/AAAA.', 400)
-  const an = Number(m?.[1] ?? f![3]),
-    mois = Number(m?.[2] ?? f![2]),
-    jour = Number(m?.[3] ?? f![1])
+  const an = m ? Number(m[1]) : f![4].length === 2 ? 2000 + Number(f![4]) : Number(f![4]),
+    mois = Number(m ? m[2] : f![3]),
+    jour = Number(m ? m[3] : f![1])
   const date = new Date(Date.UTC(an, mois - 1, jour, 12))
   if (
     an < 1990 ||
@@ -62,44 +69,143 @@ function lireDate(s: string) {
     throw new ErreurReglement('Date bancaire invalide.', 400)
   return date
 }
+// Montant tel que l'écrivent les banques et Excel : « +320,00 », « 45,60 € »,
+// « 1.234,56 » ou « 1,234.56 ». Un séparateur de milliers n'est retiré que
+// devant deux décimales explicites : « 1,234 » reste refusé (trois décimales).
+function lireMontantReleve(valeur: string) {
+  let texte = valeur
+    .replace(/[\s  ]/g, '')
+    .replace(/^(?:€|eur)/i, '')
+    .replace(/(?:€|eur|euros?)$/i, '')
+  if (/^\+\d/.test(texte)) texte = texte.slice(1)
+  if (/^-?\d{1,3}(?:\.\d{3})+,\d{1,2}$/.test(texte)) texte = texte.replace(/\./g, '')
+  else if (/^-?\d{1,3}(?:,\d{3})+\.\d{1,2}$/.test(texte)) texte = texte.replace(/,/g, '')
+  return lireMontant(texte)
+}
+interface Colonnes {
+  date: number
+  libelle: number
+  montant: number
+  debit: number
+  credit: number
+  ref: number
+}
+function reperer(noms: string[]): Colonnes | null {
+  const exact = (...aliases: string[]) => noms.findIndex((v) => aliases.includes(v))
+  const motif = (...motifs: RegExp[]) => {
+    for (const m of motifs) {
+      const i = noms.findIndex((v) => m.test(v))
+      if (i >= 0) return i
+    }
+    return -1
+  }
+  const sansUnite = (v: string) => v.replace(/(?:en)?(?:euros?|eur)$/, '')
+  // Les noms historiques passent d'abord : un relevé déjà accepté garde les
+  // mêmes colonnes, donc les mêmes références d'import (aucun doublon au rejeu).
+  let date = exact('date', 'dateoperation', 'datecomptable')
+  if (date < 0)
+    date = motif(/^date(?:de)?l?operation/, /^date(?:de)?compta/, /^date(?!(?:de)?valeur)/)
+  let libelle = exact('libelle', 'description', 'libelleoperation')
+  if (libelle < 0) libelle = motif(/^libelle/, /^intitule/, /^detail/, /contrepartie/)
+  let montant = exact('montant', 'amount'),
+    debit = exact('debit'),
+    credit = exact('credit')
+  if (montant < 0 && (debit < 0 || credit < 0)) {
+    // « Débit euros », « Crédit euros » (Crédit Agricole)…
+    const d = noms.findIndex((v) => ['debit', 'debits'].includes(sansUnite(v)))
+    const c = noms.findIndex((v) => ['credit', 'credits'].includes(sansUnite(v)))
+    if (d >= 0 && c >= 0) {
+      debit = d
+      credit = c
+    } else {
+      // « Montant(EUROS) » plutôt que « Montant(FRANCS) » (La Banque Postale),
+      // « Montant de l'opération » (Société Générale), « Montant operation » (BNP).
+      const candidats = noms
+        .map((v, i) => ({ v, i }))
+        .filter(
+          ({ v }) =>
+            /^(?:montant|amount)/.test(v) && !/franc|frf|tva|vat|solde|devise|^montantht$/.test(v),
+        )
+      montant = (candidats.find(({ v }) => v.includes('eur')) ?? candidats[0])?.i ?? -1
+    }
+  }
+  const ref = exact('reference', 'id', 'identifiant', 'referenceoperation')
+  if (date < 0 || libelle < 0 || (montant < 0 && (debit < 0 || credit < 0))) return null
+  return { date, libelle, montant, debit, credit, ref }
+}
+function trouverEntete(texte: string) {
+  const premiere = texte.split(/\r?\n/, 1)[0] ?? ''
+  const prefere = premiere.includes(';') ? ';' : premiere.includes('\t') ? '\t' : ','
+  let erreurPreferee: unknown = null
+  for (const sep of [prefere, ...[';', '\t', ','].filter((s) => s !== prefere)]) {
+    let rows: string[][]
+    try {
+      rows = cellules(texte, sep)
+    } catch (e) {
+      if (sep === prefere) erreurPreferee = e
+      continue
+    }
+    for (let i = 0; i < Math.min(rows.length, LIGNES_AVANT_ENTETE); i++) {
+      const colonnes = reperer(rows[i].map(normaliser))
+      if (colonnes) return { rows, entete: i, colonnes }
+    }
+  }
+  if (erreurPreferee) throw erreurPreferee
+  // Montrer ce qui a été lu aide l'utilisateur et le support à voir le défaut.
+  const lignes = texte.split(/\r?\n/).filter((l) => l.trim())
+  const apercu = (
+    lignes.slice(0, LIGNES_AVANT_ENTETE).find((l) => /date/i.test(l)) ??
+    lignes[0] ??
+    ''
+  )
+    .trim()
+    .slice(0, 120)
+  throw new ErreurReglement(
+    'Colonnes requises : Date, Libellé, Montant (ou Débit et Crédit). Référence est facultative.' +
+      (texte.includes('�')
+        ? ' Le fichier semble mal encodé : réenregistrez-le au format « CSV UTF-8 ».'
+        : '') +
+      (apercu ? ' En-tête lu : « ' + apercu + ' ».' : ''),
+    400,
+  )
+}
 export function lireReleveCsv(texte: string): LigneReleve[] {
   if (Buffer.byteLength(texte, 'utf8') > 1_000_000)
     throw new ErreurReglement('Le relevé doit faire moins de 1 Mo.', 413)
-  texte = texte.replace(/^\uFEFF/, '')
-  const entete = texte.split(/\r?\n/, 1)[0] ?? ''
-  const sep = entete.includes(';') ? ';' : entete.includes('\t') ? '\t' : ','
-  const rows = cellules(texte, sep)
-  const noms = (rows.shift() ?? []).map(normaliser)
-  const trouver = (...aliases: string[]) => noms.findIndex((v) => aliases.includes(v))
-  const date = trouver('date', 'dateoperation', 'datecomptable'),
-    libelle = trouver('libelle', 'description', 'libelleoperation')
-  const montant = trouver('montant', 'amount'),
-    debit = trouver('debit'),
-    credit = trouver('credit')
-  const ref = trouver('reference', 'id', 'identifiant', 'referenceoperation')
-  if (date < 0 || libelle < 0 || (montant < 0 && (debit < 0 || credit < 0)))
-    throw new ErreurReglement(
-      'Colonnes requises : Date, Libellé, Montant (ou Débit et Crédit). Référence est facultative.',
-      400,
-    )
-  if (!rows.length || rows.length > 5000)
+  texte = texte.replace(/^﻿/, '')
+  const { rows, entete, colonnes } = trouverEntete(texte)
+  const { date, libelle, montant, debit, credit, ref } = colonnes
+  const largeur = rows[entete].length
+  const montants = montant >= 0 ? [montant] : [debit, credit]
+  const vide = (row: string[], i: number) => !(row[i] ?? '').trim()
+  // Une ligne sans date ni montant (titre, total, ligne de séparation) n'est
+  // pas une opération ; toute autre ligne illisible arrête l'import.
+  const operations = rows
+    .slice(entete + 1)
+    .map((row, index) => ({ row, numero: entete + index + 2 }))
+    .filter(({ row }) => !(vide(row, date) && montants.every((i) => vide(row, i))))
+  if (!operations.length || operations.length > 5000)
     throw new ErreurReglement('Le relevé doit contenir de 1 à 5 000 opérations.', 400)
   const repetitions = new Map<string, number>()
   const references = new Map<string, string>()
-  return rows.map((row, index) => {
+  return operations.map(({ row: brute, numero }) => {
     try {
-      if (row.length !== noms.length)
+      // Cellules vides en fin de ligne (Excel) tolérées ; une cellule remplie
+      // au-delà de l'en-tête signale un libellé non cité qui décale les colonnes.
+      if (brute.length > largeur && brute.slice(largeur).some((v) => v.trim()))
         throw new ErreurReglement('Nombre de colonnes incorrect.', 400)
+      const row = Array.from({ length: largeur }, (_, i) => brute[i] ?? '')
       const d = lireDate(row[date])
       const label = row[libelle].trim()
       if (!label || label.length > 500)
         throw new ErreurReglement('Libellé requis, 500 caractères maximum.', 400)
       let cents: number
-      if (montant >= 0) cents = lireMontant(row[montant])
+      if (montant >= 0) cents = lireMontantReleve(row[montant])
       else {
-        const deb = row[debit].trim() ? lireMontant(row[debit]) : 0,
-          cred = row[credit].trim() ? lireMontant(row[credit]) : 0
-        if (deb < 0 || cred < 0 || (deb > 0 && cred > 0))
+        // Un débit peut être écrit négatif (Caisse d'Épargne, Banque Populaire).
+        const deb = row[debit].trim() ? Math.abs(lireMontantReleve(row[debit])) : 0,
+          cred = row[credit].trim() ? lireMontantReleve(row[credit]) : 0
+        if (cred < 0 || (deb > 0 && cred > 0))
           throw new ErreurReglement('Une seule colonne Débit ou Crédit positive est attendue.', 400)
         cents = cred - deb
       }
@@ -118,7 +224,7 @@ export function lireReleveCsv(texte: string): LigneReleve[] {
       return { date: d, libelle: label, montantCentimes: cents, reference }
     } catch (e) {
       if (e instanceof ErreurReglement)
-        throw new ErreurReglement('Ligne ' + (index + 2) + ' : ' + e.message, e.status)
+        throw new ErreurReglement('Ligne ' + numero + ' : ' + e.message, e.status)
       throw e
     }
   })

@@ -2,8 +2,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
-const identite = vi.hoisted(() => ({ id: '', lectureSeule: false, proprietaire: true }))
+const identite = vi.hoisted(() => ({ id: '', lectureSeule: false, proprietaire: true, admin: false }))
 vi.mock('@/lib/auth-utils', () => ({
+  requireAdminApi: async () =>
+    identite.admin
+      ? { error: null, session: { user: { id: identite.id, role: 'ADMIN' } } }
+      : { error: new Response(JSON.stringify({ error: 'Accès interdit' }), { status: 403 }), session: null },
   requireAuthApi: async () => ({
     error: null,
     session: {
@@ -70,6 +74,7 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     identite.id = u.id
     identite.lectureSeule = false
     identite.proprietaire = true
+    identite.admin = false
   })
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -1257,4 +1262,71 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
     expect(importee).toMatchObject({ compteStripeId: compteStripe, actif: false, jetonChiffre: '' })
     expect(importee.id).not.toBe(cxB)
   }, 20000)
+
+  it('conserve chaque import de relevé avec ses octets d’origine, le rejoue pour l’admin et le purge après 30 jours', async () => {
+    const banque = await import('@/app/api/comptabilite/banque/route')
+    const admin = await import('@/app/api/admin/imports-releve/route')
+    const fichierAdmin = await import('@/app/api/admin/imports-releve/[id]/fichier/route')
+    const { purgerTentativesImport } = await import('@/lib/comptabilite/banque/tentatives')
+    const c = (
+      await json(
+        (await banque.POST(req('/api/comptabilite/banque', { action: 'compte', nom: 'Compte fictif', devise: 'EUR' })))!,
+        201,
+      )
+    ).data
+    // Export fictif en Windows-1252, une ligne d'information avant l'en-tête.
+    const lisible = Buffer.from(
+      'Téléchargement du 01/11/2026;\n\nDate;Libellé;Débit euros;Crédit euros;\n02/10/2026;"PAIEMENT CARTE\nCOOP FICTIVE";45,60;;\n',
+      'latin1',
+    )
+    const illisible = Buffer.from('Date;Opération\n02/10/2026;A\n', 'latin1')
+    const importer = async (octets: Buffer, nomFichier?: string) =>
+      (await banque.POST(
+        req('/api/comptabilite/banque', { action: 'importer', compteId: c.id, fichier: octets.toString('base64'), nomFichier }),
+      ))!
+    expect(await json(await importer(lisible, 'releve-ca.csv'))).toMatchObject({ importees: 1, dejaPresentes: 0 })
+    expect((await json(await importer(illisible), 400)).error).toContain('Colonnes requises')
+    const traces = await db.tentativeImportReleve.findMany({ where: { userId: identite.id } })
+    const reussie = traces.find((t) => t.statut === 'importe')!,
+      refusee = traces.find((t) => t.statut === 'refuse')!
+    expect(traces).toHaveLength(2)
+    expect(reussie).toMatchObject({ compteId: c.id, nomFichier: 'releve-ca.csv', source: 'fichier', importees: 1, dejaPresentes: 0 })
+    expect(Buffer.from(reussie.contenu!).equals(lisible)).toBe(true)
+    expect(Buffer.from(refusee.contenu!).equals(illisible)).toBe(true)
+    expect(refusee.message).toContain('Colonnes requises')
+
+    // Réservé à l'administrateur : liste sans contenu, rejeu sans écriture, fichier brut.
+    expect((await admin.GET(req('/api/admin/imports-releve'))).status).toBe(403)
+    identite.admin = true
+    const liste = (await json(await admin.GET(req('/api/admin/imports-releve?statut=refuse')))).data
+    expect(liste.map((t: { id: string }) => t.id)).toContain(refusee.id)
+    expect(liste.every((t: { statut: string; contenu?: unknown; fichierConserve: boolean }) => t.statut === 'refuse' && t.contenu === undefined)).toBe(true)
+    const operationsAvant = await db.operationBancaire.count({ where: { userId: identite.id } })
+    const rejeu = (await json(await admin.POST(req('/api/admin/imports-releve', { ids: [reussie.id, refusee.id] })))).data
+    expect(rejeu).toEqual([
+      { id: reussie.id, statutInitial: 'importe', lisible: true, operations: 1, du: '2026-10-02', au: '2026-10-02', netCentimes: -4560 },
+      { id: refusee.id, statutInitial: 'refuse', lisible: false, message: expect.stringContaining('Colonnes requises') },
+    ])
+    expect(await db.operationBancaire.count({ where: { userId: identite.id } })).toBe(operationsAvant)
+    const brut = await fichierAdmin.GET(req('/api/admin/imports-releve/' + reussie.id + '/fichier'), {
+      params: Promise.resolve({ id: reussie.id }),
+    })
+    expect(brut.status).toBe(200)
+    expect(brut.headers.get('content-type')).toBe('application/octet-stream')
+    expect(Buffer.from(await brut.arrayBuffer()).equals(lisible)).toBe(true)
+
+    // Purge après 30 jours, et effacement avec le compte.
+    await db.tentativeImportReleve.update({
+      where: { id: refusee.id },
+      data: { createdAt: new Date(Date.now() - 31 * 86_400_000) },
+    })
+    await purgerTentativesImport()
+    expect((await db.tentativeImportReleve.findMany({ where: { userId: identite.id } })).map((t) => t.id)).toEqual([reussie.id])
+    const autre = await db.user.create({ data: { email: 'banque-' + randomUUID() + '@example.test', emailVerified: true } })
+    await db.tentativeImportReleve.create({
+      data: { userId: autre.id, compteId: 'x', tailleOctets: 1, empreinte: 'x', source: 'texte', statut: 'refuse', contenu: Buffer.from('x') },
+    })
+    await db.user.delete({ where: { id: autre.id } })
+    expect(await db.tentativeImportReleve.count({ where: { userId: autre.id } })).toBe(0)
+  })
 })
