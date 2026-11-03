@@ -92,6 +92,7 @@ export async function seedVerger(ctx: Contexte) {
   const { lotsPourCommerce, nbLots } = await seedRecoltes(ctx, ids)
   const transformes = await seedTransformations(ctx)
   await seedBois(ctx, ids)
+  await seedHaie(ctx)
 
   ctx.partage.verger = { lotsFruitsPourCommerce: lotsPourCommerce, lotsTransformesPourCommerce: transformes }
   journal(`Verger : ${ARBRES.length} arbres, ${nbOperations} opérations d'entretien, ${nbLots} lots de fruits, ${transformes.length} produits transformés`)
@@ -222,6 +223,41 @@ async function seedTransformations(ctx: Contexte) {
   }
   delete ctx.partage.vergerEnAttente
   return crees
+}
+
+/**
+ * Haie bocagère plantée au dernier hiver passé le long de la pâture (programme
+ * de plantation de haies), en suivi de reprise. Étapes de l'app pour une haie
+ * (ETAPES_TYPES.haie) : le passé est fait, le reste planifié.
+ */
+async function seedHaie(ctx: Contexte) {
+  const annee = anneeDerniere(12, 5)
+  const plantation = jour(annee, 12, 5)
+  const campagne = await prisma.campagnePlantation.create({
+    data: {
+      userId: ctx.userId, nom: "Haie bocagère du Grand Pré", typeFormation: "haie", nature: "boisement", parcelleGeoId: ctx.parcelles.P,
+      essenceLibre: "Mélange champêtre : charme, noisetier, érable champêtre, cornouiller sanguin, prunellier, viorne obier",
+      nombrePlants: 240, ecartementRang: 1, ecartementPlant: 1, typePlant: "Fléché", labelProvenance: "Végétal Local", pepiniere: "Pépinière forestière de la Sèvre (fictive)",
+      prixUnitaire: 1.6, budgetPrevu: 520, coutReel: 0, aidesObtenues: "Programme régional de plantation de haies (plants et paillage pris en charge)", montantAides: 480,
+      statut: "suivi", datePlantationPrevue: plantation, datePlantationReelle: plantation, protectionType: "Paillage biodégradable et manchons anti-lapins",
+      objectifs: "Brise-vent pour la pâture, abri des auxiliaires et des pollinisateurs, ombre pour les chèvres, bois raméal fragmenté.",
+      notes: "120 m linéaires en double rang, plantés en quinconce avec les enfants de l'école voisine.",
+      ...(passe(plusJours(plantation, 180)) ? { tauxReprise: 94, tauxRepriseAn1: 94, nbPlantsRepriseAn1: 226, dateDernObservation: plusJours(plantation, 180) } : {}),
+    },
+  })
+  const etapes: Array<[string, string, number]> = [
+    ["preparation_sol", "Préparation linéaire (sous-solage)", -45], ["plantation", "Plantation de la haie", 0],
+    ["protection_gibier", "Paillage / protection", 7], ["arrosage", "Arrosage premier été", 120],
+    ["evaluation", "Évaluation reprise", 180], ["regarnissage", "Regarnissage", 365],
+  ]
+  for (const [i, [type, description, offset]] of etapes.entries()) {
+    const datePrevue = plusJours(plantation, offset)
+    const fait = passe(datePrevue)
+    await prisma.etapeCampagne.create({ data: { userId: ctx.userId, campagneId: campagne.id, type, ordre: i, description, datePrevue, fait, dateRealisation: fait ? datePrevue : null, ...(type === "plantation" ? { dureeMinutes: 360, nbPersonnes: 6 } : {}) } })
+  }
+  if (passe(plusJours(plantation, 180))) {
+    await prisma.observationCampagne.create({ data: { userId: ctx.userId, campagneId: campagne.id, date: plusJours(plantation, 180), nbVivants: 226, nbMorts: 9, nbManquants: 5, tauxReprise: 94, hauteurMoyenneCm: 68, vigueur: "bonne", notes: "Quelques prunelliers abroutis par les lapins avant la pose des manchons ; regarnissage prévu à l'automne." } })
+  }
 }
 
 /** Bois d'élagage des noyers (taille de formation de l'hiver), en stock. */

@@ -372,10 +372,16 @@ async function recolter(ctx: Contexte, cultureId: number, c: CultureCalculee, lo
   return { total: ecrites.length, enStock }
 }
 
-/** Arrosages notés (traces, comme l'app les écrit) : la veille pour les cultures sous abri en place. */
+/**
+ * Arrosages notés (traces, comme l'app les écrit) : la veille, pour toutes les
+ * cultures en place. Le conseil d'irrigation retient aussi les espèces
+ * gourmandes en eau (choux, poireaux) et se calcule sur la météo réelle : un
+ * arrosage noté la veille est ce qu'un maraîcher ferait après une semaine
+ * sèche, et évite des « À arroser » en rouge sur toute la ferme.
+ */
 async function seedIrrigation(ctx: Contexte) {
   const enPlace = await prisma.culture.findMany({
-    where: { userId: ctx.userId, aIrriguer: true, terminee: null, OR: [{ plantationFaite: true }, { semisFait: true }] },
+    where: { userId: ctx.userId, terminee: null, annee: { gte: Y - 1 }, OR: [{ plantationFaite: true }, { semisFait: true }] },
     select: { id: true, planche: { select: { nom: true } } },
   })
   const hier = ilYa(1, 7)
@@ -456,11 +462,13 @@ async function seedSuiviCultural(ctx: Contexte, plancheId: Map<string, string>) 
     await prisma.intervention.create({ data: { userId, date: datePrevue, datePrevue, type, cultureId: c.id, plancheId: c.plancheId, description, fait: false } })
   }
 
-  // Stock de semences (graines en g, prix au gramme).
+  // Stock de semences (graines en g, prix au gramme). L'alerte « stocks bas »
+  // de la comptabilité compte tout lot sous 100 g, quel que soit son seuil
+  // (api/comptabilite/stats) : on ne garde que les semences achetées au poids.
   const semences: Array<[string, number, number, number]> = [
-    ["Carotte Nantaise", 120, 40, 0.35], ["Carotte Touchon", 90, 40, 0.38], ["Mâche verte", 260, 100, 0.12], ["Radis de 18 jours", 320, 100, 0.06],
+    ["Carotte Nantaise", 150, 40, 0.35], ["Carotte Touchon", 120, 40, 0.38], ["Mâche verte", 260, 100, 0.12], ["Radis de 18 jours", 320, 100, 0.06],
     ["Épinard Géant d'Hiver", 420, 150, 0.05], ["Haricot Contender", 1500, 500, 0.03], ["Petit pois-Merveille de Kelvedon", 1800, 500, 0.025],
-    ["Fève Aguadulce", 2600, 1000, 0.018], ["Poireau Bleu de Solaise", 35, 10, 1.1], ["Laitue Batavia", 14, 5, 2.4], ["Tomate Coeur de Boeuf", 3, 1, 9.5], ["Basilic Grand Vert", 18, 5, 1.6],
+    ["Fève Aguadulce", 2600, 1000, 0.018], ["Haricot-Coco de Prague", 900, 300, 0.03],
   ]
   for (const [varieteId, stockGraines, stockMinGraines, coutUnitaire] of semences) {
     const v = await prisma.variete.findUnique({ where: { id: varieteId }, select: { id: true } })
