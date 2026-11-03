@@ -83,6 +83,37 @@ describe("GET /api/elevage/analyse-couts — coûts unitaires par atelier", () =
     expect(poule?.metriques.coutParKgCarcasse).toBeNull()
   })
 
+  it.each([0.3, 0])("valorise l'aliment au prix de la ferme (%s €), dans l'atelier comme dans le lot", async (coutUnitaire) => {
+    mocks.consommationFindMany.mockResolvedValue([{
+      lotId: 1, animalId: null, lot: { especeAnimaleId: "poule" }, animal: null,
+      quantite: 100, aliment: { prix: 0.8, userStocks: [{ coutUnitaire, prix: 0.5 }] },
+    }])
+    const json = await (await GET(request())).json()
+    const coutLot = json.data[0].couts.alimentation
+    const coutAtelier = json.ateliers.find((a: { code: string }) => a.code === "poule").couts.alimentation
+    expect(coutAtelier).toBe(100 * coutUnitaire)
+    expect(coutLot).toBe(coutAtelier)
+  })
+
+  it("ne valorise pas comme produits des œufs datés après aujourd'hui", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-11-03T10:00:00Z"))
+    try {
+      const pontes = [
+        { lotId: 1, animalId: null, quantite: 20, date: new Date("2026-11-03") },
+        { lotId: 1, animalId: null, quantite: 44, date: new Date("2026-11-28") },
+      ]
+      mocks.productionOeufFindMany.mockImplementation(async ({ where }) =>
+        pontes.filter(p => p.date >= where.date.gte && p.date <= where.date.lte),
+      )
+      const json = await (await GET(request())).json()
+      expect(atelierDe(json, "poule")?.production.oeufs).toBe(20)
+      expect(json.data[0].metriques.totalOeufs).toBe(20)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("expose un coût par kg de carcasse et agrège le poids abattu", async () => {
     mocks.abattageFindMany.mockResolvedValue([
       { lotId: 1, animalId: null, prixVente: 90, poidsCarcasse: 12.5, quantite: 1 },

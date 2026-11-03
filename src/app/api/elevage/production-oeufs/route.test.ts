@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   productionFindFirst: vi.fn(),
   productionCreate: vi.fn(),
   productionUpdate: vi.fn(),
+  productionFindMany: vi.fn(),
+  productionAggregate: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
 }))
 
@@ -25,12 +27,35 @@ vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: mocks.reco
 vi.mock("@/lib/prisma", () => ({
   default: {
     lotAnimaux: { findFirst: mocks.lotFindFirst },
-    productionOeuf: { findFirst: mocks.productionFindFirst, create: mocks.productionCreate, update: mocks.productionUpdate },
+    productionOeuf: { findFirst: mocks.productionFindFirst, create: mocks.productionCreate, update: mocks.productionUpdate, findMany: mocks.productionFindMany, aggregate: mocks.productionAggregate },
     animal: { findFirst: vi.fn() },
   },
 }))
 
-import { PATCH, POST } from "./route"
+import { GET, PATCH, POST } from "./route"
+
+it("la liste garde une ponte future corrigeable sans la compter comme produite", async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date("2026-11-03T10:00:00Z"))
+  try {
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    const pontes = [
+      { id: 1, date: new Date("2026-11-03"), quantite: 20 },
+      { id: 2, date: new Date("2026-11-28"), quantite: 44 },
+    ]
+    mocks.productionFindMany.mockResolvedValue(pontes)
+    mocks.productionAggregate.mockImplementation(async ({ where }) => ({
+      _count: 1, _sum: { quantite: pontes.filter(p => p.date >= where.date.gte && p.date <= where.date.lte).reduce((n, p) => n + p.quantite, 0) },
+    }))
+    const res = await GET(new NextRequest("http://localhost/api/elevage/production-oeufs?annee=2026"))
+    const json = await res.json()
+    expect(res.status).toBe(200)
+    expect(json.data.map((p: { id: number }) => p.id)).toEqual([1, 2])
+    expect(json.stats.total).toBe(20)
+  } finally {
+    vi.useRealTimers()
+  }
+})
 
 const LOT_PINTADES = {
   id: 71,

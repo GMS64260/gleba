@@ -20,6 +20,7 @@ import { alerteSaisonCulture, fenetreImplantation } from '@/lib/cultures/saison-
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
 import { estVisibleReferentiel } from '@/lib/referentiel-communaute'
+import { finDeCycle } from '@/lib/cultures/fenetre-recolte'
 
 const CULTURE_SELECT = {
   id: true,
@@ -29,6 +30,7 @@ const CULTURE_SELECT = {
   dateSemis: true,
   datePlantation: true,
   dateRecolte: true,
+  finRecolte: true,
   semisFait: true,
   plantationFaite: true,
   recolteFaite: true,
@@ -286,12 +288,15 @@ export async function getTachesPotager(
   ]
 
   const recoltes = [
-    ...recoltesRetard.map(c => formatRecolte(c, joursRetard(c.dateRecolte!, refRetard))),
+    // La récolte reste à faire pendant sa fenêtre, mais n'est en retard
+    // qu'après sa fin. Sans fenêtre, le début reste la seule échéance connue.
+    ...recoltesRetard.map(c => formatRecolte(c, joursRetard(finDeCycle(c)!, refRetard))),
     ...recoltesSemaine.map(c => formatRecolte(c, 0)),
   ]
 
   // Un arrosage n'est jamais en retard : le besoin se recalcule chaque jour.
-  const enRetardTotal = semisRetard.length + plantationsRetard.length + recoltesRetard.length
+  const enRetardTotal = semisRetard.length + plantationsRetard.length
+    + recoltes.filter(r => r.retardJours > 0).length
 
   return {
     semis,

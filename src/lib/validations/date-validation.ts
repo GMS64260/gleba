@@ -7,6 +7,7 @@ import { differenceInDays } from 'date-fns'
 import { calculerDateDepuisSemaine, dateSemaineChrono } from '../assistant-helpers'
 import { datesDepuisItp } from '../cultures/dates-itp'
 import { jourCivilStocke } from '../jour-civil'
+import { erreurFinRecolte } from '../cultures/fenetre-recolte'
 import {
   alerteSaisonCulture,
   etapeImplantation,
@@ -64,6 +65,7 @@ export function validateCultureDates(data: {
   dateSemis?: Date | string | null
   datePlantation?: Date | string | null
   dateRecolte?: Date | string | null
+  finRecolte?: Date | string | null
   itp?: (ItpSaison & {
     semaineSemis?: number | null
     semainePlantation?: number | null
@@ -79,6 +81,8 @@ export function validateCultureDates(data: {
   const dateSemis = data.dateSemis ? new Date(data.dateSemis) : null
   const datePlantation = data.datePlantation ? new Date(data.datePlantation) : null
   const dateRecolte = data.dateRecolte ? new Date(data.dateRecolte) : null
+  const erreurFin = erreurFinRecolte(data)
+  if (erreurFin) errors.push(erreurFin)
 
   // 1. Vérification ordre chronologique
   if (dateSemis && datePlantation) {

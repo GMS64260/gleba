@@ -405,6 +405,7 @@ export async function POST(request: NextRequest) {
           dateSemis: data.dateSemis,
           datePlantation: data.datePlantation,
           dateRecolte: data.dateRecolte,
+          finRecolte: data.finRecolte,
           itp: itpCalibre,
           annee,
         })

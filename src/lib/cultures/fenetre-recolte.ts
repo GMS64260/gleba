@@ -32,6 +32,18 @@ import { dateJourSeul, jourCivilStocke } from '@/lib/jour-civil'
 /** Millisecondes dans une journée — les fenêtres se comptent en jours civils. */
 const JOURS_PAR_SEMAINE = 7
 
+/** Une fenêtre saisie se compare en jours civils, comme les champs du formulaire. */
+export function erreurFinRecolte(c: {
+  dateRecolte?: Date | string | null
+  finRecolte?: Date | string | null
+}): string | null {
+  const debut = jourCivilStocke(c.dateRecolte)
+  const fin = jourCivilStocke(c.finRecolte)
+  return debut && fin && fin < debut
+    ? 'La fin de récolte doit être le même jour ou après le début de récolte.'
+    : null
+}
+
 export interface SourceFenetreItp {
   /** Semaine ISO de début de récolte au référentiel (1-52). */
   semaineRecolte?: number | null

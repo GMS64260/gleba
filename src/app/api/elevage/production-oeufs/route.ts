@@ -12,6 +12,7 @@ import { productionOeufsSchema } from '@/lib/validations/elevage-production-oeuf
 import { seuilCollecteMaxJour } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { Prisma } from '@prisma/client'
+import { finJourLivraison } from '@/lib/commercial/dates-stock'
 
 const LOT_PLAFOND_SELECT = {
   id: true,
@@ -112,7 +113,11 @@ export async function GET(request: NextRequest) {
 
     // Stats agrégées
     const stats = await prisma.productionOeuf.aggregate({
-      where,
+      // Les lignes futures restent dans la liste pour être corrigées, comme
+      // dans l'alerte du stock, mais ne constituent pas une production acquise.
+      where: { ...where, date: { ...date, lte: new Date(Math.min(
+        (date.lte as Date).getTime(), finJourLivraison(new Date()).getTime(),
+      )) } },
       _sum: {
         quantite: true,
         casses: true,

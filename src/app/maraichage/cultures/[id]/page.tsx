@@ -37,7 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
-import { cultureUpdateFormSchema, type UpdateCultureInput } from "@/lib/validations"
+import { cultureUpdateFormSchemaPour, type UpdateCultureInput } from "@/lib/validations"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 import { AIDE_QUANTITE_PLANTS, libelleQuantitePlants, useQuantiteManuelle } from "@/hooks/use-quantite-manuelle"
 import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
@@ -111,7 +111,9 @@ export default function EditCulturePage() {
   const form = useForm<UpdateCultureInput>({
     // QA cmsfxvbab — schéma formulaire : bloque récolte < semis AVANT le PUT,
     // avec message inline sous le champ.
-    resolver: zodResolver(cultureUpdateFormSchema),
+    resolver: (values, context, options) => zodResolver(
+      cultureUpdateFormSchemaPour(fenetreStockeeRef.current),
+    )(values, context, options),
     defaultValues: {
       especeId: "",
       varieteId: null,
