@@ -1,31 +1,45 @@
-# Compte démo Gleba — « Ferme du Bois Joli » (scénario v2, 2026-07-26)
+# Compte démo Gleba — « Ferme du Bois Joli » (scénario v3, 2026-11-03)
 
-> Fiche scénario pour démos commerciales, captures marketing et tests prospects.
+> Fiche scénario pour les démonstrations, les captures et les visiteurs.
 > Toutes les données de `demo@gleba.fr` doivent rester cohérentes avec ce document.
-> **Le scénario est l'autorité ; le code (`prisma/seed-demo.ts`) est l'implémentation.**
+> **Le scénario est l'autorité ; le code (`prisma/seed-demo.ts` et `prisma/demo/`) est l'implémentation.**
 
-Refonte v2 : jeu de données **complet et evergreen** couvrant tous les modules ayant
-évolué (plan 2D vivant, caprin laitier pro P20-P27, élevages de compagnie/équins/NAC,
-comptabilité régime réel + TVA + factures + FEC). Remplace le scénario figé « au
-14 mai » devenu obsolète et pollué par les tests utilisateurs.
+La v3 remplace la v2 (2026-07-26). Celle-ci posait toutes les dates par
+rapport au jour du reseed (« récolte dans 5 jours ») : relancée en novembre,
+elle montrait des tomates plantées en août en pleine récolte. Les écritures
+étaient faites à la main, si bien qu'une partie des écrans (déclarations
+d'élevage, cave, banque, stock d'œufs) ne correspondait à aucune saisie
+possible dans l'application.
 
 ---
 
-## Principe evergreen (dates relatives)
+## Principes
 
-Le seed **ne fige aucune date en dur**. Tout est calculé par rapport à la **date de
-reseed** (`now`) :
-
-- **Année courante `Y`** = année de reseed. Campagne de l'année en cours, activité
-  **YTD (1er janvier → aujourd'hui)** : un visiteur voit toujours une ferme vivante.
-- **Historique `Y-1`** = année complète précédente (synthèses mensuelles) pour alimenter
-  les comparatifs N/N-1 des tableaux de bord.
-- Le **cycle** cultural reste agronomiquement juste (semis → +6 sem. plantation →
-  +8 sem. récolte) ; seule l'ancre calendaire suit `now`. Rejouer le seed suffit à
-  « rafraîchir » la démo — c'est la réponse durable à l'obsolescence.
-
-Conséquence : les chiffres exacts (CA, kg récoltés) **dépendent du jour de reseed**.
-Les cibles ci-dessous sont des ordres de grandeur pour un reseed en pleine saison.
+1. **Calendrier réel.** Chaque culture, mise-bas, miellée ou récolte de fruits
+   tombe à sa vraie date de saison en Vendée (zone océanique). Seul son
+   **état** dépend du jour du reseed : un jalon passé est fait, une fenêtre de
+   récolte close est terminée, rien n'est jamais « fait » dans le futur.
+2. **Deux saisons d'historique.** L'année en cours `Y` (du 1er janvier à
+   aujourd'hui) et l'année `Y-1` complète, générées de la même façon, plus les
+   cultures d'hiver de `Y-2` récoltées en `Y-1`. Les comparatifs N/N-1 sont
+   donc réels, avec une ferme qui progresse d'environ 10 %.
+3. **Mêmes écritures que l'application.** Le seed appelle les fonctions de
+   `src/lib` partout où elles existent : dates des itinéraires
+   (`datesDepuisItp`), récoltes (`ecrireRecoltesPreparees`), miroirs
+   comptables (`src/lib/auto-compta.ts`), récoltes, ventes et transformations
+   du verger, calendrier d'entretien des arbres, règlements, documents
+   commerciaux, commandes de la boutique. Un écran du compte démo montre donc
+   un état qu'un utilisateur aurait pu atteindre.
+4. **Un accueil calme et crédible.** Le jour du reseed : quelques actions de
+   la semaine, aucun retard, aucune ligne « Urgent », aucune déclaration hors
+   délai, des KPI cohérents entre l'accueil, la comptabilité et les modules.
+5. **Identifiants fictifs vérifiés.** SIREN, SIRET et TVA sont valides
+   (Luhn, clé TVA) mais **vérifiés non attribués** dans l'annuaire des
+   entreprises ; banque fictive (code 19999) ; numéro EDE sur une commune
+   inexistante (85999) ; téléphones dans la plage que l'ARCEP réserve à la
+   fiction (02 61 91, 06 39 98) ; courriels en `example.com`, `.org`.
+   Les anciens numéros « fictifs » de la v2 appartenaient à de vraies
+   entreprises : ne jamais reprendre un identifiant sans le vérifier.
 
 ---
 
@@ -33,172 +47,137 @@ Les cibles ci-dessous sont des ordres de grandeur pour un reseed en pleine saiso
 
 | Champ | Valeur |
 |---|---|
-| **Ferme** | Ferme du Bois Joli |
-| **Exploitants** | Camille & Thomas Lefèvre |
-| **Localisation** | La Boissière-de-Montaigu, Vendée (85600) |
-| **Installation** | ~6 saisons (polyculture-élevage bio) |
-| **Forme juridique** | EARL |
-| **Régime** | **Réel simplifié agricole**, **assujettie TVA** (réel simplifié) |
-| **SIRET / SIREN** | `40483304800006` / `404833048` (fictifs mais **Luhn-valides** pour FEC) |
-| **TVA intracom.** | `FR83404833048` |
-| **Certification** | AB — Ecocert FR-BIO-01 |
-| **Compte** | `demo@gleba.fr` / `demo2026` |
-| **Modules actifs** | maraîchage, verger, élevage, comptabilité (+ boutique) |
-| **Ateliers d’élevage actifs** | cheptel de rente, chiens & chats, équins, NAC |
+| **Ferme** | EARL Ferme du Bois Joli (capital 7 500 €) |
+| **Exploitants** | Camille et Thomas Lefèvre (personnages fictifs) |
+| **Localisation** | Le Bois Joli, 85600 La Boissière-de-Montaigu (Vendée) |
+| **Régime** | Réel simplifié agricole, assujettie à la TVA (réel simplifié) |
+| **SIREN / SIRET** | `012223996` / `01222399600013` |
+| **TVA intracommunautaire** | `FR83012223996` |
+| **Numéro EDE** | `85999001` |
+| **Certification** | AB, Ecocert FR-BIO-01 |
+| **Compte** | `demo@gleba.fr` (mot de passe : constante de `prisma/seed-demo.ts`) |
+| **Modules actifs** | maraîchage, verger, élevage, comptabilité, boutique |
+| **Ateliers d'élevage** | rente, chiens et chats, équins, NAC |
+
+Clients : AMAP du Bois Joli (type `amap`), Restaurant La Table du Bocage,
+Épicerie Bio du Bocage, Cantine scolaire du SIVU du Bocage, quelques
+particuliers. Tous fictifs.
 
 ---
 
-## Surfaces (5 parcelles, toutes AB)
+## Terrain et plan (`prisma/demo/terrain.ts`)
 
-| Parcelle | Surface | Usage | Couches |
-|---|---|---|---|
-| Demo-A · Serre | 200 m² (0,02 ha) | Cultures abritées (tomate, aubergine, poivron, basilic, salades hâtives) | `MARAICHAGE` |
-| Demo-B · Plein champ | 800 m² (0,08 ha) | Racines & plein vent (carotte, oignon, courge, haricot, PDT) | `MARAICHAGE` |
-| Demo-C · Tunnel maraîcher | 200 m² (0,02 ha) | Mi-saison (concombre, salade, radis, mâche) | `MARAICHAGE` |
-| Demo-V · Verger | 800 m² (0,08 ha) | ~20 fruitiers diversifiés | `VERGER` |
-| Demo-P · Pâture | 4 000 m² (0,4 ha) | Brebis + chèvres, pâturage tournant | `PATURAGE`, `ELEVAGE` |
+Repère du plan : mètres, x vers l'est, y vers le sud, origine au coin
+nord-ouest. Les polygones des parcelles reprennent ce repère converti en
+coordonnées : la carte et le plan montrent la même ferme.
 
-Planches : **A1-A3** (serre 8×1,2), **B1-B6** (plein champ 25×1,2), **C1-C4** (tunnel 10×1,2).
-Rotations globales assignées : A→`Rotation-4ans-A`, B→`Rotation-4ans-B`, C→`Rotation-3ans-Courges`.
-Surface cultivée courante ≈ **1 200 m²** (A+B+C) — identique sur Calendrier / Planification / Cultures.
-
----
-
-## Maraîchage (campagne `Y`, YTD)
-
-~20 cultures réparties en trois états, toujours vivantes quel que soit le jour de reseed :
-
-- **Récoltées** (terminées, `recolteFaite`) : radis, épinard, laitue de printemps, fève, petit pois.
-- **En cours de récolte** (centrées sur `now`) : tomate, aubergine, poivron, concombre, courgette, carotte, oignon, haricot vert, pomme de terre, basilic.
-- **À venir** : courge butternut/potimarron, poireau, chou, haricot sec, mâche.
-
-Chaque culture porte `especeId` + `varieteId` **nommée** (jamais « — Non spécifiée ») + `itpId`
-(pour la croissance du plan 2D vivant) + `aIrriguer` sur les espèces exigeantes. Étalement
-présent (référentiel) → rendu à l'échelle sur le plan.
-
-Récoltes : mix `en_stock` / `vendu` (avec `prixKg`+`prixTotal`+`dateVente`). Les récoltes
-vendues génèrent une VenteManuelle « auto » (voir Comptabilité).
-
----
-
-## Verger (Demo-V)
-
-~20 arbres **plantés en années passées** (2018-2023, verger établi → aucun achat n'impacte
-la compta de `Y`) : Pommier (Reine des Reinettes, Golden), Poirier (Williams, Conférence),
-Prunier (Mirabelle, Reine-Claude), Cerisier (Burlat, Napoléon), Figuier (Brown Turkey),
-Noyer (Franquette). `envergureAdulte` renseignée (projection houppier), `etat`, `formeTaille`.
-
-- **Récoltes fruits** `Y` : cerises (juin), premières prunes (juillet) — vendues (dont facture).
-- **Opérations** : tailles d'hiver (janv-fév), traitement bio bouillie bordelaise (printemps) → dépenses auto.
-- **Observation sanitaire** : tavelure Pommier Golden, gravité moyenne, traitement cuivre **saisi
-  canoniquement** (`produit` + `methodeTraitement`) pour le registre phyto.
-
----
-
-## Élevage — vitrine complète (dont caprin laitier pro)
-
-| Lot / animaux | Espèce | Effectif | Détail |
-|---|---|---|---|
-| Pondeuses `Y` | Poule Marans | ~30 | Arrivée janv. `Y` (poulettes) — **seul achat animal de l'année** |
-| Solognote | Brebis Solognote | ~15 | Troupeau viande, arrivé années passées |
-| Agnelles | Brebis Solognote | ~10 | Renouvellement |
-| Chèvres laitières | Chèvre Alpine | 4 (individuelles) | **Cœur de la vitrine caprine** |
-| Gascons | Cochon Gascon | 2 | Engraissement |
-| Lapins | Géant des Flandres | 6 F + 1 M | Mises-bas |
-
-**Poules** : `ProductionOeuf` hebdomadaire sur ~18 mois (tendance) ; ventes œufs mensuelles (VenteProduit type `oeufs`).
-
-**Caprin laitier pro (P20-P27)** — les 4 Alpines (Bergère, Clochette, Vanille, Praline) rattachées au lot laitier :
-
-- **Reproduction (P23/P24)** : `Saillie` reliée à une `CampagneReproduction` (« Lutte automne `Y-1` — désaisonnement »), mise-bas → `NaissanceAnimale`, tarissement prévu. Une chèvre en **`lactationLongue`** (ne plus suggérer le tarissement).
-- **Lactation en cours** : `CollecteLait` biquotidienne (matin/soir) de la mise-bas (~5 mois avant `now`) à aujourd'hui → courbe 305 j, palmarès des chèvres.
-- **Qualité / cellules (P20)** : analyses ~mensuelles (MG/MP/cellules). Clochette et Vanille en **alerte cellules** (mammite subclinique) pour démontrer l'alerte.
-- **Alimentation / ration (P25)** : `Aliment` avec valeurs INRA (UFL/PDIN/PDIE/UEL) — foin de prairie + granulés chèvre ; `ConsommationAliment` mensuelle sur le lot → dépenses auto.
-- **Fromagerie (P27)** : 3 `LotFromage` (Tomme, Crottin, Bûche cendrée) numérotés `L-Y-Www-NN`, DLC/DLUO, agrément, traçabilité lait→lot→vente.
-- **Sanitaire** : `SoinAnimal` (vermifuge, parage, prophylaxie) avec coûts → dépenses auto.
-
-**Ventes élevage** : fromages, lait cru, œufs → `VenteProduit` (dont une facture restaurant + une cantine).
-
-### Ateliers chiens/chats, équins et NAC
-
-Les trois ateliers optionnels sont activés par la préférence `modesElevage` afin que
-le sélecteur **Cheptel / Chiens & chats / Équins / NAC** soit visible dès la connexion.
-
-| Atelier | Animaux / données de démonstration |
-|---|---|
-| **Chiens & chats** | Nala et Oslo (Golden retriever), Plume et Moka (Maine coon) ; identifiants I-CAD fictifs, LOF/LOOF, cotations et tests de santé |
-| **Reproduction canine** | portée récente de Nala reliée à une saillie, 4 chiots détaillés, dont 2 réservations avec acompte |
-| **Équins** | Étoile (jument Selle français) et Sirocco (hongre Connemara), identifiants SIRE fictifs, pedigree et examens AIE/radiographiques |
-| **NAC** | Pixel le furet, Noisette le lapin nain et Kiwi la calopsitte, avec identification ou bague lorsque pertinente et bilans sanitaires |
-
-Les identifiants, coordonnées d’acquéreurs et références de laboratoire sont
-entièrement fictifs. Les animaux sont saisis sans prix d’achat sur l’année courante,
-afin de ne pas modifier les invariants comptables du scénario.
-
----
-
-## Comptabilité — régime réel simplifié + TVA + factures + FEC
-
-**Modèle monétaire (contrat SSOT, cf. `src/lib/kpi/compta.ts`)** :
-
-- **Revenus** = Σ `VenteManuelle.montant` + Σ `Facture.totalTTC` (non annulées).
-- **Dépenses** = Σ `DepenseManuelle.montant`.
-- Chaque vente issue d'un autre module (récolte, vente produit, récolte arbre) produit une
-  VenteManuelle **`auto`** miroir (mapping `src/lib/auto-compta.ts`), SAUF si elle est
-  **facturée** (alors comptée via la `Facture`, pas d'écriture auto).
-- La ventilation par module (écran Rapports) lit les tables sources ; le **contrôle de
-  cohérence** SSOT ↔ somme des modules doit rester à 0 (aucun bandeau d'alerte).
-
-**TVA** : produits alimentaires **5,5 %**, services/bois **10 %**, matériel/véto **20 %**.
-Chaque écriture respecte **TTC = HT + TVA au centime** → export **FEC équilibré** (débit = crédit).
-
-**Factures B2B** (~4) : restaurant, épicerie bio, cantine — adossées 1:1 à une vente source
-(`factureId` posé, pas d'écriture auto). Mix payée / émise. Numérotation continue `F-Y-0001…`.
-
-**Répartition CA `Y` (ordre de grandeur, ferme bio 1,5 ha)** : ~55 % maraîchage (AMAP + marché),
-~20 % élevage (fromages/lait/œufs), ~10 % verger, ~15 % boutique + divers. Dépenses ~50-60 % du CA.
-
-**Historique `Y-1`** : synthèses mensuelles VenteManuelle + DepenseManuelle → comparatif N-1.
-
----
-
-## Boutique en ligne
-
-Boutique « Ferme du Bois Joli » (slug `ferme-du-bois-joli`), ~8-10 produits (paniers AMAP &
-découverte, œufs, fromages, confitures, légumes à l'unité), ~15 commandes réparties sur `Y`
-(livrées + quelques en préparation/nouvelles). Chaque commande **livrée** → `VenteManuelle`
-(module `boutique`) remontant en compta. Les commandes non livrées sont comptées à part
-(compteur), pas en revenus.
-
----
-
-## Règles d'invariance (vérifiées à chaque rebuild)
-
-| # | Invariant | Pourquoi |
+| Parcelle | Surface | Contenu |
 |---|---|---|
-| 1 | Surface ~1 200 m² identique Calendrier / Planification / Cultures | cohérence maraîchage |
-| 2 | CA identique Accueil / Rapports / Coûts (SSOT `getKpiCompta`) | bug récurrent A4 |
-| 3 | **coherenceCheck = 0** (aucun bandeau d'incohérence compta) | contrat SSOT ↔ modules |
-| 4 | Export FEC **équilibré** (débit = crédit) + SIRET/SIREN valides | régime réel |
-| 5 | Année active = `Y` partout ; historique `Y-1` présent pour N-1 | evergreen |
-| 6 | 0 variété `— Non spécifiée`, 0 nom de test (`Test-Bug`, `cc`, `Fff`…) | dé-pollution |
-| 7 | 0 culture orpheline (sans planche), 0 rotation sur 0 planche | intégrité |
-| 8 | Boutique : commandes livrées ⇒ CA compta ; non livrées = compteur | chaîne câblée |
-| 9 | Achats arbres en années passées (verger établi) ⇒ pas de fuite compta `Y` | cohérence |
-| 10 | Caprin : lait/collectes/cellules/palmarès/fromagerie/économie tous peuplés | vitrine pro |
-| 11 | Préférence `modesElevage` = compagnie + équin + NAC | ateliers visibles |
-| 12 | Chiens, chats, équins et NAC présents avec santé/pedigree ; portée canine et réservations peuplées | vitrine multi-filières |
+| Verger | 0,08 ha | 16 fruitiers, rucher de 6 ruches |
+| Serre | 0,02 ha | serre froide de 96 m², 3 planches de 10 m |
+| Tunnel | 0,04 ha | tunnel 8 × 25 m, 4 planches de 23 m, compostage |
+| Plein champ | 0,17 ha | 16 planches de 40 m |
+| Pâture du Grand Pré | 0,34 ha | chèvrerie, poulailler, paddocks |
+| Prairie de fauche | 0,90 ha | foin autoproduit |
+
+Objets : haies, allées, chemin d'exploitation, serre, tunnel, récupérateur
+d'eau, compost, mare, hangar et chambre froide, clôture, chèvrerie,
+poulailler, rucher. Aucun fond de plan : le rendu par défaut (herbe, grille)
+reste propre et n'expose aucune photo aérienne réelle.
 
 ---
 
-## Workflow de reset
+## Maraîchage (`prisma/demo/maraichage.ts`)
+
+- **Rotations du référentiel commun** sur onze planches de plein champ :
+  `Rotation-4ans-A` (B1-B4), `Rotation-3ans-Courges` (B5-B7), `Potager`
+  (B8-B11). `Planche.annee` est recalculé à chaque reseed pour que chaque
+  planche soit à la même étape l'année en cours ; elle y porte l'itinéraire de
+  l'étape. Le hub Planification affiche donc « Plan prêt ».
+- **Successions** hors familles de rotation (mâche, épinard, courgette,
+  carotte de garde, phacélie) ; planches hors rotation pour les poireaux,
+  les choux d'hiver, l'ail, l'échalote, les pommes de terre et les fèves.
+- **Serre et tunnel** : tomates, aubergines, poivrons, basilic, concombres,
+  courgettes, laitues, radis, petits pois, épinards et mâche d'hiver.
+- Dates des itinéraires Gleba dérivées par l'application (calage océanique),
+  dates INRAE choisies dans leur fenêtre d'implantation : **aucune alerte de
+  saison** (contrôlé à chaque reseed) et aucun chevauchement sur une planche.
+- **Récoltes** hebdomadaires sur la fenêtre de chaque culture, vendues à
+  l'AMAP (chèque) ou au marché du samedi (espèces) : chaque vente porte son
+  miroir comptable, et les marges par culture sont alimentées. Les légumes
+  de garde restent en partie en stock pour l'hiver et les bons de livraison.
+- Arrosages notés la veille sous abri, fumures de la ferme (fumier de mouton
+  et de poules, lombricompost), interventions tracées (dont un traitement
+  conforme au registre phyto), analyses de sol, stock de semences.
+
+Ordres de grandeur : environ 3,8 t récoltées et 18 k€ de légumes par an.
+
+## Verger (`prisma/demo/verger.ts`)
+
+16 fruitiers plantés de `Y-8` à `Y-5` : pommiers (Reine des Reinettes,
+Golden Delicious, Belle de Boskoop), poiriers (Williams, Conférence),
+pruniers (Mirabelle de Nancy, Reine Claude Dorée), cerisiers (Burlat,
+Napoléon), figuier, noyers. Pollinisations croisées, calendrier d'entretien
+de l'application sur deux saisons (passé fait, à venir planifié), tavelure et
+pucerons observés puis résolus, récoltes à la semaine de chaque variété,
+ventes directes réglées, pommes de garde en stock, jus de pomme (pressoir
+d'octobre) et confiture de mirabelle, bois d'élagage des noyers.
+
+## Élevage (`prisma/demo/elevage.ts`)
+
+Chèvres alpines laitières (cœur de la vitrine : deux groupes de mises-bas
+pour du lait toute l'année, contrôles qualité, fromagerie, cave, ventes),
+brebis Solognote (agnelage de printemps, agneaux vendus à l'automne),
+cochons gascons, poules Marans (ponte quotidienne, ventes en FIFO), lapins,
+rucher. Déclarations d'entrée et de sortie transmises puis acceptées, registre
+complet, statuts sanitaires, soins tracés avec leurs produits et délais.
+
+## Chiens et chats, équins, NAC (`prisma/demo/compagnie.ts`)
+
+Nala et Oslo (golden retrievers) avec une portée de cinq chiots et des
+réservations, Plume et Moka (maine coon), Étoile et Sirocco (équidés),
+Pixel, Noisette et Kiwi (NAC). Identifiants au format exigé par
+l'application, aucun achat sur l'année.
+
+## Commerce, comptabilité et banque (`prisma/demo/commerce*.ts`, `banque.ts`)
+
+Boutique en ligne (commandes passées par le vrai cycle de l'application),
+devis, bons de livraison et factures adossés aux stocks réels, avoir, charges
+d'une EARL au réel (MSA, fermage, aliments, semences, énergie…), compte
+bancaire avec opérations rapprochées. Marge annuelle visée : 30 à 40 %.
+
+---
+
+## Règles d'invariance (contrôlées par `prisma/verify-demo.ts`)
+
+| # | Invariant |
+|---|---|
+| 1 | Aucune alerte de saison, aucun chevauchement sur une planche |
+| 2 | « Plan prêt » : aucune culture de rotation à créer ni étape non suivie |
+| 3 | CA identique sur l'accueil, les rapports et les modules ; FEC équilibré |
+| 4 | Aucune ligne « Urgent » sur l'accueil le jour du reseed |
+| 5 | Aucune déclaration d'élevage hors délai ou à compléter |
+| 6 | Aucun jalon fait dans le futur, aucune vente ni dépense datée après aujourd'hui |
+| 7 | Aucun nom de test, aucun identifiant réel (SIREN, téléphone, courriel) |
+| 8 | Préférence `modesElevage` = compagnie, équin, NAC |
+
+---
+
+## Remise à zéro et reconstruction
 
 ```bash
-# 1. Purge exhaustive des données métier du compte démo (cascade contrôlée)
-npx tsx prisma/reset-demo.ts
-# 2. Rejoue le scénario complet, evergreen (ancré à la date du jour)
-npx tsx prisma/seed-demo.ts
-# 3. Vérification : npx tsx prisma/verify-demo.ts (invariants + cohérence + FEC)
+npx tsx prisma/reset-demo.ts    # purge toutes les tables rattachées au compte (schéma réel)
+npx tsx prisma/seed-demo.ts     # reconstruit la ferme, ancrée au jour
+npx tsx prisma/verify-demo.ts   # invariants
 ```
 
-Pour toute évolution du scénario, **modifier ce document AVANT** de toucher `prisma/seed-demo.ts`.
+- `reset-demo.ts` part du schéma : toute table avec une colonne `user_id` est
+  purgée pour le compte démo, sauf les signalements, les retours et les
+  mesures d'audience. `RESET_DEMO_SIMULATION=1` compte sans rien effacer.
+- Les fichiers du compte (fonds de plan, envois, justificatifs, registres)
+  vivent dans les volumes du conteneur : la procédure de production les
+  archive puis les efface à part.
+- `DEMO_EMAIL_OVERRIDE` vise un autre compte ; `DEMO_MODULES=terrain,verger`
+  ne joue qu'une partie ; `DEMO_DATE=AAAA-MM-JJ` simule un autre jour (base
+  d'essai seulement).
+- Pour toute évolution du scénario, modifier ce document AVANT le code.
