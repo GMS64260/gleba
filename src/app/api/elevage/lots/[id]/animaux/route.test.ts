@@ -100,6 +100,20 @@ describe('POST /api/elevage/lots/[id]/animaux — composer un lot en une fois', 
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
   })
 
+  it('refuse un lot hétérogène issu de deux profils personnels au même préfixe', async () => {
+    mocks.lotFindFirst.mockResolvedValue({
+      id: 81, nom: 'Lot témoin', statut: 'actif', especeAnimaleId: 'ferme_canard', prixAchatTotal: null,
+    })
+    mocks.animalFindMany.mockResolvedValue([
+      chevre(1, { especeAnimaleId: 'ferme_canard' }),
+      chevre(2, { especeAnimaleId: 'ferme_poule' }),
+    ])
+    const response = await post({ ajouter: [1, 2] })
+    expect(response.status).toBe(400)
+    expect((await response.json()).details.map((d: { animalId: number }) => d.animalId)).toEqual([2])
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
   it('refuse d’ajouter à un lot clôturé', async () => {
     mocks.lotFindFirst.mockResolvedValue({ id: 81, nom: 'x', statut: 'termine', especeAnimaleId: 'chevre', prixAchatTotal: null })
 

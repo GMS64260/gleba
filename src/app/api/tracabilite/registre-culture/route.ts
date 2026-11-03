@@ -18,6 +18,7 @@ import {
   type QuantiteParUnite,
 } from '@/lib/recolte/quantites'
 import { jourCivilStocke } from '@/lib/jour-civil'
+import { surfaceCultureM2 } from '@/lib/culture-surface'
 
 /**
  * Dates du registre rendues en JOUR CIVIL « AAAA-MM-JJ », que l'écran affiche
@@ -307,7 +308,7 @@ export async function GET(request: NextRequest) {
             variete: culture.variete?.nom ?? culture.variete?.id ?? null,
             bio: culture.variete?.bio || false,
             planche: culture.planche?.nom || null,
-            surface: culture.planche?.surface || null,
+            surface: surfaceCultureM2(culture) || null,
             ilot: culture.planche?.ilot || null,
             typePlanche: culture.planche?.type || null,
           },

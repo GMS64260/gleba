@@ -5,10 +5,19 @@ import { especeBaseId } from '@/lib/elevage/espece-base'
 
 type Db = typeof prisma | Prisma.TransactionClient
 
+/**
+ * Vrai si le lot appartient au compte et accueille cette espèce de base.
+ * Un nouveau rattachement exige un lot actif. `lotConserve` : l'animal reste
+ * dans son lot actuel et seule son espèce change ; un lot réformé ou terminé
+ * reste alors acceptable, seule la compatibilité d'espèce compte (relecture de
+ * la PR #47, 2026-11-03 : corriger l'espèce d'un animal resté dans un lot
+ * terminé renvoyait « Lot invalide »).
+ */
 export async function isAssignableAnimalLot(
   userId: string,
   rawLotId: unknown,
-  especeAnimaleId: string
+  especeAnimaleId: string,
+  options: { lotConserve?: boolean } = {},
 ): Promise<boolean> {
   const lotId = typeof rawLotId === 'number' ? rawLotId : Number(rawLotId)
   if (!Number.isInteger(lotId) || lotId <= 0) return false
@@ -17,7 +26,7 @@ export async function isAssignableAnimalLot(
     where: {
       id: lotId,
       userId,
-      statut: 'actif',
+      ...(options.lotConserve ? {} : { statut: 'actif' }),
     },
     select: { id: true, especeAnimaleId: true },
   })

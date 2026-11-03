@@ -951,7 +951,7 @@ function CultureTab({
                               <span>Planche: {culture.identification.planche}</span>
                             )}
                             {culture.identification.surface && (
-                              <span>{culture.identification.surface} m²</span>
+                              <span>{culture.identification.surface.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} m²</span>
                             )}
                             {culture.identification.bio && (
                               <span className="text-green-600 font-medium">BIO</span>
