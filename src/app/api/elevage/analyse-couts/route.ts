@@ -3,6 +3,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { libelleAtelierVentes } from '@/lib/elevage/types-vente'
+import { finJourLivraison } from '@/lib/commercial/dates-stock'
 
 const round = (value: number) => Math.round(value * 100) / 100
 
@@ -38,6 +39,9 @@ export async function GET(request: NextRequest) {
     const start = new Date(annee, 0, 1)
     const end = new Date(annee, 11, 31, 23, 59, 59, 999)
     const period = { gte: start, lte: end }
+    const productionPeriod = {
+      gte: start, lte: new Date(Math.min(end.getTime(), finJourLivraison(new Date()).getTime())),
+    }
 
     const [lots, animals, soins, consommations, abattages, ventes, productionsOeufs, productionsMiel, livraisons, paies] = await Promise.all([
       prisma.lotAnimaux.findMany({ where: { userId }, include: { especeAnimale: { select: { id: true, nom: true } } } }),
@@ -62,7 +66,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.abattage.findMany({ where: { userId, annule: false, date: period }, select: { lotId: true, animalId: true, prixVente: true, poidsCarcasse: true, quantite: true } }),
       prisma.venteProduit.findMany({ where: { userId, annule: false, date: period }, select: { type: true, prixTotal: true, animalId: true } }),
-      prisma.productionOeuf.findMany({ where: { userId, date: period }, select: { lotId: true, animalId: true, quantite: true } }),
+      prisma.productionOeuf.findMany({ where: { userId, date: productionPeriod }, select: { lotId: true, animalId: true, quantite: true } }),
       // QA cmswxw80j — l'atelier apicole portait ses coûts mais aucune
       // production : son coût unitaire restait « — » malgré 19,3 kg récoltés.
       // Le miel est la sortie de l'atelier ruche ; cire, propolis et pollen ne
@@ -76,6 +80,10 @@ export async function GET(request: NextRequest) {
     ])
 
     const lotById = new Map(lots.map(l => [l.id, l]))
+    // Le même prix dans les ateliers et dans le détail des lots. Zéro est
+    // un coût connu ; seuls les prix absents retombent sur le catalogue.
+    const prixAliment = (c: typeof consommations[number]) =>
+      c.aliment.userStocks[0]?.coutUnitaire ?? c.aliment.userStocks[0]?.prix ?? c.aliment.prix ?? 0
     const animalById = new Map(animals.map(a => [a.id, a]))
     const ateliers = new Map<string, Atelier>()
     const getAtelier = (code: string, libelle: string) => {
@@ -122,11 +130,7 @@ export async function GET(request: NextRequest) {
     for (const soin of soins) speciesFor(soin.lotId, soin.animalId).couts.soins += soin.cout || 0
     for (const c of consommations) {
       const a = c.animal ? getAtelier(c.animal.especeAnimaleId, animalById.get(c.animalId!)?.especeAnimale.nom || c.animal.especeAnimaleId) : c.lot ? getAtelier(c.lot.especeAnimaleId, lotById.get(c.lotId!)?.especeAnimale.nom || c.lot.especeAnimaleId) : getAtelier('non_affecte', 'Non affecté')
-      const prix = c.aliment.userStocks[0]?.coutUnitaire
-        ?? c.aliment.userStocks[0]?.prix
-        ?? c.aliment.prix
-        ?? 0
-      a.couts.alimentation += c.quantite * prix
+      a.couts.alimentation += c.quantite * prixAliment(c)
     }
     for (const abattage of abattages) {
       const a = speciesFor(abattage.lotId, abattage.animalId)
@@ -205,7 +209,7 @@ export async function GET(request: NextRequest) {
       const lotAbattages = abattages.filter(a => a.lotId === lot.id)
       const coutAchat = lot.dateArrivee && lot.dateArrivee >= start && lot.dateArrivee <= end ? lot.prixAchatTotal || 0 : 0
       const coutSoins = lotSoins.reduce((sum, s) => sum + (s.cout || 0), 0)
-      const coutAlimentation = lotConso.reduce((sum, c) => sum + c.quantite * (c.aliment.prix || 0), 0)
+      const coutAlimentation = lotConso.reduce((sum, c) => sum + c.quantite * prixAliment(c), 0)
       const revenus = lotAbattages.reduce((sum, a) => sum + (a.prixVente || 0), 0)
       const total = coutAchat + coutSoins + coutAlimentation
       const totalOeufs = productionsOeufs.filter(p => p.lotId === lot.id).reduce((sum, p) => sum + p.quantite, 0)
