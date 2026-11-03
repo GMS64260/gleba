@@ -12,6 +12,12 @@ describe("especeBaseId", () => {
   it("retombe sur l'id si pas de séparateur", () => {
     expect(especeBaseId("abeille")).toBe("abeille")
   })
+
+  it("conserve l'identité de deux profils personnels au même préfixe inconnu", () => {
+    expect(especeBaseId("ferme_canard")).toBe("ferme_canard")
+    expect(especeBaseId("ferme_poule")).toBe("ferme_poule")
+    expect(especeBaseId("constructor_profil")).toBe("constructor_profil")
+  })
 })
 
 describe("especeBaseLabel", () => {
@@ -69,6 +75,7 @@ describe("naitParEclosion (ticket cmv292a85)", () => {
   it("un lot de poules pondeuses, sans durée de couvaison transmise, éclot", () => {
     expect(naitParEclosion({ id: "poule_pondeuse" })).toBe(true)
     expect(naitParEclosion({ id: "Poule" })).toBe(true)
+    expect(naitParEclosion({ id: "Poule_Sussex" })).toBe(true)
     expect(naitParEclosion({ id: "canard_coureur" })).toBe(true)
   })
 

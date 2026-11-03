@@ -142,17 +142,19 @@ export function naitParEclosion(
 ): boolean {
   if (!espece) return false
   if (espece.dureeCouvaison != null) return true
-  return BASES_ECLOSION.has(especeBaseId(espece.id ?? "").toLowerCase())
+  return BASES_ECLOSION.has(especeBaseId((espece.id ?? "").toLowerCase()))
 }
 
+/** Groupe du catalogue connu, sinon identité complète du profil personnel. */
 export function especeBaseId(especeAnimaleId: string): string {
   const head = especeAnimaleId.split("_")[0]
-  return head || especeAnimaleId
+  return libelleBaseConnue(head) !== undefined ? head : especeAnimaleId
 }
 
 export function especeBaseLabel(especeAnimaleId: string): string {
-  const base = especeBaseId(especeAnimaleId)
-  return LIBELLES[base] ?? base
+  // Le repli court est de l'affichage ; il ne sert pas à identifier un groupe.
+  const base = especeAnimaleId.split("_")[0] || especeAnimaleId
+  return libelleBaseConnue(base) ?? base
 }
 
 /**
@@ -169,7 +171,7 @@ export function especeBaseLabel(especeAnimaleId: string): string {
  * Le premier segment brut ne reste qu'à défaut de nom.
  */
 export function libelleEspeceAnimale(espece: { id: string; nom?: string | null }): string {
-  const base = especeBaseId(espece.id)
+  const base = espece.id.split("_")[0] || espece.id
   return libelleBaseConnue(base) ?? (espece.nom?.trim() || base)
 }
 

@@ -151,6 +151,22 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
     expect(mocks.animalUpdate).toHaveBeenCalled()
   })
 
+  it.each([{}, { lotId: 42 }])('revalide le lot conservé quand seule l’espèce change (%j)', async (extra) => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, lotId: 42, especeAnimaleId: 'ovin', prixAchat: null })
+    mocks.isAssignableAnimalLot.mockResolvedValue(false)
+    const response = await callPut({ especeAnimaleId: 'caprin', ...extra })
+    expect(response.status).toBe(400)
+    expect(mocks.isAssignableAnimalLot).toHaveBeenCalledWith('user-1', 42, 'caprin')
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
+  it('permet de corriger une note sans revalider le lot et le profil inchangés', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, lotId: 42, especeAnimaleId: 'ovin', prixAchat: null })
+    const response = await callPut({ lotId: 42, especeAnimaleId: 'ovin', notes: 'Observation corrigée' })
+    expect(response.status).toBe(200)
+    expect(mocks.isAssignableAnimalLot).not.toHaveBeenCalled()
+  })
+
   it('refuse une espèce privée d’un autre compte en nommant le champ', async () => {
     mocks.especeFindFirst.mockResolvedValueOnce(null)
 

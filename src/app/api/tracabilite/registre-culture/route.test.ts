@@ -121,6 +121,19 @@ beforeEach(() => {
 })
 
 describe("Registre de culture : semis d'une culture créée depuis la rotation (cmvnulry1)", () => {
+  it("affiche la surface de la culture partielle et conserve un repli pour les anciennes fiches", async () => {
+    const base = ligneRegistre(1, 'Légume témoin', { dateSemis: null, datePlantation: null })
+    mocks.cultureFindMany.mockResolvedValue([
+      { ...base, id: 1, longueur: 4 },
+      { ...base, id: 2, longueur: null },
+      { ...base, id: 3, longueur: 4, planche: { ...base.planche, surface: null } },
+      { ...base, id: 4, planche: null },
+    ])
+    const corps = await lireRegistre2027()
+    expect(corps.registre.map((c: { identification: { surface: number | null } }) => c.identification.surface))
+      .toEqual([4.8, 12, 4.8, null])
+  })
+
   it("la rotation écrit le jour seul à minuit UTC, comme une saisie de formulaire", async () => {
     const r = await creerCulturesBatch("u-demo", [{ plancheId: PLANCHE.nom, itpId: ITP_COURGE.id, annee: 2027 }])
 

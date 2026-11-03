@@ -27,6 +27,12 @@ describe('isAssignableAnimalLot', () => {
     await expect(isAssignableAnimalLot('user-1', 42, 'chevre_laitiere')).resolves.toBe(false)
   })
 
+  it('ne mélange pas deux profils personnels dont seul le premier mot est commun', async () => {
+    findFirst.mockResolvedValue({ id: 42, especeAnimaleId: 'ferme_canard' })
+    await expect(isAssignableAnimalLot('user-1', 42, 'ferme_poule')).resolves.toBe(false)
+    await expect(isAssignableAnimalLot('user-1', 42, 'ferme_canard')).resolves.toBe(true)
+  })
+
   it('refuse sans distinction un lot inexistant, tiers ou terminé', async () => {
     findFirst.mockResolvedValue(null)
 
