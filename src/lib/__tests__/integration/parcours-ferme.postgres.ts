@@ -115,3 +115,37 @@ it('les profils du catalogue avec une même espèce connue restent compatibles',
   const lot = await db.lotAnimaux.create({ data: { userId, especeAnimaleId: profils[0].id, quantiteInitiale: 2, quantiteActuelle: 2 } })
   expect(await isAssignableAnimalLot(userId, lot.id, profils[1].id)).toBe(true)
 })
+
+// Relecture de la PR #47 (2026-11-03) : identifiants issus d'un nom saisi au
+// pluriel, et correction d'espèce d'un animal resté dans un lot terminé.
+async function profilsPluriel(noms: string[]) {
+  const suffixe = randomUUID().slice(0, 8)
+  return Promise.all(noms.map(nom => db.especeAnimale.create({ data: {
+    id: `${nom}_${suffixe}`, userId, nom: `${nom} témoin`, type: 'volaille', production: 'oeufs',
+  } })))
+}
+
+it('deux profils au pluriel d’une espèce connue se composent dans un même lot', async () => {
+  const [pondeuses, marans, chevres] = await profilsPluriel(['poules_pondeuses', 'poules_marans', 'chevres_alpines'])
+  const lot = await db.lotAnimaux.create({ data: { userId, especeAnimaleId: pondeuses.id, nom: 'Pondeuses témoin', quantiteInitiale: 2, quantiteActuelle: 2 } })
+  expect(await isAssignableAnimalLot(userId, lot.id, marans.id)).toBe(true)
+  expect(await isAssignableAnimalLot(userId, lot.id, chevres.id)).toBe(false)
+  const poule = await db.animal.create({ data: { userId, especeAnimaleId: marans.id, nom: 'Marans témoin' } })
+  expect((await composerLot(userId, lot.id, { ajouter: [poule.id], retirer: [] })).ok).toBe(true)
+  expect((await db.animal.findUniqueOrThrow({ where: { id: poule.id } })).lotId).toBe(lot.id)
+})
+
+it('corrige l’espèce d’un animal resté dans un lot terminé, sans accepter une espèce incompatible', async () => {
+  const [alpines, saanen, pondeuses] = await profilsPluriel(['chevres_alpines', 'chevres_saanen', 'poules_pondeuses'])
+  const lot = await db.lotAnimaux.create({ data: { userId, especeAnimaleId: alpines.id, nom: 'Chèvres témoin', quantiteInitiale: 1, quantiteActuelle: 1, statut: 'termine' } })
+  const chevre = await db.animal.create({ data: { userId, especeAnimaleId: alpines.id, lotId: lot.id, nom: 'Chèvre témoin' } })
+  // Un nouveau rattachement à ce lot terminé reste refusé.
+  expect(await isAssignableAnimalLot(userId, lot.id, saanen.id)).toBe(false)
+  const correction = await put(chevre.id, { especeAnimaleId: saanen.id })
+  expect(correction.status).toBe(200)
+  expect(await db.animal.findUniqueOrThrow({ where: { id: chevre.id } })).toMatchObject({ especeAnimaleId: saanen.id, lotId: lot.id })
+  const incompatible = await put(chevre.id, { especeAnimaleId: pondeuses.id })
+  expect(incompatible.status).toBe(400)
+  expect((await db.animal.findUniqueOrThrow({ where: { id: chevre.id } })).especeAnimaleId).toBe(saanen.id)
+})
+

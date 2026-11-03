@@ -345,14 +345,16 @@ export async function PUT(
     if (raceAnimaleId && !raceRef) return NextResponse.json({ error: 'Race incompatible ou inaccessible' }, { status: 400 })
 
     // Un changement d'espèce remet aussi en jeu la compatibilité du lot.
-    // Les autres corrections gardent le lot inchangé, même devenu inactif.
+    // Les autres corrections gardent le lot inchangé, même devenu inactif ;
+    // un lot conservé n'a pas à être actif, seulement compatible.
     if (
       lotCible != null &&
       (lotCible !== existing.lotId || especeCible !== existing.especeAnimaleId) &&
       !await isAssignableAnimalLot(
         session.user.id,
         lotCible,
-        especeCible
+        especeCible,
+        { lotConserve: lotCible === existing.lotId },
       )
     ) {
       return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })

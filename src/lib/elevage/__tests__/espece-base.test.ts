@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { cleFiltreEspece, especeBaseId, especeBaseLabel, libelleEspeceAnimale, listEspecesBasePresentes, naitParEclosion } from "../espece-base"
+import { cleFiltreEspece, especeBaseId, especeBaseLabel, libelleEspeceAnimale, libellePetit, listEspecesBasePresentes, naitParEclosion } from "../espece-base"
 
 describe("especeBaseId", () => {
   it("extrait l'espèce avant '_'", () => {
@@ -149,5 +149,49 @@ describe("libelleEspeceAnimale (ticket cmvnookz7)", () => {
     expect(cleFiltreEspece("mes_canards")).toBe("mes_canards")
     expect(cleFiltreEspece("constructor_x")).toBe("constructor_x")
     expect(libelleEspeceAnimale({ id: "constructor_x", nom: "Profil x" })).toBe("Profil x")
+  })
+})
+
+// Relecture de la PR #47 (2026-11-03) : l'identifiant d'un profil personnel
+// vient du nom saisi (« Poules pondeuses » → `poules_pondeuses`). Seul un
+// préfixe connu groupe les profils : il doit l'être aussi au pluriel.
+describe("profils nommés au pluriel", () => {
+  it.each([
+    ["poules_pondeuses", "poules_marans", "poule"],
+    ["poules_pondeuses", "poule_marans", "poule"],
+    ["chevres_alpines", "chevres_saanen", "chevre"],
+    ["vaches_laitieres", "vache_charolaise", "vache"],
+    ["moutons_ouessant", "moutons_solognots", "mouton"],
+    ["veaux_lait", "veau_sous_mere", "veau"],
+    ["chevaux_trait", "cheval_selle", "cheval"],
+    ["Poules_Sussex", "poule_marans", "poule"],
+  ])("%s et %s sont la même espèce (%s)", (a, b, base) => {
+    expect(especeBaseId(a)).toBe(base)
+    expect(especeBaseId(b)).toBe(base)
+    expect(cleFiltreEspece(a)).toBe(cleFiltreEspece(b))
+  })
+
+  it("garde les espèces dont le singulier finit déjà par s", () => {
+    expect(especeBaseId("brebis_solognote")).toBe("brebis")
+    expect(especeBaseId("souris_blanche")).toBe("souris")
+  })
+
+  it("ne regroupe toujours pas deux profils dont le premier mot est inconnu", () => {
+    expect(especeBaseId("mes_poules")).toBe("mes_poules")
+    expect(especeBaseId("mes_canards")).toBe("mes_canards")
+    expect(especeBaseId("fermes_canard")).toBe("fermes_canard")
+    expect(especeBaseId("constructors_profil")).toBe("constructors_profil")
+    expect(especeBaseId("tostrings_profil")).toBe("tostrings_profil")
+  })
+
+  it("affiche l'espèce de base, le petit et l'éclosion d'un profil au pluriel", () => {
+    expect(libelleEspeceAnimale({ id: "poules_pondeuses", nom: "Poules pondeuses" })).toBe("Poule")
+    expect(especeBaseLabel("chevres_alpines")).toBe("Chèvre")
+    expect(especeBaseLabel("moutons_ouessant")).toBe("Mouton")
+    expect(libellePetit("chevres_alpines")).toEqual({ s: "chevreau / cabri", p: "chevreaux / cabris" })
+    expect(libellePetit("moutons_ouessant").s).toBe("agneau")
+    expect(naitParEclosion({ id: "poules_pondeuses" })).toBe(true)
+    expect(naitParEclosion({ id: "canards_coureurs" })).toBe(true)
+    expect(naitParEclosion({ id: "chevres_alpines" })).toBe(false)
   })
 })

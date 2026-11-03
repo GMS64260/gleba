@@ -147,7 +147,8 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
 
     await callPut({ lotId: 42, especeAnimaleId: 'caprin' })
 
-    expect(mocks.isAssignableAnimalLot).toHaveBeenCalledWith('user-1', 42, 'caprin')
+    // Nouveau rattachement : le lot doit être actif.
+    expect(mocks.isAssignableAnimalLot).toHaveBeenCalledWith('user-1', 42, 'caprin', { lotConserve: false })
     expect(mocks.animalUpdate).toHaveBeenCalled()
   })
 
@@ -156,8 +157,18 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
     mocks.isAssignableAnimalLot.mockResolvedValue(false)
     const response = await callPut({ especeAnimaleId: 'caprin', ...extra })
     expect(response.status).toBe(400)
-    expect(mocks.isAssignableAnimalLot).toHaveBeenCalledWith('user-1', 42, 'caprin')
+    expect(mocks.isAssignableAnimalLot).toHaveBeenCalledWith('user-1', 42, 'caprin', { lotConserve: true })
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
+  it('corrige l’espèce d’un animal resté dans son lot, même réformé, si l’espèce reste compatible (relecture PR #47)', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, lotId: 42, especeAnimaleId: 'chevres_alpines', prixAchat: null })
+    mocks.especeFindFirst.mockResolvedValue({ id: 'chevre_saanen' })
+    mocks.isAssignableAnimalLot.mockResolvedValue(true)
+    const response = await callPut({ especeAnimaleId: 'chevre_saanen' })
+    expect(response.status).toBe(200)
+    expect(mocks.isAssignableAnimalLot).toHaveBeenCalledWith('user-1', 42, 'chevre_saanen', { lotConserve: true })
+    expect(mocks.animalUpdate).toHaveBeenCalled()
   })
 
   it('permet de corriger une note sans revalider le lot et le profil inchangés', async () => {

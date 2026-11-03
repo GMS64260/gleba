@@ -23,6 +23,7 @@ const LIBELLES: Record<string, string> = {
   brebis: "Brebis",
   agneau: "Agneau",
   belier: "Bélier",
+  mouton: "Mouton",
   chevre: "Chèvre",
   bouc: "Bouc",
   chevreau: "Chevreau",
@@ -76,6 +77,7 @@ const LIBELLE_PETIT: Record<string, { s: string; p: string }> = {
   bouc: { s: "chevreau / cabri", p: "chevreaux / cabris" },
   brebis: { s: "agneau", p: "agneaux" },
   belier: { s: "agneau", p: "agneaux" },
+  mouton: { s: "agneau", p: "agneaux" },
   agneau: { s: "agneau", p: "agneaux" },
   vache: { s: "veau", p: "veaux" },
   taureau: { s: "veau", p: "veaux" },
@@ -119,8 +121,8 @@ const LIBELLE_PETIT: Record<string, { s: string; p: string }> = {
 
 /** Terme du « petit » (chiot, chaton, cabri, agneau…) dérivé de l'espèce ; défaut « petit ». */
 export function libellePetit(especeAnimaleId: string | null | undefined): { s: string; p: string } {
-  const base = (especeAnimaleId ?? "").split("_")[0].toLowerCase()
-  return LIBELLE_PETIT[base] ?? { s: "petit", p: "petits" }
+  const tete = (especeAnimaleId ?? "").split("_")[0].toLowerCase()
+  return LIBELLE_PETIT[baseConnue(tete) ?? tete] ?? { s: "petit", p: "petits" }
 }
 
 /** Espèces de base dont les petits sortent d'un œuf couvé (volailles, oiseaux de compagnie). */
@@ -145,16 +147,39 @@ export function naitParEclosion(
   return BASES_ECLOSION.has(especeBaseId((espece.id ?? "").toLowerCase()))
 }
 
-/** Groupe du catalogue connu, sinon identité complète du profil personnel. */
+/** Pluriels que retirer le « s » ou le « x » final ne ramène pas au singulier. */
+// Map, pas objet littéral : `constructor` ou `toString` ne doivent rien désigner.
+const PLURIELS_IRREGULIERS = new Map<string, string>([["chevaux", "cheval"]])
+
+/**
+ * Espèce de base connue désignée par le premier segment d'un identifiant,
+ * ramenée au singulier ; `undefined` pour un préfixe de profil personnel.
+ *
+ * Relecture de la PR #47 (2026-11-03) : l'identifiant d'un profil personnel
+ * vient du nom saisi (`normaliserIdentifiantEspece`, « Poules pondeuses » →
+ * `poules_pondeuses`). Sans le singulier, `poules_pondeuses` et
+ * `poules_marans`, ou `chevres_alpines` et `chevres_saanen`, cessaient d'être
+ * la même espèce dès que seul un préfixe connu groupe les profils.
+ */
+function baseConnue(segment: string): string | undefined {
+  const tete = segment.toLowerCase()
+  const irregulier = PLURIELS_IRREGULIERS.get(tete)
+  if (irregulier) return irregulier
+  if (libelleBaseConnue(tete) !== undefined) return tete
+  if (/[sx]$/.test(tete) && libelleBaseConnue(tete.slice(0, -1)) !== undefined) return tete.slice(0, -1)
+  return undefined
+}
+
+/** Groupe du catalogue connu (au singulier), sinon identité complète du profil personnel. */
 export function especeBaseId(especeAnimaleId: string): string {
-  const head = especeAnimaleId.split("_")[0]
-  return libelleBaseConnue(head) !== undefined ? head : especeAnimaleId
+  return baseConnue(especeAnimaleId.split("_")[0]) ?? especeAnimaleId
 }
 
 export function especeBaseLabel(especeAnimaleId: string): string {
   // Le repli court est de l'affichage ; il ne sert pas à identifier un groupe.
-  const base = especeAnimaleId.split("_")[0] || especeAnimaleId
-  return libelleBaseConnue(base) ?? base
+  const tete = especeAnimaleId.split("_")[0] || especeAnimaleId
+  const base = baseConnue(tete)
+  return base !== undefined ? LIBELLES[base] : tete
 }
 
 /**
@@ -171,8 +196,9 @@ export function especeBaseLabel(especeAnimaleId: string): string {
  * Le premier segment brut ne reste qu'à défaut de nom.
  */
 export function libelleEspeceAnimale(espece: { id: string; nom?: string | null }): string {
-  const base = espece.id.split("_")[0] || espece.id
-  return libelleBaseConnue(base) ?? (espece.nom?.trim() || base)
+  const tete = espece.id.split("_")[0] || espece.id
+  const base = baseConnue(tete)
+  return base !== undefined ? LIBELLES[base] : (espece.nom?.trim() || tete)
 }
 
 /** Libellé d'une espèce de base connue ; `undefined` pour un préfixe de profil perso. */

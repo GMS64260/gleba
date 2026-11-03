@@ -391,7 +391,8 @@ export async function PATCH(request: NextRequest) {
     if (
       lotCible !== null &&
       (lotCible !== existing.lotId || especeCible !== existing.especeAnimaleId) &&
-      !await isAssignableAnimalLot(session.user.id, lotCible, especeCible)
+      // Lot conservé : compatible suffit, même réformé ou terminé (PR #47).
+      !await isAssignableAnimalLot(session.user.id, lotCible, especeCible, { lotConserve: lotCible === existing.lotId })
     ) {
       return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
     }
