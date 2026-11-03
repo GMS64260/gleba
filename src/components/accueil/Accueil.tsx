@@ -213,7 +213,15 @@ export function Accueil() {
   const rm = donnees?.reperes.maraichage ?? null
   const rc = donnees?.reperes.comptabilite ?? null
   const rs = donnees?.reperes.semaine ? { ...donnees.reperes.semaine, aFaire: Math.max(0, donnees.reperes.semaine.aFaire - tachesSoldees) } : null
-  const nonDemarrees = rm ? Math.max(0, rm.culturesPlanifiees - rm.culturesActives) : 0
+  // Les cultures terminées ne sont ni « en place » ni « non démarrées ».
+  const terminees = rm?.culturesTerminees ?? 0
+  const nonDemarrees = rm ? Math.max(0, rm.culturesPlanifiees - rm.culturesActives - terminees) : 0
+  const detailCultures = rm
+    ? [
+        `${nonDemarrees} non démarrée${nonDemarrees > 1 ? "s" : ""}`,
+        ...(terminees > 0 ? [`${terminees} terminée${terminees > 1 ? "s" : ""}`] : []),
+      ].join(" · ")
+    : undefined
   const ecartRecoltes = rm?.recoltes && annee !== null
     ? rm.recoltes.valeurN1 === 0
       ? <span>{rm.recoltes.valeur > 0 ? "première année de récoltes" : "aucune récolte pour l'instant"}</span>
@@ -295,7 +303,7 @@ export function Accueil() {
     switch (id) {
       case "repere:cultures":
         return (
-          <Repere libelle="Cultures en place" valeur={rm ? <NombreAnime valeur={rm.culturesActives} /> : null} unite={rm ? `/ ${rm.culturesPlanifiees}` : undefined} detail={rm ? `${nonDemarrees} non démarrée${nonDemarrees > 1 ? "s" : ""}` : undefined} vide={chargementRepere} href="/maraichage/cultures" />
+          <Repere libelle="Cultures en place" valeur={rm ? <NombreAnime valeur={rm.culturesActives} /> : null} unite={rm ? `/ ${rm.culturesPlanifiees}` : undefined} detail={detailCultures} vide={chargementRepere} href="/maraichage/cultures" />
         )
       case "repere:surface":
         return (
