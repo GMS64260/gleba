@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { etapeDejaRealisable } from '@/lib/cultures/deja-fait'
 import { dateJourSeul, jourCivilStocke } from '@/lib/jour-civil'
 import { normaliserDateApi } from './date-api'
+import { erreurFinRecolte } from '@/lib/cultures/fenetre-recolte'
 
 // QA cmsbtr0e4 — un Select piloté peut émettre '' pour une référence
 // facultative ; '' inséré tel quel violait la FK (P2003 ⇒ 500). '' vaut
@@ -118,7 +119,29 @@ function refineFaitsPasses(
 export const cultureFormSchema = cultureSchema
   .superRefine(refineChronologie)
   .superRefine(refineFaitsPasses)
-export const cultureUpdateFormSchema = cultureSchema.partial().superRefine(refineChronologie)
+  .superRefine(refineFenetre)
+
+function refineFenetre(data: Pick<CultureInput, 'dateRecolte' | 'finRecolte'>, ctx: z.RefinementCtx) {
+  const erreur = erreurFinRecolte(data)
+  if (erreur) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['finRecolte'], message: erreur })
+}
+
+/** Même règle que l'API : une ancienne fenêtre ne bloque pas une simple note. */
+export function cultureUpdateFormSchemaPour(
+  avant?: Pick<CultureInput, 'dateRecolte' | 'finRecolte'> | null,
+) {
+  return cultureSchema.partial().superRefine(refineChronologie).superRefine((data, ctx) => {
+    const finale = {
+      dateRecolte: data.dateRecolte !== undefined ? data.dateRecolte : avant?.dateRecolte,
+      finRecolte: data.finRecolte !== undefined ? data.finRecolte : avant?.finRecolte,
+    }
+    if (!avant || (['dateRecolte', 'finRecolte'] as const).some(champ =>
+      jourCivilStocke(finale[champ]) !== jourCivilStocke(avant[champ]),
+    )) refineFenetre(finale, ctx)
+  })
+}
+
+export const cultureUpdateFormSchema = cultureUpdateFormSchemaPour()
 
 export type CultureInput = z.infer<typeof cultureSchema>
 export type CreateCultureInput = z.infer<typeof createCultureSchema>

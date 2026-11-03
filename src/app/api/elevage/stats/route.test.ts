@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   animalCount: vi.fn(),
   especeFindMany: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
+  oeufsAggregate: vi.fn().mockResolvedValue({ _sum: {}, _count: 0 }),
+  queryRaw: vi.fn().mockResolvedValue([]),
   aggregatVide: () => vi.fn().mockResolvedValue({ _sum: {}, _count: 0 }),
 }))
 
@@ -39,7 +41,7 @@ vi.mock("@/lib/prisma", () => ({
   default: {
     animal: { count: mocks.animalCount, groupBy: mocks.animalGroupBy, findMany: vi.fn().mockResolvedValue([]) },
     lotAnimaux: { findMany: mocks.lotFindMany },
-    productionOeuf: { aggregate: mocks.aggregatVide() },
+    productionOeuf: { aggregate: mocks.oeufsAggregate },
     venteProduit: { aggregate: mocks.aggregatVide(), findMany: vi.fn().mockResolvedValue([]) },
     abattage: { aggregate: mocks.aggregatVide() },
     userStockAliment: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) },
@@ -47,7 +49,7 @@ vi.mock("@/lib/prisma", () => ({
     especeAnimale: { findMany: mocks.especeFindMany },
     collecteLait: { aggregate: mocks.aggregatVide() },
     lotFromage: { aggregate: mocks.aggregatVide() },
-    $queryRaw: vi.fn().mockResolvedValue([]),
+    $queryRaw: mocks.queryRaw,
   },
 }))
 
@@ -119,5 +121,36 @@ describe("GET /api/elevage/stats — répartition par espèce", () => {
     const json = await (await GET(new NextRequest("http://localhost/api/elevage/stats?annee=2026"))).json()
 
     expect(json.stats).toMatchObject({ animauxTotal: 106, mortaliteAnnee: 1, tauxMortalite: 14.3 })
+  })
+
+  it("exclut une ponte future du total annuel et du graphique mensuel", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-11-03T10:00:00Z"))
+    try {
+      mocks.lotFindMany.mockResolvedValue([])
+      mocks.animalCount.mockResolvedValue(0)
+      mocks.animalGroupBy.mockResolvedValue([])
+      mocks.especeFindMany.mockResolvedValue([])
+      mocks.reconstituerEffectifsLots.mockResolvedValue(new Map())
+      const pontes = [
+        { date: new Date("2026-11-03"), quantite: 20 },
+        { date: new Date("2026-11-28"), quantite: 44 },
+      ]
+      const somme = (debut: Date, fin: Date) => pontes
+        .filter(p => p.date >= debut && p.date <= fin).reduce((n, p) => n + p.quantite, 0)
+      mocks.oeufsAggregate.mockImplementation(async ({ where }) => ({
+        _sum: { quantite: somme(where.date.gte, where.date.lte) },
+      }))
+      mocks.queryRaw.mockImplementation(async (sql: TemplateStringsArray, ...values: unknown[]) => {
+        if (!sql.join('').includes('FROM production_oeufs')) return []
+        const dates = values.filter((v): v is Date => v instanceof Date)
+        return [{ mois: 11, total: BigInt(somme(dates[0], dates[1])) }]
+      })
+      const json = await (await GET(new NextRequest("http://localhost/api/elevage/stats?annee=2026"))).json()
+      expect(json.stats.productionOeufsAnnee).toBe(20)
+      expect(json.productionOeufsMois).toEqual([{ mois: 11, total: 20 }])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

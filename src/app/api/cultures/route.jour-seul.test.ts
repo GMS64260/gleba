@@ -108,6 +108,13 @@ describe("POST /api/cultures — dates écrites au jour seul (cmvnulry1)", () =>
     expect(ecrit().datePlantation?.toISOString()).toBe("2027-05-10T00:00:00.000Z")
   })
 
+  it("refuse une fin de récolte saisie avant le début sans créer de culture", async () => {
+    const res = await creer(corps({ dateRecolte: "2027-01-11", finRecolte: "2026-11-26" }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/fin.*récolte/i)
+    expect(mocks.cultureCreate).not.toHaveBeenCalled()
+  })
+
   it("heure d'hiver, et un jour « AAAA-MM-JJ » du formulaire inchangé", async () => {
     const res = await creer(corps({ dateSemis: "2027-01-31T23:00:00.000Z", dateRecolte: "2027-06-01" }))
 
