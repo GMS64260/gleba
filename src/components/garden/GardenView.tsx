@@ -588,13 +588,18 @@ export function GardenView({
     if (maxX === -Infinity) maxX = 10
     if (maxY === -Infinity) maxY = 8
 
-    // Ajouter une marge
+    // Ajouter une marge. L'origine reste toujours dans le cadre (x, y ≤ -1) :
+    // la largeur se mesure donc depuis ce bord gauche, pas depuis minX, sinon
+    // une parcelle filtrée loin de l'origine (planches à x = 45 m) tombait
+    // en partie ou entièrement hors du cadre.
     const margin = 1
+    const x = Math.min(minX - margin, -1)
+    const y = Math.min(minY - margin, -1)
     setViewBox({
-      x: Math.min(minX - margin, -1),
-      y: Math.min(minY - margin, -1),
-      w: Math.max(maxX - minX + margin * 2, 10),
-      h: Math.max(maxY - minY + margin * 2, 8)
+      x,
+      y,
+      w: Math.max(maxX + margin - x, 10),
+      h: Math.max(maxY + margin - y, 8)
     })
   }, [planches, objets, arbres, backgroundImage, bgImageSize, dragging, fondDragging])
 

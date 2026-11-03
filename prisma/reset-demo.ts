@@ -1,143 +1,156 @@
 /**
- * Reset EXHAUSTIF des données du compte démo (`demo@gleba.fr`).
+ * Remise à zéro EXHAUSTIVE du compte démo (`demo@gleba.fr`), sans supprimer
+ * l'utilisateur.
  *
- * Supprime, en cascade contrôlée (feuilles → racines), TOUTES les données
- * métier du compte démo — SANS supprimer l'utilisateur. Couvre les modules
- * récents (caprin laitier : collectes/fromages/saillies/campagnes ; fonds de
- * plan ; factures ; exploitation) ainsi que le référentiel PERSO créé par les
- * testeurs sur le compte démo (espèces/variétés/ITP polluées).
+ * L'ancienne version listait les tables à la main : chaque module ajouté
+ * depuis (ruche, lait livré, transformations du verger, capteurs, déclarations
+ * d'élevage, banque…) restait en place et la démo se polluait d'un reset à
+ * l'autre. Celle-ci part du schéma réel : toute table dont la colonne
+ * `user_id` référence `users` est purgée pour ce compte, sauf une courte
+ * liste de tables qui ne sont pas des données de la ferme (signalements de
+ * bugs, retours, mesures d'audience). L'ordre est résolu par passes
+ * successives : une suppression refusée par une clé étrangère est retentée
+ * à la passe suivante, une fois ses dépendants partis.
+ *
+ * Avant la purge, les entrées de référentiel partagées à la communauté (ou
+ * utilisées par d'autres membres) sont reprises par la sentinelle, comme à la
+ * suppression d'un compte (constat M36 du registre ITP).
+ *
+ * Les fichiers (fonds de plan, justificatifs, registres, envois) vivent dans
+ * les volumes du conteneur : ce script, lancé depuis l'hôte, ne les voit pas.
+ * La procédure de reseed les efface à part (voir docs/demo-scenario.md).
  *
  * À lancer AVANT `prisma/seed-demo.ts`. Usage : `npx tsx prisma/reset-demo.ts`
+ * Simulation sans écriture : `RESET_DEMO_SIMULATION=1 npx tsx prisma/reset-demo.ts`
  */
 
 import { PrismaClient } from "@prisma/client"
+import { reprendreReferentielCommunaute } from "../src/lib/account-lifecycle"
+import { DEMO_EMAIL as DEMO_EMAIL_PAR_DEFAUT } from "../src/lib/demo"
 
 const prisma = new PrismaClient()
-const DEMO_EMAIL = process.env.DEMO_EMAIL_OVERRIDE || "demo@gleba.fr"
+const DEMO_EMAIL = process.env.DEMO_EMAIL_OVERRIDE || DEMO_EMAIL_PAR_DEFAUT
+const SIMULATION = process.env.RESET_DEMO_SIMULATION === "1"
+
+/**
+ * Tables rattachées au compte qui ne décrivent pas la ferme : on les garde.
+ * - bug_reports, feedback_* : matière de l'équipe (tri des signalements) ;
+ * - activity_days, cookie_consents, growth_campaign_contacts : audience ;
+ * - evolutions, evolution_votes, signalements : feuille de route et modération
+ *   publiques, dont les compteurs ne doivent pas bouger avec un reseed.
+ */
+const TABLES_CONSERVEES = new Set([
+  "users",
+  "accounts",
+  "bug_reports",
+  "feedback_tokens",
+  "feedback_responses",
+  "activity_days",
+  "cookie_consents",
+  "growth_campaign_contacts",
+  "evolutions",
+  "evolution_votes",
+  "signalements",
+])
+
+/** Colonnes, autres que `user_id`, qui rattachent une ligne au compte. */
+const AUTRES_RATTACHEMENTS: Array<[table: string, colonne: string]> = [
+  ["membres_exploitation", "proprietaire_id"],
+  ["aliments", "owner_user_id"],
+]
+
+type Cible = { table: string; colonne: string }
+
+async function ciblesDuSchema(): Promise<Cible[]> {
+  // Toutes les colonnes `user_id`, avec ou sans clé étrangère : plusieurs
+  // tables d'élevage (pesées, pedigrees, tests de santé, tâches de terrain…)
+  // portent l'identifiant du compte sans contrainte déclarée.
+  const lignes = await prisma.$queryRaw<Array<{ table: string }>>`
+    SELECT DISTINCT c.table_name AS "table"
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+    WHERE c.table_schema = 'public'
+      AND c.column_name = 'user_id'
+      AND t.table_type = 'BASE TABLE'
+    ORDER BY 1`
+  const cibles = lignes
+    .map((l) => l.table)
+    .filter((t) => !TABLES_CONSERVEES.has(t))
+    .map((table) => ({ table, colonne: "user_id" }))
+  for (const [table, colonne] of AUTRES_RATTACHEMENTS) cibles.push({ table, colonne })
+  return cibles
+}
+
+const ident = (s: string) => {
+  if (!/^[a-z_][a-z0-9_]*$/.test(s)) throw new Error(`Identifiant SQL inattendu : ${s}`)
+  return `"${s}"`
+}
+
+async function compter(c: Cible, userId: string): Promise<number> {
+  const r = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
+    `SELECT count(*)::bigint AS n FROM ${ident(c.table)} WHERE ${ident(c.colonne)} = $1`,
+    userId,
+  )
+  return Number(r[0]?.n ?? 0)
+}
 
 async function main() {
   const user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } })
   if (!user) {
-    console.log(`ℹ Aucun compte démo ${DEMO_EMAIL} — rien à supprimer.`)
+    console.log(`ℹ Aucun compte ${DEMO_EMAIL} : rien à remettre à zéro.`)
     return
   }
   const userId = user.id
-  console.log(`▶ Reset exhaustif pour userId=${userId} (${DEMO_EMAIL})`)
+  const cibles = await ciblesDuSchema()
+  console.log(`▶ Remise à zéro de ${DEMO_EMAIL} (${cibles.length} tables examinées)${SIMULATION ? " — SIMULATION" : ""}`)
 
-  const dm = (p: Promise<{ count: number }>) => p
-  const steps: Array<[string, () => Promise<{ count: number }>]> = [
-    ["Reglement", () => dm(prisma.reglement.deleteMany({ where: { userId } }))],
-    ["VirementBancaire", () => dm(prisma.virementBancaire.deleteMany({ where: { userId } }))],
-    ["OperationBancaire", () => dm(prisma.operationBancaire.deleteMany({ where: { userId } }))],
-    ["CompteBancaire", () => dm(prisma.compteBancaire.deleteMany({ where: { userId } }))],
-    ["ConnexionStripe", () => dm(prisma.connexionStripe.deleteMany({ where: { userId } }))],
-    ["EtatConnexionStripe", () => dm(prisma.etatConnexionStripe.deleteMany({ where: { userId } }))],
-    ["DossierReglement", () => dm(prisma.dossierReglement.deleteMany({ where: { userId } }))],
-    ["MouvementStockCommercial", () => dm(prisma.mouvementStockCommercial.deleteMany({ where: { userId } }))],
-    // ── Boutique ────────────────────────────────────────────────────────
-    ["LigneCommandeBoutique", () => dm(prisma.ligneCommandeBoutique.deleteMany({ where: { commande: { userId } } }))],
-    ["CommandeBoutique", () => dm(prisma.commandeBoutique.deleteMany({ where: { userId } }))],
-    ["ProduitBoutique", () => dm(prisma.produitBoutique.deleteMany({ where: { userId } }))],
-    ["Boutique", () => dm(prisma.boutique.deleteMany({ where: { userId } }))],
-
-    // ── Comptabilité ────────────────────────────────────────────────────
-    ["DocumentCommercial", () => dm(prisma.documentCommercial.deleteMany({ where: { userId } }))],
-    ["LigneFacture", () => dm(prisma.ligneFacture.deleteMany({ where: { facture: { userId } } }))],
-    ["Facture", () => dm(prisma.facture.deleteMany({ where: { userId } }))],
-    // Les séquences suivent les factures : une séquence orpheline en retard sur
-    // les numéros recréés par le seed faisait échouer la première émission
-    // (index unique user_id+numero), trois 500 d'affilée le 2026-08-12.
-    ["SequenceFacture", () => dm(prisma.sequenceFacture.deleteMany({ where: { userId } }))],
-    ["VenteManuelle", () => dm(prisma.venteManuelle.deleteMany({ where: { userId } }))],
-    ["DepenseManuelle", () => dm(prisma.depenseManuelle.deleteMany({ where: { userId } }))],
-    ["Client", () => dm(prisma.client.deleteMany({ where: { userId } }))],
-
-    // ── Élevage : lait & fromagerie ─────────────────────────────────────
-    ["CollecteLait", () => dm(prisma.collecteLait.deleteMany({ where: { userId } }))],
-    ["SequenceLotFromage", () => dm(prisma.sequenceLotFromage.deleteMany({ where: { userId } }))],
-    ["LotFromage", () => dm(prisma.lotFromage.deleteMany({ where: { userId } }))],
-    // ── Élevage : reproduction / sélection ─────────────────────────────
-    // Ces modèles portent des références scalaires sans FK : ils ne sont
-    // pas supprimés automatiquement avec l'animal ou la naissance.
-    ["ReservationElevage", () => dm(prisma.reservationElevage.deleteMany({ where: { userId } }))],
-    ["PetitNaissance", () => dm(prisma.petitNaissance.deleteMany({ where: { userId } }))],
-    ["NaissanceAnimale", () => dm(prisma.naissanceAnimale.deleteMany({ where: { userId } }))],
-    ["Saillie", () => dm(prisma.saillie.deleteMany({ where: { userId } }))],
-    ["CampagneReproduction", () => dm(prisma.campagneReproduction.deleteMany({ where: { userId } }))],
-    ["TestSanteElevage", () => dm(prisma.testSanteElevage.deleteMany({ where: { userId } }))],
-    ["PedigreeElevage", () => dm(prisma.pedigreeElevage.deleteMany({ where: { userId } }))],
-    // ── Élevage : suivi ─────────────────────────────────────────────────
-    ["SoinAnimal", () => dm(prisma.soinAnimal.deleteMany({ where: { userId } }))],
-    ["ConsommationAliment", () => dm(prisma.consommationAliment.deleteMany({ where: { userId } }))],
-    ["Abattage", () => dm(prisma.abattage.deleteMany({ where: { userId } }))],
-    ["VenteProduit", () => dm(prisma.venteProduit.deleteMany({ where: { userId } }))],
-    ["ProductionOeuf", () => dm(prisma.productionOeuf.deleteMany({ where: { userId } }))],
-    ["MouvementCheptel", () => dm(prisma.mouvementCheptel.deleteMany({ where: { userId } }))],
-    ["Animal", () => dm(prisma.animal.deleteMany({ where: { userId } }))],
-    ["LotAnimaux", () => dm(prisma.lotAnimaux.deleteMany({ where: { userId } }))],
-
-    // ── Verger ──────────────────────────────────────────────────────────
-    ["ObservationCampagne", () => dm(prisma.observationCampagne.deleteMany({ where: { userId } }))],
-    ["EtapeCampagne", () => dm(prisma.etapeCampagne.deleteMany({ where: { userId } }))],
-    ["CampagnePlantation", () => dm(prisma.campagnePlantation.deleteMany({ where: { userId } }))],
-    ["PollinisationArbre", () => dm(prisma.pollinisationArbre.deleteMany({ where: { OR: [{ arbrePollinise: { userId } }, { arbrePollinisateur: { userId } }] } }))],
-    ["ObservationSante", () => dm(prisma.observationSante.deleteMany({ where: { userId } }))],
-    ["OperationArbre", () => dm(prisma.operationArbre.deleteMany({ where: { userId } }))],
-    ["ProductionBois", () => dm(prisma.productionBois.deleteMany({ where: { userId } }))],
-    ["RecolteArbre", () => dm(prisma.recolteArbre.deleteMany({ where: { userId } }))],
-    ["ZoneVerger", () => dm(prisma.zoneVerger.deleteMany({ where: { userId } }))],
-    ["Arbre", () => dm(prisma.arbre.deleteMany({ where: { userId } }))],
-
-    // ── Maraîchage ──────────────────────────────────────────────────────
-    ["Fertilisation", () => dm(prisma.fertilisation.deleteMany({ where: { userId } }))],
-    ["Consommation", () => dm(prisma.consommation.deleteMany({ where: { userId } }))],
-    ["IrrigationPlanifiee", () => dm(prisma.irrigationPlanifiee.deleteMany({ where: { userId } }))],
-    ["Récolte", () => dm(prisma.recolte.deleteMany({ where: { userId } }))],
-    ["Culture", () => dm(prisma.culture.deleteMany({ where: { userId } }))],
-    ["AnalyseSol", () => dm(prisma.analyseSol.deleteMany({ where: { userId } }))],
-    ["ObjetJardin", () => dm(prisma.objetJardin.deleteMany({ where: { userId } }))],
-    ["Note", () => dm(prisma.note.deleteMany({ where: { userId } }))],
-    ["Planche", () => dm(prisma.planche.deleteMany({ where: { userId } }))],
-    ["FondPlan", () => dm(prisma.fondPlan.deleteMany({ where: { userId } }))],
-    ["ParcelleGeo", () => dm(prisma.parcelleGeo.deleteMany({ where: { userId } }))],
-
-    // ── Stocks utilisateur ──────────────────────────────────────────────
-    ["UserStockVariété", () => dm(prisma.userStockVariete.deleteMany({ where: { userId } }))],
-    ["UserStockFertilisant", () => dm(prisma.userStockFertilisant.deleteMany({ where: { userId } }))],
-    ["UserStockAliment", () => dm(prisma.userStockAliment.deleteMany({ where: { userId } }))],
-    ["UserStockEspèce", () => dm(prisma.userStockEspece.deleteMany({ where: { userId } }))],
-
-    // ── Traçabilité, IA, météo, préférences, exploitation ───────────────
-    ["Intervention", () => dm(prisma.intervention.deleteMany({ where: { userId } }))],
-    ["ChatMessage", () => dm(prisma.chatMessage.deleteMany({ where: { conversation: { userId } } }))],
-    ["Conversation", () => dm(prisma.conversation.deleteMany({ where: { userId } }))],
-    ["StationMeteo", () => dm(prisma.stationMeteo.deleteMany({ where: { userId } }))],
-    ["UserPreference", () => dm(prisma.userPreference.deleteMany({ where: { userId } }))],
-    ["Exploitation", () => dm(prisma.exploitation.deleteMany({ where: { userId } }))],
-
-    // ── Référentiel PERSO créé par les testeurs sur le compte démo ──────
-    // (enfants d'abord : variétés/ITP référencent l'espèce)
-    ["Variété (perso)", () => dm(prisma.variete.deleteMany({ where: { userId } }))],
-    ["ITP (perso)", () => dm(prisma.iTP.deleteMany({ where: { userId } }))],
-    ["Espèce (perso)", () => dm(prisma.espece.deleteMany({ where: { userId } }))],
-    ["RaceAnimale (perso)", () => dm(prisma.raceAnimale.deleteMany({ where: { userId } }))],
-    ["EspeceAnimale (perso)", () => dm(prisma.especeAnimale.deleteMany({ where: { userId } }))],
-
-    // ── Auth & sessions (on garde l'utilisateur) ────────────────────────
-    ["Session", () => dm(prisma.session.deleteMany({ where: { userId } }))],
-    ["LoginLog", () => dm(prisma.loginLog.deleteMany({ where: { userId } }))],
-  ]
-
-  for (const [name, fn] of steps) {
-    try {
-      const res = await fn()
-      if (res?.count > 0) console.log(`  ✓ ${name}: ${res.count} ligne(s) supprimée(s)`)
-    } catch (err) {
-      console.error(`  ✗ ${name}: ${(err as Error).message.split("\n")[0]}`)
-    }
+  const avant = new Map<string, number>()
+  for (const c of cibles) {
+    const n = await compter(c, userId)
+    if (n > 0) avant.set(`${c.table}.${c.colonne}`, n)
+  }
+  if (SIMULATION) {
+    for (const [k, n] of [...avant].sort()) console.log(`  · ${k} : ${n}`)
+    console.log(`ℹ ${[...avant.values()].reduce((a, b) => a + b, 0)} ligne(s) seraient supprimées.`)
+    return
   }
 
-  console.log("✅ Reset terminé. Lancez `npx tsx prisma/seed-demo.ts`.")
+  const { reprises } = await prisma.$transaction((tx) => reprendreReferentielCommunaute(tx, userId))
+  if (reprises > 0) console.log(`  ✓ Référentiel partagé repris par la communauté : ${reprises}`)
+
+  let restantes = cibles.filter((c) => avant.has(`${c.table}.${c.colonne}`))
+  const echecs = new Map<string, string>()
+  for (let passe = 1; restantes.length > 0 && passe <= 12; passe++) {
+    const suivantes: Cible[] = []
+    for (const c of restantes) {
+      try {
+        const n = await prisma.$executeRawUnsafe(
+          `DELETE FROM ${ident(c.table)} WHERE ${ident(c.colonne)} = $1`,
+          userId,
+        )
+        if (n > 0) console.log(`  ✓ ${c.table} : ${n}`)
+        echecs.delete(c.table)
+      } catch (err) {
+        // Une clé étrangère retient encore la ligne : on retente après les autres.
+        echecs.set(c.table, (err as Error).message.split("\n").find((l) => l.trim()) ?? "erreur")
+        suivantes.push(c)
+      }
+    }
+    if (suivantes.length === restantes.length) break
+    restantes = suivantes
+  }
+
+  const residus: string[] = []
+  for (const c of cibles) {
+    const n = await compter(c, userId)
+    if (n > 0) residus.push(`${c.table}.${c.colonne} : ${n}${echecs.has(c.table) ? ` (${echecs.get(c.table)})` : ""}`)
+  }
+  if (residus.length > 0) {
+    console.error("✗ Lignes restantes :\n  " + residus.join("\n  "))
+    process.exit(1)
+  }
+  console.log("✅ Remise à zéro terminée. Lancez `npx tsx prisma/seed-demo.ts`.")
 }
 
 main()

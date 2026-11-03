@@ -419,6 +419,7 @@ export async function composerAujourdhui(
       ? {
           culturesActives: kpiMaraichage.culturesActives,
           culturesPlanifiees: kpiMaraichage.culturesPlanifiees,
+          culturesTerminees: kpiMaraichage.culturesTerminees,
           surfaceCultiveeM2: Math.round(kpiMaraichage.surfaceCultiveeM2),
           planchesCount: kpiMaraichage.planchesCount,
           recoltes: recolteDominante(kpiMaraichage),
