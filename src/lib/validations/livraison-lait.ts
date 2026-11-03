@@ -13,4 +13,7 @@ export const livraisonLaitSchema = z.object({
   germes: z.coerce.number().int().min(0).max(20000, { message: 'Germes en milliers/mL (ex. 25 pour 25 000). Une valeur brute (> 20 000) est probablement une erreur d’unité.' }).nullable().optional(),
   lipolyse: z.coerce.number().min(0).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
+  // Bilan matière du lait (2026-11-03) : confirme une livraison qui dépasse le
+  // lait collecté sur 7 jours (réponse 422 `LAIT_INDISPONIBLE`).
+  confirmerLaitIndisponible: z.boolean().optional(),
 })

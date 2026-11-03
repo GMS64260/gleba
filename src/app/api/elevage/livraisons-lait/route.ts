@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { livraisonLaitSchema } from '@/lib/validations/livraison-lait'
+import { corpsLaitIndisponible, jourParis, verifierDisponibiliteLait } from '@/lib/elevage/bilan-lait'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -35,6 +36,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const d = parsed.data
+    // Bilan matière du lait (2026-11-03) : une livraison qui dépasse le lait
+    // collecté sur 7 jours demande confirmation (422 confirmable).
+    if (d.confirmerLaitIndisponible !== true) {
+      const alerte = await verifierDisponibiliteLait(prisma, session.user.id, {
+        ajout: [{ jour: jourParis(d.date), poste: 'livre', litres: d.litres }],
+      })
+      if (alerte) return NextResponse.json(corpsLaitIndisponible(alerte), { status: 422 })
+    }
     const livraison = await prisma.livraisonLait.create({
       data: {
         userId: session.user.id,
