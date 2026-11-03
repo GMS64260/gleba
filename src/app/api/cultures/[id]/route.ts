@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateCultureSchema, normalizeCultureDateFields, retenirDatesCulture } from '@/lib/validations'
 import { jourCivilStocke } from '@/lib/jour-civil'
-import { fenetreRecolteIncoherente, finRecolteApresModification } from '@/lib/cultures/fenetre-recolte'
+import { erreurFinRecolte, fenetreRecolteIncoherente, finRecolteApresModification } from '@/lib/cultures/fenetre-recolte'
 import type { AlerteSaisonCulture } from '@/lib/cultures/saison-culture'
 import { validateCultureDates } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -435,6 +435,16 @@ export async function PUT(
     const quantiteAuto = quantiteCultureApresModification(existing, data)
     const ecritureQuantite = quantiteAuto === undefined ? {} : { quantite: quantiteAuto }
 
+    const datesFinales = { ...existing, ...data, ...ecrituresEtapes }
+    // Une ancienne incohérence ne doit pas empêcher de corriger une note.
+    // Contrôler la paire lorsqu'un de ses jours change, après tous les recalages.
+    if ((['dateRecolte', 'finRecolte'] as const).some(champ =>
+      jourCivilStocke(datesFinales[champ]) !== jourCivilStocke(existing[champ]),
+    )) {
+      const erreurFin = erreurFinRecolte(datesFinales)
+      if (erreurFin) return NextResponse.json({ error: erreurFin, champ: 'finRecolte' }, { status: 400 })
+    }
+
     // Mise à jour
     const culture = await prisma.culture.update({
       where: { id: cultureId },
@@ -668,6 +678,18 @@ export async function PATCH(
       } else if (updateData[champEtape] === false) {
         Object.assign(updateData, ecrituresRetourANonFait(existing, champEtape))
       }
+    }
+
+    const datesFinales = {
+      dateRecolte: updateData.dateRecolte !== undefined
+        ? (updateData.dateRecolte as Date | null) : existing.dateRecolte,
+      finRecolte: updateData.finRecolte !== undefined
+        ? (updateData.finRecolte as Date | null) : existing.finRecolte,
+    }
+    if (jourCivilStocke(datesFinales.dateRecolte) !== jourCivilStocke(existing.dateRecolte)
+      || jourCivilStocke(datesFinales.finRecolte) !== jourCivilStocke(existing.finRecolte)) {
+      const erreurFin = erreurFinRecolte(datesFinales)
+      if (erreurFin) return NextResponse.json({ error: erreurFin, champ: 'finRecolte' }, { status: 400 })
     }
 
     const culture = await prisma.culture.update({

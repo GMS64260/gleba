@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cultureFormSchema,
   cultureUpdateFormSchema,
+  cultureUpdateFormSchemaPour,
   normalizeCultureDateFields,
 } from '../culture'
 
@@ -82,6 +83,32 @@ describe('cultureFormSchema — chronologie', () => {
       dateRecolte: '2026-08-17',
     })
     expect(r.success).toBe(true)
+  })
+
+  it("refuse la fermeture de la fenêtre avant son ouverture", () => {
+    for (const schema of [cultureFormSchema, cultureUpdateFormSchema]) {
+      const resultat = schema.safeParse({
+        ...base, dateRecolte: "2027-01-11", finRecolte: "2026-11-26",
+      })
+      expect(resultat.success).toBe(false)
+      if (!resultat.success) {
+        expect(resultat.error.issues.some(i => i.path[0] === 'finRecolte')).toBe(true)
+      }
+      expect(schema.safeParse({
+        ...base, dateRecolte: "2026-11-26", finRecolte: "2026-11-26",
+      }).success).toBe(true)
+    }
+  })
+
+  it("l'édition d'une note conserve possible une ancienne fenêtre inchangée", () => {
+    const avant = { dateRecolte: new Date('2027-02-15'), finRecolte: new Date('2027-01-01') }
+    const schema = cultureUpdateFormSchemaPour(avant)
+    expect(schema.safeParse({
+      dateRecolte: '2027-02-15', finRecolte: '2027-01-01', notes: 'Observation corrigée',
+    }).success).toBe(true)
+    expect(schema.safeParse({ notes: 'Observation corrigée' }).success).toBe(true)
+    expect(schema.safeParse({ finRecolte: '2027-01-02' }).success).toBe(false)
+    expect(schema.safeParse({ finRecolte: '2027-02-15' }).success).toBe(true)
   })
 
   it('accepte les dates absentes ou partielles', () => {

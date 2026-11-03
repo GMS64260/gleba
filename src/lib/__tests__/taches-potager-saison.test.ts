@@ -66,6 +66,26 @@ afterAll(() => {
 })
 
 describe("getTachesPotager — plantation hors saison de l'ITP", () => {
+  it("garde la récolte ouverte sans retard jusqu'à la fin de sa fenêtre", async () => {
+    const base = { ...AIL, datePlantation: null, dateRecolte: new Date(2026, 9, 1) }
+    mocks.cultureFindMany.mockImplementation(async ({ where }: { where: Record<string, { lt?: Date }> }) =>
+      where.dateRecolte?.lt ? [
+        { ...base, id: 301, finRecolte: new Date(2026, 9, 30) },
+        { ...base, id: 302, finRecolte: new Date(2026, 9, 25) },
+        { ...base, id: 303, finRecolte: new Date(2026, 9, 22) },
+        { ...base, id: 304, finRecolte: null },
+      ] : [],
+    )
+    const taches = await getTachesPotager("u1", {
+      start: new Date(2026, 9, 19), end: new Date(2026, 9, 25, 23, 59, 59), annee: 2026,
+    })
+    expect(taches.recoltes.map(r => [r.id, r.retardJours])).toEqual([
+      [301, 0], [302, 0], [303, 3], [304, 24],
+    ])
+    expect(taches.stats.enRetard).toBe(2)
+    expect(taches.stats.recoltesPrevues).toBe(4)
+  })
+
   it("dit « hors saison » sur l'aubergine du jour, rien sur l'ail en retard", async () => {
     mocks.cultureFindMany.mockImplementation(async ({ where }: { where: Record<string, { lt?: Date; gte?: Date }> }) => {
       if (where.datePlantation?.gte) return [AUBERGINE] // semaine affichée

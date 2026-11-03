@@ -152,6 +152,29 @@ beforeEach(() => {
   })
 })
 
+describe("Fenêtre de récolte saisie à la main", () => {
+  for (const methode of ["PUT", "PATCH"] as const) {
+    it(`${methode} refuse une fin antérieure au début, sans écrire`, async () => {
+      const res = await ({ PUT, PATCH }[methode])(
+        requete(methode, { finRecolte: "2027-06-01" }), { params },
+      )
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toMatch(/fin.*récolte/i)
+      expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+    })
+
+    it(`${methode} laisse corriger les notes d'une ancienne fenêtre incohérente`, async () => {
+      mocks.cultureFindUnique.mockResolvedValue({
+        ...cultureA, itpId: null, finRecolte: new Date("2027-06-01"),
+      })
+      const res = await ({ PUT, PATCH }[methode])(
+        requete(methode, { notes: "Observation corrigée" }), { params },
+      )
+      expect(res.status).toBe(200)
+    })
+  }
+})
+
 describe("PUT /api/cultures/[id] — la fenêtre de récolte suit l'itinéraire (culture A)", () => {
   it("refait la fin de récolte depuis le nouvel ITP : 13/07/2026 + 5 semaines, pas le 09/08/2027", async () => {
     const res = await PUT(requete("PUT", corpsEdition()), { params })

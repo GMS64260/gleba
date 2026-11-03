@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
@@ -41,6 +42,9 @@ export async function GET(request: NextRequest) {
     const endOfYear = new Date(annee, 11, 31, 23, 59, 59, 999)
     const startOfPrevYear = new Date(annee - 1, 0, 1)
     const endOfPrevYear = new Date(annee - 1, 11, 31, 23, 59, 59, 999)
+    const finProduction = finJourLivraison(new Date())
+    const finProductionAnnee = new Date(Math.min(endOfYear.getTime(), finProduction.getTime()))
+    const finProductionAnneePrecedente = new Date(Math.min(endOfPrevYear.getTime(), finProduction.getTime()))
 
     // Lots de ponte : une seule lecture, partagée par le stock physique et les
     // statuts (commercialisables, bloqués véto).
@@ -99,7 +103,7 @@ export async function GET(request: NextRequest) {
       prisma.productionOeuf.aggregate({
         where: {
           userId,
-          date: { gte: startOfYear, lte: endOfYear },
+          date: { gte: startOfYear, lte: finProductionAnnee },
         },
         _sum: { quantite: true },
       }),
@@ -108,7 +112,7 @@ export async function GET(request: NextRequest) {
       prisma.productionOeuf.aggregate({
         where: {
           userId,
-          date: { gte: startOfPrevYear, lte: endOfPrevYear },
+          date: { gte: startOfPrevYear, lte: finProductionAnneePrecedente },
         },
         _sum: { quantite: true },
       }),
@@ -121,7 +125,7 @@ export async function GET(request: NextRequest) {
         FROM production_oeufs
         WHERE user_id = ${userId}
           AND date >= ${startOfYear}
-          AND date <= ${endOfYear}
+          AND date <= ${finProductionAnnee}
         GROUP BY EXTRACT(MONTH FROM date AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Paris')
         ORDER BY mois
       ` as Promise<{ mois: number; total: bigint }[]>,
@@ -364,7 +368,7 @@ export async function GET(request: NextRequest) {
 
     // Taux observé sur 7 j glissants : œufs collectés / (pondeuses × jours).
     const productionOeufs7j = await prisma.productionOeuf.aggregate({
-      where: { userId, date: { gte: periodStart, lte: periodEnd } },
+      where: { userId, date: { gte: periodStart, lte: new Date(Math.min(periodEnd.getTime(), finProduction.getTime())) } },
       _sum: { quantite: true },
     })
     const nbOeufs7j = productionOeufs7j._sum.quantite || 0
