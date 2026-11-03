@@ -89,6 +89,8 @@ describe('getKpiMaraichage', () => {
     expect(kpi.surfacePlanifieeM2).toBe(170) // 100 + 50 + 20
     expect(kpi.culturesActives).toBe(1)
     expect(kpi.culturesPlanifiees).toBe(3)
+    // P3 terminée : ni active, ni « non démarrée » (seule P2 l'est).
+    expect(kpi.culturesTerminees).toBe(1)
   })
 
   it('compare les récoltes YTD vs YTD N-1 (pas vs année N-1 complète)', async () => {

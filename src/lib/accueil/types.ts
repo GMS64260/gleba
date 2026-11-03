@@ -113,6 +113,7 @@ export interface ReperesAccueil {
   maraichage: {
     culturesActives: number
     culturesPlanifiees: number
+    culturesTerminees: number
     surfaceCultiveeM2: number
     planchesCount: number
     /** Récolte dominante de l'année : la plus grosse unité (kg, tige, pièce…). */

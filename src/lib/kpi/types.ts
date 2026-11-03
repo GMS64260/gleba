@@ -49,6 +49,12 @@ export interface KPIMaraichage extends KPIBase {
   culturesActives: number
   /** Toutes les cultures planifiées pour `year`. */
   culturesPlanifiees: number
+  /**
+   * Cultures de `year` déjà terminées (arrachées). Sans ce compte, l'écart
+   * « planifiées − actives » mêlait les cultures finies aux cultures à venir :
+   * à l'automne, l'accueil annonçait des dizaines de cultures « non démarrées ».
+   */
+  culturesTerminees: number
 
   /** Nombre de planches enregistrées (toutes années). */
   planchesCount: number

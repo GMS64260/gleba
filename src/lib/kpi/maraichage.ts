@@ -212,6 +212,7 @@ async function computeKpiMaraichage(
     recoltesParUniteN1Total: recoltesN1Total,
     culturesActives: culturesActivesCount,
     culturesPlanifiees: culturesAnnee.length,
+    culturesTerminees: culturesAnnee.filter((c) => c.terminee != null).length,
     planchesCount: planchesTotalAgg.length,
     planchesSurfaceM2: round1(
       planchesTotalAgg.reduce((sum, p) => {
