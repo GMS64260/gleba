@@ -37,6 +37,7 @@ import { BulkActions } from "@/components/calendrier/BulkActions"
 import { SoinDetailDialog } from "@/components/elevage/SoinDetailDialog"
 import { libelleTypeSoin } from "@/lib/elevage/types-soin"
 import { todayLocalISO } from "@/lib/format-utils"
+import type { BilanLait } from "@/lib/elevage/bilan-lait"
 import {
   classerEcheanceSoin,
   compterEcheancesSoins,
@@ -127,7 +128,8 @@ interface DashboardData {
     // PROMPT 17 — KPI lait
     laitTotalAnnee?: number
     laitMoyenJourJ30?: number
-    laitStockTransformable?: number
+    /** Bilan matière du lait sur 30 jours, null sans collecte saisie (2026-11-03). */
+    bilanLait30j?: BilanLait | null
     nbCollectesAnnee?: number
     tauxPonteSaisonAttendu?: number | null
   }
@@ -928,20 +930,28 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 </CardContent>
               </Card>
             )}
-            {data.stats.laitStockTransformable != null && data.stats.laitStockTransformable > 0 && (
-              <Card>
-                <CardHeader className="pb-1 pt-3 px-4">
-                  <CardDescription className="text-xs flex items-center gap-1">
-                    Lait sans lot de fromage
-                  </CardDescription>
-                  <CardTitle className="text-2xl text-cyan-700">
-                    {data.stats.laitStockTransformable} L
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pb-3 px-4">
-                  <p className="text-xs text-muted-foreground">Collectes non affectées ; ventes et livraisons non déduites.</p>
-                </CardContent>
-              </Card>
+            {/* Bilan matière du lait (2026-11-03) : collecté moins écarté,
+                livré, vendu cru et transformé, sur 30 jours. */}
+            {data.stats.bilanLait30j && (
+              <Link href="/elevage?tab=production&sub=collecte" className="block" data-testid="bilan-lait-30j">
+                <Card className="h-full transition-colors hover:bg-muted/40">
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardDescription className="text-xs flex items-center gap-1">
+                      Lait non affecté (30 j)
+                    </CardDescription>
+                    <CardTitle className={`text-2xl ${data.stats.bilanLait30j.nonAffecte < 0 ? "text-amber-700" : "text-cyan-700"}`}>
+                      {data.stats.bilanLait30j.nonAffecte.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} L
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pb-3 px-4">
+                    <p className="text-xs text-muted-foreground">
+                      {data.stats.bilanLait30j.nonAffecte < 0
+                        ? "Plus de lait sorti que collecté : vérifiez ventes, livraisons et fabrications."
+                        : "Collecté moins livré, vendu cru et transformé : pertes, veaux ou saisie manquante."}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
             )}
             {/* PROMPT 20 — Qualité du lait / cellules (uniquement si élevage laitier suivi) */}
             {qualite && qualite.nbSuivis > 0 && qualite.nbAvecMesure > 0 && (

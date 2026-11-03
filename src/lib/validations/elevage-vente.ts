@@ -56,6 +56,9 @@ export const venteProduitSchema = z
     // gratuite, acquéreur requis). Les appelants historiques (ex : bouton
     // « Vendre » de la fiche animal) ne l'envoient pas et restent fonctionnels.
     validationVente: z.boolean().optional(),
+    // Bilan matière du lait (2026-11-03) : confirme une sortie qui dépasse le
+    // lait collecté sur 7 jours (réponse 422 `LAIT_INDISPONIBLE`).
+    confirmerLaitIndisponible: z.boolean().optional(),
     notes: z.string().max(5000).nullable().optional(),
   })
   .transform((d) => ({ ...d, paye: d.paye ?? d.modeReglement !== 'À crédit' }))

@@ -68,6 +68,9 @@ export const lotFromageSchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
   // IDs de collectes à affecter au lot
   collecteIds: z.array(z.string()).optional().default([]),
+  // Bilan matière du lait (2026-11-03) : confirme une fabrication dont le lait
+  // est déjà sorti (vendu, livré) sur 7 jours (réponse 422 `LAIT_INDISPONIBLE`).
+  confirmerLaitIndisponible: z.boolean().optional(),
 })
 
 export type CollecteLaitInput = z.infer<typeof collecteLaitSchema>

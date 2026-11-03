@@ -14,6 +14,7 @@ import { lotFromageSchema } from '@/lib/validations/lait'
 import { prochainNumeroLot } from '@/lib/lait'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurElevage } from '@/lib/elevage/erreurs'
+import { corpsLaitIndisponible, jourParis, LaitIndisponibleError, verifierDisponibiliteLait, type MouvementLait } from '@/lib/elevage/bilan-lait'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
 
       // Vérifie que les collectes existent, appartiennent au user et ne sont pas déjà affectées
       let collectesValides: typeof body.collecteIds = []
+      let laitTransforme: MouvementLait[] = []
       if (data.collecteIds && data.collecteIds.length > 0) {
         const collectes = await tx.collecteLait.findMany({
           where: { id: { in: data.collecteIds }, userId: session.user.id },
@@ -80,6 +82,17 @@ export async function POST(request: NextRequest) {
           )
         }
         collectesValides = collectes.map((c) => c.id)
+        laitTransforme = collectes.map((c): MouvementLait => ({ jour: jourParis(c.date), poste: 'transforme', litres: Number(c.quantiteLitres), consommeCollecte: true }))
+      } else if (data.volumeLaitUtiliseL > 0) {
+        laitTransforme = [{ jour: jourParis(data.dateFabrication), poste: 'transforme', litres: data.volumeLaitUtiliseL }]
+      }
+
+      // Bilan matière du lait (2026-11-03) : du lait déjà vendu ou livré sur
+      // 7 jours ne peut pas aussi être transformé sans confirmation. Une
+      // collecte compte à sa date ; sans collecte, le jour de fabrication.
+      if (data.confirmerLaitIndisponible !== true) {
+        const alerte = await verifierDisponibiliteLait(tx, session.user.id, { ajout: laitTransforme })
+        if (alerte) throw new LaitIndisponibleError(alerte)
       }
 
       const lot = await tx.lotFromage.create({
@@ -112,6 +125,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (err) {
+    if (err instanceof LaitIndisponibleError) return NextResponse.json(corpsLaitIndisponible(err.alerte), { status: 422 })
     if (err instanceof ErreurElevage) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('POST /api/elevage/lots-fromage error:', err)
     return NextResponse.json({ error: (err instanceof Error && err.message) || 'Erreur interne du serveur' }, { status: 400 })

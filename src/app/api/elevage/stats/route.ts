@@ -8,6 +8,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
+import { chargerBilanLait, decalerJour, jourParis } from '@/lib/elevage/bilan-lait'
 import { fenetrePonteGlissante, tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import {
@@ -423,23 +424,23 @@ export async function GET(request: NextRequest) {
 
     // PROMPT 17 — KPI lait
     const fenetreLait = fenetrePonteGlissante(new Date(), 30)
-    const borneStockLait = new Date(Math.min(endOfYear.getTime(), fenetreLait.fin.getTime()))
-    const [productionsLaitieres, laitNonAffecte, laitJ30] = await Promise.all([
+    // Bilan matière du lait (2026-11-03) : remplace « lait sans lot de
+    // fromage », qui ignorait ventes et livraisons. 30 jours jusqu'à
+    // aujourd'hui (ou la fin de l'année demandée), comme la moyenne voisine.
+    // Jours civils de Paris, indépendants du fuseau du serveur.
+    const finBilanLait = [jourParis(new Date()), `${annee}-12-31`].sort()[0]
+    const [productionsLaitieres, bilanLait30, laitJ30] = await Promise.all([
       agregerProductionsLaitieresDashboard({
         collecteLait: { aggregate: (args) => prisma.collecteLait.aggregate(args) },
         lotFromage: { aggregate: (args) => prisma.lotFromage.aggregate(args) },
       }, userId, startOfYear, endOfYear),
-      prisma.collecteLait.aggregate({
-        where: { userId, lotFromageId: null, ecarteAttente: false, date: { gte: startOfYear, lte: borneStockLait } },
-        _sum: { quantiteLitres: true },
-      }),
+      chargerBilanLait(prisma, userId, decalerJour(finBilanLait, -29), finBilanLait),
       prisma.collecteLait.aggregate({
         where: { userId, date: { gte: fenetreLait.debut, lte: fenetreLait.fin } },
         _sum: { quantiteLitres: true },
       }),
     ])
     const laitTotalAnnee = productionsLaitieres.laitLitres
-    const laitNonAffecteL = Number(laitNonAffecte._sum.quantiteLitres ?? 0)
     const laitJ30L = Number(laitJ30._sum.quantiteLitres ?? 0)
     const laitMoyenJourJ30 = Math.round((laitJ30L / 30) * 100) / 100
     const productions = construireProductionsDashboard({
@@ -496,7 +497,7 @@ export async function GET(request: NextRequest) {
         // PROMPT 17 — KPI Lait
         laitTotalAnnee: Math.round(laitTotalAnnee * 100) / 100,
         laitMoyenJourJ30,
-        laitStockTransformable: Math.round(laitNonAffecteL * 100) / 100,
+        bilanLait30j: bilanLait30.nbCollectes > 0 ? bilanLait30 : null,
         nbCollectesAnnee: productionsLaitieres.nbCollectes,
         // Profil du cheptel (pour l'UI : onglet Production par défaut, etc.)
         profil,

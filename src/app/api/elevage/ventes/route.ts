@@ -31,6 +31,7 @@ import { verifierPointageDetaille } from '@/lib/comptabilite/suivi-reglement-sou
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { invalidateKpi } from '@/lib/kpi'
 import { ErreurElevage } from '@/lib/elevage/erreurs'
+import { corpsLaitIndisponible, estVenteEnLitres, jourParis, verifierDisponibiliteLait } from '@/lib/elevage/bilan-lait'
 import {
   StockOeufsVenteError,
   supprimerStockOeufsVente,
@@ -273,6 +274,16 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       )
+    }
+
+    // Bilan matière du lait (2026-11-03) : une vente de lait cru qui dépasse
+    // le lait collecté sur 7 jours demande confirmation (422 confirmable).
+    // Contrôle indicatif, hors transaction : il ne réserve aucun litre.
+    if (type === 'lait' && estVenteEnLitres(unite) && parsed.data.confirmerLaitIndisponible !== true) {
+      const alerte = await verifierDisponibiliteLait(prisma, session.user.id, {
+        ajout: [{ jour: jourParis(date || new Date()), poste: 'venduCru', litres: quantite }],
+      })
+      if (alerte) return NextResponse.json(corpsLaitIndisponible(alerte), { status: 422 })
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -669,6 +680,27 @@ export async function PATCH(request: NextRequest) {
     }
 
     const userId = session.user.id
+
+    // Bilan matière du lait (2026-11-03) : une correction qui change le volume,
+    // l'unité ou le jour d'une vente de lait cru est recontrôlée, la vente
+    // corrigée étant retirée de l'état d'arrivée. Réduire n'alerte jamais.
+    if (existing.type === 'lait' && body.confirmerLaitIndisponible !== true) {
+      const dateFinale = updateData.date ?? existing.date
+      const quantiteFinale = updateData.quantite ?? existing.quantite
+      const uniteFinale = updateData.unite ?? existing.unite
+      const change = dateFinale.getTime() !== existing.date.getTime()
+        || quantiteFinale !== existing.quantite
+        || uniteFinale !== existing.unite
+      if (change && estVenteEnLitres(uniteFinale)) {
+        const source = `vente:${existing.id}`
+        const alerte = await verifierDisponibiliteLait(prisma, userId, {
+          ajout: [{ jour: jourParis(dateFinale), poste: 'venduCru', litres: quantiteFinale, source }],
+          retirerSource: source,
+          jours: [jourParis(existing.date)],
+        })
+        if (alerte) return NextResponse.json(corpsLaitIndisponible(alerte), { status: 422 })
+      }
+    }
 
     // Anti-double-facture : une vente déjà facturée ne peut pas générer
     // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).

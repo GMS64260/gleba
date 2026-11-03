@@ -173,7 +173,45 @@ describe.skipIf(!active)('chaîne naissance → calculs élevage → comptabilit
     const dashboard = await import('@/app/api/elevage/stats/route')
     const stats = (await resultat(await dashboard.GET(request('/api/elevage/stats?annee=2026')))).stats
     expect(stats.laitMoyenJourJ30).toBe(1)
-    expect(stats.laitStockTransformable).toBe(330)
+    // Bilan matière sur 30 jours (2026-11-03) : la collecte future et celle
+    // d'avant la fenêtre sont hors bilan.
+    expect(stats.bilanLait30j).toMatchObject({ debut: '2026-09-28', fin: '2026-10-27', collecte: 30, nonAffecte: 30, nbCollectes: 1 })
+  })
+
+  it('signale le lait vendu cru puis transformé, garde la saisie confirmée et l’affiche au bilan (2026-11-03)', async () => {
+    const farm = await ferme()
+    const caprin = await db.especeAnimale.create({ data: { id: `chevre_qa_${randomUUID()}`, userId: farm.user.id, nom: 'Chèvre laitière QA', type: 'Caprin', production: 'lait' } })
+    const chevre = await db.animal.create({ data: { userId: farm.user.id, especeAnimaleId: caprin.id, sexe: 'femelle', dateNaissance: new Date('2023-01-01'), dateArrivee: new Date('2026-01-01') } })
+    const collecte = await db.collecteLait.create({ data: { userId: farm.user.id, animalId: chevre.id, traite: 'Unique', date: new Date('2026-10-25'), quantiteLitres: 20 } })
+    const ventes = await import('@/app/api/elevage/ventes/route')
+    const venteLait = { date: '2026-10-26', type: 'lait', quantite: 20, unite: 'L', prixUnitaire: 1.5, paye: true, modeReglement: 'Espèces' }
+    await resultat(await ventes.POST(request('/api/elevage/ventes', venteLait)), 201)
+
+    const fromages = await import('@/app/api/elevage/lots-fromage/route')
+    const lot = { dateFabrication: '2026-10-27', typeFromage: 'Lactique QA', volumeLaitUtiliseL: 20, nbPieces: 10, poidsTotalKg: 2, collecteIds: [collecte.id] }
+    const refus = await resultat(await fromages.POST(request('/api/elevage/lots-fromage', lot)), 422)
+    expect(refus).toMatchObject({ code: 'LAIT_INDISPONIBLE', details: { collecte: 20, venduCru: 20, transforme: 20, depassement: 20 } })
+    expect(await db.lotFromage.count({ where: { userId: farm.user.id } })).toBe(0)
+    expect((await db.collecteLait.findUniqueOrThrow({ where: { id: collecte.id } })).lotFromageId).toBeNull()
+
+    await resultat(await fromages.POST(request('/api/elevage/lots-fromage', { ...lot, confirmerLaitIndisponible: true })), 201)
+    const bilan = await import('@/app/api/elevage/bilan-lait/route')
+    const bilans = await resultat(await bilan.GET(request('/api/elevage/bilan-lait?date=2026-10-27')))
+    expect(bilans.jours7).toMatchObject({ debut: '2026-10-21', fin: '2026-10-27', collecte: 20, venduCru: 20, transforme: 20, sorties: 40, nonAffecte: -20 })
+    expect(bilans.mois).toMatchObject({ debut: '2026-10-01', collecte: 20, nonAffecte: -20 })
+
+    // Livraison et vente de lait cru suivent la même règle ; une vente en
+    // bouteilles n'a pas de volume et passe sans contrôle.
+    const livraisons = await import('@/app/api/elevage/livraisons-lait/route')
+    expect((await resultat(await livraisons.POST(request('/api/elevage/livraisons-lait', { date: '2026-10-27', litres: 5 })), 422)).code).toBe('LAIT_INDISPONIBLE')
+    expect((await resultat(await ventes.POST(request('/api/elevage/ventes', venteLait)), 422)).code).toBe('LAIT_INDISPONIBLE')
+    await resultat(await ventes.POST(request('/api/elevage/ventes', { ...venteLait, unite: 'unite' })), 201)
+    expect(await db.livraisonLait.count({ where: { userId: farm.user.id } })).toBe(0)
+    expect(await db.venteProduit.count({ where: { userId: farm.user.id, type: 'lait' } })).toBe(2)
+
+    const dashboard = await import('@/app/api/elevage/stats/route')
+    const stats = (await resultat(await dashboard.GET(request('/api/elevage/stats?annee=2026')))).stats
+    expect(stats.bilanLait30j).toMatchObject({ collecte: 20, venduCru: 20, transforme: 20, nonAffecte: -20, ventesHorsLitres: 1 })
   })
 
   it('refuse l’annulation intégrale d’une vente payée sur un avoir brouillon ou partiel', async () => {

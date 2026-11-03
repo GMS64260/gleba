@@ -57,6 +57,7 @@ import { useToast } from "@/hooks/use-toast"
 import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
 import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
 import { confirmDialog } from "@/lib/global-dialog"
+import { envoyerAvecConfirmationLait } from "@/lib/elevage/confirmation-lait"
 import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { tauxTvaVenteProduitParDefaut } from '@/lib/elevage/produits-ruche'
 import { jourCivilStocke } from '@/lib/jour-civil'
@@ -1384,12 +1385,15 @@ function VentesSubTab({ year }: { year?: number } = {}) {
             : {}),
         }),
       }
-      const response = await fetch('/api/elevage/ventes', {
+      // Bilan matière du lait (2026-11-03) : une vente de lait cru au-delà de
+      // la traite des 7 derniers jours demande confirmation.
+      const envoi = await envoyerAvecConfirmationLait((confirmer) => fetch('/api/elevage/ventes', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const json = await response.json().catch(() => ({}))
+        body: JSON.stringify(confirmer ? { ...body, confirmerLaitIndisponible: true } : body),
+      }))
+      if (!envoi) return
+      const { res: response, json } = envoi
       if (!response.ok) {
         // Ticket cms1vqsqu — afficher le message précis de l'API (garde-fous).
         toast({ variant: "destructive", title: "Erreur", description: json?.error || "Impossible d'enregistrer" })

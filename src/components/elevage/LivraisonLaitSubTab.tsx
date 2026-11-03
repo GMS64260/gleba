@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { envoyerAvecConfirmationLait } from "@/lib/elevage/confirmation-lait"
 import { formatMontantDevise, todayLocalISO } from "@/lib/format-utils"
 import { estimePrimeQualite, montantPaie } from "@/lib/elevage/paie-lait"
 
@@ -59,15 +60,19 @@ export function LivraisonLaitSubTab() {
 
   const submitLiv = async () => {
     if (!livForm.litres) { toast({ variant: "destructive", title: "Litres requis" }); return }
-    const res = await fetch("/api/elevage/livraisons-lait", {
+    const corps = {
+      date: livForm.date, litres: livForm.litres, laiterie: livForm.laiterie || null,
+      tb: livForm.tb || null, tp: livForm.tp || null, cellules: livForm.cellules || null, germes: livForm.germes || null,
+    }
+    // Bilan matière du lait (2026-11-03) : une livraison au-delà de la traite
+    // des 7 derniers jours demande confirmation.
+    const envoi = await envoyerAvecConfirmationLait((confirmer) => fetch("/api/elevage/livraisons-lait", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        date: livForm.date, litres: livForm.litres, laiterie: livForm.laiterie || null,
-        tb: livForm.tb || null, tp: livForm.tp || null, cellules: livForm.cellules || null, germes: livForm.germes || null,
-      }),
-    })
-    if (res.ok) { toast({ title: "Livraison enregistrée" }); setLivForm({ date: todayLocalISO(), litres: "", laiterie: "", tb: "", tp: "", cellules: "", germes: "" }); reload() }
-    else toast({ variant: "destructive", title: "Erreur" })
+      body: JSON.stringify(confirmer ? { ...corps, confirmerLaitIndisponible: true } : corps),
+    }))
+    if (!envoi) return
+    if (envoi.res.ok) { toast({ title: "Livraison enregistrée" }); setLivForm({ date: todayLocalISO(), litres: "", laiterie: "", tb: "", tp: "", cellules: "", germes: "" }); reload() }
+    else toast({ variant: "destructive", title: "Erreur", description: envoi.json.error })
   }
   const delLiv = async (l: Livraison) => {
     if (!(await confirmDialog("Supprimer cette livraison ?"))) return
