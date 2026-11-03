@@ -34,6 +34,9 @@ import {
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { envoyerAvecConfirmationLait } from "@/lib/elevage/confirmation-lait"
+import type { BilanLait } from "@/lib/elevage/bilan-lait"
+import { BilanLaitResume } from "./BilanLaitResume"
 import { todayLocalISO } from '@/lib/format-utils'
 import {
   listerCiblesCollecteLait,
@@ -618,6 +621,7 @@ function CollecteView() {
   const [lots, setLots] = React.useState<Lot[]>([])
   const [collectes, setCollectes] = React.useState<Collecte[]>([])
   const [attentesLait, setAttentesLait] = React.useState<AttenteLaitActive[]>([])
+  const [bilans, setBilans] = React.useState<{ jours7: BilanLait; mois: BilanLait } | null>(null)
   const [endDate, setEndDate] = React.useState(todayIso())
   const [loading, setLoading] = React.useState(true)
   const [savingKey, setSavingKey] = React.useState<string | null>(null)
@@ -638,8 +642,12 @@ function CollecteView() {
       fetch("/api/elevage/lots?statut=actif").then((r) => r.json()),
       fetch(`/api/elevage/collectes-lait?from=${from}&to=${to}`).then((r) => r.json()),
       fetch("/api/elevage/attentes").then((r) => r.json()),
+      // Bilan matière des 7 jours affichés et du mois (2026-11-03) ; un échec
+      // n'empêche pas la saisie.
+      fetch(`/api/elevage/bilan-lait?date=${to}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ])
-      .then(([a, l, c, attentes]) => {
+      .then(([a, l, c, attentes, bilan]) => {
+        setBilans(bilan?.jours7 && bilan?.mois ? bilan : null)
         const { animaux: aList, lots: lList } = listerCiblesCollecteLait<Animal, Lot>(
           a.data,
           l.data,
@@ -1017,6 +1025,7 @@ function CollecteView() {
             </ul>
           </div>
         )}
+        <BilanLaitResume bilans={bilans} />
       </CardContent>
     </Card>
   )
@@ -1281,7 +1290,9 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
   const submit = async () => {
     setSaving(true)
     try {
-      const res = await fetch("/api/elevage/lots-fromage", {
+      // Bilan matière du lait (2026-11-03) : du lait déjà vendu ou livré sur
+      // 7 jours demande confirmation avant d'être aussi transformé.
+      const envoi = await envoyerAvecConfirmationLait((confirmer) => fetch("/api/elevage/lots-fromage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1297,13 +1308,15 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
           numeroAgrement: form.numeroAgrement || null,
           notes: form.notes || null,
           collecteIds: Array.from(selection),
+          ...(confirmer ? { confirmerLaitIndisponible: true } : {}),
         }),
-      })
-      const json = await res.json()
+      }))
+      if (!envoi) return
+      const { res, json } = envoi
       if (!res.ok) {
         toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec" })
       } else {
-        toast({ title: "Lot créé", description: json.data.numeroLot })
+        toast({ title: "Lot créé", description: String(json.data?.numeroLot ?? "") })
         props.onOpenChange(false)
         props.onCreated(parseInt(form.dateFabrication.slice(0, 4), 10) || new Date().getFullYear())
       }
