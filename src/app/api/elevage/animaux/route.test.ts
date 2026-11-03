@@ -200,6 +200,16 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     expect(mocks.animalUpdate).toHaveBeenCalled()
   })
 
+  it('PATCH contrôle la seule compatibilité d’un lot conservé quand l’espèce change (relecture PR #47)', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'brebis_merinos_arles', lotId: 42 })
+    mocks.isAssignableAnimalLot.mockResolvedValue(true)
+
+    const response = await PATCH(request('PATCH', { id: 7, especeAnimaleId: 'brebis_solognote' }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.isAssignableAnimalLot).toHaveBeenCalledWith('user-1', 42, 'brebis_solognote', { lotConserve: true })
+  })
+
   it('PATCH applique le nouveau type de brebis au lieu de l’ignorer', async () => {
     mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'brebis_merinos_arles', lotId: null })
 
