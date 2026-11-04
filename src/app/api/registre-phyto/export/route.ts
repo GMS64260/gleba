@@ -14,7 +14,8 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
 import { identifiantLegalAffichage } from "@/lib/territoires"
 import { applicateurPhyto } from "@/lib/tracabilite/projection-phyto"
-import { jourCivilStocke } from "@/lib/jour-civil"
+import { jourCivilStocke, jourLocalISO } from "@/lib/jour-civil"
+import { classifierProduitHeuristique } from "@/lib/tracabilite/registre-phyto"
 
 type Format = "pdf" | "csv"
 
@@ -32,8 +33,12 @@ export async function GET(request: NextRequest) {
   const parcelleId = sp.get("parcelleId")
   const especeId = sp.get("especeId")
 
-  const from = fromStr ? new Date(fromStr) : new Date(new Date().getFullYear(), 0, 1)
-  const to = toStr ? new Date(toStr) : new Date(new Date().getFullYear(), 11, 31, 23, 59, 59)
+  // Bornes en jours civils de l'exploitation, comme l'écran du registre
+  // (`genererRegistrePhyto`) : « 2026-12-31 » lu par `new Date()` valait minuit
+  // UTC, et un traitement marqué fait le 31/12 à 10 h sortait de l'export
+  // annuel (revue du 2026-11-04).
+  const from = fromStr ? debutJourCivil(fromStr) : new Date(new Date().getFullYear(), 0, 1)
+  const to = toStr ? finJourCivil(toStr) : new Date(new Date().getFullYear(), 11, 31, 23, 59, 59, 999)
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
     return NextResponse.json({ error: "Paramètres from/to invalides" }, { status: 400 })
   }
@@ -46,7 +51,7 @@ export async function GET(request: NextRequest) {
   const methodeFilter = sp.get("methode")
   const produitFilter = sp.get("produit")?.toLowerCase()
 
-  const [user, exploitation, interventions, observations] = await Promise.all([
+  const [user, exploitation, interventions, observations, operationsArbres] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: { name: true, email: true, certiphytoNum: true, certiphytoValidite: true },
@@ -69,6 +74,8 @@ export async function GET(request: NextRequest) {
       where: {
         userId,
         type: "traitement_phyto",
+        // Un traitement planifié n'a pas été appliqué (même règle que l'écran).
+        fait: true,
         date: { gte: from, lte: to },
         ...(parcelleId ? { OR: [{ parcelleId }, { plancheId: parcelleId }] } : {}),
       },
@@ -102,6 +109,26 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { date: "asc" },
     }),
+    // 3ᵉ source de l'écran (QA cmsoghh2b) : les traitements saisis dans
+    // Verger > Opérations. L'export les omettait : la « Bouillie bordelaise
+    // 3 kg » d'un pommier figurait à l'écran mais pas dans le PDF remis au
+    // contrôleur (revue du 2026-11-04).
+    prisma.operationArbre.findMany({
+      where: {
+        userId,
+        type: "traitement",
+        fait: true,
+        date: { gte: from, lte: to },
+        OR: [{ produit: { not: null } }, { description: { not: null } }],
+        ...(parcelleId ? { arbre: { parcelleGeoId: parcelleId } } : {}),
+      },
+      include: {
+        arbre: { select: { nom: true, espece: true, variete: true, parcelleGeo: { select: { nom: true } } } },
+        user: { select: { name: true, email: true } },
+        operateur: { select: { name: true, email: true } },
+      },
+      orderBy: { date: "asc" },
+    }),
   ])
 
   // Lookups séparés pour culture/planche/arbre (le modèle Intervention n'a
@@ -113,15 +140,16 @@ export async function GET(request: NextRequest) {
   const [cultures, planches, arbres] = await Promise.all([
     cultureIds.length > 0
       ? prisma.culture.findMany({
-          where: { id: { in: cultureIds } },
+          // Colonnes sans clé étrangère : chaque lecture reste bornée au compte.
+          where: { id: { in: cultureIds }, userId },
           include: { espece: { select: { id: true, nom: true } }, variete: { select: { id: true, nom: true } }, planche: { select: { nom: true } } },
         })
       : Promise.resolve([]),
     plancheIds.length > 0
-      ? prisma.planche.findMany({ where: { id: { in: plancheIds } }, select: { id: true, nom: true } })
+      ? prisma.planche.findMany({ where: { id: { in: plancheIds }, userId }, select: { id: true, nom: true } })
       : Promise.resolve([]),
     arbreIds.length > 0
-      ? prisma.arbre.findMany({ where: { id: { in: arbreIds } }, select: { id: true, nom: true, espece: true, variete: true } })
+      ? prisma.arbre.findMany({ where: { id: { in: arbreIds }, userId }, select: { id: true, nom: true, espece: true, variete: true } })
       : Promise.resolve([]),
   ])
 
@@ -209,7 +237,43 @@ export async function GET(request: NextRequest) {
     justification: o.traitement ?? null,
   }))
 
-  const lignes = [...lignesIntervention, ...lignesObservation]
+  const lignesOperation = operationsArbres.map((op) => {
+    const classification = classifierProduitHeuristique(op.produit ?? null)
+    return {
+      source: "operation_arbre",
+      date: jourCivilStocke(op.date) ?? "",
+      parcelle: op.arbre?.parcelleGeo?.nom ?? null,
+      espece: op.arbre?.espece ?? null,
+      variete: op.arbre?.variete ?? null,
+      // Quantité absolue (kg, L) : pas de surface saisie sur une opération.
+      surfaceHa: null as number | null,
+      cible: null as string | null,
+      methode: classification,
+      produit: op.produit ?? null,
+      amm: null as string | null,
+      substance: null as string | null,
+      classification,
+      autoriseAB: null as boolean | null,
+      dose: op.quantite != null ? `${op.quantite} ${op.unite ?? ""}`.trim() : null,
+      volumeBouillie: null as number | null,
+      volumeBouillieTotal: null as number | null,
+      dar: null as number | null,
+      temperatureC: op.temperatureC ?? null,
+      ventKmh: op.ventKmh ?? null,
+      hygrometriePct: op.hygrometriePct ?? null,
+      pluie24h: null as boolean | null,
+      pluie24hMm: null as number | null,
+      epiPortes: [] as string[],
+      zntRespectee: null as boolean | null,
+      zntDistanceM: null as number | null,
+      operateur: applicateurPhyto(op),
+      certiphytoNum: null as string | null,
+      certiphytoValidite: null as string | null,
+      justification: op.description ?? null,
+    }
+  })
+
+  const lignes = [...lignesIntervention, ...lignesObservation, ...lignesOperation]
     .filter((l) => !especeId || l.espece === especeId)
     .filter((l) => !methodeFilter || l.methode === methodeFilter)
     .filter((l) => !produitFilter || (l.produit?.toLowerCase().includes(produitFilter)))
@@ -326,7 +390,7 @@ function buildCsv(
   const ident = exploitation ? identifiantLegalAffichage(exploitation) : null
   const siret = ident ? ` (${ident.label} ${ident.valeur})` : ""
   const agrement = exploitation?.certifBioOrganisme ? ` — Certification : ${exploitation.certifBioOrganisme}` : ""
-  const periode = `${from.toISOString().slice(0, 10)} → ${to.toISOString().slice(0, 10)}`
+  const periode = `${jourLocalISO(from)} → ${jourLocalISO(to)}`
   const header = [
     `Registre phytosanitaire — ${emetteur}${siret}${agrement}`,
     `Période : ${periode}`,
@@ -336,7 +400,7 @@ function buildCsv(
 
   const bom = "﻿"
   const body = bom + header + "\r\n" + rows.join("\r\n") + "\r\n"
-  const filename = `registre-phyto-${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}.csv`
+  const filename = `registre-phyto-${jourLocalISO(from)}_${jourLocalISO(to)}.csv`
   return new NextResponse(body, {
     status: 200,
     headers: {
@@ -368,7 +432,7 @@ async function buildPdf(
       // pour redessiner les footers avec la pagination "Page X / Y".
       bufferPages: true,
       info: {
-        Title: `Registre phyto ${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}`,
+        Title: `Registre phyto ${jourLocalISO(from)}_${jourLocalISO(to)}`,
         Author: exploitation?.raisonSociale || user?.name || user?.email || "Gleba",
         Subject: "Registre des produits phytosanitaires - Arrêté du 4 mai 2017 modifié",
         Keywords: "registre,phytosanitaire,bio,traçabilité",
@@ -570,7 +634,7 @@ async function buildPdf(
     doc.end()
   })
 
-  const filename = `registre-phyto-${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}.pdf`
+  const filename = `registre-phyto-${jourLocalISO(from)}_${jourLocalISO(to)}.pdf`
   return new NextResponse(new Uint8Array(buffer), {
     status: 200,
     headers: {
@@ -584,3 +648,15 @@ async function buildPdf(
 
 // Type util pour le tooling.
 export type RegistrePhytoLigne = Ligne
+
+/** Début du jour civil « AAAA-MM-JJ » (heure de l'exploitation) ; repli : date ISO lue telle quelle. */
+function debutJourCivil(valeur: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valeur)
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(valeur)
+}
+
+/** Fin du jour civil « AAAA-MM-JJ » (23:59:59.999) ; repli : date ISO lue telle quelle. */
+function finJourCivil(valeur: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valeur)
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59, 999) : new Date(valeur)
+}

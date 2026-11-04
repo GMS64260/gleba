@@ -375,4 +375,39 @@ describe('cumuleParParcelle', () => {
     // 14/28 = 50% 7ans
     expect(p1.cuivreKgParHa7ans / PLAFOND_CU_KG_HA_7ANS).toBeCloseTo(0.5, 2)
   })
+
+  it("sans surface connue, du cuivre apporté n'est jamais « OK » (revue du 2026-11-04)", () => {
+    const traitements = [
+      {
+        date: new Date('2026-05-02'),
+        parcelleId: '__sans_parcelle__',
+        surfaceHa: 0.05,
+        doseAppliquee: 60,
+        uniteDose: 'kg/ha',
+        volumeBouillieLHa: null,
+        produit: bouillie,
+      },
+    ]
+    const cumuls = cumuleParParcelle(traitements, new Map(), new Date('2026-06-01'))
+    const c = cumuls.find((x) => x.parcelleId === '__sans_parcelle__')!
+    // 60 kg/ha × 0,05 ha × 20 % = 0,6 kg de cuivre apporté.
+    expect(c.cumulAnnuelKg).toBeCloseTo(0.6, 3)
+    expect(c.statut).toBe('inconnu')
+  })
+
+  it('une parcelle sans surface et sans cuivre reste « OK »', () => {
+    const traitements = [
+      {
+        date: new Date('2026-05-02'),
+        parcelleId: 'P9',
+        surfaceHa: 0.05,
+        doseAppliquee: 2,
+        uniteDose: 'L/ha',
+        volumeBouillieLHa: null,
+        produit: { nomCommercial: 'Purin d\'ortie' },
+      },
+    ]
+    const cumuls = cumuleParParcelle(traitements, new Map(), new Date('2026-06-01'))
+    expect(cumuls.find((x) => x.parcelleId === 'P9')?.statut ?? 'ok').toBe('ok')
+  })
 })
