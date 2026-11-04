@@ -33,6 +33,16 @@ const especesAvecStock = (userId: string) => [
   { recoltes: { some: { userId, statut: 'en_stock' } } },
 ]
 
+/**
+ * Espèces de l'onglet Récoltes : celles qui ont un stock, PARMI les espèces
+ * visibles du compte. `{ conservation: true }` s'appliquait à tout le
+ * référentiel : l'espèce privée d'un autre compte cochée « se conserve »
+ * apparaissait chez tout le monde (revue du 2026-11-04).
+ */
+const whereEspecesStock = (userId: string) => ({
+  AND: [visibiliteReferentiel(userId), { OR: especesAvecStock(userId) }],
+})
+
 export async function PATCH(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -276,10 +286,11 @@ export async function GET(request: NextRequest) {
             : especeType === 'legumes'
             ? { type: { in: TYPES_MARAICHAGE } }
             : {}),
-          OR: especesAvecStock(userId),
+          ...whereEspecesStock(userId),
         },
         select: {
           id: true,
+          nom: true,
           familleId: true,
           couleur: true,
           userStocks: {
@@ -303,6 +314,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         data: especes.map(e => ({
           id: e.id,
+          // Nom affiché : une espèce perso a un cuid pour id (cf. schéma).
+          nom: e.nom ?? e.id,
           familleId: e.familleId,
           inventaire: nets[e.id]?.stockNet ?? e.userStocks[0]?.inventaire ?? null,
           // Unité du stock (2026-08-20) : l'écran étiquetait « kg » en dur, ce
@@ -333,7 +346,7 @@ export async function GET(request: NextRequest) {
       prisma.espece.findMany({
         where: {
           AND: [
-            { OR: especesAvecStock(userId) },
+            whereEspecesStock(userId),
             especeType === 'arbres'
               ? { type: { in: [...ESPECE_TYPES_VERGER] } }
               : especeType === 'legumes'
@@ -343,6 +356,7 @@ export async function GET(request: NextRequest) {
         },
         select: {
           id: true,
+          nom: true,
           familleId: true,
           couleur: true,
           userStocks: {
@@ -370,6 +384,7 @@ export async function GET(request: NextRequest) {
       })),
       recoltes: especes.map(e => ({
         id: e.id,
+        nom: e.nom ?? e.id,
         familleId: e.familleId,
         inventaire: netsTousTypes[e.id]?.stockNet ?? e.userStocks[0]?.inventaire ?? null,
         unite: netsTousTypes[e.id]?.unite ?? 'kg',

@@ -39,6 +39,7 @@ vi.mock("@/lib/prisma", () => ({
 }))
 vi.mock("@/lib/stocks-helpers", () => ({
   calculerStocksNet: vi.fn(),
+  chargerComparaisonsStockLots: vi.fn(async () => ({})),
 }))
 vi.mock("@/lib/stocks/sortie-stock", () => ({
   chargerUnitesStock: mocks.chargerUnitesStock,
@@ -105,6 +106,22 @@ describe("GET /api/stocks", () => {
         },
       })
     )
+  })
+  it("Récoltes : seules les espèces visibles du compte, servies avec leur nom (revue du 2026-11-04)", async () => {
+    const { calculerStocksNet } = await import("@/lib/stocks-helpers")
+    vi.mocked(calculerStocksNet).mockResolvedValue({})
+    mocks.especeFindMany.mockResolvedValue([
+      { id: "cmv3perso", nom: "Dahlia", familleId: null, couleur: null, userStocks: [] },
+    ])
+    const response = await GET(new NextRequest("http://localhost/api/stocks?type=recoltes&especeType=legumes"))
+    expect(response.status).toBe(200)
+    const where = mocks.especeFindMany.mock.calls[0][0].where
+    // La visibilité borne TOUTES les conditions de stock, « se conserve » compris.
+    expect(where.AND[0]).toEqual(visibleVarietes)
+    expect(where.AND[1].OR).toContainEqual({ conservation: true })
+    expect(where.OR).toBeUndefined()
+    const corps = await response.json()
+    expect(corps.data[0]).toMatchObject({ id: "cmv3perso", nom: "Dahlia" })
   })
 })
 
