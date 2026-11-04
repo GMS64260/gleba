@@ -96,7 +96,10 @@ export async function POST(request: NextRequest) {
     const hashed = await hashPassword(newPassword)
     await prisma.user.update({
       where: { id: user.id },
-      data: { password: hashed },
+      // Comme la réinitialisation (audit 2026-07, #20) : changer son mot de
+      // passe après un soupçon de fuite révoque aussi le jeton d'API (MCP),
+      // sinon il restait valable (revue du 2026-11-04).
+      data: { password: hashed, apiToken: null },
     })
 
     return NextResponse.json({ success: true, message: "Mot de passe modifié" })

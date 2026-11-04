@@ -2,6 +2,27 @@
 set -e
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Secret de session obligatoire (revue du 2026-11-04).
+#
+# Les sessions sont des JWT chiffrés avec NEXTAUTH_SECRET (ou AUTH_SECRET), et
+# le rôle ADMIN est lu dans le jeton. Avec une valeur publiée dans le dépôt
+# (défaut de docker-compose.yml, exemple de .env.example), n'importe qui
+# fabrique un cookie administrateur pour l'instance. On refuse de démarrer.
+# ─────────────────────────────────────────────────────────────────────────────
+SECRET_SESSION="${AUTH_SECRET:-${NEXTAUTH_SECRET:-}}"
+case "$SECRET_SESSION" in
+  ""|"changez-moi-en-production"|"generate-a-secret-with-openssl-rand-base64-32")
+    echo "ERREUR : NEXTAUTH_SECRET est vide ou vaut l'exemple publié dans le dépôt." >&2
+    echo "Générez-en un (openssl rand -base64 32), placez-le dans .env, puis redémarrez." >&2
+    exit 1
+    ;;
+esac
+if [ "${#SECRET_SESSION}" -lt 32 ]; then
+  echo "ATTENTION : NEXTAUTH_SECRET fait moins de 32 caractères ; préférez openssl rand -base64 32." >&2
+fi
+unset SECRET_SESSION
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Migrations Prisma versionnées (sans perte de données).
 #
 # `migrate deploy` n'applique QUE les migrations présentes dans
