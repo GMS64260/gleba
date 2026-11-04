@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { parcelleRefusee } from "@/lib/parcelles/appartenance"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -36,6 +37,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json()
+
+    const parcelle = await parcelleRefusee(prisma, session!.user.id, body.parcelleGeoId)
+    if (parcelle) return NextResponse.json(parcelle, { status: 400 })
 
     const objet = await prisma.objetJardin.update({
       where: { id: objetId },
