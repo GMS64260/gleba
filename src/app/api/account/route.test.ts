@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   reprendreReferentielCommunaute: vi.fn(),
   supprimerFichiersUtilisateur: vi.fn(),
+  supprimerDonneesSansCleEtrangere: vi.fn(),
   sendMail: vi.fn(),
 }))
 
@@ -34,6 +35,7 @@ vi.mock("@/lib/account-lifecycle", () => ({
   COMMUNAUTE_USER_ID: "communaute",
   reprendreReferentielCommunaute: mocks.reprendreReferentielCommunaute,
   supprimerFichiersUtilisateur: mocks.supprimerFichiersUtilisateur,
+  supprimerDonneesSansCleEtrangere: mocks.supprimerDonneesSansCleEtrangere,
 }))
 vi.mock("@/lib/mail", () => ({
   sendMail: mocks.sendMail,
@@ -107,5 +109,11 @@ describe("DELETE /api/account — compte réel", () => {
 
     expect(res.status).toBe(200)
     expect(mocks.userDelete).toHaveBeenCalledWith({ where: { id: "u1" } })
+    // Revue du 2026-11-04 — les tables sans clé étrangère vers le compte sont
+    // vidées dans la même transaction, après le delete.
+    expect(mocks.supprimerDonneesSansCleEtrangere).toHaveBeenCalledWith(expect.anything(), "u1")
+    expect(mocks.userDelete.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.supprimerDonneesSansCleEtrangere.mock.invocationCallOrder[0],
+    )
   })
 })

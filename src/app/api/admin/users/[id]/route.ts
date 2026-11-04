@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAdminApi, hashPassword } from "@/lib/auth-utils"
-import { reprendreReferentielCommunaute, COMMUNAUTE_USER_ID } from "@/lib/account-lifecycle"
+import { reprendreReferentielCommunaute, COMMUNAUTE_USER_ID, supprimerDonneesSansCleEtrangere, supprimerFichiersUtilisateur } from "@/lib/account-lifecycle"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -206,6 +206,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       async (tx) => {
         const r = await reprendreReferentielCommunaute(tx, id)
         await tx.user.delete({ where: { id } })
+        await supprimerDonneesSansCleEtrangere(tx, id)
         return r
       },
       // Le delete cascade sur toutes les données du compte (cultures, récoltes,
@@ -213,7 +214,16 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       { timeout: 30_000 }
     )
 
-    return NextResponse.json({ success: true, referentielReprisParCommunaute: reprises })
+    // Comme la suppression par le membre (`DELETE /api/account`) : les
+    // justificatifs, photos et archives de registre du compte partent aussi,
+    // après le commit (revue du 2026-11-04).
+    const fichiers = await supprimerFichiersUtilisateur(id)
+
+    return NextResponse.json({
+      success: true,
+      referentielReprisParCommunaute: reprises,
+      fichiersSupprimes: fichiers.dossiersSupprimes,
+    })
   } catch (error) {
     console.error("DELETE /api/admin/users/[id] error:", error)
     return NextResponse.json(
