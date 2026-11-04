@@ -2,11 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
-import {
-  statutLotOeufs,
-  stockRestantLotOeufs,
-} from "@/lib/elevage/stock-oeufs"
-import { blocagesVetoPontes, computeStockOeufsParLots } from "@/lib/elevage/stock-oeufs-lots"
+import { stockRestantLotOeufs } from "@/lib/elevage/stock-oeufs"
+import { computeStockOeufsParLots } from "@/lib/elevage/stock-oeufs-lots"
 
 const sortieSchema = z.object({
   productionId: z.coerce.number().int().positive(),
@@ -32,6 +29,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message || "Données invalides" }, { status: 400 })
   }
   const input = parsed.data
+  // Revue du 2026-11-04 — une « vente » saisie ici décrémentait le lot sans
+  // créer ni vente, ni recette, ni TVA ; saisie aussi dans Ventes, elle
+  // sortait deux fois les mêmes œufs. Une vente passe par Ventes
+  // (`/api/elevage/ventes`), qui sort le stock en FIFO, applique les délais
+  // d'attente et la limite de J+21, et écrit la recette. Même règle que la
+  // ruche et la cave.
+  if (input.type === "vente") {
+    return NextResponse.json(
+      {
+        error: "Une vente d'œufs se saisit dans Élevage > Ventes : elle sort les œufs du stock et enregistre la recette. La sortie manuelle sert aux consommations, dons, casses et ajustements.",
+        champ: "type",
+      },
+      { status: 400 },
+    )
+  }
   return prisma.$transaction(async (tx) => {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${session.user.id}`}))`
   const production = await tx.productionOeuf.findFirst({
@@ -43,33 +55,6 @@ export async function POST(request: NextRequest) {
   if (dateSortie.getTime() < production.date.getTime()) {
     return NextResponse.json(
       { error: "La sortie ne peut pas précéder la date de ponte." },
-      { status: 422 },
-    )
-  }
-  if (input.type === "vente") {
-    // Ticket cmsoeyhs5 — des œufs pondus pendant le délai d'attente vétérinaire
-    // d'un soin fait (finAttenteOeufs) couvrant le lot/l'animal ne sont JAMAIS
-    // commercialisables : même règle que l'écran et l'assistant
-    // (src/lib/elevage/stock-oeufs-lots.ts).
-    const blocages = await blocagesVetoPontes(tx, session.user.id, [{
-      id: production.id,
-      date: production.date,
-      lotId: production.lotId,
-      animalId: production.animalId,
-    }])
-    const blocage = blocages.get(production.id)
-    if (blocage) {
-      return NextResponse.json(
-        {
-          error: `Vente interdite : ces œufs ont été pondus pendant un délai d'attente vétérinaire. Seules les pontes à partir du ${blocage.remiseEnVente.toLocaleDateString("fr-FR", { timeZone: "UTC" })} seront commercialisables.`,
-        },
-        { status: 400 },
-      )
-    }
-  }
-  if (input.type === "vente" && statutLotOeufs(production.date, dateSortie) !== "commercialisable") {
-    return NextResponse.json(
-      { error: "La vente est interdite après la date limite de vente (J+21)." },
       { status: 422 },
     )
   }
