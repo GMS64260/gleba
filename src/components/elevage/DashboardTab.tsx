@@ -42,6 +42,7 @@ import {
   classerEcheanceSoin,
   compterEcheancesSoins,
   echeanceSoinAFaire,
+  soinDu,
   trierParEcheanceSoin,
   type CompteEcheancesSoins,
 } from "@/lib/elevage/echeances-soins"
@@ -351,15 +352,19 @@ export function DashboardTab({ year }: DashboardTabProps) {
       .catch(() => {})
   }, [])
 
-  // PROMPT 20a — Bulk actions sur les soins
+  // PROMPT 20a — Bulk actions sur les soins. « Tout fait » ne vise que les
+  // soins dus (échéance aujourd'hui ou passée), comme l'annonce BulkActions :
+  // la liste montre aussi les 30 jours à venir (revue du 2026-11-04).
+  const soinsDus = soins.filter((soin) => soinDu(soin, todayLocalISO()))
   const bulkSoinsDone = async () => {
-    if (soins.length === 0) return
-    setSoins([]) // optimistic
+    if (soinsDus.length === 0) return
+    const valides = new Set(soinsDus)
+    setSoins((liste) => liste.filter((soin) => !valides.has(soin))) // optimistic
     try {
       // Audit #83 : on vérifie chaque res.ok — fetch ne rejette pas sur 4xx/5xx,
       // donc un échec passait pour un succès. Si une PATCH échoue, on recharge.
       const res = await Promise.all(
-        soins.map((soin) =>
+        soinsDus.map((soin) =>
           soin.injectionId
             ? fetch(`/api/elevage/soins/${soin.id}/injections`, {
                 method: 'PATCH',
@@ -1360,7 +1365,8 @@ export function DashboardTab({ year }: DashboardTabProps) {
           {soins.length >= 2 && (
             <BulkActions
               count={soins.length}
-              markAllLabel={`Tout fait (${soins.length})`}
+              markAllLabel={`Tout fait (${soinsDus.length})`}
+              markAllDisabled={soinsDus.length === 0}
               onMarkAllDone={bulkSoinsDone}
               onReport={bulkSoinsReport}
               onReportTo={bulkSoinsReportTo}
