@@ -27,6 +27,18 @@ const sansAccent = (texte: string) =>
   texte.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim()
 
 /**
+ * Soins médicamenteux : ils portent un produit vétérinaire, un lot de
+ * pharmacie et des délais d'attente lait, viande et œufs. Source unique pour
+ * la route des soins et l'assistant (revue du 2026-11-04 : l'outil
+ * `create_soin` écrivait ces soins sans aucun délai d'attente).
+ */
+export const TYPES_SOIN_MEDICAMENTEUX: ReadonlySet<string> = new Set([
+  'Vaccination',
+  'Vermifuge',
+  'Traitement vétérinaire',
+])
+
+/**
  * Valeur enregistrée pour une saisie libre (« traitement », « autre »…) : le
  * type de l'écran dont le libellé commence par la saisie, casse et accents
  * ignorés. Null si rien ne correspond.
