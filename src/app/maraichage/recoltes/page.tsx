@@ -129,6 +129,9 @@ interface StockEspece {
   comparaisonLots: ComparaisonStockLots | null
 }
 
+/** Sorties (ventes, pertes, consommations) chargées au plus, les plus récentes d'abord. */
+const PLAFOND_HISTORIQUE = 1000
+
 export default function RecoltesPage() {
   const { toast } = useToast()
   const [data, setData] = React.useState<RecolteWithRelations[]>([])
@@ -137,6 +140,8 @@ export default function RecoltesPage() {
   const [activeTab, setActiveTab] = React.useState("stock")
 
   const [selectedAnnee, setSelectedAnnee] = React.useState<string>('all')
+  // Nombre total de sorties quand l'historique chargé est tronqué (sinon null).
+  const [historiqueTronque, setHistoriqueTronque] = React.useState<number | null>(null)
   const [selectedEspece, setSelectedEspece] = React.useState<string>('all')
   const [especes, setEspeces] = React.useState<{ id: string }[]>([])
   // null = comparaison non chargée : l'écran n'affiche que ses lots.
@@ -162,25 +167,37 @@ export default function RecoltesPage() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      let url = `/api/recoltes?pageSize=500`
+      // Revue du 2026-11-04 — deux lectures : les lots EN STOCK sans plafond
+      // (un lot de septembre 2025 encore en stock sortait des 500 dernières
+      // récoltes, donc de l'onglet Stock, et ne pouvait plus être vendu d'ici),
+      // et l'historique des sorties, borné et signalé quand il est tronqué.
+      let filtres = ""
       if (selectedAnnee && selectedAnnee !== 'all') {
-        url += `&annee=${selectedAnnee}`
+        filtres += `&annee=${selectedAnnee}`
       }
       if (selectedEspece && selectedEspece !== 'all') {
-        url += `&especeId=${encodeURIComponent(selectedEspece)}`
+        filtres += `&especeId=${encodeURIComponent(selectedEspece)}`
       }
 
-      const [recoltesRes, clientsRes] = await Promise.all([
-        fetch(url),
+      const [stockRes, historiqueRes, clientsRes] = await Promise.all([
+        fetch(`/api/recoltes?statut=en_stock&pageSize=5000${filtres}`),
+        fetch(`/api/recoltes?statut=vendu,consomme,perte,a_completer&pageSize=${PLAFOND_HISTORIQUE}${filtres}`),
         fetch("/api/comptabilite/clients?actif=true"),
       ])
 
-      if (recoltesRes.ok) {
-        const result = await recoltesRes.json()
-        setData(result.data || [])
-        if (result.especes) {
-          setEspeces(result.especes)
+      if (stockRes.ok && historiqueRes.ok) {
+        const [stock, historique] = await Promise.all([stockRes.json(), historiqueRes.json()])
+        setData([...(stock.data || []), ...(historique.data || [])])
+        setHistoriqueTronque(
+          typeof historique.total === "number" && historique.total > (historique.data?.length ?? 0)
+            ? historique.total
+            : null,
+        )
+        if (stock.especes) {
+          setEspeces(stock.especes)
         }
+      } else {
+        throw new Error("Récoltes indisponibles")
       }
       if (clientsRes.ok) {
         const result = await clientsRes.json()
@@ -579,6 +596,11 @@ export default function RecoltesPage() {
                 <p className="text-sm text-emerald-700">CA Ventes</p>
               </div>
               <p className="text-2xl font-bold text-emerald-800">{formatMontantDevise(totalVentes)}</p>
+              {historiqueTronque !== null && (
+                <p className="text-[11px] text-emerald-700/80">
+                  Sur les {PLAFOND_HISTORIQUE} sorties les plus récentes ({historiqueTronque} au total) : choisissez une année pour le détail.
+                </p>
+              )}
             </CardContent>
           </Card>
           <Card className="border-orange-200 bg-orange-50">
