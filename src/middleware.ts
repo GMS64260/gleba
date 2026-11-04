@@ -151,6 +151,13 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
+    // Toute route d'API passe par ici, extension comprise. Le motif général
+    // ci-dessous exclut les chemins finissant en .png, .svg, etc. : sans cette
+    // ligne, `DELETE /api/elevage/animaux/17.png` (que la route lit comme
+    // l'animal 17) échappait au middleware, donc à l'en-tête de mutation, et un
+    // compte en consultation ou une session d'impersonation écrivait
+    // (revue du 2026-11-04).
+    "/api/:path*",
     // Les anciens justificatifs image seraient sinon exclus par l'extension.
     "/uploads/:path*",
     // Matcher tout sauf les fichiers statiques.
