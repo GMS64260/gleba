@@ -25,6 +25,10 @@ import { chargerAgendaElevage } from "@/lib/elevage/agenda.server"
 import { chargerDeclarationsReglementaires } from "@/lib/elevage/declarations-reglementaires.server"
 import { DEFAULT_MODULES_ACTIFS, sanitizeModulesActifs, type ModuleId } from "@/lib/modules"
 import { formatMontantDevise } from "@/lib/format-utils"
+import { chargerEncoursCompta } from "@/lib/comptabilite/encours"
+import { chargerFacturesRevenus, whereVentesRevenus } from "@/lib/kpi/compta"
+import { ventilerRevenus } from "@/lib/comptabilite/ventilation-revenus"
+import { chargerCheptelEnStock } from "@/lib/elevage/stock-cheptel"
 import { deviseDuTerritoire } from "@/lib/territoires"
 
 import {
@@ -112,6 +116,7 @@ export async function composerAujourdhui(
   const annee = maintenant.getFullYear()
   const aujourdhui = jourLocalISO(maintenant)
   const debutJour = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate())
+  const finJour = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate(), 23, 59, 59, 999)
   const semaine = bornesSemaineISO(maintenant)
   const sourcesEnErreur = new Set<string>()
 
@@ -138,7 +143,7 @@ export async function composerAujourdhui(
   const comptaActif = modules.includes("comptabilite")
   const devise = deviseDuTerritoire(exploitation?.territoire)
 
-  const [taches, kpiMaraichage, agenda, animauxActifs, declarations, factures, kpiCompta, planches, arbres, objets] =
+  const [taches, kpiMaraichage, agenda, animauxActifs, declarations, factures, kpiCompta, planches, arbres, objets, encours] =
     await Promise.all([
       maraichageActif
         ? lire(
@@ -151,7 +156,22 @@ export async function composerAujourdhui(
       elevageActif
         ? lire("élevage", () => chargerAgendaElevage(userId, { horizonJours: HORIZON_ELEVAGE_JOURS, maintenant }), null)
         : null,
-      elevageActif ? lire("élevage", () => prisma.animal.count({ where: { userId, statut: "actif" } }), 0) : 0,
+      // Têtes présentes, lots compris (même source que Stocks et Élevage) :
+      // compter les seules fiches individuelles affichait « 0 animal » pour
+      // un lot de 200 poules sans fiche nominative (revue du 2026-11-04).
+      elevageActif
+        ? lire(
+            "élevage",
+            async () => {
+              const cheptel = await chargerCheptelEnStock(userId)
+              return (
+                cheptel.individuels.reduce((n, i) => n + i.tetes, 0) +
+                cheptel.lots.reduce((n, l) => n + Math.max(0, l.tetes), 0)
+              )
+            },
+            0,
+          )
+        : 0,
       elevageActif
         ? lire("déclarations", () => chargerDeclarationsReglementaires(userId, { year: annee, maintenant }), null)
         : null,
@@ -210,7 +230,16 @@ export async function composerAujourdhui(
           }),
         [],
       ),
+      // Créances : même calcul que le Bilan et l'onglet Impayées (avoirs
+      // imputés, règlements partiels déduits, ventes non facturées comprises).
+      // L'accueil relisait `totalTTC` des factures émises : une facture soldée
+      // par un avoir restait « à relancer » pour toujours, et 300 € reçus sur
+      // 500 € affichaient encore 500 € (revue du 2026-11-04).
+      comptaActif ? lire("factures", () => chargerEncoursCompta(userId, null, finJour), null) : null,
     ])
+  const resteDuParFacture = new Map(
+    (encours?.creances.items ?? []).filter((i) => i.source === "Facture").map((i) => [i.id, i.montant]),
+  )
 
   const elements: ElementAujourdhui[] = []
   const planchesAArroser = new Set<string>()
@@ -361,6 +390,10 @@ export async function composerAujourdhui(
       })
       continue
     }
+    // Rien à relancer pour une facture soldée (avoir, règlements) ou si la
+    // lecture des encours a échoué (source nommée en erreur plus bas).
+    const resteDu = resteDuParFacture.get(f.id)
+    if (resteDu === undefined) continue
     const echeance = f.dateEcheance ? new Date(f.dateEcheance) : null
     const retard = echeance ? Math.max(0, Math.round((debutJour.getTime() - echeance.getTime()) / 86_400_000)) : 0
     elements.push({
@@ -369,7 +402,7 @@ export async function composerAujourdhui(
       module: "comptabilite",
       etat: etatPourRetard(retard, { critiqueApres: 30 }),
       titre: `Relancer ${f.clientNom}`,
-      meta: [f.numero, `échue depuis ${retard} j`, montant],
+      meta: [f.numero, `échue depuis ${retard} j`, formatMontantDevise(resteDu, devise)],
       action: { libelle: "Ouvrir", href: "/comptabilite/factures" },
       retardJours: retard,
       plancheIds: [],
@@ -464,16 +497,16 @@ export async function composerAujourdhui(
       ? lire(
           "trésorerie",
           async () => {
-            const emises = await prisma.facture.findMany({
-              where: { userId, type: { not: "avoir" }, statut: "emise" },
-              select: { id: true, numero: true, clientNom: true, totalTTC: true, dateEcheance: true },
-              orderBy: [{ dateEcheance: "asc" }, { date: "asc" }],
-              take: LIGNES_TUILE,
-            })
-            const total = await prisma.facture.aggregate({
-              where: { userId, type: { not: "avoir" }, statut: "emise" },
-              _sum: { totalTTC: true },
-            })
+            if (!encours) throw new Error("encours indisponibles")
+            const ids = [...resteDuParFacture.keys()]
+            const emises = ids.length
+              ? await prisma.facture.findMany({
+                  where: { userId, id: { in: ids } },
+                  select: { id: true, numero: true, clientNom: true, dateEcheance: true },
+                  orderBy: [{ dateEcheance: "asc" }, { date: "asc" }],
+                  take: LIGNES_TUILE,
+                })
+              : []
             return {
               devise,
               revenusYtd: Math.round(kpiCompta?.revenusYtd ?? 0),
@@ -486,12 +519,14 @@ export async function composerAujourdhui(
                   id: f.id,
                   numero: f.numero,
                   client: f.clientNom,
-                  montant: f.totalTTC,
+                  montant: resteDuParFacture.get(f.id) ?? 0,
                   echeance: echeance ? echeance.toISOString() : null,
                   retardJours: echeance ? Math.max(0, Math.round((debutJour.getTime() - echeance.getTime()) / 86_400_000)) : 0,
                 }
               }),
-              totalCreances: Math.round(total._sum.totalTTC ?? 0),
+              // Toutes les créances (factures, ventes d'atelier et ventes à
+              // crédit non facturées), comme le Bilan.
+              totalCreances: Math.round(encours.creances.total),
               nbDepensesNonPayees: kpiCompta?.nbDepensesNonPayees ?? 0,
               depensesNonPayees: Math.round(kpiCompta?.depensesNonPayeesYtd ?? 0),
             }
@@ -552,27 +587,51 @@ export async function composerAujourdhui(
       ? lire(
           "ventes",
           async () => {
-            const [dernieres, mois] = await Promise.all([
+            // Total du mois : même périmètre que Transactions et les KPI
+            // (ventes, factures signées, avoirs déduits). Les ventes facturées
+            // manquaient au total, qui ne lisait que les ventes manuelles
+            // (revue du 2026-11-04).
+            const [dernieres, dernieresFactures, ventesMois, facturesMois] = await Promise.all([
               prisma.venteManuelle.findMany({
                 where: { userId },
                 select: { id: true, date: true, description: true, montant: true, clientNom: true, paye: true, client: { select: { nom: true } } },
                 orderBy: { date: "desc" },
                 take: LIGNES_TUILE,
               }),
-              prisma.venteManuelle.aggregate({ where: { userId, date: { gte: debutMois } }, _sum: { montant: true }, _count: true }),
+              prisma.facture.findMany({
+                where: { userId, statut: { in: ["emise", "payee"] } },
+                select: { id: true, date: true, numero: true, type: true, objet: true, totalTTC: true, clientNom: true, statut: true },
+                orderBy: { date: "desc" },
+                take: LIGNES_TUILE,
+              }),
+              prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debutMois, finJour) }),
+              chargerFacturesRevenus(userId, debutMois, finJour),
             ])
-            return {
-              devise,
-              totalMois: Math.round(mois._sum.montant ?? 0),
-              nbMois: mois._count,
-              dernieres: dernieres.map((v) => ({
-                id: v.id,
-                date: v.date.toISOString(),
+            const lignes = [
+              ...dernieres.map((v) => ({
+                id: `vente-${v.id}`,
+                date: v.date,
                 description: v.description,
                 montant: v.montant,
                 client: v.client?.nom ?? v.clientNom ?? null,
                 paye: v.paye,
               })),
+              ...dernieresFactures.map((f) => ({
+                id: `facture-${f.id}`,
+                date: f.date,
+                description: `${f.type === "avoir" ? "Avoir" : "Facture"} ${f.numero}${f.objet ? ` · ${f.objet}` : ""}`,
+                montant: (f.type === "avoir" ? -1 : 1) * f.totalTTC,
+                client: f.clientNom,
+                paye: f.type === "avoir" || f.statut === "payee",
+              })),
+            ]
+              .sort((a, b) => b.date.getTime() - a.date.getTime())
+              .slice(0, LIGNES_TUILE)
+            return {
+              devise,
+              totalMois: Math.round(ventilerRevenus(ventesMois, facturesMois).total),
+              nbMois: ventesMois.length + facturesMois.length,
+              dernieres: lignes.map((l) => ({ ...l, date: l.date.toISOString() })),
             }
           },
           null,
