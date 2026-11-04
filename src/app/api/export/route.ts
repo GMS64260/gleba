@@ -11,6 +11,7 @@ import { masquerEntree, visibiliteReferentiel } from '@/lib/referentiel-communau
 import { refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
 import { exporterDonneesTabulaires } from '@/lib/export-tabulaire'
 import { sansChamps } from '@/lib/sans-champs'
+import { SELECT_FOURNISSEUR_SANS_BANQUE } from '@/lib/comptabilite/fournisseur-public'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -72,7 +73,8 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       // Référentiels globaux
       prisma.famille.findMany({ orderBy: { id: 'asc' } }),
-      prisma.fournisseur.findMany({ orderBy: { id: 'asc' } }),
+      // Table globale : sans IBAN, BIC ni clé RIB (réservés à l'administration).
+      prisma.fournisseur.findMany({ select: SELECT_FOURNISSEUR_SANS_BANQUE, orderBy: { id: 'asc' } }),
       prisma.espece.findMany({ where: visible, orderBy: { id: 'asc' } }),
       prisma.variete.findMany({ where: visible, orderBy: { id: 'asc' } }),
       prisma.iTP.findMany({ where: visible, orderBy: { id: 'asc' } }),

@@ -108,3 +108,15 @@ describe('PUT / DELETE /api/varietes/[id]', () => {
     expect(variete.delete).not.toHaveBeenCalled()
   })
 })
+
+describe('GET /api/varietes : fournisseur embarqué (revue du 2026-11-04)', () => {
+  it("ne sert ni l'IBAN, ni le BIC, ni la clé RIB du fournisseur de la variété", async () => {
+    const fournisseur = { id: 'Graines SA', email: 'contact@graines.example', iban: 'FR7630006000011234567890189', bic: 'AGRIFRPP', ribCle: '89' }
+    mocks.db.variete = delegueMemoire([{ ...jeu.gleba, fournisseur }] as Ligne[])
+    const res = await GET(requete('GET', '/api/varietes?pageSize=100'))
+    expect(res.status).toBe(200)
+    const corps = await res.json()
+    expect(corps.data[0].fournisseur).toEqual({ id: 'Graines SA', email: 'contact@graines.example' })
+    expect(JSON.stringify(corps)).not.toContain('FR7630006000011234567890189')
+  })
+})

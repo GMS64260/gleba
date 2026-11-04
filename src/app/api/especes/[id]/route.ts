@@ -20,6 +20,7 @@ import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { type UniteQuantite } from '@/lib/recolte/projection'
 import { arrondirQuantites, ajouterQuantite, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
+import { SELECT_FOURNISSEUR_SANS_BANQUE } from '@/lib/comptabilite/fournisseur-public'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -56,7 +57,7 @@ export async function GET(
         varietes: {
           where: visibiliteReferentiel(userId),
           include: {
-            fournisseur: true,
+            fournisseur: { select: SELECT_FOURNISSEUR_SANS_BANQUE },
           },
         },
         itps: { where: visibiliteReferentiel(userId) },

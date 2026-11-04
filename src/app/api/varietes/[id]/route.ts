@@ -16,6 +16,7 @@ import {
   whereReferentielCible,
 } from '@/lib/referentiel-communaute'
 import { enregistrerStockVariete, separerStockVariete, serialiserVariete } from '@/lib/stocks/stock-variete'
+import { SELECT_FOURNISSEUR_SANS_BANQUE } from '@/lib/comptabilite/fournisseur-public'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -152,7 +153,7 @@ export async function PUT(
         },
         include: {
           espece: true,
-          fournisseur: true,
+          fournisseur: { select: SELECT_FOURNISSEUR_SANS_BANQUE },
         },
       })
       // Rend le stock de l'appelant tel qu'il est après l'appel, écrit ou non.

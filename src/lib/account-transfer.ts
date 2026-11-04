@@ -33,6 +33,8 @@ import { MODELES_STOCK_COMMERCIAL } from '@/lib/commercial/stock-types'
 import { Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
+import { whereAlimentAccessible } from "@/lib/elevage/aliment-accessible"
+import { sansCoordonneesBancaires } from "@/lib/comptabilite/fournisseur-public"
 import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MESURES_BRUTES_EXPORT } from "@/lib/capteurs/connecteurs"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,6 +44,10 @@ import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MES
 /** Modèles jamais migrés : authentification, système, cache, communauté, chat
  *  privé, et boutique (fonctionnalité privée sans UI dans la version publique). */
 const EXCLUDED = new Set<string>([
+  // Réglages de l'instance (SMTP, VAPID, clés…) : jamais dans une sauvegarde de
+  // compte, ni à l'export (secrets lisibles par n'importe quel inscrit), ni à
+  // l'import (une restauration ne reconfigure pas l'instance). Revue 2026-11-04.
+  "Parametre",
   "User",
   "Session",
   "Account",
@@ -100,7 +106,6 @@ const REFERENTIAL = new Set<string>([
   "Aliment",
   "ProduitVeterinaire",
   "ProduitPhyto",
-  "Parametre",
 ])
 
 export const EXPORT_FORMAT_VERSION = "2.0"
@@ -272,11 +277,20 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
   //    communautaires (cf. REFERENTIAL_COMMUNAUTAIRE).
   for (const meta of manifest.values()) {
     if (meta.klass !== "referential") continue
-    const where = meta.estCommunautaire ? visibiliteReferentiel(userId) : undefined
+    // Aliments : `ownerUserId` (et non `userId`) porte le propriétaire ; seuls
+    // l'officiel et les aliments du compte sont visibles (même règle que
+    // `whereAlimentAccessible`, revue du 2026-11-04).
+    const where = meta.estCommunautaire
+      ? visibiliteReferentiel(userId)
+      : meta.name === "Aliment"
+        ? whereAlimentAccessible(userId)
+        : undefined
     const rows = await delegue(prisma, meta.delegate).findMany(
       where ? { where } : undefined
     )
-    data[meta.name] = rows
+    // Fournisseurs : table globale ; IBAN, BIC et clé RIB restent réservés à
+    // l'administration (audit #42), y compris dans une sauvegarde.
+    data[meta.name] = meta.name === "Fournisseur" ? rows.map((r) => sansCoordonneesBancaires(r)) : rows
     stats[meta.name] = rows.length
   }
 
