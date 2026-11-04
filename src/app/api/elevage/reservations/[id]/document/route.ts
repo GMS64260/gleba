@@ -182,7 +182,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       p(`La cession ne peut intervenir moins de sept jours après la délivrance du certificat au cessionnaire.`)
       doc.moveDown(0.3)
       p(`Identité et qualité de la personne habilitée délivrant le certificat : …………………………………………………………………`)
-      p(`Date de délivrance du certificat définitif : ………………………  →  remise possible à partir du : ………………………`)
+      p(`Date de délivrance du certificat définitif : ………………………  —  remise possible à partir du : ………………………`)
       p(`Mention manuscrite et signature de l'acquéreur : …………………………………………………………………………………………`)
     } else {
       h('Cession')

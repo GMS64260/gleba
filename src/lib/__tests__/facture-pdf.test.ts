@@ -203,3 +203,26 @@ describe("prix unitaire de facture : une seule règle d'affichage", () => {
     expect(t.some((x) => x.startsWith("soit "))).toBe(false)
   })
 })
+
+describe("PDF de facture : caractères imprimables en police standard (revue du 2026-11-04)", () => {
+  it("un montant de 1 234,56 € s'imprime sans espace fine (U+202F, rendue « / » par pdfkit)", async () => {
+    const ev = await dessiner(
+      facture({
+        totalHT: 1170.2, totalTVA: 64.36, totalTTC: 1234.56,
+        totauxParTauxTva: { "5.5": { ht: 1170.2, tva: 64.36, ttc: 1234.56 } },
+        lignes: [{ id: 1, factureId: 1, ordre: 0, description: "Légumes", quantite: 117.02, unite: "kg", prixUnitaire: 10, tauxTVA: 5.5, montantHT: 1170.2, montantTVA: 64.36, montantTTC: 1234.56, statutBio: null }],
+      }),
+    )
+    const tout = textes(ev).join("\n")
+    expect(tout).toContain("1 234,56")
+    expect(tout).not.toMatch(/[  ]/)
+  })
+
+  it("« Payée » et « annulée » s'impriment sans coche ni croix hors police", async () => {
+    const payee = textes(await dessiner(facture({ statut: "payee", datePaiement: new Date("2026-10-20T10:00:00Z") }))).join("\n")
+    const annulee = textes(await dessiner(facture({ statut: "annulee" }))).join("\n")
+    expect(payee).toContain("Payée le")
+    expect(annulee).toContain("FACTURE ANNULÉE")
+    expect(payee + annulee).not.toMatch(/[✓✗]/)
+  })
+})

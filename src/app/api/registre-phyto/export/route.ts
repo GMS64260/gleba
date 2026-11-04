@@ -506,7 +506,8 @@ async function buildPdf(
       )
     }
     doc.text(
-      `Période : ${from.toLocaleDateString("fr-FR")} → ${to.toLocaleDateString("fr-FR")}`,
+      // « → » n'existe pas dans la police standard du PDF (WinAnsi).
+      `Période : du ${from.toLocaleDateString("fr-FR")} au ${to.toLocaleDateString("fr-FR")}`,
       doc.page.width - 250,
       52,
       { width: 220, align: "right" }
