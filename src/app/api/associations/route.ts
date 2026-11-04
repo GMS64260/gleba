@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
 import { ZodError } from "zod"
-import { requireAuthApi } from "@/lib/auth-utils"
+import { requireAdminApi, requireAuthApi } from "@/lib/auth-utils"
 import { createAssociationSchema } from "@/lib/validations/association"
 
 function generateAssociationId(nom: string): string {
@@ -74,7 +74,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  // Référentiel GLOBAL (pas de `userId`) : une association créée ici s'affiche
+  // dans la planification et les alertes d'adjacence de toutes les
+  // exploitations. Comme PUT et DELETE (1effeac), la création est réservée à
+  // l'administration ; elle était restée ouverte à tout compte (revue du
+  // 2026-11-04).
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
