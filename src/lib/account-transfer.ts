@@ -47,7 +47,7 @@ const EXCLUDED = new Set<string>([
   // Réglages de l'instance (SMTP, VAPID, clés…) : jamais dans une sauvegarde de
   // compte, ni à l'export (secrets lisibles par n'importe quel inscrit), ni à
   // l'import (une restauration ne reconfigure pas l'instance). Revue 2026-11-04.
-  "Parametre",
+  Prisma.ModelName.Parametre,
   "User",
   "Session",
   "Account",

@@ -15,11 +15,14 @@ vi.mock("@/lib/auth", () => ({
 
 const { default: middleware, config } = await import("./middleware")
 // Compilation des motifs par Next lui-même : même sémantique qu'en production.
-const { getMiddlewareMatchers } = await import("next/dist/build/analysis/get-page-static-info")
+// (Fonction interne de Next, absente de ses déclarations de types publiques.)
+const { getMiddlewareMatchers } = (await import("next/dist/build/analysis/get-page-static-info")) as unknown as {
+  getMiddlewareMatchers: (matcher: unknown, nextConfig: object) => { regexp: string }[]
+}
 
 describe("middleware : couverture du matcher (revue du 2026-11-04)", () => {
-  const regexps = getMiddlewareMatchers(config.matcher, {}).map((m: { regexp: string }) => new RegExp(m.regexp))
-  const couvert = (chemin: string) => regexps.some((r: RegExp) => r.test(chemin))
+  const regexps = getMiddlewareMatchers(config.matcher, {}).map((m) => new RegExp(m.regexp))
+  const couvert = (chemin: string) => regexps.some((r) => r.test(chemin))
 
   it("une route d'API suffixée d'une extension d'image passe par le middleware (en-tête de mutation posé)", () => {
     expect(couvert("/api/elevage/animaux/17.png")).toBe(true)
