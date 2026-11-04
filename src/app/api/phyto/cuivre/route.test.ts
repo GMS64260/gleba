@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   observationFindMany: vi.fn(),
   operationFindMany: vi.fn(),
   arbreFindMany: vi.fn(),
+  plancheFindMany: vi.fn(),
+  cultureFindMany: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -23,6 +25,8 @@ vi.mock("@/lib/prisma", () => ({
     observationSante: { findMany: mocks.observationFindMany },
     operationArbre: { findMany: mocks.operationFindMany },
     arbre: { findMany: mocks.arbreFindMany },
+    planche: { findMany: mocks.plancheFindMany },
+    culture: { findMany: mocks.cultureFindMany },
   },
 }))
 
@@ -42,6 +46,8 @@ describe("GET /api/phyto/cuivre — agrégation des opérations d'arbres", () =>
     mocks.observationFindMany.mockResolvedValue([])
     mocks.operationFindMany.mockResolvedValue([])
     mocks.arbreFindMany.mockResolvedValue([])
+    mocks.plancheFindMany.mockResolvedValue([])
+    mocks.cultureFindMany.mockResolvedValue([])
   })
 
   it("compte une opération d'arbre cuivrée (Bouillie bordelaise 3 kg)", async () => {
@@ -129,5 +135,37 @@ describe("GET /api/phyto/cuivre — agrégation des opérations d'arbres", () =>
     expect(sans).toBeDefined()
     expect(sans.cumulAnnuelKg).toBeCloseTo(0.2, 3)
     expect(sans.parcelleNom).toBe("Sans rattachement parcellaire")
+  })
+})
+
+// Revue du 2026-11-04 — un traitement cuivré saisi sur une planche (ou sa
+// culture) tombait « sans rattachement », surface nulle, donc « OK ».
+describe("GET /api/phyto/cuivre — traitements sur planche", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    mocks.parcelleFindMany.mockResolvedValue([{ id: "P1", nom: "Jardin", surface: 0.1 }])
+    mocks.observationFindMany.mockResolvedValue([])
+    mocks.operationFindMany.mockResolvedValue([])
+    mocks.arbreFindMany.mockResolvedValue([])
+    mocks.plancheFindMany.mockResolvedValue([{ id: "pl-1", nom: "B3", parcelleGeoId: "P1" }])
+    mocks.cultureFindMany.mockResolvedValue([{ id: 42, plancheId: "pl-1" }])
+  })
+
+  it("rattache à sa parcelle un traitement saisi sur une culture, et seul le réalisé compte", async () => {
+    mocks.interventionFindMany.mockResolvedValue([
+      {
+        id: 1, date: new Date(), cultureId: 42, plancheId: null, arbreId: null, parcelleId: null,
+        surfaceTraitee: 500, surfaceTraiteeHa: null, doseAppliquee: 6, uniteDose: "kg/ha", volumeBouillieLHa: null,
+        produitPhyto: "Bouillie bordelaise", produitPhytoRef: null,
+      },
+    ])
+    const res = await GET()
+    const json = await res.json()
+    expect(mocks.interventionFindMany.mock.calls[0][0].where.fait).toBe(true)
+    const p1 = json.parcelles.find((p: { parcelleId: string }) => p.parcelleId === "P1")
+    // 6 kg/ha × 0,05 ha × 20 % = 0,06 kg de cuivre sur 0,1 ha.
+    expect(p1.cumulAnnuelKg).toBeCloseTo(0.06, 3)
+    expect(json.parcelles.some((p: { parcelleId: string }) => p.parcelleId === "__sans_parcelle__")).toBe(false)
   })
 })
