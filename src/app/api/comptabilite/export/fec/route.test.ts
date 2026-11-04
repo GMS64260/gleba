@@ -191,3 +191,19 @@ it.each([
   expect(ecriture.find((l) => l.Debit !== '0,00')?.CompteNum).toBe(compte)
   expect(ecriture[0].JournalCode).toBe(journal)
 })
+
+// Revue du 2026-11-04 — une vente de récolte dépointée sur son miroir restait
+// exportée encaissée (512) : `paye: true` écrasait le pointage du miroir.
+it.each([
+  ['pointée payée', true, 'BQ'],
+  ['dépointée sur son miroir', false, 'VE'],
+])('une vente de récolte %s suit le pointage de son miroir', async (_cas, paye, journal) => {
+  etat.ventesElevage = []
+  etat.recoltes = [{ id: 7, userId: 'u1', statut: 'vendu', factureId: null, quantite: 10, prixKg: 2,
+    prixTotal: 20, date: new Date('2026-06-01'), dateVente: new Date('2026-06-02'),
+    especeId: 'Radis', espece: { id: 'Radis' }, clientNom: 'Restaurant' }]
+  etat.miroirs = [miroir({ id: 912, sourceType: 'recolte', sourceId: 7, montant: 20, numeroPiece: null, paye, modeReglement: paye ? 'Virement' : null })]
+  const ecriture = (await exporter()).filter((l) => l.PieceRef === 'RECOLTE-7')
+  expect(ecriture[0].JournalCode).toBe(journal)
+  expect(ecriture.find((l) => l.Debit !== '0,00')?.CompteNum).toBe(paye ? '512100' : '411000')
+})

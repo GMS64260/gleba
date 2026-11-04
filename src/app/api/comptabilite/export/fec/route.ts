@@ -346,7 +346,11 @@ async function exporterFec(request: NextRequest) {
       montantHT: ht,
       montantTVA: tva,
       clientNom: r.clientNom,
-      paye: true,
+      // Le pointage vient du miroir (`suiviDeLaSource`) : `paye: true` écrit
+      // après l'écrasait, et une vente de récolte dépointée dans Transactions
+      // sortait encaissée en banque (512) au lieu de rester en créance (411),
+      // contre Impayés et le Bilan (revue du 2026-11-04 ; même règle que
+      // l'abattage depuis cmvgdzsf7).
     })
   }
   for (const a of abattagesVendus) {
