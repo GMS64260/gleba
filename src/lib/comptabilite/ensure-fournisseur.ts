@@ -1,8 +1,8 @@
 /**
- * QA 2026-05-15 — Bug #11 : la fiche /comptabilite/fournisseurs ne
- * listait pas certains fournisseurs (Élevage local, Ferme du Coteau,
- * Couvoir de Cholet…) bien que présents en dépenses. Même remède que
- * pour les clients : find-or-create automatique côté backend.
+ * QA 2026-05-15 — Bug #11 : une dépense nommant un fournisseur connu du
+ * référentiel n'y était pas rattachée. Le rattachement se fait par nom
+ * normalisé ; la création automatique a été retirée le 2026-11-04 (voir
+ * ci-dessous).
  */
 
 import type { Prisma, PrismaClient } from "@prisma/client"
@@ -15,8 +15,6 @@ export interface EnsureFournisseurInput {
   fournisseurId?: string | null
   /** Nom (peut tomber du formulaire dépense rapide). */
   nom?: string | null
-  email?: string | null
-  telephone?: string | null
 }
 
 function normaliseNom(nom: string): string {
@@ -29,13 +27,17 @@ function normaliseNom(nom: string): string {
 }
 
 /**
- * Find-or-create idempotent. Renvoie l'`id` du fournisseur ou null
- * si aucune donnée exploitable.
+ * Rattache une dépense à une fiche EXISTANTE du référentiel des fournisseurs.
+ * Renvoie l'`id` de la fiche, ou null : le nom saisi reste alors porté par la
+ * dépense (`fournisseurNom`).
  *
- * Note multi-tenant : la table `fournisseurs` est globale (PK = id
- * texte, pas de colonne `user_id`). On dédoublonne donc sur tout
- * le référentiel par nom normalisé — un fournisseur partagé bénéficie
- * à tous les tenants.
+ * La table `fournisseurs` est globale (PK = id texte, pas de colonne
+ * `user_id`) : toute fiche y est visible de toutes les exploitations. Jusqu'au
+ * 2026-11-04, un nom tapé dans une dépense créait une fiche (« Jean Martin,
+ * voisin, foin »), que la liste des fournisseurs et les exports montraient
+ * ensuite à tous les comptes. On ne crée donc plus rien ici : le référentiel
+ * reste celui de l'administration, et une fiche propre à chaque exploitation
+ * demandera une colonne de propriétaire (revue du 2026-11-04).
  */
 export async function ensureFournisseurForUser(
   _userId: string,
@@ -57,19 +59,5 @@ export async function ensureFournisseurForUser(
   const candidats = await tx.fournisseur.findMany({ select: { id: true } })
   const nomNormalise = normaliseNom(nom)
   const match = candidats.find((f) => normaliseNom(f.id) === nomNormalise)
-  if (match) return match.id
-
-  // Création — l'id est le nom brut (cf. convention seed : "Kokopelli",
-  // "La Ferme de Sainte Marthe"…). Cap 100 chars pour sécurité.
-  const id = nom.slice(0, 100)
-  const created = await tx.fournisseur.create({
-    data: {
-      id,
-      email: input.email?.trim().toLowerCase() || null,
-      telephone: input.telephone?.trim() || null,
-      actif: true,
-    },
-    select: { id: true },
-  })
-  return created.id
+  return match?.id ?? null
 }
