@@ -46,6 +46,7 @@ import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MES
 const EXCLUDED = new Set<string>([
   "AbonnementGleba",
   "EvenementAbonnement",
+  // eslint-disable-next-line no-restricted-syntax -- Identifiant technique exact du modèle Prisma.
   "Parametre",
   "User",
   "Session",
