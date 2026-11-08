@@ -4,7 +4,7 @@ import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Logiciels de maraîchage libres ou gratuits : comparatif 2026",
-  description: "Brinjel, Ouvretaferme, PermaTechnics, Elzeard, CropMaker, farmOS, LiteFarm et Gleba : licence, auto-hébergement, prix et périmètre, relevés le 10 octobre 2026.",
+  description: "Brinjel, Ouvretaferme, PermaTechnics, Elzeard, CropMaker, farmOS, LiteFarm et Gleba : licence, auto-hébergement, prix et périmètre, relevés en octobre et tarifs actualisés le 8 novembre 2026.",
   alternates: { canonical: "https://gleba.fr/comparatif-logiciels-maraichage" },
   openGraph: {
     ...ogBase,
@@ -18,14 +18,14 @@ export const metadata: Metadata = {
 type Ligne = { nom: string; licence: string; hebergement: string; prix: string; perimetre: string };
 
 const LIGNES: Ligne[] = [
-  { nom: "Brinjel", licence: "Libre (AGPL-3.0)", hebergement: "Possible, configuration à prévoir", prix: "5, 10 ou 30 €/mois selon la surface ; essai 30 jours, pas de formule gratuite", perimetre: "Planification maraîchère, tâches, planches et rotations, récoltes, semences" },
-  { nom: "Ouvretaferme", licence: "Licence propre à l'association, réservée aux fermes en agriculture biologique", hebergement: "Code public annoncé comme non fonctionnel en l'état", prix: "Offre Essentiel gratuite ; offres payantes de 9 à 30 € HT/mois (« Pilotage » à 25 € dès le 1er novembre)", perimetre: "Vente, factures, boutiques, caisse, stocks ; plan de culture et comptabilité dans les offres payantes" },
-  { nom: "PermaTechnics", licence: "Propriétaire", hebergement: "Non", prix: "Gratuit jusqu'à 50 ares, puis 19,95 ou 34,95 € HT/mois", perimetre: "Planification, tâches, semences, récoltes, registre réglementaire en PDF" },
-  { nom: "Elzeard", licence: "Propriétaire", hebergement: "Non", prix: "30, 60 ou 90 € HT/mois selon la surface ; essai 30 jours", perimetre: "Maraîchage, plein champ, arboriculture, floriculture ; planification, traçabilité, stocks" },
+  { nom: "Brinjel", licence: "Libre (AGPL-3.0)", hebergement: "Possible, configuration à prévoir", prix: "5, 10 ou 30 € HT/mois selon les membres et le stockage ; essai de 30 jours sans carte", perimetre: "Planification maraîchère, tâches, planches et rotations, récoltes, semences" },
+  { nom: "Ouvretaferme", licence: "Licence propre à l'association, réservée aux fermes en agriculture biologique", hebergement: "Code public annoncé comme non fonctionnel en l'état", prix: "Essentiel gratuit, Gestion à 10 et Pilotage à 25 € HT/mois dès le 16 novembre 2026 ; offres Communauté distinctes", perimetre: "Vente, factures, boutiques, caisse, stocks ; plan de culture et comptabilité dans les offres payantes" },
+  { nom: "PermaTechnics", licence: "Propriétaire", hebergement: "Non", prix: "Gratuit jusqu'à 50 ares cultivés et planifiés, puis 19,95 ou 34,95 € HT/mois avec engagement de 12 mois", perimetre: "Planification, tâches, semences, récoltes, registre réglementaire en PDF" },
+  { nom: "Elzeard", licence: "Propriétaire", hebergement: "Non", prix: "30, 60 ou 90 € HT/mois selon la surface ; formule petite surface/installation à 20 €, engagement mensuel minimum de 3 mois", perimetre: "Maraîchage, plein champ, arboriculture, floriculture ; planification, traçabilité, stocks" },
   { nom: "CropMaker", licence: "Non précisée, pas de code public trouvé", hebergement: "Fichier local", prix: "Gratuit, sans compte", perimetre: "Planches, itinéraires, emblavement, calendrier des récoltes, temps de travail, chiffre d'affaires" },
   { nom: "farmOS", licence: "Libre (GPL-2.0)", hebergement: "Oui", prix: "Gratuit ; hébergement Farmier à partir de 75 $/an", perimetre: "Cultures, animaux, journaux d'activité" },
   { nom: "LiteFarm", licence: "Libre (GPL-3.0)", hebergement: "Possible", prix: "Gratuit", perimetre: "Tâches, cartes, récoltes, finances, certifications ; interface en français" },
-  { nom: "Gleba", licence: "Libre (AGPL-3.0)", hebergement: "Oui (Docker Compose), sans l'assistant IA", prix: "Gratuit pendant la bêta sur gleba.fr ; auto-hébergement gratuit", perimetre: "Maraîchage, verger, élevage, registre phytosanitaire, stocks, factures, boutique, assistant IA" },
+  { nom: "Gleba", licence: "Libre (AGPL-3.0)", hebergement: "Oui (Docker Compose), sans l'assistant IA", prix: "Trois mois d’essai, puis 5 ou 12 € HT/mois sur gleba.fr ; auto-hébergement gratuit", perimetre: "Maraîchage, verger, élevage, registre phytosanitaire, stocks, factures, boutique, assistant IA" },
 ];
 
 export default function Page() {
@@ -35,8 +35,8 @@ export default function Page() {
       currentPath="/comparatif-logiciels-maraichage"
       eyebrow="Comparatif · Logiciels de maraîchage"
       title="Logiciels de maraîchage libres ou gratuits : le comparatif"
-      chapeau="Libre ne veut pas dire gratuit, et gratuit ne veut pas dire libre. Ce comparatif relève, pour chaque outil, la licence, la possibilité d'héberger le logiciel soi-même, le prix public et le périmètre couvert, à partir des pages des éditeurs consultées le 10 octobre 2026. Il est publié par Gleba, l'un des logiciels comparés."
-      miseAJour="2026-10-10"
+      chapeau="Libre ne veut pas dire gratuit, et gratuit ne veut pas dire libre. Ce comparatif relève, pour chaque outil, la licence, la possibilité d'héberger le logiciel soi-même, le prix public et le périmètre couvert, à partir des pages des éditeurs consultées le 10 octobre 2026. Les tarifs de Brinjel, Ouvretaferme, PermaTechnics, Elzeard et Gleba ont été actualisés le 8 novembre 2026. Il est publié par Gleba, l'un des logiciels comparés."
+      miseAJour="2026-11-08"
       aRetenir={[
         "Brinjel, farmOS, LiteFarm et Gleba sont publiés sous licence libre ; Brinjel n'a pas de formule gratuite.",
         "PermaTechnics est gratuit jusqu'à 50 ares, Ouvretaferme garde une offre Essentiel gratuite, CropMaker est gratuit sans compte.",
@@ -98,7 +98,7 @@ export default function Page() {
                 <strong>Brinjel</strong>, développé par un maraîcher et successeur de Qrop, est un logiciel libre de planification maraîchère. Son code est public sous AGPL-3.0 ; l&apos;offre hébergée est payante selon la surface (de 1 à plus de 3 hectares), avec un essai de trente jours.
               </p>
               <p>
-                <strong>Ouvretaferme</strong> organise surtout la vente : factures, boutiques, caisse et stocks, avec plus de 5 000 producteurs annoncés. Sa licence est propre à l&apos;association et réservée aux fermes en agriculture biologique. L&apos;association annonce des offres payantes à partir du 1er novembre ; les fonctions essentielles restent gratuites.
+                <strong>Ouvretaferme</strong> organise surtout la vente : factures, boutiques, caisse et stocks, avec plus de 5 000 producteurs annoncés. Sa licence est propre à l&apos;association et réservée aux fermes en agriculture biologique. L&apos;association annonce des offres payantes à partir du 16 novembre 2026 ; les fonctions essentielles restent gratuites.
               </p>
               <p>
                 <strong>PermaTechnics</strong> et <strong>Elzeard</strong> sont des logiciels propriétaires hébergés par leur éditeur. PermaTechnics est gratuit jusqu&apos;à 50 ares et génère un registre réglementaire en PDF ; Elzeard couvre aussi le plein champ, l&apos;arboriculture et la floriculture.
@@ -110,7 +110,7 @@ export default function Page() {
                 <strong>farmOS</strong> et <strong>LiteFarm</strong> sont des logiciels libres généralistes développés hors de France : farmOS couvre cultures et animaux ; LiteFarm, porté par l&apos;Université de Colombie-Britannique, est disponible en français.
               </p>
               <p>
-                <strong>Gleba</strong>, publié sous AGPL-3.0, relie maraîchage, verger suivi arbre par arbre, ateliers d&apos;élevage, registre phytosanitaire, stocks, factures et boutique. Le service hébergé sur gleba.fr est gratuit pendant la bêta et deviendra payant ; l&apos;auto-hébergement reste gratuit, sans l&apos;assistant IA, qui n&apos;est pas publié dans le code.
+                <strong>Gleba</strong>, publié sous AGPL-3.0, relie maraîchage, verger suivi arbre par arbre, ateliers d&apos;élevage, registre phytosanitaire, stocks, factures et boutique. Le service hébergé sur gleba.fr propose trois mois d’essai, puis Essentiel à 5 € HT/mois ou Complet à 12 € HT/mois ; les comptes existants lors de l’annonce restent gratuits à vie. L&apos;auto-hébergement reste gratuit, sans l&apos;assistant IA, qui n&apos;est pas publié dans le code.
               </p>
             </>
           ),
@@ -122,7 +122,7 @@ export default function Page() {
               <li><strong>Qrop</strong> : remplacé par Brinjel, présenté comme son successeur.</li>
               <li><strong>La Pépinière</strong> (projet Mesclun) : outils arrêtés le 1er juillet 2026 ; sa base de 75 légumes reste publiée en données ouvertes.</li>
               <li><strong>Tania</strong> : projet archivé, sans évolution depuis 2021.</li>
-              <li><strong>Ouvretaferme</strong> : passage à des offres payantes au 1er novembre, l&apos;offre Essentiel restant gratuite.</li>
+              <li><strong>Ouvretaferme</strong> : passage à des offres payantes au 16 novembre 2026, l&apos;offre Essentiel restant gratuite.</li>
             </ul>
           ),
         },
@@ -165,11 +165,11 @@ export default function Page() {
         { titre: "Code de Gleba", url: "https://github.com/GMS64260/gleba", editeur: "GitHub" },
       ]}
       faqs={[
-        { question: "Quel logiciel de maraîchage est gratuit ?", answer: "Au 10 octobre 2026 : PermaTechnics jusqu'à 50 ares, l'offre Essentiel d'Ouvretaferme, CropMaker, LiteFarm, farmOS en auto-hébergement, ainsi que Gleba pendant sa bêta hébergée. Brinjel propose un essai de trente jours mais pas de formule gratuite." },
+        { question: "Quel logiciel de maraîchage est gratuit ?", answer: "Au 10 octobre 2026 : PermaTechnics jusqu'à 50 ares, l'offre Essentiel d'Ouvretaferme, CropMaker, LiteFarm, farmOS en auto-hébergement, ainsi que le socle de Gleba en auto-hébergement ; le service hébergé Gleba propose trois mois d’essai puis les offres Essentiel et Complet. Brinjel propose un essai de trente jours mais pas de formule gratuite." },
         { question: "Quel logiciel de maraîchage est open source ?", answer: "Brinjel (AGPL-3.0), farmOS (GPL-2.0), LiteFarm (GPL-3.0) et Gleba (AGPL-3.0) publient leur code sous licence libre. Ouvretaferme a une licence propre, réservée aux fermes en agriculture biologique." },
         { question: "Qrop existe-t-il encore ?", answer: "Qrop est remplacé par Brinjel, que son site présente comme son successeur." },
         { question: "Quel logiciel pour une ferme avec maraîchage, verger et élevage ?", answer: "Peu d'outils de maraîchage couvrent aussi le verger et l'élevage. Gleba relie les trois ; farmOS gère cultures et animaux ; Elzeard couvre l'arboriculture mais pas l'élevage." },
-        { question: "Ce comparatif est-il neutre ?", answer: "Il est publié par Gleba, l'un des logiciels comparés. Chaque information vient de la page de l'éditeur citée en source et a été relevée le 10 octobre 2026 ; signalez toute erreur à contact@gleba.fr." },
+        { question: "Ce comparatif est-il neutre ?", answer: "Il est publié par Gleba, l'un des logiciels comparés. Les fonctions et licences ont été relevées le 10 octobre 2026 ; les tarifs de Brinjel, Ouvretaferme, PermaTechnics, Elzeard et Gleba ont été actualisés le 8 novembre 2026, à partir des sources citées ; signalez toute erreur à contact@gleba.fr." },
       ]}
     />
   );

@@ -1,3 +1,4 @@
+import { ErreurCommerciale } from '@/lib/commercial/regles'
 import { prixFruitApi, dateRecolteApi } from "@/lib/verger/creation-recolte"
 import { avertissementsDarFruit } from "@/lib/verger/dar"
 import { modifierVenteVerger } from "@/lib/verger/vente"
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     return NextResponse.json(recolte)
   } catch (err) {
+    if (err instanceof ErreurCommerciale) return NextResponse.json({ error: err.message }, { status: err.status })
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("GET /api/arbres/recoltes/[id] error:", err)
@@ -255,6 +257,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return NextResponse.json(warnings.length > 0 ? { ...recolte, warnings } : recolte)
     })
   } catch (err) {
+    if (err instanceof ErreurCommerciale) return NextResponse.json({ error: err.message }, { status: err.status })
     if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
@@ -274,6 +277,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { id } = await params
     return NextResponse.json(await modifierVenteVerger('fruit', session!.user.id, session!.user.acteurId ?? session!.user.id, Number(id), await request.json()))
   } catch (err) {
+    if (err instanceof ErreurCommerciale) return NextResponse.json({ error: err.message }, { status: err.status })
     if (err instanceof ErreurVerger || err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('PATCH /api/arbres/recoltes/[id] error:', err)
@@ -322,6 +326,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (err instanceof ErreurCommerciale) return NextResponse.json({ error: err.message }, { status: err.status })
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error("DELETE /api/arbres/recoltes/[id] error:", err)

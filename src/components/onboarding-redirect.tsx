@@ -12,7 +12,7 @@ import * as React from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { useSession } from "next-auth/react"
 
-const EXEMPTS = ["/login", "/onboarding", "/feedback", "/raccourcis", "/aide"]
+const EXEMPTS = ["/login", "/onboarding", "/feedback", "/raccourcis", "/aide", "/parametres", "/tarifs", "/conditions-service"]
 
 export function OnboardingRedirect() {
   const router = useRouter()

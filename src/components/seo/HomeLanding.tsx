@@ -1,3 +1,5 @@
+import { Offres } from "@/components/abonnement/Offres";
+import { TEXTE_OFFRE, TEXTE_EXISTANTS, FORMULES } from "@/lib/abonnement/catalogue";
 /**
  * HomeLanding — Server Component
  *
@@ -250,7 +252,7 @@ const FAQS: { question: string; answer: string }[] = [
   {
     question: "Combien coûte Gleba ?",
     answer:
-      "Le code est libre (AGPL-3.0) : l'installer sur votre propre serveur est gratuit. Le service hébergé sur gleba.fr est gratuit pendant la bêta ; il deviendra payant une fois le produit finalisé. Le code et l'auto-hébergement restent gratuits.",
+      TEXTE_OFFRE + " Le code libre et l’auto-hébergement restent gratuits. " + TEXTE_EXISTANTS,
   },
   {
     question: "Gleba est-il un logiciel de maraîchage adapté au bio et à la permaculture ?",
@@ -350,7 +352,7 @@ export function HomeLanding() {
               </Link>
             </div>
             <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-ardoise">
-              {["Gratuit pendant la bêta", "Code AGPL-3.0", "Auto-hébergeable", "Données exportables"].map((t) => (
+              {["3 mois d’essai gratuits", "Code AGPL-3.0", "Auto-hébergeable", "Données exportables"].map((t) => (
                 <li key={t} className="inline-flex items-center gap-1.5">
                   <Check className="h-4 w-4 text-prairie" weight="bold" aria-hidden />
                   {t}
@@ -562,40 +564,16 @@ export function HomeLanding() {
             </p>
           </div>
 
-          <div className="self-start rounded-2xl border border-lin bg-papier p-6 sm:p-8">
-            <Surtitre>Tarif</Surtitre>
-            <p className="mt-3 font-display text-[28px] font-medium leading-tight tracking-tight text-encre">Gratuit pendant la bêta.</p>
-            <dl className="mt-6 divide-y divide-lin border-y border-lin">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 py-4">
-                <dt>
-                  <span className="font-semibold text-encre">Service hébergé sur gleba.fr</span>
-                  <span className="mt-0.5 block text-sm text-ardoise">Mises à jour et assistant compris.</span>
-                </dt>
-                <dd className="text-right font-semibold text-prairie">0 € en bêta</dd>
-              </div>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 py-4">
-                <dt>
-                  <span className="font-semibold text-encre">Auto-hébergement</span>
-                  <span className="mt-0.5 block text-sm text-ardoise">Le code public, sur votre serveur, sans l&apos;assistant IA.</span>
-                </dt>
-                <dd className="text-right font-semibold text-prairie">Gratuit</dd>
-              </div>
-            </dl>
-            <p className="mt-5 text-sm leading-relaxed text-ardoise">
-              Après la bêta, le service hébergé deviendra payant. Le code et l&apos;auto-hébergement
-              restent gratuits.
-            </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Link href="/register" className={CLASSES_CTA}>
-                Créer mon carnet
-              </Link>
-              <Link href="/licence" className={CLASSES_CTA_SECONDAIRE}>
-                Lire la licence
-              </Link>
-            </div>
+          <div className="self-start rounded-xl border border-lin bg-papier p-6 sm:p-8">
+            <h3 className="font-display text-2xl font-medium text-foret">Un atelier ou toute la ferme.</h3>
+            <p className="mt-4 text-base leading-7 text-ardoise">Trois mois d’essai gratuits, puis Essentiel à {FORMULES.essentiel.prix} € HT/mois ou Complet à {FORMULES.complet.prix} € HT/mois.</p>
+            <p className="mt-3 text-sm leading-6 text-ardoise">{TEXTE_EXISTANTS} Le socle auto-hébergeable reste gratuit.</p>
+            <Link href="/tarifs" className={`${CLASSES_CTA} mt-6`}>Comparer les deux offres</Link>
           </div>
         </div>
       </section>
+
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6"><Offres compacte /></div>
 
       {/* ═══ 7. Questions fréquentes ═══ */}
       <section id="faq" aria-labelledby="titre-faq" className="scroll-mt-6 px-4 py-20 sm:px-6 lg:py-24">

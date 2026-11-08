@@ -257,6 +257,14 @@ export default function ConfidentialitePage() {
             fabricant avec les identifiants que vous fournissez.
           </li>
           <li>
+            <strong>Abonnement au service Gleba</strong> : si vous souscrivez,
+            Stripe traite votre paiement, vos coordonnées de facturation et vos
+            justificatifs. Les données de carte sont saisies chez Stripe et ne
+            transitent pas par Gleba. Nous conservons les identifiants techniques
+            du contrat, votre formule, les périodes payées et la preuve de votre
+            accord. Ce traitement est distinct des ventes de votre exploitation.
+          </li>
+          <li>
             <strong>Envoi d&apos;e-mails</strong> : un prestataire SMTP achemine les
             messages transactionnels.
           </li>

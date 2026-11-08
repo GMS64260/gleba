@@ -1,5 +1,7 @@
 "use client"
 
+import { useAccesService } from "@/hooks/use-acces-service"
+
 import * as React from "react"
 import { todayLocalISO } from "@/lib/format-utils"
 import {
@@ -186,7 +188,11 @@ interface MeteoWidgetProps {
   defaultExpanded?: boolean
 }
 
-export function MeteoWidget({ parcelleId, lat, lng, compact = false, defaultExpanded = false }: MeteoWidgetProps) {
+export function MeteoWidget(props: MeteoWidgetProps) {
+  const { acces } = useAccesService()
+  return acces?.meteo ? <MeteoWidgetInterne {...props} /> : null
+}
+function MeteoWidgetInterne({ parcelleId, lat, lng, compact = false, defaultExpanded = false }: MeteoWidgetProps) {
   const [data, setData] = React.useState<MeteoData | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)

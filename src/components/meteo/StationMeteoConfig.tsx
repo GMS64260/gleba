@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useAccesService } from "@/hooks/use-acces-service"
 import { Button } from "@/components/ui/button"
 import { confirmDialog } from "@/lib/global-dialog"
 import {
@@ -33,7 +34,12 @@ interface StationMeteo {
 // COMPOSANT
 // ============================================================
 
-export function StationMeteoConfig({ onStationsChanged }: { onStationsChanged?: () => void } = {}) {
+export function StationMeteoConfig(props: { onStationsChanged?: () => void } = {}) {
+  const { acces } = useAccesService()
+  if (!acces) return null
+  return acces.meteo ? <StationMeteoConfigInterne {...props} /> : <p className="text-sm leading-6 text-ardoise">Les stations et services météo sont compris dans l’offre Complet.</p>
+}
+function StationMeteoConfigInterne({ onStationsChanged }: { onStationsChanged?: () => void }) {
   const [stations, setStations] = React.useState<StationMeteo[]>([])
   const [loading, setLoading] = React.useState(true)
   const [showForm, setShowForm] = React.useState(false)

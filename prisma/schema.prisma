@@ -107,6 +107,7 @@ model User {
   sessions Session[]
   accounts Account[]
   pushSubscriptions PushSubscription[]
+  abonnementGleba AbonnementGleba?
 
   dossiersReglement DossierReglement[]
   ciblesReglement CibleReglement[]
@@ -5211,4 +5212,43 @@ model VirementBancaire {
   createdAt DateTime @default(now()) @map("created_at")
   @@index([userId])
   @@map("virements_bancaires")
+}
+
+/// Contrat du service Gleba, séparé des factures et connexions bancaires des producteurs.
+model AbonnementGleba {
+  userId String @id @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gratuitAVie Boolean @default(false) @map("gratuit_a_vie")
+  essaiDebut DateTime? @map("essai_debut")
+  essaiFin DateTime? @map("essai_fin")
+  formule String?
+  atelier String?
+  statut String?
+  clientStripeId String? @unique @map("client_stripe_id")
+  abonnementStripeId String? @unique @map("abonnement_stripe_id")
+  payeJusquau DateTime? @map("paye_jusquau")
+  graceJusquau DateTime? @map("grace_jusquau")
+  annulationAuTerme Boolean @default(false) @map("annulation_au_terme")
+  conditionsVersion String? @map("conditions_version")
+  conditionsAccepteesLe DateTime? @map("conditions_acceptees_le")
+  checkoutId String? @map("checkout_id")
+  checkoutCle String? @map("checkout_cle")
+  checkoutExpireLe DateTime? @map("checkout_expire_le")
+  prochainContrat Json? @map("prochain_contrat")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("abonnements_gleba")
+}
+
+/// Inbox durable : aucun événement perdu après acquittement HTTP.
+model EvenementAbonnement {
+  id String @id
+  type String
+  objetId String @map("objet_id")
+  traiteLe DateTime? @map("traite_le")
+  tentatives Int @default(0)
+  erreur String?
+  recuLe DateTime @default(now()) @map("recu_le")
+  @@index([traiteLe, recuLe])
+  @@map("evenements_abonnement")
 }

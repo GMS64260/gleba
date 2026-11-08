@@ -22,6 +22,7 @@
 
 import { messageErreurReponse } from "@/lib/api-erreur"
 import * as React from "react"
+import { useAccesService } from "./use-acces-service"
 import {
   DEFAULT_MODULES_ACTIFS,
   sanitizeModulesActifs,
@@ -71,6 +72,7 @@ export interface UseModulesResult {
 }
 
 export function useModules(): UseModulesResult {
+  const { acces } = useAccesService()
   // Pas de lecture localStorage au rendu : le serveur et le 1er rendu client
   // doivent produire le même HTML (React #418). Le cache est appliqué dans
   // l'effect de mount, avant le refresh réseau.
@@ -177,7 +179,8 @@ export function useModules(): UseModulesResult {
     }
   }, [modules])
 
-  const isActif = React.useCallback((id: ModuleId) => modules.includes(id), [modules])
+  const affichables = React.useMemo(() => modules.filter(m => acces && (m === "comptabilite" ? acces.comptabilite || acces.etat === "lecture" : acces.ateliers.includes(m) || acces.etat === "lecture")), [modules, acces])
+  const isActif = React.useCallback((id: ModuleId) => affichables.includes(id), [affichables])
 
-  return { modules, loading, refresh, save, isActif }
+  return { modules: affichables, loading, refresh, save, isActif }
 }

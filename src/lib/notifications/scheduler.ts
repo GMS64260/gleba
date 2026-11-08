@@ -13,6 +13,7 @@
  */
 
 import cron from "node-cron"
+import { reconcilierAbonnements } from "@/lib/abonnement/reconciliation"
 import { agregerEtPurgerMesures } from "@/lib/capteurs/agregats"
 import { estHeureResume, getMeteoCronExpression, getMeteoIntervalMinutes, getResumeCronExpression } from "./config"
 import {
@@ -67,6 +68,7 @@ export async function initNotifScheduler(): Promise<void> {
   initialized = true
 
   try {
+    cron.schedule("*/15 * * * *", () => reconcilierAbonnements().catch(() => console.warn("[abonnement] Réconciliation reportée.")))
     // Configuration push (VAPID) — ne bloque pas le boot si raté.
     try {
       await pushConfigure()

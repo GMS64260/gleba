@@ -17,6 +17,7 @@
  */
 
 import prisma from "@/lib/prisma"
+import { chargerAccesService } from "@/lib/abonnement/serveur"
 import type { SessionExploitation } from "@/lib/auth-utils"
 import { getActeurId, getUserId } from "@/lib/exploitation/garde-session"
 import { getTachesPotager } from "@/lib/taches-potager"
@@ -133,9 +134,10 @@ export async function composerAujourdhui(
       null,
     ),
   ])
-  const maraichageActif = modules.includes("maraichage")
-  const elevageActif = modules.includes("elevage")
-  const comptaActif = modules.includes("comptabilite")
+  const accesService = await chargerAccesService(userId)
+  const maraichageActif = modules.includes("maraichage") && accesService.ateliers.includes("maraichage")
+  const elevageActif = modules.includes("elevage") && accesService.ateliers.includes("elevage")
+  const comptaActif = modules.includes("comptabilite") && accesService.comptabilite
   const devise = deviseDuTerritoire(exploitation?.territoire)
 
   const [taches, kpiMaraichage, agenda, animauxActifs, declarations, factures, kpiCompta, planches, arbres, objets] =
@@ -499,7 +501,7 @@ export async function composerAujourdhui(
           null,
         )
       : undefined,
-    demandees.has("verger") && modules.includes("verger")
+    demandees.has("verger") && modules.includes("verger") && accesService.ateliers.includes("verger")
       ? lire(
           "verger",
           async () =>
@@ -578,7 +580,7 @@ export async function composerAujourdhui(
           null,
         )
       : undefined,
-    demandees.has("journal")
+    demandees.has("journal") && maraichageActif
       ? lire(
           "journal",
           async () => {

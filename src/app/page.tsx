@@ -1,3 +1,4 @@
+import { jsonLdSoftware } from "@/lib/seo/logiciel"
 /**
  * Page d'accueil Gleba — Server Component
  *
@@ -16,7 +17,7 @@ import { ogBase } from "@/lib/seo/og";
 export const metadata: Metadata = {
   title: { absolute: "Gleba — Logiciel libre de maraîchage et de micro-ferme" },
   description:
-    "Plan de culture, planches, verger, élevage, registre phyto, stocks et ventes dans un seul carnet libre. Chaque matin, ce qu'il y a à faire. Gratuit en bêta.",
+    "Logiciel libre de maraîchage, verger et élevage : plan de culture, stocks et traçabilité. Trois mois d’essai gratuits, puis offres à 5 ou 12 € HT/mois.",
   alternates: { canonical: "https://gleba.fr" },
   openGraph: {
     ...ogBase,
@@ -30,7 +31,7 @@ export const metadata: Metadata = {
 
 export default function Home() {
   return (
-    <MarketingShell>
+    <MarketingShell><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdSoftware) }} />
       <HomeLanding />
     </MarketingShell>
   );

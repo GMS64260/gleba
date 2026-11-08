@@ -5,6 +5,7 @@
 'use client'
 
 import * as React from 'react'
+import { AbonnementSection } from '@/components/abonnement/AbonnementSection'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell, Search, ShieldCheck, ChevronRight, Satellite } from 'lucide-react'
@@ -35,6 +36,7 @@ import {
 } from '@/lib/briefing-prefs'
 
 const RUBRIQUES_PARAMETRES = [
+  { id: 'abonnement', titre: 'Abonnement', description: 'Retrouvez votre accès, votre essai et les formules de votre carnet.', icone: Layers, mots: 'abonnement essai trois mois gratuit vie essentiel complet 5 12 paiement facture formule' },
   { id: 'carnet', titre: 'Mon carnet', description: 'Choisissez les activités et les modes d’élevage que vous utilisez.', icone: Layers, mots: 'modules actifs navigation maraîchage verger comptabilité élevage animaux compagnie équin nac' },
   { id: 'exploitation', titre: 'Exploitation et équipe', description: 'Retrouvez l’identité de votre exploitation et les accès de votre équipe.', icone: Building2, mots: 'identité légale raison sociale siret fiscal coordonnées bancaires factures associés salariés comptable devise unités' },
   { id: 'jardin', titre: 'Plan du jardin', description: 'Réglez les dimensions et l’apparence de votre plan.', icone: ImageIcon, mots: 'planches largeur longueur hauteur grille couleurs image fond satellite drone calibration' },
@@ -698,6 +700,7 @@ function ParametresContent() {
             </nav>
           </aside>
           <div id="contenu-reglages" className="min-w-0 scroll-mt-[calc(var(--app-header-h,0px)+1rem)]">
+            <PanneauParametres id="abonnement" active={rubrique}><AbonnementSection /></PanneauParametres>
             <PanneauParametres id="carnet" active={rubrique}>
         {/* Modules actifs */}
         <ModulesSection />

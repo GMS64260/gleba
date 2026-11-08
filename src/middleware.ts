@@ -13,6 +13,7 @@ import {
   valeurEnteteMutation,
 } from "@/lib/exploitation/entete-mutation"
 import { NextResponse } from "next/server"
+import { ENTETE_CHEMIN, ENTETE_METHODE } from "@/lib/abonnement/requetes"
 
 export default auth((req) => {
   const { pathname } = req.nextUrl
@@ -28,6 +29,8 @@ export default auth((req) => {
   // l'acteur a le droit d'écrire. L'en-tête est toujours écrasé : impossible à
   // forger depuis le client. Cf. `lib/exploitation/entete-mutation.ts`.
   const enTetesTransmises = new Headers(req.headers)
+  enTetesTransmises.set(ENTETE_CHEMIN, pathname)
+  enTetesTransmises.set(ENTETE_METHODE, req.method)
   enTetesTransmises.set(EN_TETE_MUTATION, valeurEnteteMutation(req.method, pathname))
   const suite = () => NextResponse.next({ request: { headers: enTetesTransmises } })
 
@@ -57,7 +60,7 @@ export default auth((req) => {
     // typiquement dans une fenêtre de navigation privée).
     "/impersonation",
     // RGPD / LCEN : doivent rester accessibles sans authentification
-    "/cgv", "/mentions-legales", "/confidentialite",
+    "/cgv", "/mentions-legales", "/confidentialite", "/tarifs", "/conditions-service",
     // Politique Google Play : l'URL de demande de suppression de compte est
     // publiée sur la fiche Play Store, donc consultable sans session.
     "/suppression-compte",
@@ -92,6 +95,7 @@ export default auth((req) => {
   const isPushVapidApi = pathname === "/api/notifications/push/vapid-public-key"
   // Mesures des capteurs : authentifiées par le jeton du connecteur, pas par une session.
   const isCapteursIngestionApi = pathname === "/api/capteurs/ingestion"
+  const isAbonnementWebhook = pathname === "/api/abonnement/webhook"
 
   // Boutiques publiques : /boutique/[slug] (pas /boutique seul qui est admin)
   // et /api/boutique/public/*
@@ -117,7 +121,7 @@ export default auth((req) => {
   }
 
   // Si route publique ou API auth/MCP/feedback, laisser passer
-  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isUnsubscribeApi || isCookieConsentApi || isPushVapidApi || isCapteursIngestionApi || isPublicBoutiquePage || isPublicBoutiqueApi || isPublicApi) {
+  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isUnsubscribeApi || isCookieConsentApi || isPushVapidApi || isCapteursIngestionApi || isAbonnementWebhook || isPublicBoutiquePage || isPublicBoutiqueApi || isPublicApi) {
     // Si connecté et sur login, rediriger vers home
     if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
       return NextResponse.redirect(new URL("/", req.nextUrl))
@@ -151,6 +155,7 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
+    "/api/:path*",
     // Les anciens justificatifs image seraient sinon exclus par l'extension.
     "/uploads/:path*",
     // Matcher tout sauf les fichiers statiques.

@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "GLEBA - Logiciel gratuit gestion micro-ferme",
+  "name": "Gleba - Carnet de ferme libre",
   "short_name": "GLEBA",
-  "description": "ERP 100% gratuit pour micro-fermes : maraichage, verger, elevage, ventes. Open source, auto-hebergeable.",
+  "description": "Carnet libre pour le jardin, le verger et l’élevage. Service hébergé : 3 mois d’essai, puis Essentiel à 5 € HT/mois ou Complet à 12 € HT/mois. Socle auto-hébergeable gratuit.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
