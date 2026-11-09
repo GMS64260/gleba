@@ -847,7 +847,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
             {preferences.commercial && <Card className={kpiCardClass("revenu")}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className={`${kpiSubtleClass("revenu")} text-xs flex items-center gap-1`}>
-                  Ventes {year}
+                  Ventes directes {year}
                   {(() => {
                     const diff = data.stats.ventesAnnee - data.stats.ventesAnneePrecedente
                     if (data.stats.ventesAnneePrecedente === 0) return null
@@ -868,6 +868,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     ? `${data.stats.ventesAnnee >= data.stats.ventesAnneePrecedente ? '+' : ''}${Math.round(((data.stats.ventesAnnee - data.stats.ventesAnneePrecedente) / data.stats.ventesAnneePrecedente) * 100)}% vs ${year - 1}`
                     : `${data.stats.nbVentes} vente${data.stats.nbVentes > 1 ? 's' : ''}${data.stats.nbVentes > 0 && data.stats.ventesAnnee === 0 ? ' (prix manquants)' : ''}`
                   }
+                </p>
+                {/* Ce total ne porte que les ventes saisies dans Production > Ventes :
+                    sans cette mention, une ferme qui livre une laiterie ou vend
+                    ses porcs par abattage lisait « 0 € » ici et des milliers
+                    d'euros de revenus Élevage en comptabilité. */}
+                <p className={`mt-1 text-[11px] leading-tight ${kpiSubtleClass("revenu")}`}>
+                  TTC, hors abattages vendus, paie du lait et réservations : le total figure en{" "}
+                  <a href="/comptabilite" className="underline">Comptabilité</a>.
                 </p>
               </CardContent>
             </Card>}
