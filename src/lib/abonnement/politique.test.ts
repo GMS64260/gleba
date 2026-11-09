@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { calculerAcces, finEssai, aCapacite, type EtatAbonnement } from "./politique"
 import { GRATUITE_EXISTANTS_JUSQUAU } from "./catalogue"
-import { operationPermise } from "./requetes"
+import { capaciteDuChemin, operationPermise, PAGES_PROTEGEES } from "./requetes"
 const maintenant = new Date("2027-03-01T12:00:00Z")
 const nouveau = new Date("2026-11-09T00:00:00Z")
 const etat = (overrides: Partial<EtatAbonnement> = {}): EtatAbonnement => ({ gratuitAVie: false, essaiDebut: new Date("2026-11-09"), essaiFin: new Date("2027-02-09"), formule: null, statut: null, payeJusquau: null, graceJusquau: null, ...overrides })
@@ -76,5 +76,16 @@ describe("contrôle serveur des chemins", () => {
     expect(operationPermise(gratuit, "/api/comptabilite/factures/1/pdf", "GET")).toBe(true)
     expect(operationPermise(gratuit, "/api/user/preferences", "PUT")).toBe(true)
     expect(operationPermise(gratuit, "/api/comptabilite/export", "POST")).toBe(false)
+  })
+})
+describe("pages protégées", () => {
+  const pages = PAGES_PROTEGEES.source.match(/\(([^)]+)\)/)![1].split("|")
+  it.each(pages)("/%s a une capacité connue et reste ouverte au carnet gratuit si c’est un atelier ou une page commune", page => {
+    expect(capaciteDuChemin("/" + page)).not.toBe("inconnu")
+  })
+  it("l’accueil Aujourd’hui est ouvert à tous les accès", () => {
+    for (const acces of [calculerAcces(nouveau, null, maintenant, false), calculerAcces(nouveau, etat(), maintenant), calculerAcces(new Date(GRATUITE_EXISTANTS_JUSQUAU), null, maintenant)]) {
+      expect(operationPermise(acces, "/aujourdhui", "GET")).toBe(true)
+    }
   })
 })
