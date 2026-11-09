@@ -494,8 +494,14 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     const domLotId = String(submitted.get("lotId") || "").trim()
     const submittedLotId = (domLotId !== LOT_NON_CHOISI ? domLotId : "") || formData.lotId
     if (!submittedLotId) {
-      setProductionSubmitError("Sélectionnez un lot de pondeuses.")
-      toast({ title: "Sélectionnez un lot", variant: "destructive" })
+      // Sans aucun lot de volailles actif, « Sélectionnez un lot » est une
+      // impasse : on dit quoi faire (des pondeuses suivies en fiches se rangent
+      // dans un lot pour saisir leur ponte).
+      const message = lots.length === 0
+        ? "Aucun lot de volailles actif : créez d'abord un lot dans Animaux & Lots (vos pondeuses en fiches peuvent y être rangées), puis saisissez la ponte."
+        : "Sélectionnez un lot de pondeuses."
+      setProductionSubmitError(message)
+      toast({ title: lots.length === 0 ? "Aucun lot de pondeuses" : "Sélectionnez un lot", description: lots.length === 0 ? message : undefined, variant: "destructive" })
       return
     }
     if (!submittedQuantite) {
