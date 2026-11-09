@@ -9,7 +9,7 @@ const m = vi.hoisted(() => ({
   venteAvant: vi.fn(), venteTx: vi.fn(), venteCreate: vi.fn(), venteUpdate: vi.fn(),
   miroir: vi.fn(), deleteMiroir: vi.fn(), creerFacture: vi.fn(), annulerFacture: vi.fn(),
   oeufsSync: vi.fn(), oeufsDelete: vi.fn(), rucheSync: vi.fn(), rucheDelete: vi.fn(),
-  mouvementFromage: vi.fn(), lotFromage: vi.fn(), pointage: vi.fn(),
+  mouvementFromage: vi.fn(), mouvementFromageUpdate: vi.fn(), lotFromage: vi.fn(), pointage: vi.fn(),
 }))
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: m.auth }))
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: vi.fn() }))
@@ -38,7 +38,7 @@ const tx = {
   $executeRaw: m.execute, $queryRaw: m.query,
   animal: { findFirst: m.animalTx, update: m.animalUpdate, updateMany: m.animalUpdateMany },
   venteProduit: { findFirst: m.venteTx, create: m.venteCreate, update: m.venteUpdate },
-  mouvementFromage: { create: m.mouvementFromage, deleteMany: vi.fn() },
+  mouvementFromage: { create: m.mouvementFromage, deleteMany: vi.fn(), updateMany: m.mouvementFromageUpdate },
   lotFromage: { findFirst: m.lotFromage },
 }
 const request = (method: string, body?: object, query = '') => new NextRequest(
@@ -124,6 +124,27 @@ describe('Fiabilité des ventes élevage', () => {
     expect((await PATCH(request('PATCH', { id: 11, unite: '' }))).status).toBe(400)
     expect(m.venteUpdate).not.toHaveBeenCalled()
     expect(m.miroir).not.toHaveBeenCalled()
+  })
+
+  it('ne refait les sorties d’œufs que si la quantité, l’unité ou le jour changent', async () => {
+    expect((await PATCH(request('PATCH', { id: 11, client: 'Autre client', paye: true, modeReglement: 'Espèces' }))).status).toBe(200)
+    expect((await PATCH(request('PATCH', { id: 11, prixUnitaire: 1.5 }))).status).toBe(200)
+    expect(m.oeufsSync).not.toHaveBeenCalled()
+    expect((await PATCH(request('PATCH', { id: 11, quantite: 18 }))).status).toBe(200)
+    expect(m.oeufsSync).toHaveBeenCalledTimes(1)
+    expect((await PATCH(request('PATCH', { id: 11, date: '2026-10-29' }))).status).toBe(200)
+    expect(m.oeufsSync).toHaveBeenCalledTimes(2)
+  })
+
+  it('la sortie de cave suit la date corrigée d’une vente de fromage', async () => {
+    Object.assign(courante, { type: 'fromage', unite: 'piece', quantite: 2, lotFromageId: 'lot-1' })
+    expect((await PATCH(request('PATCH', { id: 11, client: 'Épicerie' }))).status).toBe(200)
+    expect(m.mouvementFromageUpdate).not.toHaveBeenCalled()
+    expect((await PATCH(request('PATCH', { id: 11, date: '2026-10-25' }))).status).toBe(200)
+    expect(m.mouvementFromageUpdate).toHaveBeenCalledWith({
+      where: { userId: 'review', venteProduitId: 11 },
+      data: { date: new Date('2026-10-25') },
+    })
   })
 
   it('arrondit le total au centime, à la correction comme à la saisie', async () => {

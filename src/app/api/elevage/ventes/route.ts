@@ -825,7 +825,25 @@ export async function PATCH(request: NextRequest) {
           destination: true,
         },
       })
-      if (updated.type === 'oeufs') {
+      // Les sorties de stock d'une vente ne se refont que si la vente a changé
+      // ce qu'elle sort : quantité, unité ou jour. Refaites à chaque PATCH, une
+      // simple correction du client ou du règlement réattribuait les pontes avec
+      // les blocages vétérinaires du jour : refus 409 « stock insuffisant » sur
+      // une vente déjà livrée, ou traçabilité réécrite vers d'autres pontes.
+      const sortieStockChange = updated.quantite !== existing.quantite
+        || updated.unite !== existing.unite
+        || updated.date.getTime() !== existing.date.getTime()
+      if (existing.lotFromageId && updated.date.getTime() !== existing.date.getTime()) {
+        // La sortie de cave suit la date corrigée de sa vente (quantité et unité
+        // sont figées plus haut pour le fromage).
+        await tx.mouvementFromage.updateMany({
+          where: { userId, venteProduitId: existing.id },
+          data: { date: updated.date },
+        })
+      }
+      if (updated.type === 'oeufs' && !sortieStockChange) {
+        // rien à refaire : les sorties existantes restent celles de la vente
+      } else if (updated.type === 'oeufs') {
         await synchroniserStockOeufsVente(tx, {
           userId,
           venteId: updated.id,
@@ -836,7 +854,9 @@ export async function PATCH(request: NextRequest) {
       } else if (existing.type === 'oeufs') {
         await supprimerStockOeufsVente(tx, userId, existing.id)
       }
-      if (estVenteProduitRuche(updated.type)) {
+      if (estVenteProduitRuche(updated.type) && !sortieStockChange) {
+        // idem : les sorties de la ruche ne bougent pas
+      } else if (estVenteProduitRuche(updated.type)) {
         await synchroniserStockRucheVente(tx, {
           userId,
           venteId: updated.id,
