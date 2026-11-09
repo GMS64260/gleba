@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { useAccesService } from "@/hooks/use-acces-service"
-import { operationPermise } from "@/lib/abonnement/requetes"
+import { operationPermise, PAGES_PROTEGEES } from "@/lib/abonnement/requetes"
 
 export function FonctionService({ fonction, children }: { fonction: "ia" | "meteo" | "boutique"; children: ReactNode }) {
   const { acces } = useAccesService()
@@ -21,10 +21,11 @@ export function GardePageService({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const { acces, erreur } = useAccesService()
   // Seules les surfaces applicatives sont concernées ; la vitrine reste publique.
-  const protege = /^\/(maraichage|verger|elevage|comptabilite|meteo|jardin|interventions|taches|dashboard|aujourdhui)(\/|$)/.test(pathname) || pathname === "/boutique"
+  const protege = PAGES_PROTEGEES.test(pathname) || pathname === "/boutique"
   if (!session?.user || !protege) return <>{children}</>
   if (!acces) return <main className="mx-auto max-w-3xl px-4 py-10"><p role="status">{erreur ? "Votre accès n’est pas disponible. Actualisez la page pour réessayer." : "Vérification de votre accès…"}</p></main>
-  if (operationPermise(acces, pathname, "GET")) return <>{children}</>
+  // Abonnements désactivés ou accès complet à vie : aucune page n’est retenue.
+  if (acces.etat === "libre" || acces.etat === "gratuit-vie" || operationPermise(acces, pathname, "GET")) return <>{children}</>
   // Le carnet gratuit garde la facturation : l'entrée Comptabilité y mène.
   const facturationSeule = pathname.startsWith("/comptabilite") && acces.facturation
   // Marge basse mobile : la bulle d’avis et la navigation fixes ne recouvrent pas l’appel à l’action.
