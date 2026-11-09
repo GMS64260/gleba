@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   createDepenseFromAchatAnimal: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
   lotFindMany: vi.fn(),
+  lotFindUniqueOrThrow: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -32,7 +33,7 @@ vi.mock('@/lib/prisma', () => ({
   default: {
     $transaction: (callback: (tx: unknown) => unknown) => callback({
       $executeRaw: vi.fn(),
-      lotAnimaux: { update: mocks.lotUpdate },
+      lotAnimaux: { update: mocks.lotUpdate, findUniqueOrThrow: mocks.lotFindUniqueOrThrow },
       mouvementCheptel: { create: vi.fn() },
       animal: { findMany: mocks.animalFindMany, updateMany: mocks.animalUpdateMany },
     }),
@@ -94,6 +95,47 @@ describe('PATCH /api/elevage/lots (édition complète + resync compta)', () => {
 
 // Ticket cms1vdxcj — clôture d'un lot refusée tant que l'effectif reconstitué
 // n'est pas soldé (registre cohérent), sauf forcerCloture explicite.
+describe('PATCH /api/elevage/lots (correction de la quantité à l’arrivée)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
+    mocks.lotUpdate.mockResolvedValue({ id: 5, nom: 'Poules', prixAchatTotal: null, dateArrivee: null })
+    mocks.animalFindMany.mockResolvedValue([])
+  })
+
+  it('déplace le compteur des têtes présentes du même écart, relu sous verrou', async () => {
+    // Lot saisi à 30 au lieu de 50 ; entre la lecture et la transaction, un
+    // abattage a retiré 2 têtes (compteur 28).
+    mocks.lotFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', parcelleGeoId: null, quantiteInitiale: 30, quantiteActuelle: 30 })
+    mocks.lotFindUniqueOrThrow.mockResolvedValue({ quantiteInitiale: 30, quantiteActuelle: 28 })
+
+    const response = await PATCH(request({ id: 5, quantiteInitiale: 50 }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.lotUpdate.mock.calls[0][0].data).toMatchObject({ quantiteInitiale: 50, quantiteActuelle: 48 })
+  })
+
+  it('corrige aussi à la baisse sans passer sous zéro', async () => {
+    mocks.lotFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', parcelleGeoId: null, quantiteInitiale: 50, quantiteActuelle: 3 })
+    mocks.lotFindUniqueOrThrow.mockResolvedValue({ quantiteInitiale: 50, quantiteActuelle: 3 })
+
+    await PATCH(request({ id: 5, quantiteInitiale: 44 }))
+
+    expect(mocks.lotUpdate.mock.calls[0][0].data).toMatchObject({ quantiteInitiale: 44, quantiteActuelle: 0 })
+  })
+
+  it('laisse le compteur quand il est fourni ou que la quantité ne change pas', async () => {
+    mocks.lotFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', parcelleGeoId: null, quantiteInitiale: 30, quantiteActuelle: 20 })
+
+    await PATCH(request({ id: 5, quantiteInitiale: 30, notes: 'x' }))
+    expect(mocks.lotUpdate.mock.calls[0][0].data.quantiteActuelle).toBeUndefined()
+
+    await PATCH(request({ id: 5, quantiteInitiale: 40, quantiteActuelle: 25 }))
+    expect(mocks.lotUpdate.mock.calls[1][0].data).toMatchObject({ quantiteInitiale: 40, quantiteActuelle: 25 })
+    expect(mocks.lotFindUniqueOrThrow).not.toHaveBeenCalled()
+  })
+})
+
 describe('PATCH /api/elevage/lots (clôture vs effectif restant)', () => {
   const lotExistant = {
     id: 5, userId: 'user-1', parcelleGeoId: null,

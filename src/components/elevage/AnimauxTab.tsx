@@ -2325,8 +2325,13 @@ function LotsSubTab() {
                     <Input value={formData.nom} onChange={(e) => setFormData(f => ({ ...f, nom: e.target.value }))} placeholder="Lot pondeuses 2024" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Quantité *</Label>
-                    <Input type="number" value={formData.quantiteInitiale} onChange={(e) => setFormData(f => ({ ...f, quantiteInitiale: e.target.value }))} />
+                    <Label>{editingLotId !== null ? "Quantité à l'arrivée *" : "Quantité *"}</Label>
+                    <Input type="number" min={0} value={formData.quantiteInitiale} onChange={(e) => setFormData(f => ({ ...f, quantiteInitiale: e.target.value }))} />
+                    {editingLotId !== null && (
+                      <p className="text-xs text-muted-foreground">
+                        Nombre de têtes entrées à la mise en place. Le corriger déplace l'effectif du même écart ; ce n'est pas l'endroit où noter une perte ou une vente.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
