@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   productionFindMany: vi.fn(),
   productionAggregate: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
+  sortiesFindMany: vi.fn().mockResolvedValue([]),
+  sortiesAggregate: vi.fn().mockResolvedValue({ _count: 0, _sum: { quantite: null } }),
+  productionDelete: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -29,10 +32,16 @@ vi.mock("@/lib/prisma", () => ({
     lotAnimaux: { findFirst: mocks.lotFindFirst },
     productionOeuf: { findFirst: mocks.productionFindFirst, create: mocks.productionCreate, update: mocks.productionUpdate, findMany: mocks.productionFindMany, aggregate: mocks.productionAggregate },
     animal: { findFirst: vi.fn() },
+    // La correction et la suppression passent par une transaction sous verrou.
+    $transaction: (fn: (tx: unknown) => unknown) => fn({
+      $executeRaw: vi.fn(),
+      mouvementStockOeuf: { findMany: mocks.sortiesFindMany, aggregate: mocks.sortiesAggregate },
+      productionOeuf: { update: mocks.productionUpdate, delete: mocks.productionDelete },
+    }),
   },
 }))
 
-import { GET, PATCH, POST } from "./route"
+import { DELETE, GET, PATCH, POST } from "./route"
 
 it("la liste garde une ponte future corrigeable sans la compter comme produite", async () => {
   vi.useFakeTimers()
@@ -227,5 +236,43 @@ describe("PATCH /api/elevage/production-oeufs — même plafond que le POST", ()
     expect(res.status).toBe(200)
     expect(mocks.reconstituerEffectifsLots).not.toHaveBeenCalled()
     expect(mocks.productionUpdate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("collecte d'œufs entamée — correction et suppression", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    mocks.productionFindFirst.mockResolvedValue({ ...COLLECTE, quantite: 300 })
+    mocks.productionUpdate.mockImplementation(async ({ data }: { data: object }) => ({ ...COLLECTE, ...data }))
+    mocks.sortiesFindMany.mockResolvedValue([{ quantite: 24, date: new Date("2026-10-21T09:00:00.000Z") }])
+    mocks.sortiesAggregate.mockResolvedValue({ _count: 1, _sum: { quantite: 24 } })
+  })
+
+  const requete = (method: string, body?: object, query = "") => new NextRequest(`http://localhost/api/elevage/production-oeufs${query}`, {
+    method, ...(body ? { body: JSON.stringify(body), headers: { "content-type": "application/json" } } : {}),
+  })
+
+  it("corrige les notes et une quantité qui couvre encore les œufs sortis", async () => {
+    expect((await PATCH(requete("PATCH", { id: 910, notes: "poulailler B" }))).status).toBe(200)
+    expect((await PATCH(requete("PATCH", { id: 910, quantite: 30, overrideCoherence: true }))).status).toBe(200)
+    expect(mocks.productionUpdate).toHaveBeenCalledTimes(2)
+  })
+
+  it("refuse (409) une quantité sous le total sorti, avec un message qui nomme les ventes", async () => {
+    const res = await PATCH(requete("PATCH", { id: 910, quantite: 12, overrideCoherence: true }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain("Annulez d'abord les ventes")
+    expect(mocks.productionUpdate).not.toHaveBeenCalled()
+  })
+
+  it("refuse la suppression en 409, plus en 500", async () => {
+    const res = await DELETE(requete("DELETE", undefined, "?id=910"))
+    expect(res.status).toBe(409)
+    expect(mocks.productionDelete).not.toHaveBeenCalled()
+
+    mocks.sortiesAggregate.mockResolvedValue({ _count: 0, _sum: { quantite: null } })
+    expect((await DELETE(requete("DELETE", undefined, "?id=910"))).status).toBe(200)
+    expect(mocks.productionDelete).toHaveBeenCalledWith({ where: { id: 910 } })
   })
 })
