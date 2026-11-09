@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       gte: start, lte: new Date(Math.min(end.getTime(), finJourLivraison(new Date()).getTime())),
     }
 
-    const [lots, animals, soins, consommations, abattages, ventes, productionsOeufs, productionsMiel, livraisons, paies] = await Promise.all([
+    const [lots, animals, soins, consommations, abattages, ventes, productionsOeufs, productionsMiel, livraisons, paies, miroirs] = await Promise.all([
       prisma.lotAnimaux.findMany({ where: { userId }, include: { especeAnimale: { select: { id: true, nom: true } } } }),
       prisma.animal.findMany({ where: { userId }, include: { especeAnimale: { select: { id: true, nom: true } } } }),
       prisma.soinAnimal.findMany({ where: { userId, fait: true, date: period }, select: { lotId: true, animalId: true, cout: true } }),
@@ -77,6 +77,13 @@ export async function GET(request: NextRequest) {
       }),
       prisma.livraisonLait.findMany({ where: { userId, date: period }, select: { date: true, litres: true, laiterie: true } }),
       prisma.paieLait.findMany({ where: { userId, annee }, select: { mois: true, litres: true, montantHT: true, laiterie: true } }),
+      // Recettes qui n'existent que par leur écriture comptable : la paie du
+      // lait (au montant réellement compté, TVA selon le régime) et les
+      // cessions réservées (acomptes et soldes), absentes de cette page.
+      prisma.venteManuelle.findMany({
+        where: { userId, auto: true, sourceType: { in: ['paie_lait', 'reservation_elevage'] }, date: period },
+        select: { sourceType: true, montant: true },
+      }),
     ])
 
     const lotById = new Map(lots.map(l => [l.id, l]))
@@ -160,7 +167,12 @@ export async function GET(request: NextRequest) {
 
     const lait = getAtelier('lait_non_ventile', 'Lait — espèce non renseignée')
     lait.production.litresLivres = livraisons.reduce((sum, l) => sum + Number(l.litres), 0)
-    lait.revenus.paiesLait = paies.reduce((sum, p) => sum + Number(p.montantHT) * 1.055, 0)
+    // Montant de l'écriture comptable de chaque paie, pas « HT × 1,055 » : hors
+    // régime réel de TVA la paie n'est pas majorée, et les deux écrans doivent
+    // dire la même recette.
+    lait.revenus.paiesLait = miroirs.filter((m) => m.sourceType === 'paie_lait').reduce((sum, m) => sum + m.montant, 0)
+    const cessionsReservees = miroirs.filter((m) => m.sourceType === 'reservation_elevage').reduce((sum, m) => sum + m.montant, 0)
+    if (cessionsReservees > 0) getAtelier('reservations', 'Cessions réservées').revenus.ventes += cessionsReservees
 
     const rapprochementLait = Array.from({ length: 12 }, (_, index) => {
       const mois = index + 1
