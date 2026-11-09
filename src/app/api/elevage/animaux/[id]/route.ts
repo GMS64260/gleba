@@ -20,6 +20,7 @@ import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 import { aDesTracesAnimal, compterTracesAnimal, messageSuppressionAnimalRefusee } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
+import { refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 export async function GET(
@@ -164,6 +165,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
     }
 
+    // Une fiche sortie par une vente ou un abattage toujours actif ne se réactive
+    // pas à la main (recette en place, revente possible) : on annule la sortie.
+    if (body.statut === 'actif' && existing.statut !== 'actif') {
+      const refus = await refusRemiseActif(prisma, session.user.id, existing.id)
+      if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
+    }
+
     const data: Record<string, unknown> = {}
     if (body.statut !== undefined) data.statut = body.statut
     if (body.dateSortie !== undefined) data.dateSortie = body.dateSortie ? new Date(body.dateSortie) : null
@@ -221,6 +229,13 @@ export async function PUT(
 
     if (!existing) {
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
+    }
+
+    // Une fiche sortie par une vente ou un abattage toujours actif ne se réactive
+    // pas à la main (recette en place, revente possible) : on annule la sortie.
+    if (body.statut === 'actif' && existing.statut !== 'actif') {
+      const refus = await refusRemiseActif(prisma, session.user.id, existing.id)
+      if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
     }
 
     // Audit élevage 2026-06-11 — garde parents : pas de self-parent, et la

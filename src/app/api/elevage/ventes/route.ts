@@ -520,10 +520,22 @@ export async function DELETE(request: NextRequest) {
       }
 
       if (courante.type === 'animal_vivant' && courante.animalId) {
-        await tx.animal.updateMany({
-          where: { id: courante.animalId, userId: session.user.id, statut: 'vendu' },
-          data: { statut: 'actif', dateSortie: null, causeSortie: null },
+        // La fiche ne redevient active que si plus aucune vente active ne la
+        // vise : annuler l'une de deux ventes du même animal le réactivait
+        // alors que l'autre courait toujours.
+        const autreVente = await tx.venteProduit.findFirst({
+          where: {
+            userId: session.user.id, animalId: courante.animalId, type: 'animal_vivant',
+            annule: { not: true }, id: { not: existing.id },
+          },
+          select: { id: true },
         })
+        if (!autreVente) {
+          await tx.animal.updateMany({
+            where: { id: courante.animalId, userId: session.user.id, statut: 'vendu' },
+            data: { statut: 'actif', dateSortie: null, causeSortie: null },
+          })
+        }
       }
 
       // Vente de fromage annulée : supprimer la (les) sortie(s) de cave liée(s)

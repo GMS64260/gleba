@@ -54,6 +54,7 @@ const venteInitiale = () => ({
   tauxTVA: 5.5, notes: null, description: null, destinationId: null,
 })
 let courante: ReturnType<typeof venteInitiale>
+let autreVenteActive: { id: number } | null
 let animal: { id: number; statut: string; dateSortie?: Date | null; causeSortie?: string | null }
 let creees: Record<string, unknown>[]
 let tail: Promise<unknown>
@@ -61,6 +62,7 @@ let tail: Promise<unknown>
 beforeEach(() => {
   vi.resetAllMocks()
   courante = venteInitiale()
+  autreVenteActive = null
   animal = { id: 501, statut: 'actif' }
   creees = []
   tail = Promise.resolve()
@@ -70,7 +72,9 @@ beforeEach(() => {
   m.execute.mockResolvedValue(1)
   m.annulerFacture.mockResolvedValue({ ok: true })
   m.venteAvant.mockImplementation(async () => structuredClone(courante))
-  m.venteTx.mockImplementation(async () => structuredClone(courante))
+  // Recherche d'une AUTRE vente active du même animal (annulation) : aucune par défaut.
+  m.venteTx.mockImplementation(async (args?: { where?: { id?: unknown } }) =>
+    typeof args?.where?.id === 'object' && args.where.id !== null ? autreVenteActive : structuredClone(courante))
   m.venteUpdate.mockImplementation(async ({ data }) => {
     Object.assign(courante, data)
     return structuredClone(courante)
@@ -154,6 +158,15 @@ describe('Fiabilité des ventes élevage', () => {
     const res = await POST(request('POST', { type: 'viande', quantite: 0.347, unite: 'kg', prixUnitaire: 24.9, paye: false }))
     expect(res.status).toBe(201)
     expect(creees[0].prixTotal).toBe(8.64)
+  })
+
+  it('annuler une vente ne réactive pas l’animal qu’une autre vente active vise encore', async () => {
+    Object.assign(courante, { type: 'animal_vivant', quantite: 1, animalId: 501 })
+    animal.statut = 'vendu'
+    autreVenteActive = { id: 12 }
+    expect((await DELETE(request('DELETE', undefined, '?id=11'))).status).toBe(200)
+    expect(courante.annule).toBe(true)
+    expect(animal.statut).toBe('vendu')
   })
 
   it('P1 : une seule de deux ventes du même animal réussit', async () => {

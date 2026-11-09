@@ -23,6 +23,7 @@ import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 // Motif partagé avec la garde de suppression, qui ne compte pas ce mouvement automatique.
 import { MOTIF_AFFECTATION_INITIALE } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
+import { refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 /** JJ/MM/AAAA déterministe (sans dépendre de l'ICU du runtime). */
@@ -364,6 +365,13 @@ export async function PATCH(request: NextRequest) {
 
     if (!existing) {
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
+    }
+
+    // Une fiche sortie par une vente ou un abattage toujours actif ne se réactive
+    // pas à la main (recette en place, revente possible) : on annule la sortie.
+    if (statut === 'actif' && existing.statut !== 'actif') {
+      const refus = await refusRemiseActif(prisma, session.user.id, existing.id)
+      if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
     }
 
     // Ticket utilisateur 2026-07-22 — le formulaire envoyait bien la nouvelle
