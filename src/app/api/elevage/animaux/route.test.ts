@@ -245,6 +245,22 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
   })
 
+  it('PATCH enregistre une fiche dont l’espèce et la race, inchangées, ne sont plus partagées', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'profil-retire', raceAnimaleId: 'race-retiree', lotId: null })
+    // Le profil n'est plus visible du compte : tout contrôle d'accès échouerait.
+    mocks.especeFindFirst.mockResolvedValue(null)
+    mocks.especeFindUnique.mockResolvedValue(null)
+
+    const response = await PATCH(request('PATCH', { id: 7, especeAnimaleId: 'profil-retire', raceAnimaleId: 'race-retiree', notes: 'pesée du jour' }))
+
+    expect(response.status).toBe(200)
+    // La race conservée est relue sans filtre de visibilité.
+    expect(mocks.raceFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'race-retiree', especeAnimaleId: 'profil-retire' },
+    }))
+    expect(mocks.animalUpdate).toHaveBeenCalled()
+  })
+
   it('persiste séparément orientation et race validée', async () => {
     const response = await PATCH(request('PATCH', { id: 7, orientationProduction: 'lait', raceAnimaleId: 'race-lacaune' }))
     expect(response.status).toBe(200)

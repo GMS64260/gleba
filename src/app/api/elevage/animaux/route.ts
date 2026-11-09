@@ -369,7 +369,12 @@ export async function PATCH(request: NextRequest) {
     // Ticket utilisateur 2026-07-22 — le formulaire envoyait bien la nouvelle
     // espèce/type de production, mais PATCH l'ignorait silencieusement.
     // Vérifier aussi que la nouvelle référence est visible avant de l'appliquer.
-    if (especeAnimaleId !== undefined && !await especeAnimaleAccessible(session.user.id, especeAnimaleId)) {
+    // L'accès au référentiel ne se contrôle que si la référence CHANGE (comme le
+    // PUT de la fiche) : le formulaire renvoie toujours l'espèce et la race, et
+    // quand l'auteur d'un profil partagé retirait son partage, plus aucune fiche
+    // des autres comptes ne s'enregistrait (« Espèce animale invalide »).
+    const especeChange = especeAnimaleId !== undefined && especeAnimaleId !== existing.especeAnimaleId
+    if (especeChange && !await especeAnimaleAccessible(session.user.id, especeAnimaleId)) {
       return NextResponse.json({ error: 'Espèce animale invalide', champ: 'especeAnimaleId' }, { status: 400 })
     }
 
@@ -378,8 +383,9 @@ export async function PATCH(request: NextRequest) {
     if (orientationProduction !== undefined && orientationProduction !== null && !orientations.has(orientationProduction)) {
       return NextResponse.json({ error: 'Orientation de production invalide' }, { status: 400 })
     }
+    const raceConservee = !especeChange && raceAnimaleId != null && raceAnimaleId === existing.raceAnimaleId
     const raceRef = raceAnimaleId ? await prisma.raceAnimale.findFirst({
-      where: { id: raceAnimaleId, especeAnimaleId: especeCible, AND: [visibiliteReferentiel(session.user.id)] },
+      where: { id: raceAnimaleId, especeAnimaleId: especeCible, ...(raceConservee ? {} : { AND: [visibiliteReferentiel(session.user.id)] }) },
       select: { id: true, nom: true },
     }) : null
     if (raceAnimaleId && !raceRef) return NextResponse.json({ error: 'Race incompatible ou inaccessible' }, { status: 400 })
