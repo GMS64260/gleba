@@ -1,4 +1,5 @@
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
+import { tauxEtrangerALaFacture } from '@/lib/comptabilite/taux-avoir'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
 import { verifierLignesStock, verrouillerStocksDesLignes, sortirStockCommercial } from '@/lib/commercial/stock'
 /**
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
       }
       const origine = await prisma.facture.findFirst({
         where: { id: d.factureOrigineId, userId },
-        select: { id: true, numero: true, type: true, statut: true, totalTTC: true, categorieOperation: true },
+        select: { id: true, numero: true, type: true, statut: true, totalTTC: true, categorieOperation: true, lignes: { select: { tauxTVA: true } } },
       })
       if (!origine || origine.type === 'avoir' || !['emise', 'payee'].includes(origine.statut)) {
         return NextResponse.json(
@@ -184,6 +185,22 @@ export async function POST(request: NextRequest) {
             error: `Le total des avoirs (${(dejaAvoir + d.totalTTC).toFixed(2)} €) dépasserait le montant de la facture ${origine.numero} (${origine.totalTTC.toFixed(2)} €)`,
           },
           { status: 400 }
+        )
+      }
+      // Un avoir annule tout ou partie d'une facture : ses lignes portent les
+      // taux de TVA de cette facture. Le taux était libre et l'écran proposait
+      // 5,5 % : un avoir sur une facture à 20 % réduisait la TVA collectée de
+      // 5,5 % seulement, et le chiffre d'affaires hors taxe d'autant trop.
+      const tauxOrigine = [...new Set(origine.lignes.map((l) => l.tauxTVA))]
+      const tauxEtranger = tauxEtrangerALaFacture(tauxOrigine, d.lignes)
+      if (tauxEtranger !== null) {
+        return NextResponse.json(
+          {
+            error: `Le taux de TVA d'un avoir est celui de la facture d'origine (${tauxOrigine.map((t) => `${t} %`).join(', ')}), pas ${tauxEtranger} %.`,
+            champ: 'tauxTVA',
+            tauxFactureOrigine: tauxOrigine,
+          },
+          { status: 400 },
         )
       }
       if (body.categorieOperation === undefined) categorieOperation = origine.categorieOperation
