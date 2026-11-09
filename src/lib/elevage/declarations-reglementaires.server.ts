@@ -382,7 +382,8 @@ export async function chargerDeclarationsReglementaires(
       provenance: lot.provenance,
       datesNaissances: lot.naissances.map((naissance) => naissance.date),
     })
-    if (dansPeriode(lot.dateArrivee, debut, fin) && !naissanceSurExploitation) {
+    // Lot ouvert vide (quantité initiale 0) : aucune entrée à déclarer.
+    if (lot.quantiteInitiale > 0 && dansPeriode(lot.dateArrivee, debut, fin) && !naissanceSurExploitation) {
       const anomalies = lot.provenance ? [] : ["Provenance / exploitation d’origine manquante"]
       ajouter({
         key: `lot:${lot.id}:ENTREE`,

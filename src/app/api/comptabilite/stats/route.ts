@@ -215,7 +215,11 @@ export async function GET(request: NextRequest) {
           date: { gte: startOfYear, lte: endOfYear },
           OR: [
             { auto: { not: true } },
-            { auto: true, sourceType: 'commande_boutique' },
+            // Miroirs dont aucune table brute n'est lue ci-dessus : boutique, et
+            // côté élevage la paie du lait, les abattages vendus et les
+            // réservations. Sans eux, le camembert d'un livreur de lait ne
+            // montrait pas le lait, à côté d'un total qui le contient.
+            { auto: true, sourceType: { in: ['commande_boutique', 'paie_lait', 'abattage', 'reservation_elevage'] } },
           ],
         },
         _sum: { montant: true },
@@ -501,13 +505,23 @@ export async function GET(request: NextRequest) {
       { categorie: 'Bois', montant: venteBois._sum.prixVente || 0, couleur: COLORS.bois },
       ...ventesManuellesParCategorie.map(v => ({
         categorie: v.categorie === 'legumes' ? 'Légumes' :
+                   v.categorie === 'animal_vivant' ? 'Animaux' :
                    v.categorie === 'service' ? 'Services' :
                    v.categorie === 'produits_ruche' ? 'Produits de la ruche' :
                    v.categorie.charAt(0).toUpperCase() + v.categorie.slice(1),
         montant: v._sum.montant || 0,
         couleur: COLORS[v.categorie as keyof typeof COLORS] || COLORS.autre,
       })),
-    ].filter(r => r.montant > 0)
+    ]
+      .filter(r => r.montant > 0)
+      // Une catégorie, une part : la viande vendue en direct et celle des
+      // abattages, ou les animaux vendus et réservés, ne font pas deux parts.
+      .reduce<Array<{ categorie: string; montant: number; couleur: string }>>((parts, r) => {
+        const part = parts.find((p) => p.categorie === r.categorie)
+        if (part) part.montant += r.montant
+        else parts.push({ ...r })
+        return parts
+      }, [])
 
     // Dépenses par categorie — mêmes charges que le total comptable.
     const depensesParCategorie = depensesManuellesParCategorie

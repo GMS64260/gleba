@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   productionRucheFindMany: vi.fn(),
   livraisonFindMany: vi.fn(),
   paieFindMany: vi.fn(),
+  miroirsFindMany: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
 }))
 
@@ -32,6 +33,7 @@ vi.mock("@/lib/prisma", () => ({
     productionRuche: { findMany: mocks.productionRucheFindMany },
     livraisonLait: { findMany: mocks.livraisonFindMany },
     paieLait: { findMany: mocks.paieFindMany },
+    venteManuelle: { findMany: mocks.miroirsFindMany },
   },
 }))
 
@@ -71,6 +73,7 @@ describe("GET /api/elevage/analyse-couts — coûts unitaires par atelier", () =
     mocks.productionRucheFindMany.mockResolvedValue([])
     mocks.livraisonFindMany.mockResolvedValue([])
     mocks.paieFindMany.mockResolvedValue([])
+    mocks.miroirsFindMany.mockResolvedValue([])
   })
 
   it("expose un coût par œuf à partir des coûts et de la production de l'atelier", async () => {
@@ -81,6 +84,21 @@ describe("GET /api/elevage/analyse-couts — coûts unitaires par atelier", () =
     // 40 € de soins / 200 œufs = 0,20 € par œuf.
     expect(poule?.metriques.coutParOeuf).toBe(0.2)
     expect(poule?.metriques.coutParKgCarcasse).toBeNull()
+  })
+
+  it("reprend la paie du lait au montant de son écriture et compte les cessions réservées", async () => {
+    // Exploitation en franchise : la paie de 9 000 € n'est pas majorée de 5,5 %.
+    mocks.paieFindMany.mockResolvedValue([{ mois: 10, litres: 20000, montantHT: 9000, laiterie: null }])
+    mocks.miroirsFindMany.mockResolvedValue([
+      { sourceType: "paie_lait", montant: 9000 },
+      { sourceType: "reservation_elevage", montant: 300 },
+      { sourceType: "reservation_elevage", montant: 1200 },
+    ])
+    const json = await (await GET(request())).json()
+    const atelier = (code: string) => json.ateliers.find((a: { code: string }) => a.code === code)
+
+    expect(atelier("lait_non_ventile").revenus.paiesLait).toBe(9000)
+    expect(atelier("reservations").revenus).toMatchObject({ ventes: 1500, total: 1500 })
   })
 
   it.each([0.3, 0])("valorise l'aliment au prix de la ferme (%s €), dans l'atelier comme dans le lot", async (coutUnitaire) => {

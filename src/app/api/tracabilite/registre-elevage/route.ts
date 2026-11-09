@@ -152,7 +152,9 @@ export async function GET(request: NextRequest) {
 
     // Entrees par lot
     lots.forEach(l => {
-      if (l.dateArrivee) {
+      // Un lot ouvert vide (quantité initiale 0, crédité par ses naissances)
+      // n'a fait entrer aucune tête : pas de ligne d'entrée.
+      if (l.dateArrivee && l.quantiteInitiale > 0) {
         entries.push({
           date: l.dateArrivee.toISOString(),
           type: 'entree',

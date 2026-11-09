@@ -42,6 +42,9 @@ export const venteProduitSchema = z
     // facultatif ici pour préserver les appelants historiques.
     tauxTVA: z.number().min(0).max(100).optional(),
     animalId: z.number().int().nullable().optional(),
+    // N° de l'exploitation de l'acheteur d'un animal vivant : exigé par la
+    // déclaration de sortie, écrit sur la fiche dans la transaction de la vente.
+    nExploitationDestination: z.string().max(50).nullable().optional(),
     // Review caprin 2026-07-21 — vente de fromage : lien vers le lot de
     // fabrication (traçabilité + décrément du stock de cave). Requis pour une
     // vente de type 'fromage' (contrôlé en API).

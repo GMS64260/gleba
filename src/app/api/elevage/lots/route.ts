@@ -206,6 +206,7 @@ export async function PATCH(request: NextRequest) {
     if (!existing) {
       return NextResponse.json({ error: 'Lot non trouvé' }, { status: 404 })
     }
+    let corrigeQuantiteInitiale = false
 
     // Les quantités sont relues pour la garde de clôture : des nombres, pas des
     // opérations Prisma (`increment`…).
@@ -246,6 +247,15 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Quantité initiale invalide' }, { status: 400 })
       }
       updateData.quantiteInitiale = q
+      // Corriger la quantité à l'arrivée (30 saisi pour 50) doit déplacer le
+      // compteur des têtes présentes du même écart : sinon l'effectif reconstitué,
+      // borné par `quantiteActuelle`, reste à 30 et l'écran invente « 20 sorties
+      // non détaillées ». Valeur provisoire pour la garde de clôture ; l'écart
+      // est recalculé sous verrou dans la transaction.
+      if (quantiteActuelle === undefined && q !== existing.quantiteInitiale) {
+        corrigeQuantiteInitiale = true
+        updateData.quantiteActuelle = Math.max(0, existing.quantiteActuelle + (q - existing.quantiteInitiale))
+      }
     }
     if (quantiteActuelle !== undefined) {
       const q = parseInt(quantiteActuelle)
@@ -312,6 +322,18 @@ export async function PATCH(request: NextRequest) {
 
     const lot = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      if (corrigeQuantiteInitiale && updateData.quantiteInitiale !== undefined) {
+        // Relu sous le mutex : un abattage ou une naissance validés entre-temps
+        // ont déjà déplacé le compteur, l'écart s'applique à sa valeur courante.
+        const courant = await tx.lotAnimaux.findUniqueOrThrow({
+          where: { id: existing.id },
+          select: { quantiteInitiale: true, quantiteActuelle: true },
+        })
+        updateData.quantiteActuelle = Math.max(
+          0,
+          courant.quantiteActuelle + (updateData.quantiteInitiale - courant.quantiteInitiale),
+        )
+      }
       const updated = await tx.lotAnimaux.update({
         where: { id: parseInt(id) },
         data: updateData,

@@ -16,9 +16,9 @@ vi.mock('@/lib/prisma', () => {
     // Review caprin 2026-07-22 — l'écartement passe par la lib attente-lait, qui
     // interroge aussi `animal` (appartenance lot ↔ membres) dans la transaction.
     animal: { findFirst: mocks.animalFindFirst, findMany: mocks.animalFindMany },
-    soinAnimal: { create: mocks.soinCreate, update: mocks.soinUpdate, findMany: mocks.soinFindMany },
+    soinAnimal: { create: mocks.soinCreate, update: mocks.soinUpdate, findMany: mocks.soinFindMany, findFirst: mocks.soinFindFirst },
     collecteLait: { updateMany: mocks.collecteUpdateMany, findMany: mocks.collecteFindMany },
-    stockMedicamentElevage: { updateMany: mocks.stockUpdateMany, update: mocks.stockUpdate },
+    stockMedicamentElevage: { updateMany: mocks.stockUpdateMany, update: mocks.stockUpdate, findFirst: mocks.stockFindFirst },
     $queryRaw: mocks.queryRaw,
     $executeRaw: mocks.executeRaw,
   }
@@ -94,6 +94,98 @@ describe('soins planifies et temps attente lait', () => {
     expect(mocks.soinUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       fait: true, finAttenteLait: new Date('2026-07-26T00:00:00Z'), finAttenteViande: new Date('2026-08-02T00:00:00Z'),
     }) }))
+  })
+
+  const soinDeLot = () => ({ id: 1, userId: 'user-1', animalId: null, lotId: 4, date: new Date('2026-07-21T00:00:00Z'), fait: false, tempsAttenteLaitJ: 5, tempsAttenteViandeJ: 12, tempsAttenteOeufsJ: null, finAttenteLait: null, finAttenteViande: null, cout: null, type: 'Traitement vétérinaire', produitId: null, stockMedicamentId: null, quantitePreleveeStock: 0, nbInjections: 1, intervalleInjectionsHeures: null, delaiAttenteSource: 'referentiel_produit' })
+
+  it('corriger la cible d’un lot vers un animal détache le lot', async () => {
+    const existing = soinDeLot()
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    const response = await PATCH(request('PATCH', { id: 1, animalId: 7 }))
+    expect(response.status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data).toMatchObject({ animalId: 7, lotId: null })
+  })
+
+  it('refuse un soin sans cible ou à deux cibles', async () => {
+    mocks.soinFindFirst.mockResolvedValue(soinDeLot())
+    expect((await PATCH(request('PATCH', { id: 1, animalId: 7, lotId: 4 }))).status).toBe(400)
+    expect((await PATCH(request('PATCH', { id: 1, lotId: null }))).status).toBe(400)
+    expect(mocks.soinUpdate).not.toHaveBeenCalled()
+  })
+
+  it('un PATCH sans « fait » ne valide pas un soin planifié', async () => {
+    const existing = soinDeLot()
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    const response = await PATCH(request('PATCH', { id: 1, notes: 'à refaire au printemps' }))
+    expect(response.status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data.fait).toBeUndefined()
+    expect(mocks.soinUpdate.mock.calls[0][0].data.finAttenteLait).toBeUndefined()
+  })
+
+  it('le produit corrigé est enregistré, et son lot de pharmacie doit être du même produit', async () => {
+    const existing = { ...soinDeLot(), produitId: 'p1', stockMedicamentId: 'stock-1' }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    mocks.produitFindUnique.mockResolvedValue({ id: 'p2' })
+
+    // Produit B avec le lot du produit A : refusé.
+    expect((await PATCH(request('PATCH', { id: 1, produitId: 'p2' }))).status).toBe(422)
+    // Produit B et son lot.
+    mocks.stockFindFirst.mockResolvedValue({ id: 'stock-2', userId: 'user-1', produitId: 'p2', numeroLot: 'LB', quantite: 10, unite: 'mL', datePeremption: null, ordonnanceUrl: null })
+    expect((await PATCH(request('PATCH', { id: 1, produitId: 'p2', stockMedicamentId: 'stock-2' }))).status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data).toMatchObject({ produitId: 'p2', stockMedicamentId: 'stock-2', numeroLotMedicament: 'LB' })
+  })
+
+  it('un médicament référencé ne perd pas son lot, et un délai renvoyé inchangé ne devient pas « prescrit »', async () => {
+    const existing = { ...soinDeLot(), produitId: 'p1', stockMedicamentId: 'stock-1' }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+
+    const refus = await PATCH(request('PATCH', { id: 1, stockMedicamentId: null }))
+    expect(refus.status).toBe(422)
+    expect((await refus.json()).code).toBe('LOT_PHARMACIE_REQUIS')
+
+    expect((await PATCH(request('PATCH', { id: 1, notes: 'x', tempsAttenteLaitJ: 5, tempsAttenteViandeJ: 12, tempsAttenteOeufsJ: null }))).status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data.delaiAttenteSource).toBeUndefined()
+    mocks.soinUpdate.mockClear()
+    expect((await PATCH(request('PATCH', { id: 1, tempsAttenteLaitJ: 9 }))).status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data.delaiAttenteSource).toBe('prescription')
+  })
+
+  it('deux « Fait » envoyés ensemble ne décomptent la pharmacie qu’une fois', async () => {
+    const existing = { ...soinDeLot(), produitId: 'p1', stockMedicamentId: 'stock-1', quantite: 2 }
+    // Lecture d'avant transaction : soin non fait ; relecture sous verrou : déjà
+    // fait et prélevé par la première requête.
+    mocks.soinFindFirst
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce({ fait: true, quantitePreleveeStock: 2 })
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+
+    expect((await PATCH(request('PATCH', { id: 1, fait: true }))).status).toBe(200)
+    expect(mocks.stockUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it('refuse une quantité prélevée dans une autre unité que celle du lot', async () => {
+    const response = await POST(request('POST', {
+      animalId: 7, date: '2026-07-21', type: 'Traitement vétérinaire', produitId: 'p1',
+      stockMedicamentId: 'stock-1', quantite: 2, unite: 'doses',
+    }))
+    expect(response.status).toBe(422)
+    expect((await response.json()).error).toContain('mL')
+    expect(mocks.soinCreate).not.toHaveBeenCalled()
+  })
+
+  it('rouvrir un soin ne remet rien dans un lot mis au rebut', async () => {
+    const existing = { ...soinDeLot(), fait: true, produitId: 'p1', stockMedicamentId: 'stock-1', quantite: 2, quantitePreleveeStock: 2 }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    mocks.stockFindFirst.mockResolvedValue({ id: 'stock-1', userId: 'user-1', produitId: 'p1', numeroLot: 'L', quantite: 0, unite: 'mL', datePeremption: null, ordonnanceUrl: null, notes: 'Mis au rebut le 01/11/2026 (3 mL restants).' })
+
+    expect((await PATCH(request('PATCH', { id: 1, fait: false }))).status).toBe(200)
+    expect(mocks.stockUpdate).not.toHaveBeenCalled()
+    expect(mocks.soinUpdate.mock.calls[0][0].data.quantitePreleveeStock).toBe(0)
   })
 
   it('type les conditions CASE de resynchronisation des injections', async () => {
@@ -298,6 +390,17 @@ describe('soins planifies et temps attente lait', () => {
     expect(mocks.soinCount).toHaveBeenCalledWith({
       where: { userId: 'user-1', fait: false, AND: [present] },
     })
+  })
+
+  it('rend le nombre réel de soins de la période quand la liste est tronquée', async () => {
+    const soin = { id: 1, date: new Date('2026-07-21'), animal: null, lot: null }
+    mocks.soinFindMany.mockResolvedValue([soin, { ...soin, id: 2 }])
+    mocks.soinCount.mockResolvedValue(600)
+
+    const response = await GET(new NextRequest('http://localhost/api/elevage/soins?annee=2026&limit=2'))
+    const { meta } = await response.json()
+
+    expect(meta).toMatchObject({ total: 600, affiches: 2 })
   })
 
   it("le carnet historique garde les soins d'un animal sorti", async () => {

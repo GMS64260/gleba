@@ -172,6 +172,8 @@ export async function GET(request: NextRequest) {
     })
   }
   for (const l of lotsArrives) {
+    // Lot ouvert vide pour des naissances : aucune tête entrée.
+    if (l.quantiteInitiale === 0) continue
     lignes.push({
       date: l.dateArrivee || l.createdAt,
       sens: 'Entrée',

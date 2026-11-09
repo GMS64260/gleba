@@ -4,6 +4,7 @@
  * Onglet Alimentation - Stocks aliments + Consommations + Soins en sous-onglets
  */
 
+import { dateRealisationPourFait } from "@/lib/elevage/date-realisation"
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
@@ -573,6 +574,7 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
   const anneeExercice = year ?? new Date().getFullYear()
   const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   const [consommations, setConsommations] = React.useState<Consommation[]>([])
+  const [totalConsommations, setTotalConsommations] = React.useState(0)
   const [aliments, setAliments] = React.useState<AlimentSimple[]>([])
   const [lots, setLots] = React.useState<LotSimple[]>([])
   const [animaux, setAnimaux] = React.useState<AnimalSimple[]>([])
@@ -630,7 +632,7 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
         fetch("/api/elevage/animaux?statut=actif&limit=500"),
       ])
 
-      if (consRes.ok) { const r = await consRes.json(); setConsommations(r.data); setStats(r.stats) }
+      if (consRes.ok) { const r = await consRes.json(); setConsommations(r.data); setStats(r.stats); setTotalConsommations(r.meta?.total ?? r.data.length) }
       if (alimRes.ok) setAliments((await alimRes.json()).data)
       if (lotsRes.ok) setLots((await lotsRes.json()).data)
       if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
@@ -793,6 +795,11 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
       {/* Filtres et actions */}
       <div className="flex items-center gap-4 flex-wrap">
         <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des consommations affichées" />
+        {totalConsommations > consommations.length && (
+          <p role="status" className="basis-full text-sm text-amber-700">
+            Les {consommations.length} consommations les plus récentes sont affichées sur {totalConsommations} : resserrez les dates pour voir les plus anciennes.
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <Input type="date" value={filterDateDebut} onChange={(e) => setFilterDateDebut(e.target.value)} className="w-[150px]" />
@@ -1104,6 +1111,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [soins, setSoins] = React.useState<Soin[]>([])
+  const [totalSoins, setTotalSoins] = React.useState(0)
   // Scoping par filière de l'atelier sélectionné (via l'espèce de l'animal ou du lot).
   const visibleSoins = soins.filter((s) => filiereMatch(filiereSel, s.animal?.especeAnimale?.filiere ?? s.lot?.especeAnimale?.filiere))
   const [lots, setLots] = React.useState<LotSoin[]>([])
@@ -1276,18 +1284,28 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     formData.produitId &&
     ["Vaccination", "Vermifuge", "Traitement vétérinaire"].includes(formData.type),
   )
+  // Lot déjà porté par le soin en cours de modification : il reste valide et
+  // proposé même épuisé ou mis au rebut. Sans cela, le soin qui a vidé le
+  // flacon ne se modifiait plus (« Lot de pharmacie requis »), et le serveur
+  // refuse d'en choisir un autre : il ne restait qu'à le supprimer.
+  const lotDuSoinModifie = editingSoinId !== null
+    ? soins.find((soin) => soin.id === editingSoinId)?.stockMedicamentId ?? null
+    : null
   const stocksProduitDisponibles = React.useMemo(
     () => stocksMedicaments.filter(
       (stock) =>
         stock.produitId === formData.produitId &&
-        stockMedicamentEstDisponible(stock, formData.date),
+        (stock.id === lotDuSoinModifie || stockMedicamentEstDisponible(stock, formData.date)),
     ),
-    [formData.date, formData.produitId, stocksMedicaments],
+    [formData.date, formData.produitId, lotDuSoinModifie, stocksMedicaments],
   )
   const stockSelectionneDisponible = stocksProduitDisponibles.some(
     (stock) => stock.id === formData.stockMedicamentId,
   )
   const lotPharmacieManquant = soinMedicamenteux && !stockSelectionneDisponible
+  const uniteLotSelectionne = formData.stockMedicamentId
+    ? stocksMedicaments.find((stock) => stock.id === formData.stockMedicamentId)?.unite ?? null
+    : null
 
   const especeIdSelectionnee = React.useMemo(() => {
     if (formData.cible === "animal") {
@@ -1321,7 +1339,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
         const payload = await response.json().catch(() => null)
         throw new Error(`${ressource} : ${payload?.error || `HTTP ${response.status}`}`)
       }
-      setSoins((await soinsRes.json()).data)
+      const soinsJson = await soinsRes.json()
+      setSoins(soinsJson.data)
+      setTotalSoins(soinsJson.meta?.total ?? soinsJson.data.length)
       setLots((await lotsRes.json()).data)
       setAnimaux((await animauxRes.json()).data)
       setStocksMedicaments((await stocksRes.json()).data)
@@ -1610,7 +1630,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
           ? (soinEnEdition ? dateSoinARenvoyer(datePrevueSoumise, soinEnEdition.datePrevue) : datePrevueSoumise)
           : null,
         quantite: formData.quantite ? parseFloat(formData.quantite) : null,
-        unite: formData.unite || null,
+        unite: uniteLotSelectionne ?? (formData.unite || null),
         cout: formData.cout ? parseFloat(formData.cout) : null,
         fait: formData.fait,
         notes: formData.notes || null,
@@ -1626,8 +1646,10 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
         tempsAttenteOeufsJ: formData.tempsAttenteOeufsJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteOeufsJ, 10) || 0),
         tempsAttenteViandeJ: formData.tempsAttenteViandeJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteViandeJ, 10) || 0),
       }
-      if (formData.cible === "animal") payload.animalId = formData.animalId ? parseInt(formData.animalId) : null
-      else payload.lotId = formData.lotId ? parseInt(formData.lotId) : null
+      // Les deux cibles partent toujours : celle qui n'est pas choisie vaut null,
+      // pour qu'une correction de lot vers animal détache bien le lot.
+      payload.animalId = formData.cible === "animal" && formData.animalId ? parseInt(formData.animalId) : null
+      payload.lotId = formData.cible !== "animal" && formData.lotId ? parseInt(formData.lotId) : null
 
       const isEdit = editingSoinId !== null
       if (isEdit) payload.id = editingSoinId
@@ -1672,11 +1694,15 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   }
 
   const toggleFait = async (id: number, fait: boolean) => {
+    // Échéance ancienne : la date réelle est demandée, pas l'instant du clic.
+    const soinCoche = soins.find((soin) => soin.id === id)
+    const dateFait = fait ? undefined : dateRealisationPourFait(soinCoche?.datePrevue ?? soinCoche?.date)
+    if (dateFait === null) return
     try {
       const response = await fetch('/api/elevage/soins', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: !fait ? new Date().toISOString() : undefined }),
+        body: JSON.stringify({ id, fait: !fait, date: dateFait }),
       })
       if (!response.ok) throw new Error('Erreur')
       fetchData()
@@ -1698,6 +1724,11 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
           </SelectContent>
         </Select>
         <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des soins affichés" />
+        {totalSoins > soins.length && (
+          <p role="status" className="basis-full text-sm text-amber-700">
+            Les {soins.length} soins les plus récents sont affichés sur {totalSoins} : choisissez un exercice pour voir les plus anciens.
+          </p>
+        )}
         <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetSoinForm() }}>
@@ -2126,7 +2157,17 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                       </p>
                     )}
                   </div>
-                  <div className="space-y-2"><Label>Unité</Label><Input value={formData.unite} onChange={(e) => setFormData(f => ({ ...f, unite: e.target.value }))} placeholder="mL, doses..." /></div>
+                  <div className="space-y-2">
+                    <Label>Unité</Label>
+                    {/* Avec un lot de pharmacie, l'unité est celle du lot : la quantité saisie en est prélevée. */}
+                    <Input
+                      value={uniteLotSelectionne ?? formData.unite}
+                      onChange={(e) => setFormData(f => ({ ...f, unite: e.target.value }))}
+                      placeholder="mL, doses..."
+                      disabled={uniteLotSelectionne !== null}
+                      title={uniteLotSelectionne !== null ? "Unité du lot de pharmacie sélectionné" : undefined}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2"><Label>Notes</Label><Textarea value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>

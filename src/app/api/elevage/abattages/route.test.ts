@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   abattageUpdate: vi.fn(),
   lotUpdate: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
+  fichesActivesCount: vi.fn().mockResolvedValue(0),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -32,7 +33,7 @@ vi.mock("@/lib/facture-utils", () => ({ creerFacture: vi.fn(), annulerFactureLie
 vi.mock("@/lib/prisma", () => {
   const tx = { $executeRaw: vi.fn(), $queryRaw: vi.fn().mockResolvedValue([]), soinAnimal: { findMany: mocks.soinFindMany },
     abattage: { create: mocks.abattageCreate, update: mocks.abattageUpdate, findFirst: async () => Object.fromEntries(Object.entries(await mocks.abattageFindFirst()).filter(([k]) => k !== 'animal' && k !== 'lot')) },
-    animal: { findFirst: vi.fn().mockResolvedValue({ id: 500, statut: 'actif', lotId: 71 }), update: vi.fn() },
+    animal: { findFirst: vi.fn().mockResolvedValue({ id: 500, statut: 'actif', lotId: 71 }), update: vi.fn(), count: mocks.fichesActivesCount },
     lotAnimaux: { findFirst: mocks.lotFindFirst, update: mocks.lotUpdate },
   }
   return {
@@ -190,6 +191,35 @@ describe("PATCH /api/elevage/abattages — même plafond que le POST sur la quan
     expect(mocks.abattageUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 31 }, data: expect.objectContaining({ quantite: 4 }) }),
     )
+  })
+
+  it("efface le prix d'un abattage qui n'est plus une vente", async () => {
+    mocks.abattageFindFirst.mockResolvedValue({ ...ABATTAGE_EXISTANT, destination: "vente", prixVente: 300 })
+
+    // L'écran renvoyait le prix déjà saisi avec la nouvelle destination.
+    const res = await patch({ id: 31, destination: "don", prixVente: 300 })
+
+    expect(res.status).toBe(200)
+    expect(mocks.abattageUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ destination: "don", prixVente: null }) }),
+    )
+  })
+
+  it("ne clôt pas le lot dont le compteur tombe à zéro s'il y reste des fiches actives, et ne rouvre pas un lot réformé", async () => {
+    // Compteur stocké 2, l'abattage passe de 2 à 4 têtes : compteur à 0.
+    mocks.lotFindFirst.mockResolvedValue({ ...PINTADES_APRES, quantiteActuelle: 2 })
+    mocks.fichesActivesCount.mockResolvedValueOnce(2)
+    expect((await patch(corpsEcranModif(4, { overrideCoherence: true }))).status).toBe(200)
+    expect(mocks.lotUpdate).toHaveBeenLastCalledWith({ where: { id: 71 }, data: { quantiteActuelle: 0, statut: "actif" } })
+
+    mocks.fichesActivesCount.mockResolvedValueOnce(0)
+    expect((await patch(corpsEcranModif(4, { overrideCoherence: true }))).status).toBe(200)
+    expect(mocks.lotUpdate).toHaveBeenLastCalledWith({ where: { id: 71 }, data: { quantiteActuelle: 0, statut: "termine" } })
+
+    // Lot réformé : rendre une tête (2 → 1) ne le remet pas en production.
+    mocks.lotFindFirst.mockResolvedValue({ ...PINTADES_APRES, quantiteActuelle: 2, statut: "reforme" })
+    expect((await patch(corpsEcranModif(1))).status).toBe(200)
+    expect(mocks.lotUpdate).toHaveBeenLastCalledWith({ where: { id: 71 }, data: { quantiteActuelle: 3, statut: "reforme" } })
   })
 
   it("refuse 5 têtes avec le corps de refus du POST", async () => {

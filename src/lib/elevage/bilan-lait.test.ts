@@ -163,6 +163,14 @@ describe('chargement et contrôle sur la base', () => {
     expect(b).toMatchObject({ collecte: 34, ecarte: 4, disponible: 30, transforme: 16, livre: 3, venduCru: 2, sorties: 21, nonAffecte: 9, nbCollectes: 3, ventesHorsLitres: 1 })
   })
 
+  it('ne retire qu’une fois une collecte transformée puis écartée par un soin saisi après coup', async () => {
+    const b = await chargerBilanLait(base({
+      collectes: [{ date: '2026-11-03T00:00:00Z', quantiteLitres: '40', lotFromageId: 'f1', ecarteAttente: true }],
+    }), 'u1', '2026-10-28', '2026-11-03')
+
+    expect(b).toMatchObject({ collecte: 40, ecarte: 0, transforme: 40, nonAffecte: 0 })
+  })
+
   it('rend les 7 derniers jours et le mois en cours', async () => {
     const { jours7, mois } = await chargerBilansLait(base(donnees), 'u1', '2026-11-03')
     expect(jours7).toMatchObject({ debut: '2026-10-28', fin: '2026-11-03', venduCru: 2 })

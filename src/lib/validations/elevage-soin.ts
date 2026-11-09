@@ -49,6 +49,10 @@ export const soinSchema = soinFieldsSchema
 
 export const soinPatchSchema = soinFieldsSchema.partial().extend({
   id: z.coerce.number().int().positive(),
+  // `.partial()` conserve le défaut `fait: true` du schéma de création : un
+  // PATCH qui n'envoie que des notes passait le soin planifié à « fait »
+  // (décompte de pharmacie, délais d'attente, lait écarté, dépense).
+  fait: z.boolean().optional(),
 }).superRefine((d, ctx) => {
   if (d.nbInjections != null && d.nbInjections > 1 && d.intervalleInjectionsHeures == null) {
     ctx.addIssue({

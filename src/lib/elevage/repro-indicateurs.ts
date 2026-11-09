@@ -52,9 +52,13 @@ export function indicateursRepro(
   const tauxFertilite = avecIssue.length > 0 ? (fecondantes.length / avecIssue.length) * 100 : null
 
   // Prolificité & mortinatalité (par mise-bas)
-  const nbMiseBas = naissances.length
-  const sumNes = naissances.reduce((s, n) => s + (n.nombreNes || 0), 0)
-  const sumVivants = naissances.reduce((s, n) => s + (n.nombreVivants || 0), 0)
+  // Une mise-bas est la naissance d'UNE mère. Une éclosion ou une portée saisie
+  // sur un lot (sans mère) n'en est pas une : comptée ici, une éclosion de 25
+  // poussins faisait passer la prolificité de 10 chèvres de 1,8 à 3,9.
+  const misesBas = naissances.filter((n) => n.mereId != null)
+  const nbMiseBas = misesBas.length
+  const sumNes = misesBas.reduce((s, n) => s + (n.nombreNes || 0), 0)
+  const sumVivants = misesBas.reduce((s, n) => s + (n.nombreVivants || 0), 0)
   const prolificite = nbMiseBas > 0 ? sumNes / nbMiseBas : null
   const prolificiteVivants = nbMiseBas > 0 ? sumVivants / nbMiseBas : null
   const mortaliteNaissance = sumNes > 0 ? ((sumNes - sumVivants) / sumNes) * 100 : null

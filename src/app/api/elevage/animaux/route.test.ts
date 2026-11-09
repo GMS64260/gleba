@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   animalCreate: vi.fn(),
   animalUpdate: vi.fn(),
   enregistrerChangementLot: vi.fn(),
+  redaterAffectationInitiale: vi.fn(),
   exploitationFindUnique: vi.fn(),
   lotAnimauxFindFirst: vi.fn(),
 }))
@@ -21,6 +22,7 @@ vi.mock('@/lib/elevage/animal-lot', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/elevage/animal-lot')>()),
   isAssignableAnimalLot: mocks.isAssignableAnimalLot,
   enregistrerChangementLot: mocks.enregistrerChangementLot,
+  redaterAffectationInitiale: mocks.redaterAffectationInitiale,
 }))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
@@ -75,6 +77,22 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     expect(await response.json()).toEqual({ error: 'Lot invalide' })
     expect(mocks.animalCreate).not.toHaveBeenCalled()
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
+  it('POST refuse (409) un identifiant officiel déjà porté par une fiche du compte, sauf confirmation', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 3, nom: 'Blanchette', statut: 'actif' })
+
+    const refus = await POST(request('POST', { especeAnimaleId: 'ovin', identifiant: ' FR12345678901 ' }))
+    expect(refus.status).toBe(409)
+    expect(await refus.json()).toMatchObject({ code: 'IDENTIFIANT_DEJA_UTILISE', champ: 'identifiant', animalId: 3 })
+    expect(mocks.animalFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-1', identifiant: { equals: 'FR12345678901', mode: 'insensitive' } },
+    }))
+    expect(mocks.animalCreate).not.toHaveBeenCalled()
+
+    const confirme = await POST(request('POST', { especeAnimaleId: 'ovin', identifiant: 'FR12345678901', confirmerDoublonIdentifiant: true }))
+    expect(confirme.status).toBe(201)
+    expect(mocks.animalCreate).toHaveBeenCalledTimes(1)
   })
 
   it('POST accepte un lot assignable', async () => {
@@ -243,6 +261,34 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     expect(response.status).toBe(400)
     expect(await response.json()).toEqual({ error: 'Espèce animale invalide', champ: 'especeAnimaleId' })
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
+  it('PATCH enregistre une fiche dont l’espèce et la race, inchangées, ne sont plus partagées', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'profil-retire', raceAnimaleId: 'race-retiree', lotId: null })
+    // Le profil n'est plus visible du compte : tout contrôle d'accès échouerait.
+    mocks.especeFindFirst.mockResolvedValue(null)
+    mocks.especeFindUnique.mockResolvedValue(null)
+
+    const response = await PATCH(request('PATCH', { id: 7, especeAnimaleId: 'profil-retire', raceAnimaleId: 'race-retiree', notes: 'pesée du jour' }))
+
+    expect(response.status).toBe(200)
+    // La race conservée est relue sans filtre de visibilité.
+    expect(mocks.raceFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'race-retiree', especeAnimaleId: 'profil-retire' },
+    }))
+    expect(mocks.animalUpdate).toHaveBeenCalled()
+  })
+
+  it('PATCH redate l’entrée dans le premier lot quand la date d’arrivée est corrigée', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin', lotId: 42, dateArrivee: new Date('2026-11-09') })
+
+    expect((await PATCH(request('PATCH', { id: 7, dateArrivee: '2026-10-15' }))).status).toBe(200)
+    expect(mocks.redaterAffectationInitiale).toHaveBeenCalledWith(expect.anything(), 'user-1', 7, new Date('2026-10-15'))
+
+    // Date renvoyée inchangée par le formulaire : rien à redater.
+    mocks.redaterAffectationInitiale.mockClear()
+    expect((await PATCH(request('PATCH', { id: 7, dateArrivee: '2026-11-09', notes: 'x' }))).status).toBe(200)
+    expect(mocks.redaterAffectationInitiale).not.toHaveBeenCalled()
   })
 
   it('persiste séparément orientation et race validée', async () => {

@@ -13,6 +13,35 @@ import { seuilCollecteMaxJour } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { Prisma } from '@prisma/client'
 import { finJourLivraison } from '@/lib/commercial/dates-stock'
+import { refusModificationCollecteEntamee } from '@/lib/elevage/stock-oeufs'
+
+class CollecteEntameeError extends Error {}
+
+/** Bornes [jour ; lendemain[ d'une collecte, pour chercher une collecte du même jour. */
+function bornesJourCollecte(date: Date | string) {
+  const debut = new Date(date)
+  debut.setHours(0, 0, 0, 0)
+  const fin = new Date(debut)
+  fin.setDate(fin.getDate() + 1)
+  return { gte: debut, lt: fin }
+}
+
+function refusDoublonCollecte(existant: { id: number; quantite: number }, date: Date | string) {
+  const jour = bornesJourCollecte(date).gte.toLocaleDateString('fr-FR')
+  return NextResponse.json(
+    {
+      error: 'Collecte déjà saisie',
+      code: 'DOUBLON_DATE_LOT',
+      details: {
+        idExistant: existant.id,
+        quantiteExistante: existant.quantite,
+        dateLue: jour,
+        message: `Une collecte de ${existant.quantite} œufs existe déjà sur ce lot pour le ${jour}. Confirmer pour ajouter une 2e ligne (ex. 2 passages dans la journée), sinon modifiez la ligne existante.`,
+      },
+    },
+    { status: 422 },
+  )
+}
 
 const LOT_PLAFOND_SELECT = {
   id: true,
@@ -220,54 +249,52 @@ export async function POST(request: NextRequest) {
       // `overrideCoherence` : la confirmation « Ajouter une 2e ligne » du client
       // rejouait le POST et se faisait refuser à l'identique, donc une seconde
       // collecte du jour était impossible à saisir.
+      // Contrôle rapide ; il est rejoué sous verrou juste avant l'écriture.
       if (!overrideCoherence && date && !animalId) {
-        const dateOnly = new Date(date)
-        dateOnly.setHours(0, 0, 0, 0)
-        const dateNext = new Date(dateOnly)
-        dateNext.setDate(dateNext.getDate() + 1)
         const existant = await prisma.productionOeuf.findFirst({
-          where: {
-            userId: session.user.id,
-            lotId,
-            date: { gte: dateOnly, lt: dateNext },
-          },
+          where: { userId: session.user.id, lotId, date: bornesJourCollecte(date) },
           select: { id: true, quantite: true },
         })
-        if (existant) {
-          return NextResponse.json(
-            {
-              error: 'Collecte déjà saisie',
-              code: 'DOUBLON_DATE_LOT',
-              details: {
-                idExistant: existant.id,
-                quantiteExistante: existant.quantite,
-                dateLue: dateOnly.toLocaleDateString('fr-FR'),
-                message: `Une collecte de ${existant.quantite} œufs existe déjà sur ce lot pour le ${dateOnly.toLocaleDateString('fr-FR')}. Confirmer pour ajouter une 2e ligne (ex. 2 passages dans la journée), sinon modifiez la ligne existante.`,
-              },
-            },
-            { status: 422 }
-          )
-        }
+        if (existant) return refusDoublonCollecte(existant, date)
       }
     }
 
-    const production = await prisma.productionOeuf.create({
-      data: {
-        userId: session.user.id,
-        lotId: lotId || null,
-        animalId: animalId || null,
-        date: date || new Date(),
-        quantite,
-        casses,
-        sales,
-        calibre,
-        notes,
-      },
-      include: {
-        lot: true,
-        animal: true,
-      },
+    // Le contrôle de doublon et la création se font sous le verrou du stock
+    // d'œufs : deux envois simultanés de la même collecte passaient chacun le
+    // contrôle (lu avant l'écriture de l'autre) et créaient deux collectes,
+    // doublant stock, taux de ponte et valorisation.
+    const controleDoublon = !overrideCoherence && Boolean(date) && !animalId && Boolean(lotId)
+    const resultat = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${session!.user.id}`}))`
+      if (controleDoublon && date) {
+        const existant = await tx.productionOeuf.findFirst({
+          where: { userId: session!.user.id, lotId, date: bornesJourCollecte(date) },
+          select: { id: true, quantite: true },
+        })
+        if (existant) return { doublon: existant }
+      }
+      return {
+        production: await tx.productionOeuf.create({
+          data: {
+            userId: session!.user.id,
+            lotId: lotId || null,
+            animalId: animalId || null,
+            date: date || new Date(),
+            quantite,
+            casses,
+            sales,
+            calibre,
+            notes,
+          },
+          include: {
+            lot: true,
+            animal: true,
+          },
+        }),
+      }
     })
+    if ('doublon' in resultat) return refusDoublonCollecte(resultat.doublon!, date!)
+    const production = resultat.production
 
     return NextResponse.json({ data: production }, { status: 201 })
   } catch (error) {
@@ -294,22 +321,10 @@ export async function PATCH(request: NextRequest) {
 
     const existing = await prisma.productionOeuf.findFirst({
       where: { id: parseInt(id), userId: session.user.id },
-      include: {
-        _count: { select: { mouvementsStock: true } },
-      },
     })
 
     if (!existing) {
       return NextResponse.json({ error: 'Production non trouvée' }, { status: 404 })
-    }
-    if (existing._count.mouvementsStock > 0) {
-      return NextResponse.json(
-        {
-          error: "Cette collecte possède des sorties de stock. Supprimez d'abord ses mouvements.",
-          code: "STOCK_OEUFS_MOUVEMENTS_EXISTANTS",
-        },
-        { status: 409 },
-      )
     }
 
     const updateData: ProductionOeufModif = {}
@@ -372,17 +387,44 @@ export async function PATCH(request: NextRequest) {
       if (refus) return refus
     }
 
-    const production = await prisma.productionOeuf.update({
-      where: { id: parseInt(id) },
-      data: updateData,
-      include: {
-        lot: { select: { id: true, nom: true } },
-        animal: { select: { id: true, nom: true, identifiant: true } },
-      },
+    // Contrôle et écriture sous le verrou du stock d'œufs, celui que prennent
+    // les ventes : une vente qui puise dans cette ponte pendant la correction
+    // attend, et la correction voit ses sorties.
+    const production = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${session!.user.id}`}))`
+      const sorties = await tx.mouvementStockOeuf.findMany({
+        where: { productionId: existing.id, userId: session!.user.id },
+        select: { quantite: true, date: true },
+      })
+      const refus = refusModificationCollecteEntamee(
+        existing,
+        {
+          quantite: updateData.quantite ?? existing.quantite,
+          casses: updateData.casses ?? existing.casses,
+          sales: updateData.sales ?? existing.sales,
+          date: updateData.date ?? existing.date,
+          lotId: updateData.lotId !== undefined ? updateData.lotId : existing.lotId,
+          animalId: updateData.animalId !== undefined ? updateData.animalId : existing.animalId,
+        },
+        sorties,
+        finJourLivraison,
+      )
+      if (refus) throw new CollecteEntameeError(refus)
+      return tx.productionOeuf.update({
+        where: { id: existing.id },
+        data: updateData,
+        include: {
+          lot: { select: { id: true, nom: true } },
+          animal: { select: { id: true, nom: true, identifiant: true } },
+        },
+      })
     })
 
     return NextResponse.json({ data: production })
   } catch (error) {
+    if (error instanceof CollecteEntameeError) {
+      return NextResponse.json({ error: error.message, code: 'STOCK_OEUFS_MOUVEMENTS_EXISTANTS' }, { status: 409 })
+    }
     console.error('PATCH /api/elevage/production-oeufs error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
@@ -411,12 +453,29 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Production non trouvée' }, { status: 404 })
     }
 
-    await prisma.productionOeuf.delete({
-      where: { id: parseInt(id) },
+    // Une collecte dont des œufs sont sortis ne se supprime pas : la base le
+    // refuse (clé étrangère des sorties) et la route répondait une erreur 500.
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${session!.user.id}`}))`
+      const sorties = await tx.mouvementStockOeuf.aggregate({
+        where: { productionId: existing.id, userId: session!.user.id },
+        _sum: { quantite: true },
+        _count: true,
+      })
+      if (sorties._count > 0) {
+        const n = sorties._sum.quantite ?? 0
+        throw new CollecteEntameeError(
+          `${n} œuf${n > 1 ? 's' : ''} de cette collecte ${n > 1 ? 'sont déjà sortis' : 'est déjà sorti'} du stock : elle ne peut pas être supprimée. Annulez d'abord les ventes concernées dans Élevage > Ventes, ou corrigez sa quantité.`,
+        )
+      }
+      await tx.productionOeuf.delete({ where: { id: existing.id } })
     })
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof CollecteEntameeError) {
+      return NextResponse.json({ error: error.message, code: 'STOCK_OEUFS_MOUVEMENTS_EXISTANTS' }, { status: 409 })
+    }
     console.error('DELETE /api/elevage/production-oeufs error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },

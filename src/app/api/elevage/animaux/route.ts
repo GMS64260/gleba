@@ -13,7 +13,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { animalSchema, isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
-import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle, regleAchatInclusLot } from '@/lib/elevage/animal-lot'
+import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle, redaterAffectationInitiale, regleAchatInclusLot } from '@/lib/elevage/animal-lot'
 import { resoudreRaceTexte } from '@/lib/elevage/race-referentiel'
 import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
@@ -23,6 +23,7 @@ import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 // Motif partagé avec la garde de suppression, qui ne compte pas ce mouvement automatique.
 import { MOTIF_AFFECTATION_INITIALE } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
+import { refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 /** JJ/MM/AAAA déterministe (sans dépendre de l'ICU du runtime). */
@@ -196,6 +197,28 @@ export async function POST(request: NextRequest) {
     if (lotId != null && !await isAssignableAnimalLot(session.user.id, lotId, especeAnimaleId)) {
       return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
     }
+    // Un identifiant officiel (boucle, puce, tatouage) désigne UN animal. Rien
+    // ne refusait d'en créer un second : double saisie, ou import relancé, et
+    // deux fiches portaient la même boucle au registre et dans les
+    // déclarations. Refus 409, levé par `confirmerDoublonIdentifiant`.
+    const identifiantSaisi = identifiant?.trim()
+    if (identifiantSaisi && body?.confirmerDoublonIdentifiant !== true) {
+      const homonyme = await prisma.animal.findFirst({
+        where: { userId: session.user.id, identifiant: { equals: identifiantSaisi, mode: 'insensitive' } },
+        select: { id: true, nom: true, statut: true },
+      })
+      if (homonyme) {
+        return NextResponse.json(
+          {
+            error: `Une fiche porte déjà l'identifiant ${identifiantSaisi}${homonyme.nom ? ` (${homonyme.nom})` : ''}${homonyme.statut !== 'actif' ? `, animal ${homonyme.statut}` : ''}.`,
+            code: 'IDENTIFIANT_DEJA_UTILISE',
+            champ: 'identifiant',
+            animalId: homonyme.id,
+          },
+          { status: 409 },
+        )
+      }
+    }
     const lotAchat = lotId != null && (Number(prixAchat || 0) > 0 || prixAchatInclusDansLot)
       ? await prisma.lotAnimaux.findFirst({
           where: { id: lotId, userId: session.user.id },
@@ -366,10 +389,22 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
     }
 
+    // Une fiche sortie par une vente ou un abattage toujours actif ne se réactive
+    // pas à la main (recette en place, revente possible) : on annule la sortie.
+    if (statut === 'actif' && existing.statut !== 'actif') {
+      const refus = await refusRemiseActif(prisma, session.user.id, existing.id)
+      if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
+    }
+
     // Ticket utilisateur 2026-07-22 — le formulaire envoyait bien la nouvelle
     // espèce/type de production, mais PATCH l'ignorait silencieusement.
     // Vérifier aussi que la nouvelle référence est visible avant de l'appliquer.
-    if (especeAnimaleId !== undefined && !await especeAnimaleAccessible(session.user.id, especeAnimaleId)) {
+    // L'accès au référentiel ne se contrôle que si la référence CHANGE (comme le
+    // PUT de la fiche) : le formulaire renvoie toujours l'espèce et la race, et
+    // quand l'auteur d'un profil partagé retirait son partage, plus aucune fiche
+    // des autres comptes ne s'enregistrait (« Espèce animale invalide »).
+    const especeChange = especeAnimaleId !== undefined && especeAnimaleId !== existing.especeAnimaleId
+    if (especeChange && !await especeAnimaleAccessible(session.user.id, especeAnimaleId)) {
       return NextResponse.json({ error: 'Espèce animale invalide', champ: 'especeAnimaleId' }, { status: 400 })
     }
 
@@ -378,8 +413,9 @@ export async function PATCH(request: NextRequest) {
     if (orientationProduction !== undefined && orientationProduction !== null && !orientations.has(orientationProduction)) {
       return NextResponse.json({ error: 'Orientation de production invalide' }, { status: 400 })
     }
+    const raceConservee = !especeChange && raceAnimaleId != null && raceAnimaleId === existing.raceAnimaleId
     const raceRef = raceAnimaleId ? await prisma.raceAnimale.findFirst({
-      where: { id: raceAnimaleId, especeAnimaleId: especeCible, AND: [visibiliteReferentiel(session.user.id)] },
+      where: { id: raceAnimaleId, especeAnimaleId: especeCible, ...(raceConservee ? {} : { AND: [visibiliteReferentiel(session.user.id)] }) },
       select: { id: true, nom: true },
     }) : null
     if (raceAnimaleId && !raceRef) return NextResponse.json({ error: 'Race incompatible ou inaccessible' }, { status: 400 })
@@ -596,6 +632,11 @@ export async function PATCH(request: NextRequest) {
           lot: { select: { id: true, nom: true } },
         },
       })
+      // L'entrée dans le premier lot suit la date d'arrivée corrigée (avant
+      // l'éventuel changement de lot de ce même PATCH, qui clôt cette ligne).
+      if (updateData.dateArrivee instanceof Date && updateData.dateArrivee.getTime() !== existing.dateArrivee?.getTime()) {
+        await redaterAffectationInitiale(tx, session.user.id, existing.id, updateData.dateArrivee)
+      }
       if (updateData.lotId !== undefined) {
         await enregistrerChangementLot(tx, session.user.id, existing.id, existing.lotId, updated.lotId)
       }

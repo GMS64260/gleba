@@ -340,7 +340,8 @@ export async function GET(request: NextRequest) {
     }
   }
   for (const lot of lots) {
-    if (lot.dateArrivee && lot.dateArrivee >= debut && lot.dateArrivee < fin) {
+    // Un lot ouvert vide (crédité par ses naissances) n'a fait entrer aucune tête.
+    if (lot.quantiteInitiale > 0 && lot.dateArrivee && lot.dateArrivee >= debut && lot.dateArrivee < fin) {
       mouvements.push({
         date: lot.dateArrivee,
         type: "Entrée lot",

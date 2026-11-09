@@ -9,7 +9,7 @@ const m = vi.hoisted(() => ({
   venteAvant: vi.fn(), venteTx: vi.fn(), venteCreate: vi.fn(), venteUpdate: vi.fn(),
   miroir: vi.fn(), deleteMiroir: vi.fn(), creerFacture: vi.fn(), annulerFacture: vi.fn(),
   oeufsSync: vi.fn(), oeufsDelete: vi.fn(), rucheSync: vi.fn(), rucheDelete: vi.fn(),
-  mouvementFromage: vi.fn(), lotFromage: vi.fn(), pointage: vi.fn(),
+  mouvementFromage: vi.fn(), mouvementFromageUpdate: vi.fn(), lotFromage: vi.fn(), pointage: vi.fn(),
 }))
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: m.auth }))
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: vi.fn() }))
@@ -38,7 +38,7 @@ const tx = {
   $executeRaw: m.execute, $queryRaw: m.query,
   animal: { findFirst: m.animalTx, update: m.animalUpdate, updateMany: m.animalUpdateMany },
   venteProduit: { findFirst: m.venteTx, create: m.venteCreate, update: m.venteUpdate },
-  mouvementFromage: { create: m.mouvementFromage, deleteMany: vi.fn() },
+  mouvementFromage: { create: m.mouvementFromage, deleteMany: vi.fn(), updateMany: m.mouvementFromageUpdate },
   lotFromage: { findFirst: m.lotFromage },
 }
 const request = (method: string, body?: object, query = '') => new NextRequest(
@@ -54,6 +54,7 @@ const venteInitiale = () => ({
   tauxTVA: 5.5, notes: null, description: null, destinationId: null,
 })
 let courante: ReturnType<typeof venteInitiale>
+let autreVenteActive: { id: number } | null
 let animal: { id: number; statut: string; dateSortie?: Date | null; causeSortie?: string | null }
 let creees: Record<string, unknown>[]
 let tail: Promise<unknown>
@@ -61,6 +62,7 @@ let tail: Promise<unknown>
 beforeEach(() => {
   vi.resetAllMocks()
   courante = venteInitiale()
+  autreVenteActive = null
   animal = { id: 501, statut: 'actif' }
   creees = []
   tail = Promise.resolve()
@@ -70,7 +72,9 @@ beforeEach(() => {
   m.execute.mockResolvedValue(1)
   m.annulerFacture.mockResolvedValue({ ok: true })
   m.venteAvant.mockImplementation(async () => structuredClone(courante))
-  m.venteTx.mockImplementation(async () => structuredClone(courante))
+  // Recherche d'une AUTRE vente active du même animal (annulation) : aucune par défaut.
+  m.venteTx.mockImplementation(async (args?: { where?: { id?: unknown } }) =>
+    typeof args?.where?.id === 'object' && args.where.id !== null ? autreVenteActive : structuredClone(courante))
   m.venteUpdate.mockImplementation(async ({ data }) => {
     Object.assign(courante, data)
     return structuredClone(courante)
@@ -113,6 +117,56 @@ describe('Fiabilité des ventes élevage', () => {
     expect((await DELETE(request('DELETE', undefined, '?id=11'))).status).toBe(200)
     expect(courante.annule).toBe(true)
     expect(animal.statut).toBe('actif')
+  })
+
+  it('le PATCH porte les gardes du POST : un seul animal, plafond, pas de « payée » à crédit', async () => {
+    Object.assign(courante, { type: 'animal_vivant', quantite: 1, prixUnitaire: 150, prixTotal: 150, animalId: 501 })
+    expect((await PATCH(request('PATCH', { id: 11, quantite: 2 }))).status).toBe(400)
+    expect(courante.prixTotal).toBe(150)
+    expect((await PATCH(request('PATCH', { id: 11, prixUnitaire: 100_001 }))).status).toBe(400)
+    expect((await PATCH(request('PATCH', { id: 11, paye: true, modeReglement: 'À crédit' }))).status).toBe(400)
+    expect((await PATCH(request('PATCH', { id: 11, unite: '' }))).status).toBe(400)
+    expect(m.venteUpdate).not.toHaveBeenCalled()
+    expect(m.miroir).not.toHaveBeenCalled()
+  })
+
+  it('ne refait les sorties d’œufs que si la quantité, l’unité ou le jour changent', async () => {
+    expect((await PATCH(request('PATCH', { id: 11, client: 'Autre client', paye: true, modeReglement: 'Espèces' }))).status).toBe(200)
+    expect((await PATCH(request('PATCH', { id: 11, prixUnitaire: 1.5 }))).status).toBe(200)
+    expect(m.oeufsSync).not.toHaveBeenCalled()
+    expect((await PATCH(request('PATCH', { id: 11, quantite: 18 }))).status).toBe(200)
+    expect(m.oeufsSync).toHaveBeenCalledTimes(1)
+    expect((await PATCH(request('PATCH', { id: 11, date: '2026-10-29' }))).status).toBe(200)
+    expect(m.oeufsSync).toHaveBeenCalledTimes(2)
+  })
+
+  it('la sortie de cave suit la date corrigée d’une vente de fromage', async () => {
+    Object.assign(courante, { type: 'fromage', unite: 'piece', quantite: 2, lotFromageId: 'lot-1' })
+    expect((await PATCH(request('PATCH', { id: 11, client: 'Épicerie' }))).status).toBe(200)
+    expect(m.mouvementFromageUpdate).not.toHaveBeenCalled()
+    expect((await PATCH(request('PATCH', { id: 11, date: '2026-10-25' }))).status).toBe(200)
+    expect(m.mouvementFromageUpdate).toHaveBeenCalledWith({
+      where: { userId: 'review', venteProduitId: 11 },
+      data: { date: new Date('2026-10-25') },
+    })
+  })
+
+  it('arrondit le total au centime, à la correction comme à la saisie', async () => {
+    Object.assign(courante, { type: 'viande', unite: 'kg' })
+    expect((await PATCH(request('PATCH', { id: 11, quantite: 0.347, prixUnitaire: 24.9 }))).status).toBe(200)
+    expect(courante.prixTotal).toBe(8.64)
+    const res = await POST(request('POST', { type: 'viande', quantite: 0.347, unite: 'kg', prixUnitaire: 24.9, paye: false }))
+    expect(res.status).toBe(201)
+    expect(creees[0].prixTotal).toBe(8.64)
+  })
+
+  it('annuler une vente ne réactive pas l’animal qu’une autre vente active vise encore', async () => {
+    Object.assign(courante, { type: 'animal_vivant', quantite: 1, animalId: 501 })
+    animal.statut = 'vendu'
+    autreVenteActive = { id: 12 }
+    expect((await DELETE(request('DELETE', undefined, '?id=11'))).status).toBe(200)
+    expect(courante.annule).toBe(true)
+    expect(animal.statut).toBe('vendu')
   })
 
   it('P1 : une seule de deux ventes du même animal réussit', async () => {

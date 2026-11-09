@@ -7,8 +7,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/prisma', () => {
   const tx = {
-    soinAnimal: { update: mocks.soinUpdate },
-    stockMedicamentElevage: { updateMany: vi.fn(), update: vi.fn() },
+    soinAnimal: { update: mocks.soinUpdate, findFirst: mocks.soinFindFirst },
+    stockMedicamentElevage: { updateMany: vi.fn(), update: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
     $queryRaw: mocks.queryRaw,
     $executeRaw: mocks.executeRaw,
   }

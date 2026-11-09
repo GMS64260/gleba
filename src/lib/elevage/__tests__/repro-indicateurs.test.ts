@@ -50,4 +50,13 @@ describe("indicateursRepro", () => {
     expect(r.ivvMoyenJours).toBeNull()
     expect(r.agePremierPartJours).toBeNull()
   })
+
+  it('ne compte pas une éclosion de lot (sans mère) parmi les mises-bas', () => {
+    const d = new Date('2026-03-01')
+    const chevres = Array.from({ length: 10 }, (_, i) => ({ mereId: i + 1, date: d, nombreNes: i < 8 ? 2 : 1, nombreVivants: i < 8 ? 2 : 1 }))
+    const eclosion = { mereId: null, date: d, nombreNes: 25, nombreVivants: 20 }
+    const r = indicateursRepro([], [...chevres, eclosion])
+    expect(r.prolificite).toBe(1.8)
+    expect(r.mortaliteNaissance).toBe(0)
+  })
 })

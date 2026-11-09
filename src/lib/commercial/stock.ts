@@ -96,7 +96,11 @@ export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Lign
       trace.produitBoutiqueId = Number(a.id); trace.stockSuivi = lignes[0].stock_dispo != null
     } else if (a.type === 'oeufs') {
       let restant = l.quantite
-      const lots = await computeStockOeufsParLots(userId, new Date(), tx)
+      // Fraîcheur jugée à la date de la livraison, comme la vente directe
+      // (`stock-oeufs-vente.ts`) : jugée à aujourd'hui, un bon daté
+      // d'avant-hier ne pouvait plus prendre des œufs alors vendables et passés
+      // depuis à J+21, et répondait « stock insuffisant ».
+      const lots = await computeStockOeufsParLots(userId, dateLimite, tx)
       for (const lot of lots.data.filter((p) => p.statut === 'commercialisable' && p.datePonte <= dateLimite)) {
         if (restant <= 0) break
         const quantite = Math.min(restant, lot.restant)

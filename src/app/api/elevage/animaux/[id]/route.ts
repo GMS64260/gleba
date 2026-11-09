@@ -16,10 +16,12 @@ import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
 import { effacementSortieSiActif, erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
+import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 import { aDesTracesAnimal, compterTracesAnimal, messageSuppressionAnimalRefusee } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
+import { refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 export async function GET(
@@ -164,6 +166,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
     }
 
+    // Une fiche sortie par une vente ou un abattage toujours actif ne se réactive
+    // pas à la main (recette en place, revente possible) : on annule la sortie.
+    if (body.statut === 'actif' && existing.statut !== 'actif') {
+      const refus = await refusRemiseActif(prisma, session.user.id, existing.id)
+      if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
+    }
+
     const data: Record<string, unknown> = {}
     if (body.statut !== undefined) data.statut = body.statut
     if (body.dateSortie !== undefined) data.dateSortie = body.dateSortie ? new Date(body.dateSortie) : null
@@ -221,6 +230,13 @@ export async function PUT(
 
     if (!existing) {
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
+    }
+
+    // Une fiche sortie par une vente ou un abattage toujours actif ne se réactive
+    // pas à la main (recette en place, revente possible) : on annule la sortie.
+    if (body.statut === 'actif' && existing.statut !== 'actif') {
+      const refus = await refusRemiseActif(prisma, session.user.id, existing.id)
+      if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
     }
 
     // Audit élevage 2026-06-11 — garde parents : pas de self-parent, et la
@@ -294,6 +310,30 @@ export async function PUT(
       notes,
       parcelleGeoId,
     } = body
+    // Mêmes règles que le PATCH de la collection, que ce PUT (sans écran, mais
+    // ouvert à l'API) ne suivait pas : le sexe est normalisé et une valeur
+    // inconnue refusée (un `'f'` brut excluait la femelle des mères possibles),
+    // et un père passé par `pereId`, que ce PUT n'écrit pas, n'est plus ignoré
+    // en silence.
+    let sexeNormalise: string | null | undefined
+    if (sexe !== undefined) {
+      if (sexe === null || sexe === '') sexeNormalise = null
+      else {
+        sexeNormalise = normaliserSexe(String(sexe))
+        if (sexeNormalise === undefined) {
+          return NextResponse.json(
+            { error: `Sexe « ${sexe} » non reconnu (attendu : ${SEXES_ANIMAL.join(', ')})`, champ: 'sexe' },
+            { status: 400 },
+          )
+        }
+      }
+    }
+    if (body.pereId !== undefined) {
+      return NextResponse.json(
+        { error: 'Le père se modifie par PATCH /api/elevage/animaux (contrôle de parenté) : ce PUT ne l’écrit pas.', champ: 'pereId' },
+        { status: 400 },
+      )
+    }
 
     const prixFinal = prixAchat === undefined
       ? existing.prixAchat
@@ -397,7 +437,7 @@ export async function PUT(
         race: raceAnimaleId !== undefined ? (raceRef?.nom ?? null) : race,
         raceAnimaleId: raceAnimaleId !== undefined ? (raceRef?.id ?? null) : undefined,
         orientationProduction: orientationProduction !== undefined ? (orientationProduction || null) : undefined,
-        sexe,
+        sexe: sexeNormalise,
         dateNaissance: dateNaissance ? new Date(dateNaissance) : undefined,
         dateArrivee: dateArrivee ? new Date(dateArrivee) : undefined,
         provenance,

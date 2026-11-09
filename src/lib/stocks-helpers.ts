@@ -321,6 +321,8 @@ export async function calculerStockOeufs(
   lots?: StockOeufsParLots,
 ): Promise<{
   stockNet: number
+  /** Œufs encore vendables : hors délai vétérinaire, hors limite de vente dépassée. */
+  stockVendable: number
   detail: { produits: number; casses: number; sales: number; vendus: number; autresSorties: number }
 }> {
   // Revue du 2026-11-01 — même borne que le stock : une ponte datée après
@@ -349,6 +351,7 @@ export async function calculerStockOeufs(
 
   return {
     stockNet: lotsCalcules.stats.stockPhysique,
+    stockVendable: lotsCalcules.stats.commercialisables,
     detail: { produits, casses, sales, vendus, autresSorties },
   }
 }

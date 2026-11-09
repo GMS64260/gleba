@@ -938,7 +938,10 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
     }
     setSavingLot(true)
     try {
-      const quantite = Math.max(1, parseInt(formData.nombreVivants) || 0)
+      // Le lot naît vide : c'est l'enregistrement de la naissance qui le crédite
+      // des nés vivants (`quantiteActuelle += vivants`, plafond = initial +
+      // naissances). Le créer avec `nombreVivants` comptait les petits deux fois.
+      const quantite = 0
       const res = await fetch('/api/elevage/lots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

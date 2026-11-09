@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { courbeLactation, dim } from '@/lib/lait'
+import { courbeLactation, productionRecente, dim } from '@/lib/lait'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -59,20 +59,23 @@ export async function GET(request: NextRequest) {
   )
   const dimAct = dim(dateOrigine)
 
-  // Suggestion tarissement : DIM > 270 OU moyenne 7j < 0.5 L/j
-  const derniers7j = courbe.slice(-7)
-  const moy7 = derniers7j.length > 0
-    ? derniers7j.reduce((s, p) => s + p.volume, 0) / derniers7j.length
-    : 0
+  // Suggestion de tarissement : plus de 270 jours de lactation, ou production
+  // récente MESURÉE sous 0,5 L/j. Sans assez de traites individuelles récentes
+  // (contrôle mensuel, traite saisie par lot), on ne conclut pas à une
+  // production basse.
+  const recente = productionRecente(collectes.map((c) => ({ date: c.date, quantiteLitres: Number(c.quantiteLitres) })))
+  const moy7 = recente.moyenne
   // PROMPT 24 — pas de suggestion de tarissement si conduite en lactation longue
-  const suggererTarissement = !lactationLongue && (dimAct > 270 || (dimAct > 60 && moy7 < 0.5))
+  const suggererTarissement = !lactationLongue && (dimAct > 270 || (dimAct > 60 && moy7 !== null && moy7 < 0.5))
 
   return NextResponse.json({
     animal: { id: animal.id, nom: animal.nom, identifiant: animal.identifiant },
     dateOrigine,
     dim: dimAct,
     courbe,
-    moyenne7j: Math.round(moy7 * 1000) / 1000,
+    // null : trop peu de jours mesurés pour une moyenne.
+    moyenne7j: moy7,
+    joursMesures: recente.joursMesures,
     lactationLongue,
     suggererTarissement,
   })

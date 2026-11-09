@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   petitDeleteMany: vi.fn(),
   petitCreateMany: vi.fn(),
   mereFindFirst: vi.fn(),
+  lotFindFirst: vi.fn(),
+  lotUpdate: vi.fn(),
+  lotUpdateMany: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -25,7 +28,7 @@ vi.mock("@/lib/prisma", () => {
     },
     petitNaissance: { deleteMany: mocks.petitDeleteMany, createMany: mocks.petitCreateMany },
     animal: { findFirst: mocks.mereFindFirst },
-    lotAnimaux: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    lotAnimaux: { findFirst: mocks.lotFindFirst, update: mocks.lotUpdate, updateMany: mocks.lotUpdateMany },
   }
   return { default: { ...db, $transaction: (callback: (tx: typeof db) => unknown) => callback(db) } }
 })
@@ -151,6 +154,26 @@ describe("PATCH /api/elevage/naissances — naissance dont les fiches existent",
     expect((await patch(corpsFormulaire({ petits }))).status).toBe(409)
     expect((await patch(corpsFormulaire({ petits: petits.slice(0, 1) }))).status).toBe(409)
     expect(mocks.naissanceUpdate).not.toHaveBeenCalled()
+  })
+
+  // Deux corrections 8 → 5 envoyées ensemble : la seconde lit, hors transaction,
+  // les 8 vivants d'origine. Le compteur du lot ne doit bouger que de l'écart
+  // avec la ligne verrouillée (déjà à 5), donc pas du tout.
+  it("ajuste le compteur du lot depuis la naissance relue sous verrou, pas depuis la lecture d'avant", async () => {
+    const sansFiches = (vivants: number) => ({
+      ...structuredClone(enregistree),
+      lotId: 3, nombreNes: 8, nombreVivants: vivants, nombreMales: null, nombreFemelles: null, petits: [],
+    })
+    mocks.naissanceFindFirst
+      .mockImplementationOnce(async () => sansFiches(8))
+      .mockImplementationOnce(async () => sansFiches(5))
+    mocks.lotFindFirst.mockResolvedValue({ id: 3, quantiteActuelle: 20 })
+
+    const res = await patch(corpsFormulaire({ lotId: 3, nombreNes: 8, nombreVivants: 5, nombreMales: null, nombreFemelles: null, petits: undefined }))
+
+    expect(res.status).toBe(200)
+    expect(mocks.lotUpdate).not.toHaveBeenCalled()
+    expect(mocks.lotUpdateMany).not.toHaveBeenCalled()
   })
 
   // Naissance SANS fiches : le détail est remplacé, et le formulaire n'envoie

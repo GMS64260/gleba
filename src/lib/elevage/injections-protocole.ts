@@ -152,7 +152,8 @@ export function fenetresAttenteDepuisInjections(injections: InjectionEtat[], del
 import prisma from '@/lib/prisma'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ciblesAffectees, resyncEcartementLait } from './attente-lait'
-import { fenetreSoin } from './suppression-soin'
+import { fenetreSoin, restituerPrelevement } from './suppression-soin'
+import { debutJourCivilSoin } from './stock-medicament'
 import { invalidateKpi } from '@/lib/kpi'
 
 export type ResultatEcriture<T> =
@@ -186,7 +187,14 @@ export async function daterInjection(
   userId: string,
   soinId: number,
   datation: DatationInjection,
-  options: { gererStock?: boolean } = {},
+  options: {
+    gererStock?: boolean
+    /**
+     * Écriture à faire DANS la transaction, sur le soin mis à jour (miroir de
+     * coût) : une source et son miroir ne se séparent pas.
+     */
+    dansTransaction?: (tx: Prisma.TransactionClient, soin: Prisma.SoinAnimalGetPayload<Record<string, never>>) => Promise<unknown>
+  } = {},
 ): Promise<ResultatEcriture<Prisma.SoinAnimalGetPayload<Record<string, never>> & { injections: InjectionLigne[] }>> {
   const soin = await prisma.soinAnimal.findFirst({ where: { id: soinId, userId } })
   if (!soin) return { ok: false, status: 404, error: 'Soin introuvable' }
@@ -228,10 +236,16 @@ export async function daterInjection(
         if (soin.datePrevue == null) data.datePrevue = soin.date
       }
 
-      let quantitePreleveeStock = soin.quantitePreleveeStock
+      // Prélèvement relu sous le mutex : sur `soin` (lu avant la transaction),
+      // deux « Faite » envoyés ensemble décomptaient la pharmacie deux fois.
+      const courant = await tx.soinAnimal.findFirst({
+        where: { id: soinId, userId },
+        select: { fait: true, quantitePreleveeStock: true },
+      }) ?? soin
+      let quantitePreleveeStock = courant.quantitePreleveeStock
       if (options.gererStock) {
         const commence = fenetres.fait
-        if (commence && !soin.fait && soin.stockMedicamentId && quantitePreleveeStock <= 0) {
+        if (commence && !courant.fait && soin.stockMedicamentId && quantitePreleveeStock <= 0) {
           const quantite = soin.quantite ?? 0
           if (quantite <= 0) throw new Error('QUANTITE_MEDICAMENT_REQUISE')
           const decremente = await tx.stockMedicamentElevage.updateMany({
@@ -241,18 +255,16 @@ export async function daterInjection(
               quantite: { gte: quantite },
               OR: [
                 { datePeremption: null },
-                { datePeremption: { gte: dateRealisee ?? soin.date } },
+                // Jour civil : un lot qui périme aujourd'hui reste utilisable aujourd'hui.
+                { datePeremption: { gte: debutJourCivilSoin(dateRealisee ?? soin.date) } },
               ],
             },
             data: { quantite: { decrement: quantite } },
           })
           if (decremente.count !== 1) throw new Error('STOCK_MEDICAMENT_INDISPONIBLE')
           quantitePreleveeStock = quantite
-        } else if (!commence && soin.fait && soin.stockMedicamentId && quantitePreleveeStock > 0) {
-          await tx.stockMedicamentElevage.update({
-            where: { id: soin.stockMedicamentId },
-            data: { quantite: { increment: quantitePreleveeStock } },
-          })
+        } else if (!commence && courant.fait && soin.stockMedicamentId && quantitePreleveeStock > 0) {
+          await restituerPrelevement(tx, userId, soin.stockMedicamentId, quantitePreleveeStock)
           quantitePreleveeStock = 0
         }
         data.quantitePreleveeStock = quantitePreleveeStock
@@ -262,6 +274,7 @@ export async function daterInjection(
       const cibles = await ciblesAffectees(tx, userId, soin.animalId, soin.lotId)
       const f = fenetreSoin(soin.date, updated.date, beforeMax, updated.finAttenteLait)
       if (f) await resyncEcartementLait(tx, userId, cibles, f.min, f.max)
+      if (options.dansTransaction) await options.dansTransaction(tx, updated)
       return { ...updated, injections: apres }
     })
     invalidateKpi(userId)

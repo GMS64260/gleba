@@ -19,6 +19,7 @@ import { libellesVenteBois } from '@/lib/verger/production-bois'
 import { montantVenteFruit } from '@/lib/verger/montant-vente'
 import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
+import { collecteTvaFrancaise } from '@/lib/territoires'
 import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture } from '@/lib/comptabilite/suivi-reglement-source'
 
 // ============================================================
@@ -49,6 +50,18 @@ async function suiviDuMiroirDepense(db: AutoComptaTx, where: { userId: string; s
   const suivi = ancienne ? { paye: ancienne.paye, modeReglement: ancienne.modeReglement, numeroPiece: ancienne.numeroPiece,
     journal: ancienne.journal, pjUrl: ancienne.pjUrl, notes: ancienne.notes, refFacture: ancienne.refFacture, dateEcheance: ancienne.dateEcheance } : {}
   return { ...suivi, ...reglement }
+}
+
+/**
+ * Date d'un miroir dont la source n'a pas de date : celle du miroir existant,
+ * figée à sa première création ; aujourd'hui seulement s'il n'existe pas encore.
+ * Le miroir est supprimé puis recréé à chaque modification de la source : daté
+ * `new Date()` à chaque fois, l'achat d'un lot sans date d'arrivée quittait son
+ * exercice (parfois clos) dès qu'on changeait une note ou une parcelle.
+ */
+async function dateMiroirDepenseSansSource(db: AutoComptaTx, where: Prisma.DepenseManuelleWhereInput): Promise<Date> {
+  const ancienne = await db.depenseManuelle.findFirst({ where, select: { date: true } })
+  return ancienne?.date ?? new Date()
 }
 
 function inAutoComptaTransaction<T>(
@@ -256,6 +269,7 @@ export async function createDepenseFromLotAnimaux(
   const montantTTC = lot.prixAchatTotal || 0
   return inAutoComptaTransaction(tx, async (db) => {
     const suivi = await suiviDuMiroirDepense(db, { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true }, montantTTC)
+    const dateSansSource = await dateMiroirDepenseSansSource(db, { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true })
     await db.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true },
     })
@@ -264,7 +278,7 @@ export async function createDepenseFromLotAnimaux(
     return db.depenseManuelle.create({
       data: {
         userId,
-        date: lot.dateArrivee ? new Date(lot.dateArrivee) : new Date(),
+        date: lot.dateArrivee ? new Date(lot.dateArrivee) : dateSansSource,
         categorie: 'achats',
         description: `Achat lot ${lot.nom || `#${lot.id}`}`,
         tauxTVA: 5.5,
@@ -402,7 +416,9 @@ export async function createVenteFromVenteProduit(
   else if (venteProduit.type === 'viande') categorie = 'viande'
   else if (venteProduit.type === 'lait') categorie = 'lait'
   else if (venteProduit.type === 'fromage') categorie = 'fromage'
-  else if (venteProduit.type === 'animal_vivant') categorie = 'viande'
+  // « Animaux vivants » dans Transactions, comme les cessions réservées (et
+  // non plus « Viande » : un agneau vendu vivant n'est pas de la viande).
+  else if (venteProduit.type === 'animal_vivant') categorie = 'animal_vivant'
   else if (['miel', 'cire', 'propolis', 'pollen', 'gelee_royale', 'autre_ruche'].includes(venteProduit.type)) {
     categorie = 'produits_ruche'
   }
@@ -495,7 +511,13 @@ export async function upsertVenteFromPaieLait(
     return null
   }
 
-  const taux = 5.5
+  // La paie est saisie HORS TAXE (les autres ventes le sont TTC) : la TVA de
+  // 5,5 % ne s'y ajoute que si l'exploitation en collecte. En franchise, au
+  // remboursement forfaitaire ou non assujettie, la laiterie verse le hors
+  // taxe ; majorer créait 5,5 % de chiffre d'affaires fictif (9 495 € pour
+  // 9 000 €), repris tel quel par le KPI et le FEC.
+  const exploitation = await tx.exploitation.findUnique({ where: { userId }, select: { regimeTva: true } })
+  const taux = collecteTvaFrancaise(exploitation?.regimeTva) ? 5.5 : 0
   const montantTVA = (montantHT * taux) / 100
   const montantTTC = montantHT + montantTVA
   const dateVente = paie.date ? new Date(paie.date) : new Date(paie.annee, paie.mois - 1, 1)
@@ -503,7 +525,11 @@ export async function upsertVenteFromPaieLait(
   const moisLabel = `${String(paie.mois).padStart(2, '0')}/${paie.annee}`
 
   // Scopé userId : sourceId (annee*100+mois) est commun à tous les tenants.
-  const suivi = await suiviDuMiroirVente(tx, { sourceType: 'paie_lait', sourceId, auto: true, userId }, montantTTC)
+  // La paie ne porte pas de statut de paiement : le pointage saisi dans
+  // Transactions (virement pas encore reçu) est conservé à la régénération,
+  // comme pour l'abattage. Sans cela, corriger une pénalité repassait la paie
+  // « payée » (411 → 512 au FEC, sortie des impayés).
+  const suivi = await suiviDuMiroirVente(tx, { sourceType: 'paie_lait', sourceId, auto: true, userId }, montantTTC, true)
   await tx.venteManuelle.deleteMany({
     where: { sourceType: 'paie_lait', sourceId, auto: true, userId },
   })
@@ -956,6 +982,7 @@ export async function createDepenseFromAchatAnimal(
   const montantTTC = animal.prixAchatInclusDansLot ? 0 : animal.prixAchat || 0
   return inAutoComptaTransaction(tx, async (db) => {
     const suivi = await suiviDuMiroirDepense(db, { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true }, montantTTC)
+    const dateSansSource = await dateMiroirDepenseSansSource(db, { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true })
     await db.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true },
     })
@@ -964,7 +991,7 @@ export async function createDepenseFromAchatAnimal(
     return db.depenseManuelle.create({
       data: {
         userId,
-        date: animal.dateArrivee ? new Date(animal.dateArrivee) : new Date(),
+        date: animal.dateArrivee ? new Date(animal.dateArrivee) : dateSansSource,
         categorie: 'achats',
         description: `Achat animal - ${animal.nom || animal.identifiant || `#${animal.id}`}`,
         tauxTVA: 5.5,
@@ -1014,6 +1041,13 @@ export async function upsertVenteFromReservationElevage(
       await suiviDuMiroirVente(tx, { userId, sourceType: 'reservation_elevage', sourceRef, auto: true }),
     )
   }
+  // Solde d'une réservation livrée sans date de remise : la date du miroir
+  // existant est gardée (cf. `dateMiroirDepenseSansSource`), sinon chaque
+  // correction de note le redatait au jour même, d'un exercice à l'autre.
+  const ancienSolde = await tx.venteManuelle.findFirst({
+    where: { userId, sourceType: 'reservation_elevage', sourceRef: `${reservation.id}:solde`, auto: true },
+    select: { date: true },
+  })
   await tx.venteManuelle.deleteMany({
     where: {
       userId,
@@ -1050,7 +1084,7 @@ export async function upsertVenteFromReservationElevage(
     rows.push({
       sourceRef: `${reservation.id}:solde`,
       montant: solde,
-      date: new Date(reservation.dateLivraison || new Date()),
+      date: reservation.dateLivraison ? new Date(reservation.dateLivraison) : ancienSolde?.date ?? new Date(),
       description: `Solde cession animal${reservation.acquereurNom ? ` — ${reservation.acquereurNom}` : ''}`,
       paye: false,
     })

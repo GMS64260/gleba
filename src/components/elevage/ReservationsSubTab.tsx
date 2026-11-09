@@ -66,7 +66,9 @@ export function ReservationsSubTab() {
     try {
       const [r, n] = await Promise.all([
         fetch("/api/elevage/reservations", { cache: "no-store" }).then((x) => (x.ok ? x.json() : { data: [] })),
-        fetch("/api/elevage/naissances", { cache: "no-store" }).then((x) => (x.ok ? x.json() : { data: [] })),
+        // Jusqu'à 500 portées : avec le défaut de 100, toutes filières
+        // confondues, une portée ancienne sortait de la liste.
+        fetch("/api/elevage/naissances?limit=500", { cache: "no-store" }).then((x) => (x.ok ? x.json() : { data: [] })),
       ])
       setReservations(r.data ?? [])
       setNaissances(n.data ?? [])
@@ -145,7 +147,11 @@ export function ReservationsSubTab() {
   // Réservations scopées à l'atelier : celles rattachées à une portée de la
   // filière courante ; celles sans portée restent visibles (pas encore tranchées).
   const naissanceIdsF = new Set(naissancesF.map((n) => n.id))
-  const reservationsVisibles = reservations.filter((r) => r.naissanceId == null || naissanceIdsF.has(r.naissanceId))
+  // Une réservation dont la portée n'est pas chargée reste visible : la masquer
+  // faisait disparaître la réservation et son acompte encaissé.
+  const naissancesChargees = new Set(naissances.map((n) => n.id))
+  const reservationsVisibles = reservations.filter((r) =>
+    r.naissanceId == null || naissanceIdsF.has(r.naissanceId) || !naissancesChargees.has(r.naissanceId))
   const enAttente = reservationsVisibles.filter((r) => r.statut === "attente").length
   const totalAcomptes = reservationsVisibles.filter((r) => r.statut !== "annulee").reduce((s, r) => s + (r.acompte ?? 0), 0)
 

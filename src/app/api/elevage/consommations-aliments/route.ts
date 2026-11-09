@@ -97,7 +97,9 @@ export async function GET(request: NextRequest) {
           count: a._count,
         })),
       },
-      meta: { year: annee, total: consommations.length },
+      // `total` est le nombre réel d'enregistrements de la période, pas la
+      // longueur de la page : l'écran sait ainsi qu'une liste est tronquée.
+      meta: { year: annee, total: stats._count, affiches: consommations.length },
     })
   } catch (error) {
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
@@ -262,10 +264,10 @@ export async function PATCH(request: NextRequest) {
     if (Number.isNaN(id)) {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
     }
-    const existing = await prisma.consommationAliment.findFirst({
+    const avant = await prisma.consommationAliment.findFirst({
       where: { id, userId },
     })
-    if (!existing) {
+    if (!avant) {
       return NextResponse.json({ error: 'Consommation introuvable' }, { status: 404 })
     }
 
@@ -289,7 +291,7 @@ export async function PATCH(request: NextRequest) {
     }
     // Même contrôle qu'à la création, quand l'aliment change (une consommation
     // déjà enregistrée reste modifiable telle quelle).
-    if (alimentId !== existing.alimentId && !await alimentAccessible(userId, alimentId)) {
+    if (alimentId !== avant.alimentId && !await alimentAccessible(userId, alimentId)) {
       return NextResponse.json({ error: MESSAGE_ALIMENT_INACCESSIBLE, champ: 'alimentId' }, { status: 400 })
     }
 
@@ -297,6 +299,13 @@ export async function PATCH(request: NextRequest) {
     // si changement, puis on applique le delta sur le nouvel.
     const updated = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      // L'ancienne quantité et l'ancien aliment se relisent sous le mutex : pris
+      // sur la lecture d'avant transaction, deux corrections envoyées ensemble
+      // appliquaient chacune l'écart avec la valeur d'origine au stock.
+      const existing = await tx.consommationAliment.findFirst({
+        where: { id, userId },
+        select: { alimentId: true, quantite: true },
+      }) ?? avant
       if (existing.alimentId !== alimentId) {
         await tx.userStockAliment.upsert({
           where: { userId_alimentId: { userId, alimentId: existing.alimentId } },

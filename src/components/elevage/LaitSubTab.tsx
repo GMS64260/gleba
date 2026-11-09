@@ -729,7 +729,10 @@ function CollecteView() {
       })
       const json = await res.json()
       if (!res.ok) {
-        toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec de la saisie" })
+        toast({ variant: "destructive", title: "Traite non enregistrée", description: json.error || "Échec de la saisie" })
+        // La grille revient à ce qui est enregistré : la cellule ne garde pas
+        // une valeur que le serveur a refusée.
+        reload()
       } else {
         // Ticket cms1v9rj5 — le POST signale l'écartement automatique (délai
         // d'attente vétérinaire) via `info` : sans ce toast, l'utilisateur ne
@@ -739,6 +742,9 @@ function CollecteView() {
         }
         reload()
       }
+    } catch {
+      toast({ variant: "destructive", title: "Traite non enregistrée", description: "Connexion interrompue : la valeur saisie n'a pas été enregistrée." })
+      reload()
     } finally {
       setSavingKey(null)
     }
@@ -1286,6 +1292,12 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
   const volumeSelection = collectesDispo
     .filter((c) => selection.has(c.id))
     .reduce((s, c) => s + Number(c.quantiteLitres), 0)
+  // Fabrication sans collecte saisie (reprise d'un historique, lait acheté) : la
+  // route l'admet avec un volume déclaré, mais l'écran exigeait une collecte
+  // cochée. Sans traite saisie, aucun lot n'entrait en cave et aucune vente de
+  // fromage n'était possible.
+  const [volumeSansCollecte, setVolumeSansCollecte] = React.useState("")
+  const volumeFabrication = selection.size > 0 ? volumeSelection : Math.max(0, Number(volumeSansCollecte.replace(",", ".")) || 0)
 
   const submit = async () => {
     setSaving(true)
@@ -1298,7 +1310,7 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
         body: JSON.stringify({
           dateFabrication: form.dateFabrication,
           typeFromage: form.typeFromage,
-          volumeLaitUtiliseL: volumeSelection,
+          volumeLaitUtiliseL: volumeFabrication,
           nbPieces: Math.max(1, parseInt(form.nbPieces, 10) || 1),
           poidsTotalKg: Math.max(0, parseFloat(form.poidsTotalKg.replace(",", ".")) || 0),
           dluo: form.dluo || null,
@@ -1385,6 +1397,24 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
           </div>
         </div>
 
+        {selection.size === 0 && (
+          <div className="mt-4 space-y-1">
+            <Label htmlFor="volume-sans-collecte">Volume de lait utilisé, sans collecte saisie (L)</Label>
+            <Input
+              id="volume-sans-collecte"
+              type="number"
+              min={0}
+              step="0.1"
+              value={volumeSansCollecte}
+              onChange={(e) => setVolumeSansCollecte(e.target.value)}
+              placeholder="ex. 40"
+            />
+            <p className="text-xs text-muted-foreground">
+              À renseigner seulement si les traites de ce lait ne sont pas saisies (reprise d’un historique, lait acheté). Sinon cochez les collectes ci-dessous : leur volume est repris.
+            </p>
+          </div>
+        )}
+
         <div className="mt-4">
           <div className="flex items-center justify-between mb-2">
             <Label>Collectes disponibles ({collectesDispo.length})</Label>
@@ -1433,7 +1463,7 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => props.onOpenChange(false)}>Annuler</Button>
-          <Button onClick={submit} disabled={saving || volumeSelection === 0}>
+          <Button onClick={submit} disabled={saving || volumeFabrication === 0}>
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
             Créer le lot
           </Button>
@@ -1453,7 +1483,8 @@ function LactationView() {
   const [data, setData] = React.useState<{
     dim: number | null
     courbe: { dim: number; date: string; volume: number; moyenne7j: number }[]
-    moyenne7j?: number
+    moyenne7j?: number | null
+    joursMesures?: number
     lactationLongue?: boolean
     suggererTarissement?: boolean
   } | null>(null)
@@ -1528,7 +1559,11 @@ function LactationView() {
           <>
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <Badge variant="outline">DIM : {data.dim ?? "—"} j</Badge>
-              <Badge variant="outline">Moyenne 7 j : {data.moyenne7j ?? 0} L/j</Badge>
+              <Badge variant="outline">
+                {data.moyenne7j != null
+                  ? `Moyenne des ${data.joursMesures ?? 7} derniers jours mesurés : ${data.moyenne7j} L/j`
+                  : "Moyenne récente : pas assez de traites individuelles"}
+              </Badge>
               {data.suggererTarissement && (
                 <Badge className="bg-amber-100 text-amber-800">⚠ Tarissement à envisager</Badge>
               )}

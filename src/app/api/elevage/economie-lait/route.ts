@@ -19,6 +19,7 @@
  * et soins existants.
  */
 
+import { collecteTvaFrancaise } from '@/lib/territoires'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -217,7 +218,11 @@ export async function GET(request: NextRequest) {
     // Lait livré à la laiterie (paie mensuelle). Exprimé en TTC (× 1,055) pour
     // rester homogène avec caLaitCru/caFromage (issus de VenteProduit.prixTotal,
     // traité en TTC) dans la valorisation — sinon la marge mélangeait HT et TTC.
-    const caLaitLivre = paies.reduce((s, p) => s + Number(p.montantHT), 0) * 1.055
+    // La majoration ne vaut que si l'exploitation collecte la TVA, comme pour
+    // l'écriture comptable de la paie : en franchise ou au remboursement
+    // forfaitaire, la laiterie verse le hors taxe.
+    const exploitation = await prisma.exploitation.findUnique({ where: { userId }, select: { regimeTva: true } })
+    const caLaitLivre = paies.reduce((s, p) => s + Number(p.montantHT), 0) * (collecteTvaFrancaise(exploitation?.regimeTva) ? 1.055 : 1)
     const litresLivres = paies.reduce((s, p) => s + Number(p.litres), 0)
 
     // Coût alimentaire affecté

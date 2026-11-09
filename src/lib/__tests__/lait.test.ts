@@ -227,3 +227,38 @@ describe("lait", () => {
     })
   })
 })
+
+describe('productionRecente', () => {
+  const ref = new Date('2026-11-09T10:00:00Z')
+  const traite = (jour: string, litres: number) => ({ date: new Date(`${jour}T00:00:00Z`), quantiteLitres: litres })
+
+  it('fait la moyenne des jours mesurés, pas des jours du calendrier', async () => {
+    const { productionRecente } = await import('@/lib/lait')
+    // Trois traites sur quatorze jours : 2 L/j mesurés, pas 0,86 L/j.
+    expect(productionRecente([traite('2026-11-09', 2), traite('2026-11-05', 2), traite('2026-11-01', 2)], ref))
+      .toEqual({ moyenne: 2, joursMesures: 3 })
+  })
+
+  it('ne conclut pas avec trop peu de jours mesurés (contrôle laitier mensuel)', async () => {
+    const { productionRecente } = await import('@/lib/lait')
+    expect(productionRecente([traite('2026-11-03', 3.1)], ref)).toEqual({ moyenne: null, joursMesures: 1 })
+    expect(productionRecente([], ref)).toEqual({ moyenne: null, joursMesures: 0 })
+  })
+
+  it('ignore les traites futures et celles de plus de quatorze jours', async () => {
+    const { productionRecente } = await import('@/lib/lait')
+    expect(productionRecente([traite('2026-11-10', 9), traite('2026-10-20', 9), traite('2026-11-08', 1), traite('2026-11-07', 1), traite('2026-11-06', 1)], ref))
+      .toEqual({ moyenne: 1, joursMesures: 3 })
+  })
+})
+
+describe('courbeLactation', () => {
+  it('s’arrête à aujourd’hui : aucun jour futur à 0 L', async () => {
+    const { courbeLactation } = await import('@/lib/lait')
+    const miseBas = new Date(Date.now() - 3 * 86_400_000)
+    const courbe = courbeLactation([], miseBas)
+    const aujourdhui = new Date().toISOString().split('T')[0]
+    expect(courbe.at(-1)?.date).toBe(aujourdhui)
+    expect(courbe).toHaveLength(4)
+  })
+})
