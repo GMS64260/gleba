@@ -545,16 +545,24 @@ export async function computeStocksUnifies(userId: string) {
   // Stock œufs
   // BUG #7 : valoriser avec prix moyen unitaire récent (ventes 90 j).
   if (stockOeufs.stockNet > 0 || stockOeufs.detail.produits > 0) {
-    const valeurOeufs = prixOeufUnit ? stockOeufs.stockNet * prixOeufUnit : null
+    // La quantité reste le stock physique ; la VALEUR ne porte que sur les œufs
+    // encore vendables. Une ponte faite pendant un délai d'attente vétérinaire
+    // ne se vendra jamais, un œuf passé la limite de vente non plus : 600 œufs
+    // bloqués étaient valorisés au prix de vente (≈ 180 €). L'alerte de stock
+    // bas suit aussi le vendable.
+    const nonVendables = Math.max(0, stockOeufs.stockNet - stockOeufs.stockVendable)
+    const valeurOeufs = prixOeufUnit ? stockOeufs.stockVendable * prixOeufUnit : null
     stocks.push({
       id: 'oeufs-stock',
       module: 'elevage',
       categorie: 'Oeufs',
-      nom: 'Stock œufs',
+      nom: nonVendables > 0
+        ? `Stock œufs (dont ${nonVendables} non vendables : délai vétérinaire ou limite de vente dépassée)`
+        : 'Stock œufs',
       stock: stockOeufs.stockNet,
       unite: 'oeufs',
       stockMin: 24,
-      alerteBas: stockOeufs.stockNet < 24,
+      alerteBas: stockOeufs.stockVendable < 24,
       valeur: valeurOeufs,
     })
   }
