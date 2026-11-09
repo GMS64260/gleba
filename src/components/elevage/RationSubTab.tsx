@@ -142,6 +142,7 @@ export function RationSubTab() {
   }
 
   const supprimerRation = async (r: RationEnregistree) => {
+    if (!window.confirm(`Supprimer le plan de ration « ${r.nom} » ?`)) return
     const res = await fetch(`/api/elevage/rations?id=${r.id}`, { method: "DELETE" })
     if (res.ok) {
       if (editingId === r.id) setEditingId(null)
