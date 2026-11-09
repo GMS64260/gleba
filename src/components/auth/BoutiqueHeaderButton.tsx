@@ -14,9 +14,11 @@
 import Link from "next/link"
 import { Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useAccesService } from "@/hooks/use-acces-service"
 
 export function BoutiqueHeaderButton() {
-  if (process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE !== "true") {
+  const { acces } = useAccesService()
+  if (process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE !== "true" || !acces?.boutique) {
     return null
   }
   return (

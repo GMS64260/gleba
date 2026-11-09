@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useAccesService } from "@/hooks/use-acces-service"
 import { ConteneurPage } from "@/components/shell/PageEntete"
 import { LayoutGrid } from "lucide-react"
 import {
@@ -120,6 +121,7 @@ async function chargerMeteo(): Promise<(MeteoSemaine & { nbParcelles: number }) 
 
 
 export function Accueil() {
+  const { acces } = useAccesService()
   const [accueil, setAccueil] = React.useState<Chargement<AccueilAujourdhui>>(INITIAL)
   const [meteo, setMeteo] = React.useState<Chargement<MeteoSemaine & { nbParcelles: number }>>(INITIAL)
   const [tentative, setTentative] = React.useState(0)
@@ -160,6 +162,7 @@ export function Accueil() {
 
   React.useEffect(() => {
     let annule = false
+    if (!acces?.meteo) { setMeteo({ donnees: null, erreur: null, chargement: false }); return }
     chargerMeteo()
       .then((donnees) => {
         if (!annule) setMeteo({ donnees, erreur: null, chargement: false })
@@ -170,7 +173,7 @@ export function Accueil() {
     return () => {
       annule = true
     }
-  }, [])
+  }, [acces?.meteo])
 
   const marquerSoldee = React.useCallback((e: ElementAujourdhui) => setSoldees((s) => new Set(s).add(e.id)), [])
   const restaurer = React.useCallback((e: ElementAujourdhui) => {
@@ -337,9 +340,9 @@ export function Accueil() {
           <TuilePlan plan={plan} nomFerme={donnees?.exploitation.nom ?? null} chargement={accueil.chargement} rang={rang} />
         )
       case "semaine":
-        return <TuileSemaine meteo={meteo.donnees} chargement={meteo.chargement} erreur={meteo.erreur} rang={rang} />
+        return acces?.meteo ? <TuileSemaine meteo={meteo.donnees} chargement={meteo.chargement} erreur={meteo.erreur} rang={rang} /> : null
       case "agent":
-        return <TuileAgent alerteMeteo={alerteMeteoPrioritaire(meteo.donnees?.alertes)} elementCritique={elementCritique} chargement={accueil.chargement || meteo.chargement} rang={rang} />
+        return acces?.ia ? <TuileAgent alerteMeteo={alerteMeteoPrioritaire(meteo.donnees?.alertes)} elementCritique={elementCritique} chargement={accueil.chargement || meteo.chargement} rang={rang} /> : null
       case "elevage":
         return <TuileElevage elevage={donnees?.elevage ?? null} chargement={accueil.chargement} rang={rang} />
       case "recoltes-semaine":

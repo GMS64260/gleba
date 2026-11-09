@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { arreterAvantSuppression } from "@/lib/abonnement/stripe"
 import { requireAdminApi, hashPassword } from "@/lib/auth-utils"
 import { reprendreReferentielCommunaute, COMMUNAUTE_USER_ID } from "@/lib/account-lifecycle"
 
@@ -196,6 +197,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         { status: 404 }
       )
     }
+
+    await arreterAvantSuppression(id)
 
     // Décision produit #2 — reprise par la communauté : dans une transaction, on
     // réattribue d'abord les entrées de référentiel PARTAGÉES du membre à la

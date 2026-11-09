@@ -26,10 +26,11 @@ import { checkRateLimit, getClientIP } from "./rate-limit"
 import { touchActivity } from "./activity"
 import { headers } from "next/headers"
 import { resoudreContexteExploitation } from "./exploitation/membres"
-import { EN_TETE_MUTATION, requeteEstMutation } from "./exploitation/entete-mutation"
+import { EN_TETE_MUTATION, requeteEstMutation, valeurEnteteMutation } from "./exploitation/entete-mutation"
 import { refusMutationSiLectureSeule } from "./exploitation/garde-session"
 import type { ModuleId } from "./modules"
 import type { ContexteExploitation, RoleExploitation } from "./exploitation/roles"
+import { refusAbonnementApi } from "./abonnement/serveur"
 
 export type SessionExploitation = Session & {
   user: Session["user"] & {
@@ -158,9 +159,12 @@ export async function requireAuthApi(request?: Request): Promise<
   // changement de rôle prend effet à la requête suivante.
   const refus = refusMutationSiLectureSeule(
     avecContexte,
-    await requeteCouranteEstMutation(),
+    request ? requeteEstMutation(valeurEnteteMutation(request.method, new URL(request.url).pathname)) : await requeteCouranteEstMutation(),
   )
   if (refus) return { error: refus, session: null }
+
+  const refusService = await refusAbonnementApi(avecContexte.user.id, request)
+  if (refusService) return { error: refusService, session: null }
 
   // Cf. requireAuth : pas de comptage d'activité pendant une consultation admin.
   if (!session.user.impersonatedBy) touchActivity(avecContexte.user.acteurId)

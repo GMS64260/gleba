@@ -10,6 +10,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { MESSAGE_ALIMENT_INACCESSIBLE, alimentAccessible } from '@/lib/elevage/aliment-accessible'
+import { SELECT_FOURNISSEUR_SANS_BANQUE } from '@/lib/comptabilite/fournisseur-public'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest) {
           origine: 'prive',
         },
         include: {
-          fournisseur: true,
+          fournisseur: { select: SELECT_FOURNISSEUR_SANS_BANQUE },
         },
       }),
       // Aussi créer le stock per-user si un stock est fourni

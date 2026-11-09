@@ -16,10 +16,10 @@ export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Créer un compte Gleba · Gratuit pendant la bêta",
+    absolute: "Créer un compte Gleba · carnet gratuit",
   },
   description:
-    "Créez votre compte Gleba en 1 minute, gratuit pendant la bêta. Accédez immédiatement à la planification maraîchère, au verger, à l'élevage et à la comptabilité.",
+    "Créez votre carnet de ferme gratuit et essayez Complet (assistant IA, météo, boutique, gestion) pendant trois mois, sans carte bancaire. Ensuite, Complet coûte 12 € HT/mois ; le carnet reste gratuit.",
   alternates: {
     canonical: "https://gleba.fr/register",
   },

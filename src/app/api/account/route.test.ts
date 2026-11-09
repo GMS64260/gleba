@@ -18,8 +18,10 @@ const mocks = vi.hoisted(() => ({
   reprendreReferentielCommunaute: vi.fn(),
   supprimerFichiersUtilisateur: vi.fn(),
   sendMail: vi.fn(),
+  arreterPaiements: vi.fn(),
 }))
 
+vi.mock("@/lib/abonnement/stripe", () => ({ arreterAvantSuppression: mocks.arreterPaiements }))
 vi.mock("@/lib/auth-utils", () => ({
   requireAuthApi: mocks.requireAuthApi,
   verifyPassword: mocks.verifyPassword,
@@ -69,6 +71,7 @@ beforeEach(() => {
   )
   mocks.supprimerFichiersUtilisateur.mockResolvedValue({ dossiersSupprimes: 0 })
   mocks.sendMail.mockResolvedValue(undefined)
+  mocks.arreterPaiements.mockResolvedValue(undefined)
 })
 
 describe("DELETE /api/account — compte de démonstration", () => {
@@ -89,6 +92,17 @@ describe("DELETE /api/account — compte de démonstration", () => {
 })
 
 describe("DELETE /api/account — compte réel", () => {
+  it("ne supprime pas le compte si l’arrêt des paiements n’a pas été confirmé", async () => {
+    mocks.userFindUnique.mockResolvedValue(compte("synthetique@example.invalid"))
+    mocks.verifyPassword.mockResolvedValue(true)
+    mocks.arreterPaiements.mockRejectedValueOnce(new Error("Prestataire indisponible"))
+    const res = await DELETE(requete())
+    expect(res.status).toBe(500)
+    expect(mocks.transaction).not.toHaveBeenCalled()
+    expect(mocks.supprimerFichiersUtilisateur).not.toHaveBeenCalled()
+    expect(mocks.sendMail).not.toHaveBeenCalled()
+  })
+
   it("garde la revérification du mot de passe", async () => {
     mocks.userFindUnique.mockResolvedValue(compte("maraicher@example.com"))
     mocks.verifyPassword.mockResolvedValue(false)
@@ -106,6 +120,8 @@ describe("DELETE /api/account — compte réel", () => {
     const res = await DELETE(requete())
 
     expect(res.status).toBe(200)
+    expect(mocks.arreterPaiements).toHaveBeenCalledWith("u1")
+    expect(mocks.arreterPaiements.mock.invocationCallOrder[0]).toBeLessThan(mocks.userDelete.mock.invocationCallOrder[0])
     expect(mocks.userDelete).toHaveBeenCalledWith({ where: { id: "u1" } })
   })
 })

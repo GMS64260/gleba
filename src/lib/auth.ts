@@ -350,6 +350,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     // Succès Google journalisé ici (et non dans le callback signIn) : pour un
     // nouveau compte, `user` y est la ligne créée en base, avec le bon id.
     async signIn({ user, account }) {
+      if (user.id && !user.impersonatedBy && process.env.GLEBA_ABONNEMENTS_ACTIFS === "true") {
+        const { demarrerEssai } = await import("@/lib/abonnement/serveur")
+        await demarrerEssai(user.id)
+      }
       if (account?.provider === "google" && user.email && user.id) {
         logLogin(user.email, true, "ok", user.id)
       }

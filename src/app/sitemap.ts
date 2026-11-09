@@ -13,7 +13,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const marketingUpdatedAt = new Date("2026-08-01");
   // Refonte de la vitrine dans la charte « carnet de ferme » et écran
   // Aujourd'hui : accueil et pages métier réécrits le 2026-10-10.
-  const vitrineUpdatedAt = new Date("2026-10-10");
+  const vitrineUpdatedAt = new Date("2026-11-08");
   const seoPriorityByPath: Record<string, number> = {
     "/logiciel-micro-ferme": 1.0,
     "/logiciel-maraichage": 0.95,
@@ -58,6 +58,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Pages cibles SEO (longue traîne — priorité élevée)
   const seoTargetPages: MetadataRoute.Sitemap = [
+    "/tarifs",
     "/logiciel-maraichage",
     "/planification-maraichage",
     "/rotation-cultures-maraichage",

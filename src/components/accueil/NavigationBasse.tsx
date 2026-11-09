@@ -7,6 +7,7 @@ import { MoreHorizontal, Pencil } from "lucide-react"
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { useModules } from "@/hooks/use-modules"
+import { useAccesService } from "@/hooks/use-acces-service"
 import { ENTREES_NAVIGATION, entreeNavigationVisible, estEntreeNavigationActive, getEntreeNavigation, type EntreeNavigation } from "@/lib/navigation-principale"
 import { cn } from "@/lib/utils"
 
@@ -16,13 +17,14 @@ const CLASSE_ENTREE = "flex min-h-12 min-w-0 flex-col items-center justify-cente
 export function NavigationBasse({ className }: { className?: string }) {
   const pathname = usePathname()
   const { modules } = useModules()
+  const { acces } = useAccesService()
   const boutique = process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE === "true"
   const [ouvert, setOuvert] = React.useState(false)
   const ref = React.useRef<HTMLElement | null>(null)
   const proprietaire = React.useId()
-  const entrees = ENTREES_NAVIGATION.filter(e => entreeNavigationVisible(e, modules, boutique))
+  const entrees = ENTREES_NAVIGATION.filter(e => entreeNavigationVisible(e, modules, boutique, acces))
   const culture = getEntreeNavigation("maraichage")
-  const quatrieme = entreeNavigationVisible(culture, modules, boutique) ? culture : getEntreeNavigation("interventions")
+  const quatrieme = entreeNavigationVisible(culture, modules, boutique, acces) ? culture : modules.includes("verger") ? getEntreeNavigation("verger") : modules.includes("elevage") ? getEntreeNavigation("elevage") : getEntreeNavigation("parametres")
   const directes = [getEntreeNavigation("aujourdhui"), getEntreeNavigation("jardin"), quatrieme]
   const plusActif = entrees.some(e => !directes.some(d => d.id === e.id) && estEntreeNavigationActive(pathname, e.href))
 

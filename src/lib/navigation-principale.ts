@@ -2,6 +2,7 @@ import type { ComponentType } from "react"
 import { Bird, CalendarCheck, ClipboardList, CloudSun, Map as MapIcon, Megaphone, Settings, Sprout, Store, TreeDeciduous, Wallet } from "lucide-react"
 import type { ModuleId } from "@/lib/modules"
 import type { VersionAccueil } from "@/lib/accueil/preference"
+import type { AccesService } from "@/lib/abonnement/politique"
 
 export type PagePrincipaleId = "aujourdhui" | "jardin" | "maraichage" | "interventions" | "verger" | "elevage" | "comptabilite" | "meteo"
 export type PageNavigationId = PagePrincipaleId | "communaute" | "parametres" | "boutique"
@@ -45,7 +46,11 @@ export function estEntreeNavigationActive(pathname: string | null, href: string)
   return Boolean(pathname && (pathname === href || pathname.startsWith(`${href}/`)))
 }
 
-export function entreeNavigationVisible(entree: EntreeNavigation, modules: readonly ModuleId[], boutique: boolean): boolean {
+export function entreeNavigationVisible(entree: EntreeNavigation, modules: readonly ModuleId[], boutique: boolean, acces?: AccesService | null): boolean {
+  if (acces !== undefined) {
+    if (entree.id === "meteo" && !acces?.meteo) return false
+    if (entree.id === "boutique" && !acces?.boutique) return false
+  }
   return (!entree.module || modules.includes(entree.module)) && (!entree.feature || boutique)
 }
 

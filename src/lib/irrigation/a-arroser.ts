@@ -14,6 +14,7 @@
  */
 
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
+import { serviceAutorise } from '@/lib/abonnement/serveur'
 import { contexteQuantiteVersee } from '@/lib/irrigation/quantite-versee'
 import type { CultureHorsTournee } from '@/lib/irrigation/hors-tournee'
 
@@ -206,6 +207,7 @@ export function tourneeDuJour(
 /** Tournée du jour d'un compte, en lecture seule. */
 export async function chargerTourneeDuJour(userId: string, annee: number): Promise<TourneeDuJour> {
   if (annee !== new Date().getFullYear()) return TOURNEE_VIDE
+  if (!await serviceAutorise(userId, 'meteo')) return TOURNEE_VIDE
   const conseil = await computeConseilIrrigation(userId, annee)
   return tourneeDuJour(conseil.data, annee)
 }

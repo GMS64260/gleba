@@ -4,6 +4,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useModules } from "@/hooks/use-modules"
+import { useAccesService } from "@/hooks/use-acces-service"
 import { ENTREES_PRINCIPALES, ENTREES_SECONDAIRES, entreeNavigationVisible, estEntreeNavigationActive, type EntreeNavigation } from "@/lib/navigation-principale"
 import { cn } from "@/lib/utils"
 
@@ -25,6 +26,7 @@ export interface AccueilRailProps {
 
 export function AccueilRail({ nomFerme, sousTitreFerme, className }: AccueilRailProps) {
   const { modules } = useModules()
+  const { acces } = useAccesService()
   const pathname = usePathname()
   const boutique = process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE === "true"
 
@@ -45,9 +47,9 @@ export function AccueilRail({ nomFerme, sousTitreFerme, className }: AccueilRail
         <Image src="/gleba-logo.png" alt="" width={120} height={80} className="h-7 w-auto rounded-md" priority />
         Gleba
       </Link>
-      {ENTREES_PRINCIPALES.filter(e => entreeNavigationVisible(e, modules, boutique)).map(lien)}
+      {ENTREES_PRINCIPALES.filter(e => entreeNavigationVisible(e, modules, boutique, acces)).map(lien)}
       <div className="my-2 h-px bg-lin" aria-hidden />
-      {ENTREES_SECONDAIRES.filter(e => entreeNavigationVisible(e, modules, boutique)).map(lien)}
+      {ENTREES_SECONDAIRES.filter(e => entreeNavigationVisible(e, modules, boutique, acces)).map(lien)}
       {nomFerme && (
         <div className="mt-auto flex items-center gap-2.5 rounded-lg border border-lin px-2.5 py-2 text-[13px]">
           <span aria-hidden className="h-7 w-7 shrink-0 rounded-md border border-lin bg-paille-doux" />

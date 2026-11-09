@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { BandeauService } from "@/components/abonnement/BandeauService";
+import { FonctionService, GardePageService } from "@/components/abonnement/AccesService";
 import { Space_Grotesk, Inter, JetBrains_Mono, Fraunces } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
@@ -140,46 +142,6 @@ export const viewport = {
 };
 
 // JSON-LD Structured Data — multiple schemas pour signaler Software + Organization + WebSite
-const jsonLdSoftware = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "Gleba",
-  applicationCategory: "BusinessApplication",
-  applicationSubCategory: "Farm Management Software",
-  operatingSystem: "Web, Linux (Docker)",
-  description: "Logiciel libre de gestion pour micro-fermes professionnelles ou en installation : planification maraîchère, verger, élevage, traçabilité et gestion. L'écran Aujourd'hui rassemble chaque matin ce qu'il y a à faire, classé par urgence.",
-  url: "https://gleba.fr",
-  author: {
-    "@type": "Person",
-    name: "Guillaume Gomes",
-  },
-  license: "https://www.gnu.org/licenses/agpl-3.0.html",
-  image: "https://gleba.fr/og-image.png",
-  screenshot: "https://gleba.fr/screenshots/vitrine-plan-bureau.webp",
-  inLanguage: "fr-FR",
-  isAccessibleForFree: true,
-  // Le code est gratuit ; le service hébergé l'est pendant la bêta seulement
-  // (Gleba-produit § Modèle économique) : ne pas promettre davantage ici.
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "EUR",
-    description: "Logiciel libre AGPL-3.0 ; service hébergé sur gleba.fr gratuit pendant la bêta.",
-  },
-  featureList: [
-    "Écran Aujourd'hui : tâches du jour classées par urgence",
-    "Planification maraîchère, calendrier de semis et rotation des cultures",
-    "Plan 2D et vue 3D de la ferme sur photo aérienne et cadastre",
-    "Météo à la parcelle et conseils d'irrigation",
-    "Suivi du verger arbre par arbre",
-    "Ateliers d'élevage : lots, soins, naissances, productions",
-    "Registre phytosanitaire (AMM, dose, DAR, ZNT)",
-    "Stocks, boutique de vente directe, factures et TVA",
-    "Assistant IA connecté aux données de l'exploitation",
-    "Auto-hébergement Docker Compose et export complet des données",
-  ],
-};
-
 const jsonLdOrganization = {
   "@context": "https://schema.org",
   "@type": "Organization",
@@ -218,10 +180,6 @@ export default function RootLayout({
       <head>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdSoftware) }}
-        />
-        <script
-          type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdOrganization) }}
         />
         <script
@@ -237,8 +195,9 @@ export default function RootLayout({
           <BandeauExploitation />
           <OnboardingRedirect />
           <CoquilleV2 />
-          {children}
-          <ChatBubble />
+          <BandeauService />
+          <GardePageService>{children}</GardePageService>
+          <FonctionService fonction="ia"><ChatBubble /></FonctionService>
           <GlobalSearch />
           <Toaster />
           <GlobalDialogHost />

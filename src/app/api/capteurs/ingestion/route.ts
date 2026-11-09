@@ -22,6 +22,7 @@
  */
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { serviceAutorise } from "@/lib/abonnement/serveur"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { adapter } from "@/lib/capteurs/adaptateurs"
 import { consommerBudgets, consommerOuEspacer, rendreBudget } from "@/lib/capteurs/budget"
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
   }
   if (unitePrise) rendreBudget(echecs, 1)
   noterEmpreinteAcceptee(empreinte)
+  if (!await serviceAutorise(connecteur.userId, "commun")) return NextResponse.json({ error: "Le carnet est en lecture seule.", code: "FORMULE_INSUFFISANTE" }, { status: 403 })
   if (!connecteur.actif) {
     return NextResponse.json({ error: "Connecteur désactivé dans Gleba (Paramètres > Capteurs)" }, { status: 403 })
   }

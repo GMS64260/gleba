@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useAccesService } from "@/hooks/use-acces-service"
 import Link from "next/link"
 import {
   Cloud,
@@ -50,6 +51,10 @@ function WeatherIconSmall({ code }: { code: number }) {
 }
 
 export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) {
+  const { acces } = useAccesService()
+  return acces?.meteo ? <HeaderMeteoWidgetInterne showLune={showLune} /> : null
+}
+function HeaderMeteoWidgetInterne({ showLune = false }: { showLune?: boolean }) {
   const [parcelle, setParcelle] = React.useState<Parcelle | null>(null)
   const [meteo, setMeteo] = React.useState<MeteoResume | null>(null)
   const [loading, setLoading] = React.useState(true)

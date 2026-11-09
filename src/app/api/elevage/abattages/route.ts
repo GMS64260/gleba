@@ -1,3 +1,4 @@
+import { ErreurCommerciale } from '@/lib/commercial/regles'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -147,6 +148,7 @@ export async function GET(request: NextRequest) {
       meta: { year: annee, total: abattages.length },
     })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/abattages error:', error)
     return NextResponse.json(
@@ -271,6 +273,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: abattage }, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('POST /api/elevage/abattages error:', error)
@@ -476,6 +479,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: abattage })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/abattages error:', error)
@@ -566,6 +570,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/elevage/abattages error:', error)

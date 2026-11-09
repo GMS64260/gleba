@@ -200,3 +200,33 @@ describe("connexion Stripe transférée (revue du 2026-10-30)", () => {
     expect(connexion).toMatchObject({ actif: false, jetonChiffre: "", verrouSynchroJusqua: null })
   })
 })
+
+describe("sauvegarde de compte : rien qui appartienne à l'instance ou aux autres comptes (revue du 2026-11-04)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.rows = {
+      parametre: [{ id: "smtp.pass", valeur: "secret-de-l-instance" }],
+      fournisseur: [{ id: "Graines SA", email: "contact@graines.example", iban: "FR7630006000011234567890189", bic: "AGRIFRPP", ribCle: "89", banqueNom: "Banque" }],
+      aliment: [{ id: "foin", nom: "Foin", ownerUserId: null }],
+    }
+    mocks.findMany.mockImplementation(async (name: string) => mocks.rows[name] ?? [])
+    mocks.count.mockImplementation(async (name: string) => (mocks.rows[name] ?? []).length)
+  })
+
+  it("n'exporte jamais les réglages de l'instance (SMTP, VAPID…)", async () => {
+    const res = await exportAccount("compte-a")
+    expect(res.data.Parametre).toBeUndefined()
+    expect(mocks.findMany.mock.calls.some(([name]) => name === "parametre")).toBe(false)
+  })
+
+  it("exporte les fournisseurs sans IBAN, BIC ni clé RIB", async () => {
+    const res = await exportAccount("compte-a")
+    expect(res.data.Fournisseur).toEqual([{ id: "Graines SA", email: "contact@graines.example", banqueNom: "Banque" }])
+  })
+
+  it("ne lit que les aliments officiels et ceux du compte", async () => {
+    await exportAccount("compte-a")
+    const appel = mocks.findMany.mock.calls.find(([name]) => name === "aliment")
+    expect(appel?.[1]).toEqual({ where: { OR: [{ ownerUserId: null }, { ownerUserId: "compte-a" }] } })
+  })
+})

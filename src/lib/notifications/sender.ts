@@ -11,6 +11,7 @@
  */
 
 import { sendMail, smtpConfigure } from "@/lib/mail"
+import { serviceAutorise } from "@/lib/abonnement/serveur"
 import { getSetting } from "@/lib/settings"
 import { getOrCreateUnsubscribeToken, listUnsubscribeHeaders, unsubscribeUrl } from "@/lib/unsubscribe"
 import {
@@ -120,6 +121,7 @@ export async function envoyerAlertesMeteoTempsReel(): Promise<number> {
 }
 
 async function traiterMeteoUtilisateur(user: DestinataireNotification): Promise<number> {
+  if (!await serviceAutorise(user.id, "meteo")) return 0
   const coords = await getCoordsUtilisateur(user.id)
   if (coords.length === 0) return 0
 
@@ -267,7 +269,7 @@ export async function envoyerResumeQuotidien(): Promise<number> {
       // sur l'alerte dédiée. On respecte la préférence des deux côtés.
       const [taches, alertesMeteo, tachesItpSemaine, stocksBas] = await Promise.all([
         chargerTachesDuJour(user.id),
-        recupererAlertesMeteoJour(user.id),
+        serviceAutorise(user.id, "meteo").then(autorise => autorise ? recupererAlertesMeteoJour(user.id) : []),
         prefs.itpSemaine ? chargerTachesItpSemaine(user.id) : Promise.resolve([]),
         prefs.stocks ? chargerStocksBas(user.id) : Promise.resolve([]),
       ])

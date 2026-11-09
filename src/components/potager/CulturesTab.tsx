@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { useAccesService } from "@/hooks/use-acces-service"
 import { etatCulture } from "@/lib/cultures/etat"
 import type { PluviometrieBulkItem } from "@/app/api/meteo/pluviometrie-bulk/route"
 
@@ -325,6 +326,7 @@ interface CulturesTabProps {
 }
 
 export function CulturesTab({ year }: CulturesTabProps = {}) {
+  const { acces } = useAccesService()
   const router = useRouter()
   const { toast } = useToast()
   const [data, setData] = React.useState<CultureWithRelations[]>([])
@@ -458,7 +460,7 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
       const plancheIds = [...new Set(
         cultures.map(c => c.planche?.id).filter(Boolean) as string[]
       )]
-      if (plancheIds.length > 0) {
+      if (plancheIds.length > 0 && acces?.meteo) {
         fetch(`/api/meteo/pluviometrie-bulk?ids=${plancheIds.join(',')}`)
           .then(r => r.json())
           .then((items: PluviometrieBulkItem[]) => {
@@ -479,7 +481,7 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
         setIsLoading(false)
       }
     }
-  }, [pageIndex, selectedEtat, year, toast])
+  }, [pageIndex, selectedEtat, year, toast, acces?.meteo])
 
   React.useEffect(() => {
     fetchData()

@@ -1,3 +1,4 @@
+import { serviceAutorise } from "@/lib/abonnement/serveur"
 /**
  * Couche DONNÉES du système de notifications.
  *
@@ -243,6 +244,7 @@ export async function fetchMeteoParCoord(
 
 /** Alertes météo notifiables du jour (horizon 24 h) pour un utilisateur. */
 export async function recupererAlertesMeteoJour(userId: string): Promise<AlerteMeteoNotification[]> {
+  if (!await serviceAutorise(userId, "meteo")) return []
   const coords = await getCoordsUtilisateur(userId)
   if (coords.length === 0) return []
 

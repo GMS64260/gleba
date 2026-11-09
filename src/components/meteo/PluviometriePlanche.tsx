@@ -1,5 +1,7 @@
 "use client"
 
+import { useAccesService } from "@/hooks/use-acces-service"
+
 /**
  * Composant PluviometriePlanche
  * Affiche la pluviométrie (historique 30j + prévisions 7j) pour une planche.
@@ -122,7 +124,11 @@ function PluieBarChart({
   )
 }
 
-export function PluviometriePlanche({ plancheId }: Props) {
+export function PluviometriePlanche(props: Props) {
+  const { acces } = useAccesService()
+  return acces?.meteo ? <PluviometriePlancheInterne {...props} /> : null
+}
+function PluviometriePlancheInterne({ plancheId }: Props) {
   const [data, setData] = React.useState<PluviometriePlancheResponse | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)

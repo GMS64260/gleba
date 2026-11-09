@@ -18,6 +18,7 @@
 
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { exigerCapacite } from '@/lib/abonnement/serveur'
 import { joursEntre, volumeArrosage, type ResultatBilanSol } from '@/lib/irrigation/bilan-sol'
 import { bilanCulture, dernierArrosageDuLieu } from '@/lib/irrigation/bilan-culture'
 import { typeSousAbri } from '@/lib/irrigation/abri'
@@ -142,6 +143,7 @@ export function whereCulturesEnPlace(annee: number, maintenant: Date = new Date(
 }
 
 export async function computeConseilIrrigation(userId: string, annee: number) {
+  await exigerCapacite(userId, "meteo")
   // 1. Récupérer cultures actives avec planches + coordonnées parcelle
   const cultures = await prisma.culture.findMany({
     where: {
