@@ -1459,7 +1459,8 @@ function LactationView() {
   const [data, setData] = React.useState<{
     dim: number | null
     courbe: { dim: number; date: string; volume: number; moyenne7j: number }[]
-    moyenne7j?: number
+    moyenne7j?: number | null
+    joursMesures?: number
     lactationLongue?: boolean
     suggererTarissement?: boolean
   } | null>(null)
@@ -1534,7 +1535,11 @@ function LactationView() {
           <>
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <Badge variant="outline">DIM : {data.dim ?? "—"} j</Badge>
-              <Badge variant="outline">Moyenne 7 j : {data.moyenne7j ?? 0} L/j</Badge>
+              <Badge variant="outline">
+                {data.moyenne7j != null
+                  ? `Moyenne des ${data.joursMesures ?? 7} derniers jours mesurés : ${data.moyenne7j} L/j`
+                  : "Moyenne récente : pas assez de traites individuelles"}
+              </Badge>
               {data.suggererTarissement && (
                 <Badge className="bg-amber-100 text-amber-800">⚠ Tarissement à envisager</Badge>
               )}

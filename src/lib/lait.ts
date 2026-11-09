@@ -99,14 +99,47 @@ export function courbeLactation(
   for (let i = 0; i < 305; i++) {
     const d = new Date(startMs + i * 86_400_000)
     const key = d.toISOString().split('T')[0]
+    // La courbe s'arrête à aujourd'hui : le premier jour futur y entrait à 0 L
+    // et tirait la moyenne mobile vers le bas.
+    if (d.getTime() > Date.now()) break
     const v = byDay.get(key) || 0
     window.push(v)
     if (window.length > 7) window.shift()
     const moy = window.reduce((s, x) => s + x, 0) / window.length
     out.push({ dim: i, date: key, volume: Math.round(v * 1000) / 1000, moyenne7j: Math.round(moy * 1000) / 1000 })
-    if (d.getTime() > Date.now()) break
   }
   return out
+}
+
+/** Jours mesurés qu'il faut au moins pour juger d'une production basse. */
+export const JOURS_MESURES_MIN_TARISSEMENT = 3
+
+/**
+ * Production récente d'une laitière : moyenne des JOURS MESURÉS (jusqu'à 7)
+ * parmi les 14 derniers jours, aujourd'hui compris.
+ *
+ * Un jour sans collecte individuelle n'est pas un jour à 0 L : en contrôle
+ * laitier mensuel, ou quand la traite est saisie par lot, la moyenne sur sept
+ * jours calendaires valait 0 et « Tarissement à envisager » s'affichait pour
+ * tout le troupeau. `moyenne` vaut `null` quand trop peu de jours sont mesurés
+ * pour conclure.
+ */
+export function productionRecente(
+  collectes: Array<{ date: Date; quantiteLitres: number }>,
+  ref = new Date(),
+): { moyenne: number | null; joursMesures: number } {
+  const aujourdhui = ref.toISOString().split('T')[0]
+  const debut = new Date(new Date(aujourdhui).getTime() - 13 * 86_400_000).toISOString().split('T')[0]
+  const parJour = new Map<string, number>()
+  for (const c of collectes) {
+    const jour = new Date(c.date).toISOString().split('T')[0]
+    if (jour < debut || jour > aujourdhui) continue
+    parJour.set(jour, (parJour.get(jour) || 0) + Number(c.quantiteLitres))
+  }
+  const recents = [...parJour.entries()].sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 7)
+  if (recents.length < JOURS_MESURES_MIN_TARISSEMENT) return { moyenne: null, joursMesures: recents.length }
+  const moyenne = recents.reduce((total, [, litres]) => total + litres, 0) / recents.length
+  return { moyenne: Math.round(moyenne * 1000) / 1000, joursMesures: recents.length }
 }
 
 // ============================================================
