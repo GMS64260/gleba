@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   depenseFindFirst: vi.fn(),
   alimentFindUnique: vi.fn(),
   campagneFindFirst: vi.fn(),
+  exploitationFindUnique: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => {
@@ -27,6 +28,7 @@ vi.mock('@/lib/prisma', () => {
     },
     aliment: { findUnique: mocks.alimentFindUnique },
     campagnePlantation: { findFirst: mocks.campagneFindFirst },
+    exploitation: { findUnique: mocks.exploitationFindUnique },
   }
   return {
     default: {
@@ -49,8 +51,10 @@ import {
   createVenteFromRecolte,
   createVenteFromRecolteArbre,
   createVenteFromVenteProduit,
+  upsertVenteFromPaieLait,
   upsertVenteFromReservationElevage,
 } from '@/lib/auto-compta'
+import prisma from '@/lib/prisma'
 
 describe('invariants auto-compta élevage', () => {
   beforeEach(() => {
@@ -63,6 +67,31 @@ describe('invariants auto-compta élevage', () => {
       nom: 'Foin',
       prix: 0.2,
       userStocks: [{ prix: 0.25, coutUnitaire: 0.3 }],
+    })
+  })
+
+  describe('paie du lait', () => {
+    const tx = prisma as unknown as Parameters<typeof upsertVenteFromPaieLait>[0]
+    const paie = { annee: 2026, mois: 10, montantHT: 9000, litres: 20000, laiterie: 'Laiterie' }
+
+    it('n’ajoute la TVA de 5,5 % que si l’exploitation en collecte', async () => {
+      mocks.exploitationFindUnique.mockResolvedValue({ regimeTva: 'reel-simplifie' })
+      await upsertVenteFromPaieLait(tx, 'user-1', paie)
+      expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({ montantHT: 9000, tauxTVA: 5.5, montant: 9495 })
+
+      for (const regimeTva of ['franchise-293b', 'rfa', 'non-assujetti']) {
+        mocks.venteCreate.mockClear()
+        mocks.exploitationFindUnique.mockResolvedValue({ regimeTva })
+        await upsertVenteFromPaieLait(tx, 'user-1', paie)
+        expect(mocks.venteCreate.mock.calls[0][0].data).toMatchObject({ montantHT: 9000, tauxTVA: 0, montantTVA: 0, montant: 9000 })
+      }
+    })
+
+    it('conserve le pointage « à encaisser » saisi dans Transactions', async () => {
+      mocks.exploitationFindUnique.mockResolvedValue({ regimeTva: 'reel-simplifie' })
+      mocks.venteFindFirst.mockResolvedValue({ paye: false, modeReglement: 'Virement' })
+      await upsertVenteFromPaieLait(tx, 'user-1', { ...paie, montantHT: 8900 })
+      expect(mocks.venteCreate.mock.calls[0][0].data.paye).toBe(false)
     })
   })
 

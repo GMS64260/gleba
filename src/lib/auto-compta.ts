@@ -19,6 +19,7 @@ import { libellesVenteBois } from '@/lib/verger/production-bois'
 import { montantVenteFruit } from '@/lib/verger/montant-vente'
 import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
+import { collecteTvaFrancaise } from '@/lib/territoires'
 import { synchroniserReglementSource, verifierSuppressionSourceReglee, rattacherReglementsFacture } from '@/lib/comptabilite/suivi-reglement-source'
 
 // ============================================================
@@ -495,7 +496,13 @@ export async function upsertVenteFromPaieLait(
     return null
   }
 
-  const taux = 5.5
+  // La paie est saisie HORS TAXE (les autres ventes le sont TTC) : la TVA de
+  // 5,5 % ne s'y ajoute que si l'exploitation en collecte. En franchise, au
+  // remboursement forfaitaire ou non assujettie, la laiterie verse le hors
+  // taxe ; majorer créait 5,5 % de chiffre d'affaires fictif (9 495 € pour
+  // 9 000 €), repris tel quel par le KPI et le FEC.
+  const exploitation = await tx.exploitation.findUnique({ where: { userId }, select: { regimeTva: true } })
+  const taux = collecteTvaFrancaise(exploitation?.regimeTva) ? 5.5 : 0
   const montantTVA = (montantHT * taux) / 100
   const montantTTC = montantHT + montantTVA
   const dateVente = paie.date ? new Date(paie.date) : new Date(paie.annee, paie.mois - 1, 1)
@@ -503,7 +510,11 @@ export async function upsertVenteFromPaieLait(
   const moisLabel = `${String(paie.mois).padStart(2, '0')}/${paie.annee}`
 
   // Scopé userId : sourceId (annee*100+mois) est commun à tous les tenants.
-  const suivi = await suiviDuMiroirVente(tx, { sourceType: 'paie_lait', sourceId, auto: true, userId }, montantTTC)
+  // La paie ne porte pas de statut de paiement : le pointage saisi dans
+  // Transactions (virement pas encore reçu) est conservé à la régénération,
+  // comme pour l'abattage. Sans cela, corriger une pénalité repassait la paie
+  // « payée » (411 → 512 au FEC, sortie des impayés).
+  const suivi = await suiviDuMiroirVente(tx, { sourceType: 'paie_lait', sourceId, auto: true, userId }, montantTTC, true)
   await tx.venteManuelle.deleteMany({
     where: { sourceType: 'paie_lait', sourceId, auto: true, userId },
   })
