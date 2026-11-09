@@ -79,6 +79,22 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
   })
 
+  it('POST refuse (409) un identifiant officiel déjà porté par une fiche du compte, sauf confirmation', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 3, nom: 'Blanchette', statut: 'actif' })
+
+    const refus = await POST(request('POST', { especeAnimaleId: 'ovin', identifiant: ' FR12345678901 ' }))
+    expect(refus.status).toBe(409)
+    expect(await refus.json()).toMatchObject({ code: 'IDENTIFIANT_DEJA_UTILISE', champ: 'identifiant', animalId: 3 })
+    expect(mocks.animalFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-1', identifiant: { equals: 'FR12345678901', mode: 'insensitive' } },
+    }))
+    expect(mocks.animalCreate).not.toHaveBeenCalled()
+
+    const confirme = await POST(request('POST', { especeAnimaleId: 'ovin', identifiant: 'FR12345678901', confirmerDoublonIdentifiant: true }))
+    expect(confirme.status).toBe(201)
+    expect(mocks.animalCreate).toHaveBeenCalledTimes(1)
+  })
+
   it('POST accepte un lot assignable', async () => {
     mocks.isAssignableAnimalLot.mockResolvedValue(true)
 

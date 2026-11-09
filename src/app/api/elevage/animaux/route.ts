@@ -197,6 +197,28 @@ export async function POST(request: NextRequest) {
     if (lotId != null && !await isAssignableAnimalLot(session.user.id, lotId, especeAnimaleId)) {
       return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
     }
+    // Un identifiant officiel (boucle, puce, tatouage) désigne UN animal. Rien
+    // ne refusait d'en créer un second : double saisie, ou import relancé, et
+    // deux fiches portaient la même boucle au registre et dans les
+    // déclarations. Refus 409, levé par `confirmerDoublonIdentifiant`.
+    const identifiantSaisi = identifiant?.trim()
+    if (identifiantSaisi && body?.confirmerDoublonIdentifiant !== true) {
+      const homonyme = await prisma.animal.findFirst({
+        where: { userId: session.user.id, identifiant: { equals: identifiantSaisi, mode: 'insensitive' } },
+        select: { id: true, nom: true, statut: true },
+      })
+      if (homonyme) {
+        return NextResponse.json(
+          {
+            error: `Une fiche porte déjà l'identifiant ${identifiantSaisi}${homonyme.nom ? ` (${homonyme.nom})` : ''}${homonyme.statut !== 'actif' ? `, animal ${homonyme.statut}` : ''}.`,
+            code: 'IDENTIFIANT_DEJA_UTILISE',
+            champ: 'identifiant',
+            animalId: homonyme.id,
+          },
+          { status: 409 },
+        )
+      }
+    }
     const lotAchat = lotId != null && (Number(prixAchat || 0) > 0 || prixAchatInclusDansLot)
       ? await prisma.lotAnimaux.findFirst({
           where: { id: lotId, userId: session.user.id },

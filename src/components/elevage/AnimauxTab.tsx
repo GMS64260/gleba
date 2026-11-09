@@ -607,11 +607,25 @@ function AnimauxSubTab() {
       const body = isEdit
         ? { id: editingAnimalId, ...cleaned }
         : { ...cleaned, statut: 'actif' }
-      const response = await fetch('/api/elevage/animaux', {
+      const envoyer = (corps: object) => fetch('/api/elevage/animaux', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(corps),
       })
+      let response = await envoyer(body)
+      let refusDoublon: { code?: string; error?: string } | null = null
+      if (response.status === 409) {
+        refusDoublon = await response.clone().json().catch(() => null)
+        // Identifiant officiel déjà porté par une autre fiche : on le dit, et
+        // l'éleveur confirme s'il s'agit bien d'un second animal.
+        if (refusDoublon?.code === 'IDENTIFIANT_DEJA_UTILISE') {
+          if (!window.confirm(`${refusDoublon.error} Créer quand même une seconde fiche avec cet identifiant ?`)) {
+            setAnimalSubmitError(refusDoublon.error ?? "Identifiant déjà utilisé")
+            return
+          }
+          response = await envoyer({ ...body, confirmerDoublonIdentifiant: true })
+        }
+      }
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
         const fieldErrors = payload?.details?.fieldErrors as Record<string, string[]> | undefined
