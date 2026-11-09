@@ -153,6 +153,7 @@ import prisma from '@/lib/prisma'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ciblesAffectees, resyncEcartementLait } from './attente-lait'
 import { fenetreSoin } from './suppression-soin'
+import { debutJourCivilSoin } from './stock-medicament'
 import { invalidateKpi } from '@/lib/kpi'
 
 export type ResultatEcriture<T> =
@@ -241,7 +242,8 @@ export async function daterInjection(
               quantite: { gte: quantite },
               OR: [
                 { datePeremption: null },
-                { datePeremption: { gte: dateRealisee ?? soin.date } },
+                // Jour civil : un lot qui périme aujourd'hui reste utilisable aujourd'hui.
+                { datePeremption: { gte: debutJourCivilSoin(dateRealisee ?? soin.date) } },
               ],
             },
             data: { quantite: { decrement: quantite } },

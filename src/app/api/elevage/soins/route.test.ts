@@ -16,7 +16,7 @@ vi.mock('@/lib/prisma', () => {
     // Review caprin 2026-07-22 — l'écartement passe par la lib attente-lait, qui
     // interroge aussi `animal` (appartenance lot ↔ membres) dans la transaction.
     animal: { findFirst: mocks.animalFindFirst, findMany: mocks.animalFindMany },
-    soinAnimal: { create: mocks.soinCreate, update: mocks.soinUpdate, findMany: mocks.soinFindMany },
+    soinAnimal: { create: mocks.soinCreate, update: mocks.soinUpdate, findMany: mocks.soinFindMany, findFirst: mocks.soinFindFirst },
     collecteLait: { updateMany: mocks.collecteUpdateMany, findMany: mocks.collecteFindMany },
     stockMedicamentElevage: { updateMany: mocks.stockUpdateMany, update: mocks.stockUpdate },
     $queryRaw: mocks.queryRaw,
@@ -94,6 +94,34 @@ describe('soins planifies et temps attente lait', () => {
     expect(mocks.soinUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       fait: true, finAttenteLait: new Date('2026-07-26T00:00:00Z'), finAttenteViande: new Date('2026-08-02T00:00:00Z'),
     }) }))
+  })
+
+  const soinDeLot = () => ({ id: 1, userId: 'user-1', animalId: null, lotId: 4, date: new Date('2026-07-21T00:00:00Z'), fait: false, tempsAttenteLaitJ: 5, tempsAttenteViandeJ: 12, tempsAttenteOeufsJ: null, finAttenteLait: null, finAttenteViande: null, cout: null, type: 'Traitement vétérinaire', produitId: null, stockMedicamentId: null, quantitePreleveeStock: 0, nbInjections: 1, intervalleInjectionsHeures: null, delaiAttenteSource: 'referentiel_produit' })
+
+  it('corriger la cible d’un lot vers un animal détache le lot', async () => {
+    const existing = soinDeLot()
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    const response = await PATCH(request('PATCH', { id: 1, animalId: 7 }))
+    expect(response.status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data).toMatchObject({ animalId: 7, lotId: null })
+  })
+
+  it('refuse un soin sans cible ou à deux cibles', async () => {
+    mocks.soinFindFirst.mockResolvedValue(soinDeLot())
+    expect((await PATCH(request('PATCH', { id: 1, animalId: 7, lotId: 4 }))).status).toBe(400)
+    expect((await PATCH(request('PATCH', { id: 1, lotId: null }))).status).toBe(400)
+    expect(mocks.soinUpdate).not.toHaveBeenCalled()
+  })
+
+  it('un PATCH sans « fait » ne valide pas un soin planifié', async () => {
+    const existing = soinDeLot()
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    const response = await PATCH(request('PATCH', { id: 1, notes: 'à refaire au printemps' }))
+    expect(response.status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data.fait).toBeUndefined()
+    expect(mocks.soinUpdate.mock.calls[0][0].data.finAttenteLait).toBeUndefined()
   })
 
   it('type les conditions CASE de resynchronisation des injections', async () => {

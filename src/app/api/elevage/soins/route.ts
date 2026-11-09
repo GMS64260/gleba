@@ -23,6 +23,7 @@ import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
 import { calendrierInjections } from '@/lib/elevage/injections'
 import { lireInjections, synchroniserInjections, fenetresAttenteDepuisInjections } from '@/lib/elevage/injections-protocole'
 import { dateSoinRetenue } from '@/lib/elevage/date-soin'
+import { lotMedicamentPerime } from '@/lib/elevage/stock-medicament'
 import { randomUUID } from 'node:crypto'
 // Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
@@ -253,7 +254,7 @@ export async function POST(request: NextRequest) {
         { status: 422 },
       )
     }
-    if (stockMedicament?.datePeremption && stockMedicament.datePeremption.getTime() < dateSoin.getTime()) {
+    if (stockMedicament && lotMedicamentPerime(stockMedicament.datePeremption, dateSoin)) {
       return NextResponse.json(
         { error: `Le lot ${stockMedicament.numeroLot} est périmé à la date du soin.` },
         { status: 422 },
@@ -548,6 +549,22 @@ export async function PATCH(request: NextRequest) {
     if (veterinaire !== undefined) updateData.veterinaire = veterinaire
     if (animalId !== undefined) updateData.animalId = animalId
     if (lotId !== undefined) updateData.lotId = lotId
+    // Un soin vise exactement un animal OU un lot, comme à la création. Choisir
+    // l'un détache l'autre : l'écran n'envoie que la nouvelle cible, et l'ancien
+    // lot restait rattaché (collectes de tout le lot écartées, abattages du lot
+    // bloqués, coût imputé à la mauvaise cible).
+    if (animalId !== undefined || lotId !== undefined) {
+      if (animalId != null && lotId === undefined) updateData.lotId = null
+      if (lotId != null && animalId === undefined) updateData.animalId = null
+      const animalFinal = updateData.animalId !== undefined ? updateData.animalId : existing.animalId
+      const lotFinal = updateData.lotId !== undefined ? updateData.lotId : existing.lotId
+      if ((animalFinal != null) === (lotFinal != null)) {
+        return NextResponse.json(
+          { error: 'Renseignez exactement un animal OU un lot.', champ: 'animalId' },
+          { status: 400 },
+        )
+      }
+    }
     if (dose !== undefined) updateData.dose = dose
     if (voie !== undefined) updateData.voie = voie
     if (motif !== undefined) updateData.motif = motif
@@ -658,7 +675,7 @@ export async function PATCH(request: NextRequest) {
         if (quantiteADecompter <= 0) {
           throw new Error(`QUANTITE_MEDICAMENT_REQUISE:${stockEffectif.unite}`)
         }
-        if (stockEffectif.datePeremption && stockEffectif.datePeremption.getTime() < new Date(updateData.date ?? existing.date).getTime()) {
+        if (lotMedicamentPerime(stockEffectif.datePeremption, new Date(updateData.date ?? existing.date))) {
           throw new Error(`LOT_MEDICAMENT_PERIME:${stockEffectif.numeroLot}`)
         }
         const decremente = await tx.stockMedicamentElevage.updateMany({

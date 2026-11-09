@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { stockMedicamentEstDisponible } from "./stock-medicament"
+import { debutJourCivilSoin, lotMedicamentPerime, stockMedicamentEstDisponible } from "./stock-medicament"
 
 describe("stockMedicamentEstDisponible", () => {
   it("accepte un lot approvisionné sans date de péremption", () => {
@@ -25,5 +25,23 @@ describe("stockMedicamentEstDisponible", () => {
       { quantite: 7, datePeremption: "2026-07-28T00:00:00.000Z" },
       "2026-07-29",
     )).toBe(false)
+  })
+})
+
+describe("lotMedicamentPerime", () => {
+  const peremption = new Date("2026-11-09T00:00:00.000Z")
+
+  it("compare des jours civils : « Fait » à 10 h le jour de la péremption est accepté", () => {
+    expect(lotMedicamentPerime(peremption, new Date("2026-11-09T09:00:00.000Z"))).toBe(false)
+    // 23:30 à Paris le 9 = 22:30 UTC : encore le 9.
+    expect(lotMedicamentPerime(peremption, new Date("2026-11-09T22:30:00.000Z"))).toBe(false)
+    // 00:30 à Paris le 10 = 23:30 UTC le 9 : déjà le lendemain.
+    expect(lotMedicamentPerime(peremption, new Date("2026-11-09T23:30:00.000Z"))).toBe(true)
+    expect(lotMedicamentPerime(peremption, "2026-11-10")).toBe(true)
+    expect(lotMedicamentPerime(null, "2030-01-01")).toBe(false)
+  })
+
+  it("donne la borne SQL du jour civil du soin", () => {
+    expect(debutJourCivilSoin(new Date("2026-11-09T09:00:00.000Z"))).toEqual(peremption)
   })
 })
