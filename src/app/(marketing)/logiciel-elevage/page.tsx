@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel d'élevage pour ferme diversifiée — Suivi multi-espèces",
+  title: "Logiciel d'élevage pour ferme diversifiée",
   description: "Reliez les ateliers d'élevage à votre exploitation : animaux, lots, soins, alimentation, productions, reproduction, naissances et traçabilité.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage" },
   openGraph: { ...ogBase, title: "Ateliers d'élevage pour ferme diversifiée — Gleba", description: "Animaux, lots, soins et productions reliés au même dossier que les parcelles, les stocks et la gestion.", url: "https://gleba.fr/logiciel-elevage", type: "article" },
