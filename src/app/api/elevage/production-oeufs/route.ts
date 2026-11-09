@@ -17,6 +17,32 @@ import { refusModificationCollecteEntamee } from '@/lib/elevage/stock-oeufs'
 
 class CollecteEntameeError extends Error {}
 
+/** Bornes [jour ; lendemain[ d'une collecte, pour chercher une collecte du même jour. */
+function bornesJourCollecte(date: Date | string) {
+  const debut = new Date(date)
+  debut.setHours(0, 0, 0, 0)
+  const fin = new Date(debut)
+  fin.setDate(fin.getDate() + 1)
+  return { gte: debut, lt: fin }
+}
+
+function refusDoublonCollecte(existant: { id: number; quantite: number }, date: Date | string) {
+  const jour = bornesJourCollecte(date).gte.toLocaleDateString('fr-FR')
+  return NextResponse.json(
+    {
+      error: 'Collecte déjà saisie',
+      code: 'DOUBLON_DATE_LOT',
+      details: {
+        idExistant: existant.id,
+        quantiteExistante: existant.quantite,
+        dateLue: jour,
+        message: `Une collecte de ${existant.quantite} œufs existe déjà sur ce lot pour le ${jour}. Confirmer pour ajouter une 2e ligne (ex. 2 passages dans la journée), sinon modifiez la ligne existante.`,
+      },
+    },
+    { status: 422 },
+  )
+}
+
 const LOT_PLAFOND_SELECT = {
   id: true,
   quantiteInitiale: true,
@@ -223,54 +249,52 @@ export async function POST(request: NextRequest) {
       // `overrideCoherence` : la confirmation « Ajouter une 2e ligne » du client
       // rejouait le POST et se faisait refuser à l'identique, donc une seconde
       // collecte du jour était impossible à saisir.
+      // Contrôle rapide ; il est rejoué sous verrou juste avant l'écriture.
       if (!overrideCoherence && date && !animalId) {
-        const dateOnly = new Date(date)
-        dateOnly.setHours(0, 0, 0, 0)
-        const dateNext = new Date(dateOnly)
-        dateNext.setDate(dateNext.getDate() + 1)
         const existant = await prisma.productionOeuf.findFirst({
-          where: {
-            userId: session.user.id,
-            lotId,
-            date: { gte: dateOnly, lt: dateNext },
-          },
+          where: { userId: session.user.id, lotId, date: bornesJourCollecte(date) },
           select: { id: true, quantite: true },
         })
-        if (existant) {
-          return NextResponse.json(
-            {
-              error: 'Collecte déjà saisie',
-              code: 'DOUBLON_DATE_LOT',
-              details: {
-                idExistant: existant.id,
-                quantiteExistante: existant.quantite,
-                dateLue: dateOnly.toLocaleDateString('fr-FR'),
-                message: `Une collecte de ${existant.quantite} œufs existe déjà sur ce lot pour le ${dateOnly.toLocaleDateString('fr-FR')}. Confirmer pour ajouter une 2e ligne (ex. 2 passages dans la journée), sinon modifiez la ligne existante.`,
-              },
-            },
-            { status: 422 }
-          )
-        }
+        if (existant) return refusDoublonCollecte(existant, date)
       }
     }
 
-    const production = await prisma.productionOeuf.create({
-      data: {
-        userId: session.user.id,
-        lotId: lotId || null,
-        animalId: animalId || null,
-        date: date || new Date(),
-        quantite,
-        casses,
-        sales,
-        calibre,
-        notes,
-      },
-      include: {
-        lot: true,
-        animal: true,
-      },
+    // Le contrôle de doublon et la création se font sous le verrou du stock
+    // d'œufs : deux envois simultanés de la même collecte passaient chacun le
+    // contrôle (lu avant l'écriture de l'autre) et créaient deux collectes,
+    // doublant stock, taux de ponte et valorisation.
+    const controleDoublon = !overrideCoherence && Boolean(date) && !animalId && Boolean(lotId)
+    const resultat = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${session!.user.id}`}))`
+      if (controleDoublon && date) {
+        const existant = await tx.productionOeuf.findFirst({
+          where: { userId: session!.user.id, lotId, date: bornesJourCollecte(date) },
+          select: { id: true, quantite: true },
+        })
+        if (existant) return { doublon: existant }
+      }
+      return {
+        production: await tx.productionOeuf.create({
+          data: {
+            userId: session!.user.id,
+            lotId: lotId || null,
+            animalId: animalId || null,
+            date: date || new Date(),
+            quantite,
+            casses,
+            sales,
+            calibre,
+            notes,
+          },
+          include: {
+            lot: true,
+            animal: true,
+          },
+        }),
+      }
     })
+    if ('doublon' in resultat) return refusDoublonCollecte(resultat.doublon!, date!)
+    const production = resultat.production
 
     return NextResponse.json({ data: production }, { status: 201 })
   } catch (error) {

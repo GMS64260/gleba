@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   sortiesFindMany: vi.fn().mockResolvedValue([]),
   sortiesAggregate: vi.fn().mockResolvedValue({ _count: 0, _sum: { quantite: null } }),
   productionDelete: vi.fn(),
+  productionFindFirstSousVerrou: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -36,7 +37,7 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: (fn: (tx: unknown) => unknown) => fn({
       $executeRaw: vi.fn(),
       mouvementStockOeuf: { findMany: mocks.sortiesFindMany, aggregate: mocks.sortiesAggregate },
-      productionOeuf: { update: mocks.productionUpdate, delete: mocks.productionDelete },
+      productionOeuf: { update: mocks.productionUpdate, delete: mocks.productionDelete, create: mocks.productionCreate, findFirst: mocks.productionFindFirstSousVerrou },
     }),
   },
 }))
@@ -274,5 +275,37 @@ describe("collecte d'œufs entamée — correction et suppression", () => {
     mocks.sortiesAggregate.mockResolvedValue({ _count: 0, _sum: { quantite: null } })
     expect((await DELETE(requete("DELETE", undefined, "?id=910"))).status).toBe(200)
     expect(mocks.productionDelete).toHaveBeenCalledWith({ where: { id: 910 } })
+  })
+})
+
+describe("création d'une collecte d'œufs — doublon sous verrou", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    mocks.lotFindFirst.mockResolvedValue(LOT_PINTADES)
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([[71, { effectifCalcule: 4, nominatifsActifs: 0 }]]))
+    mocks.productionCreate.mockImplementation(async ({ data }: { data: object }) => ({ id: 1, ...data }))
+  })
+
+  const post = (body: object) => POST(new NextRequest("http://localhost/api/elevage/production-oeufs", {
+    method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" },
+  }))
+
+  it("refuse la seconde de deux collectes envoyées ensemble, vue seulement sous le verrou", async () => {
+    // Contrôle rapide : rien. Sous verrou : l'autre requête a déjà écrit.
+    mocks.productionFindFirst.mockResolvedValue(null)
+    mocks.productionFindFirstSousVerrou.mockResolvedValueOnce({ id: 910, quantite: 3 })
+
+    const res = await post({ lotId: 71, date: "2026-10-20", quantite: 3 })
+
+    expect(res.status).toBe(422)
+    expect((await res.json()).code).toBe("DOUBLON_DATE_LOT")
+    expect(mocks.productionCreate).not.toHaveBeenCalled()
+  })
+
+  it("crée la collecte quand rien n'existe ce jour-là", async () => {
+    mocks.productionFindFirst.mockResolvedValue(null)
+    expect((await post({ lotId: 71, date: "2026-10-20", quantite: 3 })).status).toBe(201)
+    expect(mocks.productionCreate).toHaveBeenCalledTimes(1)
   })
 })
