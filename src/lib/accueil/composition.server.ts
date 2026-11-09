@@ -17,6 +17,7 @@
  */
 
 import prisma from "@/lib/prisma"
+import { chargerAccesService } from "@/lib/abonnement/serveur"
 import type { SessionExploitation } from "@/lib/auth-utils"
 import { getActeurId, getUserId } from "@/lib/exploitation/garde-session"
 import { getTachesPotager } from "@/lib/taches-potager"
@@ -138,9 +139,12 @@ export async function composerAujourdhui(
       null,
     ),
   ])
-  const maraichageActif = modules.includes("maraichage")
-  const elevageActif = modules.includes("elevage")
-  const comptaActif = modules.includes("comptabilite")
+  const accesService = await chargerAccesService(userId)
+  const maraichageActif = modules.includes("maraichage") && accesService.ateliers.includes("maraichage")
+  const elevageActif = modules.includes("elevage") && accesService.ateliers.includes("elevage")
+  // Factures à finir ou impayées : carnet gratuit ; repères financiers : gestion (Complet).
+  const facturationActive = modules.includes("comptabilite") && accesService.facturation
+  const comptaActif = modules.includes("comptabilite") && accesService.gestion
   const devise = deviseDuTerritoire(exploitation?.territoire)
 
   const [taches, kpiMaraichage, agenda, animauxActifs, declarations, factures, kpiCompta, planches, arbres, objets, encours] =
@@ -175,7 +179,7 @@ export async function composerAujourdhui(
       elevageActif
         ? lire("déclarations", () => chargerDeclarationsReglementaires(userId, { year: annee, maintenant }), null)
         : null,
-      comptaActif
+      facturationActive
         ? lire(
             "factures",
             () =>
@@ -534,7 +538,7 @@ export async function composerAujourdhui(
           null,
         )
       : undefined,
-    demandees.has("verger") && modules.includes("verger")
+    demandees.has("verger") && modules.includes("verger") && accesService.ateliers.includes("verger")
       ? lire(
           "verger",
           async () =>
@@ -637,7 +641,7 @@ export async function composerAujourdhui(
           null,
         )
       : undefined,
-    demandees.has("journal")
+    demandees.has("journal") && maraichageActif
       ? lire(
           "journal",
           async () => {

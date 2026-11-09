@@ -156,9 +156,11 @@ const LIEN_SOURCE: Record<string, string> = {
   Recolte: "/maraichage/recoltes",
   RecolteArbre: "/verger?tab=productions",
   ProductionBois: "/verger?tab=productions",
-  VenteProduit: "/elevage?tab=production",
-  PaieLait: "/elevage?tab=production",
-  Abattage: "/elevage?tab=animaux",
+  // Sous-onglet de la source : sans `sub`, la vente ouvrait le dernier onglet
+  // de Production mémorisé, et l'abattage la liste des animaux, où il n'est pas.
+  VenteProduit: "/elevage?tab=production&sub=ventes",
+  PaieLait: "/elevage?tab=production&sub=livraisons",
+  Abattage: "/elevage?tab=production&sub=abattages",
 }
 
 const CATEGORIES_VENTE = [

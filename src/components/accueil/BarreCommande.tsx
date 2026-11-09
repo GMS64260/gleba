@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Sparkles } from "lucide-react"
+import { Sparkles, Search } from "lucide-react"
 
 import { ouvrirRecherche } from "@/lib/accueil/evenements"
 import { cn } from "@/lib/utils"
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
  * « Demander à Gleba » qui ouvre l'assistant). Un bouton, pas un champ : la
  * saisie se fait dans la palette.
  */
-export function BarreCommande({ className, compact = false }: { className?: string; compact?: boolean }) {
+export function BarreCommande({ className, compact = false, ia = true }: { className?: string; compact?: boolean; ia?: boolean }) {
   return (
     <button
       type="button"
@@ -25,8 +25,8 @@ export function BarreCommande({ className, compact = false }: { className?: stri
         className,
       )}
     >
-      <Sparkles className="h-[18px] w-[18px] shrink-0 text-sauge" aria-hidden />
-      <span className="min-w-0 flex-1 truncate">{compact ? "Demander ou chercher dans Gleba…" : "Demander à Gleba…"}</span>
+      {ia ? <Sparkles className="h-[18px] w-[18px] shrink-0 text-sauge" aria-hidden /> : <Search className="h-[18px] w-[18px] shrink-0 text-sauge" aria-hidden />}
+      <span className="min-w-0 flex-1 truncate">{ia ? compact ? "Demander ou chercher dans Gleba…" : "Demander à Gleba…" : "Rechercher dans Gleba…"}</span>
       {!compact && (
         <kbd className="hidden rounded-md border border-lin px-1.5 py-0.5 font-ui text-[11px] text-ardoise sm:inline">⌘ K</kbd>
       )}

@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import prisma from "@/lib/prisma"
+import { arreterAvantSuppression } from "@/lib/abonnement/stripe"
 import { requireAuthApi, verifyPassword } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
 import { reprendreReferentielCommunaute, supprimerFichiersUtilisateur, COMMUNAUTE_USER_ID, supprimerDonneesSansCleEtrangere } from "@/lib/account-lifecycle"
@@ -125,6 +126,8 @@ export async function DELETE(request: NextRequest) {
     // revérifier côté serveur. La session active, le rate limit et la
     // confirmation explicite « SUPPRIMER » côté client tiennent lieu de garde
     // (même niveau d'exigence que la politique Google Play).
+
+    await arreterAvantSuppression(userId)
 
     // Même contrat que la suppression admin : les entrées de référentiel
     // PARTAGÉES sont reprises par la sentinelle « Communauté Gleba » avant le

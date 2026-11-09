@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 export const metadata = {
   title: "Politique de confidentialité",
   description:
-    "Politique de confidentialité de Gleba conforme au RGPD et à la CNIL : responsable de traitement, données collectées, finalités, base légale, durées de conservation, suppression du compte et droits des utilisateurs.",
+    "Politique de confidentialité de Gleba (RGPD) : responsable de traitement, données collectées, finalités, base légale, durées de conservation et droits.",
   alternates: {
     canonical: "https://gleba.fr/confidentialite",
   },
@@ -255,6 +255,14 @@ export default function ConfidentialitePage() {
             <strong>Station météo personnelle</strong> : si, et seulement si, vous en
             configurez une, l&apos;application interroge le service de votre
             fabricant avec les identifiants que vous fournissez.
+          </li>
+          <li>
+            <strong>Abonnement au service Gleba</strong> : si vous souscrivez,
+            Stripe traite votre paiement, vos coordonnées de facturation et vos
+            justificatifs. Les données de carte sont saisies chez Stripe et ne
+            transitent pas par Gleba. Nous conservons les identifiants techniques
+            du contrat, votre formule, les périodes payées et la preuve de votre
+            accord. Ce traitement est distinct des ventes de votre exploitation.
           </li>
           <li>
             <strong>Envoi d&apos;e-mails</strong> : un prestataire SMTP achemine les

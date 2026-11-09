@@ -1,5 +1,6 @@
 "use client"
 
+import { dateRealisationPourFait } from '@/lib/elevage/date-realisation'
 import * as React from "react"
 import Link from "next/link"
 import { ArrowLeft, Check, CloudOff, Plus, RefreshCw, ScanLine, Wifi } from "lucide-react"
@@ -83,17 +84,20 @@ export default function TourneePage() {
 
   async function validerEcheance(e: EcheanceAgenda) {
     if (!e.action?.soinId) return
+    // Échéance ancienne : la date réelle est demandée, pas l'instant du clic.
+    const dateFait = dateRealisationPourFait(e.date, e.action.injectionId ? 'Cette injection' : 'Ce soin')
+    if (dateFait === null) return
     try {
       const res = e.action.injectionId
         ? await fetch(`/api/elevage/soins/${e.action.soinId}/injections`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ injectionId: e.action.injectionId, statut: 'realisee', dateRealisee: new Date().toISOString() }),
+            body: JSON.stringify({ injectionId: e.action.injectionId, statut: 'realisee', dateRealisee: dateFait }),
           })
         : await fetch('/api/elevage/soins', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: e.action.soinId, fait: true, date: new Date().toISOString() }),
+            body: JSON.stringify({ id: e.action.soinId, fait: true, date: dateFait }),
           })
       if (!res.ok) {
         const body = await res.json().catch(() => null)

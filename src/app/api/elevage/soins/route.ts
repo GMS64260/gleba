@@ -23,12 +23,13 @@ import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
 import { calendrierInjections } from '@/lib/elevage/injections'
 import { lireInjections, synchroniserInjections, fenetresAttenteDepuisInjections } from '@/lib/elevage/injections-protocole'
 import { dateSoinRetenue } from '@/lib/elevage/date-soin'
+import { lotMedicamentPerime, refusUnitePrelevement } from '@/lib/elevage/stock-medicament'
 import { randomUUID } from 'node:crypto'
 // Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
 import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
-import { fenetreSoin, supprimerSoin } from '@/lib/elevage/suppression-soin'
+import { fenetreSoin, restituerPrelevement, supprimerSoin } from '@/lib/elevage/suppression-soin'
 import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import { whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
 import { TYPES_SOIN_MEDICAMENTEUX } from '@/lib/elevage/types-soin'
@@ -144,7 +145,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: soins.map((soin) => ({ ...soin, injections: injectionsParSoin.get(soin.id) ?? [] })),
       stats: { soinsAVenir },
-      meta: { year: annee, total: soins.length },
+      // `total` est le nombre réel de soins de la période : rendu égal à la
+      // longueur de la page, il cachait à l'écran qu'un carnet de plus de 500
+      // soins (300 brebis vaccinées deux fois) était tronqué de ses plus anciens.
+      meta: {
+        year: annee,
+        total: rappels || soins.length < limit ? soins.length : await prisma.soinAnimal.count({ where }),
+        affiches: soins.length,
+      },
     })
   } catch (error) {
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
@@ -250,12 +258,14 @@ export async function POST(request: NextRequest) {
         { status: 422 },
       )
     }
-    if (stockMedicament?.datePeremption && stockMedicament.datePeremption.getTime() < dateSoin.getTime()) {
+    if (stockMedicament && lotMedicamentPerime(stockMedicament.datePeremption, dateSoin)) {
       return NextResponse.json(
         { error: `Le lot ${stockMedicament.numeroLot} est périmé à la date du soin.` },
         { status: 422 },
       )
     }
+    const refusUnite = stockMedicament ? refusUnitePrelevement(d.unite, stockMedicament.unite) : null
+    if (refusUnite) return NextResponse.json({ error: refusUnite, champ: 'unite' }, { status: 422 })
     if (stockMedicament && (!d.quantite || d.quantite <= 0)) {
       return NextResponse.json(
         { error: `Renseignez la quantité prélevée en ${stockMedicament.unite}.` },
@@ -504,7 +514,7 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
-    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteOeufsJ, tempsAttenteViandeJ, stockMedicamentId } = parsed.data
+    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteOeufsJ, tempsAttenteViandeJ, stockMedicamentId, produitId } = parsed.data
 
     const existing = await prisma.soinAnimal.findFirst({
       where: { id, userId: session.user.id },
@@ -545,6 +555,22 @@ export async function PATCH(request: NextRequest) {
     if (veterinaire !== undefined) updateData.veterinaire = veterinaire
     if (animalId !== undefined) updateData.animalId = animalId
     if (lotId !== undefined) updateData.lotId = lotId
+    // Un soin vise exactement un animal OU un lot, comme à la création. Choisir
+    // l'un détache l'autre : l'écran n'envoie que la nouvelle cible, et l'ancien
+    // lot restait rattaché (collectes de tout le lot écartées, abattages du lot
+    // bloqués, coût imputé à la mauvaise cible).
+    if (animalId !== undefined || lotId !== undefined) {
+      if (animalId != null && lotId === undefined) updateData.lotId = null
+      if (lotId != null && animalId === undefined) updateData.animalId = null
+      const animalFinal = updateData.animalId !== undefined ? updateData.animalId : existing.animalId
+      const lotFinal = updateData.lotId !== undefined ? updateData.lotId : existing.lotId
+      if ((animalFinal != null) === (lotFinal != null)) {
+        return NextResponse.json(
+          { error: 'Renseignez exactement un animal OU un lot.', champ: 'animalId' },
+          { status: 400 },
+        )
+      }
+    }
     if (dose !== undefined) updateData.dose = dose
     if (voie !== undefined) updateData.voie = voie
     if (motif !== undefined) updateData.motif = motif
@@ -557,18 +583,36 @@ export async function PATCH(request: NextRequest) {
     if (tempsAttenteLaitJ !== undefined) updateData.tempsAttenteLaitJ = tempsAttenteLaitJ
     if (tempsAttenteOeufsJ !== undefined) updateData.tempsAttenteOeufsJ = tempsAttenteOeufsJ
     if (tempsAttenteViandeJ !== undefined) updateData.tempsAttenteViandeJ = tempsAttenteViandeJ
-    if (tempsAttenteLaitJ !== undefined || tempsAttenteOeufsJ !== undefined || tempsAttenteViandeJ !== undefined) {
+    // Le délai ne devient « prescrit » que si une valeur CHANGE : le formulaire
+    // renvoie toujours les trois délais, et la moindre correction de note
+    // étiquetait « délai prescrit » au registre un délai venu de l'AMM.
+    if (
+      (tempsAttenteLaitJ !== undefined && tempsAttenteLaitJ !== existing.tempsAttenteLaitJ) ||
+      (tempsAttenteOeufsJ !== undefined && tempsAttenteOeufsJ !== existing.tempsAttenteOeufsJ) ||
+      (tempsAttenteViandeJ !== undefined && tempsAttenteViandeJ !== existing.tempsAttenteViandeJ)
+    ) {
       updateData.delaiAttenteSource = 'prescription'
+    }
+    // Le produit référencé suit la correction : il était ignoré, le soin gardait
+    // l'ancien produit sous le libellé et le lot du nouveau (registre sanitaire
+    // imprimant le nom et l'AMM de A avec le numéro de lot de B).
+    const produitChange = produitId !== undefined && (produitId || null) !== existing.produitId
+    const lotChange = stockMedicamentId !== undefined && (stockMedicamentId || null) !== existing.stockMedicamentId
+    if (produitChange) {
+      if (produitId && !await prisma.produitVeterinaire.findUnique({ where: { id: produitId }, select: { id: true } })) {
+        return NextResponse.json({ error: 'Produit vétérinaire introuvable', champ: 'produitId' }, { status: 400 })
+      }
+      updateData.produitId = produitId || null
     }
     if (
       existing.quantitePreleveeStock > 0 &&
       (
-        (stockMedicamentId !== undefined && stockMedicamentId !== existing.stockMedicamentId) ||
+        lotChange || produitChange ||
         (quantite !== undefined && quantite !== existing.quantite)
       )
     ) {
       return NextResponse.json(
-        { error: "Le lot ou la quantité d'un soin déjà prélevé ne peut pas être modifié. Annulez d'abord le soin." },
+        { error: "Le produit, le lot ou la quantité d'un soin déjà prélevé ne peut pas être modifié. Annulez d'abord le soin." },
         { status: 409 },
       )
     }
@@ -582,6 +626,33 @@ export async function PATCH(request: NextRequest) {
       : null
     if (stockEffectifId && !stockEffectif) {
       return NextResponse.json({ error: "Lot de pharmacie introuvable." }, { status: 404 })
+    }
+    // Gardes de pharmacie de la création, rejouées dès que le produit ou le lot
+    // change : le lot administré est du produit du soin, et un médicament
+    // référencé ne perd pas son lot.
+    const produitFinal = updateData.produitId !== undefined ? updateData.produitId : existing.produitId
+    if ((produitChange || lotChange) && stockEffectif && stockEffectif.produitId !== produitFinal) {
+      return NextResponse.json(
+        { error: 'Le lot de pharmacie ne correspond pas au produit sélectionné.' },
+        { status: 422 },
+      )
+    }
+    if ((produitChange || lotChange) && !stockEffectif && produitFinal && TYPES_MEDICAMENTEUX.has(updateData.type ?? existing.type)) {
+      return NextResponse.json(
+        { error: 'Sélectionnez un lot de pharmacie pour ce médicament.', code: 'LOT_PHARMACIE_REQUIS' },
+        { status: 422 },
+      )
+    }
+    if (lotChange && !stockEffectif) {
+      // Lot retiré : son instantané (numéro, péremption) ne reste pas au registre.
+      updateData.numeroLotMedicament = null
+      updateData.peremptionMedicament = null
+    }
+    // L'unité du prélèvement est celle du lot, à la correction comme à la saisie.
+    if (stockEffectif && (unite !== undefined || lotChange)) {
+      const refusUnite = refusUnitePrelevement(unite !== undefined ? unite : existing.unite, stockEffectif.unite)
+      if (refusUnite) return NextResponse.json({ error: refusUnite, champ: 'unite' }, { status: 422 })
+      if (!(unite ?? existing.unite)) updateData.unite = stockEffectif.unite
     }
     if (stockEffectif && stockMedicamentId !== undefined) {
       updateData.numeroLotMedicament = stockEffectif.numeroLot
@@ -648,14 +719,22 @@ export async function PATCH(request: NextRequest) {
 
     const soin = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
-      const devientRealise = fait === true && !existing.fait && existing.quantitePreleveeStock <= 0
-      const devientPlanifie = fait === false && existing.fait && existing.quantitePreleveeStock > 0
+      // L'état du prélèvement se relit SOUS le mutex : sur `existing` (lu avant
+      // la transaction), deux « Fait » envoyés ensemble voyaient chacun un soin
+      // non fait et décomptaient chacun la pharmacie, alors qu'une annulation
+      // n'en rend qu'une.
+      const courant = await tx.soinAnimal.findFirst({
+        where: { id, userId: session!.user.id },
+        select: { fait: true, quantitePreleveeStock: true },
+      }) ?? existing
+      const devientRealise = fait === true && !courant.fait && courant.quantitePreleveeStock <= 0
+      const devientPlanifie = fait === false && courant.fait && courant.quantitePreleveeStock > 0
       if (devientRealise && stockEffectif) {
         const quantiteADecompter = quantite ?? existing.quantite ?? 0
         if (quantiteADecompter <= 0) {
           throw new Error(`QUANTITE_MEDICAMENT_REQUISE:${stockEffectif.unite}`)
         }
-        if (stockEffectif.datePeremption && stockEffectif.datePeremption.getTime() < new Date(updateData.date ?? existing.date).getTime()) {
+        if (lotMedicamentPerime(stockEffectif.datePeremption, new Date(updateData.date ?? existing.date))) {
           throw new Error(`LOT_MEDICAMENT_PERIME:${stockEffectif.numeroLot}`)
         }
         const decremente = await tx.stockMedicamentElevage.updateMany({
@@ -671,10 +750,7 @@ export async function PATCH(request: NextRequest) {
         }
         updateData.quantitePreleveeStock = quantiteADecompter
       } else if (devientPlanifie && existing.stockMedicamentId) {
-        await tx.stockMedicamentElevage.update({
-          where: { id: existing.stockMedicamentId },
-          data: { quantite: { increment: existing.quantitePreleveeStock } },
-        })
+        await restituerPrelevement(tx, session.user.id, existing.stockMedicamentId, courant.quantitePreleveeStock)
         updateData.quantitePreleveeStock = 0
       }
       const updated = await tx.soinAnimal.update({

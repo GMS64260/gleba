@@ -18,7 +18,7 @@ export default function LicencePage() {
           <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100">
             <Scale className="h-5 w-5 text-emerald-700" />
           </div>
-          <CardTitle>Licence AGPL-3.0</CardTitle>
+          <CardTitle><h1>Licence AGPL-3.0</h1></CardTitle>
           <CardDescription>
             Le socle libre de Gleba est distribué sous la GNU Affero General Public License v3.
           </CardDescription>

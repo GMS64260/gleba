@@ -1,3 +1,4 @@
+import { ErreurCommerciale } from '@/lib/commercial/regles'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -92,6 +93,26 @@ function refusAbattageHorsEffectif(
   })
 }
 
+/**
+ * Statut d'un lot après un abattage qui déplace son compteur de têtes anonymes.
+ * - Un lot RÉFORMÉ le reste : corriger un abattage ne le remet pas en production.
+ * - Le compteur à zéro ne clôt le lot que s'il n'y reste aucune fiche active :
+ *   abattre les 8 têtes collectives d'un lot de 10 dont 2 en fiches le passait
+ *   « terminé » avec 2 brebis dedans, et ses pontes étaient ensuite refusées.
+ * - Des têtes rendues à un lot terminé le rouvrent.
+ */
+async function statutLotApresAbattage(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  lot: { id: number; statut: string },
+  nouvelleQuantite: number,
+): Promise<string> {
+  if (lot.statut === 'reforme') return 'reforme'
+  if (nouvelleQuantite > 0) return 'actif'
+  const fichesActives = await tx.animal.count({ where: { userId, lotId: lot.id, statut: 'actif' } })
+  return fichesActives > 0 ? 'actif' : 'termine'
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -135,18 +156,25 @@ export async function GET(request: NextRequest) {
       _count: true,
     })
 
+    // Revenus : seuls les abattages vendus (un prix hérité sur un don ne compte pas).
+    const vendus = await prisma.abattage.aggregate({
+      where: { ...where, destination: 'vente' },
+      _sum: { prixVente: true },
+    })
+
     return NextResponse.json({
       data: abattages,
       stats: {
         totalAnimaux: stats._sum.quantite || 0,
         poidsVifTotal: stats._sum.poidsVif || 0,
         poidsCarcasseTotal: stats._sum.poidsCarcasse || 0,
-        revenusVente: stats._sum.prixVente || 0,
+        revenusVente: vendus._sum.prixVente || 0,
         nbAbattages: stats._count,
       },
       meta: { year: annee, total: abattages.length },
     })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/abattages error:', error)
     return NextResponse.json(
@@ -208,7 +236,8 @@ export async function POST(request: NextRequest) {
           poidsVif: poidsVif || null,
           poidsCarcasse: poidsCarcasse || null,
           destination,
-          prixVente: prixVente || null,
+          // Un prix n'a de sens que pour une vente (cf. PATCH).
+          prixVente: destination === 'vente' ? prixVente || null : null,
           lieu,
           nEtablissementDestination: nEtablissementDestination || null,
           notes,
@@ -249,7 +278,7 @@ export async function POST(request: NextRequest) {
             where: { id: lot.id },
             data: {
               quantiteActuelle: nouvelleQuantite,
-              statut: nouvelleQuantite === 0 ? 'termine' : 'actif',
+              statut: await statutLotApresAbattage(tx, session.user.id, lot, nouvelleQuantite),
             },
           })
         }
@@ -271,6 +300,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: abattage }, { status: 201 })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('POST /api/elevage/abattages error:', error)
@@ -335,6 +365,12 @@ export async function PATCH(request: NextRequest) {
     if (poidsCarcasse !== undefined) updateData.poidsCarcasse = poidsCarcasse ? parseFloat(poidsCarcasse) : null
     if (destination !== undefined) updateData.destination = destination
     if (prixVente !== undefined) updateData.prixVente = prixVente ? parseFloat(prixVente) : null
+    // Hors vente, pas de prix : un abattage passé de « vente » à « don » gardait
+    // son prix, retiré de la comptabilité mais toujours compté en revenu par
+    // l'économie de l'élevage et la carte « Revenus vente » des abattages.
+    if ((updateData.destination ?? existing.destination) !== 'vente' && (updateData.prixVente ?? existing.prixVente) != null) {
+      updateData.prixVente = null
+    }
     // Le formulaire d'édition envoyait le lieu, que ce PATCH ignorait en silence.
     if (lieu !== undefined) updateData.lieu = typeof lieu === 'string' ? lieu.trim() || null : null
     if (nEtablissementDestination !== undefined) {
@@ -444,7 +480,7 @@ export async function PATCH(request: NextRequest) {
               where: { id: lot.id },
               data: {
                 quantiteActuelle: nouvelleQuantite,
-                statut: nouvelleQuantite === 0 ? 'termine' : 'actif',
+                statut: await statutLotApresAbattage(tx, userId, lot, nouvelleQuantite),
               },
             })
           }
@@ -476,6 +512,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: abattage })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/abattages error:', error)
@@ -566,6 +603,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/elevage/abattages error:', error)

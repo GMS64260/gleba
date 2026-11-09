@@ -19,6 +19,8 @@
  */
 
 import * as React from "react"
+import { useAccesService } from "@/hooks/use-acces-service"
+import { operationPermise } from "@/lib/abonnement/requetes"
 import { LIEN_CALENDRIER_LUNAIRE } from "@/components/lunaire/lecture"
 import { EVENEMENT_OUVRIR_RECHERCHE, ouvrirAssistant, ouvrirNouvelleIntervention } from "@/lib/accueil/evenements"
 import { useRouter, usePathname } from "next/navigation"
@@ -36,6 +38,7 @@ interface SearchItem {
 type Group = { type: string; items: SearchItem[] }
 
 export function GlobalSearch() {
+  const { acces } = useAccesService()
   const router = useRouter()
   const pathname = usePathname()
   const [open, setOpen] = React.useState(false)
@@ -181,7 +184,7 @@ export function GlobalSearch() {
                     { id: "plan", label: "Ouvrir le plan de la ferme", sub: "Planches, arbres, objets", href: "/jardin" },
                     // Ticket QA cmv4zb9yy — le calendrier lunaire complet vit sur la page Météo (2026-10-12).
                     { id: "lune", label: "Calendrier lunaire", sub: "Phase du jour, jours feuille, fruit, racine, fleur", href: LIEN_CALENDRIER_LUNAIRE },
-                  ].map((a) => (
+                  ].filter(action => action.id === "assistant" ? acces?.ia : Boolean(acces && (!action.href || operationPermise(acces, action.href, "GET")))).map((a) => (
                     <Command.Item
                       key={a.id}
                       value={`action ${a.label} ${a.sub}`}

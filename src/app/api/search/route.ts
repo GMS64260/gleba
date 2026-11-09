@@ -17,6 +17,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { chargerAccesService } from '@/lib/abonnement/serveur'
+import { operationPermise } from '@/lib/abonnement/requetes'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 const TAKE = 8
@@ -210,5 +212,6 @@ export async function GET(request: NextRequest) {
     })),
   ]
 
-  return NextResponse.json({ items })
+  const acces = await chargerAccesService(userId)
+  return NextResponse.json({ items: items.filter(item => operationPermise(acces, item.href, 'GET')) })
 }

@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel d'élevage ovin — Troupeau, reproduction et soins",
+  title: "Logiciel d'élevage ovin : troupeau, agnelage, soins",
   description: "Suivez brebis et béliers : boucles, lots, généalogie, agnelages détaillés, traitements, délais d'attente, mouvements, lait et registres avec Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-ovin" },
   openGraph: { ...ogBase, title: "Logiciel de gestion d'élevage ovin — Gleba", description: "Troupeau ovin, reproduction, agnelages, soins, alimentation et mouvements.", url: "https://gleba.fr/logiciel-elevage-ovin", type: "article" },

@@ -208,7 +208,8 @@ const CONFIGS: Record<ModuleKey, ModuleConfig> = {
         key: "lot",
         label: "Créer un lot (volaille, troupeau…)",
         done: hasData(r.lot),
-        href: "/elevage?tab=animaux",
+        // `sub=lots` : l'étape ouvrait le sous-onglet Animaux, pas les lots.
+        href: "/elevage?tab=animaux&sub=lots",
         hint: "Pour grouper des animaux d'une même bande",
       },
       {

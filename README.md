@@ -25,11 +25,11 @@
 
 ### 🎯 Mission
 
-Rendre les outils de pilotage agricole accessibles aux exploitations diversifiées. Une solution libre, auto-hébergeable et utilisable **gratuitement et sans limitation**.
+Rendre les outils de pilotage agricole accessibles aux petites exploitations. Le socle libre reste gratuit en auto-hébergement. Sur gleba.fr, le carnet est gratuit (tous les ateliers et la facturation) ; l’offre Complet à 12 € HT/mois ajoute l’assistant IA, la météo, la boutique et la gestion, avec trois mois d’essai sans carte. Les comptes déjà inscrits lors de l’annonce conservent leur accès complet gratuitement à vie.
 
 ### ✨ Pourquoi Gleba ?
 
-- ✅ **100% Gratuit** - Aucun abonnement, aucune limitation
+- ✅ **Socle libre gratuit** - Auto-hébergement sans abonnement au service Gleba
 - ✅ **Open Source** - Code transparent, communauté active
 - ✅ **Données privées** - Auto-hébergeable, vos données vous appartiennent
 - ✅ **Exploitation diversifiée** - Maraîchage, verger, élevage et pilotage économique réunis

@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Rotation des cultures en maraîchage — Cycles et planches",
+  title: "Rotation des cultures en maraîchage par planche",
   description: "Créez des rotations pluriannuelles, associez chaque année à un itinéraire technique et affectez les cycles aux planches avec Gleba.",
   alternates: { canonical: "https://gleba.fr/rotation-cultures-maraichage" },
   openGraph: { ...ogBase, title: "Gestion des rotations de cultures maraîchères — Gleba", description: "Cycles pluriannuels, ITP, planches et historique des cultures.", url: "https://gleba.fr/rotation-cultures-maraichage", type: "article" },

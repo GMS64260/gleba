@@ -101,3 +101,38 @@ describe("middleware : erreur Auth.js renvoyée sur /login", () => {
     expect(res.status).toBe(200)
   })
 })
+
+describe("middleware : adresse inexistante sans session (audit SEO du 2026-11-09)", () => {
+  it("une page inconnue n'est plus redirigée vers /login mais réécrite vers le 404", () => {
+    session.courante = null
+    const res = visiter("https://gleba.fr/page-qui-nexiste-pas")
+    expect(res.headers.get("location")).toBeNull()
+    expect(res.headers.get("x-middleware-rewrite")).toBe("https://gleba.fr/_introuvable")
+  })
+
+  it("la requête réécrite n'est pas réécrite à nouveau (boucle sans fin en production)", () => {
+    session.courante = null
+    const res = visiter("https://gleba.fr/_introuvable")
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull()
+    expect(res.headers.get("location")).toBeNull()
+    expect(res.headers.get("x-middleware-next")).toBe("1")
+  })
+
+  it("une page applicative existante garde la redirection vers la connexion", () => {
+    session.courante = null
+    expect(visiter("https://gleba.fr/maraichage/xyz").status).toBe(307)
+    expect(visiter("https://gleba.fr/boutique").status).toBe(307)
+  })
+
+  it("une API inconnue répond toujours 401 JSON", () => {
+    session.courante = null
+    expect(visiter("https://gleba.fr/api/inconnue").status).toBe(401)
+  })
+
+  it("avec une session, rien ne change", () => {
+    session.courante = { user: { id: "u1", role: "USER" } }
+    const res = visiter("https://gleba.fr/page-qui-nexiste-pas")
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull()
+    expect(res.status).toBe(200)
+  })
+})

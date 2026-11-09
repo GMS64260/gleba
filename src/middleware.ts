@@ -13,6 +13,8 @@ import {
   valeurEnteteMutation,
 } from "@/lib/exploitation/entete-mutation"
 import { NextResponse } from "next/server"
+import { ENTETE_CHEMIN, ENTETE_METHODE } from "@/lib/abonnement/requetes"
+import { CHEMIN_INTROUVABLE, segmentRacineInconnu } from "@/lib/segments-racine"
 
 export default auth((req) => {
   const { pathname } = req.nextUrl
@@ -28,8 +30,17 @@ export default auth((req) => {
   // l'acteur a le droit d'écrire. L'en-tête est toujours écrasé : impossible à
   // forger depuis le client. Cf. `lib/exploitation/entete-mutation.ts`.
   const enTetesTransmises = new Headers(req.headers)
+  enTetesTransmises.set(ENTETE_CHEMIN, pathname)
+  enTetesTransmises.set(ENTETE_METHODE, req.method)
   enTetesTransmises.set(EN_TETE_MUTATION, valeurEnteteMutation(req.method, pathname))
   const suite = () => NextResponse.next({ request: { headers: enTetesTransmises } })
+
+  // Cible de la réécriture des adresses inconnues (plus bas). En production,
+  // la requête réécrite repasse par ce middleware : sans cette sortie, elle
+  // était réécrite à nouveau, sans fin, jusqu'à saturer la mémoire du serveur
+  // (essai de l'image du 2026-11-09). Aucune route n'existe à ce chemin
+  // (dossier privé `_`) : Next répond 404 avec `not-found.tsx`.
+  if (pathname === CHEMIN_INTROUVABLE) return suite()
 
   if (pathname === "/" && isLoggedIn) {
     return NextResponse.rewrite(new URL("/dashboard", req.nextUrl), {
@@ -57,7 +68,7 @@ export default auth((req) => {
     // typiquement dans une fenêtre de navigation privée).
     "/impersonation",
     // RGPD / LCEN : doivent rester accessibles sans authentification
-    "/cgv", "/mentions-legales", "/confidentialite",
+    "/cgv", "/mentions-legales", "/confidentialite", "/tarifs", "/conditions-service",
     // Politique Google Play : l'URL de demande de suppression de compte est
     // publiée sur la fiche Play Store, donc consultable sans session.
     "/suppression-compte",
@@ -92,6 +103,7 @@ export default auth((req) => {
   const isPushVapidApi = pathname === "/api/notifications/push/vapid-public-key"
   // Mesures des capteurs : authentifiées par le jeton du connecteur, pas par une session.
   const isCapteursIngestionApi = pathname === "/api/capteurs/ingestion"
+  const isAbonnementWebhook = pathname === "/api/abonnement/webhook"
 
   // Boutiques publiques : /boutique/[slug] (pas /boutique seul qui est admin)
   // et /api/boutique/public/*
@@ -117,7 +129,7 @@ export default auth((req) => {
   }
 
   // Si route publique ou API auth/MCP/feedback, laisser passer
-  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isUnsubscribeApi || isCookieConsentApi || isPushVapidApi || isCapteursIngestionApi || isPublicBoutiquePage || isPublicBoutiqueApi || isPublicApi) {
+  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isUnsubscribeApi || isCookieConsentApi || isPushVapidApi || isCapteursIngestionApi || isAbonnementWebhook || isPublicBoutiquePage || isPublicBoutiqueApi || isPublicApi) {
     // Si connecté et sur login, rediriger vers home
     if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
       return NextResponse.redirect(new URL("/", req.nextUrl))
@@ -133,6 +145,12 @@ export default auth((req) => {
     // jamais écrite). Une API sans session répond 401 JSON, jamais un 302.
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
+    }
+    // Audit SEO du 2026-11-09 : une adresse qui n'existe pas répondait 307
+    // vers /login au lieu de 404. La réécriture vers un chemin privé (`_`)
+    // ne correspond à aucune route : Next sert `not-found.tsx` avec un 404.
+    if (segmentRacineInconnu(pathname)) {
+      return NextResponse.rewrite(new URL(CHEMIN_INTROUVABLE, req.nextUrl))
     }
     // QA cmvnout4y — le lien profond garde sa requête (`?tab=…&sub=…`) à
     // travers la connexion : chemin + requête, jamais le chemin seul.

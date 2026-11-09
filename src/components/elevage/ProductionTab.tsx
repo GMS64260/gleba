@@ -494,8 +494,14 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     const domLotId = String(submitted.get("lotId") || "").trim()
     const submittedLotId = (domLotId !== LOT_NON_CHOISI ? domLotId : "") || formData.lotId
     if (!submittedLotId) {
-      setProductionSubmitError("Sélectionnez un lot de pondeuses.")
-      toast({ title: "Sélectionnez un lot", variant: "destructive" })
+      // Sans aucun lot de volailles actif, « Sélectionnez un lot » est une
+      // impasse : on dit quoi faire (des pondeuses suivies en fiches se rangent
+      // dans un lot pour saisir leur ponte).
+      const message = lots.length === 0
+        ? "Aucun lot de volailles actif : créez d'abord un lot dans Animaux & Lots (vos pondeuses en fiches peuvent y être rangées), puis saisissez la ponte."
+        : "Sélectionnez un lot de pondeuses."
+      setProductionSubmitError(message)
+      toast({ title: lots.length === 0 ? "Aucun lot de pondeuses" : "Sélectionnez un lot", description: lots.length === 0 ? message : undefined, variant: "destructive" })
       return
     }
     if (!submittedQuantite) {
@@ -1841,7 +1847,10 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
     const domLotIdAbattage = String(new FormData(e.currentTarget).get("lotId") || "").trim()
     const submittedLotId =
       (domLotIdAbattage !== LOT_NON_CHOISI ? domLotIdAbattage : "") || formData.lotId
-    if (!submittedLotId) {
+    // Un abattage fait depuis la fiche d'un animal n'a pas de lot : il se
+    // corrige ici sans en exiger un (le PATCH ne lit pas `lotId`).
+    const abattageIndividuel = editingId !== null && abattages.some((a) => a.id === editingId && a.animal && !a.lot)
+    if (!submittedLotId && !abattageIndividuel) {
       toast({ title: "Sélectionnez un lot", variant: "destructive" })
       return
     }
@@ -1856,7 +1865,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
         poidsVif: formData.poidsVif ? parseFloat(formData.poidsVif) : null,
         poidsCarcasse: formData.poidsCarcasse ? parseFloat(formData.poidsCarcasse) : null,
         destination: formData.destination,
-        prixVente: formData.prixVente ? parseFloat(formData.prixVente) : null,
+        prixVente: formData.destination === 'vente' && formData.prixVente ? parseFloat(formData.prixVente) : null,
         lieu: formData.lieu || null,
         nEtablissementDestination: formData.nEtablissementDestination.trim() || null,
         notes: formData.notes || null,
@@ -1893,7 +1902,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
         const totalAnimaux = src.reduce((s, a) => s + a.quantite, 0)
         const poidsVifTotal = src.reduce((s, a) => s + (a.poidsVif || 0), 0)
         const poidsCarcasseTotal = src.reduce((s, a) => s + (a.poidsCarcasse || 0), 0)
-        const revenusVente = src.reduce((s, a) => s + (a.prixVente || 0), 0)
+        const revenusVente = src.reduce((s, a) => s + (a.destination === 'vente' ? a.prixVente || 0 : 0), 0)
         return (
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           <Card>

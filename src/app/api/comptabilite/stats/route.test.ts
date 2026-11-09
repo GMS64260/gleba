@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   arbres: vi.fn(),
   depensesCategories: vi.fn(),
   mensuel: vi.fn(),
+  ventesManuelles: vi.fn(),
+  ventesElevage: vi.fn(),
 }))
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.auth }))
 vi.mock('@/lib/kpi', () => ({
@@ -35,6 +37,8 @@ vi.mock('@/lib/prisma', () => {
     'operationArbre.aggregate': mocks.operations,
     'arbre.aggregate': mocks.arbres,
     'depenseManuelle.groupBy': mocks.depensesCategories,
+    'venteManuelle.groupBy': mocks.ventesManuelles,
+    'venteProduit.groupBy': mocks.ventesElevage,
   }
   const modele = (nom: string) => new Proxy({}, { get: (_, methode: string) => choisis[nom + '.' + methode] ?? vide(methode) })
   const racine: Record<string, unknown> = { $queryRaw: async () => [] }
@@ -54,6 +58,8 @@ beforeEach(() => {
   mocks.operations.mockResolvedValue({ _sum: { cout: 30 } })
   mocks.arbres.mockResolvedValue({ _sum: { prixAchat: 50 } })
   mocks.depensesCategories.mockResolvedValue([])
+  mocks.ventesManuelles.mockResolvedValue([])
+  mocks.ventesElevage.mockResolvedValue([])
   mocks.mensuel.mockResolvedValue(Array.from({ length: 12 }, () => ({ revenus: 0, depenses: 0 })))
 })
 
@@ -110,5 +116,26 @@ describe('GET /api/comptabilite/stats — graphiques sur le périmètre comptabl
     ])
     // Les campagnes (220 €, coût analytique) restent dans les modules seulement.
     expect(j.charts.depensesParCategorie.some((d: { categorie: string }) => d.categorie === 'Plantations')).toBe(false)
+  })
+})
+
+describe('GET /api/comptabilite/stats — revenus par catégorie de l’élevage', () => {
+  it('compte la paie du lait, les abattages vendus et les réservations, une part par catégorie', async () => {
+    mocks.ventesElevage.mockResolvedValue([
+      { type: 'viande', _sum: { prixTotal: 100 } },
+      { type: 'animal_vivant', _sum: { prixTotal: 150 } },
+    ])
+    mocks.ventesManuelles.mockResolvedValue([
+      { categorie: 'lait', _sum: { montant: 9000 } },
+      { categorie: 'viande', _sum: { montant: 300 } },
+      { categorie: 'animal_vivant', _sum: { montant: 1200 } },
+    ])
+
+    const j = await (await GET(new NextRequest(`http://localhost/api/comptabilite/stats?year=${annee}`))).json()
+
+    const miroirs = mocks.ventesManuelles.mock.calls.find((c) => c[0].by.includes('categorie'))?.[0].where.OR
+    expect(miroirs).toContainEqual({ auto: true, sourceType: { in: ['commande_boutique', 'paie_lait', 'abattage', 'reservation_elevage'] } })
+    const parts = Object.fromEntries(j.charts.revenusParCategorie.map((r: { categorie: string; montant: number }) => [r.categorie, r.montant]))
+    expect(parts).toEqual({ Viande: 400, Animaux: 1350, Lait: 9000 })
   })
 })

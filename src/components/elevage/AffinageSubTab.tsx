@@ -72,7 +72,26 @@ export function AffinageSubTab() {
     reload()
   }
 
+  // Un seul envoi à la fois : sans garde, deux appuis sur « Enregistrer » (réseau
+  // lent) créaient deux ventes, deux sorties de cave et deux recettes. Le verrou
+  // de stock côté serveur ne refuse le second envoi que si le stock manque.
+  const [saving, setSaving] = React.useState(false)
+  const envoiEnCours = React.useRef(false)
   const submitSortie = async () => {
+    if (!sortie || envoiEnCours.current) return
+    envoiEnCours.current = true
+    setSaving(true)
+    try {
+      await envoyerSortie()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "La sortie n'a pas pu être enregistrée. Vérifiez la connexion et la cave avant de recommencer." })
+    } finally {
+      envoiEnCours.current = false
+      setSaving(false)
+    }
+  }
+
+  const envoyerSortie = async () => {
     if (!sortie) return
     const nbPieces = Number(form.nbPieces) || 0
     const poidsKg = Number(form.poidsKg) || 0
@@ -252,8 +271,8 @@ export function AffinageSubTab() {
             )}
           </div>
           <div className="flex justify-end gap-2 mt-2">
-            <Button variant="outline" onClick={() => setSortie(null)}>Annuler</Button>
-            <Button onClick={submitSortie}>Enregistrer</Button>
+            <Button variant="outline" onClick={() => setSortie(null)} disabled={saving}>Annuler</Button>
+            <Button onClick={submitSortie} disabled={saving}>{saving ? "Enregistrement…" : "Enregistrer"}</Button>
           </div>
         </DialogContent>
       </Dialog>

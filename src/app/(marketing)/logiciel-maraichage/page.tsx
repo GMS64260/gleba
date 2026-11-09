@@ -3,8 +3,8 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel de maraîchage libre : plan de culture et suivi",
-  description: "Logiciel de maraîchage libre, gratuit en bêta : plan de culture, rotations, planches sur le plan de la ferme, irrigation, récoltes et traçabilité phyto reliés.",
+  title: "Logiciel de maraîchage libre : plan de culture",
+  description: "Logiciel de maraîchage libre et gratuit : plan de culture, rotations, planches sur le plan de la ferme, irrigation, récoltes et traçabilité phyto reliés.",
   alternates: { canonical: "https://gleba.fr/logiciel-maraichage" },
   openGraph: { ...ogBase, title: "Logiciel de maraîchage libre — Gleba", description: "Planification, planches, cultures, interventions, récoltes et traçabilité.", url: "https://gleba.fr/logiciel-maraichage", type: "article" },
 };

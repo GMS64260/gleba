@@ -39,6 +39,17 @@ services:
       STRIPE_CONNECT_CLIENT_ID: ${STRIPE_CONNECT_CLIENT_ID:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_SYNC_ENABLED: ${STRIPE_SYNC_ENABLED:-true}
+      # Abonnement au service hébergé (docs/abonnements.md) ; désactivé par défaut,
+      # le socle auto-hébergé reste libre. Distinct de la banque des producteurs ci-dessus.
+      GLEBA_ABONNEMENTS_ACTIFS: ${GLEBA_ABONNEMENTS_ACTIFS:-false}
+      GLEBA_PUBLIC_URL: ${GLEBA_PUBLIC_URL:-}
+      GLEBA_STRIPE_SECRET_KEY: ${GLEBA_STRIPE_SECRET_KEY:-}
+      GLEBA_STRIPE_WEBHOOK_SECRET: ${GLEBA_STRIPE_WEBHOOK_SECRET:-}
+      GLEBA_STRIPE_PRICE_COMPLET: ${GLEBA_STRIPE_PRICE_COMPLET:-}
+      GLEBA_STRIPE_PORTAL_CONFIGURATION: ${GLEBA_STRIPE_PORTAL_CONFIGURATION:-}
+      GLEBA_STRIPE_TAX_MODE: ${GLEBA_STRIPE_TAX_MODE:-}
+      GLEBA_STRIPE_TAX_RATE: ${GLEBA_STRIPE_TAX_RATE:-}
+      GLEBA_STRIPE_COMMERCE_VALIDE: ${GLEBA_STRIPE_COMMERCE_VALIDE:-false}
       # Connexion Google (optionnelle) : le bouton n'apparaît que si le client
       # OAuth est renseigné dans le .env privé du serveur.
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}

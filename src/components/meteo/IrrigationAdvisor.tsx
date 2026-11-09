@@ -1,5 +1,7 @@
 "use client"
 
+import { useAccesService } from "@/hooks/use-acces-service"
+
 import * as React from "react"
 import {
   Droplets,
@@ -106,7 +108,11 @@ interface IrrigationAdvisorProps {
   scopeLabel?: string
 }
 
-export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: IrrigationAdvisorProps) {
+export function IrrigationAdvisor(props: IrrigationAdvisorProps) {
+  const { acces } = useAccesService()
+  return acces?.meteo ? <IrrigationAdvisorInterne {...props} /> : null
+}
+function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: IrrigationAdvisorProps) {
   const { toast } = useToast()
   const [data, setData] = React.useState<IrrigationData | null>(null)
   const [loading, setLoading] = React.useState(true)

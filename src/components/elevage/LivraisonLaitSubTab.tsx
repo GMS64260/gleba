@@ -58,7 +58,35 @@ export function LivraisonLaitSubTab() {
   }, [annee])
   React.useEffect(() => { reload() }, [reload])
 
-  const submitLiv = async () => {
+  // Un seul envoi à la fois : deux appuis créaient deux livraisons.
+  const [envoi, setEnvoi] = React.useState<null | "livraison" | "paie">(null)
+  const envoiEnCours = React.useRef(false)
+  const unSeulEnvoi = async (quoi: "livraison" | "paie", action: () => Promise<void>) => {
+    if (envoiEnCours.current) return
+    envoiEnCours.current = true
+    setEnvoi(quoi)
+    try {
+      await action()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "L'enregistrement n'a pas abouti. Vérifiez la connexion avant de recommencer." })
+    } finally {
+      envoiEnCours.current = false
+      setEnvoi(null)
+    }
+  }
+  // Une suppression refusée (paie portant des versements…) se dit, au lieu de
+  // recharger la liste comme si de rien n'était.
+  const supprimer = async (url: string) => {
+    const res = await fetch(url, { method: "DELETE" })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      toast({ variant: "destructive", title: "Suppression impossible", description: j.error || "Réessayez." })
+    }
+    reload()
+  }
+
+  const submitLiv = () => unSeulEnvoi("livraison", envoyerLivraison)
+  const envoyerLivraison = async () => {
     if (!livForm.litres) { toast({ variant: "destructive", title: "Litres requis" }); return }
     const corps = {
       date: livForm.date, litres: livForm.litres, laiterie: livForm.laiterie || null,
@@ -76,7 +104,7 @@ export function LivraisonLaitSubTab() {
   }
   const delLiv = async (l: Livraison) => {
     if (!(await confirmDialog("Supprimer cette livraison ?"))) return
-    await fetch(`/api/elevage/livraisons-lait?id=${l.id}`, { method: "DELETE" }); reload()
+    await supprimer(`/api/elevage/livraisons-lait?id=${l.id}`)
   }
 
   // Estimation prime/pénalité à partir des livraisons du mois sélectionné
@@ -94,18 +122,28 @@ export function LivraisonLaitSubTab() {
     toast({ title: "Estimation calculée", description: `${moisLiv.length} livraison(s) du mois — grille indicative` })
   }
 
-  const submitPaie = async () => {
+  const submitPaie = () => unSeulEnvoi("paie", envoyerPaie)
+  const envoyerPaie = async () => {
     if (!paieForm.litres || !paieForm.prixBaseMille) { toast({ variant: "destructive", title: "Litres et prix de base requis" }); return }
+    // Une seule paie par mois : en enregistrer une seconde REMPLACE la première
+    // (litres, montant, laiterie, notes), donc sa recette. On le dit avant.
+    const dejaSaisie = paies.find((p) => p.mois === paieForm.mois)
+    if (dejaSaisie && !(await confirmDialog(
+      `Une paie est déjà enregistrée pour ${MOIS[paieForm.mois - 1]}${dejaSaisie.laiterie ? ` (${dejaSaisie.laiterie})` : ""}. L'enregistrer de nouveau la remplace, avec sa recette en comptabilité. Continuer ?`,
+    ))) return
     const res = await fetch("/api/elevage/paies-lait", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ annee, mois: paieForm.mois, litres: paieForm.litres, prixBaseMille: paieForm.prixBaseMille, primeQualite: paieForm.primeQualite || 0, penalite: paieForm.penalite || 0, laiterie: paieForm.laiterie || null }),
     })
     if (res.ok) { toast({ title: "Paie enregistrée" }); reload() }
-    else toast({ variant: "destructive", title: "Erreur" })
+    else {
+      const j = await res.json().catch(() => ({}))
+      toast({ variant: "destructive", title: "Erreur", description: j.error || "La paie n'a pas été enregistrée." })
+    }
   }
   const delPaie = async (p: Paie) => {
     if (!(await confirmDialog(`Supprimer la paie de ${MOIS[p.mois - 1]} ?`))) return
-    await fetch(`/api/elevage/paies-lait?id=${p.id}`, { method: "DELETE" }); reload()
+    await supprimer(`/api/elevage/paies-lait?id=${p.id}`)
   }
 
   const montantEstime = montantPaie(Number(paieForm.litres) || 0, Number(paieForm.prixBaseMille) || 0, Number(paieForm.primeQualite) || 0, Number(paieForm.penalite) || 0)
@@ -141,7 +179,7 @@ export function LivraisonLaitSubTab() {
             <div><Label className="text-xs">Pénalité €</Label><Input type="number" value={paieForm.penalite} onChange={(e) => setPaieForm((f) => ({ ...f, penalite: e.target.value }))} /></div>
             <div className="flex gap-1">
               <Button size="sm" variant="outline" onClick={estimerPaie} title="Estimer d'après les livraisons du mois"><Calculator className="h-4 w-4" /></Button>
-              <Button size="sm" onClick={submitPaie}>{montantEstime.toFixed(0)} €</Button>
+              <Button size="sm" onClick={submitPaie} disabled={envoi !== null}>{montantEstime.toFixed(0)} €</Button>
             </div>
           </div>
           {paies.length > 0 && (
@@ -181,7 +219,7 @@ export function LivraisonLaitSubTab() {
             <div><Label className="text-xs">TP g/L</Label><Input type="number" step="0.1" value={livForm.tp} onChange={(e) => setLivForm((f) => ({ ...f, tp: e.target.value }))} /></div>
             <div><Label className="text-xs">Cellules (×1000/mL)</Label><Input type="number" placeholder="ex. 650" value={livForm.cellules} onChange={(e) => setLivForm((f) => ({ ...f, cellules: e.target.value }))} /></div>
             <div><Label className="text-xs">Germes (×1000/mL)</Label><Input type="number" placeholder="ex. 25" value={livForm.germes} onChange={(e) => setLivForm((f) => ({ ...f, germes: e.target.value }))} /></div>
-            <div><Button size="sm" onClick={submitLiv}><Plus className="h-4 w-4 mr-1" />Ajouter</Button></div>
+            <div><Button size="sm" onClick={submitLiv} disabled={envoi !== null}><Plus className="h-4 w-4 mr-1" />Ajouter</Button></div>
           </div>
           {livStats && <p className="text-xs text-slate-500">{livStats.nb} livraison(s) · {livStats.litresTotal.toLocaleString("fr-FR")} L livrés en {annee}</p>}
           {livraisons.length > 0 && (
