@@ -17,7 +17,7 @@ import { ogBase } from "@/lib/seo/og";
 export const metadata: Metadata = {
   title: { absolute: "Gleba — Logiciel libre de maraîchage et de micro-ferme" },
   description:
-    "Logiciel libre de maraîchage, verger et élevage : plan de culture, stocks et traçabilité. Trois mois d’essai gratuits, puis offres à 5 ou 12 € HT/mois.",
+    "Logiciel libre de maraîchage, verger et élevage : plan de culture, stocks et traçabilité. Carnet gratuit ; Complet à 12 € HT/mois avec trois mois d’essai.",
   alternates: { canonical: "https://gleba.fr" },
   openGraph: {
     ...ogBase,

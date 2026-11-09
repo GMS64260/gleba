@@ -27,7 +27,8 @@ export function GardePageService({ children }: { children: ReactNode }) {
   if (operationPermise(acces, pathname, "GET")) return <>{children}</>
   // Le carnet gratuit garde la facturation : l'entrée Comptabilité y mène.
   const facturationSeule = pathname.startsWith("/comptabilite") && acces.facturation
-  return <main className="mx-auto max-w-3xl px-4 py-10">
+  // Marge basse mobile : la bulle d’avis et la navigation fixes ne recouvrent pas l’appel à l’action.
+  return <main className="mx-auto max-w-3xl px-4 pb-36 pt-10 lg:pb-10">
     {facturationSeule && <section aria-labelledby="titre-facturation" className="mb-10">
       <h1 id="titre-facturation" className="font-display text-3xl text-foret">Vos ventes et vos factures</h1>
       <ul className="mt-5 grid gap-3 sm:grid-cols-3">{FACTURATION.map(l => <li key={l.href}><Link href={l.href} className="flex min-h-20 items-center rounded-xl border border-lin bg-craie p-4 font-medium text-encre hover:border-sauge">{l.libelle}</Link></li>)}</ul>

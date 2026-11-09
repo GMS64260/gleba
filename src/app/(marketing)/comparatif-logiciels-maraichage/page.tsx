@@ -25,7 +25,7 @@ const LIGNES: Ligne[] = [
   { nom: "CropMaker", licence: "Non précisée, pas de code public trouvé", hebergement: "Fichier local", prix: "Gratuit, sans compte", perimetre: "Planches, itinéraires, emblavement, calendrier des récoltes, temps de travail, chiffre d'affaires" },
   { nom: "farmOS", licence: "Libre (GPL-2.0)", hebergement: "Oui", prix: "Gratuit ; hébergement Farmier à partir de 75 $/an", perimetre: "Cultures, animaux, journaux d'activité" },
   { nom: "LiteFarm", licence: "Libre (GPL-3.0)", hebergement: "Possible", prix: "Gratuit", perimetre: "Tâches, cartes, récoltes, finances, certifications ; interface en français" },
-  { nom: "Gleba", licence: "Libre (AGPL-3.0)", hebergement: "Oui (Docker Compose), sans l'assistant IA", prix: "Trois mois d’essai, puis 5 ou 12 € HT/mois sur gleba.fr ; auto-hébergement gratuit", perimetre: "Maraîchage, verger, élevage, registre phytosanitaire, stocks, factures, boutique, assistant IA" },
+  { nom: "Gleba", licence: "Libre (AGPL-3.0)", hebergement: "Oui (Docker Compose), sans l'assistant IA", prix: "Carnet gratuit sur gleba.fr, Complet à 12 € HT/mois (trois mois d’essai) ; auto-hébergement gratuit", perimetre: "Maraîchage, verger, élevage, registre phytosanitaire, stocks, factures, boutique, assistant IA" },
 ];
 
 export default function Page() {
@@ -110,7 +110,7 @@ export default function Page() {
                 <strong>farmOS</strong> et <strong>LiteFarm</strong> sont des logiciels libres généralistes développés hors de France : farmOS couvre cultures et animaux ; LiteFarm, porté par l&apos;Université de Colombie-Britannique, est disponible en français.
               </p>
               <p>
-                <strong>Gleba</strong>, publié sous AGPL-3.0, relie maraîchage, verger suivi arbre par arbre, ateliers d&apos;élevage, registre phytosanitaire, stocks, factures et boutique. Le service hébergé sur gleba.fr propose trois mois d’essai, puis Essentiel à 5 € HT/mois ou Complet à 12 € HT/mois ; les comptes existants lors de l’annonce restent gratuits à vie. L&apos;auto-hébergement reste gratuit, sans l&apos;assistant IA, qui n&apos;est pas publié dans le code.
+                <strong>Gleba</strong>, publié sous AGPL-3.0, relie maraîchage, verger suivi arbre par arbre, ateliers d&apos;élevage, registre phytosanitaire, stocks, factures et boutique. Sur gleba.fr, le carnet est gratuit et l’offre Complet à 12 € HT/mois (assistant IA, météo, boutique, gestion) s’essaie trois mois ; les comptes existants lors de l’annonce restent gratuits à vie. L&apos;auto-hébergement reste gratuit, sans l&apos;assistant IA, qui n&apos;est pas publié dans le code.
               </p>
             </>
           ),
