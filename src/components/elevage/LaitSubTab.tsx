@@ -729,7 +729,10 @@ function CollecteView() {
       })
       const json = await res.json()
       if (!res.ok) {
-        toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec de la saisie" })
+        toast({ variant: "destructive", title: "Traite non enregistrée", description: json.error || "Échec de la saisie" })
+        // La grille revient à ce qui est enregistré : la cellule ne garde pas
+        // une valeur que le serveur a refusée.
+        reload()
       } else {
         // Ticket cms1v9rj5 — le POST signale l'écartement automatique (délai
         // d'attente vétérinaire) via `info` : sans ce toast, l'utilisateur ne
@@ -739,6 +742,9 @@ function CollecteView() {
         }
         reload()
       }
+    } catch {
+      toast({ variant: "destructive", title: "Traite non enregistrée", description: "Connexion interrompue : la valeur saisie n'a pas été enregistrée." })
+      reload()
     } finally {
       setSavingKey(null)
     }
