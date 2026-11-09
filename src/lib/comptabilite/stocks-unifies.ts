@@ -2,7 +2,7 @@
  * Stocks unifiés multi-modules — source unique de vérité de l'écran
  * Comptabilité > Stocks (les 11 catégories : graines, plants, fertilisants,
  * récoltes en stock, cultures en cours, aliments, animaux individuels, lots,
- * œufs, produits de la ruche, arbres, fruits et bois).
+ * œufs, fromages en cave, produits de la ruche, arbres, fruits et bois).
  *
  * Extrait de GET /api/comptabilite/stocks (lot assistant 2026-08-11) pour être
  * partagé avec l'outil assistant `get_stocks_valorises` : le « stock actuel »
@@ -10,6 +10,7 @@
  * jamais un sous-ensemble.
  */
 
+import { chargerCaveEnStock } from '@/lib/elevage/stock-cave'
 import prisma from '@/lib/prisma'
 import { disponibleCommercial, quantiteBois } from '@/lib/commercial/stock-types'
 import { calculerStockOeufs, OEUFS_PAR_UNITE } from '@/lib/stocks-helpers'
@@ -564,6 +565,22 @@ export async function computeStocksUnifies(userId: string) {
       stockMin: 24,
       alerteBas: stockOeufs.stockVendable < 24,
       valeur: valeurOeufs,
+    })
+  }
+
+  // Cave de fromage : une ligne par lot encore en cave, au stock et à la
+  // valorisation de l'écran Cave.
+  for (const lot of await chargerCaveEnStock(userId)) {
+    stocks.push({
+      id: `fromage-${lot.id}`,
+      module: 'elevage',
+      categorie: 'Fromages en cave',
+      nom: `${lot.typeFromage} — lot ${lot.numeroLot} (${lot.stockKg.toLocaleString('fr-FR')} kg)`,
+      stock: lot.stockPieces,
+      unite: 'pièces',
+      stockMin: null,
+      alerteBas: false,
+      valeur: lot.valorisation,
     })
   }
 
