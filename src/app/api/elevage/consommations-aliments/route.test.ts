@@ -84,4 +84,24 @@ describe('consommations d’aliment — alimentId', () => {
     expect(mocks.transaction).toHaveBeenCalled()
     expect(res.status).not.toBe(400)
   })
+
+  // Deux corrections 5 → 8 envoyées ensemble : la seconde a lu 5 avant la
+  // transaction, mais la ligne verrouillée vaut déjà 8. Le stock ne bouge plus.
+  it('PATCH applique au stock l’écart avec la consommation relue sous verrou', async () => {
+    const stockUpsert = vi.fn()
+    const tx = {
+      $executeRaw: vi.fn(),
+      consommationAliment: {
+        findFirst: vi.fn().mockResolvedValue({ alimentId: 'foin', quantite: 8 }),
+        update: vi.fn().mockResolvedValue({ id: 3, alimentId: 'foin', quantite: 8, date: new Date('2026-11-01') }),
+      },
+      userStockAliment: { upsert: stockUpsert },
+    }
+    mocks.transaction.mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx))
+
+    const res = await PATCH(requete('PATCH', { id: 3, alimentId: 'foin', quantite: 8, date: '2026-11-01' }))
+
+    expect(res.status).toBe(200)
+    expect(stockUpsert).not.toHaveBeenCalled()
+  })
 })

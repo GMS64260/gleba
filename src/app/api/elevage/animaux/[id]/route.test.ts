@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
   enregistrerChangementLot: vi.fn(),
   soinFindMany: vi.fn(),
   especeFindFirst: vi.fn(),
+  refusRemiseActif: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
+vi.mock('@/lib/elevage/sortie-animal.server', () => ({ refusRemiseActif: mocks.refusRemiseActif }))
 vi.mock('@/lib/elevage/animal-lot', () => ({
   isAssignableAnimalLot: mocks.isAssignableAnimalLot,
   enregistrerChangementLot: mocks.enregistrerChangementLot,
@@ -132,6 +134,16 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
     mocks.especeFindFirst.mockResolvedValue({ id: 'caprin' })
   })
 
+  it('PUT normalise le sexe, refuse une valeur inconnue et ne passe plus un père sous silence', async () => {
+    expect((await callPut({ sexe: 'F' })).status).toBe(200)
+    expect(mocks.animalUpdate.mock.calls.at(-1)?.[0].data.sexe).toBe('femelle')
+
+    mocks.animalUpdate.mockClear()
+    expect((await callPut({ sexe: 'licorne' })).status).toBe(400)
+    expect((await callPut({ pereId: 3 })).status).toBe(400)
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
   it('refuse un lot non assignable avant écriture', async () => {
     mocks.isAssignableAnimalLot.mockResolvedValue(false)
 
@@ -243,6 +255,18 @@ describe('sorties et filiation — /api/elevage/animaux/[id]', () => {
     expect(mocks.animalUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ statut: 'actif', dateSortie: null, causeSortie: null, motifSortie: null }),
     }))
+  })
+
+  it('refuse (409) de réactiver un animal sorti par une vente ou un abattage toujours actif', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, statut: 'vendu', dateSortie: new Date('2026-03-15') })
+    mocks.refusRemiseActif.mockResolvedValueOnce('Cet animal est sorti par une vente toujours active')
+
+    const response = await callPatch({ statut: 'actif' })
+
+    expect(response.status).toBe(409)
+    expect((await response.json()).code).toBe('SORTIE_ACTIVE')
+    expect(mocks.refusRemiseActif).toHaveBeenCalledWith(expect.anything(), 'user-1', 7)
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
   })
 
   it('garde la date fournie lors d’un décès', async () => {

@@ -163,7 +163,10 @@ type ArchiveRegistre = {
   createdAt: string
 }
 
-const dateISO = (date = new Date()) => date.toISOString().slice(0, 10)
+// Jour local du navigateur : en UTC, le jour par défaut restait la veille
+// entre minuit et 1 h ou 2 h (inventaire du jour impossible).
+const dateISO = (date = new Date()) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 const anneeCourante = new Date().getFullYear()
 const justificatifAlimentVide = {
   id: null as string | null,

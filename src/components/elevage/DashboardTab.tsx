@@ -5,6 +5,7 @@
  * Stats, alertes, graphiques, et soins à planifier
  */
 
+import { dateRealisationPourFait } from '@/lib/elevage/date-realisation'
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import Link from "next/link"
@@ -388,50 +389,53 @@ export function DashboardTab({ year }: DashboardTabProps) {
       fetchSoins()
     }
   }
-  const bulkSoinsReport = async (days: number) => {
-    const ids = soins.filter((s) => s.datePrevue).map((s) => s.id)
-    if (ids.length === 0) return
+  // « Reporter » ne déplace que la date prévue d'un soin planifié. Une ligne
+  // d'injection (protocole en cours) a sa propre date, calculée depuis le soin :
+  // l'envoyer ici déplaçait la date prévue du soin parent pour rien, et l'écran
+  // annonçait « reporté » alors que l'injection restait à sa date. Elles sont
+  // écartées du report, et le message le dit.
+  const reporterSoins = async (corps: { days: number } | { date: string }, libelle: string) => {
+    const reportables = soins.filter((s) => !s.injectionId && ('date' in corps || s.datePrevue))
+    const ids = [...new Set(reportables.map((s) => s.id))]
+    const nbInjections = soins.filter((s) => s.injectionId).length
+    const noteInjections = nbInjections > 0
+      ? `${nbInjections} injection(s) de protocole en cours ne se reportent pas ici : redatez-les depuis leur soin.`
+      : undefined
+    if (ids.length === 0) {
+      toast({ title: 'Aucun soin à reporter', description: noteInjections })
+      return
+    }
     try {
       const res = await fetch('/api/soins/bulk-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, days }),
+        body: JSON.stringify({ ids, ...corps }),
       })
-      if (!res.ok) throw new Error('Échec')
-      toast({ title: `${ids.length} soin(s) reporté(s) de ${days} jour(s)` })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Report impossible')
+      toast({ title: `${json.updated ?? ids.length} soin(s) reporté(s) ${libelle}`, description: noteInjections })
       fetchSoins()
-    } catch {
-      toast({ variant: 'destructive', title: 'Erreur' })
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Report impossible', description: e instanceof Error ? e.message : undefined })
     }
   }
-  const bulkSoinsReportTo = async (date: string) => {
-    const ids = soins.map((s) => s.id)
-    if (ids.length === 0) return
-    try {
-      const res = await fetch('/api/soins/bulk-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, date }),
-      })
-      if (!res.ok) throw new Error('Échec')
-      toast({ title: `${ids.length} soin(s) reporté(s) au ${new Date(date).toLocaleDateString('fr-FR')}` })
-      fetchSoins()
-    } catch {
-      toast({ variant: 'destructive', title: 'Erreur' })
-    }
-  }
+  const bulkSoinsReport = (days: number) => reporterSoins({ days }, `de ${days} jour(s)`)
+  const bulkSoinsReportTo = (date: string) => reporterSoins({ date }, `au ${new Date(date).toLocaleDateString('fr-FR')}`)
 
   // QA #5/#8 — un toucher OUVRE le détail (dose/voie) ; l'enregistrement passe
   // par un bouton explicite, jamais par le simple tap sur la carte.
   const [soinDetail, setSoinDetail] = React.useState<SoinItem | null>(null)
 
   // Toggle soin fait
-  const toggleSoin = async (id: number, fait: boolean) => {
+  const toggleSoin = async (id: number, fait: boolean, echeance?: string | null) => {
+    // Échéance ancienne : la date réelle est demandée, pas l'instant du clic.
+    const dateFait = fait ? undefined : dateRealisationPourFait(echeance)
+    if (dateFait === null) return
     try {
       const response = await fetch('/api/elevage/soins', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: !fait ? new Date().toISOString() : undefined }),
+        body: JSON.stringify({ id, fait: !fait, date: dateFait }),
       })
       if (!response.ok) throw new Error('Erreur')
       setSoins(prev => prev.filter(s => s.id !== id))
@@ -444,7 +448,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
   }
 
   const validerSoinOuInjection = async (soin: SoinItem) => {
-    if (!soin.injectionId) return toggleSoin(soin.id, soin.fait)
+    if (!soin.injectionId) return toggleSoin(soin.id, soin.fait, soin.date)
+    const dateInjection = dateRealisationPourFait(soin.date, 'Cette injection')
+    if (dateInjection === null) return
     try {
       const response = await fetch(`/api/elevage/soins/${soin.id}/injections`, {
         method: 'PATCH',
@@ -452,7 +458,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
         body: JSON.stringify({
           injectionId: soin.injectionId,
           statut: 'realisee',
-          dateRealisee: new Date().toISOString(),
+          dateRealisee: dateInjection,
         }),
       })
       if (!response.ok) throw new Error('Erreur')
@@ -841,7 +847,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
             {preferences.commercial && <Card className={kpiCardClass("revenu")}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className={`${kpiSubtleClass("revenu")} text-xs flex items-center gap-1`}>
-                  Ventes {year}
+                  Ventes directes {year}
                   {(() => {
                     const diff = data.stats.ventesAnnee - data.stats.ventesAnneePrecedente
                     if (data.stats.ventesAnneePrecedente === 0) return null
@@ -862,6 +868,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     ? `${data.stats.ventesAnnee >= data.stats.ventesAnneePrecedente ? '+' : ''}${Math.round(((data.stats.ventesAnnee - data.stats.ventesAnneePrecedente) / data.stats.ventesAnneePrecedente) * 100)}% vs ${year - 1}`
                     : `${data.stats.nbVentes} vente${data.stats.nbVentes > 1 ? 's' : ''}${data.stats.nbVentes > 0 && data.stats.ventesAnnee === 0 ? ' (prix manquants)' : ''}`
                   }
+                </p>
+                {/* Ce total ne porte que les ventes saisies dans Production > Ventes :
+                    sans cette mention, une ferme qui livre une laiterie ou vend
+                    ses porcs par abattage lisait « 0 € » ici et des milliers
+                    d'euros de revenus Élevage en comptabilité. */}
+                <p className={`mt-1 text-[11px] leading-tight ${kpiSubtleClass("revenu")}`}>
+                  TTC, hors abattages vendus, paie du lait et réservations : le total figure en{" "}
+                  <a href="/comptabilite" className="underline">Comptabilité</a>.
                 </p>
               </CardContent>
             </Card>}

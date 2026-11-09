@@ -47,6 +47,11 @@ import {
   estVenteProduitRuche,
   tauxTvaVenteProduitParDefaut,
 } from '@/lib/elevage/produits-ruche'
+import { libelleTypeVente } from '@/lib/elevage/types-vente'
+
+// Plafond d'une vente unitaire, à la saisie comme à la correction.
+const SEUIL_VENTE_PRODUIT = 100_000
+const arrondirCentime = (montant: number) => Math.round((montant + Number.EPSILON) * 100) / 100
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -151,7 +156,9 @@ export async function POST(request: NextRequest) {
     const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, cessionGratuite } = parsed.data
     const tauxTVAFinal = tauxTVA ?? tauxTvaVenteProduitParDefaut(type)
     let notes = parsed.data.notes ?? null
-    const prixTotal = quantite * prixUnitaire
+    // Au centime : 0,347 kg × 24,90 € donnait 8,6403 €, repris tel quel par le
+    // miroir, le KPI et la facture alors que le FEC arrondit ligne à ligne.
+    const prixTotal = arrondirCentime(quantite * prixUnitaire)
 
     // Ticket cms1vqsqu — vente d'animal vivant à 0 € sans garde-fou.
     // La validation stricte n'est appliquée QUE si le body porte le marqueur
@@ -268,7 +275,6 @@ export async function POST(request: NextRequest) {
     // remonter en compta une ligne "999 999 douzaines d'œufs à 4€ = 4M€".
     // On bloque toute vente unitaire > 100 000 € à la saisie ; les
     // ventes en gros au-dessus passent via un POST dédié confirmé.
-    const SEUIL_VENTE_PRODUIT = 100_000
     if (prixTotal > SEUIL_VENTE_PRODUIT) {
       return NextResponse.json(
         {
@@ -366,6 +372,9 @@ export async function POST(request: NextRequest) {
               statut: 'vendu',
               dateSortie: date || new Date(),
               causeSortie: 'Vente',
+              ...(parsed.data.nExploitationDestination?.trim()
+                ? { nExploitationDestination: parsed.data.nExploitationDestination.trim() }
+                : {}),
             },
           })
         }
@@ -512,10 +521,22 @@ export async function DELETE(request: NextRequest) {
       }
 
       if (courante.type === 'animal_vivant' && courante.animalId) {
-        await tx.animal.updateMany({
-          where: { id: courante.animalId, userId: session.user.id, statut: 'vendu' },
-          data: { statut: 'actif', dateSortie: null, causeSortie: null },
+        // La fiche ne redevient active que si plus aucune vente active ne la
+        // vise : annuler l'une de deux ventes du même animal le réactivait
+        // alors que l'autre courait toujours.
+        const autreVente = await tx.venteProduit.findFirst({
+          where: {
+            userId: session.user.id, animalId: courante.animalId, type: 'animal_vivant',
+            annule: { not: true }, id: { not: existing.id },
+          },
+          select: { id: true },
         })
+        if (!autreVente) {
+          await tx.animal.updateMany({
+            where: { id: courante.animalId, userId: session.user.id, statut: 'vendu' },
+            data: { statut: 'actif', dateSortie: null, causeSortie: null },
+          })
+        }
       }
 
       // Vente de fromage annulée : supprimer la (les) sortie(s) de cave liée(s)
@@ -658,7 +679,28 @@ export async function PATCH(request: NextRequest) {
     if (updateData.quantite !== undefined || updateData.prixUnitaire !== undefined) {
       const q = updateData.quantite ?? existing.quantite
       const pu = updateData.prixUnitaire ?? existing.prixUnitaire
-      updateData.prixTotal = q * pu
+      updateData.prixTotal = arrondirCentime(q * pu)
+    }
+    // Mêmes gardes que le POST, sur les valeurs finales : le PATCH acceptait
+    // une quantité de 3 pour UN animal vivant (recette triplée, une seule tête
+    // sortie), un total hors plafond et « payée » avec le mode « À crédit ».
+    if (existing.type === 'animal_vivant' && updateData.quantite !== undefined && updateData.quantite !== 1) {
+      return NextResponse.json({ error: 'Une vente individuelle porte sur un seul animal.', champ: 'quantite' }, { status: 400 })
+    }
+    if (updateData.prixTotal !== undefined && updateData.prixTotal > SEUIL_VENTE_PRODUIT) {
+      return NextResponse.json(
+        { error: `Saisie aberrante : le total de ${updateData.prixTotal.toFixed(2)} € dépasse ${SEUIL_VENTE_PRODUIT} €. Découpez la saisie.` },
+        { status: 400 },
+      )
+    }
+    if (updateData.unite !== undefined && (typeof updateData.unite !== 'string' || !updateData.unite.trim() || updateData.unite.length > 30)) {
+      return NextResponse.json({ error: 'Unité invalide', champ: 'unite' }, { status: 400 })
+    }
+    if ((updateData.paye ?? existing.paye) === true && mode.data === 'À crédit') {
+      return NextResponse.json(
+        { error: 'Une vente à crédit reste à encaisser : décochez « Vente payée » ou choisissez le mode du règlement reçu.', champ: 'modeReglement' },
+        { status: 400 },
+      )
     }
     // Cohérence compta : une vente "Payé" ne peut pas être à 0 € (cf POST).
     // Ticket cms1vqsqu — exception : cession gratuite (convention notes
@@ -770,7 +812,9 @@ export async function PATCH(request: NextRequest) {
           clientId: body.clientId || null,
           clientNom: (updateData.client !== undefined ? updateData.client : existing.client) || undefined,
           date: dateF,
-          objet: `Vente de ${typeF} - ${descF || ''}`,
+          // Libellé du produit, pas sa clé technique : la facture imprimait
+          // « Vente de animal_vivant - … » ou « gelee_royale - … ».
+          objet: descF ? `Vente — ${libelleTypeVente(typeF)} — ${descF}` : `Vente — ${libelleTypeVente(typeF)}`,
           totalHT,
           totalTVA,
           totalTTC: totalFinal,
@@ -778,7 +822,7 @@ export async function PATCH(request: NextRequest) {
           datePaiement: payeFinal ? new Date() : null,
           modePaiement: body.modePaiement || modePaiementDepuisReglement(mode.data !== undefined ? mode.data : (await tx.venteManuelle.findFirst({ where: { userId, auto: true, sourceType: 'vente_produit', sourceId: existing.id }, select: { modeReglement: true } }))?.modeReglement),
           lignes: [{
-            description: `${typeF} - ${descF || ''}`,
+            description: descF ? `${libelleTypeVente(typeF)} — ${descF}` : libelleTypeVente(typeF),
             quantite: qteF,
             unite: uniteF,
             prixUnitaire: puF / (1 + tva / 100),
@@ -799,7 +843,25 @@ export async function PATCH(request: NextRequest) {
           destination: true,
         },
       })
-      if (updated.type === 'oeufs') {
+      // Les sorties de stock d'une vente ne se refont que si la vente a changé
+      // ce qu'elle sort : quantité, unité ou jour. Refaites à chaque PATCH, une
+      // simple correction du client ou du règlement réattribuait les pontes avec
+      // les blocages vétérinaires du jour : refus 409 « stock insuffisant » sur
+      // une vente déjà livrée, ou traçabilité réécrite vers d'autres pontes.
+      const sortieStockChange = updated.quantite !== existing.quantite
+        || updated.unite !== existing.unite
+        || updated.date.getTime() !== existing.date.getTime()
+      if (existing.lotFromageId && updated.date.getTime() !== existing.date.getTime()) {
+        // La sortie de cave suit la date corrigée de sa vente (quantité et unité
+        // sont figées plus haut pour le fromage).
+        await tx.mouvementFromage.updateMany({
+          where: { userId, venteProduitId: existing.id },
+          data: { date: updated.date },
+        })
+      }
+      if (updated.type === 'oeufs' && !sortieStockChange) {
+        // rien à refaire : les sorties existantes restent celles de la vente
+      } else if (updated.type === 'oeufs') {
         await synchroniserStockOeufsVente(tx, {
           userId,
           venteId: updated.id,
@@ -810,7 +872,9 @@ export async function PATCH(request: NextRequest) {
       } else if (existing.type === 'oeufs') {
         await supprimerStockOeufsVente(tx, userId, existing.id)
       }
-      if (estVenteProduitRuche(updated.type)) {
+      if (estVenteProduitRuche(updated.type) && !sortieStockChange) {
+        // idem : les sorties de la ruche ne bougent pas
+      } else if (estVenteProduitRuche(updated.type)) {
         await synchroniserStockRucheVente(tx, {
           userId,
           venteId: updated.id,

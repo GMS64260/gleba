@@ -5,6 +5,7 @@
  * Pattern inspire du CalendrierTab potager
  */
 
+import { dateRealisationPourFait } from '@/lib/elevage/date-realisation'
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
 import {
@@ -304,12 +305,15 @@ export function CalendrierTab() {
   const [soinDetail, setSoinDetail] = React.useState<SoinTask | null>(null)
 
   // Toggle soin fait
-  const toggleSoin = async (id: number, fait: boolean) => {
+  const toggleSoin = async (id: number, fait: boolean, echeance?: string | null) => {
+    // Échéance ancienne : la date réelle est demandée, pas l'instant du clic.
+    const dateFait = fait ? undefined : dateRealisationPourFait(echeance)
+    if (dateFait === null) return
     try {
       const response = await fetch('/api/elevage/soins', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: !fait ? new Date().toISOString() : undefined }),
+        body: JSON.stringify({ id, fait: !fait, date: dateFait }),
       })
       if (!response.ok) throw new Error('Erreur')
       toast({ title: fait ? "Soin rouvert" : "Soin marque fait !" })
@@ -320,7 +324,9 @@ export function CalendrierTab() {
   }
 
   const toggleInjection = async (soin: SoinTask, fait: boolean) => {
-    if (!soin.injectionId) return toggleSoin(soin.id, fait)
+    if (!soin.injectionId) return toggleSoin(soin.id, fait, soin.datePrevue ?? soin.date)
+    const dateInjection = fait ? null : dateRealisationPourFait(soin.date, 'Cette injection')
+    if (!fait && dateInjection === null) return
     try {
       const response = await fetch(`/api/elevage/soins/${soin.id}/injections`, {
         method: 'PATCH',
@@ -328,7 +334,7 @@ export function CalendrierTab() {
         body: JSON.stringify({
           injectionId: soin.injectionId,
           statut: fait ? 'a_faire' : 'realisee',
-          dateRealisee: fait ? null : new Date().toISOString(),
+          dateRealisee: dateInjection,
         }),
       })
       if (!response.ok) throw new Error('Erreur')
@@ -795,7 +801,7 @@ export function CalendrierTab() {
                           libelleRetard(retard),
                         ]}
                         pastille={<PastilleEtat etat={etat} libelle={retard > 0 ? "En retard" : "À soigner"} className="hidden sm:inline-flex" />}
-                        action={{ libelle: "Fait", onClick: () => toggleSoin(soin.id, soin.fait) }}
+                        action={{ libelle: "Fait", onClick: () => toggleSoin(soin.id, soin.fait, soin.datePrevue ?? soin.date) }}
                       />
                     )
                   })}

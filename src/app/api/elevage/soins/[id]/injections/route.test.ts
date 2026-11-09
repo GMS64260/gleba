@@ -30,7 +30,7 @@ vi.mock('@/lib/auto-compta', () => ({
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: mocks.invalidateKpi }))
 vi.mock('@/lib/prisma', () => {
   const tx = {
-    soinAnimal: { update: mocks.soinUpdate },
+    soinAnimal: { update: mocks.soinUpdate, findFirst: mocks.soinFindFirst },
     $queryRaw: mocks.queryRaw,
     $executeRaw: mocks.executeRaw,
   }
@@ -112,7 +112,8 @@ describe('synchronisation comptable des injections', () => {
     expect(mocks.syncDepense).toHaveBeenCalledWith(
       'user-1',
       expect.objectContaining({ id: 12, fait: true, cout: 24 }),
-      expect.objectContaining({ soinAnimal: expect.any(Object) }),
+      // Le client de la TRANSACTION (lui seul porte `update`), pas le client global.
+      expect.objectContaining({ soinAnimal: expect.objectContaining({ update: expect.any(Function) }) }),
     )
     expect(mocks.invalidateKpi).toHaveBeenCalledWith('user-1')
   })

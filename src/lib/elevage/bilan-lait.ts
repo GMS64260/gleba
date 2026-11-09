@@ -238,8 +238,13 @@ export async function chargerMouvementsLait(
     const jour = jourParis(c.date)
     const litres = Number(c.quantiteLitres)
     mouvements.push({ jour, poste: 'collecte', litres })
-    if (c.ecarteAttente) mouvements.push({ jour, poste: 'ecarte', litres })
+    // Une collecte sort de l'offre UNE fois. Affectée à une fabrication puis
+    // écartée par un soin saisi après coup, elle comptait à la fois « écartée »
+    // et « transformée » : le non affecté descendait d'autant (−40 L pour 40 L)
+    // et déclenchait de fausses alertes `LAIT_INDISPONIBLE`. Le lait est dans le
+    // fromage : c'est la fabrication qui l'a consommé.
     if (c.lotFromageId) mouvements.push({ jour, poste: 'transforme', litres, consommeCollecte: true })
+    else if (c.ecarteAttente) mouvements.push({ jour, poste: 'ecarte', litres })
   }
   for (const f of fabrications) {
     mouvements.push({ jour: jourParis(f.dateFabrication), poste: 'transforme', litres: Number(f.volumeLaitUtiliseL) })

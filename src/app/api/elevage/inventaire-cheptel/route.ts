@@ -4,6 +4,7 @@ import PDFDocument from "pdfkit"
 import { z } from "zod"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
+import { dateIsoFacture } from "@/lib/facture-regles"
 import {
   acteurReglementaire,
   journaliserEvenementReglementaire,
@@ -29,8 +30,12 @@ function dateUtc(value: string) {
   return date
 }
 
+// Jour civil de l'exploitation (Europe/Paris), comme les autres jours du
+// produit. Pris en UTC, « aujourd'hui » restait la veille entre minuit et 1 h
+// ou 2 h : l'inventaire du jour était refusé comme « futur », et sans date il
+// sortait à la date de la veille.
 function dateCouranteUtc() {
-  return new Date().toISOString().slice(0, 10)
+  return dateIsoFacture(new Date())
 }
 
 function formatDate(value: Date | null | undefined) {

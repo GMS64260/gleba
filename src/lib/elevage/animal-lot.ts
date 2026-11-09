@@ -76,6 +76,46 @@ export async function enregistrerChangementLot(
   }
 }
 
+/** Motifs de la première ligne d'historique, écrite avec la fiche. */
+export const MOTIFS_AFFECTATION_INITIALE = [
+  'Affectation à la création de l’animal',
+  'Reprise de l’affectation existante',
+] as const
+
+/**
+ * La date d'arrivée corrigée redate l'entrée de l'animal dans son premier lot.
+ *
+ * L'historique d'appartenance est daté à la création de la fiche (date
+ * d'arrivée, à défaut le jour de la saisie). Corriger ensuite l'arrivée (fiche
+ * créée aujourd'hui pour un animal arrivé il y a un mois) laissait l'historique
+ * commencer au jour de la saisie : la fiche affichait l'alerte d'un soin de lot
+ * antérieur, mais la garde d'abattage, qui lit l'historique, ne rattachait pas
+ * ce soin et laissait passer l'abattage pendant le délai d'attente viande.
+ *
+ * Seule la PREMIÈRE ligne est redatée, si elle vient de la création de la fiche
+ * et que la nouvelle date ne dépasse pas sa fin : un changement de lot daté par
+ * l'éleveur n'est jamais réécrit.
+ */
+export async function redaterAffectationInitiale(
+  db: Db,
+  userId: string,
+  animalId: number,
+  dateArrivee: Date,
+) {
+  await db.$executeRaw(Prisma.sql`
+    UPDATE "historique_lots_animaux"
+    SET "date_debut" = ${dateArrivee}
+    WHERE "id" = (
+      SELECT "id" FROM "historique_lots_animaux"
+      WHERE "user_id" = ${userId} AND "animal_id" = ${animalId}
+      ORDER BY "date_debut" ASC, "created_at" ASC
+      LIMIT 1
+    )
+    AND "motif" IN (${Prisma.join([...MOTIFS_AFFECTATION_INITIALE])})
+    AND ("date_fin" IS NULL OR "date_fin" >= ${dateArrivee})
+  `)
+}
+
 /**
  * Règle comptable du prix d'achat d'un animal rattaché à un lot, partagée par
  * la fiche animal (PATCH) et la composition groupée d'un lot : le prix

@@ -249,7 +249,11 @@ export default function FacturesPage() {
     setIsLoading(true)
     try {
       const [ventesRes, manuellesRes, facturesRes] = await Promise.all([
-        fetch('/api/elevage/ventes?paye=false'),
+        // Une vente d'élevage à crédit est un impayé quel que soit son exercice,
+        // comme les factures ci-dessous : sans `annee=all`, la route se borne à
+        // l'année civile courante (et à 100 lignes) et la vente de décembre
+        // quittait cet onglet au 1er janvier alors que le bilan la garde en 411.
+        fetch('/api/elevage/ventes?paye=false&annee=all&limit=1000'),
         fetch('/api/comptabilite/ventes-manuelles?paye=false'),
         // QA cmsjilhre — l'onglet Impayées n'interrogeait jamais la table
         // Facture : deux factures « Émise » non réglées ressortaient « 0 € dû ».

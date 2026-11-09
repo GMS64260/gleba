@@ -297,9 +297,7 @@ export async function PATCH(request: NextRequest) {
     // Audit élevage 2026-06-11 — le POST crédite l'effectif du lot cible ;
     // l'édition doit suivre (avant : passer de 8 à 5 vivants ou changer de
     // lot laissait les compteurs de la création).
-    const ancienLot = existing.lotId
     const nouveauLot = parsed.data.lotId ?? null
-    const ancienVivants = existing.nombreVivants
     const nouveauVivants = parsed.data.nombreVivants
     // Le formulaire renvoie un jour seul (minuit UTC) : une naissance horodatée
     // (08:00 UTC) garde sa date si le jour civil saisi est le sien.
@@ -310,6 +308,12 @@ export async function PATCH(request: NextRequest) {
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM naissances_animales WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`
       const courante = await tx.naissanceAnimale.findFirst({ where: { id, userId }, include: { petits: { orderBy: { numero: 'asc' } } } })
+      // L'ancien lot et l'ancien effectif se lisent sur la ligne VERROUILLÉE :
+      // pris sur `existing` (lu avant la transaction), deux corrections envoyées
+      // ensemble retiraient chacune les 8 vivants d'origine et le compteur du
+      // lot perdait deux fois l'écart.
+      const ancienLot = courante?.lotId ?? null
+      const ancienVivants = courante?.nombreVivants ?? 0
       const individualisee = courante?.petits.some((p) => p.animalId != null) ?? false
       if (individualisee && courante) {
         const cible = { mereId: parsed.data.mereId ?? null, lotId: nouveauLot, nombreNes: parsed.data.nombreNes, nombreVivants: nouveauVivants, nombreMales: parsed.data.nombreMales ?? null, nombreFemelles: parsed.data.nombreFemelles ?? null }

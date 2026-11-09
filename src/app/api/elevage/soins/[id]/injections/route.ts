@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { requireAuthApi } from "@/lib/auth-utils"
-import prisma from "@/lib/prisma"
 import { daterInjection } from "@/lib/elevage/injections-protocole"
 import { createDepenseFromSoinAnimal } from "@/lib/auto-compta"
+import { ErreurReglement } from "@/lib/comptabilite/monnaie"
 
 // Tickets vigie2cc83585 / cmupz9djj (2026-10-01) : une injection déjà
 // acquittée doit pouvoir être redatée depuis l'écran — `statut` devient
@@ -35,18 +35,25 @@ export async function PATCH(
       injectionId: parsed.data.injectionId,
       statut: parsed.data.statut,
       dateRealisee: parsed.data.dateRealisee,
-    }, { gererStock: true })
+    }, {
+      gererStock: true,
+      // Le miroir de coût s'écrit dans la transaction de l'injection : écrit
+      // après coup avec le client global, son échec laissait l'injection
+      // rouverte et le stock rendu, avec le coût du soin toujours en place.
+      dansTransaction: (tx, soin) => createDepenseFromSoinAnimal(session.user.id, {
+        id: soin.id,
+        type: soin.type,
+        cout: soin.cout,
+        date: soin.date,
+        fait: soin.fait,
+      }, tx),
+    })
     if (!resultat.ok) return NextResponse.json({ error: resultat.error }, { status: resultat.status })
-    const soin = resultat.soin
-    await createDepenseFromSoinAnimal(session.user.id, {
-      id: soin.id,
-      type: soin.type,
-      cout: soin.cout,
-      date: soin.date,
-      fait: soin.fait,
-    }, prisma)
-    return NextResponse.json({ data: soin })
+    return NextResponse.json({ data: resultat.soin })
   } catch (transactionError) {
+    if (transactionError instanceof ErreurReglement) {
+      return NextResponse.json({ error: transactionError.message }, { status: transactionError.status })
+    }
     console.error("PATCH /api/elevage/soins/[id]/injections error:", transactionError)
     return NextResponse.json({ error: "Mise à jour impossible" }, { status: 500 })
   }

@@ -35,15 +35,39 @@ export async function POST(request: NextRequest) {
   const d = parsed.data
   const produit = await prisma.produitVeterinaire.findUnique({ where: { id: d.produitId }, select: { id: true } })
   if (!produit) return NextResponse.json({ error: 'Produit vétérinaire introuvable' }, { status: 400 })
-  const data = await prisma.stockMedicamentElevage.upsert({
-    where: { userId_produitId_numeroLot: { userId: session.user.id, produitId: d.produitId, numeroLot: d.numeroLot } },
-    create: { userId: session.user.id, ...d, ordonnanceUrl: d.ordonnanceUrl || null },
-    // QA cmswtt0ee — un ré-envoi du même lot sans date ne doit pas écraser
-    // une péremption déjà connue (traçabilité réglementaire).
-    update: {
-      ...d,
-      ordonnanceUrl: d.ordonnanceUrl || null,
+  const cle = { userId_produitId_numeroLot: { userId: session.user.id, produitId: d.produitId, numeroLot: d.numeroLot } }
+  const existant = await prisma.stockMedicamentElevage.findUnique({
+    where: cle,
+    include: { _count: { select: { soins: true } } },
+  })
+  if (!existant) {
+    const data = await prisma.stockMedicamentElevage.create({
+      data: { userId: session.user.id, ...d, ordonnanceUrl: d.ordonnanceUrl || null },
+    })
+    return NextResponse.json({ data }, { status: 201 })
+  }
+  // Ressaisie d'un lot déjà en pharmacie (même produit, même numéro). L'unité
+  // d'un lot qui porte des soins ne change pas : ses prélèvements (en mL)
+  // seraient rendus en « flacons » à la suppression d'un soin.
+  if (existant._count.soins > 0 && d.unite.toLowerCase() !== existant.unite.trim().toLowerCase()) {
+    return NextResponse.json(
+      { error: `Ce lot existe déjà en ${existant.unite} et des soins y ont été prélevés : son unité ne peut pas devenir « ${d.unite} ».`, champ: 'unite', code: 'UNITE_LOT_FIGEE' },
+      { status: 409 },
+    )
+  }
+  // Une ressaisie complète le lot, elle n'efface rien : un champ laissé vide
+  // (ordonnance archivée, fournisseur, notes, péremption — QA cmswtt0ee) garde
+  // sa valeur. Les deux formulaires envoient ces champs à null quand ils sont
+  // vides, ce qui effaçait le lien d'ordonnance.
+  const data = await prisma.stockMedicamentElevage.update({
+    where: { id: existant.id },
+    data: {
+      quantite: d.quantite,
+      unite: d.unite,
       datePeremption: d.datePeremption ?? undefined,
+      ordonnanceUrl: d.ordonnanceUrl || undefined,
+      fournisseur: d.fournisseur || undefined,
+      notes: d.notes || undefined,
     },
   })
   return NextResponse.json({ data }, { status: 201 })

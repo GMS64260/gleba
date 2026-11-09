@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { ugbParTete } from '@/lib/elevage/ugb'
 
 const patchSchema = z.object({
   parcelleId: z.string().min(1),
@@ -10,15 +11,6 @@ const patchSchema = z.object({
   eauDisponible: z.boolean().nullable().optional(),
   etatCloture: z.enum(['bon', 'a_surveiller', 'a_reparer']).nullable().optional(),
 })
-const ugb = (nom: string) => {
-  const n = nom.toLowerCase()
-  if (n.includes('bovin') || n.includes('vache')) return 1
-  if (n.includes('équin') || n.includes('cheval')) return 0.8
-  if (n.includes('ovin') || n.includes('mouton') || n.includes('caprin') || n.includes('chèvre')) return 0.15
-  if (n.includes('porc')) return 0.3
-  return 0.02
-}
-
 export async function GET() {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -29,7 +21,7 @@ export async function GET() {
       select: { id: true, nom: true, surface: true, disponibiliteFourragereKgMsHa: true, eauDisponible: true, etatCloture: true },
       orderBy: { nom: 'asc' },
     }),
-    prisma.lotAnimaux.findMany({ where: { userId, statut: 'actif' }, select: { id: true, nom: true, quantiteInitiale: true, quantiteActuelle: true, parcelleGeoId: true, especeAnimale: { select: { nom: true } } } }),
+    prisma.lotAnimaux.findMany({ where: { userId, statut: 'actif' }, select: { id: true, nom: true, quantiteInitiale: true, quantiteActuelle: true, parcelleGeoId: true, especeAnimale: { select: { id: true, nom: true } } } }),
     prisma.mouvementCheptel.findMany({ where: { userId, lotId: { not: null } }, select: { lotId: true, parcelleAvantId: true, parcelleApresId: true, date: true }, orderBy: { date: 'asc' } }),
   ])
   // Revue 2026-10-20 — têtes et UGB sur l'effectif reconstitué (écran Lots),
@@ -43,7 +35,7 @@ export async function GET() {
   const jours = (d: Date) => Math.max(0, Math.floor((now.getTime() - d.getTime()) / 86_400_000))
   const data = parcelles.map(p => {
     const presents = lots.filter(l => l.parcelleGeoId === p.id)
-    const totalUgb = presents.reduce((sum, l) => sum + l.quantiteActuelle * ugb(l.especeAnimale.nom), 0)
+    const totalUgb = presents.reduce((sum, l) => sum + l.quantiteActuelle * ugbParTete(l.especeAnimale), 0)
     const mv = mouvements.filter(m => m.parcelleAvantId === p.id || m.parcelleApresId === p.id)
     const derniereEntree = [...mv].reverse().find(m => m.parcelleApresId === p.id)?.date ?? null
     const derniereSortie = [...mv].reverse().find(m => m.parcelleAvantId === p.id)?.date ?? null
