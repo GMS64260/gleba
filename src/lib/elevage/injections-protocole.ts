@@ -152,7 +152,7 @@ export function fenetresAttenteDepuisInjections(injections: InjectionEtat[], del
 import prisma from '@/lib/prisma'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ciblesAffectees, resyncEcartementLait } from './attente-lait'
-import { fenetreSoin } from './suppression-soin'
+import { fenetreSoin, restituerPrelevement } from './suppression-soin'
 import { debutJourCivilSoin } from './stock-medicament'
 import { invalidateKpi } from '@/lib/kpi'
 
@@ -264,10 +264,7 @@ export async function daterInjection(
           if (decremente.count !== 1) throw new Error('STOCK_MEDICAMENT_INDISPONIBLE')
           quantitePreleveeStock = quantite
         } else if (!commence && courant.fait && soin.stockMedicamentId && quantitePreleveeStock > 0) {
-          await tx.stockMedicamentElevage.update({
-            where: { id: soin.stockMedicamentId },
-            data: { quantite: { increment: quantitePreleveeStock } },
-          })
+          await restituerPrelevement(tx, userId, soin.stockMedicamentId, quantitePreleveeStock)
           quantitePreleveeStock = 0
         }
         data.quantitePreleveeStock = quantitePreleveeStock

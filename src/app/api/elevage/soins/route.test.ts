@@ -18,7 +18,7 @@ vi.mock('@/lib/prisma', () => {
     animal: { findFirst: mocks.animalFindFirst, findMany: mocks.animalFindMany },
     soinAnimal: { create: mocks.soinCreate, update: mocks.soinUpdate, findMany: mocks.soinFindMany, findFirst: mocks.soinFindFirst },
     collecteLait: { updateMany: mocks.collecteUpdateMany, findMany: mocks.collecteFindMany },
-    stockMedicamentElevage: { updateMany: mocks.stockUpdateMany, update: mocks.stockUpdate },
+    stockMedicamentElevage: { updateMany: mocks.stockUpdateMany, update: mocks.stockUpdate, findFirst: mocks.stockFindFirst },
     $queryRaw: mocks.queryRaw,
     $executeRaw: mocks.executeRaw,
   }
@@ -165,6 +165,27 @@ describe('soins planifies et temps attente lait', () => {
 
     expect((await PATCH(request('PATCH', { id: 1, fait: true }))).status).toBe(200)
     expect(mocks.stockUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it('refuse une quantité prélevée dans une autre unité que celle du lot', async () => {
+    const response = await POST(request('POST', {
+      animalId: 7, date: '2026-07-21', type: 'Traitement vétérinaire', produitId: 'p1',
+      stockMedicamentId: 'stock-1', quantite: 2, unite: 'doses',
+    }))
+    expect(response.status).toBe(422)
+    expect((await response.json()).error).toContain('mL')
+    expect(mocks.soinCreate).not.toHaveBeenCalled()
+  })
+
+  it('rouvrir un soin ne remet rien dans un lot mis au rebut', async () => {
+    const existing = { ...soinDeLot(), fait: true, produitId: 'p1', stockMedicamentId: 'stock-1', quantite: 2, quantitePreleveeStock: 2 }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    mocks.stockFindFirst.mockResolvedValue({ id: 'stock-1', userId: 'user-1', produitId: 'p1', numeroLot: 'L', quantite: 0, unite: 'mL', datePeremption: null, ordonnanceUrl: null, notes: 'Mis au rebut le 01/11/2026 (3 mL restants).' })
+
+    expect((await PATCH(request('PATCH', { id: 1, fait: false }))).status).toBe(200)
+    expect(mocks.stockUpdate).not.toHaveBeenCalled()
+    expect(mocks.soinUpdate.mock.calls[0][0].data.quantitePreleveeStock).toBe(0)
   })
 
   it('type les conditions CASE de resynchronisation des injections', async () => {

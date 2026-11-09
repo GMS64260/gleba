@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { debutJourCivilSoin, lotMedicamentPerime, stockMedicamentEstDisponible } from "./stock-medicament"
+import { debutJourCivilSoin, estLotMedicamentAuRebut, lotMedicamentPerime, refusUnitePrelevement, stockMedicamentEstDisponible } from "./stock-medicament"
 
 describe("stockMedicamentEstDisponible", () => {
   it("accepte un lot approvisionné sans date de péremption", () => {
@@ -43,5 +43,21 @@ describe("lotMedicamentPerime", () => {
 
   it("donne la borne SQL du jour civil du soin", () => {
     expect(debutJourCivilSoin(new Date("2026-11-09T09:00:00.000Z"))).toEqual(peremption)
+  })
+})
+
+describe("rebut et unité du prélèvement", () => {
+  it("reconnaît un lot au rebut : stock nul ET note de rebut", () => {
+    expect(estLotMedicamentAuRebut({ quantite: 0, notes: "Mis au rebut le 01/11/2026 (3 mL restants)." })).toBe(true)
+    expect(estLotMedicamentAuRebut({ quantite: 0, notes: null })).toBe(false)
+    // Réapprovisionné après coup : ce n'est plus un lot jeté.
+    expect(estLotMedicamentAuRebut({ quantite: 5, notes: "Mis au rebut le 01/11/2026 (3 mL restants)." })).toBe(false)
+  })
+
+  it("exige l'unité du lot pour la quantité prélevée", () => {
+    expect(refusUnitePrelevement("mL", "mL")).toBeNull()
+    expect(refusUnitePrelevement(" ml ", "mL")).toBeNull()
+    expect(refusUnitePrelevement(null, "mL")).toBeNull()
+    expect(refusUnitePrelevement("doses", "mL")).toContain("mL")
   })
 })

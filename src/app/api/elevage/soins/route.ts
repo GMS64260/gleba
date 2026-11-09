@@ -23,13 +23,13 @@ import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
 import { calendrierInjections } from '@/lib/elevage/injections'
 import { lireInjections, synchroniserInjections, fenetresAttenteDepuisInjections } from '@/lib/elevage/injections-protocole'
 import { dateSoinRetenue } from '@/lib/elevage/date-soin'
-import { lotMedicamentPerime } from '@/lib/elevage/stock-medicament'
+import { lotMedicamentPerime, refusUnitePrelevement } from '@/lib/elevage/stock-medicament'
 import { randomUUID } from 'node:crypto'
 // Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
 import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
-import { fenetreSoin, supprimerSoin } from '@/lib/elevage/suppression-soin'
+import { fenetreSoin, restituerPrelevement, supprimerSoin } from '@/lib/elevage/suppression-soin'
 import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import { whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
 import {
@@ -260,6 +260,8 @@ export async function POST(request: NextRequest) {
         { status: 422 },
       )
     }
+    const refusUnite = stockMedicament ? refusUnitePrelevement(d.unite, stockMedicament.unite) : null
+    if (refusUnite) return NextResponse.json({ error: refusUnite, champ: 'unite' }, { status: 422 })
     if (stockMedicament && (!d.quantite || d.quantite <= 0)) {
       return NextResponse.json(
         { error: `Renseignez la quantité prélevée en ${stockMedicament.unite}.` },
@@ -642,6 +644,12 @@ export async function PATCH(request: NextRequest) {
       updateData.numeroLotMedicament = null
       updateData.peremptionMedicament = null
     }
+    // L'unité du prélèvement est celle du lot, à la correction comme à la saisie.
+    if (stockEffectif && (unite !== undefined || lotChange)) {
+      const refusUnite = refusUnitePrelevement(unite !== undefined ? unite : existing.unite, stockEffectif.unite)
+      if (refusUnite) return NextResponse.json({ error: refusUnite, champ: 'unite' }, { status: 422 })
+      if (!(unite ?? existing.unite)) updateData.unite = stockEffectif.unite
+    }
     if (stockEffectif && stockMedicamentId !== undefined) {
       updateData.numeroLotMedicament = stockEffectif.numeroLot
       updateData.peremptionMedicament = stockEffectif.datePeremption
@@ -738,10 +746,7 @@ export async function PATCH(request: NextRequest) {
         }
         updateData.quantitePreleveeStock = quantiteADecompter
       } else if (devientPlanifie && existing.stockMedicamentId) {
-        await tx.stockMedicamentElevage.update({
-          where: { id: existing.stockMedicamentId },
-          data: { quantite: { increment: courant.quantitePreleveeStock } },
-        })
+        await restituerPrelevement(tx, session.user.id, existing.stockMedicamentId, courant.quantitePreleveeStock)
         updateData.quantitePreleveeStock = 0
       }
       const updated = await tx.soinAnimal.update({

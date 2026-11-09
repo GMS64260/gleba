@@ -1295,6 +1295,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     (stock) => stock.id === formData.stockMedicamentId,
   )
   const lotPharmacieManquant = soinMedicamenteux && !stockSelectionneDisponible
+  const uniteLotSelectionne = formData.stockMedicamentId
+    ? stocksMedicaments.find((stock) => stock.id === formData.stockMedicamentId)?.unite ?? null
+    : null
 
   const especeIdSelectionnee = React.useMemo(() => {
     if (formData.cible === "animal") {
@@ -1617,7 +1620,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
           ? (soinEnEdition ? dateSoinARenvoyer(datePrevueSoumise, soinEnEdition.datePrevue) : datePrevueSoumise)
           : null,
         quantite: formData.quantite ? parseFloat(formData.quantite) : null,
-        unite: formData.unite || null,
+        unite: uniteLotSelectionne ?? (formData.unite || null),
         cout: formData.cout ? parseFloat(formData.cout) : null,
         fait: formData.fait,
         notes: formData.notes || null,
@@ -2135,7 +2138,17 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                       </p>
                     )}
                   </div>
-                  <div className="space-y-2"><Label>Unité</Label><Input value={formData.unite} onChange={(e) => setFormData(f => ({ ...f, unite: e.target.value }))} placeholder="mL, doses..." /></div>
+                  <div className="space-y-2">
+                    <Label>Unité</Label>
+                    {/* Avec un lot de pharmacie, l'unité est celle du lot : la quantité saisie en est prélevée. */}
+                    <Input
+                      value={uniteLotSelectionne ?? formData.unite}
+                      onChange={(e) => setFormData(f => ({ ...f, unite: e.target.value }))}
+                      placeholder="mL, doses..."
+                      disabled={uniteLotSelectionne !== null}
+                      title={uniteLotSelectionne !== null ? "Unité du lot de pharmacie sélectionné" : undefined}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2"><Label>Notes</Label><Textarea value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
