@@ -5,6 +5,7 @@
  * Stats, alertes, graphiques, et soins à planifier
  */
 
+import { dateRealisationPourFait } from '@/lib/elevage/date-realisation'
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import Link from "next/link"
@@ -426,12 +427,15 @@ export function DashboardTab({ year }: DashboardTabProps) {
   const [soinDetail, setSoinDetail] = React.useState<SoinItem | null>(null)
 
   // Toggle soin fait
-  const toggleSoin = async (id: number, fait: boolean) => {
+  const toggleSoin = async (id: number, fait: boolean, echeance?: string | null) => {
+    // Échéance ancienne : la date réelle est demandée, pas l'instant du clic.
+    const dateFait = fait ? undefined : dateRealisationPourFait(echeance)
+    if (dateFait === null) return
     try {
       const response = await fetch('/api/elevage/soins', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: !fait ? new Date().toISOString() : undefined }),
+        body: JSON.stringify({ id, fait: !fait, date: dateFait }),
       })
       if (!response.ok) throw new Error('Erreur')
       setSoins(prev => prev.filter(s => s.id !== id))
@@ -444,7 +448,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
   }
 
   const validerSoinOuInjection = async (soin: SoinItem) => {
-    if (!soin.injectionId) return toggleSoin(soin.id, soin.fait)
+    if (!soin.injectionId) return toggleSoin(soin.id, soin.fait, soin.date)
+    const dateInjection = dateRealisationPourFait(soin.date, 'Cette injection')
+    if (dateInjection === null) return
     try {
       const response = await fetch(`/api/elevage/soins/${soin.id}/injections`, {
         method: 'PATCH',
@@ -452,7 +458,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
         body: JSON.stringify({
           injectionId: soin.injectionId,
           statut: 'realisee',
-          dateRealisee: new Date().toISOString(),
+          dateRealisee: dateInjection,
         }),
       })
       if (!response.ok) throw new Error('Erreur')

@@ -4,6 +4,7 @@
  * Onglet Alimentation - Stocks aliments + Consommations + Soins en sous-onglets
  */
 
+import { dateRealisationPourFait } from "@/lib/elevage/date-realisation"
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
@@ -1693,11 +1694,15 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   }
 
   const toggleFait = async (id: number, fait: boolean) => {
+    // Échéance ancienne : la date réelle est demandée, pas l'instant du clic.
+    const soinCoche = soins.find((soin) => soin.id === id)
+    const dateFait = fait ? undefined : dateRealisationPourFait(soinCoche?.datePrevue ?? soinCoche?.date)
+    if (dateFait === null) return
     try {
       const response = await fetch('/api/elevage/soins', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: !fait ? new Date().toISOString() : undefined }),
+        body: JSON.stringify({ id, fait: !fait, date: dateFait }),
       })
       if (!response.ok) throw new Error('Erreur')
       fetchData()
