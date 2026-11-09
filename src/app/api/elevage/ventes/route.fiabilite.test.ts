@@ -115,6 +115,26 @@ describe('Fiabilité des ventes élevage', () => {
     expect(animal.statut).toBe('actif')
   })
 
+  it('le PATCH porte les gardes du POST : un seul animal, plafond, pas de « payée » à crédit', async () => {
+    Object.assign(courante, { type: 'animal_vivant', quantite: 1, prixUnitaire: 150, prixTotal: 150, animalId: 501 })
+    expect((await PATCH(request('PATCH', { id: 11, quantite: 2 }))).status).toBe(400)
+    expect(courante.prixTotal).toBe(150)
+    expect((await PATCH(request('PATCH', { id: 11, prixUnitaire: 100_001 }))).status).toBe(400)
+    expect((await PATCH(request('PATCH', { id: 11, paye: true, modeReglement: 'À crédit' }))).status).toBe(400)
+    expect((await PATCH(request('PATCH', { id: 11, unite: '' }))).status).toBe(400)
+    expect(m.venteUpdate).not.toHaveBeenCalled()
+    expect(m.miroir).not.toHaveBeenCalled()
+  })
+
+  it('arrondit le total au centime, à la correction comme à la saisie', async () => {
+    Object.assign(courante, { type: 'viande', unite: 'kg' })
+    expect((await PATCH(request('PATCH', { id: 11, quantite: 0.347, prixUnitaire: 24.9 }))).status).toBe(200)
+    expect(courante.prixTotal).toBe(8.64)
+    const res = await POST(request('POST', { type: 'viande', quantite: 0.347, unite: 'kg', prixUnitaire: 24.9, paye: false }))
+    expect(res.status).toBe(201)
+    expect(creees[0].prixTotal).toBe(8.64)
+  })
+
   it('P1 : une seule de deux ventes du même animal réussit', async () => {
     let lus = 0
     let liberer!: () => void

@@ -48,6 +48,10 @@ import {
   tauxTvaVenteProduitParDefaut,
 } from '@/lib/elevage/produits-ruche'
 
+// Plafond d'une vente unitaire, à la saisie comme à la correction.
+const SEUIL_VENTE_PRODUIT = 100_000
+const arrondirCentime = (montant: number) => Math.round((montant + Number.EPSILON) * 100) / 100
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -151,7 +155,9 @@ export async function POST(request: NextRequest) {
     const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, cessionGratuite } = parsed.data
     const tauxTVAFinal = tauxTVA ?? tauxTvaVenteProduitParDefaut(type)
     let notes = parsed.data.notes ?? null
-    const prixTotal = quantite * prixUnitaire
+    // Au centime : 0,347 kg × 24,90 € donnait 8,6403 €, repris tel quel par le
+    // miroir, le KPI et la facture alors que le FEC arrondit ligne à ligne.
+    const prixTotal = arrondirCentime(quantite * prixUnitaire)
 
     // Ticket cms1vqsqu — vente d'animal vivant à 0 € sans garde-fou.
     // La validation stricte n'est appliquée QUE si le body porte le marqueur
@@ -268,7 +274,6 @@ export async function POST(request: NextRequest) {
     // remonter en compta une ligne "999 999 douzaines d'œufs à 4€ = 4M€".
     // On bloque toute vente unitaire > 100 000 € à la saisie ; les
     // ventes en gros au-dessus passent via un POST dédié confirmé.
-    const SEUIL_VENTE_PRODUIT = 100_000
     if (prixTotal > SEUIL_VENTE_PRODUIT) {
       return NextResponse.json(
         {
@@ -658,7 +663,28 @@ export async function PATCH(request: NextRequest) {
     if (updateData.quantite !== undefined || updateData.prixUnitaire !== undefined) {
       const q = updateData.quantite ?? existing.quantite
       const pu = updateData.prixUnitaire ?? existing.prixUnitaire
-      updateData.prixTotal = q * pu
+      updateData.prixTotal = arrondirCentime(q * pu)
+    }
+    // Mêmes gardes que le POST, sur les valeurs finales : le PATCH acceptait
+    // une quantité de 3 pour UN animal vivant (recette triplée, une seule tête
+    // sortie), un total hors plafond et « payée » avec le mode « À crédit ».
+    if (existing.type === 'animal_vivant' && updateData.quantite !== undefined && updateData.quantite !== 1) {
+      return NextResponse.json({ error: 'Une vente individuelle porte sur un seul animal.', champ: 'quantite' }, { status: 400 })
+    }
+    if (updateData.prixTotal !== undefined && updateData.prixTotal > SEUIL_VENTE_PRODUIT) {
+      return NextResponse.json(
+        { error: `Saisie aberrante : le total de ${updateData.prixTotal.toFixed(2)} € dépasse ${SEUIL_VENTE_PRODUIT} €. Découpez la saisie.` },
+        { status: 400 },
+      )
+    }
+    if (updateData.unite !== undefined && (typeof updateData.unite !== 'string' || !updateData.unite.trim() || updateData.unite.length > 30)) {
+      return NextResponse.json({ error: 'Unité invalide', champ: 'unite' }, { status: 400 })
+    }
+    if ((updateData.paye ?? existing.paye) === true && mode.data === 'À crédit') {
+      return NextResponse.json(
+        { error: 'Une vente à crédit reste à encaisser : décochez « Vente payée » ou choisissez le mode du règlement reçu.', champ: 'modeReglement' },
+        { status: 400 },
+      )
     }
     // Cohérence compta : une vente "Payé" ne peut pas être à 0 € (cf POST).
     // Ticket cms1vqsqu — exception : cession gratuite (convention notes
