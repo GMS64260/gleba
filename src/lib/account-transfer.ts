@@ -33,6 +33,8 @@ import { MODELES_STOCK_COMMERCIAL } from '@/lib/commercial/stock-types'
 import { Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
+import { whereAlimentAccessible } from "@/lib/elevage/aliment-accessible"
+import { sansCoordonneesBancaires } from "@/lib/comptabilite/fournisseur-public"
 import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MESURES_BRUTES_EXPORT } from "@/lib/capteurs/connecteurs"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,6 +44,10 @@ import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MES
 /** Modèles jamais migrés : authentification, système, cache, communauté, chat
  *  privé, et boutique (fonctionnalité privée sans UI dans la version publique). */
 const EXCLUDED = new Set<string>([
+  "AbonnementGleba",
+  "EvenementAbonnement",
+  // eslint-disable-next-line no-restricted-syntax -- Identifiant technique exact du modèle Prisma.
+  "Parametre",
   "User",
   "Session",
   "Account",
@@ -100,7 +106,6 @@ const REFERENTIAL = new Set<string>([
   "Aliment",
   "ProduitVeterinaire",
   "ProduitPhyto",
-  "Parametre",
 ])
 
 export const EXPORT_FORMAT_VERSION = "2.0"
@@ -272,11 +277,11 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
   //    communautaires (cf. REFERENTIAL_COMMUNAUTAIRE).
   for (const meta of manifest.values()) {
     if (meta.klass !== "referential") continue
-    const where = meta.estCommunautaire ? visibiliteReferentiel(userId) : undefined
+    const where = meta.estCommunautaire ? visibiliteReferentiel(userId) : meta.name === "Aliment" ? whereAlimentAccessible(userId) : undefined
     const rows = await delegue(prisma, meta.delegate).findMany(
       where ? { where } : undefined
     )
-    data[meta.name] = rows
+    data[meta.name] = meta.name === "Fournisseur" ? rows.map(sansCoordonneesBancaires) : rows
     stats[meta.name] = rows.length
   }
 

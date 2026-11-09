@@ -29,6 +29,7 @@ const METIERS = [
   ["/logiciel-verger", "Verger"],
   ["/logiciel-elevage", "Élevage"],
   ["/logiciel-micro-ferme", "Micro-ferme"],
+  ["/tarifs", "Tarifs"],
 ] as const;
 
 const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge";
@@ -182,10 +183,11 @@ function MarketingFooter() {
           ))}
         </div>
         <div className="mt-12 flex flex-col gap-3 border-t border-lin pt-6 text-xs text-ardoise sm:flex-row sm:items-center sm:justify-between">
-          <p>Logiciel libre sous licence AGPL-3.0 · Hébergement gratuit pendant la bêta</p>
+          <p>Code libre AGPL-3.0 · Carnet gratuit, Complet à 12 € HT/mois</p>
           <ul className="flex flex-wrap gap-x-5 gap-y-1">
             <li><Link href="/mentions-legales" className={`inline-flex min-h-9 items-center hover:text-encre ${FOCUS}`}>Mentions légales</Link></li>
             <li><Link href="/confidentialite" className={`inline-flex min-h-9 items-center hover:text-encre ${FOCUS}`}>Confidentialité</Link></li>
+            <li><Link href="/conditions-service" className={`inline-flex min-h-9 items-center hover:text-encre ${FOCUS}`}>Conditions du service</Link></li>
             <li><Link href="/cgv" className={`inline-flex min-h-9 items-center hover:text-encre ${FOCUS}`}>CGV</Link></li>
           </ul>
         </div>

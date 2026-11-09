@@ -14,6 +14,7 @@ import { sansChamps } from '@/lib/sans-champs'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { visibiliteReferentiel, attributionCreation, masquerEntree } from '@/lib/referentiel-communaute'
 import { enregistrerStockVariete, separerStockVariete, serialiserVariete } from '@/lib/stocks/stock-variete'
+import { SELECT_FOURNISSEUR_SANS_BANQUE } from '@/lib/comptabilite/fournisseur-public'
 
 // GET /api/varietes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
               famille: true,
             },
           },
-          fournisseur: true,
+          fournisseur: { select: SELECT_FOURNISSEUR_SANS_BANQUE },
           _count: {
             select: {
               cultures: true,
@@ -250,7 +251,7 @@ export async function POST(request: NextRequest) {
         },
         include: {
           espece: true,
-          fournisseur: true,
+          fournisseur: { select: SELECT_FOURNISSEUR_SANS_BANQUE },
         },
       })
       const userStock = await enregistrerStockVariete(tx, session!.user.id, creee.id, stock)

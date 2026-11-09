@@ -7,6 +7,7 @@
 import * as React from "react"
 import { Loader2, ArrowRight, Mail, RefreshCw } from "lucide-react"
 import Link from "next/link"
+import { TEXTE_OFFRE } from "@/lib/abonnement/catalogue"
 import { GoogleSignInButton } from "./GoogleSignInButton"
 import {
   estCauseConnue,
@@ -168,6 +169,7 @@ export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolea
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      <p className="text-sm leading-6 text-slate-600">{TEXTE_OFFRE} Sans carte bancaire. L’essai commence à votre première connexion. <Link href="/tarifs" className="underline underline-offset-4">Voir les offres</Link>.</p>
       {error && (
         <div className="p-3 text-sm text-red-700 bg-red-50/80 rounded-xl border border-red-200/50 backdrop-blur-sm">
           {error}
