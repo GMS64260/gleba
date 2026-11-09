@@ -388,38 +388,38 @@ export function DashboardTab({ year }: DashboardTabProps) {
       fetchSoins()
     }
   }
-  const bulkSoinsReport = async (days: number) => {
-    const ids = soins.filter((s) => s.datePrevue).map((s) => s.id)
-    if (ids.length === 0) return
+  // « Reporter » ne déplace que la date prévue d'un soin planifié. Une ligne
+  // d'injection (protocole en cours) a sa propre date, calculée depuis le soin :
+  // l'envoyer ici déplaçait la date prévue du soin parent pour rien, et l'écran
+  // annonçait « reporté » alors que l'injection restait à sa date. Elles sont
+  // écartées du report, et le message le dit.
+  const reporterSoins = async (corps: { days: number } | { date: string }, libelle: string) => {
+    const reportables = soins.filter((s) => !s.injectionId && ('date' in corps || s.datePrevue))
+    const ids = [...new Set(reportables.map((s) => s.id))]
+    const nbInjections = soins.filter((s) => s.injectionId).length
+    const noteInjections = nbInjections > 0
+      ? `${nbInjections} injection(s) de protocole en cours ne se reportent pas ici : redatez-les depuis leur soin.`
+      : undefined
+    if (ids.length === 0) {
+      toast({ title: 'Aucun soin à reporter', description: noteInjections })
+      return
+    }
     try {
       const res = await fetch('/api/soins/bulk-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, days }),
+        body: JSON.stringify({ ids, ...corps }),
       })
-      if (!res.ok) throw new Error('Échec')
-      toast({ title: `${ids.length} soin(s) reporté(s) de ${days} jour(s)` })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || 'Report impossible')
+      toast({ title: `${json.updated ?? ids.length} soin(s) reporté(s) ${libelle}`, description: noteInjections })
       fetchSoins()
-    } catch {
-      toast({ variant: 'destructive', title: 'Erreur' })
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Report impossible', description: e instanceof Error ? e.message : undefined })
     }
   }
-  const bulkSoinsReportTo = async (date: string) => {
-    const ids = soins.map((s) => s.id)
-    if (ids.length === 0) return
-    try {
-      const res = await fetch('/api/soins/bulk-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, date }),
-      })
-      if (!res.ok) throw new Error('Échec')
-      toast({ title: `${ids.length} soin(s) reporté(s) au ${new Date(date).toLocaleDateString('fr-FR')}` })
-      fetchSoins()
-    } catch {
-      toast({ variant: 'destructive', title: 'Erreur' })
-    }
-  }
+  const bulkSoinsReport = (days: number) => reporterSoins({ days }, `de ${days} jour(s)`)
+  const bulkSoinsReportTo = (date: string) => reporterSoins({ date }, `au ${new Date(date).toLocaleDateString('fr-FR')}`)
 
   // QA #5/#8 — un toucher OUVRE le détail (dose/voie) ; l'enregistrement passe
   // par un bouton explicite, jamais par le simple tap sur la carte.
