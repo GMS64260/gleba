@@ -14,7 +14,7 @@ import {
 } from "@/lib/exploitation/entete-mutation"
 import { NextResponse } from "next/server"
 import { ENTETE_CHEMIN, ENTETE_METHODE } from "@/lib/abonnement/requetes"
-import { segmentRacineInconnu } from "@/lib/segments-racine"
+import { CHEMIN_INTROUVABLE, segmentRacineInconnu } from "@/lib/segments-racine"
 
 export default auth((req) => {
   const { pathname } = req.nextUrl
@@ -34,6 +34,13 @@ export default auth((req) => {
   enTetesTransmises.set(ENTETE_METHODE, req.method)
   enTetesTransmises.set(EN_TETE_MUTATION, valeurEnteteMutation(req.method, pathname))
   const suite = () => NextResponse.next({ request: { headers: enTetesTransmises } })
+
+  // Cible de la réécriture des adresses inconnues (plus bas). En production,
+  // la requête réécrite repasse par ce middleware : sans cette sortie, elle
+  // était réécrite à nouveau, sans fin, jusqu'à saturer la mémoire du serveur
+  // (essai de l'image du 2026-11-09). Aucune route n'existe à ce chemin
+  // (dossier privé `_`) : Next répond 404 avec `not-found.tsx`.
+  if (pathname === CHEMIN_INTROUVABLE) return suite()
 
   if (pathname === "/" && isLoggedIn) {
     return NextResponse.rewrite(new URL("/dashboard", req.nextUrl), {
@@ -143,7 +150,7 @@ export default auth((req) => {
     // vers /login au lieu de 404. La réécriture vers un chemin privé (`_`)
     // ne correspond à aucune route : Next sert `not-found.tsx` avec un 404.
     if (segmentRacineInconnu(pathname)) {
-      return NextResponse.rewrite(new URL("/_introuvable", req.nextUrl))
+      return NextResponse.rewrite(new URL(CHEMIN_INTROUVABLE, req.nextUrl))
     }
     // QA cmvnout4y — le lien profond garde sa requête (`?tab=…&sub=…`) à
     // travers la connexion : chemin + requête, jamais le chemin seul.
