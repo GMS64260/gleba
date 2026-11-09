@@ -192,6 +192,18 @@ describe("PATCH /api/elevage/abattages — même plafond que le POST sur la quan
     )
   })
 
+  it("efface le prix d'un abattage qui n'est plus une vente", async () => {
+    mocks.abattageFindFirst.mockResolvedValue({ ...ABATTAGE_EXISTANT, destination: "vente", prixVente: 300 })
+
+    // L'écran renvoyait le prix déjà saisi avec la nouvelle destination.
+    const res = await patch({ id: 31, destination: "don", prixVente: 300 })
+
+    expect(res.status).toBe(200)
+    expect(mocks.abattageUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ destination: "don", prixVente: null }) }),
+    )
+  })
+
   it("refuse 5 têtes avec le corps de refus du POST", async () => {
     const res = await patch(corpsEcranModif(5))
     const json = await res.json()

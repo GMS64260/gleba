@@ -1839,7 +1839,10 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
     const domLotIdAbattage = String(new FormData(e.currentTarget).get("lotId") || "").trim()
     const submittedLotId =
       (domLotIdAbattage !== LOT_NON_CHOISI ? domLotIdAbattage : "") || formData.lotId
-    if (!submittedLotId) {
+    // Un abattage fait depuis la fiche d'un animal n'a pas de lot : il se
+    // corrige ici sans en exiger un (le PATCH ne lit pas `lotId`).
+    const abattageIndividuel = editingId !== null && abattages.some((a) => a.id === editingId && a.animal && !a.lot)
+    if (!submittedLotId && !abattageIndividuel) {
       toast({ title: "Sélectionnez un lot", variant: "destructive" })
       return
     }
@@ -1854,7 +1857,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
         poidsVif: formData.poidsVif ? parseFloat(formData.poidsVif) : null,
         poidsCarcasse: formData.poidsCarcasse ? parseFloat(formData.poidsCarcasse) : null,
         destination: formData.destination,
-        prixVente: formData.prixVente ? parseFloat(formData.prixVente) : null,
+        prixVente: formData.destination === 'vente' && formData.prixVente ? parseFloat(formData.prixVente) : null,
         lieu: formData.lieu || null,
         nEtablissementDestination: formData.nEtablissementDestination.trim() || null,
         notes: formData.notes || null,
@@ -1891,7 +1894,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
         const totalAnimaux = src.reduce((s, a) => s + a.quantite, 0)
         const poidsVifTotal = src.reduce((s, a) => s + (a.poidsVif || 0), 0)
         const poidsCarcasseTotal = src.reduce((s, a) => s + (a.poidsCarcasse || 0), 0)
-        const revenusVente = src.reduce((s, a) => s + (a.prixVente || 0), 0)
+        const revenusVente = src.reduce((s, a) => s + (a.destination === 'vente' ? a.prixVente || 0 : 0), 0)
         return (
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           <Card>

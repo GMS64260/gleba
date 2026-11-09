@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
           animal: { select: { especeAnimaleId: true } },
         },
       }),
-      prisma.abattage.findMany({ where: { userId, annule: false, date: period }, select: { lotId: true, animalId: true, prixVente: true, poidsCarcasse: true, quantite: true } }),
+      prisma.abattage.findMany({ where: { userId, annule: false, date: period }, select: { lotId: true, animalId: true, prixVente: true, poidsCarcasse: true, quantite: true, destination: true } }),
       prisma.venteProduit.findMany({ where: { userId, annule: false, date: period }, select: { type: true, prixTotal: true, animalId: true } }),
       prisma.productionOeuf.findMany({ where: { userId, date: productionPeriod }, select: { lotId: true, animalId: true, quantite: true } }),
       // QA cmswxw80j — l'atelier apicole portait ses coûts mais aucune
@@ -134,7 +134,9 @@ export async function GET(request: NextRequest) {
     }
     for (const abattage of abattages) {
       const a = speciesFor(abattage.lotId, abattage.animalId)
-      a.revenus.abattages += abattage.prixVente || 0
+      // Seul un abattage VENDU rapporte, comme pour le miroir comptable, la TVA
+      // et le FEC : un prix resté sur un don ou une autoconsommation ne compte pas.
+      if (abattage.destination === 'vente') a.revenus.abattages += abattage.prixVente || 0
       a.production.kgCarcasse += abattage.poidsCarcasse || 0
     }
     for (const vente of ventes) {
