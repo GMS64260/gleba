@@ -3,6 +3,7 @@ import { z } from "zod"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { daterInjection } from "@/lib/elevage/injections-protocole"
 import { createDepenseFromSoinAnimal } from "@/lib/auto-compta"
+import { ErreurReglement } from "@/lib/comptabilite/monnaie"
 
 // Tickets vigie2cc83585 / cmupz9djj (2026-10-01) : une injection déjà
 // acquittée doit pouvoir être redatée depuis l'écran — `statut` devient

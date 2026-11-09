@@ -31,23 +31,23 @@ export function categorieFecVenteElevage(type: string | null | undefined): strin
 }
 
 /** Miroir de vente (`VenteManuelle` automatique) : catégorie d'après sa source. */
-export function categorieFecMiroirVente(
+export function categorieFecMiroirVente<C extends string | null | undefined>(
   sourceType: string | null | undefined,
-  categorie: string | null | undefined,
-): string | null {
+  categorie: C,
+): C | string {
   // Même compte que le lait vendu en direct (`categorieFecVenteElevage('lait')`).
   if (sourceType === 'paie_lait') return 'produits_transformes'
   if (sourceType === 'reservation_elevage') return 'animaux_vivants'
-  return categorie ?? null
+  return categorie
 }
 
 /** Miroir de dépense (`DepenseManuelle` automatique) : catégorie d'après sa source. */
-export function categorieFecMiroirDepense(
+export function categorieFecMiroirDepense<C extends string | null | undefined>(
   sourceType: string | null | undefined,
-  categorie: string | null | undefined,
-): string | null {
+  categorie: C,
+): C | string {
   if (sourceType === 'achat_animal' || sourceType === 'achat_animal_individuel') return 'animaux'
-  return categorie ?? null
+  return categorie
 }
 
 /**
