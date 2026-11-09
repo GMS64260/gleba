@@ -301,13 +301,17 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
   // un décalage d'un jour perçu. On aligne l'agenda sur la convention canonique
   // partagée : la date de remise en vente (`remiseVente`, déjà utilisée par
   // /api/elevage/attentes).
+  // L'alerte tient jusqu'à la remise en vente (lendemain de la fin du délai).
+  // Comparée à la fin elle-même, souvent à minuit, elle disparaissait dès le
+  // matin du DERNIER jour du délai, alors que le produit n'est pas encore
+  // vendable ce jour-là (revue du 2026-11-04).
   for (const a of attentesConsolidees) {
     // QA caprin cms1vbkl4 — le label consolidé est la boucle ; on préfixe le
     // nom quand il existe pour une reconnaissance immédiate.
     const cible = a.cible.nom && a.cible.nom !== a.cible.label
       ? `${a.cible.nom} · ${a.cible.label}`
       : a.cible.label
-    if (a.finAttenteLait && a.finAttenteLait >= now) {
+    if (a.finAttenteLait && remiseVente(a.finAttenteLait)! > now) {
       const rv = remiseVente(a.finAttenteLait)!
       echeances.push({
         id: `att-lait-${a.key}`,
@@ -321,7 +325,7 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
     }
     // QA 2026-07-30 — Retrait des œufs : sans cette échéance, un traitement
     // sur des pondeuses n'apparaissait nulle part dans l'agenda.
-    if (a.finAttenteOeufs && a.finAttenteOeufs >= now) {
+    if (a.finAttenteOeufs && remiseVente(a.finAttenteOeufs)! > now) {
       const rv = remiseVente(a.finAttenteOeufs)!
       echeances.push({
         id: `att-oeufs-${a.key}`,
@@ -333,7 +337,7 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
         gravite: 'urgent',
       })
     }
-    if (a.finAttenteViande && a.finAttenteViande >= now) {
+    if (a.finAttenteViande && remiseVente(a.finAttenteViande)! > now) {
       const rv = remiseVente(a.finAttenteViande)!
       echeances.push({
         id: `att-viande-${a.key}`,

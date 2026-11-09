@@ -1,4 +1,6 @@
 import type { Prisma } from '@prisma/client'
+import { verifierAttenteViande } from '@/lib/elevage/attente-viande'
+import { ErreurElevage } from '@/lib/elevage/erreurs'
 
 type Db = Pick<Prisma.TransactionClient, 'venteProduit' | 'abattage'>
 
@@ -25,4 +27,28 @@ export async function refusRemiseActif(db: Db, userId: string, animalId: number)
     return 'Cet animal est sorti par un abattage toujours actif : annulez l’abattage dans Élevage > Production > Abattages, la fiche redeviendra active.'
   }
   return null
+}
+
+/**
+ * Passer une fiche « abattu » à la main est un abattage : même garde que
+ * `POST /api/elevage/abattages`. Sans elle, le statut se posait sur un animal
+ * en délai d'attente viande, sans passer par le contrôle de l'abattage.
+ *
+ * Rend le corps du refus (409 `ATTENTE_VIANDE_ACTIVE`), ou `null`.
+ */
+export async function refusPassageAbattu(
+  db: Prisma.TransactionClient,
+  userId: string,
+  animalId: number,
+  dateSortie: Date,
+): Promise<{ error: string; code?: string; details?: unknown; status: number } | null> {
+  try {
+    await verifierAttenteViande(db, userId, { animalId, lotId: null, date: dateSortie })
+    return null
+  } catch (erreur) {
+    if (erreur instanceof ErreurElevage) {
+      return { error: erreur.message, code: erreur.code, details: erreur.details, status: erreur.status }
+    }
+    throw erreur
+  }
 }
