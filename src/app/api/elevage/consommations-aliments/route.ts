@@ -97,7 +97,9 @@ export async function GET(request: NextRequest) {
           count: a._count,
         })),
       },
-      meta: { year: annee, total: consommations.length },
+      // `total` est le nombre réel d'enregistrements de la période, pas la
+      // longueur de la page : l'écran sait ainsi qu'une liste est tronquée.
+      meta: { year: annee, total: stats._count, affiches: consommations.length },
     })
   } catch (error) {
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })

@@ -148,7 +148,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: soins.map((soin) => ({ ...soin, injections: injectionsParSoin.get(soin.id) ?? [] })),
       stats: { soinsAVenir },
-      meta: { year: annee, total: soins.length },
+      // `total` est le nombre réel de soins de la période : rendu égal à la
+      // longueur de la page, il cachait à l'écran qu'un carnet de plus de 500
+      // soins (300 brebis vaccinées deux fois) était tronqué de ses plus anciens.
+      meta: {
+        year: annee,
+        total: rappels || soins.length < limit ? soins.length : await prisma.soinAnimal.count({ where }),
+        affiches: soins.length,
+      },
     })
   } catch (error) {
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })

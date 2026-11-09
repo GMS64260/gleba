@@ -573,6 +573,7 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
   const anneeExercice = year ?? new Date().getFullYear()
   const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   const [consommations, setConsommations] = React.useState<Consommation[]>([])
+  const [totalConsommations, setTotalConsommations] = React.useState(0)
   const [aliments, setAliments] = React.useState<AlimentSimple[]>([])
   const [lots, setLots] = React.useState<LotSimple[]>([])
   const [animaux, setAnimaux] = React.useState<AnimalSimple[]>([])
@@ -630,7 +631,7 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
         fetch("/api/elevage/animaux?statut=actif&limit=500"),
       ])
 
-      if (consRes.ok) { const r = await consRes.json(); setConsommations(r.data); setStats(r.stats) }
+      if (consRes.ok) { const r = await consRes.json(); setConsommations(r.data); setStats(r.stats); setTotalConsommations(r.meta?.total ?? r.data.length) }
       if (alimRes.ok) setAliments((await alimRes.json()).data)
       if (lotsRes.ok) setLots((await lotsRes.json()).data)
       if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
@@ -793,6 +794,11 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
       {/* Filtres et actions */}
       <div className="flex items-center gap-4 flex-wrap">
         <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des consommations affichées" />
+        {totalConsommations > consommations.length && (
+          <p role="status" className="basis-full text-sm text-amber-700">
+            Les {consommations.length} consommations les plus récentes sont affichées sur {totalConsommations} : resserrez les dates pour voir les plus anciennes.
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <Input type="date" value={filterDateDebut} onChange={(e) => setFilterDateDebut(e.target.value)} className="w-[150px]" />
@@ -1104,6 +1110,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [soins, setSoins] = React.useState<Soin[]>([])
+  const [totalSoins, setTotalSoins] = React.useState(0)
   // Scoping par filière de l'atelier sélectionné (via l'espèce de l'animal ou du lot).
   const visibleSoins = soins.filter((s) => filiereMatch(filiereSel, s.animal?.especeAnimale?.filiere ?? s.lot?.especeAnimale?.filiere))
   const [lots, setLots] = React.useState<LotSoin[]>([])
@@ -1331,7 +1338,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
         const payload = await response.json().catch(() => null)
         throw new Error(`${ressource} : ${payload?.error || `HTTP ${response.status}`}`)
       }
-      setSoins((await soinsRes.json()).data)
+      const soinsJson = await soinsRes.json()
+      setSoins(soinsJson.data)
+      setTotalSoins(soinsJson.meta?.total ?? soinsJson.data.length)
       setLots((await lotsRes.json()).data)
       setAnimaux((await animauxRes.json()).data)
       setStocksMedicaments((await stocksRes.json()).data)
@@ -1710,6 +1719,11 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
           </SelectContent>
         </Select>
         <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des soins affichés" />
+        {totalSoins > soins.length && (
+          <p role="status" className="basis-full text-sm text-amber-700">
+            Les {soins.length} soins les plus récents sont affichés sur {totalSoins} : choisissez un exercice pour voir les plus anciens.
+          </p>
+        )}
         <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetSoinForm() }}>

@@ -392,6 +392,17 @@ describe('soins planifies et temps attente lait', () => {
     })
   })
 
+  it('rend le nombre réel de soins de la période quand la liste est tronquée', async () => {
+    const soin = { id: 1, date: new Date('2026-07-21'), animal: null, lot: null }
+    mocks.soinFindMany.mockResolvedValue([soin, { ...soin, id: 2 }])
+    mocks.soinCount.mockResolvedValue(600)
+
+    const response = await GET(new NextRequest('http://localhost/api/elevage/soins?annee=2026&limit=2'))
+    const { meta } = await response.json()
+
+    expect(meta).toMatchObject({ total: 600, affiches: 2 })
+  })
+
   it("le carnet historique garde les soins d'un animal sorti", async () => {
     mocks.soinFindMany.mockResolvedValue([])
 
