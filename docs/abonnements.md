@@ -37,21 +37,29 @@ export de compte. Renseigner l'environnement privé via l'exploitation habituell
 
 1. Créer un prix EUR récurrent mensuel, quantité 1, 1 200 centimes,
    `tax_behavior=exclusive`. Renseigner `GLEBA_STRIPE_PRICE_COMPLET`.
-2. Configurer `GLEBA_STRIPE_SECRET_KEY`, `GLEBA_PUBLIC_URL` et le régime fiscal
+2. Créer de préférence une **clé restreinte** (`rk_live_…`, ou `rk_test_…` en
+   test ; une clé secrète `sk_…` est aussi acceptée) avec ces droits :
+   *Prices* lecture ; *Customers* écriture ; *Subscriptions* écriture ;
+   *Subscription schedules* écriture (libération avant suppression de compte) ;
+   *Checkout Sessions* écriture ; *Customer portal* écriture (configuration
+   relue, sessions créées) ; *Invoices* lecture ; *Events* lecture. Ne jamais
+   la coller dans un ticket ou une conversation : l'écrire directement dans
+   l'environnement privé, et la faire tourner si elle a été exposée.
+3. Configurer `GLEBA_STRIPE_SECRET_KEY`, `GLEBA_PUBLIC_URL` et le régime fiscal
    validé du vendeur : `GLEBA_STRIPE_TAX_MODE=automatic`, ou un taux existant
    `GLEBA_STRIPE_TAX_RATE`, ou `exempt` si ce régime s'applique réellement.
    Renseigner dans Stripe les informations du vendeur, l'URL des conditions et
    les mentions des justificatifs. Valider les conditions du service publié.
-3. Créer une configuration de portail autorisant factures et moyen de paiement,
+4. Créer une configuration de portail autorisant factures et moyen de paiement,
    avec **changement de souscription et résiliation désactivés** : ces commandes
    passent par Gleba pour préserver la date d'effet et le consentement.
    Renseigner `GLEBA_STRIPE_PORTAL_CONFIGURATION`.
-4. Configurer un webhook `/api/abonnement/webhook`, version
+5. Configurer un webhook `/api/abonnement/webhook`, version
    `2026-10-28.endive`, avec `GLEBA_STRIPE_WEBHOOK_SECRET`. Événements :
    `customer.subscription.created/updated/deleted`, `invoice.paid`,
    `invoice.payment_failed`, `invoice.payment_action_required`,
    `checkout.session.completed/expired`.
-5. Tester avec les clés **test** avant activation réelle. Les clés live exigent
+6. Tester avec les clés **test** avant activation réelle. Les clés live exigent
    aussi `GLEBA_STRIPE_COMMERCE_VALIDE=true`, après validation des informations
    commerciales et fiscales. L'essai actif ne peut pas être raccourci par un
    paiement anticipé. Il n'existe ni annuel ni promotion implicite.

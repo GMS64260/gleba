@@ -98,3 +98,26 @@ describe("preuve de paiement et cloisonnement", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+describe("clé du compte Stripe de Gleba", () => {
+  it.each(["sk_test_synthetique", "rk_test_synthetique"])("accepte %s en mode test", async cle => {
+    vi.stubEnv("GLEBA_STRIPE_SECRET_KEY", cle)
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(abonnement())))
+    vi.stubGlobal("fetch", fetchMock)
+    await synchroniserAbonnement("sub_synthetique")
+    expect(fetchMock).toHaveBeenCalled()
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer " + cle)
+  })
+  it.each(["rk_live_synthetique", "sk_live_synthetique"])("refuse %s sans validation commerciale", async cle => {
+    vi.stubEnv("GLEBA_STRIPE_SECRET_KEY", cle)
+    vi.stubEnv("GLEBA_STRIPE_COMMERCE_VALIDE", "false")
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock)
+    await expect(synchroniserAbonnement("sub_synthetique")).rejects.toThrow("commercialisation")
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it("refuse une clé publiable ou inconnue", async () => {
+    vi.stubEnv("GLEBA_STRIPE_SECRET_KEY", "pk_live_synthetique")
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock)
+    await expect(synchroniserAbonnement("sub_synthetique")).rejects.toThrow("pas encore disponibles")
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
