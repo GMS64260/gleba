@@ -134,6 +134,16 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
     mocks.especeFindFirst.mockResolvedValue({ id: 'caprin' })
   })
 
+  it('PUT normalise le sexe, refuse une valeur inconnue et ne passe plus un père sous silence', async () => {
+    expect((await callPut({ sexe: 'F' })).status).toBe(200)
+    expect(mocks.animalUpdate.mock.calls.at(-1)?.[0].data.sexe).toBe('femelle')
+
+    mocks.animalUpdate.mockClear()
+    expect((await callPut({ sexe: 'licorne' })).status).toBe(400)
+    expect((await callPut({ pereId: 3 })).status).toBe(400)
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
   it('refuse un lot non assignable avant écriture', async () => {
     mocks.isAssignableAnimalLot.mockResolvedValue(false)
 

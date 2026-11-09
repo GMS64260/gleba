@@ -16,6 +16,7 @@ import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
 import { effacementSortieSiActif, erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
+import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 import { aDesTracesAnimal, compterTracesAnimal, messageSuppressionAnimalRefusee } from '@/lib/elevage/traces-animal'
@@ -309,6 +310,30 @@ export async function PUT(
       notes,
       parcelleGeoId,
     } = body
+    // Mêmes règles que le PATCH de la collection, que ce PUT (sans écran, mais
+    // ouvert à l'API) ne suivait pas : le sexe est normalisé et une valeur
+    // inconnue refusée (un `'f'` brut excluait la femelle des mères possibles),
+    // et un père passé par `pereId`, que ce PUT n'écrit pas, n'est plus ignoré
+    // en silence.
+    let sexeNormalise: string | null | undefined
+    if (sexe !== undefined) {
+      if (sexe === null || sexe === '') sexeNormalise = null
+      else {
+        sexeNormalise = normaliserSexe(String(sexe))
+        if (sexeNormalise === undefined) {
+          return NextResponse.json(
+            { error: `Sexe « ${sexe} » non reconnu (attendu : ${SEXES_ANIMAL.join(', ')})`, champ: 'sexe' },
+            { status: 400 },
+          )
+        }
+      }
+    }
+    if (body.pereId !== undefined) {
+      return NextResponse.json(
+        { error: 'Le père se modifie par PATCH /api/elevage/animaux (contrôle de parenté) : ce PUT ne l’écrit pas.', champ: 'pereId' },
+        { status: 400 },
+      )
+    }
 
     const prixFinal = prixAchat === undefined
       ? existing.prixAchat
@@ -412,7 +437,7 @@ export async function PUT(
         race: raceAnimaleId !== undefined ? (raceRef?.nom ?? null) : race,
         raceAnimaleId: raceAnimaleId !== undefined ? (raceRef?.id ?? null) : undefined,
         orientationProduction: orientationProduction !== undefined ? (orientationProduction || null) : undefined,
-        sexe,
+        sexe: sexeNormalise,
         dateNaissance: dateNaissance ? new Date(dateNaissance) : undefined,
         dateArrivee: dateArrivee ? new Date(dateArrivee) : undefined,
         provenance,
