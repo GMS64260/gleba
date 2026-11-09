@@ -416,7 +416,9 @@ export async function createVenteFromVenteProduit(
   else if (venteProduit.type === 'viande') categorie = 'viande'
   else if (venteProduit.type === 'lait') categorie = 'lait'
   else if (venteProduit.type === 'fromage') categorie = 'fromage'
-  else if (venteProduit.type === 'animal_vivant') categorie = 'viande'
+  // « Animaux vivants » dans Transactions, comme les cessions réservées (et
+  // non plus « Viande » : un agneau vendu vivant n'est pas de la viande).
+  else if (venteProduit.type === 'animal_vivant') categorie = 'animal_vivant'
   else if (['miel', 'cire', 'propolis', 'pollen', 'gelee_royale', 'autre_ruche'].includes(venteProduit.type)) {
     categorie = 'produits_ruche'
   }

@@ -47,6 +47,7 @@ import {
   estVenteProduitRuche,
   tauxTvaVenteProduitParDefaut,
 } from '@/lib/elevage/produits-ruche'
+import { libelleTypeVente } from '@/lib/elevage/types-vente'
 
 // Plafond d'une vente unitaire, à la saisie comme à la correction.
 const SEUIL_VENTE_PRODUIT = 100_000
@@ -811,7 +812,9 @@ export async function PATCH(request: NextRequest) {
           clientId: body.clientId || null,
           clientNom: (updateData.client !== undefined ? updateData.client : existing.client) || undefined,
           date: dateF,
-          objet: `Vente de ${typeF} - ${descF || ''}`,
+          // Libellé du produit, pas sa clé technique : la facture imprimait
+          // « Vente de animal_vivant - … » ou « gelee_royale - … ».
+          objet: descF ? `Vente — ${libelleTypeVente(typeF)} — ${descF}` : `Vente — ${libelleTypeVente(typeF)}`,
           totalHT,
           totalTVA,
           totalTTC: totalFinal,
@@ -819,7 +822,7 @@ export async function PATCH(request: NextRequest) {
           datePaiement: payeFinal ? new Date() : null,
           modePaiement: body.modePaiement || modePaiementDepuisReglement(mode.data !== undefined ? mode.data : (await tx.venteManuelle.findFirst({ where: { userId, auto: true, sourceType: 'vente_produit', sourceId: existing.id }, select: { modeReglement: true } }))?.modeReglement),
           lignes: [{
-            description: `${typeF} - ${descF || ''}`,
+            description: descF ? `${libelleTypeVente(typeF)} — ${descF}` : libelleTypeVente(typeF),
             quantite: qteF,
             unite: uniteF,
             prixUnitaire: puF / (1 + tva / 100),
