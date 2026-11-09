@@ -13,6 +13,7 @@
 
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
+import { OppositionMesureAudience } from "@/components/mesure-audience/OppositionMesureAudience"
 import { Button } from "@/components/ui/button"
 
 export const metadata = {
@@ -151,6 +152,11 @@ export default function ConfidentialitePage() {
             Cookies, dont l&apos;adresse IP conservée sous forme hachée pour la preuve
             du consentement.
           </li>
+          <li>
+            Mesure d&apos;audience des pages publiques, sans cookie : pages vues, site
+            d&apos;origine, type d&apos;appareil, navigateur et langue, avec une
+            adresse IP raccourcie (voir la section 11).
+          </li>
         </ul>
 
         <h3>2.7 Boutique en ligne</h3>
@@ -214,8 +220,8 @@ export default function ConfidentialitePage() {
         <ul>
           <li><strong>Exécution du contrat</strong> : compte, fonctionnalités, commandes.</li>
           <li><strong>Obligation légale</strong> : comptabilité, traçabilité, registres réglementaires.</li>
-          <li><strong>Consentement</strong> : géolocalisation, notifications, cookies de mesure d&apos;audience, assistant IA.</li>
-          <li><strong>Intérêt légitime</strong> : sécurité du service, prévention des abus, assistance et correction des défauts (fichiers de relevés bancaires conservés 30 jours).</li>
+          <li><strong>Consentement</strong> : géolocalisation, notifications, cookies de marketing et de personnalisation, assistant IA.</li>
+          <li><strong>Intérêt légitime</strong> : sécurité du service, prévention des abus, assistance et correction des défauts (fichiers de relevés bancaires conservés 30 jours), mesure d&apos;audience des pages publiques sans cookie.</li>
         </ul>
 
         <h2>5. Destinataires et sous-traitants</h2>
@@ -277,6 +283,11 @@ export default function ConfidentialitePage() {
             Cette méthode de connexion est facultative : l&apos;inscription par
             e-mail et mot de passe reste toujours disponible.
           </li>
+          <li>
+            <strong>Mesure d&apos;audience</strong> : Matomo, logiciel libre installé
+            sur un serveur de l&apos;éditeur (stats.synalto.eu, hébergé chez IONOS) ;
+            aucune donnée de mesure n&apos;est transmise à un tiers.
+          </li>
         </ul>
 
         <h2>6. Durée de conservation</h2>
@@ -293,6 +304,7 @@ export default function ConfidentialitePage() {
           <li>Fichiers de relevés bancaires importés : 30 jours, puis effacement automatique.</li>
           <li>Journaux de connexion : 12 mois.</li>
           <li>Consentement aux cookies : 13 mois au maximum (délibération CNIL 2020-091).</li>
+          <li>Mesure d&apos;audience : données détaillées 13 mois, puis statistiques globales uniquement.</li>
         </ul>
         <p>
           En cas de suppression de votre compte, ces durées ne s&apos;appliquent plus
@@ -353,7 +365,9 @@ export default function ConfidentialitePage() {
         <p>
           L&apos;application Android est une enveloppe qui affiche le site gleba.fr :
           elle ne collecte rien de plus que ce qui est décrit ci-dessus et ne contient
-          aucun kit publicitaire ni outil de mesure tiers. Elle demande deux
+          aucun kit publicitaire ni outil de mesure tiers. Comme sur le site, les pages
+          publiques affichées sans être connecté font l&apos;objet de la mesure
+          d&apos;audience sans cookie décrite en section 11. Elle demande deux
           autorisations, toutes deux facultatives : la position, pour vous situer sur
           vos parcelles, et les notifications, pour vous alerter sur vos tâches et
           rappels. Vous pouvez les refuser ou les retirer dans les réglages Android.
@@ -362,13 +376,37 @@ export default function ConfidentialitePage() {
         <h2>11. Cookies</h2>
         <p>
           Le site utilise des cookies essentiels, toujours actifs, pour la session, le
-          panier et la sécurité, et, avec votre consentement, des cookies de mesure
-          d&apos;audience, de marketing et de personnalisation. Vous pouvez modifier
-          votre choix à tout moment via le bandeau cookies.
+          panier et la sécurité, et, avec votre consentement, des cookies de marketing
+          et de personnalisation. Vous pouvez modifier votre choix à tout moment via le
+          bandeau cookies.
         </p>
 
+        <h3>Mesure d&apos;audience</h3>
+        <p>
+          Pour savoir comment Gleba est découvert, la fréquentation des pages publiques
+          (accueil, pages de présentation, pages légales, connexion et boutiques
+          publiques) est mesurée avec Matomo, un logiciel libre installé sur un serveur
+          de l&apos;éditeur, à l&apos;adresse stats.synalto.eu. Rien n&apos;est mesuré
+          une fois connecté à l&apos;application.
+        </p>
+        <p>
+          La mesure fonctionne sans cookie. Elle porte sur les pages vues, le site ou le
+          moteur de recherche d&apos;origine, le type d&apos;appareil, le navigateur et
+          la langue. L&apos;adresse IP est raccourcie avant tout enregistrement, ce qui
+          empêche de vous identifier. Les données détaillées sont supprimées au bout de
+          13 mois ; seules des statistiques globales sont conservées au-delà. Elles ne
+          sont ni transmises à un tiers, ni croisées avec votre compte, ni utilisées
+          pour vous suivre sur d&apos;autres sites.
+        </p>
+        <p>
+          Vous pouvez vous opposer à cette mesure ci-dessous, ou en décochant
+          « Mesure d&apos;audience » dans le bandeau cookies. Le réglage « Ne pas me
+          pister » de votre navigateur est également respecté.
+        </p>
+        <OppositionMesureAudience />
+
         <p className="text-xs text-slate-500 mt-12">
-          Dernière mise à jour : 2026-11-01 — version 2.5.
+          Dernière mise à jour : 2026-11-09 — version 2.6.
         </p>
       </main>
     </div>
