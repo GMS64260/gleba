@@ -1,4 +1,5 @@
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
+import { apresDemain, MESSAGE_RECOLTE_FUTURE } from '@/lib/interventions/date-realisee'
 import { verrouillerRecolteLibre } from '@/lib/commercial/verrou-lot'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
 /**
@@ -102,6 +103,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const data = validation.data
     const resultat = await prisma.$transaction(async tx => {
       const lot = await verrouillerRecolteLibre(tx, userId, recolteId)
+      // Pas de date future (comme à la création), sauf si c'est déjà celle du lot :
+      // un lot ancien mal daté reste corrigeable sur ses autres champs.
+      if (data.date && apresDemain(data.date) && data.date.toISOString().slice(0, 10) !== lot.date.toISOString().slice(0, 10)) {
+        throw new ErreurCommerciale(MESSAGE_RECOLTE_FUTURE, 400)
+      }
       if (data.quantite != null && (lot.unite ?? 'kg') !== 'kg' && !Number.isInteger(data.quantite)) {
         throw new ErreurCommerciale('Indiquez une quantité entière dans l’unité de ce lot.', 400)
       }

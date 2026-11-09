@@ -39,6 +39,11 @@ vi.mock("@/lib/prisma", () => {
 
 import { POST } from "./route"
 
+// Horloge figée après les dates du jeu d'essai : une récolte ne se date pas
+// dans le futur, et ces scénarios datent leurs récoltes jusqu'en janvier 2027.
+beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2027-03-01T10:00:00.000Z')) })
+afterAll(() => { vi.useRealTimers() })
+
 // Fuseau de la production : la règle compare des journées civiles de Paris.
 beforeAll(() => { vi.stubEnv("TZ", "Europe/Paris") })
 afterAll(() => { vi.unstubAllEnvs() })
