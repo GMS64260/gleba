@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   soinFindMany: vi.fn(),
   paieFindMany: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
+  exploitationFindUnique: vi.fn().mockResolvedValue({ regimeTva: 'reel-simplifie' }),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -30,6 +31,7 @@ vi.mock("@/lib/prisma", () => ({
     consommationAliment: { findMany: mocks.consommationFindMany },
     soinAnimal: { findMany: mocks.soinFindMany },
     paieLait: { findMany: mocks.paieFindMany },
+    exploitation: { findUnique: mocks.exploitationFindUnique },
   },
 }))
 
