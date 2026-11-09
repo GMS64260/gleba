@@ -93,6 +93,26 @@ function refusAbattageHorsEffectif(
   })
 }
 
+/**
+ * Statut d'un lot après un abattage qui déplace son compteur de têtes anonymes.
+ * - Un lot RÉFORMÉ le reste : corriger un abattage ne le remet pas en production.
+ * - Le compteur à zéro ne clôt le lot que s'il n'y reste aucune fiche active :
+ *   abattre les 8 têtes collectives d'un lot de 10 dont 2 en fiches le passait
+ *   « terminé » avec 2 brebis dedans, et ses pontes étaient ensuite refusées.
+ * - Des têtes rendues à un lot terminé le rouvrent.
+ */
+async function statutLotApresAbattage(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  lot: { id: number; statut: string },
+  nouvelleQuantite: number,
+): Promise<string> {
+  if (lot.statut === 'reforme') return 'reforme'
+  if (nouvelleQuantite > 0) return 'actif'
+  const fichesActives = await tx.animal.count({ where: { userId, lotId: lot.id, statut: 'actif' } })
+  return fichesActives > 0 ? 'actif' : 'termine'
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -258,7 +278,7 @@ export async function POST(request: NextRequest) {
             where: { id: lot.id },
             data: {
               quantiteActuelle: nouvelleQuantite,
-              statut: nouvelleQuantite === 0 ? 'termine' : 'actif',
+              statut: await statutLotApresAbattage(tx, session.user.id, lot, nouvelleQuantite),
             },
           })
         }
@@ -460,7 +480,7 @@ export async function PATCH(request: NextRequest) {
               where: { id: lot.id },
               data: {
                 quantiteActuelle: nouvelleQuantite,
-                statut: nouvelleQuantite === 0 ? 'termine' : 'actif',
+                statut: await statutLotApresAbattage(tx, userId, lot, nouvelleQuantite),
               },
             })
           }
