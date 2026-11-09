@@ -696,6 +696,11 @@ function AnimauxSubTab() {
   })
   const [isSavingMort, setIsSavingMort] = React.useState(false)
 
+  const motifRefus = async (res: Response, defaut: string): Promise<string> => {
+    const corps = await res.json().catch(() => null) as { error?: string } | null
+    return corps?.error || defaut
+  }
+
   const handleAbattageSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSavingAbattage) return
@@ -718,13 +723,15 @@ function AnimauxSubTab() {
           notes: abattageForm.notes || null,
         }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      // Le refus du serveur se lit : un abattage pendant un délai d'attente
+      // viande nomme le traitement et la date à attendre.
+      if (!res.ok) throw new Error(await motifRefus(res, "Impossible d'enregistrer l'abattage"))
       toast({ title: "Abattage enregistré", description: `${abattageDialog.nom || abattageDialog.identifiant || ''} marqué comme abattu` })
       setAbattageDialog(null)
       setAbattageForm({ date: todayLocalISO(), poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "", nEtablissementDestination: "" })
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
+    } catch (e) {
+      toast({ variant: "destructive", title: "Abattage non enregistré", description: e instanceof Error ? e.message : "Impossible d'enregistrer l'abattage" })
     } finally {
       setIsSavingAbattage(false)
     }
@@ -756,26 +763,20 @@ function AnimauxSubTab() {
           paye: venteForm.paye,
           modeReglement: venteForm.modeReglement || null,
           notes: venteForm.notes || null,
-        }),
-      })
-      if (!venteRes.ok) throw new Error('Erreur vente')
-      // Marquer l'animal comme vendu
-      await fetch(`/api/elevage/animaux/${venteDialog.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          statut: 'vendu',
-          dateSortie: venteForm.date,
-          // N° de l'exploitation de l'acheteur : exigé pour déclarer la sortie.
+          // N° de l'exploitation de l'acheteur, exigé pour déclarer la sortie :
+          // la vente l'écrit sur la fiche avec le statut « vendu » et la date de
+          // sortie, dans sa transaction. Un second appel le posait après coup,
+          // sans lire sa réponse : en cas d'échec le numéro était perdu.
           nExploitationDestination: venteForm.nExploitationDestination.trim() || null,
         }),
       })
+      if (!venteRes.ok) throw new Error(await motifRefus(venteRes, "Impossible d'enregistrer la vente"))
       toast({ title: "Vente enregistrée", description: `${venteDialog.nom || venteDialog.identifiant || ''} marque comme vendu` })
       setVenteDialog(null)
       setVenteForm(nouvelleVente())
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer la vente" })
+    } catch (e) {
+      toast({ variant: "destructive", title: "Vente non enregistrée", description: e instanceof Error ? e.message : "Impossible d'enregistrer la vente" })
     } finally {
       setIsSavingVente(false)
     }
@@ -808,13 +809,13 @@ function AnimauxSubTab() {
           ...(notesFusionnees !== undefined ? { notes: notesFusionnees } : {}),
         }),
       })
-      if (!res.ok) throw new Error('Erreur')
+      if (!res.ok) throw new Error(await motifRefus(res, "Impossible d'enregistrer le décès"))
       toast({ title: "Décès enregistré", description: `${mortDialog.nom || mortDialog.identifiant || ''} marqué comme mort` })
       setMortDialog(null)
       setMortForm({ date: todayLocalISO(), cause: "", notes: "" })
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur" })
+    } catch (e) {
+      toast({ variant: "destructive", title: "Décès non enregistré", description: e instanceof Error ? e.message : "Impossible d'enregistrer le décès" })
     } finally {
       setIsSavingMort(false)
     }
@@ -2332,7 +2333,7 @@ function LotsSubTab() {
                     <Input type="number" min={0} value={formData.quantiteInitiale} onChange={(e) => setFormData(f => ({ ...f, quantiteInitiale: e.target.value }))} />
                     {editingLotId !== null && (
                       <p className="text-xs text-muted-foreground">
-                        Nombre de têtes entrées à la mise en place. Le corriger déplace l'effectif du même écart ; ce n'est pas l'endroit où noter une perte ou une vente.
+                        Nombre de têtes entrées à la mise en place. Le corriger déplace l’effectif du même écart ; ce n’est pas l’endroit où noter une perte ou une vente.
                       </p>
                     )}
                   </div>

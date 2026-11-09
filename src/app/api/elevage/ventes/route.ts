@@ -371,6 +371,9 @@ export async function POST(request: NextRequest) {
               statut: 'vendu',
               dateSortie: date || new Date(),
               causeSortie: 'Vente',
+              ...(parsed.data.nExploitationDestination?.trim()
+                ? { nExploitationDestination: parsed.data.nExploitationDestination.trim() }
+                : {}),
             },
           })
         }
