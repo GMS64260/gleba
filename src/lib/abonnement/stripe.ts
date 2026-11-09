@@ -11,12 +11,14 @@ const dateUnix = (v: unknown): Date | null => typeof v === "number" && Number.is
 export class ErreurFacturation extends Error {
   constructor(message: string, readonly status = 503) { super(message) }
 }
+/** Clé secrète (sk_) ou restreinte (rk_) du compte Stripe de Gleba ; la clé restreinte est recommandée. */
 function configuration() {
   const cle = process.env.GLEBA_STRIPE_SECRET_KEY
   const complet = process.env.GLEBA_STRIPE_PRICE_COMPLET
-  if (!cle || !/^sk_(test|live)_/.test(cle) || !complet || !/^price_[A-Za-z0-9]+$/.test(complet)) throw new ErreurFacturation("Les paiements ne sont pas encore disponibles. Votre accès actuel est conservé.")
-  if (cle.startsWith("sk_live_") && process.env.GLEBA_STRIPE_COMMERCE_VALIDE !== "true") throw new ErreurFacturation("La commercialisation n’est pas encore ouverte.")
-  return { cle, complet, live: cle.startsWith("sk_live_") }
+  if (!cle || !/^(sk|rk)_(test|live)_/.test(cle) || !complet || !/^price_[A-Za-z0-9]+$/.test(complet)) throw new ErreurFacturation("Les paiements ne sont pas encore disponibles. Votre accès actuel est conservé.")
+  const live = /^(sk|rk)_live_/.test(cle)
+  if (live && process.env.GLEBA_STRIPE_COMMERCE_VALIDE !== "true") throw new ErreurFacturation("La commercialisation n’est pas encore ouverte.")
+  return { cle, complet, live }
 }
 export function paiementsDisponibles(): boolean { try { configuration(); return abonnementsActifs() } catch { return false } }
 export async function appelerStripe(methode: "GET" | "POST" | "DELETE", chemin: string, parametres?: URLSearchParams, cleIdempotence?: string): Promise<Objet> {
