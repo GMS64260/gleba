@@ -508,7 +508,7 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
-    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteOeufsJ, tempsAttenteViandeJ, stockMedicamentId } = parsed.data
+    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteOeufsJ, tempsAttenteViandeJ, stockMedicamentId, produitId } = parsed.data
 
     const existing = await prisma.soinAnimal.findFirst({
       where: { id, userId: session.user.id },
@@ -577,18 +577,36 @@ export async function PATCH(request: NextRequest) {
     if (tempsAttenteLaitJ !== undefined) updateData.tempsAttenteLaitJ = tempsAttenteLaitJ
     if (tempsAttenteOeufsJ !== undefined) updateData.tempsAttenteOeufsJ = tempsAttenteOeufsJ
     if (tempsAttenteViandeJ !== undefined) updateData.tempsAttenteViandeJ = tempsAttenteViandeJ
-    if (tempsAttenteLaitJ !== undefined || tempsAttenteOeufsJ !== undefined || tempsAttenteViandeJ !== undefined) {
+    // Le délai ne devient « prescrit » que si une valeur CHANGE : le formulaire
+    // renvoie toujours les trois délais, et la moindre correction de note
+    // étiquetait « délai prescrit » au registre un délai venu de l'AMM.
+    if (
+      (tempsAttenteLaitJ !== undefined && tempsAttenteLaitJ !== existing.tempsAttenteLaitJ) ||
+      (tempsAttenteOeufsJ !== undefined && tempsAttenteOeufsJ !== existing.tempsAttenteOeufsJ) ||
+      (tempsAttenteViandeJ !== undefined && tempsAttenteViandeJ !== existing.tempsAttenteViandeJ)
+    ) {
       updateData.delaiAttenteSource = 'prescription'
+    }
+    // Le produit référencé suit la correction : il était ignoré, le soin gardait
+    // l'ancien produit sous le libellé et le lot du nouveau (registre sanitaire
+    // imprimant le nom et l'AMM de A avec le numéro de lot de B).
+    const produitChange = produitId !== undefined && (produitId || null) !== existing.produitId
+    const lotChange = stockMedicamentId !== undefined && (stockMedicamentId || null) !== existing.stockMedicamentId
+    if (produitChange) {
+      if (produitId && !await prisma.produitVeterinaire.findUnique({ where: { id: produitId }, select: { id: true } })) {
+        return NextResponse.json({ error: 'Produit vétérinaire introuvable', champ: 'produitId' }, { status: 400 })
+      }
+      updateData.produitId = produitId || null
     }
     if (
       existing.quantitePreleveeStock > 0 &&
       (
-        (stockMedicamentId !== undefined && stockMedicamentId !== existing.stockMedicamentId) ||
+        lotChange || produitChange ||
         (quantite !== undefined && quantite !== existing.quantite)
       )
     ) {
       return NextResponse.json(
-        { error: "Le lot ou la quantité d'un soin déjà prélevé ne peut pas être modifié. Annulez d'abord le soin." },
+        { error: "Le produit, le lot ou la quantité d'un soin déjà prélevé ne peut pas être modifié. Annulez d'abord le soin." },
         { status: 409 },
       )
     }
@@ -602,6 +620,27 @@ export async function PATCH(request: NextRequest) {
       : null
     if (stockEffectifId && !stockEffectif) {
       return NextResponse.json({ error: "Lot de pharmacie introuvable." }, { status: 404 })
+    }
+    // Gardes de pharmacie de la création, rejouées dès que le produit ou le lot
+    // change : le lot administré est du produit du soin, et un médicament
+    // référencé ne perd pas son lot.
+    const produitFinal = updateData.produitId !== undefined ? updateData.produitId : existing.produitId
+    if ((produitChange || lotChange) && stockEffectif && stockEffectif.produitId !== produitFinal) {
+      return NextResponse.json(
+        { error: 'Le lot de pharmacie ne correspond pas au produit sélectionné.' },
+        { status: 422 },
+      )
+    }
+    if ((produitChange || lotChange) && !stockEffectif && produitFinal && TYPES_MEDICAMENTEUX.has(updateData.type ?? existing.type)) {
+      return NextResponse.json(
+        { error: 'Sélectionnez un lot de pharmacie pour ce médicament.', code: 'LOT_PHARMACIE_REQUIS' },
+        { status: 422 },
+      )
+    }
+    if (lotChange && !stockEffectif) {
+      // Lot retiré : son instantané (numéro, péremption) ne reste pas au registre.
+      updateData.numeroLotMedicament = null
+      updateData.peremptionMedicament = null
     }
     if (stockEffectif && stockMedicamentId !== undefined) {
       updateData.numeroLotMedicament = stockEffectif.numeroLot
@@ -668,8 +707,16 @@ export async function PATCH(request: NextRequest) {
 
     const soin = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
-      const devientRealise = fait === true && !existing.fait && existing.quantitePreleveeStock <= 0
-      const devientPlanifie = fait === false && existing.fait && existing.quantitePreleveeStock > 0
+      // L'état du prélèvement se relit SOUS le mutex : sur `existing` (lu avant
+      // la transaction), deux « Fait » envoyés ensemble voyaient chacun un soin
+      // non fait et décomptaient chacun la pharmacie, alors qu'une annulation
+      // n'en rend qu'une.
+      const courant = await tx.soinAnimal.findFirst({
+        where: { id, userId: session!.user.id },
+        select: { fait: true, quantitePreleveeStock: true },
+      }) ?? existing
+      const devientRealise = fait === true && !courant.fait && courant.quantitePreleveeStock <= 0
+      const devientPlanifie = fait === false && courant.fait && courant.quantitePreleveeStock > 0
       if (devientRealise && stockEffectif) {
         const quantiteADecompter = quantite ?? existing.quantite ?? 0
         if (quantiteADecompter <= 0) {
@@ -693,7 +740,7 @@ export async function PATCH(request: NextRequest) {
       } else if (devientPlanifie && existing.stockMedicamentId) {
         await tx.stockMedicamentElevage.update({
           where: { id: existing.stockMedicamentId },
-          data: { quantite: { increment: existing.quantitePreleveeStock } },
+          data: { quantite: { increment: courant.quantitePreleveeStock } },
         })
         updateData.quantitePreleveeStock = 0
       }

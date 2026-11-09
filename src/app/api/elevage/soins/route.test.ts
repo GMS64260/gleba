@@ -124,6 +124,49 @@ describe('soins planifies et temps attente lait', () => {
     expect(mocks.soinUpdate.mock.calls[0][0].data.finAttenteLait).toBeUndefined()
   })
 
+  it('le produit corrigé est enregistré, et son lot de pharmacie doit être du même produit', async () => {
+    const existing = { ...soinDeLot(), produitId: 'p1', stockMedicamentId: 'stock-1' }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    mocks.produitFindUnique.mockResolvedValue({ id: 'p2' })
+
+    // Produit B avec le lot du produit A : refusé.
+    expect((await PATCH(request('PATCH', { id: 1, produitId: 'p2' }))).status).toBe(422)
+    // Produit B et son lot.
+    mocks.stockFindFirst.mockResolvedValue({ id: 'stock-2', userId: 'user-1', produitId: 'p2', numeroLot: 'LB', quantite: 10, unite: 'mL', datePeremption: null, ordonnanceUrl: null })
+    expect((await PATCH(request('PATCH', { id: 1, produitId: 'p2', stockMedicamentId: 'stock-2' }))).status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data).toMatchObject({ produitId: 'p2', stockMedicamentId: 'stock-2', numeroLotMedicament: 'LB' })
+  })
+
+  it('un médicament référencé ne perd pas son lot, et un délai renvoyé inchangé ne devient pas « prescrit »', async () => {
+    const existing = { ...soinDeLot(), produitId: 'p1', stockMedicamentId: 'stock-1' }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+
+    const refus = await PATCH(request('PATCH', { id: 1, stockMedicamentId: null }))
+    expect(refus.status).toBe(422)
+    expect((await refus.json()).code).toBe('LOT_PHARMACIE_REQUIS')
+
+    expect((await PATCH(request('PATCH', { id: 1, notes: 'x', tempsAttenteLaitJ: 5, tempsAttenteViandeJ: 12, tempsAttenteOeufsJ: null }))).status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data.delaiAttenteSource).toBeUndefined()
+    mocks.soinUpdate.mockClear()
+    expect((await PATCH(request('PATCH', { id: 1, tempsAttenteLaitJ: 9 }))).status).toBe(200)
+    expect(mocks.soinUpdate.mock.calls[0][0].data.delaiAttenteSource).toBe('prescription')
+  })
+
+  it('deux « Fait » envoyés ensemble ne décomptent la pharmacie qu’une fois', async () => {
+    const existing = { ...soinDeLot(), produitId: 'p1', stockMedicamentId: 'stock-1', quantite: 2 }
+    // Lecture d'avant transaction : soin non fait ; relecture sous verrou : déjà
+    // fait et prélevé par la première requête.
+    mocks.soinFindFirst
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce({ fait: true, quantitePreleveeStock: 2 })
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+
+    expect((await PATCH(request('PATCH', { id: 1, fait: true }))).status).toBe(200)
+    expect(mocks.stockUpdateMany).not.toHaveBeenCalled()
+  })
+
   it('type les conditions CASE de resynchronisation des injections', async () => {
     const existing = {
       id: 1,
