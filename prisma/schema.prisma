@@ -5222,7 +5222,6 @@ model AbonnementGleba {
   essaiDebut DateTime? @map("essai_debut")
   essaiFin DateTime? @map("essai_fin")
   formule String?
-  atelier String?
   statut String?
   clientStripeId String? @unique @map("client_stripe_id")
   abonnementStripeId String? @unique @map("abonnement_stripe_id")
@@ -5234,7 +5233,6 @@ model AbonnementGleba {
   checkoutId String? @map("checkout_id")
   checkoutCle String? @map("checkout_cle")
   checkoutExpireLe DateTime? @map("checkout_expire_le")
-  prochainContrat Json? @map("prochain_contrat")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   @@map("abonnements_gleba")

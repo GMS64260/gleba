@@ -4,22 +4,22 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi, refusSiPasProprietaire } from "@/lib/auth-utils"
 import { refusSiCompteDemo } from "@/lib/demo-garde"
 import { abonnementsActifs, chargerAccesService, demarrerEssai } from "@/lib/abonnement/serveur"
-import { creerCheckout, creerPortail, paiementsDisponibles, changerFormule, resilier, annulerModification, ErreurFacturation } from "@/lib/abonnement/stripe"
+import { creerCheckout, creerPortail, paiementsDisponibles, resilier, ErreurFacturation } from "@/lib/abonnement/stripe"
 
 export const dynamic = "force-dynamic"
 const NO_STORE = { "Cache-Control": "no-store" }
 const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("essai") }),
-  z.object({ action: z.enum(["checkout", "changer"]), formule: z.enum(["essentiel", "complet"]), atelier: z.enum(["maraichage", "verger", "elevage"]).nullable().optional(), conditionsAcceptees: z.literal(true) }),
-  z.object({ action: z.enum(["portail", "resilier", "annuler-modification"]) }),
+  z.object({ action: z.literal("checkout"), formule: z.literal("complet"), conditionsAcceptees: z.literal(true) }),
+  z.object({ action: z.enum(["portail", "resilier"]) }),
 ])
 export async function GET(request: Request) {
   const { error, session } = await requireAuthApi(request)
   if (error) return error
   const userId = session.user.id
   const acces = await chargerAccesService(userId)
-  const ligne = abonnementsActifs() ? await prisma.abonnementGleba.findUnique({ where: { userId }, select: { annulationAuTerme: true, prochainContrat: true, clientStripeId: true, abonnementStripeId: true } }) : null
-  return NextResponse.json({ acces, actif: abonnementsActifs(), paiementDisponible: paiementsDisponibles(), peutGerer: session.user.estProprietaireExploitation && !session.user.impersonatedBy, compteFacturation: Boolean(ligne?.clientStripeId), contratEnCours: Boolean(ligne?.abonnementStripeId), annulationAuTerme: ligne?.annulationAuTerme ?? false, prochainContrat: ligne?.prochainContrat ? { programme: true } : null }, { headers: NO_STORE })
+  const ligne = abonnementsActifs() ? await prisma.abonnementGleba.findUnique({ where: { userId }, select: { annulationAuTerme: true, clientStripeId: true, abonnementStripeId: true } }) : null
+  return NextResponse.json({ acces, actif: abonnementsActifs(), paiementDisponible: paiementsDisponibles(), peutGerer: session.user.estProprietaireExploitation && !session.user.impersonatedBy, compteFacturation: Boolean(ligne?.clientStripeId), contratEnCours: Boolean(ligne?.abonnementStripeId), annulationAuTerme: ligne?.annulationAuTerme ?? false }, { headers: NO_STORE })
 }
 export async function POST(request: NextRequest) {
   const origine = request.headers.get("origin")
@@ -35,15 +35,13 @@ export async function POST(request: NextRequest) {
   try {
     if (Number(request.headers.get("content-length") ?? 0) > 4096) return NextResponse.json({ error: "Requête trop volumineuse." }, { status: 413 })
     const input = schema.safeParse(await request.json())
-    if (!input.success) return NextResponse.json({ error: "Choisissez une formule et confirmez ses conditions." }, { status: 400 })
+    if (!input.success) return NextResponse.json({ error: "Confirmez les conditions de l’offre Complet." }, { status: 400 })
     const d = input.data
     const userId = session.user.id
     if (d.action === "essai") return NextResponse.json({ acces: await demarrerEssai(userId) }, { headers: NO_STORE })
-    if (d.action === "checkout") return NextResponse.json({ url: await creerCheckout(userId, d.formule, d.atelier ?? null) }, { headers: NO_STORE })
-    if (d.action === "changer") return NextResponse.json({ date: await changerFormule(userId, d.formule, d.atelier ?? null) }, { headers: NO_STORE })
+    if (d.action === "checkout") return NextResponse.json({ url: await creerCheckout(userId) }, { headers: NO_STORE })
     if (d.action === "portail") return NextResponse.json({ url: await creerPortail(userId) }, { headers: NO_STORE })
     if (d.action === "resilier") await resilier(userId)
-    if (d.action === "annuler-modification") await annulerModification(userId)
     return NextResponse.json({ success: true }, { headers: NO_STORE })
   } catch (e) {
     return NextResponse.json({ error: e instanceof ErreurFacturation ? e.message : "L’opération n’a pas été confirmée. Réessayez dans un instant." }, { status: e instanceof ErreurFacturation ? e.status : 503, headers: NO_STORE })

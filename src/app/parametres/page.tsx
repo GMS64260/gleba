@@ -36,7 +36,7 @@ import {
 } from '@/lib/briefing-prefs'
 
 const RUBRIQUES_PARAMETRES = [
-  { id: 'abonnement', titre: 'Abonnement', description: 'Retrouvez votre accès, votre essai et les formules de votre carnet.', icone: Layers, mots: 'abonnement essai trois mois gratuit vie essentiel complet 5 12 paiement facture formule' },
+  { id: 'abonnement', titre: 'Abonnement', description: 'Retrouvez votre accès, votre essai et l’offre Complet.', icone: Layers, mots: 'abonnement essai trois mois gratuit vie complet 12 paiement facture formule' },
   { id: 'carnet', titre: 'Mon carnet', description: 'Choisissez les activités et les modes d’élevage que vous utilisez.', icone: Layers, mots: 'modules actifs navigation maraîchage verger comptabilité élevage animaux compagnie équin nac' },
   { id: 'exploitation', titre: 'Exploitation et équipe', description: 'Retrouvez l’identité de votre exploitation et les accès de votre équipe.', icone: Building2, mots: 'identité légale raison sociale siret fiscal coordonnées bancaires factures associés salariés comptable devise unités' },
   { id: 'jardin', titre: 'Plan du jardin', description: 'Réglez les dimensions et l’apparence de votre plan.', icone: ImageIcon, mots: 'planches largeur longueur hauteur grille couleurs image fond satellite drone calibration' },

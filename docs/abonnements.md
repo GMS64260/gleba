@@ -6,24 +6,27 @@ menus organisent l'affichage ; elles n'accordent aucun droit commercial.
 
 ## Catalogue et comptes existants
 
-- Trois mois calendaires gratuits, sans carte, dès la première connexion.
-  Aucun passage automatique au payant. Un nouvel essai ne peut pas être obtenu
-  en se reconnectant, en important un compte ou en vidant ses données métier.
-- Essentiel : 5 € HT/mois/exploitation, un atelier (`maraichage`, `verger` ou
-  `elevage`), sans IA/MCP, météo/conseil météo d'irrigation, boutique ni
-  comptabilité/facturation. Le référentiel botanique et les outils communs du
-  terrain restent utilisables. Les stocks respectent l'atelier choisi.
-- Complet : 12 € HT/mois/exploitation, tous les modules existants.
+- Carnet gratuit, sans limite de durée : tous les ateliers (`maraichage`,
+  `verger`, `elevage`), outils communs du terrain, stocks, traçabilité et
+  facturation (capacité `facturation` : `comptabilite/{clients,documents,envois,
+  factures,fournisseurs,reglements,ventes-manuelles}`).
+- Complet : 12 € HT/mois/exploitation. Ajoute `ia` (chat, MCP), `meteo`,
+  `boutique` et `gestion` (tout le reste de `comptabilite` : tableau de bord,
+  dépenses, banque, TVA, bilan, coûts de production, stocks valorisés).
+- Essai de Complet : trois mois calendaires, sans carte, dès la première
+  connexion, puis retour au carnet gratuit. Aucun passage automatique au payant.
+  Un nouvel essai ne peut pas être obtenu en se reconnectant, en important un
+  compte ou en vidant ses données métier.
 - Les comptes créés avant ou à `2026-11-08T20:32:07.000Z` gardent Complet
   gratuitement à vie. Cette borne est fixée dans le catalogue et la migration ;
   ne pas la remplacer par la date de déploiement. Le droit survit à la fin
   d'essai, à la résiliation et à la suppression des données métier.
 
 Les droits sont ceux de l'exploitation visitée. Seul son propriétaire peut
-souscrire, programmer un changement ou résilier ; une consultation admin ne
-peut pas le faire. Après expiration, les données restent lisibles et
-exportables. Un retour à Essentiel conserve l'historique et les exports des
-autres ateliers. Les anciennes factures sont récupérables. Les liens de suivi
+souscrire ou résilier ; une consultation admin ne peut pas le faire. Après
+l'essai ou un abonnement, le compte revient au carnet gratuit : rien n'est
+supprimé, les données de gestion restent exportables (`export`,
+`comptabilite/export`, PDF/UBL/Factur-X en lecture). Les liens de suivi
 des commandes déjà passées restent accessibles à leurs destinataires.
 
 ## Configuration Stripe dédiée
@@ -32,9 +35,8 @@ Les variables `GLEBA_STRIPE_*` concernent **l'abonnement à Gleba**, jamais la
 connexion bancaire Stripe des producteurs. Aucune clé dans Git, ni dans un
 export de compte. Renseigner l'environnement privé via l'exploitation habituelle.
 
-1. Créer deux prix EUR récurrents mensuels, quantité 1, respectivement 500 et
-   1 200 centimes, `tax_behavior=exclusive`. Renseigner
-   `GLEBA_STRIPE_PRICE_ESSENTIEL` et `GLEBA_STRIPE_PRICE_COMPLET`.
+1. Créer un prix EUR récurrent mensuel, quantité 1, 1 200 centimes,
+   `tax_behavior=exclusive`. Renseigner `GLEBA_STRIPE_PRICE_COMPLET`.
 2. Configurer `GLEBA_STRIPE_SECRET_KEY`, `GLEBA_PUBLIC_URL` et le régime fiscal
    validé du vendeur : `GLEBA_STRIPE_TAX_MODE=automatic`, ou un taux existant
    `GLEBA_STRIPE_TAX_RATE`, ou `exempt` si ce régime s'applique réellement.
@@ -42,7 +44,7 @@ export de compte. Renseigner l'environnement privé via l'exploitation habituell
    les mentions des justificatifs. Valider les conditions du service publié.
 3. Créer une configuration de portail autorisant factures et moyen de paiement,
    avec **changement de souscription et résiliation désactivés** : ces commandes
-   passent par Gleba pour préserver atelier, date d'effet et consentement.
+   passent par Gleba pour préserver la date d'effet et le consentement.
    Renseigner `GLEBA_STRIPE_PORTAL_CONFIGURATION`.
 4. Configurer un webhook `/api/abonnement/webhook`, version
    `2026-10-28.endive`, avec `GLEBA_STRIPE_WEBHOOK_SECRET`. Événements :
@@ -62,10 +64,8 @@ la grâce d'un renouvellement impayé dure sept jours après cette période.
 
 ## Renouvellement et incidents
 
-Le changement de formule **ou d'atelier** est programmé au prochain
-renouvellement via un schedule sans prorata. Une modification préparée est
-persistée avant les appels distants, puis peut être annulée ; les commandes et
-webhooks sont sérialisés par verrou PostgreSQL. La résiliation arrête le
+Il n'existe qu'une formule payante : aucun changement de formule à programmer.
+Les commandes et webhooks sont sérialisés par verrou PostgreSQL. La résiliation arrête le
 renouvellement, en gardant la période payée. Les justificatifs restent dans le
 portail après expiration. Une suppression de compte ferme les sessions de
 paiement ouvertes et confirme l'arrêt des contrats avant le cascade ; si

@@ -17,16 +17,14 @@ async function main() {
   const password = await hash("gleba-qa-uniquement", 4)
   const apres = new Date(Date.parse(GRATUITE_EXISTANTS_JUSQUAU) + 1)
   const futur = new Date(Date.now() + 86400000 * 30)
-  for (const nom of ["historique", "apres", "jardin", "verger", "elevage", "complet", "expire"]) {
+  for (const nom of ["historique", "apres", "complet", "expire"]) {
     const userId = `qa-${nom}`
     await prisma.user.upsert({ where: { id: userId }, create: { id: userId, email: `${nom}@example.invalid`, createdAt: nom === "historique" ? new Date(GRATUITE_EXISTANTS_JUSQUAU) : apres, password, emailVerified: true, active: true }, update: { password, emailVerified: true, active: true } })
     if (nom === "historique" || nom === "apres") continue
-    const atelier = nom === "jardin" ? "maraichage" : nom
     await prisma.abonnementGleba.upsert({ where: { userId }, create: { userId }, update: {} })
     await prisma.abonnementGleba.update({ where: { userId }, data: {
       essaiDebut: new Date("2026-07-01"), essaiFin: new Date("2026-10-01"),
-      formule: nom === "complet" ? "complet" : nom === "expire" ? null : "essentiel",
-      atelier: ["jardin", "verger", "elevage"].includes(nom) ? atelier : null,
+      formule: nom === "complet" ? "complet" : null,
       statut: nom === "expire" ? null : "active", payeJusquau: nom === "expire" ? null : futur,
     } })
   }
@@ -40,16 +38,15 @@ async function main() {
   await demarrerEssai("qa-apres")
   const second = await prisma.abonnementGleba.findUniqueOrThrow({ where: { userId: "qa-apres" } })
   assert.equal(premier.essaiFin?.toISOString(), second.essaiFin?.toISOString())
-  for (const nom of ["jardin", "verger", "elevage"]) {
-    const acces = await chargerAccesService(`qa-${nom}`)
-    assert.equal(acces.etat, "actif"); assert.equal(acces.formule, "essentiel")
-    assert.deepEqual(acces.ateliers, [nom === "jardin" ? "maraichage" : nom])
-    for (const c of ["ia", "meteo", "boutique", "comptabilite"] as const) assert.equal(acces[c], false)
-  }
-  assert.equal((await chargerAccesService("qa-complet")).ia, true)
-  assert.equal((await chargerAccesService("qa-expire")).ecriture, false)
+  const complet = await chargerAccesService("qa-complet")
+  assert.equal(complet.etat, "actif"); assert.equal(complet.ia, true); assert.equal(complet.gestion, true)
+  // Fin d'essai : retour au carnet gratuit, tous les ateliers et la facturation, sans services de Complet.
+  const expire = await chargerAccesService("qa-expire")
+  assert.equal(expire.etat, "gratuit"); assert.equal(expire.ecriture, true); assert.equal(expire.facturation, true)
+  assert.deepEqual(expire.ateliers, ["maraichage", "verger", "elevage"])
+  for (const c of ["ia", "meteo", "boutique", "gestion"] as const) assert.equal(expire[c], false)
   // Export de récupération : les droits et preuves de paiement ne se transfèrent pas.
-  const sauvegarde = await exportAccount("qa-verger")
+  const sauvegarde = await exportAccount("qa-complet")
   assert.equal(sauvegarde.data.AbonnementGleba, undefined)
   assert.equal(sauvegarde.data.EvenementAbonnement, undefined)
   assert.equal(sauvegarde.data.Parametre, undefined)
@@ -59,26 +56,25 @@ async function main() {
   await prisma.user.create({ data: { id: paiementId, email: "paiement@example.invalid", createdAt: apres, emailVerified: true } })
   await prisma.abonnementGleba.create({ data: { userId: paiementId, essaiDebut: new Date("2026-07-01"), essaiFin: new Date("2026-10-01"), clientStripeId: "cus_SynthetiqueQA" } })
   process.env.GLEBA_STRIPE_SECRET_KEY = "sk_test_synthetique"
-  process.env.GLEBA_STRIPE_PRICE_ESSENTIEL = "price_EssentielQA"
   process.env.GLEBA_STRIPE_PRICE_COMPLET = "price_CompletQA"
   process.env.GLEBA_STRIPE_TAX_MODE = "exempt"
   let checkouts = 0
   globalThis.fetch = async (input, init) => {
     const adresse = String(input)
-    if (adresse === "https://api.stripe.com/v1/prices/price_EssentielQA") return new Response(JSON.stringify({ currency: "eur", unit_amount: 500, active: true, tax_behavior: "exclusive", recurring: { interval: "month", interval_count: 1 } }))
+    if (adresse === "https://api.stripe.com/v1/prices/price_CompletQA") return new Response(JSON.stringify({ currency: "eur", unit_amount: 1200, active: true, tax_behavior: "exclusive", recurring: { interval: "month", interval_count: 1 } }))
     if (adresse === "https://api.stripe.com/v1/subscriptions?status=all&limit=100&customer=cus_SynthetiqueQA") return new Response(JSON.stringify({ data: [], has_more: false }))
     assert.equal(adresse, "https://api.stripe.com/v1/checkout/sessions")
     const params = new URLSearchParams(String(init?.body))
     assert.equal(params.get("subscription_data[metadata][glebaUserId]"), paiementId)
-    assert.equal(params.get("subscription_data[metadata][atelier]"), "verger")
+    assert.equal(params.get("line_items[0][price]"), "price_CompletQA")
     checkouts++
     return new Response(JSON.stringify({ id: "cs_SynthetiqueQA", url: "https://checkout.stripe.com/synthetique" }))
   }
-  const paiements = await Promise.allSettled([creerCheckout(paiementId, "essentiel", "verger"), creerCheckout(paiementId, "essentiel", "verger")])
+  const paiements = await Promise.allSettled([creerCheckout(paiementId), creerCheckout(paiementId)])
   assert.equal(paiements.filter(p => p.status === "fulfilled").length, 1)
   assert.equal(checkouts, 1)
-  assert.equal((await chargerAccesService(paiementId)).ecriture, false)
+  assert.equal((await chargerAccesService(paiementId)).ia, false)
   console.log("PASS : deux paiements concurrents ne créent qu’une session ; le retour Checkout ne donne aucun droit.")
-  console.log("PASS : migration historique, frontière +1 ms, essai concurrent sans reset, 3 ateliers, Complet, expiration et export.")
+  console.log("PASS : migration historique, frontière +1 ms, essai concurrent sans reset, Complet, retour au gratuit et export.")
 }
 main().finally(() => prisma.$disconnect()).catch(() => { console.error("Échec de l’essai abonnements dans la base QA."); process.exitCode = 1 })

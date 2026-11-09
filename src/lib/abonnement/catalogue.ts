@@ -1,19 +1,25 @@
 /** Catalogue partagé par le serveur, l'interface et les pages publiques. */
 export const ATELIERS = ["maraichage", "verger", "elevage"] as const
 export type Atelier = typeof ATELIERS[number]
-export type Formule = "essentiel" | "complet"
+/** Une seule formule payante ; le carnet gratuit n'est pas une formule souscrite. */
+export type Formule = "complet"
 export const NOMS_ATELIERS: Record<Atelier, string> = {
   maraichage: "Jardin et maraîchage", verger: "Verger", elevage: "Élevage",
 }
+export const GRATUIT = {
+  nom: "Gratuit",
+  description: "Tout votre carnet de terrain, pour toujours.",
+  inclus: ["Jardin et maraîchage, verger et élevage", "Plan et carte de votre terrain", "Suivi, stocks et traçabilité", "Clients, devis, bons de livraison et factures", "Suivi des règlements et des impayés", "Sauvegarde et export de vos données"],
+  exclus: ["Assistant IA", "Météo et conseil d’irrigation", "Boutique en ligne", "Gestion : banque, TVA, bilan, coûts de production"],
+} as const
 export const FORMULES = {
-  essentiel: { nom: "Essentiel", centimes: 500, prix: 5, description: "Un atelier au choix, pour tenir votre carnet de terrain.", inclus: ["Jardin et maraîchage, verger ou élevage", "Plan et carte de votre terrain", "Suivi, stocks et traçabilité de l’atelier", "Sauvegarde et export de vos données"], exclus: ["Agent IA", "Météo et conseil météo d’irrigation", "Boutique en ligne", "Comptabilité et facturation"] },
-  complet: { nom: "Complet", centimes: 1200, prix: 12, description: "Tous vos ateliers et les services de Gleba dans un même carnet.", inclus: ["Tous les ateliers de production", "Agent IA et météo à la parcelle", "Boutique en ligne", "Facturation et précomptabilité", "Sauvegarde et export de vos données"], exclus: [] },
+  complet: { nom: "Complet", centimes: 1200, prix: 12, description: "Le carnet gratuit, plus ce qui vous fait gagner du temps chaque jour.", inclus: ["Tout le carnet gratuit", "Assistant IA : saisie vocale, photos, conseil", "Météo à la parcelle et conseil d’irrigation", "Boutique en ligne", "Gestion : dépenses, banque, TVA, bilan, coûts de production"], exclus: [] },
 } as const
 export const MOIS_ESSAI = 3
 /** Décision du propriétaire : inscrits présents au moment de son instruction. */
 export const GRATUITE_EXISTANTS_JUSQUAU = "2026-11-08T20:32:07.000Z"
-export const VERSION_CONDITIONS_OFFRE = "2026-11-08"
-export const TEXTE_OFFRE = "3 mois d’essai gratuits, puis 5 € HT/mois pour un atelier ou 12 € HT/mois pour l’offre complète."
+export const VERSION_CONDITIONS_OFFRE = "2026-11-09"
+export const TEXTE_OFFRE = "Gleba est gratuit pour tenir votre carnet. Complet à 12 € HT/mois ajoute l’assistant IA, la météo, la boutique et la gestion ; essayez-le 3 mois sans carte bancaire."
 export const TEXTE_EXISTANTS = "Les comptes déjà inscrits lors de l’annonce conservent gratuitement à vie leur accès complet."
 export function estAtelier(v: unknown): v is Atelier { return ATELIERS.includes(v as Atelier) }
-export function estFormule(v: unknown): v is Formule { return v === "essentiel" || v === "complet" }
+export function estFormule(v: unknown): v is Formule { return v === "complet" }

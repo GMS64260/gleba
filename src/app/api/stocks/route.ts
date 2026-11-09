@@ -7,8 +7,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { chargerAccesService } from '@/lib/abonnement/serveur'
-import { estTypeVerger } from '@/lib/validations/espece'
 import { calculerStocksNet, chargerComparaisonsStockLots } from '@/lib/stocks-helpers'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { enregistrerStockVariete, stockVarieteSchema } from '@/lib/stocks/stock-variete'
@@ -49,19 +47,6 @@ export async function PATCH(request: NextRequest) {
         { error: 'Type et ID requis' },
         { status: 400 }
       )
-    }
-
-    const acces = await chargerAccesService(userId)
-    if (acces.formule === 'essentiel') {
-      const espece = type === 'recolte'
-        ? await prisma.espece.findUnique({ where: { id: String(id) }, select: { type: true } })
-        : ['graines', 'plants', 'variete'].includes(type)
-          ? (await prisma.variete.findUnique({ where: { id: String(id) }, select: { espece: { select: { type: true } } } }))?.espece
-          : null
-      const atelier = espece ? (estTypeVerger(espece.type) ? 'verger' : 'maraichage') : null
-      if ((atelier && !acces.ateliers.includes(atelier)) || (!atelier && type !== 'fertilisant')) {
-        return NextResponse.json({ error: 'Ce stock appartient à un autre atelier.', code: 'FORMULE_INSUFFISANTE' }, { status: 403 })
-      }
     }
 
     const date = dateStock ? new Date(dateStock) : new Date()

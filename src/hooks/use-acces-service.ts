@@ -10,7 +10,6 @@ export interface EtatServiceClient {
   contratEnCours: boolean
   compteFacturation: boolean
   annulationAuTerme: boolean
-  prochainContrat: { programme: boolean } | null
 }
 const caches = new Map<string, { date: number; valeur: EtatServiceClient }>()
 const requetes = new Map<string, Promise<EtatServiceClient>>()

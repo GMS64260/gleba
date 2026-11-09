@@ -1,7 +1,6 @@
 import { createHmac, timingSafeEqual, randomUUID } from "node:crypto"
 import prisma from "@/lib/prisma"
-import { Prisma } from "@prisma/client"
-import { FORMULES, VERSION_CONDITIONS_OFFRE, estAtelier, type Atelier, type Formule } from "./catalogue"
+import { FORMULES, VERSION_CONDITIONS_OFFRE } from "./catalogue"
 import { abonnementsActifs, chargerAccesService } from "./serveur"
 
 type Objet = Record<string, unknown>
@@ -14,11 +13,10 @@ export class ErreurFacturation extends Error {
 }
 function configuration() {
   const cle = process.env.GLEBA_STRIPE_SECRET_KEY
-  const essentiel = process.env.GLEBA_STRIPE_PRICE_ESSENTIEL
   const complet = process.env.GLEBA_STRIPE_PRICE_COMPLET
-  if (!cle || !/^sk_(test|live)_/.test(cle) || !essentiel || !complet || essentiel === complet || !/^price_[A-Za-z0-9]+$/.test(essentiel) || !/^price_[A-Za-z0-9]+$/.test(complet)) throw new ErreurFacturation("Les paiements ne sont pas encore disponibles. Votre accès actuel est conservé.")
+  if (!cle || !/^sk_(test|live)_/.test(cle) || !complet || !/^price_[A-Za-z0-9]+$/.test(complet)) throw new ErreurFacturation("Les paiements ne sont pas encore disponibles. Votre accès actuel est conservé.")
   if (cle.startsWith("sk_live_") && process.env.GLEBA_STRIPE_COMMERCE_VALIDE !== "true") throw new ErreurFacturation("La commercialisation n’est pas encore ouverte.")
-  return { cle, essentiel, complet, live: cle.startsWith("sk_live_") }
+  return { cle, complet, live: cle.startsWith("sk_live_") }
 }
 export function paiementsDisponibles(): boolean { try { configuration(); return abonnementsActifs() } catch { return false } }
 export async function appelerStripe(methode: "GET" | "POST" | "DELETE", chemin: string, parametres?: URLSearchParams, cleIdempotence?: string): Promise<Objet> {
@@ -46,21 +44,19 @@ function origine() {
   if (url.protocol !== "https:" && url.hostname !== "127.0.0.1" && url.hostname !== "localhost") throw new ErreurFacturation("Adresse du service invalide.")
   return url.origin
 }
-function prixPour(formule: Formule) { const c = configuration(); return formule === "essentiel" ? c.essentiel : c.complet }
-async function verifierPrix(formule: Formule) {
-  const prix = await appelerStripe("GET", "/v1/prices/" + prixPour(formule))
+async function verifierPrix() {
+  const prix = await appelerStripe("GET", "/v1/prices/" + configuration().complet)
   const recurrent = objet(prix.recurring)
-  if (prix.currency !== "eur" || prix.unit_amount !== FORMULES[formule].centimes || recurrent.interval !== "month" || recurrent.interval_count !== 1 || prix.active !== true || prix.tax_behavior !== "exclusive") throw new ErreurFacturation("Le tarif du prestataire doit être vérifié avant de souscrire.")
+  if (prix.currency !== "eur" || prix.unit_amount !== FORMULES.complet.centimes || recurrent.interval !== "month" || recurrent.interval_count !== 1 || prix.active !== true || prix.tax_behavior !== "exclusive") throw new ErreurFacturation("Le tarif du prestataire doit être vérifié avant de souscrire.")
 }
-async function creerCheckoutSousVerrou(userId: string, formule: Formule, atelier: Atelier | null) {
+async function creerCheckoutSousVerrou(userId: string) {
   const acces = await chargerAccesService(userId)
   if (acces.etat === "gratuit-vie" || acces.etat === "libre") throw new ErreurFacturation("Votre accès complet est gratuit : aucun paiement n’est nécessaire.", 409)
-  if (formule === "essentiel" && !estAtelier(atelier)) throw new ErreurFacturation("Choisissez votre atelier.", 400)
   // L'essai promis n'est jamais raccourci par le paiement d'une nouvelle souscription.
   if (acces.etat === "essai") throw new ErreurFacturation("Votre essai est encore en cours. Vous pourrez souscrire à sa fin.", 409)
-  if (["actif", "grace"].includes(acces.etat)) throw new ErreurFacturation("Votre période payée est encore en cours. Utilisez le changement de formule ou attendez son terme.", 409)
+  if (["actif", "grace"].includes(acces.etat)) throw new ErreurFacturation("Votre abonnement Complet est déjà en cours.", 409)
   if (acces.etat === "a-demarrer") throw new ErreurFacturation("Commencez vos trois mois gratuits avant de souscrire.", 409)
-  await verifierPrix(formule)
+  await verifierPrix()
   const existant = await prisma.abonnementGleba.findUnique({ where: { userId } })
   if (existant?.clientStripeId) {
     const contrats = await appelerStripe("GET", "/v1/subscriptions?status=all&limit=100&customer=" + encodeURIComponent(existant.clientStripeId))
@@ -85,7 +81,7 @@ async function creerCheckoutSousVerrou(userId: string, formule: Formule, atelier
       if (!id(client)) throw new ErreurFacturation("La création du compte de facturation a échoué.")
       ligne = await prisma.abonnementGleba.update({ where: { userId }, data: { clientStripeId: id(client) } })
     }
-    const params = new URLSearchParams({ mode: "subscription", customer: ligne.clientStripeId!, "line_items[0][price]": prixPour(formule), "line_items[0][quantity]": "1", "payment_method_types[0]": "card", success_url: origine() + "/parametres?section=abonnement&paiement=retour", cancel_url: origine() + "/parametres?section=abonnement", expires_at: String(Math.floor(debut.getTime() / 1000) + 1800), client_reference_id: userId, "subscription_data[metadata][glebaUserId]": userId, "subscription_data[metadata][glebaCheckoutCle]": cle, "subscription_data[metadata][formule]": formule, "subscription_data[metadata][atelier]": atelier ?? "", "metadata[glebaUserId]": userId, "consent_collection[terms_of_service]": "required", billing_address_collection: "required", "customer_update[address]": "auto", "tax_id_collection[enabled]": "true" })
+    const params = new URLSearchParams({ mode: "subscription", customer: ligne.clientStripeId!, "line_items[0][price]": configuration().complet, "line_items[0][quantity]": "1", "payment_method_types[0]": "card", success_url: origine() + "/parametres?section=abonnement&paiement=retour", cancel_url: origine() + "/parametres?section=abonnement", expires_at: String(Math.floor(debut.getTime() / 1000) + 1800), client_reference_id: userId, "subscription_data[metadata][glebaUserId]": userId, "subscription_data[metadata][glebaCheckoutCle]": cle, "subscription_data[metadata][formule]": "complet", "metadata[glebaUserId]": userId, "consent_collection[terms_of_service]": "required", billing_address_collection: "required", "customer_update[address]": "auto", "tax_id_collection[enabled]": "true" })
     if (process.env.GLEBA_STRIPE_TAX_MODE === "automatic") params.set("automatic_tax[enabled]", "true")
     else if (process.env.GLEBA_STRIPE_TAX_RATE) params.set("subscription_data[default_tax_rates][0]", process.env.GLEBA_STRIPE_TAX_RATE)
     else if (process.env.GLEBA_STRIPE_TAX_MODE !== "exempt") throw new ErreurFacturation("Le régime de TVA du service doit être configuré avant de souscrire.")
@@ -133,9 +129,7 @@ async function synchroniserSousVerrou(abonnementId: string, db: Pick<typeof pris
   const items = liste(objet(sub.items).data)
   const item = objet(items[0])
   const prix = objet(item.price)
-  const formule = id(prix) === config.essentiel ? "essentiel" : id(prix) === config.complet ? "complet" : null
-  const atelier = objet(sub.metadata).atelier
-  if (items.length !== 1 || item.quantity !== 1 || !formule || prix.currency !== "eur" || prix.unit_amount !== FORMULES[formule].centimes || (formule === "essentiel" && !estAtelier(atelier))) throw new ErreurFacturation("Le contenu du contrat doit être vérifié.")
+  if (items.length !== 1 || item.quantity !== 1 || id(prix) !== config.complet || prix.currency !== "eur" || prix.unit_amount !== FORMULES.complet.centimes) throw new ErreurFacturation("Le contenu du contrat doit être vérifié.")
   const facture = objet(sub.latest_invoice)
   const lignes = liste(objet(facture.lines).data).map(objet)
   const fin = lignes.filter(l => {
@@ -145,70 +139,18 @@ async function synchroniserSousVerrou(abonnementId: string, db: Pick<typeof pris
   const facturePayee = facture.status === "paid" && facture.amount_remaining === 0
   const payeJusquau = facturePayee && fin ? fin : ligne.payeJusquau
   // Ne jamais activer un nouveau prix sur la seule présence de status=active.
-  const peutChanger = facturePayee && fin && ["active", "canceled"].includes(String(sub.status)) && !sub.pending_update
+  const peutActiver = facturePayee && fin && ["active", "canceled"].includes(String(sub.status)) && !sub.pending_update
   const statut = typeof sub.status === "string" ? sub.status : "unknown"
-  const programme = objet(ligne.prochainContrat)
-  const changementApplique = peutChanger && programme.formule === formule && Date.parse(String(programme.date)) <= Date.now() && (formule === "complet" || programme.atelier === atelier)
   await db.abonnementGleba.update({ where: { userId: ligne.userId }, data: {
     abonnementStripeId: abonnementId, statut, annulationAuTerme: sub.cancel_at_period_end === true,
-    ...(peutChanger ? { formule, atelier: formule === "essentiel" ? atelier as Atelier : null } : {}),
+    ...(peutActiver ? { formule: "complet" } : {}),
     payeJusquau,
-    ...(changementApplique ? { prochainContrat: Prisma.DbNull } : {}),
     graceJusquau: statut === "past_due" && payeJusquau ? new Date(payeJusquau.getTime() + 7 * 86400000) : null,
     ...(statut === "canceled" || statut === "incomplete_expired" ? { abonnementStripeId: null, checkoutId: null, checkoutExpireLe: null } : {}),
   } })
 }
 
-/** Changement explicite au prochain renouvellement, jamais un supplément caché. */
-async function changerFormuleSousVerrou(userId: string, formule: Formule, atelier: Atelier | null) {
-  const acces = await chargerAccesService(userId)
-  if (acces.etat !== "actif" || !acces.valideJusquau) throw new ErreurFacturation("Le changement est disponible pour un abonnement payé en cours.", 409)
-  if (formule === "essentiel" && !estAtelier(atelier)) throw new ErreurFacturation("Choisissez l’atelier à conserver.", 400)
-  if (acces.formule === formule && (formule === "complet" || acces.ateliers[0] === atelier)) throw new ErreurFacturation("Cette formule et cet atelier sont déjà actifs.", 409)
-  await verifierPrix(formule)
-  const ligne = await prisma.abonnementGleba.findUniqueOrThrow({ where: { userId } })
-  if (!ligne.abonnementStripeId || ligne.prochainContrat) throw new ErreurFacturation("Une modification est déjà programmée. Vous pouvez la supprimer avant d’en demander une autre.", 409)
-  const sub = await appelerStripe("GET", "/v1/subscriptions/" + ligne.abonnementStripeId)
-  if (sub.status !== "active" || sub.schedule || sub.pending_update || sub.cancel_at_period_end) throw new ErreurFacturation("Régularisez ou annulez la modification en cours avant de changer de formule.", 409)
-  const item = objet(liste(objet(sub.items).data)[0])
-  const fin = dateUnix(item.current_period_end ?? sub.current_period_end)
-  if (!fin || fin.getTime() <= Date.now()) throw new ErreurFacturation("L’échéance doit être vérifiée.")
-  const cleChangement = randomUUID()
-  await prisma.abonnementGleba.update({ where: { userId }, data: { conditionsVersion: VERSION_CONDITIONS_OFFRE, conditionsAccepteesLe: new Date(), prochainContrat: { formule, atelier, date: fin.toISOString(), cle: cleChangement } } })
-  const schedule = await appelerStripe("POST", "/v1/subscription_schedules", new URLSearchParams({ from_subscription: ligne.abonnementStripeId }), `gleba-schedule-${cleChangement}`)
-  const scheduleId = id(schedule)
-  const debutPhase = objet(schedule.current_phase).start_date
-  if (!scheduleId || typeof debutPhase !== "number") throw new ErreurFacturation("La modification n’a pas pu être programmée.")
-  // Enregistrer avant la seconde opération : une interruption reste récupérable/annulable.
-  await prisma.abonnementGleba.update({ where: { userId }, data: { prochainContrat: { formule, atelier, date: fin.toISOString(), scheduleId } } })
-  const finPhase = new Date(fin)
-  const jour = finPhase.getUTCDate()
-  finPhase.setUTCDate(1); finPhase.setUTCMonth(finPhase.getUTCMonth() + 1)
-  finPhase.setUTCDate(Math.min(jour, new Date(Date.UTC(finPhase.getUTCFullYear(), finPhase.getUTCMonth() + 1, 0)).getUTCDate()))
-  const p = new URLSearchParams({ end_behavior: "release", proration_behavior: "none", "phases[0][start_date]": String(debutPhase), "phases[0][end_date]": String(Math.floor(fin.getTime() / 1000)), "phases[0][items][0][price]": id(item.price)!, "phases[0][items][0][quantity]": "1", "phases[0][metadata][glebaUserId]": userId, "phases[0][metadata][atelier]": ligne.atelier ?? "", "phases[1][start_date]": String(Math.floor(fin.getTime() / 1000)), "phases[1][end_date]": String(Math.floor(finPhase.getTime() / 1000)), "phases[1][items][0][price]": prixPour(formule), "phases[1][items][0][quantity]": "1", "phases[1][proration_behavior]": "none", "phases[1][metadata][glebaUserId]": userId, "phases[1][metadata][formule]": formule, "phases[1][metadata][atelier]": atelier ?? "" })
-  if (process.env.GLEBA_STRIPE_TAX_MODE === "automatic") p.set("default_settings[automatic_tax][enabled]", "true")
-  else if (process.env.GLEBA_STRIPE_TAX_RATE) {
-    p.set("phases[0][default_tax_rates][0]", process.env.GLEBA_STRIPE_TAX_RATE)
-    p.set("phases[1][default_tax_rates][0]", process.env.GLEBA_STRIPE_TAX_RATE)
-  }
-  await appelerStripe("POST", "/v1/subscription_schedules/" + scheduleId, p, `gleba-schedule-phase-${scheduleId}`)
-  return fin.toISOString()
-}
-async function annulerModificationSousVerrou(userId: string) {
-  const ligne = await prisma.abonnementGleba.findUniqueOrThrow({ where: { userId } })
-  let scheduleId = id(objet(ligne.prochainContrat).scheduleId)
-  if (!scheduleId && ligne.abonnementStripeId) {
-    const sub = await appelerStripe("GET", "/v1/subscriptions/" + ligne.abonnementStripeId)
-    scheduleId = id(sub.schedule)
-  }
-  if (scheduleId) {
-    const schedule = await appelerStripe("GET", "/v1/subscription_schedules/" + scheduleId)
-    if (schedule.status === "active" || schedule.status === "not_started") await appelerStripe("POST", "/v1/subscription_schedules/" + scheduleId + "/release", new URLSearchParams(), `gleba-release-${scheduleId}`)
-  }
-  await prisma.abonnementGleba.update({ where: { userId }, data: { prochainContrat: Prisma.DbNull } })
-}
 async function resilierSousVerrou(userId: string) {
-  await annulerModificationSousVerrou(userId)
   const ligne = await prisma.abonnementGleba.findUniqueOrThrow({ where: { userId } })
   if (!ligne.abonnementStripeId) throw new ErreurFacturation("Aucun abonnement en cours.", 409)
   const contrat = await appelerStripe("GET", "/v1/subscriptions/" + ligne.abonnementStripeId)
@@ -261,9 +203,7 @@ async function avecVerrouFacturation<T>(travail: () => Promise<T>): Promise<T> {
     return travail()
   }, { timeout: 90000 })
 }
-export const creerCheckout = (u: string, f: Formule, a: Atelier | null) => avecVerrouFacturation(() => creerCheckoutSousVerrou(u, f, a))
-export const changerFormule = (u: string, f: Formule, a: Atelier | null) => avecVerrouFacturation(() => changerFormuleSousVerrou(u, f, a))
-export const annulerModification = (u: string) => avecVerrouFacturation(() => annulerModificationSousVerrou(u))
+export const creerCheckout = (u: string) => avecVerrouFacturation(() => creerCheckoutSousVerrou(u))
 export const resilier = (u: string) => avecVerrouFacturation(() => resilierSousVerrou(u))
 
 /** Confirmer l'arrêt des prélèvements AVANT le cascade de suppression du compte. */

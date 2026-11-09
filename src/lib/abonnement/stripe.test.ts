@@ -9,15 +9,14 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({ default: { ...mocks, $transaction: async (fn: (db: unknown) => unknown) => fn({ abonnementGleba: mocks.abonnementGleba, $queryRaw: mocks.query }) } }))
 import { recevoirEvenement, signatureValide, synchroniserAbonnement, creerCheckout } from "./stripe"
 
-const ligne = { userId: "ferme-synthetique", gratuitAVie: false, checkoutCle: "generation-qa", clientStripeId: "cus_synthetique", abonnementStripeId: "sub_synthetique", formule: "essentiel", atelier: "verger", payeJusquau: new Date("2027-02-01"), prochainContrat: null }
+const ligne = { userId: "ferme-synthetique", gratuitAVie: false, checkoutCle: "generation-qa", clientStripeId: "cus_synthetique", abonnementStripeId: "sub_synthetique", formule: "complet", payeJusquau: new Date("2027-02-01") }
 function abonnement(overrides: Record<string, unknown> = {}) {
-  return { id: "sub_synthetique", customer: "cus_synthetique", livemode: false, status: "active", metadata: { glebaUserId: "ferme-synthetique", glebaCheckoutCle: "generation-qa", atelier: "verger" }, items: { data: [{ quantity: 1, price: { id: "price_EssentielQA", currency: "eur", unit_amount: 500 } }] }, latest_invoice: { status: "paid", amount_remaining: 0, lines: { data: [{ amount: 500, pricing: { price_details: { price: "price_EssentielQA" } }, period: { end: Date.parse("2027-04-01") / 1000 } }] } }, ...overrides }
+  return { id: "sub_synthetique", customer: "cus_synthetique", livemode: false, status: "active", metadata: { glebaUserId: "ferme-synthetique", glebaCheckoutCle: "generation-qa" }, items: { data: [{ quantity: 1, price: { id: "price_CompletQA", currency: "eur", unit_amount: 1200 } }] }, latest_invoice: { status: "paid", amount_remaining: 0, lines: { data: [{ amount: 1200, pricing: { price_details: { price: "price_CompletQA" } }, period: { end: Date.parse("2027-04-01") / 1000 } }] } }, ...overrides }
 }
 beforeEach(() => {
   vi.clearAllMocks()
   vi.stubEnv("GLEBA_ABONNEMENTS_ACTIFS", "true")
   vi.stubEnv("GLEBA_STRIPE_SECRET_KEY", "sk_test_synthetique")
-  vi.stubEnv("GLEBA_STRIPE_PRICE_ESSENTIEL", "price_EssentielQA")
   vi.stubEnv("GLEBA_STRIPE_PRICE_COMPLET", "price_CompletQA")
   vi.stubEnv("GLEBA_STRIPE_WEBHOOK_SECRET", "secret-synthetique-de-test")
   mocks.abonnementGleba.findFirst.mockResolvedValue(ligne)
@@ -56,13 +55,13 @@ describe("authenticité du webhook", () => {
   })
 })
 describe("preuve de paiement et cloisonnement", () => {
-  it("attribue exactement la période acquittée avec l’atelier du contrat", async () => {
+  it("attribue exactement la période acquittée à Complet", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(abonnement()))))
     await synchroniserAbonnement("sub_synthetique")
-    expect(mocks.abonnementGleba.update).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: "ferme-synthetique" }, data: expect.objectContaining({ formule: "essentiel", atelier: "verger", payeJusquau: new Date("2027-04-01") }) }))
+    expect(mocks.abonnementGleba.update).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: "ferme-synthetique" }, data: expect.objectContaining({ formule: "complet", payeJusquau: new Date("2027-04-01") }) }))
   })
   it("une facture ouverte ne donne aucune nouvelle période", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(abonnement({ latest_invoice: { status: "open", amount_remaining: 500, lines: { data: [] } } })))))
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(abonnement({ latest_invoice: { status: "open", amount_remaining: 1200, lines: { data: [] } } })))))
     await synchroniserAbonnement("sub_synthetique")
     const data = mocks.abonnementGleba.update.mock.calls[0][0].data
     expect(data.payeJusquau).toEqual(ligne.payeJusquau)
@@ -73,6 +72,7 @@ describe("preuve de paiement et cloisonnement", () => {
     { customer: "cus_autre" },
     { livemode: true },
     { items: { data: [{ quantity: 1, price: { id: "priceNonAutorise", currency: "eur", unit_amount: 1 } }] } },
+    { items: { data: [{ quantity: 1, price: { id: "price_CompletQA", currency: "eur", unit_amount: 500 } }] } },
   ])("refuse un contrat ne correspondant pas à l’exploitation ou au tarif : %j", async override => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(abonnement(override)))))
     await expect(synchroniserAbonnement("sub_synthetique")).rejects.toThrow()
@@ -94,7 +94,7 @@ describe("preuve de paiement et cloisonnement", () => {
     mocks.user.findUnique.mockResolvedValue({ createdAt: new Date("2026-01-01"), email: "historique@example.invalid" })
     mocks.abonnementGleba.findUnique.mockResolvedValue(null)
     const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock)
-    await expect(creerCheckout("historique", "complet", null)).rejects.toThrow("gratuit")
+    await expect(creerCheckout("historique")).rejects.toThrow("gratuit")
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

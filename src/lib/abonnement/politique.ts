@@ -1,16 +1,16 @@
-import { ATELIERS, GRATUITE_EXISTANTS_JUSQUAU, MOIS_ESSAI, estAtelier, type Atelier, type Formule } from "./catalogue"
+import { ATELIERS, GRATUITE_EXISTANTS_JUSQUAU, MOIS_ESSAI, type Atelier, type Formule } from "./catalogue"
 
 export interface EtatAbonnement {
   gratuitAVie: boolean
   essaiDebut: Date | null
   essaiFin: Date | null
   formule: string | null
-  atelier: string | null
   statut: string | null
   payeJusquau: Date | null
   graceJusquau: Date | null
 }
-export type EtatAcces = "libre" | "gratuit-vie" | "a-demarrer" | "essai" | "actif" | "grace" | "lecture"
+/** `gratuit` : carnet gratuit après l'essai ; `a-demarrer` : essai pas encore ouvert, carnet gratuit en attendant. */
+export type EtatAcces = "libre" | "gratuit-vie" | "a-demarrer" | "essai" | "actif" | "grace" | "gratuit"
 export interface AccesService {
   etat: EtatAcces
   formule: Formule | null
@@ -19,7 +19,10 @@ export interface AccesService {
   ia: boolean
   meteo: boolean
   boutique: boolean
-  comptabilite: boolean
+  /** Clients, devis/BL, factures, règlements : compris dans le carnet gratuit. */
+  facturation: boolean
+  /** Tableau de bord, dépenses, banque, TVA, bilan, coûts : offre Complet. */
+  gestion: boolean
   essaiFin: string | null
   valideJusquau: string | null
 }
@@ -34,7 +37,11 @@ export function finEssai(debut: Date): Date {
   return fin
 }
 export function accesComplet(etat: EtatAcces, limite: Date | null = null): AccesService {
-  return { etat, formule: "complet", ateliers: [...ATELIERS], ecriture: true, ia: true, meteo: true, boutique: true, comptabilite: true, essaiFin: etat === "essai" ? limite?.toISOString() ?? null : null, valideJusquau: limite?.toISOString() ?? null }
+  return { etat, formule: "complet", ateliers: [...ATELIERS], ecriture: true, ia: true, meteo: true, boutique: true, facturation: true, gestion: true, essaiFin: etat === "essai" ? limite?.toISOString() ?? null : null, valideJusquau: limite?.toISOString() ?? null }
+}
+/** Le carnet gratuit garde tous les ateliers et la facturation ; aucune donnée n'est retirée. */
+export function accesGratuit(etat: "gratuit" | "a-demarrer", essaiFin: Date | null = null): AccesService {
+  return { etat, formule: null, ateliers: [...ATELIERS], ecriture: true, ia: false, meteo: false, boutique: false, facturation: true, gestion: false, essaiFin: essaiFin?.toISOString() ?? null, valideJusquau: null }
 }
 export function calculerAcces(createdAt: Date, abonnement: EtatAbonnement | null, maintenant = new Date(), actif = true): AccesService {
   if (!actif) return accesComplet("libre")
@@ -43,21 +50,13 @@ export function calculerAcces(createdAt: Date, abonnement: EtatAbonnement | null
   // Une résiliation au terme garde la période réglée ; canceled/unpaid ne créent aucun renouvellement.
   const paye = abonnement?.payeJusquau && abonnement.payeJusquau.getTime() > t
   const grace = abonnement?.statut === "past_due" && abonnement.graceJusquau && abonnement.graceJusquau.getTime() > t
-  if (abonnement && (paye || grace)) {
-    const etat = paye ? "actif" : "grace"
-    const limite = paye ? abonnement.payeJusquau : abonnement.graceJusquau
-    if (abonnement.formule === "complet") return accesComplet(etat, limite)
-    if (abonnement.formule === "essentiel" && estAtelier(abonnement.atelier)) return {
-      etat, formule: "essentiel", ateliers: [abonnement.atelier], ecriture: true, ia: false, meteo: false, boutique: false, comptabilite: false,
-      essaiFin: null, valideJusquau: limite?.toISOString() ?? null,
-    }
-  }
+  if (abonnement?.formule === "complet" && (paye || grace)) return accesComplet(paye ? "actif" : "grace", paye ? abonnement.payeJusquau : abonnement.graceJusquau)
   if (abonnement?.essaiFin && abonnement.essaiDebut && abonnement.essaiFin.getTime() > t) return accesComplet("essai", abonnement.essaiFin)
-  return { etat: abonnement?.essaiDebut ? "lecture" : "a-demarrer", formule: null, ateliers: [], ecriture: false, ia: false, meteo: false, boutique: false, comptabilite: false, essaiFin: abonnement?.essaiFin?.toISOString() ?? null, valideJusquau: null }
+  return accesGratuit(abonnement?.essaiDebut ? "gratuit" : "a-demarrer", abonnement?.essaiFin ?? null)
 }
-export type Capacite = Atelier | "ia" | "meteo" | "boutique" | "comptabilite" | "commun"
+export type Capacite = Atelier | "ia" | "meteo" | "boutique" | "facturation" | "gestion" | "commun"
 export function aCapacite(acces: AccesService, capacite: Capacite): boolean {
   if (capacite === "commun") return acces.ecriture
-  if (estAtelier(capacite)) return acces.ecriture && acces.ateliers.includes(capacite)
+  if (capacite === "maraichage" || capacite === "verger" || capacite === "elevage") return acces.ecriture && acces.ateliers.includes(capacite)
   return acces.ecriture && acces[capacite]
 }

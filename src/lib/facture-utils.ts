@@ -362,7 +362,7 @@ export async function annulerFactureLiee(
  * Gère la numérotation séquentielle avec lock FOR UPDATE (PROMPT 14B).
  */
 export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
-  if (!await serviceAutorise(params.userId, 'comptabilite')) throw new ErreurCommerciale('La facturation est comprise dans l’offre Complet. Aucune vente ni sortie de stock n’a été enregistrée.', 403)
+  if (!await serviceAutorise(params.userId, 'facturation')) throw new ErreurCommerciale('La facturation n’est pas disponible pour ce compte. Aucune vente ni sortie de stock n’a été enregistrée.', 403)
   const date = params.date || new Date()
   // Audit compta 2026-06 : la numérotation est chronologique à l'ÉMISSION
   // (art. 242 nonies A) — l'exercice du numéro est celui du jour d'émission,

@@ -48,7 +48,6 @@ export function estEntreeNavigationActive(pathname: string | null, href: string)
 
 export function entreeNavigationVisible(entree: EntreeNavigation, modules: readonly ModuleId[], boutique: boolean, acces?: AccesService | null): boolean {
   if (acces !== undefined) {
-    if (entree.id === "interventions" && acces?.formule === "essentiel" && !acces.ateliers.includes("maraichage")) return false
     if (entree.id === "meteo" && !acces?.meteo) return false
     if (entree.id === "boutique" && !acces?.boutique) return false
   }

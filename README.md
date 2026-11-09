@@ -25,7 +25,7 @@
 
 ### 🎯 Mission
 
-Rendre les outils de pilotage agricole accessibles aux petites exploitations. Le socle libre reste gratuit en auto-hébergement. Sur gleba.fr, les nouveaux inscrits disposent de trois mois d’essai gratuits, puis choisissent Essentiel à 5 € HT/mois pour un atelier ou Complet à 12 € HT/mois. Les comptes déjà inscrits lors de l’annonce conservent leur accès complet gratuitement à vie.
+Rendre les outils de pilotage agricole accessibles aux petites exploitations. Le socle libre reste gratuit en auto-hébergement. Sur gleba.fr, le carnet est gratuit (tous les ateliers et la facturation) ; l’offre Complet à 12 € HT/mois ajoute l’assistant IA, la météo, la boutique et la gestion, avec trois mois d’essai sans carte. Les comptes déjà inscrits lors de l’annonce conservent leur accès complet gratuitement à vie.
 
 ### ✨ Pourquoi Gleba ?
 

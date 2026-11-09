@@ -352,7 +352,7 @@ export function HomeLanding() {
               </Link>
             </div>
             <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-ardoise">
-              {["3 mois d’essai gratuits", "Code AGPL-3.0", "Auto-hébergeable", "Données exportables"].map((t) => (
+              {["Carnet gratuit", "Code AGPL-3.0", "Auto-hébergeable", "Données exportables"].map((t) => (
                 <li key={t} className="inline-flex items-center gap-1.5">
                   <Check className="h-4 w-4 text-prairie" weight="bold" aria-hidden />
                   {t}
@@ -565,10 +565,10 @@ export function HomeLanding() {
           </div>
 
           <div className="self-start rounded-xl border border-lin bg-papier p-6 sm:p-8">
-            <h3 className="font-display text-2xl font-medium text-foret">Un atelier ou toute la ferme.</h3>
-            <p className="mt-4 text-base leading-7 text-ardoise">Trois mois d’essai gratuits, puis Essentiel à {FORMULES.essentiel.prix} € HT/mois ou Complet à {FORMULES.complet.prix} € HT/mois.</p>
+            <h3 className="font-display text-2xl font-medium text-foret">Gratuit pour toute la ferme.</h3>
+            <p className="mt-4 text-base leading-7 text-ardoise">Ateliers, plan du terrain, stocks et factures sont gratuits. Complet à {FORMULES.complet.prix} € HT/mois ajoute l’assistant IA, la météo, la boutique et la gestion, avec trois mois d’essai.</p>
             <p className="mt-3 text-sm leading-6 text-ardoise">{TEXTE_EXISTANTS} Le socle auto-hébergeable reste gratuit.</p>
-            <Link href="/tarifs" className={`${CLASSES_CTA} mt-6`}>Comparer les deux offres</Link>
+            <Link href="/tarifs" className={`${CLASSES_CTA} mt-6`}>Voir les tarifs</Link>
           </div>
         </div>
       </section>

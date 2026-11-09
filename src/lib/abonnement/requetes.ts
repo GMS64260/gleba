@@ -5,13 +5,16 @@ const MARAICHAGE = /^(maraichage|cultures|planches|planification|recoltes|irriga
 const VERGER = /^(arbres|verger)(\/|$)/
 const COMPTE = /^(abonnement|account|auth|user\/(preferences|delete-data|api-token)|exploitation|cookie-consent|avis|signalements|evolutions|feedback|referentiel|communaute|admin|accueil\/version|notifications\/push)(\/|$)/
 const COMMUN = /^(especes|varietes|familles|destinations|accueil|dashboard|capteurs|carte|jardin|objets-jardin|objets|parcelles|search|stocks|taches|sol|lunaire|tracabilite|upload|onboarding|import|import-test-data|export|notifications|public|desabonnement)(\/|$)/
+/** Facturation du carnet gratuit ; le reste de `comptabilite` relève de la gestion (Complet). */
+const FACTURATION = /^comptabilite\/(clients|documents|envois|factures|fournisseurs|reglements|ventes-manuelles)(\/|$)/
 /** Classification serveur, sans utiliser les préférences de menus. */
 export function capaciteDuChemin(chemin: string): Capacite | "inconnu" {
   const p = chemin.replace(/^\/api\//, "").replace(/^\//, "")
   if (/^(chat|mcp)(\/|$)/.test(p)) return "ia"
   if (/^(meteo|calendrier-climat)(\/|$)/.test(p)) return "meteo"
   if (/^boutique(\/|$)/.test(p)) return "boutique"
-  if (/^comptabilite(\/|$)/.test(p)) return "comptabilite"
+  if (FACTURATION.test(p)) return "facturation"
+  if (/^comptabilite(\/|$)/.test(p)) return "gestion"
   if (/^(elevage|soins)(\/|$)/.test(p)) return "elevage"
   if (VERGER.test(p)) return "verger"
   if (MARAICHAGE.test(p)) return "maraichage"
@@ -20,16 +23,12 @@ export function capaciteDuChemin(chemin: string): Capacite | "inconnu" {
 }
 export function operationPermise(acces: AccesService, chemin: string, methode: string): boolean {
   const p = chemin.replace(/^\/api\//, "").replace(/^\//, "")
-  if (p === "account/import" && (!acces.ecriture || acces.formule === "essentiel")) return false
+  if (p === "account/import" && !acces.ecriture) return false
   if (COMPTE.test(p)) return true
   const lecture = methode === "GET" || methode === "HEAD"
-  // La récupération reste disponible après un essai ou un retour à Essentiel.
+  // La récupération reste disponible après l'essai ou un abonnement : documents et exports.
   if (lecture && (/\/(pdf|ubl|facturx|export)(\/|$)/.test(p) || /^(export|comptabilite\/export)(\/|$)/.test(p))) return true
   const capacite = capaciteDuChemin(chemin)
   if (capacite === "inconnu") return false
-  if (lecture && (acces.etat === "lecture" || acces.etat === "a-demarrer")) return !["ia", "meteo", "boutique"].includes(capacite)
-  if (!aCapacite(acces, capacite)) return false
-  // Un import global ou un onboarding composite pourrait créer plusieurs ateliers.
-  if (acces.formule === "essentiel" && !lecture && /^(account\/import|import|import-test-data|onboarding\/configurer)(\/|$)/.test(p)) return false
-  return true
+  return aCapacite(acces, capacite)
 }

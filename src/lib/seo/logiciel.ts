@@ -17,18 +17,26 @@ export const jsonLdSoftware = {
   image: "https://gleba.fr/og-image.png",
   screenshot: "https://gleba.fr/screenshots/vitrine-plan-bureau.webp",
   inLanguage: "fr-FR",
-  isAccessibleForFree: false,
-  offers: (["essentiel", "complet"] as const).map(id => ({
-    "@type": "Offer",
-    name: `Gleba ${FORMULES[id].nom}`,
-    price: FORMULES[id].prix,
-    priceCurrency: "EUR",
-    url: "https://gleba.fr/tarifs",
-    description: id === "essentiel"
-      ? "5 € HT par mois et par exploitation pour un atelier ; sans IA, météo, boutique ni comptabilité. Trois mois d’essai gratuits."
-      : "12 € HT par mois et par exploitation ; tous les ateliers, IA, météo, boutique et précomptabilité. Trois mois d’essai gratuits.",
-    priceSpecification: { "@type": "UnitPriceSpecification", price: FORMULES[id].prix, priceCurrency: "EUR", billingDuration: "P1M", valueAddedTaxIncluded: false },
-  })),
+  isAccessibleForFree: true,
+  offers: [
+    {
+      "@type": "Offer",
+      name: "Gleba Gratuit",
+      price: 0,
+      priceCurrency: "EUR",
+      url: "https://gleba.fr/tarifs",
+      description: "Carnet gratuit sans limite de durée : jardin et maraîchage, verger, élevage, plan du terrain, stocks, traçabilité et facturation.",
+    },
+    {
+      "@type": "Offer",
+      name: `Gleba ${FORMULES.complet.nom}`,
+      price: FORMULES.complet.prix,
+      priceCurrency: "EUR",
+      url: "https://gleba.fr/tarifs",
+      description: "12 € HT par mois et par exploitation : assistant IA, météo, boutique en ligne et gestion en plus du carnet gratuit. Trois mois d’essai sans carte bancaire.",
+      priceSpecification: { "@type": "UnitPriceSpecification", price: FORMULES.complet.prix, priceCurrency: "EUR", billingDuration: "P1M", valueAddedTaxIncluded: false },
+    },
+  ],
   featureList: [
     "Écran Aujourd'hui : tâches du jour classées par urgence",
     "Planification maraîchère, calendrier de semis et rotation des cultures",

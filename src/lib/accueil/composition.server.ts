@@ -137,7 +137,9 @@ export async function composerAujourdhui(
   const accesService = await chargerAccesService(userId)
   const maraichageActif = modules.includes("maraichage") && accesService.ateliers.includes("maraichage")
   const elevageActif = modules.includes("elevage") && accesService.ateliers.includes("elevage")
-  const comptaActif = modules.includes("comptabilite") && accesService.comptabilite
+  // Factures à finir ou impayées : carnet gratuit ; repères financiers : gestion (Complet).
+  const facturationActive = modules.includes("comptabilite") && accesService.facturation
+  const comptaActif = modules.includes("comptabilite") && accesService.gestion
   const devise = deviseDuTerritoire(exploitation?.territoire)
 
   const [taches, kpiMaraichage, agenda, animauxActifs, declarations, factures, kpiCompta, planches, arbres, objets] =
@@ -157,7 +159,7 @@ export async function composerAujourdhui(
       elevageActif
         ? lire("déclarations", () => chargerDeclarationsReglementaires(userId, { year: annee, maintenant }), null)
         : null,
-      comptaActif
+      facturationActive
         ? lire(
             "factures",
             () =>

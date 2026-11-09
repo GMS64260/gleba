@@ -179,7 +179,7 @@ export function useModules(): UseModulesResult {
     }
   }, [modules])
 
-  const affichables = React.useMemo(() => modules.filter(m => acces && (m === "comptabilite" ? acces.comptabilite || acces.etat === "lecture" : acces.ateliers.includes(m) || acces.etat === "lecture")), [modules, acces])
+  const affichables = React.useMemo(() => modules.filter(m => acces && (m === "comptabilite" ? acces.facturation : acces.ateliers.includes(m))), [modules, acces])
   const isActif = React.useCallback((id: ModuleId) => affichables.includes(id), [affichables])
 
   return { modules: affichables, loading, refresh, save, isActif }
