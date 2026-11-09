@@ -346,7 +346,10 @@ function AnimauxSubTab() {
       // option : le champ paraissait vide et l'enregistrement la réécrivait.
       sexe: sexeAffichable(a.sexe),
       dateNaissance: a.dateNaissance ? a.dateNaissance.split('T')[0] : "",
-      dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : todayLocalISO(),
+      // Une date d'arrivée absente reste vide en modification : préremplie avec
+      // aujourd'hui, le premier enregistrement (d'une note, d'un poids) écrivait
+      // une arrivée ce jour-là, donc une entrée au registre et un achat redaté.
+      dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : "",
       provenance: a.provenance ?? "",
       nExploitationOrigine: a.nExploitationOrigine ?? "",
       causeSortie: a.causeSortie ?? "",
@@ -1989,7 +1992,7 @@ function LotsSubTab() {
     setFormData({
       especeAnimaleId: lot.especeAnimale.id,
       nom: lot.nom ?? "",
-      dateArrivee: lot.dateArrivee ? lot.dateArrivee.split('T')[0] : todayLocalISO(),
+      dateArrivee: lot.dateArrivee ? lot.dateArrivee.split('T')[0] : "",
       quantiteInitiale: lot.quantiteInitiale.toString(),
       provenance: lot.provenance ?? "",
       prixAchatTotal: lot.prixAchatTotal ? lot.prixAchatTotal.toString() : "",

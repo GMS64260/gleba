@@ -52,6 +52,18 @@ async function suiviDuMiroirDepense(db: AutoComptaTx, where: { userId: string; s
   return { ...suivi, ...reglement }
 }
 
+/**
+ * Date d'un miroir dont la source n'a pas de date : celle du miroir existant,
+ * figée à sa première création ; aujourd'hui seulement s'il n'existe pas encore.
+ * Le miroir est supprimé puis recréé à chaque modification de la source : daté
+ * `new Date()` à chaque fois, l'achat d'un lot sans date d'arrivée quittait son
+ * exercice (parfois clos) dès qu'on changeait une note ou une parcelle.
+ */
+async function dateMiroirDepenseSansSource(db: AutoComptaTx, where: Prisma.DepenseManuelleWhereInput): Promise<Date> {
+  const ancienne = await db.depenseManuelle.findFirst({ where, select: { date: true } })
+  return ancienne?.date ?? new Date()
+}
+
 function inAutoComptaTransaction<T>(
   tx: AutoComptaTx | undefined,
   operation: (db: AutoComptaTx) => Promise<T>,
@@ -257,6 +269,7 @@ export async function createDepenseFromLotAnimaux(
   const montantTTC = lot.prixAchatTotal || 0
   return inAutoComptaTransaction(tx, async (db) => {
     const suivi = await suiviDuMiroirDepense(db, { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true }, montantTTC)
+    const dateSansSource = await dateMiroirDepenseSansSource(db, { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true })
     await db.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true },
     })
@@ -265,7 +278,7 @@ export async function createDepenseFromLotAnimaux(
     return db.depenseManuelle.create({
       data: {
         userId,
-        date: lot.dateArrivee ? new Date(lot.dateArrivee) : new Date(),
+        date: lot.dateArrivee ? new Date(lot.dateArrivee) : dateSansSource,
         categorie: 'achats',
         description: `Achat lot ${lot.nom || `#${lot.id}`}`,
         tauxTVA: 5.5,
@@ -967,6 +980,7 @@ export async function createDepenseFromAchatAnimal(
   const montantTTC = animal.prixAchatInclusDansLot ? 0 : animal.prixAchat || 0
   return inAutoComptaTransaction(tx, async (db) => {
     const suivi = await suiviDuMiroirDepense(db, { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true }, montantTTC)
+    const dateSansSource = await dateMiroirDepenseSansSource(db, { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true })
     await db.depenseManuelle.deleteMany({
       where: { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true },
     })
@@ -975,7 +989,7 @@ export async function createDepenseFromAchatAnimal(
     return db.depenseManuelle.create({
       data: {
         userId,
-        date: animal.dateArrivee ? new Date(animal.dateArrivee) : new Date(),
+        date: animal.dateArrivee ? new Date(animal.dateArrivee) : dateSansSource,
         categorie: 'achats',
         description: `Achat animal - ${animal.nom || animal.identifiant || `#${animal.id}`}`,
         tauxTVA: 5.5,
@@ -1025,6 +1039,13 @@ export async function upsertVenteFromReservationElevage(
       await suiviDuMiroirVente(tx, { userId, sourceType: 'reservation_elevage', sourceRef, auto: true }),
     )
   }
+  // Solde d'une réservation livrée sans date de remise : la date du miroir
+  // existant est gardée (cf. `dateMiroirDepenseSansSource`), sinon chaque
+  // correction de note le redatait au jour même, d'un exercice à l'autre.
+  const ancienSolde = await tx.venteManuelle.findFirst({
+    where: { userId, sourceType: 'reservation_elevage', sourceRef: `${reservation.id}:solde`, auto: true },
+    select: { date: true },
+  })
   await tx.venteManuelle.deleteMany({
     where: {
       userId,
@@ -1061,7 +1082,7 @@ export async function upsertVenteFromReservationElevage(
     rows.push({
       sourceRef: `${reservation.id}:solde`,
       montant: solde,
-      date: new Date(reservation.dateLivraison || new Date()),
+      date: reservation.dateLivraison ? new Date(reservation.dateLivraison) : ancienSolde?.date ?? new Date(),
       description: `Solde cession animal${reservation.acquereurNom ? ` — ${reservation.acquereurNom}` : ''}`,
       paye: false,
     })

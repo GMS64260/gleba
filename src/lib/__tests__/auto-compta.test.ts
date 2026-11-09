@@ -95,6 +95,21 @@ describe('invariants auto-compta élevage', () => {
     })
   })
 
+  it('un achat sans date d’arrivée garde la date de son miroir au lieu de glisser à aujourd’hui', async () => {
+    const dateDuMiroir = new Date('2025-03-12T00:00:00.000Z')
+    mocks.depenseFindFirst.mockResolvedValue({ date: dateDuMiroir, paye: true })
+
+    await createDepenseFromLotAnimaux('user-1', { id: 4, nom: 'Poulettes', prixAchatTotal: 300, dateArrivee: null })
+    expect(mocks.depenseCreate.mock.calls[0][0].data.date).toEqual(dateDuMiroir)
+
+    await createDepenseFromAchatAnimal('user-1', { id: 9, nom: 'Bélier', prixAchat: 800, dateArrivee: null })
+    expect(mocks.depenseCreate.mock.calls[1][0].data.date).toEqual(dateDuMiroir)
+
+    // La date de la source, quand elle existe, reste la règle.
+    await createDepenseFromLotAnimaux('user-1', { id: 4, nom: 'Poulettes', prixAchatTotal: 300, dateArrivee: '2025-04-01' })
+    expect(mocks.depenseCreate.mock.calls[2][0].data.date).toEqual(new Date('2025-04-01'))
+  })
+
   it('conserve le statut impayé de la vente source', async () => {
     await createVenteFromVenteProduit('user-1', {
       id: 10,
