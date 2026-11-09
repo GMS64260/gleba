@@ -17,6 +17,7 @@ import { montantVenteFruit, periodeVenteVerger } from '@/lib/verger/montant-vent
 import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { genererFec, serialiserFec, validerEquilibre, type FecInputVente, type FecInputDepense } from '@/lib/comptabilite/fec'
 import { getTerritoire, collecteTvaFrancaise } from '@/lib/territoires'
+import { categorieFecLigneFactureElevage, categorieFecMiroirDepense, categorieFecMiroirVente, categorieFecVenteElevage } from '@/lib/comptabilite/categorie-fec'
 import { chargerSuiviDesSources, cleSource } from '@/lib/comptabilite/suivi-ecriture'
 import { formatMontantFec } from '@/lib/comptabilite/fec-affichage'
 import { chargerSoldesReglements } from '@/lib/comptabilite/reglements'
@@ -115,7 +116,7 @@ async function exporterFec(request: NextRequest) {
       // une pièce comptable — il ne doit pas sortir dans le FEC.
       where: { userId, date: { gte: start, lte: end }, statut: { notIn: ['annulee', 'brouillon'] } },
       orderBy: { date: 'asc' },
-      include: { lignes: true },
+      include: { lignes: true, ventesProduits: { select: { type: true } }, abattages: { select: { id: true } } },
     }),
     // DEV3 #5 - Audit Marc : Ventes directes ProductionBois SANS facture
     // (sinon double-comptage). Compte 701820 (Ventes de bois et produits forestiers).
@@ -225,7 +226,7 @@ async function exporterFec(request: NextRequest) {
     id: v.id,
     date: v.date,
     description: v.description,
-    categorie: v.categorie,
+    categorie: categorieFecMiroirVente(v.auto ? v.sourceType : null, v.categorie),
     modeReglement: v.modeReglement,
     numeroPiece: v.numeroPiece,
     tauxTVA: v.tauxTVA,
@@ -293,25 +294,11 @@ async function exporterFec(request: NextRequest) {
   // potager et abattage SANS facture. Avant : ces sources généraient une
   // VenteManuelle auto qui était ensuite filtrée du FEC → vente perdue.
   // Maintenant chacune apparaît avec son compte 701 dédié.
-  function categorieElevage(type: string | null): string {
-    switch (type) {
-      case 'oeufs': return 'oeufs'
-      case 'viande': return 'viande'
-      case 'animal_vivant': return 'animaux_vivants'
-      case 'lait': return 'produits_transformes'
-      case 'fromage': return 'produits_transformes'
-      case 'miel':
-      case 'cire':
-      case 'propolis':
-      case 'pollen':
-      case 'gelee_royale':
-      case 'autre_ruche':
-        return 'produits_ruche'
-      case 'autre':
-      default: return 'autre'
-    }
-  }
+  const categorieElevage = categorieFecVenteElevage
   for (const v of ventesElevage) {
+    // Cession gratuite : rien à écrire (elle sortait en écriture d'une seule
+    // ligne à 0,00, sans contrepartie).
+    if (!(v.prixTotal > 0)) continue
     const ttc = v.prixTotal
     // Audit compta 2026-06 : taux réel de la vente (le FEC hardcodait 5,5 %
     // même pour une vente saisie à 10/20 %)
@@ -350,6 +337,7 @@ async function exporterFec(request: NextRequest) {
     })
   }
   for (const a of abattagesVendus) {
+    if (!((a.prixVente ?? 0) > 0)) continue
     const ttc = a.prixVente as number
     const tauxTVA = 5.5
     const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
@@ -373,7 +361,7 @@ async function exporterFec(request: NextRequest) {
     id: d.id,
     date: d.date,
     description: d.description,
-    categorie: d.categorie,
+    categorie: categorieFecMiroirDepense(d.auto ? d.sourceType : null, d.categorie),
     modeReglement: d.modeReglement,
     numeroPiece: d.numeroPiece,
     tauxTVA: d.tauxTVA,
@@ -416,7 +404,8 @@ async function exporterFec(request: NextRequest) {
     modePaiement: f.modePaiement,
     lignes: f.lignes.map((l) => ({
       description: l.description,
-      categorie: categoriseLigne(l.description),
+      // Facture d'une vente d'élevage ou d'un abattage : classée par sa source.
+      categorie: categorieFecLigneFactureElevage(f) ?? categoriseLigne(l.description),
       montantHT: l.montantHT,
       montantTVA: l.montantTVA,
       tauxTVA: l.tauxTVA,
