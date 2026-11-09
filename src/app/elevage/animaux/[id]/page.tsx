@@ -32,7 +32,7 @@ import { StatutsSanitairesAnimal } from "@/components/elevage/StatutsSanitairesA
 import { capacites } from "@/lib/elevage/filiere-ui"
 import { coerceFiliere } from "@/lib/elevage/filiere"
 import { libelleTypeSoin } from "@/lib/elevage/types-soin"
-import { formatMontantDevise } from "@/lib/format-utils"
+import { formatMontantDevise, todayLocalISO } from "@/lib/format-utils"
 
 const STATUT_COLORS: Record<string, string> = {
   actif: "bg-green-100 text-green-800",
@@ -652,7 +652,7 @@ function PeseesCard({ animalId }: { animalId: number }) {
   const [data, setData] = React.useState<PeseeRow[]>([])
   const [gmqGlobal, setGmqGlobal] = React.useState<number | null>(null)
   const [loading, setLoading] = React.useState(true)
-  const [date, setDate] = React.useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = React.useState(() => todayLocalISO())
   const [poids, setPoids] = React.useState("")
   const [saving, setSaving] = React.useState(false)
 
@@ -678,8 +678,10 @@ function PeseesCard({ animalId }: { animalId: number }) {
     else { const j = await res.json().catch(() => ({})); toast({ variant: "destructive", title: "Erreur", description: j.error }) }
   }
   const supprimer = async (id: string) => {
+    if (!window.confirm("Supprimer cette pesée ?")) return
     const res = await fetch(`/api/elevage/pesees?id=${id}`, { method: "DELETE" })
     if (res.ok) { toast({ title: "Pesée supprimée" }); reload() }
+    else { const j = await res.json().catch(() => ({})); toast({ variant: "destructive", title: "Suppression impossible", description: j.error }) }
   }
 
   return (
