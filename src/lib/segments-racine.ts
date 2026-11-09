@@ -39,6 +39,9 @@ export const SEGMENTS_RACINE: ReadonlySet<string> = new Set([
   "rotation-cultures-maraichage",
 ])
 
+/** Cible de la réécriture d'une adresse inconnue : aucune route n'y répond. */
+export const CHEMIN_INTROUVABLE = "/_introuvable"
+
 /**
  * Vrai si le premier segment de `pathname` n'existe pas. La racine et les
  * chemins qui commencent par `//` ne sont jamais déclarés inconnus : ils

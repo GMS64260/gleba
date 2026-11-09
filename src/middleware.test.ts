@@ -86,6 +86,14 @@ describe("middleware : adresse inexistante sans session (audit SEO du 2026-11-09
     expect(res.headers.get("x-middleware-rewrite")).toBe("https://gleba.fr/_introuvable")
   })
 
+  it("la requête réécrite n'est pas réécrite à nouveau (boucle sans fin en production)", () => {
+    session.courante = null
+    const res = visiter("https://gleba.fr/_introuvable")
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull()
+    expect(res.headers.get("location")).toBeNull()
+    expect(res.headers.get("x-middleware-next")).toBe("1")
+  })
+
   it("une page applicative existante garde la redirection vers la connexion", () => {
     session.courante = null
     expect(visiter("https://gleba.fr/maraichage/xyz").status).toBe(307)
