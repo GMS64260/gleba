@@ -20,6 +20,10 @@ const autres: Record<string, () => Promise<{ metadata: Metadata }>> = {
   "/licence": () => import("@/app/licence/page"),
   "/suppression-compte": () => import("@/app/suppression-compte/page"),
   "/referentiel": () => import("@/app/referentiel/page"),
+  "/tarifs": () => import("@/app/tarifs/page"),
+  "/cgv": () => import("@/app/cgv/page"),
+  "/confidentialite": () => import("@/app/confidentialite/page"),
+  "/mentions-legales": () => import("@/app/mentions-legales/page"),
 }
 
 function cheminDe(fichier: string): string {
@@ -45,6 +49,11 @@ function verifier(chemin: string, m: Metadata) {
   if (typeof m.title === "string") expect(m.title, `titre de ${chemin}`).not.toMatch(/Gleba/)
   expect(titreDe(m).length, `titre de ${chemin || "/"}`).toBeGreaterThan(10)
   expect(m.description?.length ?? 0, `description de ${chemin || "/"}`).toBeGreaterThan(60)
+  // Audit SEO du 2026-11-09 : au-delà, Google coupe le titre ou la
+  // description dans ses résultats. Le gabarit ajoute « | Gleba » (8 signes).
+  const titreAffiche = typeof m.title === "string" ? `${m.title} | Gleba` : titreDe(m)
+  expect(titreAffiche.length, `titre affiché de ${chemin || "/"} : « ${titreAffiche} »`).toBeLessThanOrEqual(60)
+  expect(m.description?.length ?? 0, `description de ${chemin || "/"}`).toBeLessThanOrEqual(160)
 }
 
 describe("métadonnées des pages publiques", () => {

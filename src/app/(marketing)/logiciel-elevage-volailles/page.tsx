@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel d'élevage de volailles — Ponte, lots, soins et coûts",
+  title: "Logiciel d'élevage de volailles : ponte, lots, soins",
   description: "Suivez poules et volailles par animal ou lot : ponte, alimentation, traitements, reproduction, naissances, mortalité, stocks et coûts dans Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-volailles" },
   openGraph: { ...ogBase, title: "Logiciel de gestion d'élevage de volailles — Gleba", description: "Lots, ponte, alimentation, soins, reproduction et coûts.", url: "https://gleba.fr/logiciel-elevage-volailles", type: "article" },

@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Assistant IA agricole — Interroger et saisir les données de la ferme",
+  title: "Assistant IA agricole pour interroger sa ferme",
   description: "Interrogez les cultures, le verger, l'élevage et la comptabilité de Gleba en langage naturel grâce à un assistant IA doté d'outils applicatifs.",
   alternates: { canonical: "https://gleba.fr/assistant-ia-agricole" },
   openGraph: { ...ogBase, title: "Assistant IA agricole connecté à Gleba", description: "Un assistant qui utilise les données et outils déjà disponibles dans Gleba.", url: "https://gleba.fr/assistant-ia-agricole", type: "article" },

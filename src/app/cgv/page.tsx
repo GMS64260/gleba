@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 export const metadata = {
   title: "Conditions Générales de Vente",
   description:
-    "Conditions générales de vente applicables aux producteurs et acheteurs utilisant la plateforme Gleba. Modèle générique conforme au droit français de la consommation.",
+    "Conditions générales de vente des producteurs et acheteurs de la plateforme Gleba : modèle générique conforme au droit français de la consommation.",
   alternates: {
     canonical: "https://gleba.fr/cgv",
   },

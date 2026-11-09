@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Planification maraîchère — Plan de culture, rotations et semis",
+  title: "Planification maraîchère : plan de culture et semis",
   description: "Construisez votre planification maraîchère avec itinéraires techniques, calendrier de semis, planches, rotations, besoins en plants et suivi des cultures.",
   alternates: { canonical: "https://gleba.fr/planification-maraichage" },
   openGraph: { ...ogBase, title: "Logiciel de planification maraîchère — Gleba", description: "Plan de culture, ITP, semis, planches, rotations et récoltes.", url: "https://gleba.fr/planification-maraichage", type: "article" },
