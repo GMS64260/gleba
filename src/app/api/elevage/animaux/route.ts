@@ -13,7 +13,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { animalSchema, isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
-import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle, regleAchatInclusLot } from '@/lib/elevage/animal-lot'
+import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle, redaterAffectationInitiale, regleAchatInclusLot } from '@/lib/elevage/animal-lot'
 import { resoudreRaceTexte } from '@/lib/elevage/race-referentiel'
 import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
@@ -610,6 +610,11 @@ export async function PATCH(request: NextRequest) {
           lot: { select: { id: true, nom: true } },
         },
       })
+      // L'entrée dans le premier lot suit la date d'arrivée corrigée (avant
+      // l'éventuel changement de lot de ce même PATCH, qui clôt cette ligne).
+      if (updateData.dateArrivee instanceof Date && updateData.dateArrivee.getTime() !== existing.dateArrivee?.getTime()) {
+        await redaterAffectationInitiale(tx, session.user.id, existing.id, updateData.dateArrivee)
+      }
       if (updateData.lotId !== undefined) {
         await enregistrerChangementLot(tx, session.user.id, existing.id, existing.lotId, updated.lotId)
       }

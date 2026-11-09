@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   animalCreate: vi.fn(),
   animalUpdate: vi.fn(),
   enregistrerChangementLot: vi.fn(),
+  redaterAffectationInitiale: vi.fn(),
   exploitationFindUnique: vi.fn(),
   lotAnimauxFindFirst: vi.fn(),
 }))
@@ -21,6 +22,7 @@ vi.mock('@/lib/elevage/animal-lot', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/elevage/animal-lot')>()),
   isAssignableAnimalLot: mocks.isAssignableAnimalLot,
   enregistrerChangementLot: mocks.enregistrerChangementLot,
+  redaterAffectationInitiale: mocks.redaterAffectationInitiale,
 }))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
@@ -259,6 +261,18 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
       where: { id: 'race-retiree', especeAnimaleId: 'profil-retire' },
     }))
     expect(mocks.animalUpdate).toHaveBeenCalled()
+  })
+
+  it('PATCH redate l’entrée dans le premier lot quand la date d’arrivée est corrigée', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin', lotId: 42, dateArrivee: new Date('2026-11-09') })
+
+    expect((await PATCH(request('PATCH', { id: 7, dateArrivee: '2026-10-15' }))).status).toBe(200)
+    expect(mocks.redaterAffectationInitiale).toHaveBeenCalledWith(expect.anything(), 'user-1', 7, new Date('2026-10-15'))
+
+    // Date renvoyée inchangée par le formulaire : rien à redater.
+    mocks.redaterAffectationInitiale.mockClear()
+    expect((await PATCH(request('PATCH', { id: 7, dateArrivee: '2026-11-09', notes: 'x' }))).status).toBe(200)
+    expect(mocks.redaterAffectationInitiale).not.toHaveBeenCalled()
   })
 
   it('persiste séparément orientation et race validée', async () => {
