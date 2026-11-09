@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 export const metadata = {
   title: "Politique de confidentialité",
   description:
-    "Politique de confidentialité de Gleba conforme au RGPD et à la CNIL : responsable de traitement, données collectées, finalités, base légale, durées de conservation, suppression du compte et droits des utilisateurs.",
+    "Politique de confidentialité de Gleba (RGPD) : responsable de traitement, données collectées, finalités, base légale, durées de conservation et droits.",
   alternates: {
     canonical: "https://gleba.fr/confidentialite",
   },

@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Itinéraire technique maraîcher — Semis, plantation et récolte",
+  title: "Itinéraires techniques maraîchers par culture",
   description: "Créez et adaptez des itinéraires techniques : périodes, démarrage, durée, densité, espacements et zone climatique pour planifier les cultures dans Gleba.",
   alternates: { canonical: "https://gleba.fr/itineraire-technique-maraichage" },
   openGraph: { ...ogBase, title: "Itinéraires techniques de maraîchage — Gleba", description: "ITP, calendrier, zone climatique, semis, plantation et récolte.", url: "https://gleba.fr/itineraire-technique-maraichage", type: "article" },

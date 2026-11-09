@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel d'arboriculture — Suivi du verger arbre par arbre",
+  title: "Logiciel d'arboriculture : le verger arbre par arbre",
   description: "Gérez arbres, parcelles, variétés, porte-greffes, tailles, greffes, traitements, pollinisation et récoltes avec le logiciel d'arboriculture open source Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-arboriculture" },
   openGraph: { ...ogBase, title: "Logiciel d'arboriculture open source — Gleba", description: "Suivi du verger, opérations, pollinisation, traitements et récoltes.", url: "https://gleba.fr/logiciel-arboriculture", type: "article" },

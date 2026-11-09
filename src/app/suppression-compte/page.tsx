@@ -28,7 +28,7 @@ export default function SuppressionComptePage() {
           <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-red-100">
             <Trash2 className="h-5 w-5 text-red-700" />
           </div>
-          <CardTitle>Supprimer mon compte Gleba</CardTitle>
+          <CardTitle><h1>Supprimer mon compte Gleba</h1></CardTitle>
           <CardDescription>
             Gleba est un logiciel de gestion agricole édité par Gleba. Vous pouvez
             supprimer votre compte et les données de votre exploitation à tout moment,

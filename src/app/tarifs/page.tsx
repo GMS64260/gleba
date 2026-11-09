@@ -7,8 +7,8 @@ import { TEXTE_OFFRE } from "@/lib/abonnement/catalogue"
 import { ogBase } from "@/lib/seo/og"
 
 export const metadata: Metadata = {
-  title: "Tarifs Gleba : carnet gratuit, Complet à 12 € par mois",
-  description: "Carnet gratuit pour le jardin, le maraîchage, le verger, l’élevage et la facturation. Complet à 12 € HT/mois ajoute l’assistant IA, la météo, la boutique et la gestion, avec trois mois d’essai.",
+  title: "Tarifs : carnet gratuit, Complet à 12 € HT par mois",
+  description: "Carnet gratuit : maraîchage, verger, élevage et facturation. Complet à 12 € HT/mois ajoute assistant IA, météo, boutique et gestion, avec trois mois d’essai.",
   alternates: { canonical: "https://gleba.fr/tarifs" },
   openGraph: { ...ogBase, title: "Tarifs Gleba : gratuit, ou Complet à 12 € par mois", description: TEXTE_OFFRE, url: "https://gleba.fr/tarifs", type: "website" },
 }

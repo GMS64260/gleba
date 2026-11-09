@@ -3,8 +3,8 @@ import { GuideArticle } from "@/components/seo/GuideArticle";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Registre phytosanitaire numérique : le calendrier 2026-2030",
-  description: "Arrêté du 24 décembre 2025 et règlement européen 2023/564 : informations obligatoires, format électronique, calendrier de conversion et conservation de cinq ans.",
+  title: "Registre phytosanitaire numérique : les échéances",
+  description: "Arrêté du 24 décembre 2025 et règlement européen 2023/564 : mentions obligatoires, format électronique, calendrier et conservation de cinq ans.",
   alternates: { canonical: "https://gleba.fr/registre-phytosanitaire-numerique" },
   openGraph: {
     ...ogBase,

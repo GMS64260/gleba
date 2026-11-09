@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Registre phytosanitaire numérique — Interventions, AMM, DAR et ZNT",
+  title: "Registre phytosanitaire : interventions, DAR et ZNT",
   description: "Consignez vos interventions phytosanitaires : parcelle, culture ou arbre, produit, AMM, dose, DAR, délai de rentrée, ZNT, météo et export PDF avec Gleba.",
   alternates: { canonical: "https://gleba.fr/registre-phytosanitaire" },
   openGraph: { ...ogBase, title: "Registre phytosanitaire numérique — Gleba", description: "Saisie et export des interventions phytosanitaires de la ferme.", url: "https://gleba.fr/registre-phytosanitaire", type: "article" },

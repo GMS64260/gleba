@@ -14,6 +14,7 @@ import {
 } from "@/lib/exploitation/entete-mutation"
 import { NextResponse } from "next/server"
 import { ENTETE_CHEMIN, ENTETE_METHODE } from "@/lib/abonnement/requetes"
+import { segmentRacineInconnu } from "@/lib/segments-racine"
 
 export default auth((req) => {
   const { pathname } = req.nextUrl
@@ -137,6 +138,12 @@ export default auth((req) => {
     // jamais écrite). Une API sans session répond 401 JSON, jamais un 302.
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
+    }
+    // Audit SEO du 2026-11-09 : une adresse qui n'existe pas répondait 307
+    // vers /login au lieu de 404. La réécriture vers un chemin privé (`_`)
+    // ne correspond à aucune route : Next sert `not-found.tsx` avec un 404.
+    if (segmentRacineInconnu(pathname)) {
+      return NextResponse.rewrite(new URL("/_introuvable", req.nextUrl))
     }
     // QA cmvnout4y — le lien profond garde sa requête (`?tab=…&sub=…`) à
     // travers la connexion : chemin + requête, jamais le chemin seul.

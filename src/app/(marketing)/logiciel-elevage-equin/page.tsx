@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel de gestion d'élevage équin — Chevaux et poneys",
+  title: "Logiciel d'élevage équin : chevaux, poneys et ânes",
   description: "Suivez chevaux, poneys, ânes et mulets : fiches, races, pedigree, reproduction, santé, tests ADN, soins et calendrier avec Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-equin" },
   openGraph: {

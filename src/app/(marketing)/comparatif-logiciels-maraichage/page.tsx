@@ -3,8 +3,8 @@ import { GuideArticle } from "@/components/seo/GuideArticle";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciels de maraîchage libres ou gratuits : comparatif 2026",
-  description: "Brinjel, Ouvretaferme, PermaTechnics, Elzeard, CropMaker, farmOS, LiteFarm et Gleba : licence, auto-hébergement, prix et périmètre, relevés en octobre et tarifs actualisés le 8 novembre 2026.",
+  title: "Logiciels de maraîchage libres ou gratuits (2026)",
+  description: "Brinjel, Ouvretaferme, PermaTechnics, Elzeard, CropMaker, farmOS, LiteFarm et Gleba : licence, auto-hébergement, prix et périmètre, tarifs relevés en novembre.",
   alternates: { canonical: "https://gleba.fr/comparatif-logiciels-maraichage" },
   openGraph: {
     ...ogBase,

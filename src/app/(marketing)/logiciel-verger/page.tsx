@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel de verger pour micro-ferme — Suivi arbre par arbre",
+  title: "Logiciel de verger pour micro-ferme, arbre par arbre",
   description: "Ajoutez un atelier verger à votre micro-ferme : arbres, variétés, porte-greffes, emplacements, opérations, pollinisation, traitements et récoltes.",
   alternates: { canonical: "https://gleba.fr/logiciel-verger" },
   openGraph: { ...ogBase, title: "Logiciel de gestion de verger — Gleba", description: "Le suivi du verger arbre par arbre, de la plantation à la récolte.", url: "https://gleba.fr/logiciel-verger", type: "article" },

@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel pour micro-ferme en permaculture — Plan et suivi",
+  title: "Logiciel pour micro-ferme en permaculture",
   description: "Pour une ferme en permaculture professionnelle : cartographiez planches et arbres, puis suivez cultures, rotations, verger, élevage, récoltes et interventions.",
   alternates: { canonical: "https://gleba.fr/logiciel-permaculture" },
   openGraph: { ...ogBase, title: "Gleba pour une ferme en permaculture", description: "Plan 2D et suivi des productions diversifiées dans un logiciel open source.", url: "https://gleba.fr/logiciel-permaculture", type: "article" },

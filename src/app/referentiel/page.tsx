@@ -12,7 +12,7 @@ import { valeurRenseignee } from "@/lib/referentiel-valeur";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Référentiel agricole ouvert — Végétaux, variétés et itinéraires techniques",
+  title: "Référentiel agricole ouvert : cultures et variétés",
   description: "Explorez le référentiel agricole contributif de Gleba : légumes, arbres fruitiers, variétés et itinéraires techniques contextualisés par climat et terroir.",
   alternates: { canonical: "https://gleba.fr/referentiel" },
   openGraph: {

@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Calendrier de semis — Périodes par culture et zone climatique",
+  title: "Calendrier de semis par culture et zone climatique",
   description: "Consultez les périodes de semis, plantation et récolte issues des itinéraires techniques Gleba, ajustées selon la zone climatique de l'exploitation.",
   alternates: { canonical: "https://gleba.fr/calendrier-semis" },
   openGraph: { ...ogBase, title: "Calendrier de semis dans Gleba", description: "Semis, plantations et récoltes organisés semaine par semaine.", url: "https://gleba.fr/calendrier-semis", type: "article" },

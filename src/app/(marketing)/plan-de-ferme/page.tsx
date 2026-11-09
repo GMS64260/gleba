@@ -4,7 +4,7 @@ import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Plan de ferme sur le cadastre et la photo aérienne",
-  description: "Retrouvez vos parcelles cadastrales par commune, section et numéro, dessinez planches et arbres aux vraies dimensions sur la photo aérienne, puis suivez la ferme en 2D et en 3D.",
+  description: "Retrouvez vos parcelles cadastrales, dessinez planches et arbres aux vraies dimensions sur la photo aérienne, puis suivez la ferme en 2D et en 3D.",
   alternates: { canonical: "https://gleba.fr/plan-de-ferme" },
   openGraph: {
     ...ogBase,

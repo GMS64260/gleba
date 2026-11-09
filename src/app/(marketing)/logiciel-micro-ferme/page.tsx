@@ -3,7 +3,7 @@ import { BusinessLanding } from "@/components/seo/BusinessLanding";
 import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel de micro-ferme : maraîchage, verger et élevage",
+  title: "Logiciel micro-ferme : maraîchage, verger et élevage",
   description: "Le carnet libre des micro-fermes diversifiées : planches, arbres, animaux, stocks, traçabilité et ventes dans un seul dossier, sur le plan de la ferme.",
   alternates: { canonical: "https://gleba.fr/logiciel-micro-ferme" },
   openGraph: { ...ogBase, title: "Gleba, le carnet d'exploitation libre des micro-fermes", description: "Maraîchage, verger, élevage et gestion reliés dans le même dossier d'exploitation.", url: "https://gleba.fr/logiciel-micro-ferme", type: "article" },

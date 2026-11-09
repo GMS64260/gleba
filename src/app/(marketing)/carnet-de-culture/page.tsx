@@ -4,7 +4,7 @@ import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Carnet de culture numérique pour le maraîchage",
-  description: "Le cahier de culture de chaque planche tenu au fil du travail : semis, plantation, interventions, fertilisation, traitements et récoltes, imprimable par culture.",
+  description: "Le cahier de culture de chaque planche tenu au fil du travail : semis, plantation, interventions, fertilisation, traitements et récoltes, imprimable.",
   alternates: { canonical: "https://gleba.fr/carnet-de-culture" },
   openGraph: {
     ...ogBase,

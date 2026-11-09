@@ -22,7 +22,7 @@ import {
 import { MODULES, MODULE_IDS, type ModuleId } from "@/lib/modules"
 
 export const metadata: Metadata = {
-  title: "Page introuvable — Gleba",
+  title: "Page introuvable",
   description:
     "Cette page n'existe pas ou plus. Retournez à l'accueil ou explorez les modules de Gleba.",
   robots: { index: false, follow: false },

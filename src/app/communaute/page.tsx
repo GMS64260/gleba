@@ -109,7 +109,7 @@ function fmtDate(s: string) {
 }
 
 export default function CommunautePage() {
-  return <React.Suspense fallback={<Loader />}><ContenuCommunaute /></React.Suspense>
+  return <React.Suspense fallback={<ChargementCommunaute />}><ContenuCommunaute /></React.Suspense>
 }
 
 function ContenuCommunaute() {
@@ -617,6 +617,25 @@ function NewEvolutionDialog({ onCreated }: { onCreated: () => void }) {
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// `useSearchParams` fait rendre la page côté client : sans cet état d'attente,
+// le HTML initial ne portait ni H1 ni texte (audit SEO du 2026-11-09). Il
+// reprend l'en-tête et l'introduction de l'onglet par défaut.
+function ChargementCommunaute() {
+  const introduction = INTRODUCTIONS.encyclopedie
+  return (
+    <div className="min-h-screen bg-papier text-encre">
+      <PageEntete id="communaute" />
+      <ConteneurPage className="space-y-6 py-6">
+        <section className="border-b border-lin pb-6">
+          <h2 className="font-display text-xl font-medium leading-tight sm:text-2xl">{introduction.titre}</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-ardoise sm:text-base">{introduction.description}</p>
+        </section>
+        <Loader />
+      </ConteneurPage>
+    </div>
   )
 }
 
