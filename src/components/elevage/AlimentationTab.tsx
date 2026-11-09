@@ -1276,13 +1276,20 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     formData.produitId &&
     ["Vaccination", "Vermifuge", "Traitement vétérinaire"].includes(formData.type),
   )
+  // Lot déjà porté par le soin en cours de modification : il reste valide et
+  // proposé même épuisé ou mis au rebut. Sans cela, le soin qui a vidé le
+  // flacon ne se modifiait plus (« Lot de pharmacie requis »), et le serveur
+  // refuse d'en choisir un autre : il ne restait qu'à le supprimer.
+  const lotDuSoinModifie = editingSoinId !== null
+    ? soins.find((soin) => soin.id === editingSoinId)?.stockMedicamentId ?? null
+    : null
   const stocksProduitDisponibles = React.useMemo(
     () => stocksMedicaments.filter(
       (stock) =>
         stock.produitId === formData.produitId &&
-        stockMedicamentEstDisponible(stock, formData.date),
+        (stock.id === lotDuSoinModifie || stockMedicamentEstDisponible(stock, formData.date)),
     ),
-    [formData.date, formData.produitId, stocksMedicaments],
+    [formData.date, formData.produitId, lotDuSoinModifie, stocksMedicaments],
   )
   const stockSelectionneDisponible = stocksProduitDisponibles.some(
     (stock) => stock.id === formData.stockMedicamentId,
@@ -1626,8 +1633,10 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
         tempsAttenteOeufsJ: formData.tempsAttenteOeufsJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteOeufsJ, 10) || 0),
         tempsAttenteViandeJ: formData.tempsAttenteViandeJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteViandeJ, 10) || 0),
       }
-      if (formData.cible === "animal") payload.animalId = formData.animalId ? parseInt(formData.animalId) : null
-      else payload.lotId = formData.lotId ? parseInt(formData.lotId) : null
+      // Les deux cibles partent toujours : celle qui n'est pas choisie vaut null,
+      // pour qu'une correction de lot vers animal détache bien le lot.
+      payload.animalId = formData.cible === "animal" && formData.animalId ? parseInt(formData.animalId) : null
+      payload.lotId = formData.cible !== "animal" && formData.lotId ? parseInt(formData.lotId) : null
 
       const isEdit = editingSoinId !== null
       if (isEdit) payload.id = editingSoinId
