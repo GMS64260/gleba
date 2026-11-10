@@ -5,7 +5,7 @@
 
 import prisma from '@/lib/prisma'
 import { getISOWeek, getISOWeekYear, getISOWeeksInYear } from 'date-fns'
-import { calculerDateDepuisSemaine, dateSemaineChrono } from './assistant-helpers'
+import { calculerDateDepuisSemaine, dateSemaineChrono, referenceRecolte } from './assistant-helpers'
 import { whereItpUtilisable } from './itp-acces'
 import { visibiliteReferentiel } from './referentiel-communaute'
 import { alertesAssociations } from './associations-alertes'
@@ -368,6 +368,15 @@ type OptionsCulturesPrevues = {
    * doivent la voir comme voisine. Les cultures terminées restent exclues.
    */
   inclureEnRecolte?: boolean
+  /**
+   * Ajoute les cultures de l'année PRÉCÉDENTE dont la plantation ou la récolte
+   * tombe dans l'année demandée (ail planté en octobre et récolté en juin,
+   * carotte de conservation). Rangées dans leur année de début, elles
+   * n'apparaissaient dans « Récoltes prévues » et « Plants » d'aucune année :
+   * exclues de la leur par la date, absentes de la suivante par l'année. Seules
+   * leurs dates réelles sont lues, jamais les semaines de l'itinéraire.
+   */
+  inclureReportees?: boolean
 }
 
 /**
@@ -614,10 +623,16 @@ export async function getCulturesPrevuesEtEtapesNonSuivies(
   // récolte réelle saisie remplace la projection pour ces cultures (cf.
   // KPI annuel). La projection détaillée ne couvre désormais que ce qu'il
   // RESTE à produire — cohérent avec l'agrégat unifié.
+  // Bornes larges de l'année demandée (le tri fin est fait par semaine ISO).
+  const debutAnnee = new Date(Date.UTC(annee, 0, 1) - 7 * 86_400_000)
+  const finAnnee = new Date(Date.UTC(annee + 1, 0, 1) + 7 * 86_400_000)
+  const dansAnnee = { gte: debutAnnee, lt: finAnnee }
   const culturesDirectes = await prisma.culture.findMany({
     where: {
       userId,
-      annee,
+      ...(options?.inclureReportees
+        ? { OR: [{ annee }, { annee: annee - 1, OR: [{ dateRecolte: dansAnnee }, { datePlantation: dansAnnee }] }] }
+        : { annee }),
       ...(!options?.includeAllCultures && {
         terminee: null,
         ...(options?.inclureEnRecolte ? {} : { recolteFaite: false }),
@@ -671,14 +686,17 @@ export async function getCulturesPrevuesEtEtapesNonSuivies(
             decalageItpPourLecteur(culture.itp, userZone, userId)
           )
         : null
+      // Culture reportée de l'année précédente : dates réelles seulement (les
+      // semaines de l'itinéraire décrivent son année de début).
+      const reportee = culture.annee != null && culture.annee !== annee
       const semainesM2 = coherenceSemaines({
-        semaineSemis: culture.dateSemis ? dateVersSemaine(culture.dateSemis, annee) : (itpCalibreM2?.semaineSemis ?? null),
+        semaineSemis: culture.dateSemis ? dateVersSemaine(culture.dateSemis, annee) : reportee ? null : (itpCalibreM2?.semaineSemis ?? null),
         semainePlantation: culture.datePlantation
           ? dateVersSemaine(culture.datePlantation, annee)
-          : (itpCalibreM2?.semainePlantation ?? null),
+          : reportee ? null : (itpCalibreM2?.semainePlantation ?? null),
         semaineRecolte: culture.dateRecolte
           ? dateVersSemaine(culture.dateRecolte, annee)
-          : (itpCalibreM2?.semaineRecolte ?? null),
+          : reportee ? null : (itpCalibreM2?.semaineRecolte ?? null),
         semisReel: !!culture.dateSemis,
         plantationReelle: !!culture.datePlantation,
         recolteReelle: !!culture.dateRecolte,
@@ -762,7 +780,7 @@ export async function getRecoltesPrevuesDetail(
   annee: number,
   groupBy: 'mois' | 'semaine' = 'mois'
 ): Promise<RecoltesPrevuesDetail> {
-  const culturesPrevues = await getCulturesPrevues(userId, annee)
+  const culturesPrevues = await getCulturesPrevues(userId, annee, { inclureReportees: true })
   const projectionCreees: QuantiteParUnite = {}
   const projectionSuggestions: QuantiteParUnite = {}
 
@@ -1240,7 +1258,7 @@ export async function getBesoinsPlants(
   userId: string,
   annee: number
 ): Promise<BesoinPlant[]> {
-  const culturesPrevues = await getCulturesPrevues(userId, annee)
+  const culturesPrevues = await getCulturesPrevues(userId, annee, { inclureReportees: true })
 
   // Bug R5 : « Plants à produire » ne concerne que les espèces semées en pépinière
   // puis repiquées (ou bouturées). Les bulbes/caïeux/tubercules (oignon, ail, PdT)
@@ -1667,11 +1685,15 @@ export async function creerCulturesBatch(
     const plantationLocale = itpCalibre.semainePlantation
       ? dateSemaineChrono(annee, itpCalibre.semainePlantation, semaineSemisEff)
       : null
+    // La référence de la récolte est la plantation DÉJÀ REPORTÉE (valeur
+    // absolue) : un semis S45 reporte la plantation S5 à l'année suivante, et
+    // comparer la récolte S20 à « 5 » la laissait sur l'année de départ, donc
+    // avant la plantation.
     const recolteLocale = itpCalibre.semaineRecolte
       ? dateSemaineChrono(
           annee,
           itpCalibre.semaineRecolte,
-          itpCalibre.semainePlantation ?? semaineSemisEff
+          referenceRecolte(itpCalibre.semainePlantation, semaineSemisEff)
         )
       : null
     // Fenêtre de récolte dérivée de l'itinéraire, comme à la création unitaire
