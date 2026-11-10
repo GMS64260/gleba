@@ -5,6 +5,7 @@
  * DELETE /api/carte/[id] - Supprimer une parcelle
  */
 
+import { refusSuppressionParcelle, usagesParcelle } from '@/lib/parcelles/suppression'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { irrigationCache } from '@/lib/irrigation-cache'
@@ -189,6 +190,18 @@ export async function DELETE(
         { status: 404 }
       )
     }
+
+    // Garde : traces de traçabilité (refus) et rattachements (confirmation).
+    const compte = await prisma.parcelleGeo.findUnique({
+      where: { id, userId: session!.user.id },
+      select: { _count: { select: {
+        recoltesArbres: true, productionsBois: true, interventionsPhyto: true, observationsPhyto: true,
+        planches: true, arbres: true, lotsArbres: true, lotsAnimaux: true, animaux: true, capteurs: true, objetsJardin: true,
+      } } },
+    })
+    const usages = usagesParcelle(compte?._count ?? {})
+    const refus = refusSuppressionParcelle(usages, request.nextUrl.searchParams.get('confirme') === '1')
+    if (refus) return NextResponse.json({ ...refus, ...usages }, { status: 409 })
 
     await prisma.parcelleGeo.delete({
       where: { id, userId: session!.user.id },

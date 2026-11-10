@@ -1,16 +1,12 @@
 import { requireAdminApi } from "@/lib/auth-utils"
+import { celluleCsv } from "@/lib/csv-cellule"
 import prisma from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
 
-function csvEscape(v: string | null | undefined): string {
-  if (v === null || v === undefined) return ""
-  const s = String(v)
-  if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
-}
+// Les signalements sont écrits par les utilisateurs et ouverts par l'équipe
+// dans un tableur : formules neutralisées (cf. `csv-cellule.ts`).
+const csvEscape = (v: string | null | undefined): string => celluleCsv(v)
 
 export async function GET(request: Request) {
   const { error } = await requireAdminApi(request)

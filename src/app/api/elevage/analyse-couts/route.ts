@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { chargerMontantsFigesConsommations, coutConsommation } from '@/lib/elevage/cout-consommation'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
@@ -89,8 +90,10 @@ export async function GET(request: NextRequest) {
     const lotById = new Map(lots.map(l => [l.id, l]))
     // Le même prix dans les ateliers et dans le détail des lots. Zéro est
     // un coût connu ; seuls les prix absents retombent sur le catalogue.
-    const prixAliment = (c: typeof consommations[number]) =>
-      c.aliment.userStocks[0]?.coutUnitaire ?? c.aliment.userStocks[0]?.prix ?? c.aliment.prix ?? 0
+    // Consommations passées au prix d'alors (écriture créée à la saisie), pas
+    // au prix du jour : cf. `cout-consommation.ts`.
+    const montantsFiges = await chargerMontantsFigesConsommations(prisma, userId, consommations.map(c => c.id))
+    const coutAliment = (c: typeof consommations[number]) => coutConsommation(c, montantsFiges)
     const animalById = new Map(animals.map(a => [a.id, a]))
     const ateliers = new Map<string, Atelier>()
     const getAtelier = (code: string, libelle: string) => {
@@ -137,7 +140,7 @@ export async function GET(request: NextRequest) {
     for (const soin of soins) speciesFor(soin.lotId, soin.animalId).couts.soins += soin.cout || 0
     for (const c of consommations) {
       const a = c.animal ? getAtelier(c.animal.especeAnimaleId, animalById.get(c.animalId!)?.especeAnimale.nom || c.animal.especeAnimaleId) : c.lot ? getAtelier(c.lot.especeAnimaleId, lotById.get(c.lotId!)?.especeAnimale.nom || c.lot.especeAnimaleId) : getAtelier('non_affecte', 'Non affecté')
-      a.couts.alimentation += c.quantite * prixAliment(c)
+      a.couts.alimentation += coutAliment(c)
     }
     for (const abattage of abattages) {
       const a = speciesFor(abattage.lotId, abattage.animalId)
@@ -223,7 +226,7 @@ export async function GET(request: NextRequest) {
       const lotAbattages = abattages.filter(a => a.lotId === lot.id)
       const coutAchat = lot.dateArrivee && lot.dateArrivee >= start && lot.dateArrivee <= end ? lot.prixAchatTotal || 0 : 0
       const coutSoins = lotSoins.reduce((sum, s) => sum + (s.cout || 0), 0)
-      const coutAlimentation = lotConso.reduce((sum, c) => sum + c.quantite * prixAliment(c), 0)
+      const coutAlimentation = lotConso.reduce((sum, c) => sum + coutAliment(c), 0)
       const revenus = lotAbattages.reduce((sum, a) => sum + (a.prixVente || 0), 0)
       const total = coutAchat + coutSoins + coutAlimentation
       const totalOeufs = productionsOeufs.filter(p => p.lotId === lot.id).reduce((sum, p) => sum + p.quantite, 0)

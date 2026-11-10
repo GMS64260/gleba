@@ -166,3 +166,15 @@ describe('appariement des identifiants masqués', () => {
       .toBe('FR17000561010')
   })
 })
+
+describe('import partiel : seules les lignes rejetées restent à envoyer', () => {
+  it('retire les lignes enregistrées, deux lignes identiques restant distinctes', async () => {
+    const { lignesRestantes } = await import('../import-animaux')
+    const a = { nom: '' }
+    const b = { nom: '' }
+    const c = { nom: 'Cannelle' }
+    expect(lignesRestantes([a, b, c], new Set([a, c]))).toEqual([b])
+    expect(lignesRestantes([a, b, c], new Set([a, c]))[0]).toBe(b)
+    expect(lignesRestantes([a, b], new Set())).toEqual([a, b])
+  })
+})

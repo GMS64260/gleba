@@ -1433,7 +1433,13 @@ function JardinContent() {
   }, [hasChanges, saving, planches, objets, arbres, pendingGpsMovesCount])
 
   // Réorganiser en grille
-  const handleReset = () => {
+  const handleReset = async () => {
+    // Le plan est enregistré automatiquement : sans confirmation, un clic
+    // remplaçait pour de bon l'emplacement dessiné de chaque planche.
+    if (planches.length === 0) return
+    if (!(await confirmDialog(
+      `Réorganiser le plan ?\n\nLes ${planches.length} planche(s) seront replacées en grille et leur emplacement actuel sera perdu. Les objets et les arbres ne bougent pas.`
+    ))) return
     const cols = Math.ceil(Math.sqrt(planches.length))
     const spacing = 0.5
     setPlanches(prev => prev.map((p, i) => ({

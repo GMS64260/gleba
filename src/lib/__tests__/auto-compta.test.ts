@@ -225,6 +225,28 @@ describe('invariants auto-compta élevage', () => {
     expect(rows.reduce((sum, row) => sum + row.montant, 0)).toBe(1400)
   })
 
+  it('garde encaissé le solde d’une réservation déjà pointé, l’acompte restant payé', async () => {
+    mocks.venteCreate.mockClear()
+    mocks.venteFindFirst.mockImplementation(async (args: { where: { sourceRef?: string } }) =>
+      args.where.sourceRef === 'reservation-2:solde'
+        ? { paye: true, date: new Date('2026-08-01'), modeReglement: 'Virement', numeroPiece: null, journal: 'VE', pjUrl: null, notes: null }
+        : null)
+    const tx = {
+      $executeRaw: async () => 0,
+      venteManuelle: { deleteMany: mocks.venteDeleteMany, create: mocks.venteCreate, findFirst: mocks.venteFindFirst },
+    } as unknown as Parameters<typeof upsertVenteFromReservationElevage>[0]
+
+    // Simple correction du nom de l'acquéreur après encaissement du solde.
+    await upsertVenteFromReservationElevage(tx, 'user-1', {
+      id: 'reservation-2', statut: 'livree', acompte: 300, montant: 1400,
+      dateReservation: new Date('2026-07-01'), dateLivraison: new Date('2026-08-01'), acquereurNom: 'Client corrigé',
+    })
+
+    const rows = mocks.venteCreate.mock.calls.map((call) => call[0].data)
+    expect(rows.map((row) => [row.sourceRef, row.paye])).toEqual([['reservation-2:acompte', true], ['reservation-2:solde', true]])
+    mocks.venteFindFirst.mockReset()
+  })
+
   // Ticket cmvgdzsf7 (2026-10-20) — le miroir est supprimé puis recréé à chaque
   // modification de la source : la pièce saisie dans Transactions (règlement,
   // numéro de pièce, notes) doit survivre à la régénération.

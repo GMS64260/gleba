@@ -5,6 +5,7 @@
  * Bilan, Analyse, Export
  */
 
+import { celluleCsv } from "@/lib/csv-cellule"
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import Link from "next/link"
@@ -296,13 +297,13 @@ export default function RapportsPage() {
     if (type === 'revenus') {
       csv = 'Date;Module;Catégorie;Description;Montant;Client;Payé\n'
       revenus.forEach(r => {
-        csv += `${new Date(r.date).toLocaleDateString('fr-FR')};${r.module};${r.categorie};${r.description};${r.montant};${r.client || ''};${r.paye ? 'Oui' : 'Non'}\n`
+        csv += `${new Date(r.date).toLocaleDateString('fr-FR')};${celluleCsv(r.module)};${celluleCsv(r.categorie)};${celluleCsv(r.description)};${r.montant};${celluleCsv(r.client || '')};${r.paye ? 'Oui' : 'Non'}\n`
       })
       filename = `revenus_${selectedYear}.csv`
     } else if (type === 'depenses') {
       csv = 'Date;Module;Catégorie;Description;Montant;Fournisseur;Payé\n'
       depenses.forEach(d => {
-        csv += `${new Date(d.date).toLocaleDateString('fr-FR')};${d.module};${d.categorie};${d.description};${d.montant};${d.fournisseur || ''};${d.paye === null ? 'N/A' : d.paye ? 'Oui' : 'Non'}\n`
+        csv += `${new Date(d.date).toLocaleDateString('fr-FR')};${celluleCsv(d.module)};${celluleCsv(d.categorie)};${celluleCsv(d.description)};${d.montant};${celluleCsv(d.fournisseur || '')};${d.paye === null ? 'N/A' : d.paye ? 'Oui' : 'Non'}\n`
       })
       filename = `depenses_${selectedYear}.csv`
     } else {

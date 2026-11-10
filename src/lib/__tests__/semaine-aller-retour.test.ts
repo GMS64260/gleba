@@ -5,6 +5,7 @@ import {
   calculerDateDepuisSemaine,
   dateSemaineChrono,
   getSemaineDepuisDate,
+  referenceRecolte,
 } from "@/lib/assistant-helpers"
 import { anneesMaraichage } from "@/lib/dashboard-year"
 
@@ -54,6 +55,21 @@ describe("aller-retour semaine ↔ date", () => {
     const recolte = dateSemaineChrono(2027, 2, 40)
     expect(anneeRelue(recolte)).toBe(2028)
     expect(semaineRelue(recolte)).toBe(2)
+  })
+
+  it("garde la récolte après une plantation reportée à l'année suivante", () => {
+    // Semis S45 (2027), plantation S05 (2028), récolte S20 : comparée à « 5 »,
+    // la récolte restait en mai 2027, neuf mois avant la plantation.
+    const plantation = dateSemaineChrono(2027, 5, 45)
+    const recolte = dateSemaineChrono(2027, 20, referenceRecolte(5, 45))
+    expect(anneeRelue(plantation)).toBe(2028)
+    expect(anneeRelue(recolte)).toBe(2028)
+    expect(semaineRelue(recolte)).toBe(20)
+    expect(recolte.getTime()).toBeGreaterThan(plantation.getTime())
+    // Sans report, rien ne change ; sans plantation, la référence est le semis.
+    expect(anneeRelue(dateSemaineChrono(2027, 30, referenceRecolte(15, 10)))).toBe(2027)
+    expect(referenceRecolte(null, 40)).toBe(40)
+    expect(referenceRecolte(null, null)).toBeNull()
   })
 
   it("expose la même convention en lecture directe", () => {

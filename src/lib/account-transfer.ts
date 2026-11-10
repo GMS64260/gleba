@@ -511,6 +511,43 @@ function coerceValue(value: unknown, type: string): unknown {
   return value
 }
 
+/** Le compte cible porte déjà des données de ferme : la restauration est refusée. */
+export class ErreurCompteDejaRempli extends Error {
+  constructor(public readonly existants: Record<string, number>) {
+    super("Ce compte contient déjà des données : la restauration est annulée, rien n'a été modifié.")
+    this.name = "ErreurCompteDejaRempli"
+  }
+}
+
+/**
+ * Modèles qui signent une ferme déjà saisie. Un compte neuf n'en porte aucun
+ * (ses réglages, son abonnement et son exploitation ne comptent pas).
+ */
+const MODELES_FERME_SAISIE = [
+  "planche", "culture", "recolte", "arbre", "animal", "lotAnimaux",
+  "facture", "venteManuelle", "depenseManuelle", "client", "fournisseur",
+] as const
+
+/**
+ * Compte, par modèle, les données de ferme déjà présentes sur le compte.
+ * L'écran promet qu'un import sur un compte rempli est annulé : sans ce
+ * contrôle, les lignes à identifiant entier étaient recréées à côté des
+ * existantes (planches, cultures, factures en double), sans erreur.
+ */
+export async function compterFermeSaisie(
+  client: Prisma.TransactionClient,
+  userId: string,
+): Promise<Record<string, number>> {
+  const existants: Record<string, number> = {}
+  for (const modele of MODELES_FERME_SAISIE) {
+    const delegue = (client as unknown as Record<string, { count?: (args: unknown) => Promise<number> } | undefined>)[modele]
+    if (!delegue?.count) continue
+    const nombre = await delegue.count({ where: { userId } })
+    if (nombre > 0) existants[modele] = nombre
+  }
+  return existants
+}
+
 /**
  * Importe les données d'un export dans le compte `userId`.
  * Toutes les écritures sont faites dans une transaction unique : en cas
@@ -540,6 +577,12 @@ export async function importAccount(
   class RollbackSignal extends Error {}
 
   const runner = async (tx: Prisma.TransactionClient) => {
+    // Dans la transaction : deux restaurations lancées ensemble ne passent pas
+    // toutes les deux le contrôle sur un compte encore vide.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'gleba:restauration:' + userId}))`
+    const existants = await compterFermeSaisie(tx, userId)
+    if (Object.keys(existants).length > 0) throw new ErreurCompteDejaRempli(existants)
+
     const pending: PendingPatch[] = []
     const referencesStock: { delegate: string; pkField: string; newPk: unknown; type: string; oldId: string }[] = []
 

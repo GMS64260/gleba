@@ -13,6 +13,7 @@ vi.mock("@/lib/prisma", () => {
     get: (_target, name: string) => {
       if (name === "$transaction") return (action: (tx: object) => Promise<unknown>) => action(client)
       if (name === "$executeRawUnsafe") return async () => 0
+      if (name === "$executeRaw") return async () => 0
       return {
         findMany: (args: unknown) => mocks.findMany(name, args),
         count: (args: unknown) => mocks.count(name, args),
@@ -24,7 +25,7 @@ vi.mock("@/lib/prisma", () => {
   return { default: client }
 })
 
-import { exportAccount, importAccount } from "./account-transfer"
+import { ErreurCompteDejaRempli, exportAccount, importAccount } from "./account-transfer"
 import { SEUIL_MESURES_BRUTES_EXPORT } from "@/lib/capteurs/connecteurs"
 
 describe("transfert des identifiants BigInt des capteurs", () => {
@@ -228,5 +229,32 @@ describe("sauvegarde de compte : rien qui appartienne à l'instance ou aux autre
     await exportAccount("compte-a")
     const appel = mocks.findMany.mock.calls.find(([name]) => name === "aliment")
     expect(appel?.[1]).toEqual({ where: { OR: [{ ownerUserId: null }, { ownerUserId: "compte-a" }] } })
+  })
+})
+
+describe("restauration sur un compte déjà rempli", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.rows = {}
+    mocks.findMany.mockImplementation(async () => [])
+  })
+
+  it("est annulée avant toute écriture, avec le décompte de ce qui existe", async () => {
+    mocks.count.mockImplementation(async (modele: string, args: { where: { userId: string } }) =>
+      modele === "planche" && args.where.userId === "cible" ? 12 : 0)
+    const sauvegarde = { data: { Planche: [{ id: "p1", userId: "source", nom: "A1" }] } } as never
+    const erreur = await importAccount("cible", sauvegarde).then(() => null, (e: unknown) => e)
+    expect(erreur).toBeInstanceOf(ErreurCompteDejaRempli)
+    expect((erreur as ErreurCompteDejaRempli).existants).toEqual({ planche: 12 })
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.createMany).not.toHaveBeenCalled()
+  })
+
+  it("ne compte que les données du compte cible", async () => {
+    mocks.count.mockImplementation(async () => 0)
+    await importAccount("cible", { data: {} } as never)
+    const filtres = mocks.count.mock.calls.map(([, args]) => (args as { where: { userId: string } }).where.userId)
+    expect(filtres.length).toBeGreaterThan(0)
+    expect(new Set(filtres)).toEqual(new Set(["cible"]))
   })
 })

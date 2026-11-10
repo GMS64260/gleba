@@ -151,6 +151,28 @@ describe('getCulturesPrevues (inventaire annuel)', () => {
     expect(projectionsRestantes).toHaveLength(0)
   })
 
+  it('sur demande, reprend une culture de l’année précédente récoltée dans l’année, avec ses seules dates réelles', async () => {
+    // Ail planté en octobre 2026, récolté en juin 2027 : culture de 2026.
+    const ail = { ...cultureDirecte(700), annee: 2026, datePlantation: new Date('2026-10-12T00:00:00Z'), dateRecolte: new Date('2027-06-14T00:00:00Z') }
+    mocked.culture.findMany.mockResolvedValue([ail])
+
+    const sansOption = await getCulturesPrevues('u1', 2027)
+    expect(mocked.culture.findMany.mock.calls.at(-1)![0].where.annee).toBe(2027)
+    expect(sansOption).toHaveLength(1) // la base simulée ne filtre pas ; la requête, elle, ne demande que 2027
+
+    const avecOption = await getCulturesPrevues('u1', 2027, { inclureReportees: true })
+    const where = mocked.culture.findMany.mock.calls.at(-1)![0].where
+    expect(where.annee).toBeUndefined()
+    expect(where.OR[0]).toEqual({ annee: 2027 })
+    expect(where.OR[1].annee).toBe(2026)
+    expect(avecOption).toHaveLength(1)
+    // Récolte lue dans l'année ; plantation de 2026 hors année ; aucun repli sur
+    // les semaines de l'itinéraire (qui décrivent 2026).
+    expect(avecOption[0].semaineRecolte).toBe(24)
+    expect(avecOption[0].semainePlantation).toBeNull()
+    expect(avecOption[0].semaineSemis).toBeNull()
+  })
+
   it('recalibre les semaines théoriques du climat source vers la ferme', async () => {
     terroirMocks.zoneEffectiveUser.mockResolvedValue('semi_continental')
     const planche = plancheAvecCulture({ id: 900 })

@@ -14,7 +14,7 @@ vi.mock('@/lib/prisma', () => { const db = {
   collecteLait: { findFirst: m.collecte, create: m.create, update: m.update },
 }; return { default: { ...db, $transaction: (fn: (db: unknown) => unknown) => fn({ ...db, $executeRaw: vi.fn() }) } } })
 
-import { POST } from '@/app/api/elevage/collectes-lait/route'
+import { PATCH, POST } from '@/app/api/elevage/collectes-lait/route'
 
 let collecte: Record<string, unknown>
 const corrigerVolume = () => POST(new NextRequest('http://local.test/api/elevage/collectes-lait', {
@@ -53,5 +53,22 @@ describe('Fiabilité des corrections de traite', () => {
     expect((await res.json()).data).toMatchObject({
       quantiteLitres: 2.1, ecarteAttente: true, mgGpl: 36, mpGpl: 32, cellulesParMl: 120, notes: 'Analyse saisie',
     })
+  })
+
+  it('refuse de redater une collecte sur un jour qui porte déjà la même traite', async () => {
+    m.auth.mockResolvedValue({ session: { user: { id: 'review' } }, error: null })
+    const libre = { ...collecte, lotFromageId: null }
+    // 1er appel : la collecte modifiée ; 2e : la collecte déjà présente ce jour-là.
+    m.collecte.mockImplementation(async (args: { where: { id?: unknown } }) =>
+      typeof args.where.id === 'string' ? libre : { id: 'traite-2' })
+    const reponse = await PATCH(new NextRequest('http://local.test/api/elevage/collectes-lait', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'traite-1', date: '2026-10-29' }),
+    }))
+    expect(reponse.status).toBe(409)
+    expect((await reponse.json()).code).toBe('COLLECTE_DEJA_SAISIE')
+    expect(m.update).not.toHaveBeenCalled()
+    const recherche = m.collecte.mock.calls.map(([a]) => a.where).find((w) => typeof w.id === 'object')
+    expect(recherche).toMatchObject({ userId: 'review', id: { not: 'traite-1' }, traite: 'Matin', animalId: 501, lotId: null })
   })
 })

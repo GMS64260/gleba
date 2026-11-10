@@ -13,6 +13,7 @@
  *   - Mention AB + organisme certificateur si applicable
  */
 
+import { mentionDateLimite } from '@/lib/elevage/etiquette-fromage'
 import { NextRequest, NextResponse } from 'next/server'
 import { dispositionDocument } from '@/lib/http/disposition-fichier'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -84,11 +85,15 @@ export async function GET(request: NextRequest, { params }: Params) {
     doc.font('Helvetica').text(formatDate(lot.dateFabrication), 240, y)
 
     y += 14
-    if (lot.dluo) {
+    // Date limite : la DLC d'un fromage frais prime (mention obligatoire d'une
+    // denrée très périssable) ; l'étiquette n'imprimait que la DLUO, donc
+    // aucune date pour un lot qui ne porte qu'une DLC.
+    const dateLimite = mentionDateLimite(lot)
+    if (dateLimite) {
       doc.font('Helvetica-Bold').fontSize(10).fillColor('#0f172a')
-      doc.text('À consommer de préférence avant le', 20, y)
+      doc.text(dateLimite.libelle, 20, y)
       doc.font('Helvetica-Bold').fontSize(11).fillColor('#dc2626')
-      doc.text(formatDate(lot.dluo), 220, y - 1)
+      doc.text(formatDate(dateLimite.date), 220, y - 1)
       y += 16
     }
 

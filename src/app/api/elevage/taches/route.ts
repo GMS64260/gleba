@@ -13,6 +13,7 @@ import {
   effectifPondeuses,
   effectifsPondeursLots,
   estEspecePondeuse,
+  WHERE_ESPECE_PONDEUSE,
 } from '@/lib/elevage/pondeuses'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
@@ -117,7 +118,7 @@ export async function GET(request: NextRequest) {
         where: { userId },
         include: {
           especeAnimale: {
-            select: { ponteAnnuelle: true, production: true, nom: true, dureeElevage: true },
+            select: { ponteAnnuelle: true, production: true, type: true, nom: true, dureeElevage: true },
           },
         },
       }),
@@ -130,7 +131,7 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           statut: 'actif',
-          especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
+          especeAnimale: WHERE_ESPECE_PONDEUSE,
         },
       }),
     ])
@@ -288,7 +289,7 @@ export async function GET(request: NextRequest) {
     // fiches nominatives rattachées) moins les jeunes nés dans le lot et les
     // fiches mâles ou trop jeunes. L'effectif reconstitué est celui déjà
     // calculé pour retenir les lots vivants.
-    const lotsPondeurs = lotsActifs.filter(l => estEspecePondeuse(l.especeAnimale.production))
+    const lotsPondeurs = lotsActifs.filter(l => estEspecePondeuse(l.especeAnimale.production, l.especeAnimale.type))
     const tetesNonPondeuses = await calculerTetesNonPondeuses(userId, lotsPondeurs, refDate)
     let estimationOeufsJour = lotsPondeurs.reduce((sum, lot) => sum + oeufsAttendusJour(
       effectifPondeuses(effectifLot(lot), tetesNonPondeuses.get(lot.id)),
@@ -330,14 +331,14 @@ export async function GET(request: NextRequest) {
       if (lotIdsProductifs.length > 0) {
         const lotsProductifs = await prisma.lotAnimaux.findMany({
           where: { userId, id: { in: lotIdsProductifs } },
-          include: { especeAnimale: { select: { ponteAnnuelle: true, production: true, nom: true, dureeElevage: true } } },
+          include: { especeAnimale: { select: { ponteAnnuelle: true, production: true, type: true, nom: true, dureeElevage: true } } },
         })
         // QA cmv5jfsol — le repli retranche lui aussi les têtes non pondeuses,
         // sinon un lot de jeunes à qui des œufs ont été imputés recompterait
         // ses poussins à plein.
         const effectifsProductifs = await effectifsPondeursLots(
           userId,
-          lotsProductifs.filter(l => estEspecePondeuse(l.especeAnimale.production)),
+          lotsProductifs.filter(l => estEspecePondeuse(l.especeAnimale.production, l.especeAnimale.type)),
           refDate,
         )
         estimationOeufsJour = lotsProductifs.reduce((sum, lot) => {

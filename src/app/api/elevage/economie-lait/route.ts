@@ -19,6 +19,7 @@
  * et soins existants.
  */
 
+import { chargerMontantsFigesConsommations, coutConsommation } from '@/lib/elevage/cout-consommation'
 import { collecteTvaFrancaise } from '@/lib/territoires'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -27,12 +28,12 @@ import { indicateursEconomieLait } from '@/lib/elevage/economie-lait'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { poidsMoyenPieceKg, poidsSortieKg, sortieCaveDepuisVente } from '@/lib/elevage/cave-fromage'
 import { jourCivilStocke } from '@/lib/jour-civil'
+import { estProductionLaitiere } from '@/lib/elevage/cibles-collecte-lait'
 
-const estLaitier = (production?: string | null, productions?: string[] | null): boolean => {
-  const p = (production || '').toLowerCase()
-  if (p.includes('lait') || p.includes('mixte')) return true
-  return (productions || []).some((x) => x.toLowerCase().includes('lait'))
-}
+// Même règle que la saisie de traite : une volaille « mixte » (œufs et chair)
+// n'est pas laitière.
+const estLaitier = (espece?: { type?: string | null; production?: string | null; productions?: string[] | null } | null): boolean =>
+  estProductionLaitiere(espece)
 
 /**
  * Jour civil de fin d'un lot clos, par ordre de fiabilité : la date de
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
       // les têtes actives entrent dans le prorata des charges globales.
       prisma.animal.findMany({
         where: { userId, OR: [{ statut: 'actif' }, { dateSortie: { gte: debut } }] },
-        select: { id: true, lotId: true, statut: true, especeAnimale: { select: { production: true, productions: true } } },
+        select: { id: true, lotId: true, statut: true, especeAnimale: { select: { type: true, production: true, productions: true } } },
       }),
       prisma.lotAnimaux.findMany({
         where: { userId, statut: 'actif' },
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
           id: true,
           quantiteInitiale: true,
           quantiteActuelle: true,
-          especeAnimale: { select: { production: true, productions: true } },
+          especeAnimale: { select: { type: true, production: true, productions: true } },
         },
       }),
       // Lots clos (abattage, réforme, vente des fiches) dont la fin, explicite
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           dateReforme: true,
-          especeAnimale: { select: { production: true, productions: true } },
+          especeAnimale: { select: { type: true, production: true, productions: true } },
           abattages: { where: { userId, annule: false }, orderBy: { date: 'desc' }, take: 1, select: { date: true } },
           animaux: {
             where: { userId, statut: { not: 'actif' }, dateSortie: { not: null } },
@@ -124,7 +125,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.consommationAliment.findMany({
         where: { userId, date: { gte: debut, lte: fin } },
-        select: { quantite: true, date: true, lotId: true, animalId: true, aliment: { select: { prix: true, userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 } } } },
+        select: { id: true, quantite: true, date: true, lotId: true, animalId: true, aliment: { select: { prix: true, userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 } } } },
       }),
       prisma.soinAnimal.findMany({
         where: { userId, fait: true, date: { gte: debut, lte: fin }, cout: { not: null } },
@@ -140,10 +141,10 @@ export async function GET(request: NextRequest) {
 
     // Ensembles laitiers
     const animauxLaitiers = new Set(
-      animaux.filter((a) => estLaitier(a.especeAnimale?.production, a.especeAnimale?.productions)).map((a) => a.id)
+      animaux.filter((a) => estLaitier(a.especeAnimale)).map((a) => a.id)
     )
     const lotsLaitiers = new Set(
-      lots.filter((l) => estLaitier(l.especeAnimale?.production, l.especeAnimale?.productions)).map((l) => l.id)
+      lots.filter((l) => estLaitier(l.especeAnimale)).map((l) => l.id)
     )
     // Revue du 2026-10-29 — un lot laitier clos pendant l'exercice tombait à
     // 0 € : seuls les lots actifs étaient lus. Comme une laitière sortie, il
@@ -154,7 +155,7 @@ export async function GET(request: NextRequest) {
       const jourFin = jourFinLotClos(l)
       if (jourFin == null) continue
       finLotsClos.set(l.id, jourFin)
-      if (estLaitier(l.especeAnimale?.production, l.especeAnimale?.productions)) lotsLaitiers.add(l.id)
+      if (estLaitier(l.especeAnimale)) lotsLaitiers.add(l.id)
     }
     // Une collecte réellement saisie rend aussi sa cible laitière pour
     // l'affectation économique, quelle que soit la configuration de l'espèce,
@@ -227,9 +228,10 @@ export async function GET(request: NextRequest) {
 
     // Coût alimentaire affecté
     let coutAlimentaire = 0
+    // Au prix d'alors (écriture créée à la saisie), pas au prix du jour.
+    const montantsFiges = await chargerMontantsFigesConsommations(prisma, userId, consommations.map((c) => c.id))
     for (const c of consommations) {
-      const prixKg = c.aliment?.userStocks?.[0]?.coutUnitaire ?? c.aliment?.userStocks?.[0]?.prix ?? c.aliment?.prix ?? 0
-      const cout = Number(c.quantite) * prixKg
+      const cout = coutConsommation(c, montantsFiges)
       if (c.animalId != null) {
         if (animauxLaitiers.has(c.animalId)) coutAlimentaire += cout
       } else if (c.lotId != null) {

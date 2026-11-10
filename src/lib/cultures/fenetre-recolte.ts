@@ -221,12 +221,27 @@ export function estVivaceEnPlace(culture: CycleCulture): boolean {
  * - `null` quand les dates ne permettent pas de conclure (pas de début, ou pas
  *   de fin pour une annuelle) : l'appelant décide de la prudence à tenir.
  */
+/**
+ * Début d'OCCUPATION de la planche : la plantation quand elle est datée (le
+ * semis a alors lieu en pépinière, hors planche), sinon le semis (semis
+ * direct). Partir du semis faisait occuper la planche des semaines avant
+ * l'arrivée des plants : la culture précédente, encore en place, était
+ * signalée en chevauchement à tort.
+ */
+export function debutOccupation(culture: {
+  dateSemis?: Date | string | null
+  datePlantation?: Date | string | null
+}): Date | null {
+  const debut = culture.datePlantation ?? culture.dateSemis
+  return debut ? new Date(debut) : null
+}
+
 export function chevauchePeriode(
   culture: CycleCulture,
   debut: Date,
   fin: Date
 ): boolean | null {
-  const cDebut = culture.dateSemis ?? culture.datePlantation
+  const cDebut = debutOccupation(culture)
   if (!cDebut) return null
   const debutCulture = new Date(cDebut)
   if (estVivaceEnPlace(culture)) return debutCulture < fin

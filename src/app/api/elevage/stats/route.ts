@@ -19,6 +19,7 @@ import {
   nominatifPondeur,
   SELECT_NOMINATIF_PONDEUR_HORS_LOT,
   whereNominatifsPondeursHorsLot,
+  WHERE_ESPECE_PONDEUSE,
 } from '@/lib/elevage/pondeuses'
 import {
   aUneActiviteOeufsDashboard,
@@ -230,7 +231,7 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           statut: 'actif',
-          especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
+          especeAnimale: WHERE_ESPECE_PONDEUSE,
         },
         select: {
           id: true,

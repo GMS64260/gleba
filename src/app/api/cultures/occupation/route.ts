@@ -16,7 +16,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { evaluerOccupationPlanche } from '@/lib/planche-validation'
 import { selectCulturesOccupation } from '@/lib/planches/occupation'
-import { finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
+import { debutOccupation, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       espacementRangs: itp?.espacementRangs ?? null,
       nbRangs: lireNombre(searchParams.get('nbRangs')),
       longueur: lireNombre(searchParams.get('longueur')),
-      debut: dateSemis ?? datePlantation,
+      debut: debutOccupation({ dateSemis, datePlantation }),
       fin: finDeCycle({ dateRecolte, finRecolte }),
     })
     return NextResponse.json(verdict)

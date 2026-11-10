@@ -175,3 +175,27 @@ describe("effectifsPondeursLots", () => {
     expect(r.get(8)).toEqual({ effectifCalcule: 9, tetesNonPondeuses: 0, effectifPondeuses: 9 })
   })
 })
+
+describe('espèce « mixte » départagée par son type', () => {
+  it('une volaille mixte pond, un mammifère mixte ne pond pas', async () => {
+    const { estEspecePondeuse, estTypeMammifere, WHERE_ESPECE_PONDEUSE } = await import('../pondeuses')
+    expect(estEspecePondeuse('oeufs', 'volaille')).toBe(true)
+    expect(estEspecePondeuse('mixte', 'volaille')).toBe(true)
+    expect(estEspecePondeuse('mixte', 'mammifere_petit')).toBe(false)
+    expect(estEspecePondeuse('mixte', 'Mammifère')).toBe(false)
+    // Type inconnu : comportement historique conservé.
+    expect(estEspecePondeuse('mixte')).toBe(true)
+    expect(estEspecePondeuse('lait', 'volaille')).toBe(false)
+    expect(estTypeMammifere(' MAMMIFERE_GRAND ')).toBe(true)
+    expect(WHERE_ESPECE_PONDEUSE.OR[1]).toEqual({ production: 'mixte', NOT: { type: { startsWith: 'mammif', mode: 'insensitive' } } })
+  })
+
+  it('une volaille mixte n’est pas laitière, une brebis mixte l’est', async () => {
+    const { estProductionLaitiere } = await import('../cibles-collecte-lait')
+    expect(estProductionLaitiere({ type: 'volaille', production: 'mixte' })).toBe(false)
+    expect(estProductionLaitiere({ type: 'volaille', production: 'mixte' }, 'lait')).toBe(false)
+    expect(estProductionLaitiere({ type: 'mammifere_petit', production: 'mixte' })).toBe(true)
+    expect(estProductionLaitiere({ production: 'mixte' })).toBe(true)
+    expect(estProductionLaitiere({ type: 'mammifere_grand', production: 'lait' })).toBe(true)
+  })
+})

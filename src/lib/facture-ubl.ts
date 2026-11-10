@@ -1,5 +1,6 @@
 import { CADRES_FACTURATION_GLEBA, dateIsoFacture } from '@/lib/facture-regles'
 import type { DonneesFactureStructuree } from '@/lib/facture-structuree'
+import { ventilerTvaParTaux } from '@/lib/facture-tva-par-taux'
 
 export interface UblAddress {
   street?: string | null
@@ -158,9 +159,10 @@ export function validerFactureStructuree(d: DonneesFactureStructuree): string[] 
   }
   const round = (value: number) => Math.round(value * 100) / 100
   const net = round(d.lines.reduce((sum, line) => sum + line.netAmount, 0))
-  const vat = round(d.lines.reduce((sum, line) => sum + line.netAmount * line.vatRate / 100, 0))
   if (net !== round(d.totalNet)) issues.push('Le total HT ne correspond pas aux lignes')
-  if (vat !== round(d.totalVat)) issues.push('Le total TVA ne correspond pas aux lignes')
+  // TVA arrondie par taux ou par ligne : les deux sont justes (cf.
+  // `facture-tva-par-taux.ts`).
+  if (!ventilerTvaParTaux(d.lines, d.totalVat)) issues.push('Le total TVA ne correspond pas aux lignes')
   if (round(d.totalNet + d.totalVat) !== round(d.totalGross)) issues.push('Le total TTC ne correspond pas à HT + TVA')
 
   if (d.exonerationTva) {
@@ -242,16 +244,9 @@ export function buildUblInvoice(d: DonneesFactureStructuree): string {
   const ligne = avoir ? 'CreditNoteLine' : 'InvoiceLine'
   const quantite = avoir ? 'CreditedQuantity' : 'InvoicedQuantity'
 
-  const taxByRate = new Map<number, { net: number; vat: number }>()
-  for (const line of d.lines) {
-    const current = taxByRate.get(line.vatRate) || { net: 0, vat: 0 }
-    current.net += line.netAmount
-    current.vat += line.netAmount * line.vatRate / 100
-    taxByRate.set(line.vatRate, current)
-  }
-  const taxSubtotals = [...taxByRate.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([rate, totals]) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="${xml(currency)}">${amount(totals.net)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="${xml(currency)}">${amount(totals.vat)}</cbc:TaxAmount><cac:TaxCategory>${taxCategoryXml(rate, d.exonerationTva, true)}</cac:TaxCategory></cac:TaxSubtotal>`)
+  // Montants par taux dont la somme est le total enregistré (BR-CO-14).
+  const taxSubtotals = (ventilerTvaParTaux(d.lines, d.totalVat) ?? [])
+    .map(({ taux: rate, base, tva }) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="${xml(currency)}">${amount(base)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="${xml(currency)}">${amount(tva)}</cbc:TaxAmount><cac:TaxCategory>${taxCategoryXml(rate, d.exonerationTva, true)}</cac:TaxCategory></cac:TaxSubtotal>`)
     .join('')
   const lines = d.lines
     .map((line) => `<cac:${ligne}><cbc:ID>${xml(line.id)}</cbc:ID><cbc:${quantite} unitCode="${unitCode(line.unit)}">${quantity(line.quantity)}</cbc:${quantite}><cbc:LineExtensionAmount currencyID="${xml(currency)}">${amount(line.netAmount)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${xml(line.description)}</cbc:Name><cac:ClassifiedTaxCategory>${taxCategoryXml(line.vatRate, d.exonerationTva, false)}</cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="${xml(currency)}">${unitPrice(line.unitPrice)}</cbc:PriceAmount></cac:Price></cac:${ligne}>`)

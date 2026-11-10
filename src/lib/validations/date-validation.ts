@@ -4,7 +4,7 @@
  */
 
 import { differenceInDays } from 'date-fns'
-import { calculerDateDepuisSemaine, dateSemaineChrono } from '../assistant-helpers'
+import { calculerDateDepuisSemaine, dateSemaineChrono, referenceRecolte } from '../assistant-helpers'
 import { datesDepuisItp } from '../cultures/dates-itp'
 import { jourCivilStocke } from '../jour-civil'
 import { erreurFinRecolte } from '../cultures/fenetre-recolte'
@@ -182,7 +182,9 @@ export function validateCultureDates(data: {
 
       // Récolte
       if (dateRecolte && data.itp.semaineRecolte) {
-        const dateTheorique = dateSemaineChrono(data.annee, data.itp.semaineRecolte, data.itp.semainePlantation ?? data.itp.semaineSemis)
+        // Référence = plantation déjà reportée à l'année suivante le cas échéant.
+        const reference = referenceRecolte(data.itp.semainePlantation, data.itp.semaineSemis)
+        const dateTheorique = dateSemaineChrono(data.annee, data.itp.semaineRecolte, reference)
         const diff = Math.abs(differenceInDays(dateRecolte, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
           warnings.push(

@@ -40,9 +40,26 @@ import prisma from '@/lib/prisma'
 import { reconstituerEffectifsLots, type LotEffectifInput } from '@/lib/elevage/effectif'
 
 /** Espèce dont les lots entrent dans l'effectif pondeur (même test que /stats et /taches). */
-export function estEspecePondeuse(production: string | null | undefined): boolean {
-  return production === 'oeufs' || production === 'mixte'
+export function estEspecePondeuse(production: string | null | undefined, type?: string | null): boolean {
+  if (production === 'oeufs') return true
+  // « Mixte » veut dire œufs et chair pour une volaille, lait et viande pour un
+  // mammifère : une chèvre ou une brebis mixte n'est pas une pondeuse. Sans
+  // type connu, l'ancien comportement est gardé.
+  return production === 'mixte' && !estTypeMammifere(type)
 }
+
+/** Type d'espèce « mammifère… », quelle que soit sa casse ou son accent. */
+export function estTypeMammifere(type: string | null | undefined): boolean {
+  return (type ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim().startsWith('mammif')
+}
+
+/** Même règle qu'`estEspecePondeuse`, en filtre Prisma sur `especeAnimale`. */
+export const WHERE_ESPECE_PONDEUSE = {
+  OR: [
+    { production: 'oeufs' },
+    { production: 'mixte', NOT: { type: { startsWith: 'mammif', mode: 'insensitive' } } },
+  ],
+} satisfies Prisma.EspeceAnimaleWhereInput
 
 /** Âge d'entrée en ponte par défaut (poule : 18 à 22 semaines). */
 export const AGE_PONTE_DEFAUT_JOURS = 150
@@ -117,7 +134,7 @@ export function whereNominatifsPondeursHorsLot(userId: string) {
     userId,
     statut: 'actif',
     OR: [{ lotId: null }, { lot: { statut: { not: 'actif' } } }],
-    especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
+    especeAnimale: WHERE_ESPECE_PONDEUSE,
   } satisfies Prisma.AnimalWhereInput
 }
 

@@ -71,6 +71,20 @@ export function semaineAbsolue(semaine: number, semaineReference?: number | null
 }
 
 /**
+ * Semaine de référence de la RÉCOLTE d'un itinéraire : la plantation déjà
+ * reportée à l'année suivante le cas échéant (valeur absolue), sinon le semis.
+ * À passer à `dateSemaineChrono` pour la date de récolte.
+ */
+export function referenceRecolte(
+  semainePlantation: number | null | undefined,
+  semaineSemis: number | null | undefined
+): number | null {
+  return semainePlantation
+    ? semaineAbsolue(semainePlantation, semaineSemis)
+    : semaineSemis ?? null
+}
+
+/**
  * Calcule les dates de culture à partir d'un ITP, en cascade chronologique
  * (semis → plantation → récolte). Chaque étape dont la semaine « recule » par
  * rapport à la précédente passe à l'année suivante.

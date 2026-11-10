@@ -296,3 +296,12 @@ export function csvRowToAnimalUpdate(
   if (row.notes) payload.notes = row.notes
   return payload
 }
+
+/**
+ * Lignes encore à importer après un envoi partiel : celles qui n'ont pas été
+ * enregistrées, dans leur ordre d'origine. Comparaison par identité d'objet :
+ * deux lignes identiques (deux animaux sans identifiant) restent distinctes.
+ */
+export function lignesRestantes<T extends object>(lignes: T[], enregistrees: ReadonlySet<T>): T[] {
+  return lignes.filter((ligne) => !enregistrees.has(ligne))
+}

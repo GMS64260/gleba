@@ -39,10 +39,14 @@ describe('POST /api/elevage/stock-medicaments — ressaisie d’un lot existant'
 
   it('n’efface ni l’ordonnance, ni le fournisseur, ni les notes laissés vides', async () => {
     mocks.stockFindUnique.mockResolvedValue(enPharmacie)
-    expect((await post(lot)).status).toBe(201)
+    mocks.stockUpdate.mockResolvedValueOnce({ ...enPharmacie, quantite: 62 })
+    const reponse = await post(lot)
+    expect(reponse.status).toBe(201)
     const { data, where } = mocks.stockUpdate.mock.calls[0][0]
     expect(where).toEqual({ id: 's1' })
-    expect(data).toMatchObject({ quantite: 50, unite: 'mL' })
+    // La quantité saisie s'ajoute au reste du lot (12 + 50), elle ne le remplace pas.
+    expect(data).toMatchObject({ quantite: { increment: 50 }, unite: 'mL' })
+    expect((await reponse.json()).ajout).toEqual({ avant: 12, ajoute: 50, apres: 62 })
     expect(data.ordonnanceUrl).toBeUndefined()
     expect(data.fournisseur).toBeUndefined()
     expect(data.notes).toBeUndefined()
