@@ -13,7 +13,7 @@ import {
   consommerJetonImpersonation,
   hashJeton,
 } from "./impersonation"
-import { googleAuthDisponible, motifRefusConnexionGoogle } from "./auth-google"
+import { googleAuthDisponible, motifRefusConnexionGoogle, neutralisationComptePreCree } from "./auth-google"
 import { estEmailDemo } from "./demo"
 import { REFUS_CONNEXION, type CodeRefusConnexion } from "./auth-refus"
 import { redirectionApresConnexion } from "./auth-retour"
@@ -315,13 +315,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const existant = email
         ? await prisma.user.findUnique({
             where: { email },
-            select: { id: true, active: true },
+            select: { id: true, active: true, emailVerified: true },
           })
         : null
       const motif = motifRefusConnexionGoogle(profile ?? undefined, existant)
       if (motif) {
         logLogin(email ?? "google:email-manquant", false, `google_${motif}`, existant?.id)
         return `/login?error=${motif === "compte_inactif" ? "inactive" : "google"}`
+      }
+      // Compte pré-créé non vérifié : le mot de passe de l'inconnu ne survit
+      // pas au rattachement (cf. `neutralisationComptePreCree`).
+      const neutralisation = neutralisationComptePreCree(existant)
+      if (existant && neutralisation) {
+        await prisma.user.update({ where: { id: existant.id }, data: neutralisation })
+        console.warn(`Connexion Google sur un compte non vérifié : mot de passe et jetons retirés (compte ${existant.id}).`)
       }
       return true
     },

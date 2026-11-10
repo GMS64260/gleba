@@ -127,7 +127,7 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
     // dans le calendrier d'un atelier chiens).
     (filiere && filiere !== 'rente')
       ? Promise.resolve([] as Awaited<ReturnType<typeof chargerAttentesConsolidees>>)
-      : chargerAttentesConsolidees(userId, floorDay(now)),
+      : chargerAttentesConsolidees(userId, now),
     // Soins planifiés (non faits) à échéance ou en retard, d'un animal encore
     // présent (ticket cmv294whk : un animal mort restait à vacciner).
     prisma.soinAnimal.findMany({

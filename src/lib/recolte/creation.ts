@@ -7,6 +7,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { refusRecolteAvantDebut } from './date-coherente'
 import { chargerSurchargesRendement, rendementEffectif } from './rendement-effectif'
 import { uniteQuantiteRecolte } from './projection'
+import { chargerAvertissementsDarLegumes } from './dar'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -42,7 +43,7 @@ export async function preparerRecoltes(userId: string, entrees: unknown[], unite
   }
   const cultures = await prisma.culture.findMany({
     where: { userId, id: { in: [...new Set(donnees.map(d => d.cultureId))] } },
-    include: { espece: true, variete: { select: { nom: true, id: true } }, planche: { select: { nom: true, statutBio: true, dateDebutConversion: true } } },
+    include: { espece: true, variete: { select: { nom: true, id: true } }, planche: { select: { nom: true, statutBio: true, dateDebutConversion: true, parcelleGeoId: true } } },
   })
   const surcharges = await chargerSurchargesRendement(userId, [...new Set(donnees.map(d => d.especeId))])
   const preparees = []
@@ -72,6 +73,7 @@ export async function preparerRecoltes(userId: string, entrees: unknown[], unite
  * calculé depuis les récoltes : aucun incrément parallèle de l'inventaire. */
 export async function ecrireRecoltesPreparees(tx: Prisma.TransactionClient, preparees: Extract<Awaited<ReturnType<typeof preparerRecoltes>>, { ok: true }>['recoltes']) {
     const resultats = []
+    const planches = new Map<number, { plancheId: string | null; parcelleId: string | null }>()
     // Une même culture peut être citée plusieurs fois : sa date initiale est
     // recalée sur la première récolte chronologique, puis conservée.
     const etats = new Map(preparees.map(r => [r.culture.id, r.culture]))
@@ -84,8 +86,17 @@ export async function ecrireRecoltesPreparees(tx: Prisma.TransactionClient, prep
         etats.set(culture.id, { ...etat, recolteFaite: true, ...dates })
       }
       resultats.push(recolte)
+      planches.set(recolte.id, { plancheId: culture.plancheId ?? null, parcelleId: culture.planche?.parcelleGeoId ?? null })
     }
-    return resultats
+    // Délai avant récolte : la récolte est enregistrée (le fait a eu lieu),
+    // mais un traitement encore sous délai est signalé, comme pour les fruits.
+    const dar = await chargerAvertissementsDarLegumes(tx, preparees[0].data.userId, resultats.map(r => ({
+      id: r.id, cultureId: r.cultureId, ...planches.get(r.id)!, date: r.date,
+    })))
+    return resultats.map(r => {
+      const warnings = dar.get(r.id) ?? []
+      return warnings.length ? { ...r, warnings } : r
+    })
 }
 
 export async function creerRecoltes(userId: string, entrees: unknown[], uniteRequise = false) {

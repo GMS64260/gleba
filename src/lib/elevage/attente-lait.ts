@@ -20,11 +20,27 @@
  */
 
 import { Prisma } from '@prisma/client'
+import { jourCivilStocke } from '@/lib/jour-civil'
 
 type Db = Prisma.TransactionClient
 
 export function floorDayUTC(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+}
+
+const MS_JOUR = 86_400_000
+
+/**
+ * Minuit UTC du JOUR CIVIL d'un soin ou d'une fin d'attente, la forme sous
+ * laquelle une collecte est stockée. Une date sans heure est déjà ce jour ; une
+ * date horodatée se lit au fuseau du processus (Europe/Paris en production),
+ * pas en UTC : une injection du 2 à 00:30 à Paris est stockée le 1er à 23:30
+ * UTC. Lue en UTC, elle écartait à tort le lait du 1er et libérait celui du
+ * dernier jour d'attente un jour trop tôt.
+ */
+export function jourCivilAttente(d: Date): Date {
+  const jour = jourCivilStocke(d)
+  return jour ? new Date(`${jour}T00:00:00.000Z`) : floorDayUTC(d)
 }
 
 /**
@@ -52,6 +68,33 @@ export async function ciblesAffectees(
   return { animalIds: [...animalIds], lotIds: [...lotIds] }
 }
 
+/**
+ * Cibles de COLLECTES DE LAIT à recalculer pour un soin : celles de
+ * `ciblesAffectees`, plus les appartenances passées. Un animal sorti du lot
+ * traité garde son attente, et le lait d'un animal traité part dans le tank du
+ * lot où il se trouve le jour de la collecte. Le périmètre est volontairement
+ * large : `resyncEcartementLait` recalcule depuis la vérité, une cible en trop
+ * ne change rien.
+ */
+export async function ciblesLaitAffectees(
+  db: Db,
+  userId: string,
+  animalId: number | null,
+  lotId: number | null
+): Promise<{ animalIds: number[]; lotIds: number[] }> {
+  const actuelles = await ciblesAffectees(db, userId, animalId, lotId)
+  const animalIds = new Set(actuelles.animalIds)
+  const lotIds = new Set(actuelles.lotIds)
+  const passees = await chargerAppartenances(db, userId, actuelles.animalIds, actuelles.lotIds)
+  for (const lignes of passees.values()) {
+    for (const h of lignes) {
+      animalIds.add(h.animalId)
+      lotIds.add(h.lotId)
+    }
+  }
+  return { animalIds: [...animalIds], lotIds: [...lotIds] }
+}
+
 type SoinCouvrant = { date: Date; finAttenteLait: Date | null; animalId: number | null; lotId: number | null }
 type CollecteCible = { animalId: number | null; lotId: number | null; date: Date }
 
@@ -72,6 +115,27 @@ export function lotALaDate(
   return ligne?.lotId ?? (historiques.has(animalId) ? null : lotCourant.get(animalId) ?? null)
 }
 
+/**
+ * Lots où l'animal s'est trouvé à un moment du jour civil `jour` (minuit UTC) :
+ * un changement de lot en cours de journée compte pour les deux lots.
+ */
+export function lotsDurantJour(
+  animalId: number,
+  jour: Date,
+  historiques: Map<number, AppartenanceDatee[]>,
+  lotCourant: Map<number, number | null>
+): number[] {
+  const lignes = historiques.get(animalId)
+  if (!lignes) {
+    const lot = lotCourant.get(animalId)
+    return lot != null ? [lot] : []
+  }
+  const fin = jour.getTime() + MS_JOUR
+  return lignes
+    .filter((h) => h.dateDebut.getTime() < fin && (h.dateFin == null || h.dateFin.getTime() > jour.getTime()))
+    .map((h) => h.lotId)
+}
+
 function couvre(
   s: SoinCouvrant,
   c: CollecteCible,
@@ -79,19 +143,77 @@ function couvre(
   lotCourant: Map<number, number | null>
 ): boolean {
   if (!s.finAttenteLait) return false
-  if (!(floorDayUTC(s.date).getTime() <= c.date.getTime() && c.date.getTime() <= s.finAttenteLait.getTime())) {
+  const jourCollecte = c.date.getTime()
+  if (!(jourCivilAttente(s.date).getTime() <= jourCollecte && jourCollecte <= jourCivilAttente(s.finAttenteLait).getTime())) {
     return false
   }
   if (s.animalId != null && c.animalId != null && s.animalId === c.animalId) return true
   if (s.lotId != null && c.lotId != null && s.lotId === c.lotId) return true
-  // Soin individuel, collecte au niveau du lot de l'animal traité
-  if (s.animalId != null && c.lotId != null && lotALaDate(s.animalId, s.date, historiques, lotCourant) === c.lotId) return true
+  // Soin individuel, collecte de lot : le lait de l'animal traité part dans le
+  // tank du lot où il se trouve LE JOUR DE LA COLLECTE. Lire son lot à la date
+  // du soin laissait passer le tank de son nouveau lot et écartait à tort
+  // celui de l'ancien.
+  if (s.animalId != null && c.lotId != null && lotsDurantJour(s.animalId, c.date, historiques, lotCourant).includes(c.lotId)) return true
   // Soin de lot, collecte individuelle d'un animal membre du lot traité
   // Un soin collectif s'applique aux membres présents AU MOMENT DU SOIN : un
   // animal qui quitte ensuite le lot conserve son attente, tandis qu'un animal
   // arrivé après le traitement ne doit pas être écarté à tort.
   if (s.lotId != null && c.animalId != null && lotALaDate(c.animalId, s.date, historiques, lotCourant) === s.lotId) return true
+  // Soin de lot, collecte d'un AUTRE lot : un animal traité avec son lot puis
+  // déplacé apporte son lait au tank du lot d'arrivée.
+  if (s.lotId != null && c.lotId != null) {
+    for (const [animalId, lignes] of historiques) {
+      const traite = lignes.some(
+        (h) => h.lotId === s.lotId && h.dateDebut <= s.date && (h.dateFin == null || s.date < h.dateFin)
+      )
+      if (traite && lotsDurantJour(animalId, c.date, historiques, lotCourant).includes(c.lotId)) return true
+    }
+  }
   return false
+}
+
+/**
+ * Historique COMPLET d'appartenance des animaux donnés et de tout animal passé
+ * par les lots donnés, par animal, du plus récent au plus ancien.
+ *
+ * Aucune borne de date : l'appartenance se lit à la date du SOIN, qui précède
+ * la fenêtre des collectes. Bornée à cette fenêtre, la lecture perdait la
+ * ligne du lot traité dès que l'animal en était sorti : ses collectes
+ * n'étaient plus écartées. Un animal a une poignée de lignes.
+ */
+export async function chargerAppartenances(
+  db: Db,
+  userId: string,
+  animalIds: number[],
+  lotIds: number[]
+): Promise<Map<number, AppartenanceDatee[]>> {
+  const ids = new Set(animalIds)
+  if (lotIds.length > 0) {
+    const passes = await db.$queryRaw<{ animalId: number }[]>(Prisma.sql`
+      SELECT DISTINCT "animal_id" AS "animalId"
+      FROM "historique_lots_animaux"
+      WHERE "user_id" = ${userId}
+        AND "lot_id" IN (${Prisma.join(lotIds)})
+    `)
+    for (const ligne of passes ?? []) ids.add(ligne.animalId)
+  }
+  const historiques = new Map<number, AppartenanceDatee[]>()
+  if (ids.size === 0) return historiques
+  const affectations = await db.$queryRaw<AppartenanceDatee[]>(Prisma.sql`
+    SELECT "animal_id" AS "animalId", "lot_id" AS "lotId",
+           "date_debut" AS "dateDebut", "date_fin" AS "dateFin"
+    FROM "historique_lots_animaux"
+    WHERE "user_id" = ${userId}
+      AND "animal_id" IN (${Prisma.join([...ids])})
+    ORDER BY "date_debut" DESC
+  `)
+  for (const h of affectations ?? []) {
+    if (h?.lotId == null || h.animalId == null) continue
+    const lignes = historiques.get(h.animalId) ?? []
+    lignes.push(h)
+    historiques.set(h.animalId, lignes)
+  }
+  return historiques
 }
 
 /**
@@ -125,12 +247,14 @@ export async function resyncEcartementLait(
   // granularité est jugée ensuite via la carte d'appartenance.
   // Borne haute à la fin du jour de dateMax : inclut un soin horodaté ce jour-là
   // (le test précis au jour est fait par `couvre`).
+  // Les deux bornes de ce préfiltre gardent un jour de marge : une fin d'attente
+  // horodatée la veille au soir en UTC tombe le lendemain en jour civil.
   const finJourMax = new Date(floorDayUTC(dateMax).getTime() + 86_400_000)
   const soins = await db.soinAnimal.findMany({
     where: {
       userId,
       fait: true,
-      finAttenteLait: { not: null, gte: debut },
+      finAttenteLait: { not: null, gte: new Date(debut.getTime() - MS_JOUR) },
       date: { lt: finJourMax },
     },
     select: { date: true, finAttenteLait: true, animalId: true, lotId: true },
@@ -141,30 +265,16 @@ export async function resyncEcartementLait(
   for (const c of collectes) if (c.animalId != null) animalRefs.add(c.animalId)
   for (const s of soins) if (s.animalId != null) animalRefs.add(s.animalId)
   const lotDe = new Map<number, number | null>()
-  const historiques = new Map<number, AppartenanceDatee[]>()
+  const lotsRefs = new Set<number>()
+  for (const c of collectes) if (c.lotId != null) lotsRefs.add(c.lotId)
+  for (const s of soins) if (s.lotId != null) lotsRefs.add(s.lotId)
+  const historiques = await chargerAppartenances(db, userId, [...animalRefs], [...lotsRefs])
   if (animalRefs.size > 0) {
-    const [animaux, affectations] = await Promise.all([
-      db.animal.findMany({
-        where: { userId, id: { in: [...animalRefs] } },
-        select: { id: true, lotId: true },
-      }),
-      db.$queryRaw<AppartenanceDatee[]>(Prisma.sql`
-        SELECT "animal_id" AS "animalId", "lot_id" AS "lotId",
-               "date_debut" AS "dateDebut", "date_fin" AS "dateFin"
-        FROM "historique_lots_animaux"
-        WHERE "user_id" = ${userId}
-          AND "animal_id" IN (${Prisma.join([...animalRefs])})
-          AND "date_debut" <= ${dateMax}
-          AND ("date_fin" IS NULL OR "date_fin" > ${debut})
-        ORDER BY "date_debut" DESC
-      `),
-    ])
+    const animaux = await db.animal.findMany({
+      where: { userId, id: { in: [...animalRefs] } },
+      select: { id: true, lotId: true },
+    })
     for (const a of animaux) lotDe.set(a.id, a.lotId)
-    for (const h of affectations) {
-      const lignes = historiques.get(h.animalId) ?? []
-      lignes.push(h)
-      historiques.set(h.animalId, lignes)
-    }
   }
 
   const aEcarter: string[] = []
@@ -212,7 +322,7 @@ export async function causesAttenteCollectes(
     where: {
       userId,
       fait: true,
-      finAttenteLait: { not: null, gte: debut },
+      finAttenteLait: { not: null, gte: new Date(debut.getTime() - MS_JOUR) },
       date: { lt: finJour },
     },
     select: {
@@ -239,31 +349,16 @@ export async function causesAttenteCollectes(
   for (const collecte of concernees) if (collecte.animalId != null) refs.add(collecte.animalId)
   for (const soin of soins) if (soin.animalId != null) refs.add(soin.animalId)
   const lotCourant = new Map<number, number | null>()
-  const historiques = new Map<number, AppartenanceDatee[]>()
+  const lotsRefs = new Set<number>()
+  for (const collecte of concernees) if (collecte.lotId != null) lotsRefs.add(collecte.lotId)
+  for (const soin of soins) if (soin.lotId != null) lotsRefs.add(soin.lotId)
+  const historiques = await chargerAppartenances(db, userId, [...refs], [...lotsRefs])
   if (refs.size > 0) {
-    const debutHistorique = new Date(Math.min(debut.getTime(), ...soins.map((soin) => soin.date.getTime())))
-    const [animaux, affectations] = await Promise.all([
-      db.animal.findMany({
-        where: { userId, id: { in: [...refs] } },
-        select: { id: true, lotId: true },
-      }),
-      db.$queryRaw<AppartenanceDatee[]>(Prisma.sql`
-        SELECT "animal_id" AS "animalId", "lot_id" AS "lotId",
-               "date_debut" AS "dateDebut", "date_fin" AS "dateFin"
-        FROM "historique_lots_animaux"
-        WHERE "user_id" = ${userId}
-          AND "animal_id" IN (${Prisma.join([...refs])})
-          AND "date_debut" < ${finJour}
-          AND ("date_fin" IS NULL OR "date_fin" > ${debutHistorique})
-        ORDER BY "date_debut" DESC
-      `),
-    ])
+    const animaux = await db.animal.findMany({
+      where: { userId, id: { in: [...refs] } },
+      select: { id: true, lotId: true },
+    })
     for (const animal of animaux) lotCourant.set(animal.id, animal.lotId)
-    for (const affectation of affectations) {
-      const lignes = historiques.get(affectation.animalId) ?? []
-      lignes.push(affectation)
-      historiques.set(affectation.animalId, lignes)
-    }
   }
 
   for (const collecte of concernees) {
@@ -302,7 +397,7 @@ export async function soinCouvrantCollecte(
     where: {
       userId,
       fait: true,
-      finAttenteLait: { not: null, gte: jour },
+      finAttenteLait: { not: null, gte: new Date(jour.getTime() - MS_JOUR) },
       date: { lt: finJour },
     },
     select: { date: true, finAttenteLait: true, animalId: true, lotId: true, produit: true, type: true },
@@ -312,27 +407,13 @@ export async function soinCouvrantCollecte(
   if (animalId != null) refs.add(animalId)
   for (const s of soins) if (s.animalId != null) refs.add(s.animalId)
   const lotDe = new Map<number, number | null>()
-  const historiques = new Map<number, AppartenanceDatee[]>()
+  const lotsRefs = new Set<number>()
+  if (lotId != null) lotsRefs.add(lotId)
+  for (const s of soins) if (s.lotId != null) lotsRefs.add(s.lotId)
+  const historiques = await chargerAppartenances(db, userId, [...refs], [...lotsRefs])
   if (refs.size > 0) {
-    const [animaux, affectations] = await Promise.all([
-      db.animal.findMany({ where: { userId, id: { in: [...refs] } }, select: { id: true, lotId: true } }),
-      db.$queryRaw<AppartenanceDatee[]>(Prisma.sql`
-        SELECT "animal_id" AS "animalId", "lot_id" AS "lotId",
-               "date_debut" AS "dateDebut", "date_fin" AS "dateFin"
-        FROM "historique_lots_animaux"
-        WHERE "user_id" = ${userId}
-          AND "animal_id" IN (${Prisma.join([...refs])})
-          AND "date_debut" < ${finJour}
-          AND ("date_fin" IS NULL OR "date_fin" > ${jour})
-        ORDER BY "date_debut" DESC
-      `),
-    ])
+    const animaux = await db.animal.findMany({ where: { userId, id: { in: [...refs] } }, select: { id: true, lotId: true } })
     for (const a of animaux) lotDe.set(a.id, a.lotId)
-    for (const h of affectations) {
-      const lignes = historiques.get(h.animalId) ?? []
-      lignes.push(h)
-      historiques.set(h.animalId, lignes)
-    }
   }
   const c: CollecteCible = { animalId, lotId, date: jour }
   const couvrant = soins.find((s) => couvre(s, c, historiques, lotDe))

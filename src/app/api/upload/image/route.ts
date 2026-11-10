@@ -28,6 +28,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import sharp from "sharp"
+import { dossierEnvoi, refusEnvoiFichier } from "@/lib/upload-garde"
 
 const MAX_BYTES = 5 * 1024 * 1024
 const ALLOWED_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"])
@@ -64,11 +65,14 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer())
   const userId = session!.user.id
+  const refus = await refusEnvoiFichier("image", userId, file.size)
+  if (refus) return refus
+
+  const buffer = Buffer.from(await file.arrayBuffer())
 
   // Dossier user-spécifique sous public/uploads
-  const userDir = path.join(process.cwd(), "public", "uploads", userId)
+  const userDir = dossierEnvoi("image", userId)
   await mkdir(userDir, { recursive: true })
 
   const uuid = randomUUID()

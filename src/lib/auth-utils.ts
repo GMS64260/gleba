@@ -31,6 +31,7 @@ import { refusMutationSiLectureSeule } from "./exploitation/garde-session"
 import type { ModuleId } from "./modules"
 import type { ContexteExploitation, RoleExploitation } from "./exploitation/roles"
 import { refusAbonnementApi } from "./abonnement/serveur"
+import { lireEtatCompte } from "./compte-actif"
 
 export type SessionExploitation = Session & {
   user: Session["user"] & {
@@ -51,9 +52,15 @@ export type SessionExploitation = Session & {
  * Une consultation admin (impersonation) est traitée en lecture seule au niveau
  * des données, en plus du refus par chemin déjà posé par le middleware.
  */
-async function appliquerContexteExploitation(session: Session): Promise<SessionExploitation> {
+async function appliquerContexteExploitation(session: Session): Promise<SessionExploitation | null> {
   const acteurId = session.user.id
-  const contexte: ContexteExploitation = await resoudreContexteExploitation(acteurId)
+  // Rôle et compte actif relus en base : le jeton ne fait pas foi (cf.
+  // `compte-actif.ts`). `null` = session à traiter comme absente.
+  const [etat, contexte] = await Promise.all([
+    lireEtatCompte(acteurId, session.user.impersonatedBy),
+    resoudreContexteExploitation(acteurId) as Promise<ContexteExploitation>,
+  ])
+  if (!etat.actif) return null
   const effectif: ContexteExploitation = session.user.impersonatedBy
     ? { ...contexte, peutEcrire: false }
     : contexte
@@ -62,6 +69,7 @@ async function appliquerContexteExploitation(session: Session): Promise<SessionE
     ...session,
     user: {
       ...session.user,
+      role: etat.role,
       id: effectif.tenantId,
       acteurId: effectif.acteurId,
       roleExploitation: effectif.role,
@@ -108,6 +116,9 @@ export async function requireAuth(): Promise<SessionExploitation> {
     redirect("/login")
   }
   const avecContexte = await appliquerContexteExploitation(session)
+  // Compte désactivé ou supprimé : passer par la route qui efface le jeton
+  // (aller droit à /login bouclerait, le middleware y voit encore un connecté).
+  if (!avecContexte) redirect("/api/session-terminee")
   // Une consultation admin (lecture seule) ne doit pas compter comme activité
   // de l'utilisateur consulté (stats d'usage). L'activité est celle de la
   // PERSONNE connectée, pas de l'exploitation qu'elle visite.
@@ -153,6 +164,12 @@ export async function requireAuthApi(request?: Request): Promise<
     }
   }
   const avecContexte = await appliquerContexteExploitation(session)
+  if (!avecContexte) {
+    return {
+      error: NextResponse.json({ error: "Non autorisé" }, { status: 401 }),
+      session: null,
+    }
+  }
 
   // Le seul endroit où une écriture interdite est arrêtée pour TOUTES les
   // routes. Placé après la résolution en base, donc une révocation ou un

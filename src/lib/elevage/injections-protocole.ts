@@ -151,7 +151,7 @@ export function fenetresAttenteDepuisInjections(injections: InjectionEtat[], del
 
 import prisma from '@/lib/prisma'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
-import { ciblesAffectees, resyncEcartementLait } from './attente-lait'
+import { ciblesLaitAffectees, resyncEcartementLait } from './attente-lait'
 import { fenetreSoin, restituerPrelevement } from './suppression-soin'
 import { debutJourCivilSoin } from './stock-medicament'
 import { invalidateKpi } from '@/lib/kpi'
@@ -271,7 +271,7 @@ export async function daterInjection(
       }
 
       const updated = await tx.soinAnimal.update({ where: { id: soinId }, data })
-      const cibles = await ciblesAffectees(tx, userId, soin.animalId, soin.lotId)
+      const cibles = await ciblesLaitAffectees(tx, userId, soin.animalId, soin.lotId)
       const f = fenetreSoin(soin.date, updated.date, beforeMax, updated.finAttenteLait)
       if (f) await resyncEcartementLait(tx, userId, cibles, f.min, f.max)
       if (options.dansTransaction) await options.dansTransaction(tx, updated)
@@ -372,7 +372,7 @@ export async function mettreAJourProtocoleSoin(
       where: { id: soinId },
       data: { finAttenteLait: fenetres.finAttenteLait, finAttenteOeufs: fenetres.finAttenteOeufs, finAttenteViande: fenetres.finAttenteViande },
     })
-    const cibles = await ciblesAffectees(tx, userId, existing.animalId, existing.lotId)
+    const cibles = await ciblesLaitAffectees(tx, userId, existing.animalId, existing.lotId)
     const f = fenetreSoin(existing.date, existing.finAttenteLait, updated.date, updated.finAttenteLait)
     if (f) await resyncEcartementLait(tx, userId, cibles, f.min, f.max)
     return { ...updated, injections }

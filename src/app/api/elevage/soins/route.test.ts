@@ -513,8 +513,9 @@ describe('ticket cmvnp6s3z : modifier le protocole garde l’heure réelle de la
       soin = { ...soin, ...data }
       return { ...soin }
     })
+    // Gabarit étiqueté (injections) ou objet `Prisma.sql` (historique des lots).
     mocks.queryRaw.mockImplementation(async (strings: readonly string[]) =>
-      strings.join('?').includes('FROM injections_soins')
+      Array.isArray(strings) && strings.join('?').includes('FROM injections_soins')
         ? injections.map((l) => ({ ...l })).sort((a, b) => a.numero - b.numero)
         : [])
     mocks.executeRaw.mockImplementation(executerSql)

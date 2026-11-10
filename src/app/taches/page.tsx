@@ -5,6 +5,7 @@
  * Affiche les taches urgentes avec actions rapides
  */
 
+import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
@@ -192,6 +193,7 @@ function TachesContent() {
           toast({ variant: "destructive", title: "Erreur", description: p?.error || "La récolte n'a pas pu être enregistrée." })
           return
         }
+        signalerAvertissementsRecolte(await recolteRes.json().catch(() => null), toast)
 
         // Marquer comme fait
         const patchRes = await fetch(`/api/cultures/${cultureId}`, {

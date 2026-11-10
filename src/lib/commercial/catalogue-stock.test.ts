@@ -13,6 +13,7 @@ const oeufs = vi.hoisted(() => ({ lots: [] as Array<Record<string, unknown>> }))
 
 vi.mock('@/lib/prisma', () => ({ default: {} }))
 vi.mock('@/lib/verger/dar', () => ({ chargerAvertissementsDarFruits: vi.fn(async () => new Map()) }))
+vi.mock('@/lib/recolte/dar', () => ({ chargerAvertissementsDarLegumes: vi.fn(async () => new Map()) }))
 vi.mock('@/lib/recolte/valorisation', () => ({
   chargerPrixVentesMoyens: vi.fn(async () => new Map()), valoriserLot: vi.fn(() => null), prixProposeDeVente: vi.fn(() => null),
 }))

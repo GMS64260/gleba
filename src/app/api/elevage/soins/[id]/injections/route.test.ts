@@ -21,7 +21,7 @@ vi.mock('@/lib/elevage/injections', () => ({
       .sort((a, b) => b.getTime() - a.getTime())[0] ?? null,
 }))
 vi.mock('@/lib/elevage/attente-lait', () => ({
-  ciblesAffectees: vi.fn().mockResolvedValue([]),
+  ciblesLaitAffectees: vi.fn().mockResolvedValue([]),
   resyncEcartementLait: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('@/lib/auto-compta', () => ({

@@ -5,6 +5,7 @@
  * Permet de marquer comme fait, voir details, modifier
  */
 
+import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import Link from "next/link"
 import { format } from "date-fns"
@@ -159,6 +160,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
         // L'unité est celle que le serveur a figée sur la récolte (comme la
         // page de saisie) : « kg » en dur annonçait 19 kg pour 19 tiges.
         const creee = await responseRecolte.json().catch(() => null)
+        signalerAvertissementsRecolte(creee, toast)
         const uniteEnregistree = uniteConnue(creee?.unite) ?? uniteConnue(event.unite) ?? "kg"
 
         // Marquer la culture comme récoltée

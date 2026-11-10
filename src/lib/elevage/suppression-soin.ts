@@ -11,7 +11,7 @@ import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { estLotMedicamentAuRebut } from '@/lib/elevage/stock-medicament'
 import { deleteAutoEntry } from '@/lib/auto-compta'
-import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
+import { ciblesLaitAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
 import { invalidateKpi } from '@/lib/kpi'
 
 // Fenêtre couverte par un soin (pour cibler le resync) : de sa date à la plus
@@ -61,7 +61,7 @@ export async function supprimerSoin(userId: string, soinId: number) {
     }
     await tx.soinAnimal.delete({ where: { id: existing.id } })
     if (existing.finAttenteLait) {
-      const cibles = await ciblesAffectees(tx, userId, existing.animalId, existing.lotId)
+      const cibles = await ciblesLaitAffectees(tx, userId, existing.animalId, existing.lotId)
       const f = fenetreSoin(existing.date, existing.finAttenteLait)
       if (f) await resyncEcartementLait(tx, userId, cibles, f.min, f.max)
     }
