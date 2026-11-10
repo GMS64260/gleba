@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   venteFindMany: vi.fn(),
   venteDeleteMany: vi.fn(),
   invalidateKpi: vi.fn(),
+  interventionCount: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -27,6 +28,7 @@ vi.mock('@/lib/kpi', () => ({ invalidateKpi: mocks.invalidateKpi }))
 vi.mock('@/lib/prisma', () => ({
   default: {
     mouvementStockCommercial: { count: mocks.stockCommercialCount },
+    intervention: { count: mocks.interventionCount },
     culture: { findUnique: mocks.cultureFindUnique },
     recolte: { findMany: mocks.recolteFindMany },
     venteManuelle: { findMany: mocks.venteFindMany },
@@ -48,6 +50,7 @@ const supprimer = () => DELETE(
 beforeEach(() => {
   vi.clearAllMocks()
     mocks.stockCommercialCount.mockResolvedValue(0)
+  mocks.interventionCount.mockResolvedValue(0)
   mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
   mocks.cultureFindUnique.mockResolvedValue({ id: 42, especeId: 'Tomate', userId: 'user-1' })
   mocks.venteFindMany.mockResolvedValue([])
@@ -100,4 +103,22 @@ it('refuse de supprimer une culture portant un lot livré par BL, même non fact
   expect(res.status).toBe(409)
   expect((await res.json()).error).toContain('bons ou factures')
   expect(mocks.cultureDelete).not.toHaveBeenCalled()
+})
+
+describe('DELETE /api/cultures/[id] — traitements phytosanitaires (revue du 2026-11-04)', () => {
+  it('refuse en 409 une culture qui porte un traitement phyto réalisé, sans rien supprimer', async () => {
+    mocks.interventionCount.mockResolvedValue(2)
+    mocks.recolteFindMany.mockResolvedValue([])
+
+    const res = await supprimer()
+
+    expect(res.status).toBe(409)
+    const json = await res.json()
+    expect(json.error).toContain('2 traitements phytosanitaires réalisés')
+    expect(json.details).toEqual({ traitementsPhyto: 2 })
+    expect(mocks.interventionCount).toHaveBeenCalledWith({
+      where: { userId: 'user-1', cultureId: 42, type: 'traitement_phyto', fait: true },
+    })
+    expect(mocks.cultureDelete).not.toHaveBeenCalled()
+  })
 })

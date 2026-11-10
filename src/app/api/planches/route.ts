@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { surfacePlanche } from '@/lib/planches/surface'
+import { parcelleRefusee } from '@/lib/parcelles/appartenance'
 
 // GET /api/planches
 export async function GET(request: NextRequest) {
@@ -126,6 +127,9 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       )
     }
+
+    const parcelle = await parcelleRefusee(prisma, session!.user.id, data.parcelleGeoId)
+    if (parcelle) return NextResponse.json(parcelle, { status: 400 })
 
     // Calculer la surface si largeur et longueur sont fournies
     const surface = surfacePlanche(data.largeur, data.longueur) ?? data.surface

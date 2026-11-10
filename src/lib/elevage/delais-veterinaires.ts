@@ -32,21 +32,36 @@ const normaliser = (value: string | null | undefined) =>
     .toLowerCase()
     .trim()
 
+/**
+ * Mots qui désignent une espèce cible d'AMM. Ils se cherchent en DÉBUT DE MOT
+ * (« brebis », « chevreau », « porcelet »…), jamais au milieu : la recherche
+ * par sous-chaîne trouvait « ovin » dans « bovin » et « ane » dans « saanen »,
+ * « romane », « manech » ou « cane ». Une vache traitée avec un produit
+ * autorisé chez les seuls ovins passait alors pour couverte par l'AMM, et le
+ * plancher cascade (7 j lait, 28 j viande) sautait (revue du 2026-11-04).
+ */
+const MOTS_ESPECE: ReadonlyArray<readonly [code: string, debuts: readonly string[]]> = [
+  ["caprin", ["chevre", "caprin"]],
+  ["ovin", ["brebis", "mouton", "ovin"]],
+  ["bovin", ["vache", "bovin"]],
+  ["porcin", ["truie", "porc", "cochon"]],
+  ["volaille", ["poule", "poulet", "canard", "oie", "dinde", "pintade", "caille", "volaille"]],
+  ["equin", ["cheval", "chevaux", "jument", "ane", "poney", "equin"]],
+  ["chien", ["chien"]],
+  ["chat", ["chat"]],
+  ["lapin", ["lapin"]],
+]
+
 export function codesEspeceVeterinaire(espece: EspecePourDelai): string[] {
   const id = normaliser(espece.id)
   const nom = normaliser(espece.nom)
   const categorie = normaliser(espece.categorieReglementaire)
   const codes = new Set<string>([id, categorie])
-  const haystack = `${id} ${nom} ${categorie}`
-  if (/chevre|caprin/.test(haystack)) codes.add("caprin")
-  if (/brebis|mouton|ovin/.test(haystack)) codes.add("ovin")
-  if (/vache|bovin/.test(haystack)) codes.add("bovin")
-  if (/truie|porc|cochon|porcin/.test(haystack)) codes.add("porcin")
-  if (/poule|poulet|canard|oie|dinde|pintade|caille|volaille/.test(haystack)) codes.add("volaille")
-  if (/cheval|jument|ane|poney|equin/.test(haystack)) codes.add("equin")
-  if (/chien/.test(haystack)) codes.add("chien")
-  if (/chat/.test(haystack)) codes.add("chat")
-  if (/lapin/.test(haystack)) codes.add("lapin")
+  // `chevre_saanen`, « Brebis Manech », « Ovin-caprin » : mots séparés.
+  const mots = `${id} ${nom} ${categorie}`.split(/[^a-z0-9]+/).filter(Boolean)
+  for (const [code, debuts] of MOTS_ESPECE) {
+    if (mots.some((mot) => debuts.some((debut) => mot.startsWith(debut)))) codes.add(code)
+  }
   return [...codes].filter(Boolean)
 }
 

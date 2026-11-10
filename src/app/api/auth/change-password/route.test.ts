@@ -68,6 +68,6 @@ describe("POST /api/auth/change-password", () => {
     const res = await POST(requete())
 
     expect(res.status).toBe(200)
-    expect(mocks.userUpdate).toHaveBeenCalledWith({ where: { id: "u1" }, data: { password: "nouveau-hash" } })
+    expect(mocks.userUpdate).toHaveBeenCalledWith({ where: { id: "u1" }, data: { password: "nouveau-hash", apiToken: null } })
   })
 })

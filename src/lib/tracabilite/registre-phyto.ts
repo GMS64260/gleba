@@ -93,7 +93,7 @@ function arbreSnapshote(notes: string | null): string | null {
   return trouve ? trouve[1].trim() : null
 }
 
-function classifierProduitHeuristique(nom: string | null): string | null {
+export function classifierProduitHeuristique(nom: string | null): string | null {
   if (!nom) return null
   const n = nom.toLowerCase()
   if (/(bouillie|cuivre|sulfate de cuivre|hydroxyde de cuivre)/.test(n)) return 'Autorisé AB'
@@ -117,6 +117,10 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
     where: {
       userId,
       type: 'traitement_phyto',
+      // Un traitement seulement PLANIFIÉ n'a pas été appliqué : il n'a pas sa
+      // place au registre ni au cumul de cuivre (revue du 2026-11-04 ; les
+      // opérations d'arbre plus bas filtrent déjà sur `fait`).
+      fait: true,
       date: { gte: startOfYear, lte: endOfYear },
     },
     include: {
@@ -167,8 +171,8 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       if (!plancheNom && intervention.plancheId) {
         const plancheId = await resoudreIdPlanche(prisma, intervention.plancheId, userId)
         const planche = plancheId
-          ? await prisma.planche.findUnique({
-              where: { id: plancheId },
+          ? await prisma.planche.findFirst({
+              where: { id: plancheId, userId },
               select: { nom: true, ilot: true, type: true },
             })
           : null
@@ -182,8 +186,11 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
 
       // Si arbre
       if (intervention.arbreId) {
-        const arbre = await prisma.arbre.findUnique({
-          where: { id: intervention.arbreId },
+        // `arbreId` est une colonne sans clé étrangère : la lecture reste bornée
+        // au compte, sinon une saisie forgée affichait l'arbre d'une autre
+        // exploitation (revue du 2026-11-04).
+        const arbre = await prisma.arbre.findFirst({
+          where: { id: intervention.arbreId, userId },
           select: { nom: true, espece: true, variete: true },
         })
         if (arbre) {

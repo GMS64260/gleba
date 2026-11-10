@@ -8,6 +8,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Heart, Users } from "lucide-react"
 
@@ -125,6 +126,8 @@ const columns: ColumnDef<AssociationWithRelations>[] = [
 
 export default function AssociationsPage() {
   const router = useRouter()
+  const { data: session } = useSession()
+  const estAdmin = session?.user?.role === "ADMIN"
   const { toast } = useToast()
   const [data, setData] = React.useState<AssociationWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -253,12 +256,14 @@ export default function AssociationsPage() {
           isLoading={isLoading}
           showPagination={true}
           pageSize={20}
-          onAdd={handleAdd}
+          // Référentiel global : création, modification et suppression sont
+          // réservées à l'administration (routes en `requireAdminApi`).
+          onAdd={estAdmin ? handleAdd : undefined}
           onRefresh={fetchData}
           onExport={handleExport}
           onRowClick={handleRowClick}
-          onRowEdit={handleEdit}
-          onRowDelete={handleDelete}
+          onRowEdit={estAdmin ? handleEdit : undefined}
+          onRowDelete={estAdmin ? handleDelete : undefined}
           searchPlaceholder="Rechercher une association..."
           emptyMessage="Aucune association trouvée. Cliquez sur + pour en créer une."
         />

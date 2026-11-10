@@ -23,7 +23,7 @@ import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 // Motif partagé avec la garde de suppression, qui ne compte pas ce mouvement automatique.
 import { MOTIF_AFFECTATION_INITIALE } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
-import { refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
+import { refusPassageAbattu, refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 /** JJ/MM/AAAA déterministe (sans dépendre de l'ICU du runtime). */
@@ -394,6 +394,14 @@ export async function PATCH(request: NextRequest) {
     if (statut === 'actif' && existing.statut !== 'actif') {
       const refus = await refusRemiseActif(prisma, session.user.id, existing.id)
       if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
+    }
+
+    // « Abattu » posé à la main : même garde du délai d'attente viande que
+    // l'abattage (revue du 2026-11-04).
+    if (statut === 'abattu' && existing.statut !== 'abattu') {
+      const jourAbattage = dateSortie ? new Date(dateSortie) : new Date()
+      const refus = await refusPassageAbattu(prisma, session.user.id, existing.id, Number.isNaN(jourAbattage.getTime()) ? new Date() : jourAbattage)
+      if (refus) return NextResponse.json({ error: refus.error, code: refus.code, details: refus.details }, { status: refus.status })
     }
 
     // Ticket utilisateur 2026-07-22 — le formulaire envoyait bien la nouvelle

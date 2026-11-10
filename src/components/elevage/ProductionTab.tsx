@@ -325,7 +325,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   })
   const [sortieForm, setSortieForm] = React.useState({
     productionId: "",
-    type: "vente",
+    type: "autoconsommation",
     quantite: "",
     date: todayLocalISO(),
     notes: "",
@@ -692,7 +692,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
       setIsSortieOpen(false)
       setSortieForm({
         productionId: "",
-        type: "vente",
+        type: "autoconsommation",
         quantite: "",
         date: todayLocalISO(),
         notes: "",
@@ -926,7 +926,10 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Sortie du stock d&apos;œufs</DialogTitle>
-              <DialogDescription>Déduire une vente, consommation ou perte du lot de ponte exact.</DialogDescription>
+              <DialogDescription>
+                Déduire une consommation, un don ou une perte du lot de ponte exact. Une vente se saisit dans
+                Élevage &gt; Ventes : elle sort les œufs du stock et enregistre la recette.
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSortieSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -951,7 +954,6 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   <Select value={sortieForm.type} onValueChange={(value) => setSortieForm((form) => ({ ...form, type: value }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="vente">Vente</SelectItem>
                       <SelectItem value="autoconsommation">Autoconsommation</SelectItem>
                       <SelectItem value="don">Don</SelectItem>
                       <SelectItem value="destruction">Destruction</SelectItem>

@@ -843,6 +843,18 @@ export async function PATCH(request: NextRequest) {
           destination: true,
         },
       })
+      // Revue du 2026-11-04 — la vente d'un animal vivant pose sa date de
+      // sortie (POST) ; corriger la date de la vente la laissait à l'ancienne,
+      // et le registre d'élevage, la déclaration de sortie et l'inventaire
+      // gardaient une sortie fausse. La sortie suit la vente, tant que
+      // l'animal est bien sorti par elle.
+      if (updated.type === 'animal_vivant' && updated.animalId && updateData.date
+        && updateData.date.getTime() !== existing.date.getTime()) {
+        await tx.animal.updateMany({
+          where: { id: updated.animalId, userId, statut: 'vendu', causeSortie: 'Vente' },
+          data: { dateSortie: updateData.date },
+        })
+      }
       // Les sorties de stock d'une vente ne se refont que si la vente a changé
       // ce qu'elle sort : quantité, unité ou jour. Refaites à chaque PATCH, une
       // simple correction du client ou du règlement réattribuait les pontes avec

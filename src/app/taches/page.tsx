@@ -218,33 +218,20 @@ function TachesContent() {
       }
   }
 
-    // Décochage d'une récolte : supprimer la/les récolte(s) en stock créée(s)
-    // par le pointage, sinon elles restaient comptées dans le stock et un
-    // recochage en créait une seconde → double comptage (audit 2026-07, #81).
+    // Décochage d'une récolte : retirer les récoltes encore en stock, sinon
+    // elles restaient comptées dans le stock et un recochage en créait une
+    // seconde → double comptage (audit 2026-07, #81). Le serveur fait tout
+    // d'un bloc (revue du 2026-11-04) : avant, l'écran supprimait les lots un
+    // par un PUIS se voyait refuser l'annulation (récolte vendue), et les lots
+    // en stock étaient perdus sous un message « Annulation refusée ».
   const annulerRecolte = async (cultureId: number) => {
       setActionLoading(true)
       try {
-        const res = await fetch(`/api/recoltes?cultureId=${cultureId}&pageSize=200`)
-        if (res.ok) {
-          const payload = await res.json()
-          const rows: Array<{ id: number; statut: string }> = Array.isArray(payload) ? payload : payload.data || []
-          await Promise.all(
-            rows.filter(r => r.statut === "en_stock").map(r =>
-              fetch(`/api/recoltes/${r.id}`, { method: "DELETE" })
-            )
-          )
-        }
-        const patch = await fetch(`/api/cultures/${cultureId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recolteFaite: false }),
-        })
-        if (!patch.ok) {
-          // QA cmsio8o54 — le serveur refuse (409) d'annuler la récolte tant que
-          // des récoltes subsistent (vendues ou consommées, donc non supprimées
-          // ci-dessus). Son message dit lesquelles : le taire laissait
-          // l'utilisateur devant un « Erreur » sans issue.
-          const detail = await patch.json().catch(() => null)
+        const res = await fetch(`/api/cultures/${cultureId}/annuler-recolte`, { method: "POST" })
+        if (!res.ok) {
+          // QA cmsio8o54 — le refus nomme les récoltes qui retiennent
+          // l'annulation : le taire laissait l'utilisateur sans issue.
+          const detail = await res.json().catch(() => null)
           throw new Error(detail?.error || "Erreur")
         }
         toast({ title: "Récolte annulée" })

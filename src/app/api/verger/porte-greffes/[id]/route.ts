@@ -111,6 +111,29 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Revue du 2026-11-04 — arbres et campagnes pointent le porte-greffe en
+    // `SetNull` : supprimer une entrée partagée (ou officielle, par un admin)
+    // effaçait celui des arbres des AUTRES exploitations, sans retour possible.
+    // Même règle que la suppression d'une espèce : refus nommé tant qu'il sert.
+    const [arbres, campagnes] = await Promise.all([
+      prisma.arbre.count({ where: { porteGreffeId: id } }),
+      prisma.campagnePlantation.count({ where: { porteGreffeId: id } }),
+    ])
+    if (arbres > 0 || campagnes > 0) {
+      const usages = [
+        arbres > 0 ? `${arbres} arbre(s)` : null,
+        campagnes > 0 ? `${campagnes} campagne(s) de plantation` : null,
+      ].filter(Boolean)
+      return NextResponse.json(
+        {
+          error: `Impossible de supprimer le porte-greffe « ${existing.nom} » : il est utilisé par ${usages.join(' et ')}.`
+            + (existing.userId ? ' Repassez-le en privé pour ne plus le partager.' : ''),
+          details: { arbres, campagnes },
+        },
+        { status: 409 }
+      )
+    }
+
     await prisma.porteGreffe.delete({ where: { id } })
     return NextResponse.json({ success: true, deleted: id })
   } catch (err) {

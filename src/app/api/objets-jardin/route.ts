@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { parcelleRefusee } from "@/lib/parcelles/appartenance"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -44,6 +45,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+
+    const parcelle = await parcelleRefusee(prisma, session!.user.id, body.parcelleGeoId)
+    if (parcelle) return NextResponse.json(parcelle, { status: 400 })
 
     const objet = await prisma.objetJardin.create({
       data: {

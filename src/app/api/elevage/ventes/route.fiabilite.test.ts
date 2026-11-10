@@ -119,6 +119,18 @@ describe('Fiabilité des ventes élevage', () => {
     expect(animal.statut).toBe('actif')
   })
 
+  it('corriger la date de vente d’un animal corrige sa date de sortie au registre (revue du 2026-11-04)', async () => {
+    Object.assign(courante, { type: 'animal_vivant', quantite: 1, animalId: 501, date: new Date('2026-10-03T00:00:00.000Z') })
+    Object.assign(animal, { statut: 'vendu', causeSortie: 'Vente', dateSortie: new Date('2026-10-03T00:00:00.000Z') })
+    const res = await PATCH(request('PATCH', { id: 11, date: '2026-09-30' }))
+    expect(res.status).toBe(200)
+    expect(m.animalUpdateMany).toHaveBeenCalledWith({
+      where: { id: 501, userId: 'review', statut: 'vendu', causeSortie: 'Vente' },
+      data: { dateSortie: new Date('2026-09-30') },
+    })
+    expect(animal.dateSortie).toEqual(new Date('2026-09-30'))
+  })
+
   it('le PATCH porte les gardes du POST : un seul animal, plafond, pas de « payée » à crédit', async () => {
     Object.assign(courante, { type: 'animal_vivant', quantite: 1, prixUnitaire: 150, prixTotal: 150, animalId: 501 })
     expect((await PATCH(request('PATCH', { id: 11, quantite: 2 }))).status).toBe(400)

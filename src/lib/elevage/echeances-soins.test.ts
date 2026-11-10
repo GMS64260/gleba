@@ -65,3 +65,13 @@ describe('échéance d’un soin à faire', () => {
     expect(trierParEcheanceSoin(soins).map((s) => s.id)).toEqual(['d', 'b', 'a', 'c'])
   })
 })
+
+describe('soinDu — « Tout fait » ne vise que les soins dus (revue du 2026-11-04)', () => {
+  it('dû aujourd’hui ou en retard ; pas une échéance à venir ni absente', async () => {
+    const { soinDu } = await import('./echeances-soins')
+    expect(soinDu({ datePrevue: '2026-11-04T00:00:00.000Z' }, '2026-11-04')).toBe(true)
+    expect(soinDu({ datePrevue: '2026-10-28T00:00:00.000Z' }, '2026-11-04')).toBe(true)
+    expect(soinDu({ datePrevue: '2026-11-06T00:00:00.000Z' }, '2026-11-04')).toBe(false)
+    expect(soinDu({ datePrevue: null, date: null }, '2026-11-04')).toBe(false)
+  })
+})

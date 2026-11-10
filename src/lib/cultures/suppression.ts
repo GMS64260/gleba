@@ -93,3 +93,33 @@ export function messageSuppressionCultureRefusee(
     `Supprimez ensuite la culture.`
   )
 }
+
+/**
+ * Traitements phytosanitaires RÉALISÉS rattachés à la culture.
+ *
+ * `Intervention.cultureId` est une colonne sans clé étrangère : supprimer la
+ * culture laissait ses traitements orphelins, et le registre phytosanitaire les
+ * affichait en « Culture : Non renseigné », sans espèce (revue du 2026-11-04).
+ * Les arbres, eux, figent leur identité avant suppression ; une planche qui
+ * porte des interventions est refusée (`compterTracesPlanches`). Même règle ici :
+ * la culture reste tant que le registre a besoin d'elle.
+ */
+export async function compterTraitementsPhytoCulture(
+  tx: Tx,
+  cultureId: number,
+  userId: string
+): Promise<number> {
+  return tx.intervention.count({
+    where: { userId, cultureId, type: 'traitement_phyto', fait: true },
+  })
+}
+
+export function messageSuppressionCultureTraitee(
+  culture: { id: number; especeId: string },
+  traitements: number
+): string {
+  return (
+    `La culture #${culture.id} (${culture.especeId}) porte ${pluriel(traitements, 'traitement phytosanitaire réalisé', 'traitements phytosanitaires réalisés')} : ` +
+    `le registre phytosanitaire perdrait la culture traitée. Conservez-la (marquez-la terminée), ou corrigez d'abord ces traitements dans Interventions.`
+  )
+}

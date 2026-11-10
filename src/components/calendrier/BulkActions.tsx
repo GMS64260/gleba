@@ -35,6 +35,8 @@ export interface BulkActionsProps {
   reportEnabled?: boolean
   /** Label personnalisé du bouton "Tout fait". */
   markAllLabel?: string
+  /** Désactive « Tout fait » (aucune tâche éligible, ex. que des soins à venir). */
+  markAllDisabled?: boolean
 }
 
 export function BulkActions(props: BulkActionsProps) {
@@ -50,6 +52,7 @@ export function BulkActions(props: BulkActionsProps) {
         variant="outline"
         size="sm"
         onClick={() => props.onMarkAllDone()}
+        disabled={props.markAllDisabled}
         title="Marque toutes les tâches non faites de la section"
       >
         <CheckCheck className="h-3.5 w-3.5 mr-1" />

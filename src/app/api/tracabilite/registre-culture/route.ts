@@ -57,6 +57,10 @@ export async function GET(request: NextRequest) {
         { dateSemis: { gte: startOfYear, lte: endOfYear } },
         { datePlantation: { gte: startOfYear, lte: endOfYear } },
         { dateRecolte: { gte: startOfYear, lte: endOfYear } },
+        // Une culture récoltée dans l'année figure au cahier de l'année : une
+        // vivace plantée en 2025 et récoltée en 2026, ou des poireaux de 2026
+        // récoltés en 2027, en disparaissaient (revue du 2026-11-04).
+        { recoltes: { some: { date: { gte: startOfYear, lte: endOfYear } } } },
       ],
     }
 
@@ -82,6 +86,9 @@ export async function GET(request: NextRequest) {
           },
         },
         recoltes: {
+          // Les seules récoltes de l'année, comme les interventions plus bas :
+          // le cahier 2026 totalisait aussi celles de 2027.
+          where: { date: { gte: startOfYear, lte: endOfYear } },
           orderBy: { date: 'asc' },
           select: {
             id: true,
@@ -112,6 +119,9 @@ export async function GET(request: NextRequest) {
         const interventions = await prisma.intervention.findMany({
           where: {
             userId,
+            // Une intervention planifiée n'a pas eu lieu : le cahier ne retient
+            // que le réalisé (revue du 2026-11-04).
+            fait: true,
             date: { gte: startOfYear, lte: endOfYear },
             OR: [
               { cultureId: culture.id },

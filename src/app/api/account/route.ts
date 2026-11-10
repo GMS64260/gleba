@@ -17,11 +17,7 @@ import prisma from "@/lib/prisma"
 import { arreterAvantSuppression } from "@/lib/abonnement/stripe"
 import { requireAuthApi, verifyPassword } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
-import {
-  reprendreReferentielCommunaute,
-  supprimerFichiersUtilisateur,
-  COMMUNAUTE_USER_ID,
-} from "@/lib/account-lifecycle"
+import { reprendreReferentielCommunaute, supprimerFichiersUtilisateur, COMMUNAUTE_USER_ID, supprimerDonneesSansCleEtrangere } from "@/lib/account-lifecycle"
 import { sendMail, accountDeletedEmail } from "@/lib/mail"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
@@ -140,6 +136,7 @@ export async function DELETE(request: NextRequest) {
       async (tx) => {
         await reprendreReferentielCommunaute(tx, userId)
         await tx.user.delete({ where: { id: userId } })
+        await supprimerDonneesSansCleEtrangere(tx, userId)
       },
       { timeout: 30_000 }
     )

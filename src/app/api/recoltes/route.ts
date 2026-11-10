@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
 
     // Pagination
     const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
+    // Plafond : un appelant qui veut « tout » le dit, mais une page reste bornée.
+    const pageSize = Math.min(5000, Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50))
     const skip = (page - 1) * pageSize
 
     // Tri
@@ -39,6 +40,14 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
     const annee = searchParams.get('annee')
+    // Revue du 2026-11-04 — l'écran Récoltes charge à part les lots EN STOCK
+    // (sans plafond) et l'historique des sorties : sur une ferme de plusieurs
+    // saisons, les 500 dernières récoltes ne contenaient plus les vieux lots
+    // encore en stock.
+    const statuts = (searchParams.get('statut') || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => ['en_stock', 'vendu', 'consomme', 'perte', 'a_completer'].includes(s))
 
     // Construction du where - FILTRE PAR USER
     const where: Prisma.RecolteWhereInput = {
@@ -58,6 +67,10 @@ export async function GET(request: NextRequest) {
 
     if (cultureId) {
       where.cultureId = parseInt(cultureId)
+    }
+
+    if (statuts.length > 0) {
+      where.AND = [{ statut: { in: statuts } }]
     }
 
     if (annee) {

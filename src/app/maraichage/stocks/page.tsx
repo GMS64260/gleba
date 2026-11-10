@@ -66,6 +66,8 @@ interface FertilisantStock {
 
 interface EspeceStock {
   id: string
+  /** Nom affiché (l'id d'une espèce perso est un cuid). */
+  nom?: string | null
   familleId: string | null
   inventaire: number | null
   /** Unité du stock : celle de l'espèce chez cet utilisateur (défaut kg). */
@@ -298,17 +300,24 @@ function StocksPageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, id, stock }),
       })
-      if (!response.ok) throw new Error("Erreur sauvegarde")
+      if (!response.ok) {
+        // Le refus du serveur nomme le champ (« Stock invalide — stock : … ») :
+        // on l'affiche, et on recharge pour ne pas laisser la valeur refusée
+        // à l'écran (revue du 2026-11-04).
+        const corps = await response.json().catch(() => null)
+        throw new Error(typeof corps?.error === "string" ? corps.error : "Impossible de sauvegarder le stock")
+      }
       toast({
-        title: "Stock mis a jour",
+        title: "Stock mis à jour",
         description: `Le stock a été enregistré`,
       })
-    } catch {
+    } catch (e) {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de sauvegarder le stock",
+        description: e instanceof Error ? e.message : "Impossible de sauvegarder le stock",
       })
+      fetchData()
     } finally {
       setIsSaving(false)
     }
@@ -408,7 +417,7 @@ function StocksPageContent() {
 
   const filteredRecoltes = React.useMemo(
     () => data.recoltes.filter(item =>
-      matchesSearch(searches.recoltes, [item.id, item.familleId])
+      matchesSearch(searches.recoltes, [item.nom ?? item.id, item.familleId])
     ),
     [data.recoltes, searches.recoltes]
   )
@@ -814,7 +823,7 @@ function StocksPageContent() {
                                 style={{ backgroundColor: e.couleur }}
                               />
                             )}
-                            {e.id}
+                            {e.nom ?? e.id}
                           </div>
                         </TableCell>
                         <TableCell>{e.familleId || "-"}</TableCell>

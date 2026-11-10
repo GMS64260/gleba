@@ -24,6 +24,7 @@ import {
 import { pushConfigure } from "@/lib/push"
 import { getSetting } from "@/lib/settings"
 import { purgeExpired } from "@/lib/cache-helper"
+import { purgerDonneesExpirees } from "@/lib/retention"
 
 let initialized = false
 /** Délai avant le premier scan au démarrage (laisse la DB se réveiller). */
@@ -102,6 +103,18 @@ export async function initNotifScheduler(): Promise<void> {
           }
         })
         .catch((error) => console.error("[cache] Purge de generic_cache en échec:", error))
+    })
+
+    // Durées de conservation de /confidentialite (revue du 2026-11-04) :
+    // journaux de connexion (12 mois) et consentements aux cookies (13 mois).
+    cron.schedule("27 3 * * *", () => {
+      purgerDonneesExpirees()
+        .then(({ connexions, consentements }) => {
+          if (connexions > 0 || consentements > 0) {
+            console.log(`[conservation] ${connexions} connexion(s) et ${consentements} consentement(s) au-delà de leur durée purgés`)
+          }
+        })
+        .catch((error) => console.error("[conservation] Purge des données expirées en échec:", error))
     })
 
     // Capteurs connectés (2026-10-23) : agrégats de tous les jours

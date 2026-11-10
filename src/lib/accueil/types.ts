@@ -179,7 +179,8 @@ export interface VentesAccueil {
   devise: "EUR" | "XPF"
   totalMois: number
   nbMois: number
-  dernieres: { id: number; date: string; description: string; montant: number; client: string | null; paye: boolean }[]
+  /** Ventes manuelles et factures mêlées : id préfixé (« vente-12 », « facture-3 »). */
+  dernieres: { id: string; date: string; description: string; montant: number; client: string | null; paye: boolean }[]
 }
 
 export interface JournalAccueil {

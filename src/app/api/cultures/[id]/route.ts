@@ -33,7 +33,7 @@ import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
-import { aDesVentes, compterVentesRecoltesCulture, messageSuppressionCultureRefusee } from '@/lib/cultures/suppression'
+import { aDesVentes, compterVentesRecoltesCulture, messageSuppressionCultureRefusee, compterTraitementsPhytoCulture, messageSuppressionCultureTraitee } from '@/lib/cultures/suppression'
 import { quantiteCultureApresModification } from '@/lib/cultures/quantite-plants'
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -750,6 +750,16 @@ export async function DELETE(
     }
 
     if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, recolte: { cultureId } } })) return NextResponse.json({ error: 'Cette culture possède des lots liés à des bons ou factures. Conservez-la pour garder leur traçabilité.' }, { status: 409 })
+
+    // Revue du 2026-11-04 — un traitement phyto réalisé retient la culture :
+    // supprimée, elle disparaissait du registre phytosanitaire.
+    const traitements = await compterTraitementsPhytoCulture(prisma, cultureId, session!.user.id)
+    if (traitements > 0) {
+      return NextResponse.json(
+        { error: messageSuppressionCultureTraitee(culture, traitements), details: { traitementsPhyto: traitements } },
+        { status: 409 }
+      )
+    }
 
     // Audit 2026-10-08 — une récolte vendue retient la culture : la cascade
     // effaçait ses ventes de la comptabilité, exercice déjà déclaré compris.

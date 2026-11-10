@@ -38,6 +38,8 @@ export async function GET() {
       where: {
         userId,
         type: "traitement_phyto",
+        // Un traitement planifié n'a pas été appliqué (revue du 2026-11-04).
+        fait: true,
         date: { gte: dateMin7ans },
       },
       include: { produitPhytoRef: true },
@@ -86,7 +88,7 @@ export async function GET() {
   const obsArbresMap = new Map<number, string | null>()
   if (obsArbreIds.length > 0) {
     const rows = await prisma.arbre.findMany({
-      where: { id: { in: obsArbreIds } },
+      where: { id: { in: obsArbreIds }, userId },
       select: { id: true, parcelleGeoId: true },
     })
     for (const a of rows) obsArbresMap.set(a.id, a.parcelleGeoId)
@@ -110,10 +112,32 @@ export async function GET() {
   const arbresMap = new Map<number, string | null>()
   if (arbreIds.length > 0) {
     const arbres = await prisma.arbre.findMany({
-      where: { id: { in: arbreIds } },
+      where: { id: { in: arbreIds }, userId },
       select: { id: true, parcelleGeoId: true },
     })
     for (const a of arbres) arbresMap.set(a.id, a.parcelleGeoId)
+  }
+
+  // Revue du 2026-11-04 — un traitement saisi sur une planche ou une culture
+  // n'écrit pas `parcelleId` : il tombait « sans rattachement », surface
+  // nulle, donc 0 kg/ha et « OK ». La parcelle se lit sur la planche (par id,
+  // ou par l'ancien nom que portent des saisies historiques).
+  const cultureIds = [...new Set(interventions.map((i) => i.cultureId).filter((id): id is number => id != null))]
+  const [planchesCompte, culturesTraitees] = await Promise.all([
+    prisma.planche.findMany({ where: { userId }, select: { id: true, nom: true, parcelleGeoId: true } }),
+    cultureIds.length > 0
+      ? prisma.culture.findMany({ where: { id: { in: cultureIds }, userId }, select: { id: true, plancheId: true } })
+      : Promise.resolve([] as { id: number; plancheId: string | null }[]),
+  ])
+  const parcelleParPlanche = new Map<string, string | null>()
+  for (const p of planchesCompte) {
+    parcelleParPlanche.set(p.id, p.parcelleGeoId)
+    if (!parcelleParPlanche.has(p.nom)) parcelleParPlanche.set(p.nom, p.parcelleGeoId)
+  }
+  const plancheParCulture = new Map(culturesTraitees.map((c) => [c.id, c.plancheId]))
+  const parcelleViaPlanche = (i: { cultureId: number | null; plancheId: string | null }): string | null => {
+    const planche = i.plancheId ?? (i.cultureId != null ? plancheParCulture.get(i.cultureId) ?? null : null)
+    return planche ? parcelleParPlanche.get(planche) ?? null : null
   }
 
   const traitements: TraitementCuivreInput[] = []
@@ -121,7 +145,7 @@ export async function GET() {
   for (const i of interventions) {
     const parcelleIdFromArbre = i.arbreId ? arbresMap.get(i.arbreId) ?? null : null
     const parcelleId =
-      i.parcelleId ?? parcelleIdFromArbre ?? "__sans_parcelle__"
+      i.parcelleId ?? parcelleIdFromArbre ?? parcelleViaPlanche(i) ?? "__sans_parcelle__"
     traitements.push({
       date: i.date,
       parcelleId,

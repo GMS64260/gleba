@@ -264,7 +264,7 @@ describe("tuiles du catalogue", () => {
     expect(stocks).toContain("Épuisé")
     expect(stocks).toContain("Bientôt périmé")
     const ventes = renderToStaticMarkup(
-      createElement(TuileVentes, { chargement: false, ventes: { devise: "EUR", totalMois: 420, nbMois: 3, dernieres: [{ id: 1, date: "2026-10-09T00:00:00.000Z", description: "Panier légumes", montant: 25, client: "Marie", paye: false }] } }),
+      createElement(TuileVentes, { chargement: false, ventes: { devise: "EUR", totalMois: 420, nbMois: 3, dernieres: [{ id: "vente-1", date: "2026-10-09T00:00:00.000Z", description: "Panier légumes", montant: 25, client: "Marie", paye: false }] } }),
     )
     expect(ventes).toContain("Panier légumes")
     expect(ventes).toContain("À encaisser")

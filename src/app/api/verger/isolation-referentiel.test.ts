@@ -172,3 +172,22 @@ describe('GET /api/verger/triploides', () => {
     expect(alertes.map((a: { arbre: { id: number } }) => a.arbre.id)).toEqual([1])
   })
 })
+
+describe('DELETE /api/verger/porte-greffes/[id] — porte-greffe utilisé (revue du 2026-11-04)', () => {
+  it("refuse en 409 tant que des arbres (de n'importe quel compte) le portent, sans rien supprimer", async () => {
+    mocks.db.arbre = { count: vi.fn(async () => 40) }
+    mocks.db.campagnePlantation = { count: vi.fn(async () => 0) }
+    const res = await DELETE_PG(requete('DELETE', '/api/verger/porte-greffes/pg-cm-moi'), params('pg-cm-moi'))
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('40 arbre(s)')
+    expect(delegues.porteGreffe.delete).not.toHaveBeenCalled()
+  })
+
+  it('supprime un porte-greffe que rien ne porte', async () => {
+    mocks.db.arbre = { count: vi.fn(async () => 0) }
+    mocks.db.campagnePlantation = { count: vi.fn(async () => 0) }
+    const res = await DELETE_PG(requete('DELETE', '/api/verger/porte-greffes/pg-cm-moi'), params('pg-cm-moi'))
+    expect(res.status).toBe(200)
+    expect(delegues.porteGreffe.delete).toHaveBeenCalled()
+  })
+})

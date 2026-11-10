@@ -14,6 +14,8 @@ import { invalidateKpi } from '@/lib/kpi'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
 import { compterTracesPlanches, refusSuppressionPlanche } from '@/lib/planches/traces'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
+import { parcelleRefusee } from '@/lib/parcelles/appartenance'
+import { surfacePlanche } from '@/lib/planches/surface'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -138,10 +140,21 @@ export async function PUT(
       }
     }
 
-    // Recalculer la surface si necessaire
-    const largeur = data.largeur ?? existing.largeur
-    const longueur = data.longueur ?? existing.longueur
-    const surface = largeur && longueur ? largeur * longueur : data.surface
+    const parcelle = await parcelleRefusee(prisma, session!.user.id, data.parcelleGeoId)
+    if (parcelle) return NextResponse.json(parcelle, { status: 400 })
+
+    // Recalculer la surface si nécessaire. Une dimension EFFACÉE (null) n'est
+    // pas une dimension absente : `??` reprenait l'ancienne valeur et gardait
+    // une surface que plus rien ne justifiait (revue du 2026-11-04). Une
+    // surface saisie sans dimensions, elle, reste en place tant qu'aucune
+    // dimension connue n'est effacée.
+    const largeur = 'largeur' in data ? data.largeur ?? null : existing.largeur
+    const longueur = 'longueur' in data ? data.longueur ?? null : existing.longueur
+    const dimensionEffacee =
+      ('largeur' in data && data.largeur == null && existing.largeur != null) ||
+      ('longueur' in data && data.longueur == null && existing.longueur != null)
+    const surface =
+      surfacePlanche(largeur, longueur) ?? ('surface' in data ? data.surface : dimensionEffacee ? null : undefined)
 
     // Mise à jour
     const planche = await prisma.planche.update({

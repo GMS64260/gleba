@@ -180,3 +180,41 @@ export async function reprendreReferentielCommunaute(
 
   return { reprises: resultats.reduce((n, r) => n + r.count, 0) }
 }
+
+/**
+ * Supprime les données du compte que la cascade SQL n'atteint pas.
+ *
+ * Neuf tables d'élevage portent `user_id` sans clé étrangère (migrations de
+ * juillet 2026 : pesées, réservations avec nom, courriel et téléphone des
+ * acquéreurs, tests de santé, pedigrees, rations, prophylaxies, tâches de
+ * terrain et leurs réalisations, historique des lots), et les aliments privés
+ * portent leur propriétaire dans `owner_user_id`, sans relation. La suppression
+ * d'un compte, par le membre comme par l'administration, comptait sur la
+ * cascade de `users` : ces lignes survivaient alors que l'écran annonçait
+ * « définitivement supprimés » (revue du 2026-11-04).
+ *
+ * À appeler dans la transaction de suppression, APRÈS `user.delete` : les
+ * consommations d'aliments du compte sont alors parties en cascade, et un
+ * aliment privé encore référencé ailleurs (clé `Restrict`) est laissé plutôt
+ * que de faire échouer la suppression du compte.
+ */
+export async function supprimerDonneesSansCleEtrangere(
+  tx: Prisma.TransactionClient,
+  userId: string
+): Promise<number> {
+  const resultats = await Promise.all([
+    tx.pesee.deleteMany({ where: { userId } }),
+    tx.reservationElevage.deleteMany({ where: { userId } }),
+    tx.testSanteElevage.deleteMany({ where: { userId } }),
+    tx.pedigreeElevage.deleteMany({ where: { userId } }),
+    tx.planRation.deleteMany({ where: { userId } }),
+    tx.prophylaxieElevage.deleteMany({ where: { userId } }),
+    tx.realisationTacheElevage.deleteMany({ where: { userId } }),
+    tx.tacheTerrainElevage.deleteMany({ where: { userId } }),
+    tx.historiqueLotAnimal.deleteMany({ where: { userId } }),
+  ])
+  const aliments = await tx.aliment.deleteMany({
+    where: { ownerUserId: userId, consommations: { none: {} } },
+  })
+  return resultats.reduce((n, r) => n + r.count, 0) + aliments.count
+}

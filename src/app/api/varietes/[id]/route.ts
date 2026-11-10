@@ -196,6 +196,11 @@ export async function DELETE(
         _count: {
           select: {
             cultures: true,
+            // Stocks de graines et de plants déclarés par D'AUTRES comptes :
+            // `UserStockVariete` part en cascade, la suppression d'une variété
+            // partagée (ou officielle, par un admin) effaçait leurs stocks et
+            // leurs coûts sans qu'ils le sachent (revue du 2026-11-04).
+            userStocks: { where: { userId: { not: session!.user.id } } },
           },
         },
       },
@@ -222,6 +227,17 @@ export async function DELETE(
         {
           error: `Impossible de supprimer la variete "${id}" car elle est utilisée par ${variete._count.cultures} culture(s)`,
           details: { cultures: variete._count.cultures },
+        },
+        { status: 409 }
+      )
+    }
+
+    if (variete._count.userStocks > 0) {
+      const n = variete._count.userStocks
+      return NextResponse.json(
+        {
+          error: `Impossible de supprimer la variété « ${variete.nom ?? id} » : ${n} autre${n > 1 ? 's' : ''} exploitation${n > 1 ? 's' : ''} y ${n > 1 ? 'ont' : 'a'} déclaré un stock de graines ou de plants. Repassez-la en privé pour ne plus la partager.`,
+          details: { stocksAutresComptes: n },
         },
         { status: 409 }
       )

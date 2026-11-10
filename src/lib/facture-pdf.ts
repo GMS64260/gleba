@@ -327,7 +327,7 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
     reserver(16)
     doc.fontSize(10).fillColor("#059669").font("Helvetica-Bold")
     doc.text(
-      `✓ Payée le ${facture.datePaiement ? formatDate(facture.datePaiement) : ""}${
+      `Payée le ${facture.datePaiement ? formatDate(facture.datePaiement) : ""}${
         facture.modePaiement ? ` — ${labelModePaiement(facture.modePaiement)}` : ""
       }`,
       50,
@@ -337,7 +337,7 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
     ly += 16
   } else if (facture.statut === "annulee") {
     reserver(16)
-    doc.fontSize(11).fillColor("#dc2626").font("Helvetica-Bold").text("✗ FACTURE ANNULÉE", 50, ly)
+    doc.fontSize(11).fillColor("#dc2626").font("Helvetica-Bold").text("FACTURE ANNULÉE", 50, ly)
     ly += 16
   }
 
@@ -452,13 +452,25 @@ function formatDate(d: Date | string): string {
   return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
+/**
+ * Les polices standard de pdfkit (Helvetica, codage WinAnsi) n'ont pas
+ * l'espace fine insécable (U+202F) que `toLocaleString("fr-FR")` met entre les
+ * milliers : pdfkit l'écrivait « espace + / », et une facture de 1 234,56 €
+ * s'imprimait « 1 /234,56 € » (revue du 2026-11-04). L'espace insécable
+ * classique (U+00A0) existe en WinAnsi et garde le nombre sur une ligne. Pour
+ * la même raison, ni « ✓ » ni « ✗ » n'apparaissent dans ce document.
+ */
+function sansEspaceFine(texte: string): string {
+  return texte.replace(/[\u202f\u2009]/g, "\u00a0")
+}
+
 function formatMontant(n: number, devise: string = "EUR"): string {
   const decimals = devise === "XPF" ? 0 : 2
-  return n.toLocaleString("fr-FR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+  return sansEspaceFine(n.toLocaleString("fr-FR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }))
 }
 
 function formatNumber(n: number): string {
-  return n.toLocaleString("fr-FR", { maximumFractionDigits: 3 })
+  return sansEspaceFine(n.toLocaleString("fr-FR", { maximumFractionDigits: 3 }))
 }
 
 function labelModePaiement(m: string): string {

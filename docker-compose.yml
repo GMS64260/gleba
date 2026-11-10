@@ -28,7 +28,9 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-gleba}:${POSTGRES_PASSWORD:-gleba}@db:5432/${POSTGRES_DB:-gleba}?schema=public
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changez-moi-en-production}
+      # Obligatoire, sans défaut : l'entrypoint refuse de démarrer sans lui
+      # (une valeur publiée permettrait de forger une session administrateur).
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       AUTH_TRUST_HOST: "true"
       # Facultatif : lecture Stripe par clé restreinte ou connexion OAuth.

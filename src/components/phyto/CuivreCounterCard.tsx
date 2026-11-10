@@ -23,7 +23,7 @@ interface CuivreParcelle {
   cumul7ansKg: number
   cuivreKgParHaAn: number
   cuivreKgParHa7ans: number
-  statut: "ok" | "warn" | "alert"
+  statut: "ok" | "warn" | "alert" | "inconnu"
   nbTraitementsCuivreSansDose7ans?: number
 }
 
@@ -40,6 +40,14 @@ function StatutBadge({ statut }: { statut: CuivreParcelle["statut"] }) {
       <Badge variant="destructive" className="text-[10px] gap-1">
         <AlertTriangle className="h-3 w-3" />
         Dépassement
+      </Badge>
+    )
+  }
+  if (statut === "inconnu") {
+    return (
+      <Badge className="bg-amber-500 text-[10px] gap-1">
+        <AlertTriangle className="h-3 w-3" />
+        Surface inconnue
       </Badge>
     )
   }
@@ -164,6 +172,14 @@ export function CuivreCounterCard() {
               </div>
               <StatutBadge statut={p.statut} />
             </div>
+            {p.statut === "inconnu" ? (
+              <p className="text-[11px] text-amber-700 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {p.cumulAnnuelKg.toFixed(2)} kg de cuivre cette année ({p.cumul7ansKg.toFixed(2)} kg sur 7 ans), mais la
+                surface de la parcelle est inconnue : rattachez la planche ou l&apos;arbre à une parcelle de surface connue
+                pour vérifier le plafond.
+              </p>
+            ) : null}
             <ProgressBar value={p.cuivreKgParHaAn} max={data.plafondAnnuel} label="Année courante" />
             <ProgressBar value={p.cuivreKgParHa7ans} max={data.plafond7ans} label="7 ans glissants" />
             {/* Bug #12 — traitements cuivrés saisis mais incomplets

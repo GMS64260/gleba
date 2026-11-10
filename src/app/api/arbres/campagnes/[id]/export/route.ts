@@ -187,7 +187,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     if (campagne.regarnissageRealiseDate) {
       doc.fontSize(9).fillColor("#16a34a").font("Helvetica-Bold")
       doc.text(
-        `✓ Regarnissage réalisé le ${new Date(campagne.regarnissageRealiseDate).toLocaleDateString("fr-FR")}.`,
+        `Regarnissage réalisé le ${new Date(campagne.regarnissageRealiseDate).toLocaleDateString("fr-FR")}.`,
         50,
         y
       )

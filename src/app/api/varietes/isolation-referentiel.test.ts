@@ -120,3 +120,13 @@ describe('GET /api/varietes : fournisseur embarqué (revue du 2026-11-04)', () =
     expect(JSON.stringify(corps)).not.toContain('FR7630006000011234567890189')
   })
 })
+
+describe('DELETE /api/varietes/[id] — stocks des autres comptes (revue du 2026-11-04)', () => {
+  it("refuse en 409 la suppression d'une variété où d'autres exploitations ont un stock, sans rien supprimer", async () => {
+    mocks.db.variete = delegueMemoire([{ ...jeu.moi, _count: { cultures: 0, userStocks: 2 } }] as Ligne[])
+    const res = await DELETE(requete('DELETE', `/api/varietes/${jeu.moi.id}`), params(String(jeu.moi.id)))
+    expect(res.status).toBe(409)
+    expect((await res.json()).details).toEqual({ stocksAutresComptes: 2 })
+    expect((mocks.db.variete as ReturnType<typeof delegueMemoire>).delete).not.toHaveBeenCalled()
+  })
+})
