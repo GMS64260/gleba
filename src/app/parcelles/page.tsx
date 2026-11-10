@@ -160,8 +160,16 @@ export default function ParcellesPage() {
     if (!deletingParcelle) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/parcelles/${deletingParcelle.id}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("Erreur suppression")
+      // Le dialogue a déjà annoncé les entités détachées : confirmation portée
+      // à la route, qui refuse quand même une parcelle d'origine de récoltes
+      // ou de traitements.
+      const res = await fetch(`/api/parcelles/${deletingParcelle.id}?confirme=1`, { method: "DELETE" })
+      if (!res.ok) {
+        const refus = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Suppression impossible", description: refus?.error || "Impossible de supprimer la parcelle" })
+        setDeletingParcelle(null)
+        return
+      }
       toast({ title: "Parcelle supprimée", description: `"${deletingParcelle.nom}" a été supprimée` })
       setDeletingParcelle(null)
       fetchData()
