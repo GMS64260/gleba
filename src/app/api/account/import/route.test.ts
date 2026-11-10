@@ -14,12 +14,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({ default: { user: { findUnique: mocks.userFindUnique } } }))
-vi.mock("@/lib/account-transfer", () => ({
-  importAccount: mocks.importAccount,
-  isValidExportPayload: () => true,
-}))
+vi.mock("@/lib/account-transfer", () => {
+  class ErreurCompteDejaRempli extends Error {
+    constructor(public readonly existants: Record<string, number>) { super("rempli") }
+  }
+  return { ErreurCompteDejaRempli, importAccount: mocks.importAccount, isValidExportPayload: () => true }
+})
 
 import { POST } from "./route"
+import { ErreurCompteDejaRempli } from "@/lib/account-transfer"
 
 // Corps de l'écran Paramètres : multipart, champ « file ».
 function requete() {
@@ -55,5 +58,17 @@ describe("POST /api/account/import", () => {
 
     expect(res.status).toBe(200)
     expect(mocks.importAccount).toHaveBeenCalledWith("u1", expect.anything(), { dryRun: false, isAdmin: false })
+  })
+
+  it("répond 409 sur un compte déjà rempli, sans promettre un import", async () => {
+    mocks.userFindUnique.mockResolvedValue({ email: "maraicher@example.com" })
+    mocks.importAccount.mockRejectedValueOnce(new ErreurCompteDejaRempli({ planche: 12 }))
+
+    const res = await POST(requete())
+
+    expect(res.status).toBe(409)
+    const corps = await res.json()
+    expect(corps.code).toBe("COMPTE_DEJA_REMPLI")
+    expect(corps.existants).toEqual({ planche: 12 })
   })
 })

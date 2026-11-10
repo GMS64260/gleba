@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { refusSiPasProprietaire } from "@/lib/exploitation/garde-session"
-import { importAccount, isValidExportPayload } from "@/lib/account-transfer"
+import { ErreurCompteDejaRempli, importAccount, isValidExportPayload } from "@/lib/account-transfer"
 import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 Mo
@@ -81,6 +81,17 @@ export async function POST(request: NextRequest) {
       warnings: result.warnings,
     })
   } catch (e) {
+    if (e instanceof ErreurCompteDejaRempli) {
+      return NextResponse.json(
+        {
+          error:
+            "Ce compte contient déjà des données de ferme : la restauration est annulée et rien n'a été modifié. Restaurez la sauvegarde sur un compte vierge, ou videz d'abord ce compte (Paramètres > Zone de danger).",
+          code: "COMPTE_DEJA_REMPLI",
+          existants: e.existants,
+        },
+        { status: 409 },
+      )
+    }
     console.error("POST /api/account/import error:", e)
     return NextResponse.json(
       {
