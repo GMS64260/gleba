@@ -44,6 +44,9 @@ import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MES
 /** Modèles jamais migrés : authentification, système, cache, communauté, chat
  *  privé, et boutique (fonctionnalité privée sans UI dans la version publique). */
 const EXCLUDED = new Set<string>([
+  // Réglages de l'instance (SMTP, VAPID, clés…) : jamais dans une sauvegarde de
+  // compte, ni à l'export (secrets lisibles par n'importe quel inscrit), ni à
+  // l'import (une restauration ne reconfigure pas l'instance). Revue 2026-11-04.
   "AbonnementGleba",
   "EvenementAbonnement",
   // eslint-disable-next-line no-restricted-syntax -- Identifiant technique exact du modèle Prisma.
@@ -277,11 +280,20 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
   //    communautaires (cf. REFERENTIAL_COMMUNAUTAIRE).
   for (const meta of manifest.values()) {
     if (meta.klass !== "referential") continue
-    const where = meta.estCommunautaire ? visibiliteReferentiel(userId) : meta.name === "Aliment" ? whereAlimentAccessible(userId) : undefined
+    // Aliments : `ownerUserId` (et non `userId`) porte le propriétaire ; seuls
+    // l'officiel et les aliments du compte sont visibles (même règle que
+    // `whereAlimentAccessible`, revue du 2026-11-04).
+    const where = meta.estCommunautaire
+      ? visibiliteReferentiel(userId)
+      : meta.name === "Aliment"
+        ? whereAlimentAccessible(userId)
+        : undefined
     const rows = await delegue(prisma, meta.delegate).findMany(
       where ? { where } : undefined
     )
-    data[meta.name] = meta.name === "Fournisseur" ? rows.map(sansCoordonneesBancaires) : rows
+    // Fournisseurs : table globale ; IBAN, BIC et clé RIB restent réservés à
+    // l'administration (audit #42), y compris dans une sauvegarde.
+    data[meta.name] = meta.name === "Fournisseur" ? rows.map((r) => sansCoordonneesBancaires(r)) : rows
     stats[meta.name] = rows.length
   }
 

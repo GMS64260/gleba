@@ -126,6 +126,8 @@ export function doseCuivreMetalKg(t: TraitementCuivreInput): number {
   return (totalProduitKg * pct) / 100
 }
 
+export type StatutCuivre = 'ok' | 'warn' | 'alert' | 'inconnu'
+
 export interface CumulCuivreParcelle {
   parcelleId: string
   surfaceHa: number
@@ -137,8 +139,12 @@ export interface CumulCuivreParcelle {
   cuivreKgParHaAn: number
   /** Cumul ramené au kg/ha (7 ans) — comparable au plafond 28. */
   cuivreKgParHa7ans: number
-  /** Statut : 'ok' | 'warn' (>75%) | 'alert' (>100%) sur le plus tendu des deux. */
-  statut: 'ok' | 'warn' | 'alert'
+  /**
+   * Statut : 'ok' | 'warn' (>75%) | 'alert' (>100%) sur le plus tendu des deux ;
+   * 'inconnu' quand du cuivre a été apporté sur une parcelle sans surface
+   * connue (le kg/ha ne se calcule pas : jamais « OK » par défaut).
+   */
+  statut: StatutCuivre
   /** Pour debug : nb de traitements pris en compte. */
   nbTraitementsAn: number
   nbTraitements7ans: number
@@ -198,8 +204,13 @@ export function cumuleParParcelle(
     const ratioAn = cuivreKgParHaAn / PLAFOND_CU_KG_HA_AN
     const ratio7 = cuivreKgParHa7ans / PLAFOND_CU_KG_HA_7ANS
     const ratioMax = Math.max(ratioAn, ratio7)
-    const statut: 'ok' | 'warn' | 'alert' =
-      ratioMax >= 1 ? 'alert' : ratioMax >= 0.75 ? 'warn' : 'ok'
+    // Revue du 2026-11-04 — sans surface (traitements non rattachés à une
+    // parcelle, ou parcelle sans surface), le kg/ha valait 0 et la carte
+    // affichait « OK » malgré des kilos de cuivre apportés.
+    const surfaceInconnue = surfaceHa <= 0 && (sums.an > 0 || sums.sept > 0)
+    const statut: StatutCuivre = surfaceInconnue
+      ? 'inconnu'
+      : ratioMax >= 1 ? 'alert' : ratioMax >= 0.75 ? 'warn' : 'ok'
     result.push({
       parcelleId,
       surfaceHa,

@@ -11,10 +11,11 @@ const mocks = vi.hoisted(() => ({
   soinFindMany: vi.fn(),
   especeFindFirst: vi.fn(),
   refusRemiseActif: vi.fn(),
+  refusPassageAbattu: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock('@/lib/elevage/sortie-animal.server', () => ({ refusRemiseActif: mocks.refusRemiseActif }))
+vi.mock('@/lib/elevage/sortie-animal.server', () => ({ refusRemiseActif: mocks.refusRemiseActif, refusPassageAbattu: mocks.refusPassageAbattu }))
 vi.mock('@/lib/elevage/animal-lot', () => ({
   isAssignableAnimalLot: mocks.isAssignableAnimalLot,
   enregistrerChangementLot: mocks.enregistrerChangementLot,
@@ -266,6 +267,18 @@ describe('sorties et filiation — /api/elevage/animaux/[id]', () => {
     expect(response.status).toBe(409)
     expect((await response.json()).code).toBe('SORTIE_ACTIVE')
     expect(mocks.refusRemiseActif).toHaveBeenCalledWith(expect.anything(), 'user-1', 7)
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
+  it('refuse (409) de passer « abattu » un animal en délai d’attente viande', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, statut: 'actif', dateSortie: null })
+    mocks.refusPassageAbattu.mockResolvedValueOnce({ error: "Abattage interdit : animal en temps d'attente vétérinaire", code: 'ATTENTE_VIANDE_ACTIVE', status: 409 })
+
+    const response = await callPatch({ statut: 'abattu', dateSortie: '2026-11-20' })
+
+    expect(response.status).toBe(409)
+    expect((await response.json()).code).toBe('ATTENTE_VIANDE_ACTIVE')
+    expect(mocks.refusPassageAbattu).toHaveBeenCalledWith(expect.anything(), 'user-1', 7, new Date('2026-11-20'))
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
   })
 

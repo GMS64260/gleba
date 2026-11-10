@@ -66,6 +66,23 @@ export function echeanceSoinAFaire(soin: {
   return soin.datePrevue ?? soin.date ?? null
 }
 
+/**
+ * Un soin est DÛ quand son échéance est aujourd'hui ou passée. Seuls ceux-là se
+ * valident en masse : « Tout fait » validait aussi les soins des 30 jours à
+ * venir, datés de l'instant du clic. Une injection prévue à J+2 notée faite à
+ * J0 avançait la fin du délai d'attente lait et viande, et n'était plus
+ * rappelée (revue du 2026-11-04).
+ */
+export function soinDu(
+  soin: { datePrevue?: Date | string | null; date?: Date | string | null },
+  aujourdhui: string,
+): boolean {
+  const echeance = echeanceSoinAFaire(soin)
+  if (echeance == null) return false
+  const jours = joursAvantEcheance(echeance, aujourdhui)
+  return jours != null && jours <= 0
+}
+
 export interface CompteEcheancesSoins {
   /** Toutes les lignes à faire comptées, échéance absente comprise. */
   total: number

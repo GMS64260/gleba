@@ -3,6 +3,7 @@ import {
   PLANCHER_CASCADE_LAIT_J,
   PLANCHER_CASCADE_OEUFS_J,
   PLANCHER_CASCADE_VIANDE_J,
+  codesEspeceVeterinaire,
   resoudreDelaisVeterinaires,
 } from "./delais-veterinaires"
 
@@ -96,5 +97,46 @@ describe("délais vétérinaires produit × espèce", () => {
     )
     expect(delais.source).toBe("referentiel_produit")
     expect(delais.couvertAmm).toBe(true)
+  })
+})
+
+describe("espèces cibles reconnues par mot entier (revue du 2026-11-04)", () => {
+  const ovinCaprin = { tempsAttenteLaitJ: 7, tempsAttenteViandeJ: 14, especesCibles: ["ovin", "caprin"] }
+  const equin = { tempsAttenteLaitJ: 0, tempsAttenteViandeJ: 0, especesCibles: ["equin"] }
+
+  it("une vache n'est pas couverte par un produit autorisé chez les ovins : plancher cascade", () => {
+    const vache = { id: "vache_normande", nom: "Vache Normande", categorieReglementaire: "Bovin" }
+    expect(codesEspeceVeterinaire(vache)).not.toContain("ovin")
+    const delais = resoudreDelaisVeterinaires(ovinCaprin, vache)
+    expect(delais.couvertAmm).toBe(false)
+    expect(delais.source).toBe("cascade")
+    expect(delais.tempsAttenteViandeJ).toBe(PLANCHER_CASCADE_VIANDE_J)
+  })
+
+  it("une chèvre Saanen n'est pas couverte par un produit équin : 7 j lait, 28 j viande au minimum", () => {
+    const saanen = { id: "chevre_saanen", nom: "Chèvre Saanen", categorieReglementaire: "Caprin" }
+    expect(codesEspeceVeterinaire(saanen)).not.toContain("equin")
+    const delais = resoudreDelaisVeterinaires(equin, saanen)
+    expect(delais.couvertAmm).toBe(false)
+    expect(delais.tempsAttenteLaitJ).toBe(PLANCHER_CASCADE_LAIT_J)
+    expect(delais.tempsAttenteViandeJ).toBe(PLANCHER_CASCADE_VIANDE_J)
+  })
+
+  it("« Romane », « Manech » et « Cane » ne sont pas des équidés", () => {
+    for (const nom of ["Brebis Romane", "Brebis Manech tête rousse", "Cane de Rouen"]) {
+      expect(codesEspeceVeterinaire({ id: nom.toLowerCase().replace(/ /g, "_"), nom })).not.toContain("equin")
+    }
+  })
+
+  it("reconnaît toujours les espèces par début de mot", () => {
+    expect(codesEspeceVeterinaire({ id: "brebis_lacaune", nom: "Brebis Lacaune" })).toContain("ovin")
+    expect(codesEspeceVeterinaire({ id: "chevreau", nom: "Chevreau" })).toContain("caprin")
+    expect(codesEspeceVeterinaire({ id: "ane_provence", nom: "Âne de Provence" })).toContain("equin")
+    expect(codesEspeceVeterinaire({ id: "porcelet", nom: "Porcelet" })).toContain("porcin")
+    expect(codesEspeceVeterinaire({ id: "x", nom: "Lot", categorieReglementaire: "Ovins/Caprins" })).toEqual(
+      expect.arrayContaining(["ovin", "caprin"]),
+    )
+    // Le produit ovin couvre bien la brebis.
+    expect(resoudreDelaisVeterinaires(ovinCaprin, { id: "brebis_lacaune", nom: "Brebis Lacaune" }).couvertAmm).toBe(true)
   })
 })

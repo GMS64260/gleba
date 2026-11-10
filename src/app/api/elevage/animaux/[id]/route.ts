@@ -21,7 +21,7 @@ import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 import { aDesTracesAnimal, compterTracesAnimal, messageSuppressionAnimalRefusee } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
-import { refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
+import { refusPassageAbattu, refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 export async function GET(
@@ -173,6 +173,14 @@ export async function PATCH(
       if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
     }
 
+    // « Abattu » posé à la main : même garde du délai d'attente viande que
+    // l'abattage (revue du 2026-11-04).
+    if (body.statut === 'abattu' && existing.statut !== 'abattu') {
+      const jourAbattage = body.dateSortie ? new Date(body.dateSortie) : new Date()
+      const refus = await refusPassageAbattu(prisma, session.user.id, existing.id, Number.isNaN(jourAbattage.getTime()) ? new Date() : jourAbattage)
+      if (refus) return NextResponse.json({ error: refus.error, code: refus.code, details: refus.details }, { status: refus.status })
+    }
+
     const data: Record<string, unknown> = {}
     if (body.statut !== undefined) data.statut = body.statut
     if (body.dateSortie !== undefined) data.dateSortie = body.dateSortie ? new Date(body.dateSortie) : null
@@ -237,6 +245,14 @@ export async function PUT(
     if (body.statut === 'actif' && existing.statut !== 'actif') {
       const refus = await refusRemiseActif(prisma, session.user.id, existing.id)
       if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
+    }
+
+    // « Abattu » posé à la main : même garde du délai d'attente viande que
+    // l'abattage (revue du 2026-11-04).
+    if (body.statut === 'abattu' && existing.statut !== 'abattu') {
+      const jourAbattage = body.dateSortie ? new Date(body.dateSortie) : new Date()
+      const refus = await refusPassageAbattu(prisma, session.user.id, existing.id, Number.isNaN(jourAbattage.getTime()) ? new Date() : jourAbattage)
+      if (refus) return NextResponse.json({ error: refus.error, code: refus.code, details: refus.details }, { status: refus.status })
     }
 
     // Audit élevage 2026-06-11 — garde parents : pas de self-parent, et la

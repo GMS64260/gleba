@@ -32,6 +32,7 @@ import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lai
 import { fenetreSoin, restituerPrelevement, supprimerSoin } from '@/lib/elevage/suppression-soin'
 import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import { whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
+import { TYPES_SOIN_MEDICAMENTEUX } from '@/lib/elevage/types-soin'
 import {
   PLANCHER_CASCADE_LAIT_J,
   PLANCHER_CASCADE_VIANDE_J,
@@ -46,11 +47,7 @@ function addDays(d: Date, n: number): Date {
   return r
 }
 
-const TYPES_MEDICAMENTEUX = new Set([
-  'Vaccination',
-  'Vermifuge',
-  'Traitement vétérinaire',
-])
+const TYPES_MEDICAMENTEUX = TYPES_SOIN_MEDICAMENTEUX
 
 
 export async function GET(request: NextRequest) {

@@ -13,7 +13,31 @@ vi.mock("@/lib/auth", () => ({
       handler(Object.assign(req, { auth: session.courante })),
 }))
 
-const { default: middleware } = await import("./middleware")
+const { default: middleware, config } = await import("./middleware")
+// Compilation des motifs par Next lui-même : même sémantique qu'en production.
+// (Fonction interne de Next, absente de ses déclarations de types publiques.)
+const { getMiddlewareMatchers } = (await import("next/dist/build/analysis/get-page-static-info")) as unknown as {
+  getMiddlewareMatchers: (matcher: unknown, nextConfig: object) => { regexp: string }[]
+}
+
+describe("middleware : couverture du matcher (revue du 2026-11-04)", () => {
+  const regexps = getMiddlewareMatchers(config.matcher, {}).map((m) => new RegExp(m.regexp))
+  const couvert = (chemin: string) => regexps.some((r) => r.test(chemin))
+
+  it("une route d'API suffixée d'une extension d'image passe par le middleware (en-tête de mutation posé)", () => {
+    expect(couvert("/api/elevage/animaux/17.png")).toBe(true)
+    expect(couvert("/api/cultures/42.svg")).toBe(true)
+    expect(couvert("/api/objets-jardin/3.webp")).toBe(true)
+    expect(couvert("/api/upload/justificatif/0f8e4c1a-1b2c-4d3e-8f90-123456789abc.png")).toBe(true)
+  })
+
+  it("les fichiers statiques et les service workers restent hors du middleware", () => {
+    expect(couvert("/gleba-logo.png")).toBe(false)
+    expect(couvert("/sw-elevage.js")).toBe(false)
+    expect(couvert("/_next/static/chunks/app.js")).toBe(false)
+    expect(couvert("/api/cultures")).toBe(true)
+  })
+})
 
 function visiter(url: string): Response {
   return (middleware as unknown as (req: NextRequest) => Response)(new NextRequest(url))

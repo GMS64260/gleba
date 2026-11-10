@@ -45,6 +45,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const d = parsed.data
+    // Revue du 2026-11-04 — une « sortie vente » saisie ici décrémentait la
+    // cave sans vente ni recette. L'écran passe déjà par `/api/elevage/ventes`
+    // (qui écrit lui-même ce mouvement) ; la route refuse le raccourci.
+    if (d.type === 'sortie_vente') {
+      return NextResponse.json(
+        { error: 'Une vente de fromage se saisit dans Élevage > Ventes, qui sort le lot de la cave et enregistre la recette.', champ: 'type' },
+        { status: 400 },
+      )
+    }
     const mouvementKg = Number(d.poidsKg) || 0
     const mouvement = await prisma.$transaction(async (tx) => {
       // Un ajustement d'inventaire n'est pas contrôlé contre le reliquat.

@@ -298,6 +298,14 @@ export async function DELETE(
             // « - » en espèce et plus jamais proposés à la création d'une culture.
             itps: true,
             varietes: true,
+            // Revue du 2026-11-04 — ce que la suppression emportait aussi, en
+            // silence : les comptages de stock des AUTRES comptes (cascade),
+            // l'espèce des arbres et des campagnes (remise à vide), et les
+            // sorties de stock (clé `Restrict` : erreur 500 au lieu d'un 409).
+            userStocks: { where: { userId: { not: session!.user.id } } },
+            arbres: true,
+            campagnesPlantation: true,
+            consommations: true,
           },
         },
       },
@@ -328,6 +336,14 @@ export async function DELETE(
       espece._count.varietes > 0
         ? `${espece._count.varietes} variété(s), qui seraient supprimées avec elle`
         : null,
+      espece._count.arbres > 0 ? `${espece._count.arbres} arbre(s)` : null,
+      espece._count.campagnesPlantation > 0
+        ? `${espece._count.campagnesPlantation} campagne(s) de plantation`
+        : null,
+      espece._count.consommations > 0 ? `${espece._count.consommations} sortie(s) de stock` : null,
+      espece._count.userStocks > 0
+        ? `le stock de ${espece._count.userStocks} autre(s) exploitation(s)`
+        : null,
     ].filter(Boolean)
     if (attaches.length > 0) {
       return NextResponse.json(
@@ -338,6 +354,10 @@ export async function DELETE(
             recoltes: espece._count.recoltes,
             itps: espece._count.itps,
             varietes: espece._count.varietes,
+            arbres: espece._count.arbres,
+            campagnesPlantation: espece._count.campagnesPlantation,
+            consommations: espece._count.consommations,
+            stocksAutresComptes: espece._count.userStocks,
           },
         },
         { status: 409 }

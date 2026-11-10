@@ -57,51 +57,20 @@ describe("sorties du stock d'œufs", () => {
     mocks.animalFindMany.mockResolvedValue([])
   })
 
-  it("interdit une vente après J+21", async () => {
+  // Revue du 2026-11-04 — une « vente » saisie en sortie manuelle décrémentait
+  // le lot sans vente ni recette. Elle passe par Élevage > Ventes.
+  it("refuse une sortie de type vente et renvoie vers Ventes, sans rien écrire", async () => {
     const response = await POST(request({
       productionId: 7,
-      date: "2026-07-23",
-      type: "vente",
-      quantite: 2,
-    }))
-
-    expect(response.status).toBe(422)
-    expect((await response.json()).error).toContain("J+21")
-    expect(mocks.mouvementCreate).not.toHaveBeenCalled()
-  })
-
-  // Ticket cmsoeyhs5 — soin Dectomax fait sur le lot 54, fin d'attente œufs
-  // au 2026-09-04 : une ponte du 11/08 ne doit jamais partir en vente.
-  it("refuse la vente d'œufs pondus pendant un délai d'attente vétérinaire", async () => {
-    mocks.productionFindFirst.mockResolvedValue({
-      id: 7,
-      userId: "user-1",
-      date: new Date("2026-08-11T00:00:00Z"),
-      lotId: 54,
-      animalId: null,
-      quantite: 30,
-      casses: 0,
-      sales: 0,
-      mouvementsStock: [],
-    })
-    mocks.soinFindMany.mockResolvedValue([{
-      date: new Date("2026-08-01T00:00:00Z"),
-      finAttenteOeufs: new Date("2026-09-04T00:00:00Z"),
-      animalId: null,
-      lotId: 54,
-    }])
-
-    const response = await POST(request({
-      productionId: 7,
-      date: "2026-08-11",
+      date: "2026-07-03",
       type: "vente",
       quantite: 2,
     }))
 
     expect(response.status).toBe(400)
     const body = await response.json()
-    expect(body.error).toContain("délai d'attente vétérinaire")
-    expect(body.error).toContain("05/09/2026")
+    expect(body.champ).toBe("type")
+    expect(body.error).toContain("Élevage > Ventes")
     expect(mocks.mouvementCreate).not.toHaveBeenCalled()
   })
 

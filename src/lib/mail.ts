@@ -150,11 +150,11 @@ export function newUserNotificationEmail(user: { email: string; name?: string | 
             <table width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0;background:#f8fafc;border-radius:10px;overflow:hidden;">
               <tr>
                 <td style="padding:8px 16px;font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Nom</td>
-                <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0;">${user.name || "—"}</td>
+                <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0;">${escapeHtml(user.name || "—")}</td>
               </tr>
               <tr>
                 <td style="padding:8px 16px;font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Email</td>
-                <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0;">${user.email}</td>
+                <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0;">${escapeHtml(user.email)}</td>
               </tr>
               <tr>
                 <td style="padding:8px 16px;font-size:13px;color:#64748b;">Date</td>
@@ -188,7 +188,9 @@ export function newUserNotificationEmail(user: { email: string; name?: string | 
 }
 
 export function verifyEmailEmail(name: string | null, token: string) {
-  const displayName = name || "nouveau membre"
+  // Nom saisi à l'inscription : échappé, sinon `<a href=…>` ou `<!--` y
+  // réécrivaient le courriel envoyé depuis le SMTP de Gleba (revue 2026-11-04).
+  const displayName = escapeHtml(name || "nouveau membre")
   const verifyUrl = `${APP_URL}/api/auth/verify?token=${token}`
   return {
     subject: "Gleba — Confirmez votre adresse email",
@@ -430,7 +432,7 @@ export function invitationExploitationEmail(args: {
 }
 
 export function passwordResetEmail(name: string | null, token: string) {
-  const displayName = name || "utilisateur"
+  const displayName = escapeHtml(name || "utilisateur")
   const resetUrl = `${APP_URL}/reset-password?token=${token}`
   return {
     subject: "Gleba — Réinitialisation de votre mot de passe",
@@ -489,7 +491,7 @@ export function passwordResetEmail(name: string | null, token: string) {
 }
 
 export function welcomeEmail(name?: string | null, unsubscribeUrl?: string) {
-  const displayName = name || "nouveau membre"
+  const displayName = escapeHtml(name || "nouveau membre")
   const unsubLine = unsubscribeUrl
     ? `<br><a href="${unsubscribeUrl}" style="color:#cbd5e1;text-decoration:underline;">Se désabonner de ces emails</a>`
     : ""
