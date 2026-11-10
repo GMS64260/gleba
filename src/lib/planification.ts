@@ -25,7 +25,7 @@ import { zoneEffectiveUser } from './terroir'
 import { etapeCycleRotation } from './rotation/etape-cycle'
 import { evaluerOccupationPlanche } from './planche-validation'
 import { selectCulturesOccupation } from './planches/occupation'
-import { finDeCycle, finRecolteDepuisItp } from './cultures/fenetre-recolte'
+import { debutOccupation, finDeCycle, finRecolteDepuisItp } from './cultures/fenetre-recolte'
 import { nbPlantsCulture } from './cultures/quantite-plants'
 import { dateJourSeul } from './jour-civil'
 
@@ -1731,7 +1731,7 @@ export async function creerCulturesBatch(
         espacementRangs: itp.espacementRangs ?? null,
         nbRangs: itp.nbRangs,
         longueur,
-        debut: dateSemis ?? datePlantation,
+        debut: debutOccupation({ dateSemis, datePlantation }),
         fin: finDeCycle({ dateRecolte, finRecolte }),
       })
       if (verdict.verifie && !verdict.possible) {

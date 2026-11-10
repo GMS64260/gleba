@@ -17,7 +17,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
 import { ecrituresPassageAFait, ETAPES, type EtatEtapes } from '@/lib/cultures/execution'
-import { chevauchePeriode, estVivaceEnPlace, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
+import { chevauchePeriode, debutOccupation, estVivaceEnPlace, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
 import type { AlerteSaisonCulture } from '@/lib/cultures/saison-culture'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { avertissementItpPlanche, verdictItpPlanche } from '@/lib/cultures/itp-planche'
@@ -463,9 +463,9 @@ export async function POST(request: NextRequest) {
       // s'affiche en toast comme les warnings ITP.
       // Période demandée : sert au warning de chevauchement ci-dessous ET au
       // calcul d'occupation de la planche (QA cmsp5927v).
-      const newStart =
-        data.dateSemis ? new Date(data.dateSemis) :
-        data.datePlantation ? new Date(data.datePlantation) : null
+      // Occupation à partir de la plantation quand elle est datée (semis en
+      // pépinière, hors planche), sinon du semis.
+      const newStart = debutOccupation(data)
       // La FIN du cycle est la fin de fenêtre de récolte quand elle existe, pas
       // la date de début. Avant ce correctif, une aubergine récoltée pendant 18
       // semaines libérait sa planche le lendemain de sa première date : ni le
@@ -482,7 +482,7 @@ export async function POST(request: NextRequest) {
             // terminée) recouvre toute période postérieure à sa mise en place :
             // sa fin de fenêtre de récolte n'est pas une fin d'occupation.
             if (chevauchePeriode(c, newStart, newEnd) !== true) continue
-            const cStart = (c.dateSemis ?? c.datePlantation)!
+            const cStart = debutOccupation(c)!
             const fmt = (d: Date | string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
             const periode = estVivaceEnPlace(c)
               ? `en place depuis le ${fmt(cStart)}, vivace`

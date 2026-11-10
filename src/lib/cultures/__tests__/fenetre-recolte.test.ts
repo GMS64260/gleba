@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   chevauchePeriode,
+  debutOccupation,
   estVivaceEnPlace,
   fenetreRecolteIncoherente,
   finDeCycle,
@@ -304,5 +305,26 @@ describe('finRecolteApresModification', () => {
     expect(
       finRecolteApresModification({ avant: sansFin, dateRecolte: new Date('2026-07-13T00:00:00.000Z'), itp: null })
     ).toBeUndefined()
+  })
+})
+
+describe("début d'occupation de la planche", () => {
+  const precedente = { dateSemis: null, datePlantation: new Date(2026, 2, 1), dateRecolte: new Date(2026, 4, 20), finRecolte: null }
+
+  it('part de la plantation quand elle est datée, du semis sinon', () => {
+    const tomate = { dateSemis: new Date(2026, 2, 10), datePlantation: new Date(2026, 4, 25) }
+    expect(debutOccupation(tomate)).toEqual(new Date(2026, 4, 25))
+    expect(debutOccupation({ dateSemis: new Date(2026, 3, 1), datePlantation: null })).toEqual(new Date(2026, 3, 1))
+    expect(debutOccupation({})).toBeNull()
+  })
+
+  it('une culture semée en pépinière ne chevauche pas la précédente encore en place', () => {
+    // Tomate semée le 10 mars en pépinière, plantée le 25 mai ; radis en place
+    // jusqu'au 20 mai. La planche est demandée du 25 mai au 30 septembre.
+    expect(chevauchePeriode(precedente, new Date(2026, 4, 25), new Date(2026, 8, 30))).toBe(false)
+    // La tomate en place, elle, n'occupe la planche qu'à partir de sa plantation.
+    const tomateEnPlace = { dateSemis: new Date(2026, 2, 10), datePlantation: new Date(2026, 4, 25), dateRecolte: new Date(2026, 6, 15), finRecolte: new Date(2026, 8, 30) }
+    expect(chevauchePeriode(tomateEnPlace, new Date(2026, 2, 15), new Date(2026, 4, 20))).toBe(false)
+    expect(chevauchePeriode(tomateEnPlace, new Date(2026, 5, 1), new Date(2026, 5, 30))).toBe(true)
   })
 })
