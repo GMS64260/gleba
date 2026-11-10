@@ -42,8 +42,13 @@ jobs:
 
       - uses: ./.github/actions/preparer
 
+      # Fuseau de la production : les règles de jour civil (délais d'attente,
+      # dates de récolte) se lisent au fuseau du processus ; en UTC, la CI ne
+      # voyait pas les écarts de minuit.
       - name: Run vitest
         run: npm test
+        env:
+          TZ: Europe/Paris
 
   typage:
     name: typage
@@ -86,8 +91,28 @@ jobs:
           npx prisma migrate deploy
           npx tsx prisma/seed.ts
           npx tsx scripts/verify-bootstrap.ts
+          npx tsx scripts/qa/verifier-double-demarrage.ts memoriser
+          # Second démarrage : le conteneur rejoue migrations et seed à chaque
+          # redémarrage, ils doivent repasser sans erreur ni doublon.
+          npx prisma migrate deploy
+          npx tsx prisma/seed.ts
+          npx tsx scripts/verify-bootstrap.ts
+          npx tsx scripts/qa/verifier-double-demarrage.ts comparer
         env:
           DATABASE_URL: "postgresql://postgres:gleba_test@localhost:5432/gleba_test"
           ADMIN_EMAIL: "admin@example.test"
           ADMIN_NAME: "Test Admin"
           ADMIN_PASSWORD: "ci-only-password"
+
+      # Tests d'intégration sur PostgreSQL : SQL brut de l'attente lait et
+      # lecture des traitements, sur une base dédiée et vide (le test refuse
+      # toute base qui ne porte pas ce nom).
+      - name: Integration tests on PostgreSQL
+        run: |
+          PGPASSWORD=gleba_test psql -h localhost -U postgres -d gleba_test -c 'CREATE DATABASE gleba_attente_lait_qa_c1c1c1'
+          DATABASE_URL="$GLEBA_ATTENTE_LAIT_QA_DATABASE_URL" npx prisma migrate deploy
+          npx vitest run src/lib/elevage/__tests__/attente-lait.integration.test.ts
+        env:
+          TZ: Europe/Paris
+          GLEBA_ATTENTE_LAIT_QA_DATABASE_URL: "postgresql://postgres:gleba_test@localhost:5432/gleba_attente_lait_qa_c1c1c1"
+          DATABASE_URL: "postgresql://postgres:gleba_test@localhost:5432/gleba_attente_lait_qa_c1c1c1"
