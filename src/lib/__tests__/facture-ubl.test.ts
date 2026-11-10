@@ -102,6 +102,24 @@ describe('buildUblInvoice', () => {
     expect(() => buildUblInvoice(f)).toThrow(/SIRET|Adresse|total HT/)
   })
 
+  it('accepte une TVA arrondie ligne par ligne et ventile par taux au total enregistré (BR-CO-14)', () => {
+    const f = factureStructuree()
+    const modele = f.lines[0]
+    // Trois lignes à 1,00 € et 5,5 % : 0,06 de TVA chacune, 0,18 au total ; la
+    // somme globale recalculée par l'export donnait 0,17 et refusait la facture.
+    f.lines = [1, 2, 3].map((n) => ({ ...modele, id: String(n), quantity: 1, unitPrice: 1, netAmount: 1, vatRate: 5.5 }))
+    f.totalNet = 3
+    f.totalVat = 0.18
+    f.totalGross = 3.18
+    if (f.paiement) f.paiement = { ...f.paiement, montant: 3.18 }
+    expect(validerFactureStructuree(f)).toEqual([])
+    const xml = buildUblInvoice(f)
+    expect(xml).toContain('<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">0.18</cbc:TaxAmount><cac:TaxSubtotal><cbc:TaxableAmount currencyID="EUR">3.00</cbc:TaxableAmount><cbc:TaxAmount currencyID="EUR">0.18</cbc:TaxAmount>')
+    f.totalVat = 0.2
+    f.totalGross = 3.2
+    expect(validerFactureStructuree(f)).toContain('Le total TVA ne correspond pas aux lignes')
+  })
+
   it('admet une ligne offerte à prix nul (BR-27 n’interdit que le négatif) et exige une adresse électronique acheteur', () => {
     const f = factureStructuree()
     f.lines[0] = { ...f.lines[0], unitPrice: 0, netAmount: 0 }
