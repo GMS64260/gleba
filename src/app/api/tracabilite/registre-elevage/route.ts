@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { animalNeSurExploitation } from '@/lib/elevage/declarations-reglementaires'
 
 interface RegistreEntry {
   date: string
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
         include: {
           especeAnimale: { select: { nom: true } },
           lot: { select: { nom: true } },
+          ficheNaissance: { select: { id: true } },
         },
         orderBy: { dateArrivee: 'asc' },
       }),
@@ -124,20 +126,32 @@ export async function GET(request: NextRequest) {
     // Construire les entrees du registre chronologiquement
     const entries: RegistreEntry[] = []
 
+    // Un événement, une ligne (revue du 2026-11-04) :
+    // - un animal abattu est sorti par la ligne de son abattage, plus détaillée ;
+    //   sa fiche n'ajoute pas une seconde sortie ;
+    // - un petit né sur l'exploitation est entré par la ligne de sa naissance ;
+    //   sa fiche n'ajoute pas une « entrée, provenance inconnue ».
+    const sortisParAbattage = new Set(abattages.map((ab) => ab.animalId).filter((id): id is number => id != null))
+
     // Entrees individuelles
     animaux.forEach(a => {
-      if (a.dateArrivee && a.dateArrivee >= startOfYear && a.dateArrivee <= endOfYear) {
+      const neIci = animalNeSurExploitation(a)
+      // Né ici avec sa fiche de petit : déjà inscrit par la naissance de sa mère.
+      if (a.dateArrivee && a.dateArrivee >= startOfYear && a.dateArrivee <= endOfYear && !(neIci && a.ficheNaissance)) {
         entries.push({
           date: a.dateArrivee.toISOString(),
-          type: 'entree',
+          // Né ici sans naissance saisie : c'est une naissance, pas une entrée.
+          type: neIci ? 'naissance' : 'entree',
           animal: a.nom || '-',
           espece: a.especeAnimale.nom,
           identifiant: a.identifiant || '-',
-          detail: `Provenance : ${a.provenance || 'inconnue'}${a.prixAchat ? ` - ${a.prixAchat}\u20ac` : ''}`,
+          detail: neIci
+            ? "Né sur l'exploitation"
+            : `Provenance : ${a.provenance || 'inconnue'}${a.prixAchat ? ` - ${a.prixAchat}\u20ac` : ''}`,
           lot: a.lot?.nom || '-',
         })
       }
-      if (a.dateSortie && a.dateSortie >= startOfYear && a.dateSortie <= endOfYear) {
+      if (a.dateSortie && a.dateSortie >= startOfYear && a.dateSortie <= endOfYear && !sortisParAbattage.has(a.id)) {
         entries.push({
           date: a.dateSortie.toISOString(),
           type: a.statut === 'mort' ? 'deces' : 'sortie',

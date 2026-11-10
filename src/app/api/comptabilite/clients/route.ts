@@ -3,6 +3,7 @@
  * GET/POST/PATCH/DELETE /api/comptabilite/clients
  */
 
+import { champsReellementEnvoyes } from '@/lib/validations/champs-envoyes'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -178,7 +179,8 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const { id, ...updates } = parsed.data
+    // Les défauts du schéma de création ne sont pas des modifications demandées.
+    const { id, ...updates } = champsReellementEnvoyes(parsed.data, body)
 
     const existing = await prisma.client.findFirst({
       where: { id, userId: session.user.id },

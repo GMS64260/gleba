@@ -18,3 +18,7 @@ export function apresDemain(date: Date, maintenant: Date = new Date()): boolean 
 
 export const MESSAGE_REALISEE_FUTURE =
   "Une intervention réalisée se date au plus tard aujourd'hui. Datez-la du jour où elle a été faite, ou laissez-la planifiée."
+
+/** Même règle pour une récolte : le lot entre au stock et l'étape passe faite. */
+export const MESSAGE_RECOLTE_FUTURE =
+  "Une récolte se date au plus tard aujourd'hui : elle entre au stock dès son enregistrement. Datez-la du jour où elle a été faite."
