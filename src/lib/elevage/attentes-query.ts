@@ -4,13 +4,17 @@
  * Partagé par /api/elevage/attentes et /api/elevage/agenda.
  */
 import prisma from '@/lib/prisma'
-import { consoliderAttentes, type SoinAttenteRow, type AttenteConsolidee } from './attentes'
+import { consoliderAttentes, jourCivilReference, type SoinAttenteRow, type AttenteConsolidee } from './attentes'
 import { STATUT_ACTIF } from './sortie-animal'
 
 export async function chargerAttentesConsolidees(
   userId: string,
   today: Date,
 ): Promise<AttenteConsolidee[]> {
+  // Préfiltre au jour civil, avec un jour de marge : une fin d'attente
+  // horodatée la veille au soir en UTC est du jour en heure locale. Le tri fin
+  // est fait par `consoliderAttentes`.
+  const seuil = new Date(jourCivilReference(today).getTime() - 86_400_000)
   const rows = await prisma.soinAnimal.findMany({
     where: {
       userId,
@@ -21,13 +25,13 @@ export async function chargerAttentesConsolidees(
       AND: [{ OR: [{ animalId: null }, { animal: { statut: STATUT_ACTIF } }] }],
       OR: [
         // Injections administrées dont la fenêtre est encore active.
-        { fait: true, OR: [{ finAttenteLait: { gte: today } }, { finAttenteViande: { gte: today } }, { finAttenteOeufs: { gte: today } }] },
+        { fait: true, OR: [{ finAttenteLait: { gte: seuil } }, { finAttenteViande: { gte: seuil } }, { finAttenteOeufs: { gte: seuil } }] },
         // Injections planifiées à venir d'un produit à délai d'attente : elles
         // repoussent l'ancre de la fenêtre du traitement (dernière injection).
         {
           fait: false,
           AND: [
-            { OR: [{ datePrevue: { gte: today } }, { date: { gte: today } }] },
+            { OR: [{ datePrevue: { gte: seuil } }, { date: { gte: seuil } }] },
             { OR: [{ tempsAttenteLaitJ: { gt: 0 } }, { tempsAttenteViandeJ: { gt: 0 } }, { tempsAttenteOeufsJ: { gt: 0 } }] },
           ],
         },

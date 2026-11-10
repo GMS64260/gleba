@@ -27,7 +27,7 @@ export type DbStockCommercial = Prisma.TransactionClient
 export async function chargerCatalogueStock(userId: string, db: DbStockCommercial = prisma, maintenant = new Date()): Promise<ArticleStockCommercial[]> {
   const finJour = finJourLivraison(maintenant)
   const [recoltes, fruits, bois, produits, oeufs, ruches, fromages, transformes, prixRecoltes, ventes] = await Promise.all([
-    db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { plancheId: true, variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+    db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { plancheId: true, planche: { select: { parcelleGeoId: true } }, variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.recolteArbre.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, include: { arbre: { select: { nom: true, espece: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.productionBois.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.produitBoutique.findMany({ where: { userId }, include: { recolte: { select: { datePeremption: true } } }, orderBy: { nom: 'asc' } }),
@@ -41,7 +41,7 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
   const jour = dateIsoFacture(maintenant)
   const frais = (date: Date | null) => !date || dateIsoFacture(date) >= jour
   const articles: ArticleStockCommercial[] = []
-  const avertissementsLegumes = await chargerAvertissementsDarLegumes(db, userId, recoltes.map(r => ({ id: r.id, cultureId: r.cultureId, plancheId: r.culture.plancheId, date: r.date })))
+  const avertissementsLegumes = await chargerAvertissementsDarLegumes(db, userId, recoltes.map(r => ({ id: r.id, cultureId: r.cultureId, plancheId: r.culture.plancheId, parcelleId: r.culture.planche?.parcelleGeoId ?? null, date: r.date })))
   for (const r of recoltes) {
     const dispo = disponibleCommercial(r)
     if (dispo <= 0 || !frais(r.datePeremption)) continue

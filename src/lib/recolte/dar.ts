@@ -2,10 +2,12 @@ import type { Prisma } from '@prisma/client'
 import { jourCivilStocke } from '@/lib/jour-civil'
 
 type Db = Pick<Prisma.TransactionClient, 'intervention'>
-export type LotLegume = { id: number; cultureId: number; plancheId: string | null; date: Date }
+export type LotLegume = { id: number; cultureId: number; plancheId: string | null; parcelleId?: string | null; date: Date }
 export type TraitementDar = {
   cultureId: number | null
   plancheId: string | null
+  parcelleId?: string | null
+  arbreId?: number | null
   date: Date
   dar: number | null
   produitPhyto: string | null
@@ -24,8 +26,9 @@ const jourFr = (t: number): string => {
 
 /**
  * Avertissements de délai avant récolte (DAR) d'un lot de légumes, PUR.
- * Un traitement compte s'il vise la culture récoltée, ou sa planche sans viser
- * de culture. Même règle que les fruits (`src/lib/verger/dar.ts`) : la récolte
+ * Un traitement compte s'il vise la culture récoltée, sa planche sans viser de
+ * culture, ou la parcelle entière de sa planche (ni culture, ni planche, ni
+ * arbre désignés). Même règle que les fruits (`src/lib/verger/dar.ts`) : la récolte
  * est libre le jour « traitement + DAR », et le délai saisi sur l'intervention
  * prime sur celui du référentiel.
  */
@@ -36,7 +39,9 @@ export function avertissementsDarLot(lot: LotLegume, traitements: TraitementDar[
     if (dar <= 0) return []
     const vise = t.cultureId != null
       ? t.cultureId === lot.cultureId
-      : t.plancheId != null && t.plancheId === lot.plancheId
+      : t.plancheId != null
+        ? t.plancheId === lot.plancheId
+        : t.arbreId == null && t.parcelleId != null && t.parcelleId === lot.parcelleId
     if (!vise) return []
     const jourTraitement = minuitDuJour(t.date)
     const fin = jourTraitement + dar * MS_JOUR
@@ -47,16 +52,13 @@ export function avertissementsDarLot(lot: LotLegume, traitements: TraitementDar[
   return [...new Set(messages)]
 }
 
-/**
- * Une lecture bornée au tenant pour toute une liste de lots. Les traitements
- * posés sur une parcelle entière ne sont pas rattachables à une planche (une
- * planche n'a pas de parcelle) : ils ne sont pas contrôlés ici.
- */
+/** Une lecture bornée au tenant pour toute une liste de lots. */
 export async function chargerAvertissementsDarLegumes(db: Db, userId: string, lots: LotLegume[]): Promise<Map<number, string[]>> {
   const resultat = new Map<number, string[]>()
   if (!lots.length) return resultat
   const cultures = [...new Set(lots.map((l) => l.cultureId))]
   const planches = [...new Set(lots.flatMap((l) => (l.plancheId ? [l.plancheId] : [])))]
+  const parcelles = [...new Set(lots.flatMap((l) => (l.parcelleId ? [l.parcelleId] : [])))]
   const dernierJour = Math.max(...lots.map((l) => minuitDuJour(l.date)))
   const traitements = await db.intervention.findMany({
     where: {
@@ -69,9 +71,10 @@ export async function chargerAvertissementsDarLegumes(db: Db, userId: string, lo
       AND: [{ OR: [
         { cultureId: { in: cultures } },
         ...(planches.length ? [{ cultureId: null, plancheId: { in: planches } }] : []),
+        ...(parcelles.length ? [{ cultureId: null, plancheId: null, arbreId: null, parcelleId: { in: parcelles } }] : []),
       ] }],
     },
-    select: { cultureId: true, plancheId: true, date: true, dar: true, produitPhyto: true, produitPhytoRef: { select: { darJours: true, nomCommercial: true } } },
+    select: { cultureId: true, plancheId: true, parcelleId: true, arbreId: true, date: true, dar: true, produitPhyto: true, produitPhytoRef: { select: { darJours: true, nomCommercial: true } } },
   })
   for (const lot of lots) resultat.set(lot.id, avertissementsDarLot(lot, traitements))
   return resultat

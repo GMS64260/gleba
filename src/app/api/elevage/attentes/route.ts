@@ -13,19 +13,14 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import { chargerAttentesConsolidees } from '@/lib/elevage/attentes-query'
 import { remiseVente } from '@/lib/elevage/attentes'
 
-function floorDayUTC(d: Date): Date {
-  const x = new Date(d)
-  x.setUTCHours(0, 0, 0, 0)
-  return x
-}
-
 export async function GET() {
   const { session, error } = await requireAuthApi()
   if (error) return error
 
   try {
     const userId = session.user.id
-    const today = floorDayUTC(new Date())
+    // Instant courant : le jour civil est lu par `consoliderAttentes`.
+    const today = new Date()
 
     // Une échéance CONSOLIDÉE par (cible + traitement), ancrée sur la dernière
     // injection — plus de doublons (QA #9) ni de fenêtre depuis la 1re

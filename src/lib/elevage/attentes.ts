@@ -66,6 +66,16 @@ function floorDayUTC(d: Date): Date {
   return x
 }
 
+/**
+ * Minuit UTC du jour civil d'une date : jour saisi d'une date sans heure, jour
+ * local (Europe/Paris en production) d'une date horodatée. Même règle que
+ * l'écartement des collectes de lait (`jourCivilAttente`).
+ */
+export function jourCivilReference(d: Date): Date {
+  const jour = jourCivilStocke(d)
+  return jour ? new Date(`${jour}T00:00:00.000Z`) : floorDayUTC(d)
+}
+
 function addDays(d: Date, days: number): Date {
   const x = new Date(d)
   x.setUTCDate(x.getUTCDate() + days)
@@ -112,10 +122,11 @@ const MAX_GAP_MEME_CURE_MS = 7 * 86_400_000
  *
  * @param soins  lignes candidates : injections faites (fenêtre active) ET
  *               injections planifiées à venir du même traitement.
- * @param today  jour de référence (aplati UTC recommandé).
+ * @param today  instant ou jour de référence ; lu au jour CIVIL, comme les fins
+ *               d'attente (une fin horodatée 23:30 UTC est du lendemain à Paris).
  */
 export function consoliderAttentes(soins: SoinAttenteRow[], today: Date): AttenteConsolidee[] {
-  const t0 = floorDayUTC(today).getTime()
+  const t0 = jourCivilReference(today).getTime()
   const groupesProduit = new Map<string, SoinAttenteRow[]>()
   for (const s of soins) {
     const k = groupKey(s)
@@ -178,9 +189,9 @@ export function consoliderAttentes(soins: SoinAttenteRow[], today: Date): Attent
     const finViande = tempsViande > 0 ? addDays(ancre, tempsViande) : null
     const finOeufs = tempsOeufs > 0 ? addDays(ancre, tempsOeufs) : null
 
-    const laitActif = finLait != null && floorDayUTC(finLait).getTime() >= t0
-    const viandeActif = finViande != null && floorDayUTC(finViande).getTime() >= t0
-    const oeufsActif = finOeufs != null && floorDayUTC(finOeufs).getTime() >= t0
+    const laitActif = finLait != null && jourCivilReference(finLait).getTime() >= t0
+    const viandeActif = finViande != null && jourCivilReference(finViande).getTime() >= t0
+    const oeufsActif = finOeufs != null && jourCivilReference(finOeufs).getTime() >= t0
     if (!laitActif && !viandeActif && !oeufsActif) continue
 
     const rep = membres[0]
@@ -211,6 +222,5 @@ export function remiseVente(fin: Date | null): Date | null {
   if (!fin) return null
   // Jour CIVIL de la fin (une fin horodatée 23:30 UTC est du lendemain à
   // Paris), comme l'écartement des collectes de lait (`jourCivilAttente`).
-  const jour = jourCivilStocke(fin)
-  return addDays(jour ? new Date(`${jour}T00:00:00.000Z`) : floorDayUTC(fin), 1)
+  return addDays(jourCivilReference(fin), 1)
 }

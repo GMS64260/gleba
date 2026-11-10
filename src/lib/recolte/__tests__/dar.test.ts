@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { avertissementsDarLot, chargerAvertissementsDarLegumes, type TraitementDar } from '../dar'
 
 const j = (jour: string) => new Date(`${jour}T00:00:00Z`)
-const lot = { id: 1, cultureId: 10, plancheId: 'p1', date: j('2026-06-10') }
+const lot = { id: 1, cultureId: 10, plancheId: 'p1', parcelleId: 'parc1', date: j('2026-06-10') }
 const traitement = (t: Partial<TraitementDar>): TraitementDar => ({
   cultureId: 10, plancheId: 'p1', date: j('2026-06-05'), dar: 7, produitPhyto: 'Bouillie', produitPhytoRef: null, ...t,
 })
@@ -28,6 +28,14 @@ describe('délai avant récolte des légumes', () => {
     expect(avertissementsDarLot({ ...lot, plancheId: null }, [traitement({ cultureId: null, plancheId: null })])).toEqual([])
   })
 
+  it('compte un traitement posé sur la parcelle entière de la planche, pas celui d’un arbre ni d’une autre parcelle', () => {
+    const surParcelle = { cultureId: null, plancheId: null, parcelleId: 'parc1', arbreId: null }
+    expect(avertissementsDarLot(lot, [traitement(surParcelle)])).toHaveLength(1)
+    expect(avertissementsDarLot(lot, [traitement({ ...surParcelle, arbreId: 4 })])).toEqual([])
+    expect(avertissementsDarLot(lot, [traitement({ ...surParcelle, parcelleId: 'parc2' })])).toEqual([])
+    expect(avertissementsDarLot({ ...lot, parcelleId: null }, [traitement({ ...surParcelle, parcelleId: null })])).toEqual([])
+  })
+
   it('le délai saisi prime sur celui du référentiel, qui sert à défaut', () => {
     const ref = { darJours: 21, nomCommercial: 'Produit X' }
     expect(avertissementsDarLot(lot, [traitement({ dar: 3, produitPhytoRef: ref })])).toEqual([])
@@ -49,7 +57,11 @@ describe('délai avant récolte des légumes', () => {
     const where = findMany.mock.calls[0][0].where
     expect(where.userId).toBe('user-1')
     expect(where.fait).toBe(true)
-    expect(where.AND[0].OR).toEqual([{ cultureId: { in: [10, 11] } }, { cultureId: null, plancheId: { in: ['p1'] } }])
+    expect(where.AND[0].OR).toEqual([
+      { cultureId: { in: [10, 11] } },
+      { cultureId: null, plancheId: { in: ['p1'] } },
+      { cultureId: null, plancheId: null, arbreId: null, parcelleId: { in: ['parc1'] } },
+    ])
     expect(resultat.get(1)).toHaveLength(1)
     expect(resultat.get(2)).toEqual([])
   })
