@@ -318,6 +318,21 @@ export async function PATCH(request: NextRequest) {
       const existing = await tx.collecteLait.findFirst({ where: { id, userId: session.user.id } })
       if (!existing) throw new ErreurElevage('Collecte non trouvée', 404)
       protegerCollecteAffectee(existing, updates)
+      // Une traite par jour et par cible : redater une collecte sur un jour qui
+      // en porte déjà une créait un doublon (la saisie, elle, complète la
+      // collecte existante). L'index unique de la base ne l'empêchait pas.
+      if (updates.date !== undefined) {
+        const jour = new Date(updates.date)
+        jour.setUTCHours(0, 0, 0, 0)
+        const autre = await tx.collecteLait.findFirst({
+          where: {
+            userId: session.user.id, id: { not: id }, date: jour, traite: existing.traite,
+            animalId: existing.animalId, lotId: existing.lotId,
+          },
+          select: { id: true },
+        })
+        if (autre) throw new ErreurElevage('Une collecte existe déjà ce jour-là pour cette traite : modifiez-la plutôt que d’en créer une seconde.', 409, 'COLLECTE_DEJA_SAISIE')
+      }
       const data: typeof updates & { ecarteAttente?: boolean } = { ...updates }
       if (existing.animalId || existing.lotId) {
         const day = new Date(updates.date ?? existing.date)
