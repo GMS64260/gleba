@@ -142,8 +142,8 @@ describe('consoliderAttentes — QA cmsqlj7bn (un rappel futur ne prolonge pas l
     expect(res[0].derniereInjection.toISOString()).toBe(D('2026-08-12').toISOString())
     expect(res[0].finAttenteLait!.toISOString()).toBe(D('2026-09-09').toISOString())
     expect(res[0].finAttenteViande!.toISOString()).toBe(D('2026-09-16').toISOString())
-    expect(remiseVente(res[0].finAttenteLait).toISOString()).toBe(D('2026-09-10').toISOString())
-    expect(remiseVente(res[0].finAttenteViande).toISOString()).toBe(D('2026-09-17').toISOString())
+    expect(remiseVente(res[0].finAttenteLait)!.toISOString()).toBe(D('2026-09-10').toISOString())
+    expect(remiseVente(res[0].finAttenteViande)!.toISOString()).toBe(D('2026-09-17').toISOString())
   })
 
   it("un rappel planifié à 48 h ne repousse pas l'ancre tant qu'il n'est pas administré", () => {
@@ -167,5 +167,28 @@ describe('consoliderAttentes — QA cmsqlj7bn (un rappel futur ne prolonge pas l
     const res = consoliderAttentes(soins, today)
     expect(res).toHaveLength(1)
     expect(res[0].derniereInjection.toISOString()).toBe(D('2026-08-14').toISOString())
+  })
+})
+
+describe('attentes au jour civil', () => {
+  // Heure locale : le 9 à 00:30 est du 9 quel que soit le fuseau du processus
+  // (à Paris, il est stocké le 8 à 23:30 UTC, que la lecture UTC disait du 8).
+  const soin = {
+    id: 1, animalId: 5, lotId: null, type: 'traitement', produit: 'Antibiotique', produitId: null,
+    date: new Date(2026, 0, 2, 0, 30), fait: true, datePrevue: null,
+    tempsAttenteLaitJ: 7, tempsAttenteViandeJ: 0, tempsAttenteOeufsJ: 0,
+    cibleLabel: 'Animal', cibleNom: 'Cannelle', traitementLabel: 'Antibiotique',
+  }
+
+  it('garde l’attente affichée le dernier jour civil et la retire le lendemain', async () => {
+    const { consoliderAttentes } = await import('../attentes')
+    expect(consoliderAttentes([soin] as never, new Date(2026, 0, 9, 8, 0))).toHaveLength(1)
+    expect(consoliderAttentes([soin] as never, new Date(2026, 0, 10, 0, 30))).toHaveLength(0)
+  })
+
+  it('la remise en vente est le lendemain du jour civil de fin', async () => {
+    const { remiseVente } = await import('../attentes')
+    expect(remiseVente(new Date(2026, 0, 9, 0, 30))!.toISOString()).toBe('2026-01-10T00:00:00.000Z')
+    expect(remiseVente(new Date('2026-01-09T00:00:00Z'))!.toISOString()).toBe('2026-01-10T00:00:00.000Z')
   })
 })

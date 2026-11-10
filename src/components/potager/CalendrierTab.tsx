@@ -5,6 +5,7 @@
  * Combine le calendrier des cultures et la liste des tâches de la semaine
  */
 
+import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import {
   Sprout,
@@ -230,6 +231,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible d'enregistrer la récolte" })
           return
         }
+        signalerAvertissementsRecolte(await recolteRes.json().catch(() => null), toast)
         const cultureRes = await fetch(`/api/cultures/${cultureId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },

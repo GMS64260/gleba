@@ -28,7 +28,7 @@ import { randomUUID } from 'node:crypto'
 // Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
-import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
+import { ciblesLaitAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
 import { fenetreSoin, restituerPrelevement, supprimerSoin } from '@/lib/elevage/suppression-soin'
 import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import { whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
@@ -460,7 +460,7 @@ export async function POST(request: NextRequest) {
       // Écartement des collectes (cross-granularité individu↔lot, recompute).
       let nbEcartees = 0
       if (finLait) {
-        const cibles = await ciblesAffectees(tx, session.user.id, d.animalId ?? null, d.lotId ?? null)
+        const cibles = await ciblesLaitAffectees(tx, session.user.id, d.animalId ?? null, d.lotId ?? null)
         nbEcartees = await resyncEcartementLait(tx, session.user.id, cibles, dateSoin, finLait)
       }
       await createDepenseFromSoinAnimal(session.user.id, {
@@ -797,8 +797,8 @@ export async function PATCH(request: NextRequest) {
         (updateData.animalId !== undefined && updateData.animalId !== existing.animalId) ||
         (updateData.lotId !== undefined && updateData.lotId !== existing.lotId)
       if (dateChangee || faitChange || cibleChangee || injectionsChangees || taChange) {
-        const c1 = await ciblesAffectees(tx, session.user.id, existing.animalId, existing.lotId)
-        const c2 = await ciblesAffectees(tx, session.user.id, updated.animalId, updated.lotId)
+        const c1 = await ciblesLaitAffectees(tx, session.user.id, existing.animalId, existing.lotId)
+        const c2 = await ciblesLaitAffectees(tx, session.user.id, updated.animalId, updated.lotId)
         const cibles = {
           animalIds: [...new Set([...c1.animalIds, ...c2.animalIds])],
           lotIds: [...new Set([...c1.lotIds, ...c2.lotIds])],

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { chargerAvertissementsDarFruits } from '@/lib/verger/dar'
+import { chargerAvertissementsDarLegumes } from '@/lib/recolte/dar'
 import { dateIsoFacture } from '@/lib/facture-regles'
 import { chargerPrixVentesMoyens, prixProposeDeVente, valoriserLot } from '@/lib/recolte/valorisation'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
@@ -26,7 +27,7 @@ export type DbStockCommercial = Prisma.TransactionClient
 export async function chargerCatalogueStock(userId: string, db: DbStockCommercial = prisma, maintenant = new Date()): Promise<ArticleStockCommercial[]> {
   const finJour = finJourLivraison(maintenant)
   const [recoltes, fruits, bois, produits, oeufs, ruches, fromages, transformes, prixRecoltes, ventes] = await Promise.all([
-    db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+    db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { plancheId: true, planche: { select: { parcelleGeoId: true } }, variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.recolteArbre.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, include: { arbre: { select: { nom: true, espece: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.productionBois.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.produitBoutique.findMany({ where: { userId }, include: { recolte: { select: { datePeremption: true } } }, orderBy: { nom: 'asc' } }),
@@ -40,11 +41,12 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
   const jour = dateIsoFacture(maintenant)
   const frais = (date: Date | null) => !date || dateIsoFacture(date) >= jour
   const articles: ArticleStockCommercial[] = []
+  const avertissementsLegumes = await chargerAvertissementsDarLegumes(db, userId, recoltes.map(r => ({ id: r.id, cultureId: r.cultureId, plancheId: r.culture.plancheId, parcelleId: r.culture.planche?.parcelleGeoId ?? null, date: r.date })))
   for (const r of recoltes) {
     const dispo = disponibleCommercial(r)
     if (dispo <= 0 || !frais(r.datePeremption)) continue
     const prix = prixProposeDeVente(valoriserLot({ acteurId: userId, especeId: r.especeId, unite: r.unite, quantite: dispo, prixLot: r.prixKg, espece: r.espece }, prixRecoltes))
-    articles.push({ type: 'recolte', id: String(r.id), nom: `${r.espece.nom || r.especeId}${r.culture.variete?.nom ? ` · ${r.culture.variete.nom}` : ''}`, categorie: 'Récoltes maraîchères', disponible: dispo, unite: r.unite || 'kg', prixTTC: prix, tauxTVA: 5.5, statutBio: r.statutBioSnapshot, dateLot: dateIsoFacture(r.date), href: '/maraichage/recoltes' })
+    articles.push({ type: 'recolte', id: String(r.id), nom: `${r.espece.nom || r.especeId}${r.culture.variete?.nom ? ` · ${r.culture.variete.nom}` : ''}`, categorie: 'Récoltes maraîchères', disponible: dispo, unite: r.unite || 'kg', prixTTC: prix, tauxTVA: 5.5, statutBio: r.statutBioSnapshot, dateLot: dateIsoFacture(r.date), href: '/maraichage/recoltes', avertissements: avertissementsLegumes.get(r.id) })
   }
   const avertissementsFruits = await chargerAvertissementsDarFruits(db, userId, fruits)
   for (const r of fruits) {

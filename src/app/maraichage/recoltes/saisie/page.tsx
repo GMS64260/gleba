@@ -4,6 +4,7 @@
  * Page de saisie rapide des recoltes
  */
 
+import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import Link from "next/link"
 import { ArrowLeft, BarChart3, Save } from "lucide-react"
@@ -303,6 +304,10 @@ export default function SaisieRecoltePage() {
         title: "Récolte enregistrée",
         description: `${quantite} ${libelleUniteQuantite(uniteEnregistree, parseFloat(quantite))} de ${especeNom}`,
       })
+
+      // Délai avant récolte d'un traitement encore en cours : la récolte est
+      // enregistrée, l'avertissement reste affiché jusqu'à sa fermeture.
+      signalerAvertissementsRecolte(creee, toast)
 
       // Réinitialiser le formulaire (garder la culture sélectionnée)
       setQuantite("")

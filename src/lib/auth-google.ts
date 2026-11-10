@@ -39,3 +39,27 @@ export function motifRefusConnexionGoogle(
   if (utilisateur && !utilisateur.active) return "compte_inactif"
   return null
 }
+
+/**
+ * Compte pré-créé par mot de passe et jamais vérifié, rejoint par Google.
+ *
+ * N'importe qui peut s'inscrire avec l'adresse d'un autre : tant que l'adresse
+ * n'est pas vérifiée, ce compte est inutilisable. Mais la connexion Google s'y
+ * rattachait en gardant le mot de passe de l'inconnu : au premier clic du vrai
+ * titulaire sur un lien de vérification, cet inconnu entrait avec son mot de
+ * passe. Google prouvant la propriété de l'adresse, tout ce que l'inscription
+ * non vérifiée avait posé est retiré : mot de passe, jetons de vérification et
+ * de réinitialisation, jeton d'API. `null` si le compte était déjà vérifié.
+ */
+export function neutralisationComptePreCree(utilisateur: { emailVerified: boolean } | null) {
+  if (!utilisateur || utilisateur.emailVerified) return null
+  return {
+    password: null,
+    emailVerified: true,
+    emailVerifyToken: null,
+    emailVerifyExpires: null,
+    resetPasswordToken: null,
+    resetPasswordExpires: null,
+    apiToken: null,
+  }
+}
