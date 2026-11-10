@@ -7,6 +7,7 @@
  * récoltées et disponibles citées par l'assistant sont celles de l'écran.
  */
 
+import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import prisma from '@/lib/prisma'
 import { calculerStocksRuche } from '@/lib/elevage/stock-ruche'
 
@@ -67,7 +68,9 @@ export async function computeProductionsRuche(
       orderBy: [{ produit: "asc" }, { unite: "asc" }],
     }),
     prisma.productionRuche.findMany({
-      where: { userId },
+      // Une récolte datée après aujourd'hui n'est pas en stock, comme une ponte
+      // future et comme le catalogue commercial (`finJourLivraison`).
+      where: { userId, date: { lte: finJourLivraison(new Date()) } },
       select: {
         produit: true,
         unite: true,

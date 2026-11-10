@@ -3,6 +3,7 @@
  * GET/POST/PATCH/DELETE /api/comptabilite/fournisseurs
  */
 
+import { champsReellementEnvoyes } from '@/lib/validations/champs-envoyes'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -149,7 +150,8 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       )
     }
-    const { id, ...updateData } = parsed.data
+    // Les défauts du schéma de création ne sont pas des modifications demandées.
+    const { id, ...updateData } = champsReellementEnvoyes(parsed.data, body)
 
     const existing = await prisma.fournisseur.findUnique({
       where: { id },

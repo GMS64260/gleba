@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma'
+import { apresDemain, MESSAGE_RECOLTE_FUTURE } from '@/lib/interventions/date-realisee'
 import { createRecolteSchema } from '@/lib/validations/recolte'
 import { snapshotStatutBio } from '@/lib/statut-bio'
 import { ecrituresPassageAFait } from '@/lib/cultures/execution'
@@ -31,6 +32,11 @@ export async function preparerRecoltes(userId: string, entrees: unknown[], unite
     if (uniteRequise && validation.data.quantite <= 0) return { ok: false as const, error: `Récolte ${i + 1} : indiquez une quantité strictement positive.` }
     if (validation.data.date.getFullYear() < 1000 || validation.data.date.getFullYear() > 9999) {
       return { ok: false as const, error: `Récolte ${i + 1} : date invalide.` }
+    }
+    // Une récolte datée dans le futur entrait au stock et marquait l'étape
+    // « récolte » comme faite : même borne que les interventions réalisées.
+    if (apresDemain(validation.data.date)) {
+      return { ok: false as const, error: `Récolte ${i + 1} : ${MESSAGE_RECOLTE_FUTURE}` }
     }
     donnees.push(validation.data)
   }

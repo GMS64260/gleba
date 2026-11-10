@@ -10,6 +10,7 @@
  * jamais un sous-ensemble.
  */
 
+import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import { chargerCaveEnStock } from '@/lib/elevage/stock-cave'
 import prisma from '@/lib/prisma'
 import { disponibleCommercial, quantiteBois } from '@/lib/commercial/stock-types'
@@ -175,7 +176,9 @@ export async function computeStocksUnifies(userId: string) {
     calculerStockOeufs(userId),
 
     prisma.productionRuche.findMany({
-      where: { userId },
+      // Une récolte datée après aujourd'hui n'est pas en stock, comme une ponte
+      // future et comme le catalogue commercial (`finJourLivraison`).
+      where: { userId, date: { lte: finJourLivraison(new Date()) } },
       select: {
         produit: true,
         unite: true,

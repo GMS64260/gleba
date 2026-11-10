@@ -11,17 +11,19 @@ const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
   lotFindMany: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
+  animalFindMany: vi.fn(),
+  abattageFindMany: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: mocks.reconstituerEffectifsLots }))
 vi.mock("@/lib/prisma", () => ({
   default: {
-    animal: { findMany: vi.fn().mockResolvedValue([]) },
+    animal: { findMany: mocks.animalFindMany },
     naissanceAnimale: { findMany: vi.fn().mockResolvedValue([]) },
     soinAnimal: { findMany: vi.fn().mockResolvedValue([]) },
     lotAnimaux: { findMany: mocks.lotFindMany },
-    abattage: { findMany: vi.fn().mockResolvedValue([]) },
+    abattage: { findMany: mocks.abattageFindMany },
     user: { findUnique: vi.fn().mockResolvedValue({ name: "Ferme démo" }) },
   },
 }))
@@ -50,6 +52,8 @@ describe("GET /api/tracabilite/registre-elevage — sortie d'un lot réformé", 
     mocks.lotFindMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
       where.dateReforme ? [solde, pintades] : [pintades],
     )
+    mocks.animalFindMany.mockResolvedValue([])
+    mocks.abattageFindMany.mockResolvedValue([])
     mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([
       [71, { effectifCalcule: 4 }],
       [80, { effectifCalcule: 0 }],
@@ -68,5 +72,50 @@ describe("GET /api/tracabilite/registre-elevage — sortie d'un lot réformé", 
       ["sortie", "Pintades perle A3 1708", "Lot 4 têtes", "Réforme du lot (4 têtes)"],
     ])
     expect(json.stats.totalSorties).toBe(2)
+  })
+})
+
+describe("GET /api/tracabilite/registre-elevage — un événement, une ligne", () => {
+  const brebis = { nom: "Brebis" }
+  const jour = (d: string) => new Date(`${d}T00:00:00Z`)
+  const fiche = (surcharge: object) => ({
+    id: 1, nom: "Blanchette", identifiant: "FR1", statut: "actif", especeAnimale: brebis, lot: null,
+    dateArrivee: null, dateNaissance: null, dateSortie: null, causeSortie: null, provenance: null,
+    nExploitationOrigine: null, prixAchat: null, ficheNaissance: null, ...surcharge,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    mocks.lotFindMany.mockResolvedValue([])
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map())
+  })
+
+  it("n'inscrit qu'une sortie pour un animal abattu, et qu'une naissance pour un petit fiché", async () => {
+    mocks.animalFindMany.mockResolvedValue([
+      // Abattue : la ligne de l'abattage suffit.
+      fiche({ id: 1, statut: "abattu", dateSortie: jour("2026-06-10"), causeSortie: "Abattage" }),
+      // Petit né sur place avec sa fiche de naissance : déjà inscrit par la naissance.
+      fiche({ id: 2, nom: "Agneau", dateArrivee: jour("2026-03-01"), dateNaissance: jour("2026-03-01"), ficheNaissance: { id: "p1" } }),
+      // Né sur place sans naissance saisie : une naissance, pas une entrée.
+      fiche({ id: 3, nom: "Cabri", dateArrivee: jour("2026-04-01"), dateNaissance: jour("2026-04-01") }),
+      // Achetée : une entrée. Morte : un décès.
+      fiche({ id: 4, nom: "Achetée", dateArrivee: jour("2026-05-01"), provenance: "Ferme voisine" }),
+      fiche({ id: 5, nom: "Morte", statut: "mort", dateSortie: jour("2026-07-01") }),
+    ])
+    mocks.abattageFindMany.mockResolvedValue([
+      { id: 9, animalId: 1, lotId: null, date: jour("2026-06-10"), quantite: 1, destination: "vente", poidsCarcasse: 18, animal: { nom: "Blanchette", identifiant: "FR1", especeAnimale: brebis }, lot: null },
+    ])
+
+    const json = await (await GET(new NextRequest("http://localhost/api/tracabilite/registre-elevage?annee=2026"))).json()
+    const lignes = (json.data ?? json.entries ?? json.registre) as Array<{ type: string; animal: string; detail: string }>
+    const de = (nom: string) => lignes.filter((l) => l.animal === nom).map((l) => l.type)
+
+    expect(de("Blanchette")).toEqual(["sortie"])
+    expect(lignes.find((l) => l.animal === "Blanchette")?.detail).toContain("Abattage")
+    expect(de("Agneau")).toEqual([])
+    expect(de("Cabri")).toEqual(["naissance"])
+    expect(de("Achetée")).toEqual(["entree"])
+    expect(de("Morte")).toEqual(["deces"])
   })
 })

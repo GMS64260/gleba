@@ -30,6 +30,11 @@ vi.mock('@/lib/facture-utils', () => ({ creerFacture: vi.fn(), annulerFactureLie
 import { GET as LISTE, POST } from './route'
 import { GET, PATCH, PUT } from './[id]/route'
 
+// Horloge figée après les dates du jeu d'essai : une récolte ne se date pas
+// dans le futur, et ces scénarios datent leurs récoltes jusqu'en janvier 2027.
+beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2027-03-01T10:00:00.000Z')) })
+afterAll(() => { vi.useRealTimers() })
+
 beforeAll(() => { vi.stubEnv('TZ', 'Europe/Paris') })
 afterAll(() => { vi.unstubAllEnvs() })
 

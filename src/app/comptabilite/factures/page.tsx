@@ -1294,7 +1294,13 @@ export default function FacturesPage() {
                   <Label>Facture d&apos;origine *</Label>
                   <Select
                     value={avoirData.factureOrigineId}
-                    onValueChange={(v) => setAvoirData({ ...avoirData, factureOrigineId: v })}
+                    onValueChange={(v) => {
+                      // Le taux de l'avoir est celui de la facture choisie (son
+                      // premier taux si elle en porte plusieurs), plus 5,5 % d'office.
+                      const origine = facturesEmises.find((f: { id: number }) => String(f.id) === v) as { lignes?: Array<{ tauxTVA: number }> } | undefined
+                      const taux = origine?.lignes?.[0]?.tauxTVA
+                      setAvoirData({ ...avoirData, factureOrigineId: v, ...(taux !== undefined ? { tauxTVA: String(taux) } : {}) })
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Sélectionner une facture émise…" />

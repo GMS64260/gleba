@@ -79,6 +79,13 @@ describe('saisie de récoltes du formulaire et de l’assistant', () => {
     expect(mocks.transaction).not.toHaveBeenCalled()
   })
 
+  it('refuse une récolte datée au-delà de demain, sans rien écrire', async () => {
+    const dans5Jours = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10)
+    const refus = await preparerRecoltes('ferme', [{ ...entree, date: dans5Jours }])
+    expect(refus).toMatchObject({ ok: false, error: expect.stringContaining("au plus tard aujourd'hui") })
+    expect(mocks.recolte).not.toHaveBeenCalled()
+  })
+
   it('exige l’unité pour l’assistant et laisse le formulaire utiliser celle de la ferme', async () => {
     const sansUnite = { ...entree, unite: undefined }
     expect((await preparerRecoltes('ferme', [sansUnite], true)).ok).toBe(false)
