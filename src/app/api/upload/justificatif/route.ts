@@ -23,6 +23,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
+import { dossierEnvoi, extensionReelle, refusEnvoiFichier } from "@/lib/upload-garde"
 
 const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED_MIME: Record<string, string> = {
@@ -66,12 +67,24 @@ export async function POST(request: NextRequest) {
   }
 
   const userId = session!.user.id
-  const uuid = randomUUID()
-  const filename = `${uuid}.${ext}`
-  const dir = path.join(process.cwd(), "storage", "justificatifs", userId)
-  await mkdir(dir, { recursive: true })
+  const refus = await refusEnvoiFichier("justificatif", userId, size)
+  if (refus) return refus
 
   const buffer = Buffer.from(await (file as Blob).arrayBuffer())
+  // Le type annoncé ne prouve rien : un fichier quelconque déclaré
+  // « application/pdf » était stocké et resservi comme pièce justificative.
+  if (extensionReelle(buffer) !== ext) {
+    return NextResponse.json(
+      { error: "Le contenu du fichier ne correspond pas à son format (PDF, JPEG ou PNG attendu)." },
+      { status: 400 }
+    )
+  }
+
+  const uuid = randomUUID()
+  const filename = `${uuid}.${ext}`
+  const dir = dossierEnvoi("justificatif", userId)
+  await mkdir(dir, { recursive: true })
+
   await writeFile(path.join(dir, filename), buffer)
   const empreinteSha256 = createHash("sha256").update(buffer).digest("hex")
 
