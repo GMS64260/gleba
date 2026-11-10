@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { fetchOpenMeteoHistory } from '@/lib/meteo'
+import { fetchOpenMeteoHistory, resumerPluie } from '@/lib/meteo'
 import { estSousAbri } from '@/lib/irrigation/abri'
 
 export interface PluviometrieBulkItem {
@@ -94,21 +94,10 @@ export async function GET(request: NextRequest) {
             sevenDaysAgo.toISOString().split('T')[0],
             yesterday.toISOString().split('T')[0]
           )
-          const total7j = historique.reduce((sum, d) => sum + d.precipitation, 0)
-
-          let joursSansPluie = 0
-          for (let i = historique.length - 1; i >= 0; i--) {
-            if (historique[i].precipitation < 1) {
-              joursSansPluie++
-            } else {
-              break
-            }
-          }
-
-          pluieParCoords.set(key, {
-            total7j: Math.round(total7j * 10) / 10,
-            joursSansPluie,
-          })
+          // Jours non encore publiés par l'archive ignorés (cf. `resumerPluie`).
+          const resume = resumerPluie(historique)
+          if (resume.joursMesures === 0) return
+          pluieParCoords.set(key, { total7j: resume.total7j, joursSansPluie: resume.joursSansPluie })
         } catch {
           // Ignorer les erreurs individuelles
         }
