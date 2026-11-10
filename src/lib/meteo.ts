@@ -18,6 +18,12 @@ export interface MeteoJournaliere {
   tempMax: number
   tempMoy: number
   precipitation: number // mm
+  /**
+   * Vrai quand l'archive n'a pas encore publié la pluie de ce jour (les
+   * derniers jours arrivent avec retard) : `precipitation` vaut alors 0 par
+   * défaut et ne doit pas être lu comme « jour sans pluie ».
+   */
+  precipitationInconnue?: boolean
   et0: number // mm (évapotranspiration de reference FAO)
   radiation: number // MJ/m²
   sunshine: number // heures
@@ -283,6 +289,7 @@ async function fetchOpenMeteoHistoryUncached(
     tempMax: data.daily.temperature_2m_max[i],
     tempMoy: (data.daily.temperature_2m_min[i] + data.daily.temperature_2m_max[i]) / 2,
     precipitation: data.daily.precipitation_sum[i] ?? 0,
+    ...(data.daily.precipitation_sum[i] == null ? { precipitationInconnue: true } : {}),
     et0: data.daily.et0_fao_evapotranspiration[i] ?? 0,
     radiation: data.daily.shortwave_radiation_sum[i] ?? 0,
     sunshine: (data.daily.sunshine_duration[i] ?? 0) / 3600,
@@ -749,4 +756,23 @@ export async function getPrecipitationsRecentes(
   } catch {
     return { total: 0, jours: 0, joursSansPluie: 0, details: [] }
   }
+}
+
+/**
+ * Résumé de pluie d'un historique journalier, PUR.
+ *
+ * Les jours que l'archive n'a pas encore publiés sont ignorés : comptés à
+ * 0 mm, ils gonflaient les « jours sans pluie » et minoraient le cumul, au
+ * point de conseiller un arrosage au lendemain d'un orage.
+ */
+export function resumerPluie(historique: Pick<MeteoJournaliere, 'precipitation' | 'precipitationInconnue'>[]): {
+  total7j: number
+  joursSansPluie: number
+  joursMesures: number
+} {
+  const mesures = historique.filter((jour) => !jour.precipitationInconnue)
+  let joursSansPluie = 0
+  for (let i = mesures.length - 1; i >= 0 && mesures[i].precipitation < 1; i--) joursSansPluie++
+  const total = mesures.reduce((somme, jour) => somme + jour.precipitation, 0)
+  return { total7j: Math.round(total * 10) / 10, joursSansPluie, joursMesures: mesures.length }
 }

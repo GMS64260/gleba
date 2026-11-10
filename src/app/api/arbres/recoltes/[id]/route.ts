@@ -1,5 +1,6 @@
 import { ErreurCommerciale } from '@/lib/commercial/regles'
-import { prixFruitApi, dateRecolteApi } from "@/lib/verger/creation-recolte"
+import { prixFruitApi, dateRecolteApi, statutBioApresModification } from "@/lib/verger/creation-recolte"
+import { snapshotStatutBio } from "@/lib/statut-bio"
 import { avertissementsDarFruit } from "@/lib/verger/dar"
 import { modifierVenteVerger } from "@/lib/verger/vente"
 import { ErreurVerger } from "@/lib/verger/erreur"
@@ -168,6 +169,35 @@ export async function PUT(request: NextRequest, { params }: Params) {
         }
       }
 
+      // Statut bio : recalculé depuis la nouvelle origine quand la parcelle, la
+      // date ou l'arbre change et que le statut n'est pas ressaisi (même source
+      // qu'à la création : la zone de l'arbre s'il est récolté sur sa propre
+      // parcelle, la parcelle sinon).
+      const dateBio = nouvelleDate ?? existing.date
+      const statutBioSnapshot = await statutBioApresModification({
+        saisi: body.statutBioSnapshot,
+        stocke: existing.statutBioSnapshot,
+        origineChangee:
+          (nouvelleParcelleId !== undefined && nouvelleParcelleId !== existing.parcelleId)
+          || (nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime())
+          || nouvelArbre !== undefined,
+        calculer: async () => {
+          const parcelleId = nouvelleParcelleId !== undefined ? nouvelleParcelleId : existing.parcelleId
+          const arbre = await tx.arbre.findFirst({
+            where: { id: nouvelArbre?.id ?? existing.arbreId, userId },
+            select: { parcelleGeoId: true, zoneId: true },
+          })
+          const parcelle = parcelleId
+            ? await tx.parcelleGeo.findFirst({ where: { id: parcelleId, userId }, select: { statutBio: true, dateDebutConversion: true } })
+            : null
+          const zone = arbre?.zoneId && parcelleId === arbre.parcelleGeoId
+            ? await tx.zoneVerger.findFirst({ where: { id: arbre.zoneId, userId }, select: { statutBio: true, dateDebutConversion: true } })
+            : null
+          const source = zone ?? parcelle
+          return source ? snapshotStatutBio(source.statutBio, source.dateDebutConversion, dateBio) : null
+        },
+      })
+
       // Numéro de lot : un numéro saisi explicitement gagne toujours. Sinon, si
       // la date, la parcelle ou l'espèce change et que le lot courant est
       // automatique, on le régénère (le lot encode date, parcelle et espèce) ; un
@@ -226,7 +256,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
           categorieCommerciale: texteOuNull(body.categorieCommerciale),
           destinationCommerce: texteOuNull(body.destinationCommerce),
           conditionnement: texteOuNull(body.conditionnement),
-          statutBioSnapshot: texteOuNull(body.statutBioSnapshot),
+          statutBioSnapshot,
         },
         include: {
           arbre: {

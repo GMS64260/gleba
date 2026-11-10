@@ -8,12 +8,13 @@
  */
 type EspeceLaitiere = {
   nom?: string | null
+  /** Type d'espèce (« volaille », « mammifere_petit »…) : départage « mixte ». */
+  type?: string | null
   production?: string | null
   productions?: readonly string[] | null
 }
 
 type EspeceDelaiLait = EspeceLaitiere & {
-  type?: string | null
   categorieReglementaire?: string | null
 }
 
@@ -46,9 +47,12 @@ export function estProductionLaitiere(
   // Une orientation individuelle ne peut pas transformer un profil
   // explicitement avicole/compagnie en animal laitier. C'était le cas d'une
   // poule saisie « mixte », ensuite proposée par défaut dans la traite.
-  if (productionsProfil.some((value) => value === "lait" || value === "mixte")) {
+  // « Mixte » veut dire œufs et chair pour une volaille : jamais laitière.
+  const volaille = normaliser(espece?.type) === "volaille"
+  if (productionsProfil.some((value) => value === "lait" || (value === "mixte" && !volaille))) {
     return true
   }
+  if (volaille) return false
   if (productionsProfil.some((value) => value === "oeufs" || value === "compagnie")) {
     return false
   }

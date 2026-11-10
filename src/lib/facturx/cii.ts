@@ -1,4 +1,5 @@
 import { date102Facture } from "@/lib/facture-regles"
+import { ventilerTvaParTaux } from "@/lib/facture-tva-par-taux"
 import type { DonneesFactureStructuree } from "@/lib/facture-structuree"
 import { UblValidationError, codePaysXml as codePays, codeUnite, echapperXml as xml, montantXml as montant, prixUnitaireXml, quantiteXml as quantite, validerFactureStructuree } from "@/lib/facture-ubl"
 
@@ -93,16 +94,9 @@ export function buildCiiInvoice(donnees: DonneesFactureStructuree): string {
   // Ventilation par taux (BG-23), recalculée des lignes comme l'UBL. BT-8
   // (DueDateTypeCode 5 = exigibilité à la facturation) quand l'émetteur a
   // opté pour les débits.
-  const parTaux = new Map<number, { base: number; tva: number }>()
-  for (const l of donnees.lines) {
-    const cumul = parTaux.get(l.vatRate) || { base: 0, tva: 0 }
-    cumul.base += l.netAmount
-    cumul.tva += (l.netAmount * l.vatRate) / 100
-    parTaux.set(l.vatRate, cumul)
-  }
-  const taxes = [...parTaux.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([taux, t]) => {
+  // Montants par taux dont la somme est le total enregistré (BR-CO-14).
+  const taxes = (ventilerTvaParTaux(donnees.lines, donnees.totalVat) ?? [])
+    .map(({ taux, ...t }) => {
       const cat = categorieTva(taux, donnees.exonerationTva)
       return (
         `<ram:ApplicableTradeTax>` +

@@ -59,10 +59,14 @@ export async function POST(request: NextRequest) {
   // (ordonnance archivée, fournisseur, notes, péremption — QA cmswtt0ee) garde
   // sa valeur. Les deux formulaires envoient ces champs à null quand ils sont
   // vides, ce qui effaçait le lien d'ordonnance.
+  // La quantité saisie S'AJOUTE au reste du lot : c'est une nouvelle entrée
+  // en pharmacie (deuxième flacon du même lot). Elle remplaçait le stock, si
+  // bien qu'un lot entamé à 12 mL devenait 50 mL au lieu de 62, sans trace de
+  // l'écart. Une erreur de quantité se corrige par la modification du lot.
   const data = await prisma.stockMedicamentElevage.update({
     where: { id: existant.id },
     data: {
-      quantite: d.quantite,
+      quantite: { increment: d.quantite },
       unite: d.unite,
       datePeremption: d.datePeremption ?? undefined,
       ordonnanceUrl: d.ordonnanceUrl || undefined,
@@ -70,7 +74,10 @@ export async function POST(request: NextRequest) {
       notes: d.notes || undefined,
     },
   })
-  return NextResponse.json({ data }, { status: 201 })
+  return NextResponse.json(
+    { data, ajout: { avant: existant.quantite, ajoute: d.quantite, apres: data.quantite } },
+    { status: 201 },
+  )
 }
 
 // Signalement 2026-09-25 (éleveur caprin) — un lot périmé lié à des soins ne

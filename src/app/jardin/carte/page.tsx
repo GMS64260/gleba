@@ -6,6 +6,7 @@
  * import cadastral et gestion CRUD des parcelles.
  */
 
+import { confirmDialog } from "@/lib/global-dialog"
 import { useState, useEffect, useCallback, Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
@@ -232,7 +233,20 @@ function CartePageContent() {
   // -- Suppression --
   const handleDelete = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`/api/carte/${id}`, { method: "DELETE" })
+      // Jamais en un clic : confirmation, puis seconde confirmation si le
+      // serveur annonce des planches, arbres ou lots à détacher.
+      const nom = parcelles.find((p) => p.id === id)?.nom ?? "cette parcelle"
+      if (!(await confirmDialog(`Supprimer la parcelle « ${nom} » ?`))) return
+      let res = await fetch(`/api/carte/${id}`, { method: "DELETE" })
+      if (res.status === 409) {
+        const refus = await res.json().catch(() => null)
+        if (refus?.code !== "PARCELLE_RATTACHEE") {
+          toast({ title: "Suppression impossible", description: refus?.error || "Cette parcelle ne peut pas être supprimée.", variant: "destructive" })
+          return
+        }
+        if (!(await confirmDialog(`${refus.error}\n\nSupprimer quand même la parcelle « ${nom} » ?`))) return
+        res = await fetch(`/api/carte/${id}?confirme=1`, { method: "DELETE" })
+      }
       if (!res.ok) throw new Error("Erreur lors de la suppression")
 
       toast({ title: "Parcelle supprimée", description: "La parcelle a été supprimée." })
@@ -246,7 +260,7 @@ function CartePageContent() {
         variant: "destructive",
       })
     }
-  }, [fetchParcelles, toast])
+  }, [fetchParcelles, parcelles, toast])
 
   // -- Duplication (vigie5388, 2026-09-18) --
   // Même tracé posé juste à l'est de l'original, sans référence cadastrale

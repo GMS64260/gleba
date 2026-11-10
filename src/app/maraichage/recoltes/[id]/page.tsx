@@ -4,6 +4,7 @@
  * Page d'édition d'une récolte
  */
 
+import { jourCivilStocke } from "@/lib/jour-civil"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
@@ -89,7 +90,10 @@ export default function EditRecoltePage() {
               : "kg",
         })
         form.reset({
-          date: data.date ? format(new Date(data.date), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+          // Jour civil de la date stockée (minuit UTC = jour saisi). La lecture
+          // locale la faisait reculer d'un jour à l'ouest d'UTC (Antilles,
+          // Guyane) : enregistrer la fiche sans y toucher redatait la récolte.
+          date: jourCivilStocke(data.date) ?? format(new Date(), "yyyy-MM-dd"),
           quantite: data.quantite || 0,
           notes: data.notes || null,
         })

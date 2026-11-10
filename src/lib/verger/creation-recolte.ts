@@ -65,3 +65,27 @@ export async function creerRecolteFruit(userId: string, saisie: Record<string, u
     return { ...recolte, ...(warnings.length ? { warnings } : {}), ...(avertissements.length ? { avertissements } : {}) }
   })
 }
+
+/**
+ * Statut bio à écrire quand une récolte est modifiée, PUR.
+ *
+ * Le formulaire renvoie toujours le statut qu'il affiche : un statut identique
+ * au statut stocké n'est pas une saisie. Sans cette règle, changer la parcelle
+ * d'origine (ou la date, qui déplace la récolte par rapport à la conversion)
+ * gardait le statut de l'ancienne parcelle : un lot passé d'une parcelle bio à
+ * une parcelle conventionnelle restait étiqueté bio.
+ *
+ * `undefined` = ne rien écrire ; `calculer` n'est appelé que si nécessaire.
+ */
+export async function statutBioApresModification(params: {
+  saisi: unknown
+  stocke: string | null
+  origineChangee: boolean
+  calculer: () => Promise<string | null>
+}): Promise<string | null | undefined> {
+  const saisi = typeof params.saisi === 'string' ? params.saisi.trim() : ''
+  if (saisi && saisi !== (params.stocke ?? '')) return saisi
+  if (params.origineChangee) return params.calculer()
+  if (params.saisi === null || (typeof params.saisi === 'string' && !saisi)) return params.stocke ? null : undefined
+  return undefined
+}

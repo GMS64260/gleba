@@ -468,8 +468,13 @@ export function SanitaireReglementaireSubTab() {
         body: JSON.stringify({ ...stockForm, quantite: Number(stockForm.quantite), datePeremption: peremptionSoumise || null, ordonnanceUrl: stockForm.ordonnanceUrl || null }),
       })
       if (!res.ok) return toast({ variant: 'destructive', title: 'Stock non enregistré', description: (await res.json()).error })
+      // Lot déjà en pharmacie : la quantité saisie s'est ajoutée au reste.
+      const reponse = await res.json().catch(() => null)
+      const ajout = reponse?.ajout as { avant: number; ajoute: number; apres: number } | undefined
       setStockOpen(false); await reload()
-      toast({ title: 'Stock de médicament enregistré' })
+      toast(ajout
+        ? { title: 'Lot complété', description: `Ce lot était déjà en pharmacie : ${ajout.ajoute} ${stockForm.unite} ajouté(s) aux ${ajout.avant} restants, soit ${ajout.apres}. Pour corriger une quantité, modifiez le lot.` }
+        : { title: 'Stock de médicament enregistré' })
     } finally {
       setIsSavingStock(false)
     }

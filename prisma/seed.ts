@@ -302,6 +302,21 @@ async function main() {
     },
   ]
 
+  // Données d'exemple : une seule fois. Le seed est rejoué à chaque démarrage
+  // du conteneur ; il s'arrêtait jusqu'ici sur une erreur d'unicité à la
+  // première planche de démonstration, erreur avalée par le script de
+  // démarrage. C'est ce plantage qui évitait de recréer les cultures, récoltes
+  // et arbres d'exemple à chaque redémarrage : l'arrêt est désormais explicite
+  // et le seed sort proprement.
+  const exempleDejaSeme =
+    (await prisma.planche.count({ where: { userId: demoUserId, nom: { in: planchesDemo.map((p) => p.nom) } } })) > 0
+    || (await prisma.culture.count({ where: { userId: { in: [userId, demoUserId] } } })) > 0
+  if (exempleDejaSeme) {
+    console.log("✓ Données d'exemple déjà présentes : rien à recréer")
+    console.log("\n✅ Seed terminé avec succès!")
+    return
+  }
+
   for (const p of planchesDemo) {
     await prisma.planche.create({
       data: { ...p, userId: demoUserId },
