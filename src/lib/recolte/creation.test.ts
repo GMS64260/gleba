@@ -100,8 +100,8 @@ describe('délai avant récolte à la saisie', () => {
     const tx = {
       recolte: { create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 7, ...data })) },
       culture: { update: vi.fn() },
-      intervention: { findMany: vi.fn(async (_requete: { where: { userId: string } }) => [{
-        cultureId: 10, plancheId: 'p1', date: new Date('2026-06-05T00:00:00Z'), dar: 7, produitPhyto: 'Bouillie', produitPhytoRef: null,
+      intervention: { findMany: vi.fn(async (requete: { where: { userId: string } }) => [{
+        cultureId: 10, plancheId: 'p1', date: new Date('2026-06-05T00:00:00Z'), dar: 7, produitPhyto: requete.where.userId ? 'Bouillie' : null, produitPhytoRef: null,
       }]) },
     }
     const preparee = {
