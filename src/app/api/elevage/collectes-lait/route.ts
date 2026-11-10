@@ -69,7 +69,7 @@ async function chargerCibleCollecte(
         sexe: true,
         orientationProduction: true,
         especeAnimale: {
-          select: { nom: true, production: true, productions: true },
+          select: { nom: true, type: true, production: true, productions: true },
         },
       },
     })
@@ -84,7 +84,7 @@ async function chargerCibleCollecte(
         quantiteInitiale: true,
         quantiteActuelle: true,
         especeAnimale: {
-          select: { nom: true, production: true, productions: true },
+          select: { nom: true, type: true, production: true, productions: true },
         },
       },
     })

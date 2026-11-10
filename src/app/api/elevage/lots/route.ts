@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     const effectifs = await reconstituerEffectifsLots(session.user.id, lots)
     // QA cmv5jfsol — effectif pondeur (sans les jeunes nés dans le lot ni les
     // fiches mâles) pour la saisie de ponte ; null hors espèces pondeuses.
-    const lotsPondeurs = lots.filter((l) => estEspecePondeuse(l.especeAnimale.production))
+    const lotsPondeurs = lots.filter((l) => estEspecePondeuse(l.especeAnimale.production, l.especeAnimale.type))
     const tetesNonPondeuses = await calculerTetesNonPondeuses(session.user.id, lotsPondeurs)
     const idsPondeurs = new Set(lotsPondeurs.map((l) => l.id))
 
