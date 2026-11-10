@@ -5,6 +5,7 @@
  * CSV UTF-8 avec BOM, séparateur `;` (Excel FR).
  */
 
+import { celluleCsv } from "@/lib/csv-cellule"
 import { NextRequest, NextResponse } from "next/server"
 import { ESPECE_TYPES_VERGER } from "@/lib/validations/espece"
 import prisma from "@/lib/prisma"
@@ -13,12 +14,9 @@ import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 
 type Onglet = "especes" | "porte-greffes" | "bioagresseurs" | "essences"
 
-function escapeCsv(value: unknown): string {
-  if (value === null || value === undefined) return ""
-  const s = String(value)
-  if (/[";\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
-  return s
-}
+// Les noms et notes du référentiel sont saisis par les membres : formules
+// neutralisées (cf. `csv-cellule.ts`).
+const escapeCsv = celluleCsv
 
 function toCsv(headers: string[], rows: unknown[][]): string {
   const BOM = "﻿"
