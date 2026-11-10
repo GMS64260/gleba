@@ -77,3 +77,24 @@ describe("motifRefusConnexionGoogle", () => {
     ).toBeNull()
   })
 })
+
+describe("compte pré-créé non vérifié rejoint par Google", () => {
+  it("retire le mot de passe et les jetons posés par l’inscription non vérifiée", async () => {
+    const { neutralisationComptePreCree } = await import("@/lib/auth-google")
+    expect(neutralisationComptePreCree({ emailVerified: false })).toEqual({
+      password: null,
+      emailVerified: true,
+      emailVerifyToken: null,
+      emailVerifyExpires: null,
+      resetPasswordToken: null,
+      resetPasswordExpires: null,
+      apiToken: null,
+    })
+  })
+
+  it("ne touche ni un compte déjà vérifié ni une première connexion", async () => {
+    const { neutralisationComptePreCree } = await import("@/lib/auth-google")
+    expect(neutralisationComptePreCree({ emailVerified: true })).toBeNull()
+    expect(neutralisationComptePreCree(null)).toBeNull()
+  })
+})
