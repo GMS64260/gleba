@@ -103,7 +103,7 @@ function attendreEspeceMasquee(espece: Ligne) {
 
 let recoltes: ReturnType<typeof delegueMemoire>
 let cultures: ReturnType<typeof delegueMemoire>
-const tx = { recolte: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() }, culture: { update: vi.fn() }, produitBoutique: { count: vi.fn(async () => 0) }, $queryRaw: vi.fn(async () => []), $executeRaw: vi.fn(async () => 1) }
+const tx = { recolte: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() }, culture: { update: vi.fn() }, intervention: { findMany: vi.fn(async () => []) }, produitBoutique: { count: vi.fn(async () => 0) }, $queryRaw: vi.fn(async () => []), $executeRaw: vi.fn(async () => 1) }
 
 beforeEach(() => {
   vi.clearAllMocks()

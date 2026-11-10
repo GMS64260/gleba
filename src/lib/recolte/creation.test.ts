@@ -25,7 +25,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.cultures.mockResolvedValue([tomate])
   mocks.surcharges.mockResolvedValue(new Map())
-  mocks.transaction.mockImplementation(async fn => fn({ recolte: { create: mocks.recolte }, culture: { update: mocks.culture } }))
+  mocks.transaction.mockImplementation(async fn => fn({ recolte: { create: mocks.recolte }, culture: { update: mocks.culture }, intervention: { findMany: vi.fn(async () => []) } }))
   mocks.recolte.mockImplementation(async ({ data }) => ({ id: 42, ...data, espece: tomate.espece }))
   mocks.culture.mockResolvedValue({})
 })
@@ -90,5 +90,27 @@ describe('saisie de récoltes du formulaire et de l’assistant', () => {
     const sansUnite = { ...entree, unite: undefined }
     expect((await preparerRecoltes('ferme', [sansUnite], true)).ok).toBe(false)
     expect((await preparerRecoltes('ferme', [sansUnite])).ok).toBe(true)
+  })
+})
+
+describe('délai avant récolte à la saisie', () => {
+  it('enregistre la récolte et renvoie l’avertissement du traitement encore sous délai', async () => {
+    const { ecrireRecoltesPreparees } = await import('./creation')
+    const date = new Date('2026-06-10T00:00:00Z')
+    const tx = {
+      recolte: { create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 7, ...data })) },
+      culture: { update: vi.fn() },
+      intervention: { findMany: vi.fn(async () => [{
+        cultureId: 10, plancheId: 'p1', date: new Date('2026-06-05T00:00:00Z'), dar: 7, produitPhyto: 'Bouillie', produitPhytoRef: null,
+      }]) },
+    }
+    const preparee = {
+      culture: { id: 10, plancheId: 'p1', recolteFaite: true },
+      data: { userId: 'user-1', cultureId: 10, especeId: 'tomate', quantite: 3, unite: 'kg', date, statutBioSnapshot: null },
+    }
+    const [creee] = await ecrireRecoltesPreparees(tx as never, [preparee] as never)
+    expect(tx.recolte.create).toHaveBeenCalledTimes(1)
+    expect((creee as { warnings?: string[] }).warnings).toEqual([expect.stringContaining('Bouillie')])
+    expect(tx.intervention.findMany.mock.calls[0][0].where.userId).toBe('user-1')
   })
 })

@@ -28,6 +28,7 @@ vi.mock("@/lib/prisma", () => {
   const tx = {
     recolte: { create: mocks.recolteCreate },
     culture: { update: mocks.cultureUpdate },
+    intervention: { findMany: vi.fn(async () => []) },
   }
   return {
     default: {
