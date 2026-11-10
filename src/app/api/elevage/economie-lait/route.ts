@@ -19,6 +19,7 @@
  * et soins existants.
  */
 
+import { chargerMontantsFigesConsommations, coutConsommation } from '@/lib/elevage/cout-consommation'
 import { collecteTvaFrancaise } from '@/lib/territoires'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -124,7 +125,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.consommationAliment.findMany({
         where: { userId, date: { gte: debut, lte: fin } },
-        select: { quantite: true, date: true, lotId: true, animalId: true, aliment: { select: { prix: true, userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 } } } },
+        select: { id: true, quantite: true, date: true, lotId: true, animalId: true, aliment: { select: { prix: true, userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 } } } },
       }),
       prisma.soinAnimal.findMany({
         where: { userId, fait: true, date: { gte: debut, lte: fin }, cout: { not: null } },
@@ -227,9 +228,10 @@ export async function GET(request: NextRequest) {
 
     // Coût alimentaire affecté
     let coutAlimentaire = 0
+    // Au prix d'alors (écriture créée à la saisie), pas au prix du jour.
+    const montantsFiges = await chargerMontantsFigesConsommations(prisma, userId, consommations.map((c) => c.id))
     for (const c of consommations) {
-      const prixKg = c.aliment?.userStocks?.[0]?.coutUnitaire ?? c.aliment?.userStocks?.[0]?.prix ?? c.aliment?.prix ?? 0
-      const cout = Number(c.quantite) * prixKg
+      const cout = coutConsommation(c, montantsFiges)
       if (c.animalId != null) {
         if (animauxLaitiers.has(c.animalId)) coutAlimentaire += cout
       } else if (c.lotId != null) {
