@@ -1038,7 +1038,15 @@ export async function upsertVenteFromReservationElevage(
   for (const sourceRef of refs) {
     suiviParRef.set(
       sourceRef,
-      await suiviDuMiroirVente(tx, { userId, sourceType: 'reservation_elevage', sourceRef, auto: true }),
+      // Le solde naît impayé puis s'encaisse dans la comptabilité : son
+      // pointage est conservé. Recréé « impayé » à chaque modification de la
+      // réservation, un solde déjà encaissé revenait dans les impayés.
+      await suiviDuMiroirVente(
+        tx,
+        { userId, sourceType: 'reservation_elevage', sourceRef, auto: true },
+        undefined,
+        sourceRef.endsWith(':solde'),
+      ),
     )
   }
   // Solde d'une réservation livrée sans date de remise : la date du miroir
