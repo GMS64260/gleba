@@ -16,6 +16,8 @@
  * traitement. Helper partagé par /api/elevage/attentes et /api/elevage/agenda.
  */
 
+import { jourCivilStocke } from '@/lib/jour-civil'
+
 export interface SoinAttenteRow {
   id: number
   animalId: number | null
@@ -207,5 +209,8 @@ export function consoliderAttentes(soins: SoinAttenteRow[], today: Date): Attent
 /** Date de remise en vente = lendemain de la fin d'attente (jour de fin encore écarté). */
 export function remiseVente(fin: Date | null): Date | null {
   if (!fin) return null
-  return addDays(floorDayUTC(fin), 1)
+  // Jour CIVIL de la fin (une fin horodatée 23:30 UTC est du lendemain à
+  // Paris), comme l'écartement des collectes de lait (`jourCivilAttente`).
+  const jour = jourCivilStocke(fin)
+  return addDays(jour ? new Date(`${jour}T00:00:00.000Z`) : floorDayUTC(fin), 1)
 }

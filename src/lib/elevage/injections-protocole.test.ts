@@ -18,7 +18,7 @@ vi.mock('@/lib/prisma', () => {
     $transaction: vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   } }
 })
-vi.mock('./attente-lait', () => ({ ciblesAffectees: mocks.cibles, resyncEcartementLait: mocks.resync }))
+vi.mock('./attente-lait', () => ({ ciblesLaitAffectees: mocks.cibles, resyncEcartementLait: mocks.resync }))
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: vi.fn() }))
 vi.mock('@/lib/auto-compta', () => ({ deleteAutoEntry: vi.fn() }))
 
