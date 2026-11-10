@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import {
   ANIMAUX_CSV_COLUMNS, apparierIdentifiantMasque, cleCanonique, csvRowToAnimal,
-  csvRowToAnimalUpdate, indexerIdentifiantsMasques, parseAnimauxCsv, problemesLigne,
+  csvRowToAnimalUpdate, indexerIdentifiantsMasques, lignesRestantes, parseAnimauxCsv, problemesLigne,
   resoudreEspece, suggererEspece,
   type AnimalCsvRow, type EspeceOption,
 } from "@/lib/elevage/import-animaux"
@@ -149,6 +149,11 @@ export function ImportAnimauxCsv({ especes, animauxExistants, onImported }: {
     const errors: string[] = []
     let crees = 0
     let misAJour = 0
+    // Lignes déjà enregistrées : retirées du fichier chargé après un import
+    // partiel. Sans cela, un nouvel essai renvoyait toutes les lignes, et les
+    // animaux sans identifiant (que rien ne distingue côté serveur) étaient
+    // créés une seconde fois.
+    const enregistrees = new Set<AnimalCsvRow>()
     for (const a of analyses) {
       const response = a.maj && a.idExistant !== undefined
         ? await fetch("/api/elevage/animaux", {
@@ -159,7 +164,7 @@ export function ImportAnimauxCsv({ especes, animauxExistants, onImported }: {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify(csvRowToAnimal(a.row, a.espece!.id, { orientationParDefaut: orientationParDefaut || null })),
           })
-      if (response.ok) { if (a.maj) misAJour++; else crees++ }
+      if (response.ok) { enregistrees.add(a.row); if (a.maj) misAJour++; else crees++ }
       else {
         const payload = await response.json().catch(() => ({}))
         errors.push(`ligne ${a.index}: ${payload.error || "erreur inconnue"}`)
@@ -171,9 +176,12 @@ export function ImportAnimauxCsv({ especes, animauxExistants, onImported }: {
     toast({
       variant: errors.length ? "destructive" : "default",
       title: bilan,
-      description: errors.length ? `${errors.length} rejet(s) — ${errors.slice(0, 3).join(" ; ")}` : "Import terminé sans erreur.",
+      description: errors.length
+        ? `${errors.length} rejet(s) — ${errors.slice(0, 3).join(" ; ")}. Seules les lignes rejetées restent dans la liste : corrigez-les puis relancez.`
+        : "Import terminé sans erreur.",
     })
     if (!errors.length) { setOpen(false); setRows([]); setEntetesIgnores([]); setFileName("") }
+    else setRows((actuelles) => lignesRestantes(actuelles, enregistrees))
   }
 
   return (
