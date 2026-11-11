@@ -24,7 +24,10 @@ import {
 
 interface Stats {
   kpi: {
+    /** Ventes : commandes livrées ou payées, celles que la comptabilité enregistre. */
     ca: { jour: number; semaine: number; mois: number; annee: number }
+    /** Commandes reçues, ni livrées ni payées : pas encore des ventes. */
+    aLivrer?: { jour: number; semaine: number; mois: number; annee: number }
     commandes: { jour: number; semaine: number; mois: number; annee: number }
     panierMoyen: number
     enAttente: number
@@ -32,6 +35,7 @@ interface Stats {
   preparation: Array<{
     date: string
     dateLabel: string
+    enRetard?: boolean
     commandes: number
     total: number
     produits: Array<{ nom: string; unite: string; quantite: number }>
@@ -72,9 +76,12 @@ export function BoutiqueDashboardTab() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground">CA aujourd'hui</p>
+                  <p className="text-xs text-muted-foreground">Ventes aujourd&apos;hui</p>
                   <p className="text-2xl font-bold text-teal-700">{eur(stats.kpi.ca.jour)}</p>
-                  <p className="text-xs text-muted-foreground">{stats.kpi.commandes.jour} commande{stats.kpi.commandes.jour > 1 ? "s" : ""}</p>
+                  <p className="text-xs text-muted-foreground">{stats.kpi.commandes.jour} commande{stats.kpi.commandes.jour > 1 ? "s" : ""} reçue{stats.kpi.commandes.jour > 1 ? "s" : ""}</p>
+                  {(stats.kpi.aLivrer?.jour ?? 0) > 0 && (
+                    <p className="text-xs text-amber-700">+ {eur(stats.kpi.aLivrer!.jour)} à livrer</p>
+                  )}
                 </div>
                 <Euro className="h-8 w-8 text-teal-300" />
               </div>
@@ -84,9 +91,12 @@ export function BoutiqueDashboardTab() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground">CA 7 jours</p>
+                  <p className="text-xs text-muted-foreground">Ventes 7 jours</p>
                   <p className="text-2xl font-bold text-emerald-700">{eur(stats.kpi.ca.semaine)}</p>
-                  <p className="text-xs text-muted-foreground">{stats.kpi.commandes.semaine} commande{stats.kpi.commandes.semaine > 1 ? "s" : ""}</p>
+                  <p className="text-xs text-muted-foreground">{stats.kpi.commandes.semaine} commande{stats.kpi.commandes.semaine > 1 ? "s" : ""} reçue{stats.kpi.commandes.semaine > 1 ? "s" : ""}</p>
+                  {(stats.kpi.aLivrer?.semaine ?? 0) > 0 && (
+                    <p className="text-xs text-amber-700">+ {eur(stats.kpi.aLivrer!.semaine)} à livrer</p>
+                  )}
                 </div>
                 <TrendingUp className="h-8 w-8 text-emerald-300" />
               </div>
@@ -96,9 +106,12 @@ export function BoutiqueDashboardTab() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-muted-foreground">CA mois en cours</p>
+                  <p className="text-xs text-muted-foreground">Ventes du mois</p>
                   <p className="text-2xl font-bold text-amber-700">{eur(stats.kpi.ca.mois)}</p>
-                  <p className="text-xs text-muted-foreground">{stats.kpi.commandes.mois} commande{stats.kpi.commandes.mois > 1 ? "s" : ""}</p>
+                  <p className="text-xs text-muted-foreground">{stats.kpi.commandes.mois} commande{stats.kpi.commandes.mois > 1 ? "s" : ""} reçue{stats.kpi.commandes.mois > 1 ? "s" : ""}</p>
+                  {(stats.kpi.aLivrer?.mois ?? 0) > 0 && (
+                    <p className="text-xs text-amber-700">+ {eur(stats.kpi.aLivrer!.mois)} à livrer</p>
+                  )}
                 </div>
                 <ShoppingBag className="h-8 w-8 text-amber-300" />
               </div>
@@ -110,7 +123,7 @@ export function BoutiqueDashboardTab() {
                 <div>
                   <p className="text-xs text-muted-foreground">Panier moyen ({new Date().getFullYear()})</p>
                   <p className="text-2xl font-bold text-blue-700">{eur(stats.kpi.panierMoyen)}</p>
-                  <p className="text-xs text-muted-foreground">{eur(stats.kpi.ca.annee)} sur l&apos;année</p>
+                  <p className="text-xs text-muted-foreground">{eur(stats.kpi.ca.annee)} vendus sur l&apos;année</p>
                   <Link
                     href="/comptabilite/transactions?module=boutique"
                     className="text-[11px] text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-0.5 mt-1"
@@ -128,7 +141,7 @@ export function BoutiqueDashboardTab() {
         <div className="mt-3 flex items-start gap-2 text-xs text-muted-foreground px-1">
           <Lightbulb className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
           <p>
-            Les commandes au statut « livrée » sont automatiquement comptées dans votre{' '}
+            Les ventes sont les commandes livrées ou payées : elles sont automatiquement comptées dans votre{' '}
             <Link
               href="/comptabilite/transactions"
               className="text-blue-600 hover:text-blue-800 underline"
@@ -150,7 +163,7 @@ export function BoutiqueDashboardTab() {
                 {stats.kpi.enAttente} commande{stats.kpi.enAttente > 1 ? "s" : ""} en attente de confirmation
               </p>
               <p className="text-xs text-amber-700">
-                Passez-les en "Confirmée" depuis l'onglet Commandes après contact client.
+                Passez-les en « Confirmée » depuis l&apos;onglet Commandes après contact client.
               </p>
             </div>
           </CardContent>
@@ -161,7 +174,7 @@ export function BoutiqueDashboardTab() {
       <div>
         <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
           <CalendarClock className="h-4 w-4" />
-          À préparer dans les 7 prochains jours
+          À préparer : retraits en retard et 7 prochains jours
         </h3>
         {stats.preparation.length === 0 ? (
           <Card>
@@ -172,11 +185,16 @@ export function BoutiqueDashboardTab() {
         ) : (
           <div className="space-y-3">
             {stats.preparation.map((day) => (
-              <Card key={day.date}>
+              <Card key={day.date} className={day.enRetard ? "border-red-200 bg-red-50/40" : undefined}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <p className="font-semibold capitalize">{day.dateLabel}</p>
+                      <p className="font-semibold capitalize">
+                        {day.dateLabel}
+                        {day.enRetard && (
+                          <Badge variant="destructive" className="ml-2 align-middle normal-case">Retrait dépassé</Badge>
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {day.commandes} commande{day.commandes > 1 ? "s" : ""} · {eur(day.total)}
                       </p>
@@ -287,7 +305,7 @@ export function BoutiqueDashboardTab() {
               stats.ruptures.length === 0 && (
                 <Card>
                   <CardContent className="p-6 text-center text-sm text-muted-foreground">
-                    ✓ Tous les stocks sont au-dessus du seuil d'alerte
+                    ✓ Tous les stocks sont au-dessus du seuil d&apos;alerte
                   </CardContent>
                 </Card>
               )

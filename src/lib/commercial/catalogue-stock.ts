@@ -12,6 +12,7 @@ import { disponibleCommercial, quantiteBois, type ArticleStockCommercial } from 
 import { TAUX_TVA_BOIS_PAR_DEFAUT } from '@/lib/verger/tva-bois'
 import { indisponibiliteLotVerger } from '@/lib/verger/disponibilite-lot'
 import { finJourLivraison } from './dates-stock'
+import { quantitesReservees, stockCommandable } from './reservations-boutique'
 
 export type DbStockCommercial = Prisma.TransactionClient
 
@@ -59,9 +60,14 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
     if (dispo <= 0 || indisponibiliteLotVerger(b, maintenant)) continue
     articles.push({ type: 'bois', id: String(b.id), nom: `${b.qualiteBois || 'Bois'}${b.numLot ? ` · ${b.numLot}` : ''}`, categorie: 'Bois', disponible: dispo, unite: q.unite, prixTTC: b.prixVente && q.quantite > 0 ? b.prixVente / q.quantite : null, tauxTVA: TAUX_TVA_BOIS_PAR_DEFAUT, statutBio: null, dateLot: dateIsoFacture(b.date), href: '/verger?tab=productions' })
   }
+  // Le disponible d'un produit de la boutique est net des commandes en cours :
+  // un bon de livraison ou une facture ne sort pas ce qu'un client a commandé
+  // en ligne et n'a pas encore retiré (revue du 2026-11-11).
+  const reservees = await quantitesReservees(db, userId, produits.filter((p) => p.stockDispo != null).map((p) => p.id))
   for (const p of produits) {
-    if ((p.stockDispo != null && p.stockDispo <= 0) || !frais(p.recolte?.datePeremption ?? null)) continue
-    articles.push({ type: 'boutique', id: String(p.id), nom: p.nom, categorie: p.actif ? 'Catalogue de la boutique' : 'Catalogue hors ligne', disponible: p.stockDispo, unite: p.unite, prixTTC: p.prix, tauxTVA: p.categorie === 'autre' ? 20 : 5.5, statutBio: p.statutBio, href: '/boutique?tab=produits' })
+    const disponible = stockCommandable(p.stockDispo, reservees.get(p.id))
+    if ((disponible != null && disponible <= 0) || !frais(p.recolte?.datePeremption ?? null)) continue
+    articles.push({ type: 'boutique', id: String(p.id), nom: p.nom, categorie: p.actif ? 'Catalogue de la boutique' : 'Catalogue hors ligne', disponible, unite: p.unite, prixTTC: p.prix, tauxTVA: p.categorie === 'autre' ? 20 : 5.5, statutBio: p.statutBio, href: '/boutique?tab=produits' })
   }
   const oeufsDisponibles = oeufs.data.filter((lot) => lot.statut === 'commercialisable' && lot.datePonte <= finJour).reduce((s, lot) => s + lot.restant, 0)
   if (oeufsDisponibles > 0) {
