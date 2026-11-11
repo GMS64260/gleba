@@ -3,20 +3,12 @@
  *
  * GET /api/comptabilite/tva/ca3?year=2026&trimestre=1&format=pdf|csv
  *
- * Génère un récapitulatif consultable à recopier sur impots.gouv.fr.
- * Mapping des cases (extrait, art. 287 CGI / BOI-TVA-DECLA) :
- *  - 01 : Base HT 20 %
- *  - 02 : Base HT 5.5 %
- *  - 03 : Base HT 10 %
- *  - 08 : TVA collectée 20 %
- *  - 09 : TVA collectée 5.5 %
- *  - 09B : TVA collectée 10 %
- *  - 19 : TVA déductible immobilisations
- *  - 20 : TVA déductible autres biens et services
- *  - 22 : Crédit TVA antérieur
- *  - 23 : TVA déductible totale
- *  - 28 : TVA nette due
- *  - 32 : Crédit de TVA
+ * Génère un récapitulatif des montants de la période, SANS numéro de case :
+ * l'ancienne correspondance était fausse au regard du formulaire en vigueur
+ * (le crédit de TVA était annoncé en case 32, qui est le total à payer ; les
+ * bases par taux visaient d'autres lignes), au risque d'une recopie en sens
+ * inverse (revue du 2026-11-11). Ne réintroduire des numéros de case qu'avec
+ * une correspondance vérifiée sur le formulaire officiel de l'année.
  *
  * Le calcul reprend strictement la route /api/comptabilite/tva pour
  * cohérence. Le PDF/CSV est marqué « AIDE À LA DÉCLARATION » — la
@@ -57,7 +49,7 @@ export async function GET(request: NextRequest) {
 
   const collectee = tva.collectee.parTaux
   const TAUX_CONNUS = new Set(['0', '2.1', '5.5', '10', '20'])
-  // Taux exotiques (ex. 8,5 % DOM) : inclus dans le total case 16 — on les
+  // Taux exotiques (ex. 8,5 % DOM) : inclus dans la TVA collectée totale — on les
   // liste à part pour que la somme des bases affichées reste cohérente.
   const autresTaux = Object.entries(collectee)
     .filter(([taux, t]) => !TAUX_CONNUS.has(taux) && (t.base !== 0 || t.tva !== 0))
@@ -67,31 +59,29 @@ export async function GET(request: NextRequest) {
   const tvaImmos = tva.deductible.immobilisations
   const tvaAutresBiens = Math.round((tva.deductible.total - tvaImmos) * 100) / 100
 
-  // Mapping des cases CA3
-  const cases: Array<{ code: string; libelle: string; valeur: number }> = [
-    { code: '01', libelle: 'Base HT 20 %', valeur: collectee['20']?.base || 0 },
-    { code: '02', libelle: 'Base HT 5.5 %', valeur: collectee['5.5']?.base || 0 },
-    { code: '03', libelle: 'Base HT 10 %', valeur: collectee['10']?.base || 0 },
-    { code: '03B', libelle: 'Base HT 2.1 %', valeur: collectee['2.1']?.base || 0 },
+  // Montants de la période, sans numéro de case (voir l'en-tête).
+  const cases: Array<{ libelle: string; valeur: number }> = [
+    { libelle: 'Base HT 20 %', valeur: collectee['20']?.base || 0 },
+    { libelle: 'Base HT 5.5 %', valeur: collectee['5.5']?.base || 0 },
+    { libelle: 'Base HT 10 %', valeur: collectee['10']?.base || 0 },
+    { libelle: 'Base HT 2.1 %', valeur: collectee['2.1']?.base || 0 },
     ...autresTaux.map(([taux, t]) => ({
-      code: '—',
       libelle: `Base HT ${taux} % (taux particulier, à ventiler manuellement)`,
       valeur: t.base,
     })),
-    { code: '08', libelle: 'TVA collectée 20 %', valeur: collectee['20']?.tva || 0 },
-    { code: '09', libelle: 'TVA collectée 5.5 %', valeur: collectee['5.5']?.tva || 0 },
-    { code: '09B', libelle: 'TVA collectée 10 %', valeur: collectee['10']?.tva || 0 },
+    { libelle: 'TVA collectée 20 %', valeur: collectee['20']?.tva || 0 },
+    { libelle: 'TVA collectée 5.5 %', valeur: collectee['5.5']?.tva || 0 },
+    { libelle: 'TVA collectée 10 %', valeur: collectee['10']?.tva || 0 },
     ...autresTaux.map(([taux, t]) => ({
-      code: '—',
       libelle: `TVA collectée ${taux} % (taux particulier)`,
       valeur: t.tva,
     })),
-    { code: '16', libelle: 'TVA collectée totale', valeur: tva.collectee.total },
-    { code: '19', libelle: 'TVA déductible immobilisations', valeur: tvaImmos },
-    { code: '20', libelle: 'TVA déductible autres biens et services', valeur: tvaAutresBiens },
-    { code: '23', libelle: 'TVA déductible totale', valeur: tva.deductible.total },
-    { code: '28', libelle: 'TVA nette due (Solde à payer)', valeur: tva.solde.tvaAPayer },
-    { code: '32', libelle: 'Crédit de TVA', valeur: tva.solde.creditTVA },
+    { libelle: 'TVA collectée totale', valeur: tva.collectee.total },
+    { libelle: 'TVA déductible immobilisations', valeur: tvaImmos },
+    { libelle: 'TVA déductible autres biens et services', valeur: tvaAutresBiens },
+    { libelle: 'TVA déductible totale', valeur: tva.deductible.total },
+    { libelle: 'TVA nette due (solde à payer)', valeur: tva.solde.tvaAPayer },
+    { libelle: 'Crédit de TVA', valeur: tva.solde.creditTVA },
   ]
 
   const filename = `CA3-${year}${trimestre ? `-T${trimestre}` : ''}`
@@ -99,14 +89,14 @@ export async function GET(request: NextRequest) {
   if (format === 'csv') {
     const lines = [
       `# Aide à la déclaration TVA CA3 — Période ${year}${trimestre ? ` T${trimestre}` : ''}`,
-      '# Généré par Gleba — à recopier sur impots.gouv.fr (formulaire 3310-CA3)',
+      '# Généré par Gleba — montants de la période, sans numéro de case : reportez chaque montant dans la ligne correspondante du formulaire 3310-CA3 en vigueur',
       ...(tva.franchise
         ? [`# ATTENTION : ${motifHorsChampCa3(tva.regimeTva) ?? 'exploitation hors champ de la CA3 — aucune TVA à déclarer.'}`]
         : []),
       `# nb_inferees_collectees;${tva.details.nbInfereesCollectees}`,
       `# nb_inferees_deductibles;${tva.details.nbInfereesDeductibles}`,
-      'case;libelle;valeur_eur',
-      ...cases.map((c) => `${c.code};"${c.libelle}";${c.valeur.toFixed(2)}`),
+      'libelle;valeur_eur',
+      ...cases.map((c) => `"${c.libelle}";${c.valeur.toFixed(2)}`),
     ]
     return new NextResponse(lines.join('\n'), {
       status: 200,
@@ -141,8 +131,8 @@ export async function GET(request: NextRequest) {
       .fillColor('#dc2626')
       .text(
         tva.franchise
-          ? `⚠ ${motifHorsChampCa3(tva.regimeTva) ?? 'Votre exploitation est hors champ de la CA3.'} Toutes les cases sont à zéro.`
-          : '⚠ Aide à la déclaration — les valeurs doivent être recopiées manuellement sur impots.gouv.fr (formulaire 3310-CA3). La conformité reste de la responsabilité de l\'expert-comptable.',
+          ? `⚠ ${motifHorsChampCa3(tva.regimeTva) ?? 'Votre exploitation est hors champ de la CA3.'} Tous les montants sont à zéro.`
+          : '⚠ Aide à la déclaration — montants de la période, sans numéro de case : reportez chaque montant dans la ligne correspondante du formulaire 3310-CA3 en vigueur sur impots.gouv.fr. La conformité reste de la responsabilité de l\'expert-comptable.',
         50,
         128,
         { width: 495 }
@@ -150,8 +140,7 @@ export async function GET(request: NextRequest) {
 
     let y = 170
     doc.font('Helvetica-Bold').fontSize(10).fillColor('#1e293b')
-    doc.text('Case', 50, y, { width: 50 })
-    doc.text('Libellé', 110, y, { width: 320 })
+    doc.text('Libellé', 50, y, { width: 380 })
     doc.text('Valeur (€)', 430, y, { width: 115, align: 'right' })
     y += 16
     doc.moveTo(50, y).lineTo(545, y).strokeColor('#cbd5e1').lineWidth(0.5).stroke()
@@ -159,8 +148,7 @@ export async function GET(request: NextRequest) {
 
     doc.font('Helvetica').fontSize(10).fillColor('#1e293b')
     for (const c of cases) {
-      doc.text(c.code, 50, y, { width: 50 })
-      doc.text(c.libelle, 110, y, { width: 320 })
+      doc.text(c.libelle, 50, y, { width: 380 })
       doc.text(c.valeur.toFixed(2), 430, y, { width: 115, align: 'right' })
       y += 14
     }

@@ -26,7 +26,7 @@ const STEPS = [
   {
     id: "compta-tva",
     title: "Déclaration TVA",
-    text: "Rapports & TVA permet de pré-remplir la déclaration CA3 (formulaire 3310-CA3) en PDF ou CSV, à recopier sur impots.gouv.fr.",
+    text: "Rapports & TVA prépare les montants de la déclaration CA3 (formulaire 3310-CA3) en PDF ou CSV, à reporter vous-même sur impots.gouv.fr.",
   },
   {
     id: "compta-fec",
