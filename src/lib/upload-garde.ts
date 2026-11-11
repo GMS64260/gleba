@@ -26,6 +26,9 @@ export const QUOTAS_ENVOI = {
 
 export type TypeEnvoi = keyof typeof QUOTAS_ENVOI
 
+/** Seule forme de nom produite par `/api/upload/image` : `<uuid>-<taille>.jpg`. */
+export const FICHIER_IMAGE_ENVOYEE = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}-(?:300|1200)\.jpg$/
+
 /** Dossier du compte ; `userId` ne doit porter aucun séparateur de chemin. */
 export function dossierEnvoi(type: TypeEnvoi, userId: string): string {
   if (!/^[A-Za-z0-9_-]+$/.test(userId)) throw new Error("Identifiant de compte inattendu")

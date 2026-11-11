@@ -55,6 +55,20 @@ export default auth((req) => {
     return new NextResponse(null, { status: 404 })
   }
 
+  // Photos envoyées (`/uploads/<exploitation>/<fichier>`) : une session ne
+  // suffit pas, le dossier d'une autre exploitation contient des photos privées
+  // (santé du verger). Le middleware ne connaît que la personne connectée, pas
+  // l'exploitation où elle travaille : si le dossier n'est pas le sien, la
+  // demande est confiée à une route qui lit l'adhésion en base et ne sert que
+  // le dossier de l'exploitation en cours (revue de sécurité du 2026-11-11).
+  const photoEnvoyee = /^\/uploads\/([^/]+)\/([^/]+)$/.exec(pathname)
+  if (photoEnvoyee && isLoggedIn && photoEnvoyee[1] !== req.auth?.user?.id) {
+    return NextResponse.rewrite(
+      new URL(`/api/upload/photo/${encodeURIComponent(photoEnvoyee[1])}/${encodeURIComponent(photoEnvoyee[2])}`, req.nextUrl),
+      { request: { headers: enTetesTransmises } },
+    )
+  }
+
   // Routes publiques (DEV2 #2 : pages légales accessibles sans login)
   const publicRoutes = [
     "/login", "/register", "/mot-de-passe-oublie", "/reset-password",
