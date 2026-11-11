@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const m = vi.hoisted(() => ({ auth: vi.fn(), owner: vi.fn(), checkout: vi.fn(), trial: vi.fn(), demo: vi.fn() }))
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: m.auth, refusSiPasProprietaire: m.owner }))
 vi.mock("@/lib/demo-garde", () => ({ refusSiCompteDemo: m.demo }))
-vi.mock("@/lib/prisma", () => ({ default: {} }))
+vi.mock("@/lib/prisma", () => ({ default: { abonnementGleba: { findUnique: async () => null } } }))
 vi.mock("@/lib/abonnement/serveur", () => ({ abonnementsActifs: () => true, chargerAccesService: vi.fn(), demarrerEssai: m.trial }))
 vi.mock("@/lib/abonnement/stripe", () => ({ creerCheckout: m.checkout, creerPortail: vi.fn(), paiementsDisponibles: () => true, resilier: vi.fn(), ErreurFacturation: class extends Error {} }))
-import { POST } from "./route"
+import { GET, POST } from "./route"
 const requete = (data: unknown) => new NextRequest("https://gleba.example/api/abonnement", { method: "POST", body: JSON.stringify(data) })
 beforeEach(() => {
   vi.clearAllMocks()
@@ -39,5 +39,12 @@ describe("contrat de souscription", () => {
     m.auth.mockResolvedValue({ session: { user: { id: "tenant-qa", impersonatedBy: "admin-qa" } } })
     expect((await POST(requete({ action: "checkout", formule: "complet", conditionsAcceptees: true }))).status).toBe(403)
     expect(m.checkout).not.toHaveBeenCalled()
+  })
+})
+describe("lecture de l'accès (incident du 2026-11-11)", () => {
+  it("n'est pas soumise au quota par adresse IP : la garde est appelée sans la requête", async () => {
+    const reponse = await GET()
+    expect(reponse.status).toBe(200)
+    expect(m.auth).toHaveBeenCalledWith()
   })
 })
