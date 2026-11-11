@@ -63,10 +63,15 @@ export default auth((req) => {
   // le dossier de l'exploitation en cours (revue de sécurité du 2026-11-11).
   const photoEnvoyee = /^\/uploads\/([^/]+)\/([^/]+)$/.exec(pathname)
   if (photoEnvoyee && isLoggedIn && photoEnvoyee[1] !== req.auth?.user?.id) {
-    return NextResponse.rewrite(
-      new URL(`/api/upload/photo/${encodeURIComponent(photoEnvoyee[1])}/${encodeURIComponent(photoEnvoyee[2])}`, req.nextUrl),
-      { request: { headers: enTetesTransmises } },
-    )
+    // La requête réécrite ne repasse pas par ce middleware : les en-têtes de
+    // contexte doivent déjà décrire la route de DESTINATION. Avec le chemin
+    // d'origine `/uploads/…`, inconnu de la garde d'abonnement, la route
+    // refusait tout le monde (FORMULE_INSUFFISANTE).
+    const destination = `/api/upload/photo/${encodeURIComponent(photoEnvoyee[1])}/${encodeURIComponent(photoEnvoyee[2])}`
+    const enTetesDestination = new Headers(enTetesTransmises)
+    enTetesDestination.set(ENTETE_CHEMIN, destination)
+    enTetesDestination.set(EN_TETE_MUTATION, valeurEnteteMutation(req.method, destination))
+    return NextResponse.rewrite(new URL(destination, req.nextUrl), { request: { headers: enTetesDestination } })
   }
 
   // Routes publiques (DEV2 #2 : pages légales accessibles sans login)
