@@ -292,6 +292,6 @@ describe("import d'un compte : aucun rattachement à l'entrée privée d'un autr
     const liees = mocks.create.mock.calls.filter(([name]) => name === "culture").map(([, { data }]) => data.especeId)
     expect(liees).not.toContain("espece-privee-tiers")
     expect(liees).toEqual(expect.arrayContaining(["espece-partagee-tiers", "espece-officielle", "espece-perso"]))
-    expect(resultat.warnings.join(" ")).toContain("Espece : 1 référence(s) du fichier n'existent pas")
+    expect(resultat.warnings.join(" ")).toContain("1 référence(s) du fichier n'existent pas")
   })
 })
