@@ -8,6 +8,9 @@
  *  - compte de démonstration : refusé ;
  *  - débit : nombre d'envois par compte sur dix minutes ;
  *  - quota : volume total du dossier du compte.
+ *
+ * Le fond du plan (`/api/jardin/fond`) passe par les mêmes gardes depuis la
+ * revue de sécurité du 2026-11-11.
  */
 import { NextResponse } from "next/server"
 import { readdir, stat } from "node:fs/promises"
@@ -22,6 +25,8 @@ export const QUOTAS_ENVOI = {
   image: { dossier: ["public", "uploads"], octets: 1024 * MO, envoisParDixMinutes: 60 },
   /** Pièces justificatives, conservées dix ans : quota large. */
   justificatif: { dossier: ["storage", "justificatifs"], octets: 3072 * MO, envoisParDixMinutes: 60 },
+  /** Fonds du plan 2D : un par parcelle, 10 Mo au plus chacun (même dossier que `fondStorageDir`). */
+  fondPlan: { dossier: ["storage", "plan-fonds"], octets: 500 * MO, envoisParDixMinutes: 30 },
 } as const
 
 export type TypeEnvoi = keyof typeof QUOTAS_ENVOI
@@ -75,10 +80,12 @@ export async function refusEnvoiFichier(type: TypeEnvoi, userId: string, octetsA
 }
 
 /** Signature réelle du contenu : le type annoncé par le navigateur ne prouve rien. */
-export function extensionReelle(contenu: Uint8Array): "pdf" | "jpg" | "png" | null {
+export function extensionReelle(contenu: Uint8Array): "pdf" | "jpg" | "png" | "webp" | null {
   const debut = (...octets: number[]) => octets.every((o, i) => contenu[i] === o)
   if (debut(0x25, 0x50, 0x44, 0x46, 0x2d)) return "pdf"
   if (debut(0xff, 0xd8, 0xff)) return "jpg"
   if (debut(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "png"
+  // RIFF....WEBP
+  if (debut(0x52, 0x49, 0x46, 0x46) && [0x57, 0x45, 0x42, 0x50].every((o, i) => contenu[8 + i] === o)) return "webp"
   return null
 }
