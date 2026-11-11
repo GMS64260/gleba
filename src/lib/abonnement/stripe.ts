@@ -228,8 +228,14 @@ export const resilier = (u: string) => avecVerrouFacturation(() => resilierSousV
 /** Confirmer l'arrêt des prélèvements AVANT le cascade de suppression du compte. */
 export async function arreterAvantSuppression(userId: string) {
   return avecVerrouFacturation(async () => {
+    // Le marqueur est posé sous le verrou même sans compte de facturation ni ligne : sinon un premier
+    // Checkout lancé pendant le cascade créerait une session payable pour un compte déjà supprimé.
+    const marquer = () => {
+      const marqueur = { statut: "suppression", checkoutExpireLe: new Date(Date.now() + DUREE_MARQUEUR_SUPPRESSION_MS) }
+      return prisma.abonnementGleba.upsert({ where: { userId }, create: { userId, ...marqueur }, update: marqueur })
+    }
     const ligne = await prisma.abonnementGleba.findUnique({ where: { userId } })
-    if (!ligne?.clientStripeId) return
+    if (!ligne?.clientStripeId) { await marquer(); return }
     const sessions = await appelerStripe("GET", "/v1/checkout/sessions?status=open&limit=100&customer=" + encodeURIComponent(ligne.clientStripeId))
     if (sessions.has_more) throw new ErreurFacturation("La fermeture des paiements doit être vérifiée avant suppression.")
     for (const session of liste(sessions.data).map(objet)) {
@@ -249,6 +255,6 @@ export async function arreterAvantSuppression(userId: string) {
     // Le marqueur n'est posé qu'une fois l'arrêt confirmé par Stripe, toujours sous le verrou : un échec en cours
     // de route ne laisse rien derrière lui, la suppression se rejoue telle quelle (appels idempotents) et la
     // synchronisation continue de suivre le contrat. Il couvre le cascade qui suit, puis s'éteint seul.
-    await prisma.abonnementGleba.update({ where: { userId }, data: { statut: "suppression", checkoutExpireLe: new Date(Date.now() + DUREE_MARQUEUR_SUPPRESSION_MS) } })
+    await marquer()
   })
 }

@@ -116,7 +116,7 @@ function baseEnMemoire(depart: Record<string, unknown>) {
   mocks.abonnementGleba.findUnique.mockImplementation(async () => ({ ...etat }))
   mocks.abonnementGleba.findUniqueOrThrow.mockImplementation(async () => ({ ...etat }))
   mocks.abonnementGleba.findFirst.mockImplementation(async () => ({ ...etat }))
-  mocks.abonnementGleba.upsert.mockImplementation(async () => ({ ...etat }))
+  mocks.abonnementGleba.upsert.mockImplementation(async ({ update }: { update: Record<string, unknown> }) => ({ ...Object.assign(etat, update) }))
   mocks.abonnementGleba.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...Object.assign(etat, data) }))
   mocks.abonnementGleba.updateMany.mockImplementation(async ({ where, data }: { where: Record<string, unknown>, data: Record<string, unknown> }) => {
     if (!correspond(where)) return { count: 0 }
@@ -206,6 +206,22 @@ describe("arrêt des prélèvements avant suppression (PAY-02)", () => {
     expect(appels).toContain("DELETE https://api.stripe.com/v1/subscriptions/sub_synthetique")
     expect(etat.statut).toBe("suppression")
     expect((etat.checkoutExpireLe as Date).getTime()).toBeLessThanOrEqual(Date.now() + 15 * 60 * 1000)
+  })
+
+  it("sans compte de facturation, le marqueur est posé quand même : un premier paiement lancé pendant le cascade est refusé sans rien créer chez le prestataire", async () => {
+    vi.stubEnv("GLEBA_STRIPE_TAX_MODE", "exempt")
+    mocks.user.findUnique.mockResolvedValue({ createdAt: new Date("2026-12-01"), email: "ferme@example.invalid" })
+    const etat = baseEnMemoire({ clientStripeId: null, essaiDebut: new Date("2020-01-01"), essaiFin: new Date("2020-04-01") })
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/v1/prices/")) return reponse(prixValide)
+      throw new Error("Appel inattendu " + url)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    await arreterAvantSuppression("ferme-synthetique")
+    expect(etat.statut).toBe("suppression")
+    await expect(creerCheckout("ferme-synthetique")).rejects.toThrow("déjà en cours")
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/v1/customers") || String(url).includes("/v1/checkout/sessions"))).toBe(false)
+    expect(etat.clientStripeId).toBeNull()
   })
 
   it("le marqueur protège le cascade puis s'éteint : la synchronisation n'est jamais coupée définitivement", async () => {
