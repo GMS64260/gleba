@@ -13,8 +13,16 @@ const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("checkout"), formule: z.literal("complet"), conditionsAcceptees: z.literal(true) }),
   z.object({ action: z.enum(["portail", "resilier"]) }),
 ])
-export async function GET(request: Request) {
-  const { error, session } = await requireAuthApi(request)
+export async function GET() {
+  // Sans la requête : `requireAuthApi(request)` applique un quota de 100 appels
+  // par quart d'heure et par adresse IP, partagé avec d'autres routes. Cette
+  // lecture conditionne l'affichage de TOUTES les pages protégées et repart à
+  // chaque chargement de page : un utilisateur actif (ou plusieurs membres
+  // derrière la même connexion) épuisait le quota et se retrouvait devant
+  // « Votre accès n'est pas disponible », l'actualisation aggravant le blocage
+  // (incident du 2026-11-11). Le contexte de la garde d'abonnement vient alors
+  // des en-têtes posés par le middleware.
+  const { error, session } = await requireAuthApi()
   if (error) return error
   const userId = session.user.id
   const acces = await chargerAccesService(userId)
