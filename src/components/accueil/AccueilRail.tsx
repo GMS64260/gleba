@@ -7,6 +7,7 @@ import { useModules } from "@/hooks/use-modules"
 import { useAccesService } from "@/hooks/use-acces-service"
 import { ENTREES_PRINCIPALES, ENTREES_SECONDAIRES, entreeNavigationVisible, estEntreeNavigationActive, type EntreeNavigation } from "@/lib/navigation-principale"
 import { cn } from "@/lib/utils"
+import { GuideNavigationNotice, useGuidageNavigation } from "@/components/shell/GuidageNavigation"
 
 /**
  * Rail de navigation de l'accueil v2 (maquette retenue, livraison L4) :
@@ -28,15 +29,17 @@ export function AccueilRail({ nomFerme, sousTitreFerme, className }: AccueilRail
   const { modules } = useModules()
   const { acces } = useAccesService()
   const pathname = usePathname()
+  const { cible } = useGuidageNavigation()
   const boutique = process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE === "true"
 
   const lien = (e: EntreeNavigation) => {
     const actif = estEntreeNavigationActive(pathname, e.href)
     const Icone = e.icone
     return (
-      <Link key={e.href} href={e.href} aria-current={actif ? "page" : undefined} className={cn(CLASSE_LIEN, actif && "bg-sauge-doux text-foret hover:bg-sauge-doux")}>
+      <Link key={e.href} href={e.href} data-navigation-id={e.id} aria-current={actif ? "page" : undefined} className={cn(CLASSE_LIEN, actif && "bg-sauge-doux text-foret hover:bg-sauge-doux")}>
         <Icone className={cn("h-[18px] w-[18px] shrink-0", actif ? "text-sauge" : "text-ardoise")} aria-hidden />
         {e.libelle}
+        {cible?.menu === e.id && <span className="ml-auto text-xs text-foret">Ici</span>}
       </Link>
     )
   }
@@ -47,6 +50,7 @@ export function AccueilRail({ nomFerme, sousTitreFerme, className }: AccueilRail
         <Image src="/gleba-logo.png" alt="" width={120} height={80} className="h-7 w-auto rounded-md" priority />
         Gleba
       </Link>
+      <GuideNavigationNotice />
       {ENTREES_PRINCIPALES.filter(e => entreeNavigationVisible(e, modules, boutique, acces)).map(lien)}
       <div className="my-2 h-px bg-lin" aria-hidden />
       {ENTREES_SECONDAIRES.filter(e => entreeNavigationVisible(e, modules, boutique, acces)).map(lien)}

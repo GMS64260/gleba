@@ -10,6 +10,7 @@ import { useModules } from "@/hooks/use-modules"
 import { useAccesService } from "@/hooks/use-acces-service"
 import { ENTREES_NAVIGATION, entreeNavigationVisible, estEntreeNavigationActive, getEntreeNavigation, type EntreeNavigation } from "@/lib/navigation-principale"
 import { cn } from "@/lib/utils"
+import { GuideNavigationNotice, useGuidageNavigation } from "@/components/shell/GuidageNavigation"
 
 const CLASSE_ENTREE = "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg text-[10.5px] font-medium text-ardoise focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge"
 
@@ -20,6 +21,14 @@ export function NavigationBasse({ className }: { className?: string }) {
   const { acces } = useAccesService()
   const boutique = process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE === "true"
   const [ouvert, setOuvert] = React.useState(false)
+  const { cible } = useGuidageNavigation()
+  React.useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 1023px)")
+    if (cible?.menu && mobile.matches) setOuvert(true)
+    const adapter = () => { if (!mobile.matches) setOuvert(false) }
+    mobile.addEventListener("change", adapter)
+    return () => mobile.removeEventListener("change", adapter)
+  }, [cible])
   const ref = React.useRef<HTMLElement | null>(null)
   const proprietaire = React.useId()
   const entrees = ENTREES_NAVIGATION.filter(e => entreeNavigationVisible(e, modules, boutique, acces))
@@ -51,7 +60,7 @@ export function NavigationBasse({ className }: { className?: string }) {
   const entree = (e: EntreeNavigation, libelle = e.libelle) => {
     const actif = estEntreeNavigationActive(pathname, e.href)
     const Icone = e.icone
-    return <Link href={e.href} aria-current={actif ? "page" : undefined} className={cn(CLASSE_ENTREE, actif && "text-foret")}>
+    return <Link href={e.href} data-navigation-id={e.id} aria-current={actif ? "page" : undefined} className={cn(CLASSE_ENTREE, actif && "text-foret")}>
       <Icone className={cn("h-[22px] w-[22px]", actif ? "text-sauge" : "text-ardoise")} aria-hidden />
       <span className="max-w-full truncate">{libelle}</span>
     </Link>
@@ -59,6 +68,7 @@ export function NavigationBasse({ className }: { className?: string }) {
 
   return (
     <nav ref={ref} data-navigation-basse className={cn("fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-lin bg-craie/95 px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 font-ui backdrop-blur-sm", className)} aria-label="Navigation">
+      {cible && !ouvert && <div className="absolute inset-x-2 bottom-[calc(100%+0.5rem)]"><GuideNavigationNotice /></div>}
       {entree(directes[0])}
       {entree(directes[1], "Plan")}
       <Link href="/taches" aria-current={estEntreeNavigationActive(pathname, "/taches") ? "page" : undefined} className={cn(CLASSE_ENTREE, "text-foret")} aria-label="Noter une tâche">
@@ -75,12 +85,14 @@ export function NavigationBasse({ className }: { className?: string }) {
         </SheetTrigger>
         <SheetContent side="bottom" className="z-[80] max-h-[85dvh] overflow-y-auto rounded-t-2xl border-lin bg-craie font-ui text-encre">
           <SheetHeader className="text-left"><SheetTitle className="font-display text-lg font-medium">Toutes les pages</SheetTitle></SheetHeader>
+          {cible && <div className="mt-3"><GuideNavigationNotice /></div>}
           <ul className="mt-3 grid grid-cols-1 gap-1.5 pb-[env(safe-area-inset-bottom)] min-[360px]:grid-cols-2">
             {entrees.map(e => {
               const Icone = e.icone
               const actif = estEntreeNavigationActive(pathname, e.href)
-              return <li key={e.id}><Link href={e.href} onClick={() => setOuvert(false)} aria-current={actif ? "page" : undefined} className={cn("flex min-h-12 items-center gap-2.5 rounded-lg border border-lin px-3 text-sm font-medium hover:bg-papier", actif && "border-sauge bg-sauge-doux text-foret")}>
+              return <li key={e.id}><Link href={e.href} data-navigation-id={e.id} onClick={() => setOuvert(false)} aria-current={actif ? "page" : undefined} className={cn("flex min-h-12 items-center gap-2.5 rounded-lg border border-lin px-3 text-sm font-medium hover:bg-papier", actif && "border-sauge bg-sauge-doux text-foret")}>
                 <Icone className="h-[18px] w-[18px] shrink-0 text-ardoise" aria-hidden />{e.libelle}
+                {cible?.menu === e.id && <span className="ml-auto text-xs text-foret">Ici</span>}
               </Link></li>
             })}
           </ul>
