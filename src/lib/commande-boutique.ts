@@ -22,8 +22,67 @@
 import type { Prisma, PrismaClient } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { ensureClientForUser } from "@/lib/comptabilite/ensure-client"
+import { cleSourceReglement } from "@/lib/comptabilite/cle-reglement"
+import {
+  suiviReglementActif,
+  verifierSuppressionSourceReglee,
+} from "@/lib/comptabilite/suivi-reglement-source"
+import { verrouillerStockCommercial } from "@/lib/stocks/verrou-commercial"
 
 type Tx = Prisma.TransactionClient | PrismaClient
+
+/**
+ * Refus métier d'une transition de commande (commande annulée, journal de
+ * règlements à respecter…). `status` est le code HTTP que la route renvoie.
+ */
+export class ErreurCommandeBoutique extends Error {
+  constructor(
+    message: string,
+    public status = 409,
+  ) {
+    super(message)
+    this.name = "ErreurCommandeBoutique"
+  }
+}
+
+/** Clé du dossier de règlements de la recette d'une commande (stable). */
+const cleReglementCommande = (commandeId: number) =>
+  cleSourceReglement("vente", "commande_boutique", commandeId)
+
+/**
+ * Verrouille puis relit la commande.
+ *
+ * Ordre des verrous = celui du journal des règlements et des sorties
+ * commerciales : verrous consultatifs du compte d'abord, ligne de la commande
+ * ensuite. Avant la revue du 2026-11-11, la ligne était prise en premier, à
+ * l'inverse d'un règlement saisi sur la recette (interblocage possible), et le
+ * stock de la boutique bougeait hors du verrou des bons de livraison.
+ * (Efficace uniquement dans une transaction ; l'appelant en fournit une.)
+ */
+async function verrouillerCommande(commandeId: number, tx: Tx) {
+  const proprietaire = await tx.commandeBoutique.findUnique({
+    where: { id: commandeId },
+    select: { userId: true },
+  })
+  if (!proprietaire) {
+    throw new ErreurCommandeBoutique(`Commande #${commandeId} introuvable`, 404)
+  }
+  await verrouillerStockCommercial(tx as Prisma.TransactionClient, proprietaire.userId)
+  await tx.$executeRawUnsafe(
+    'SELECT id FROM commandes_boutique WHERE id = $1 FOR UPDATE',
+    commandeId,
+  )
+  const commande = await tx.commandeBoutique.findUnique({
+    where: { id: commandeId },
+    include: {
+      lignes: { include: { produit: true } },
+    },
+  })
+  if (!commande) {
+    throw new ErreurCommandeBoutique(`Commande #${commandeId} introuvable`, 404)
+  }
+  return commande
+}
 
 export type ConfirmationResult = {
   commandeId: number
@@ -71,7 +130,14 @@ function statutBioMajoritaire(
   return entries[0][0]
 }
 
-/** Mapping provider → mode_reglement compta. */
+/**
+ * Mapping provider → mode_reglement compta.
+ *
+ * « Manuel » dit seulement que le producteur a pointé le paiement lui-même :
+ * il ne dit pas comment il a été payé. Il valait « Espèces » jusqu'au
+ * 2026-11-11, ce qui inventait un encaissement en caisse pour un chèque ou un
+ * virement. Le mode réellement reçu se passe par `opts.modeReglement`.
+ */
 function modeReglementDepuisProvider(provider?: string): string | null {
   switch (provider) {
     case "Stripe":
@@ -79,11 +145,16 @@ function modeReglementDepuisProvider(provider?: string): string | null {
       return "CB"
     case "Virement":
       return "Virement"
-    case "Manuel":
-      return "Espèces"
     default:
       return null
   }
+}
+
+/** Mode retenu : celui que l'appelant déclare, sinon celui du provider. */
+function modeReglementRetenu(opts: { provider?: string; modeReglement?: string | null }): string | null {
+  return opts.modeReglement !== undefined
+    ? opts.modeReglement
+    : modeReglementDepuisProvider(opts.provider)
 }
 
 type CommandeMaterialisable = Prisma.CommandeBoutiqueGetPayload<{
@@ -99,7 +170,7 @@ type CommandeMaterialisable = Prisma.CommandeBoutiqueGetPayload<{
  */
 async function materialiserVenteCommande(
   commande: CommandeMaterialisable,
-  opts: { paye: boolean; provider?: string; tauxTVA?: number },
+  opts: { paye: boolean; provider?: string; modeReglement?: string | null; tauxTVA?: number },
   tx: Tx
 ): Promise<{ venteManuelleId: number; stockNegatifs: ConfirmationResult["stockNegatifs"] }> {
   // 1) Décrément stock — non bloquant si négatif (cf rapport tech audit A4).
@@ -181,7 +252,7 @@ async function materialiserVenteCommande(
       montantTVA: montantTVAEur,
       montant: montantTTC,
       journal: "VE",
-      modeReglement: opts.paye ? modeReglementDepuisProvider(opts.provider) : null,
+      modeReglement: opts.paye ? modeReglementRetenu(opts) : null,
       numeroPiece: commande.numero,
       module: "boutique",
       paye: opts.paye,
@@ -200,32 +271,32 @@ async function materialiserVenteCommande(
  * Confirme une commande : décrémente stock + crée VenteManuelle.
  *
  * @param commandeId  id de la CommandeBoutique
- * @param opts        provider/ref pour le snapshot paiement
+ * @param opts        provider/ref pour le snapshot paiement ; `modeReglement`
+ *                    = mode réellement reçu (Espèces, Chèque…), `null` si
+ *                    l'appelant ne le connaît pas
  * @param tx          optionnel : transaction Prisma parente (composition)
+ *
+ * Refuse (ErreurCommandeBoutique, 409) une commande annulée, et une commande
+ * dont la recette porte déjà des versements au journal des règlements.
  */
 export async function confirmCommandeBoutique(
   commandeId: number,
-  opts: { provider?: string; ref?: string; tauxTVA?: number } = {},
+  opts: { provider?: string; modeReglement?: string | null; ref?: string; tauxTVA?: number } = {},
   tx: Tx = prisma
 ): Promise<ConfirmationResult> {
-  // Verrou de ligne (audit 2026-07, #4) : sérialise les confirmations
-  // concurrentes de la même commande (double-clic / rejeu webhook). Le 2e
-  // appel attend le COMMIT du 1er puis relit paiementStatut='Confirmé' →
-  // no-op via l'idempotence ci-dessous, au lieu de doubler stock + écriture.
-  // (Efficace uniquement dans une transaction ; l'appelant en fournit une.)
-  await tx.$executeRawUnsafe(
-    'SELECT id FROM commandes_boutique WHERE id = $1 FOR UPDATE',
-    commandeId,
-  )
+  // Verrou (audit 2026-07, #4) : sérialise les confirmations concurrentes de
+  // la même commande (double-clic / rejeu webhook). Le 2e appel attend le
+  // COMMIT du 1er puis relit paiementStatut='Confirmé' → no-op via
+  // l'idempotence ci-dessous, au lieu de doubler stock + écriture.
+  const commande = await verrouillerCommande(commandeId, tx)
 
-  const commande = await tx.commandeBoutique.findUnique({
-    where: { id: commandeId },
-    include: {
-      lignes: { include: { produit: true } },
-    },
-  })
-  if (!commande) {
-    throw new Error(`Commande #${commandeId} introuvable`)
+  // Revue du 2026-11-11 : une commande annulée restait encaissable ; la
+  // confirmation recréait une recette et un débit de stock sous un statut
+  // « annulée ».
+  if (commande.statut === "annulee") {
+    throw new ErreurCommandeBoutique(
+      "Cette commande est annulée : son paiement ne peut plus être confirmé."
+    )
   }
 
   // Idempotence : déjà confirmée → no-op.
@@ -254,8 +325,19 @@ export async function confirmCommandeBoutique(
         },
         select: { id: true },
       })
+  // Revue du 2026-11-11 : dès qu'un versement est journalisé sur la recette,
+  // c'est le journal qui dit ce qui reste dû. Pointer « payé » d'ici déclarait
+  // la commande soldée alors que le journal gardait un reste à payer. Le
+  // dernier versement saisi dans Règlements confirme la commande de lui-même.
+  if (await suiviReglementActif(tx as Prisma.TransactionClient, commande.userId, cleReglementCommande(commande.id))) {
+    throw new ErreurCommandeBoutique(
+      "Cette commande a déjà des versements enregistrés. Ajoutez le solde depuis Règlements : " +
+        "le paiement sera confirmé quand le reste à payer sera à zéro."
+    )
+  }
+
   if (venteLiee) {
-    const modeReglementConfirmation = modeReglementDepuisProvider(opts.provider)
+    const modeReglementConfirmation = modeReglementRetenu(opts)
     await tx.venteManuelle.update({
       where: { id: venteLiee.id },
       data: {
@@ -283,7 +365,7 @@ export async function confirmCommandeBoutique(
   // 1-2) Stock + VenteManuelle payée + fiche client.
   const { venteManuelleId, stockNegatifs } = await materialiserVenteCommande(
     commande,
-    { paye: true, provider: opts.provider, tauxTVA: opts.tauxTVA },
+    { paye: true, provider: opts.provider, modeReglement: opts.modeReglement, tauxTVA: opts.tauxTVA },
     tx
   )
 
@@ -326,21 +408,16 @@ export async function livrerCommandeBoutique(
   commandeId: number,
   tx: Tx = prisma
 ): Promise<ConfirmationResult> {
-  // Même verrou de ligne que confirmCommandeBoutique : sérialise une livraison
-  // et une confirmation de paiement concurrentes sur la même commande.
-  await tx.$executeRawUnsafe(
-    'SELECT id FROM commandes_boutique WHERE id = $1 FOR UPDATE',
-    commandeId,
-  )
+  // Même verrou que confirmCommandeBoutique : sérialise une livraison et une
+  // confirmation de paiement concurrentes sur la même commande.
+  const commande = await verrouillerCommande(commandeId, tx)
 
-  const commande = await tx.commandeBoutique.findUnique({
-    where: { id: commandeId },
-    include: {
-      lignes: { include: { produit: true } },
-    },
-  })
-  if (!commande) {
-    throw new Error(`Commande #${commandeId} introuvable`)
+  // Revue du 2026-11-11 : livrer une commande annulée re-débitait le stock et
+  // recréait une recette, le paiement restant « Annulé ».
+  if (commande.statut === "annulee") {
+    throw new ErreurCommandeBoutique(
+      "Cette commande est annulée : elle ne peut plus être livrée. Enregistrez une nouvelle commande."
+    )
   }
 
   if (commande.venteManuelleId) {
@@ -397,20 +474,32 @@ export async function livrerCommandeBoutique(
 
 /**
  * Annule une commande (paiement annulé / remboursé). Remet le stock si la
- * commande était confirmée. La VenteManuelle est marquée non payée mais pas
- * supprimée (traçabilité comptable).
+ * commande était matérialisée et supprime sa VenteManuelle (cf. audit #10
+ * ci-dessous).
+ *
+ * Refuse (ErreurReglement, 409) tant que la recette porte un versement actif
+ * au journal des règlements : il faut d'abord l'annuler ou le rembourser.
+ * Idempotent : une commande déjà annulée n'est pas annulée deux fois.
  */
 export async function annulerCommandeBoutique(
   commandeId: number,
   motif: "Annulé" | "Remboursé" = "Annulé",
   tx: Tx = prisma
 ): Promise<void> {
-  await tx.$queryRawUnsafe('SELECT id FROM commandes_boutique WHERE id = $1 FOR UPDATE', commandeId)
-  const commande = await tx.commandeBoutique.findUnique({
-    where: { id: commandeId },
-    include: { lignes: { include: { produit: true } } },
-  })
-  if (!commande) throw new Error(`Commande #${commandeId} introuvable`)
+  const commande = await verrouillerCommande(commandeId, tx)
+
+  // Déjà annulée : rien à rendre une seconde fois (l'idempotence ne tenait
+  // jusqu'ici qu'à la suppression de la recette).
+  if (commande.statut === "annulee") return
+
+  // Revue du 2026-11-11 : l'annulation supprimait la recette sans regarder le
+  // journal ; un versement actif restait rattaché à une pièce disparue et ne
+  // pouvait plus être annulé. Même garde que pour toute pièce réglée.
+  await verifierSuppressionSourceReglee(
+    tx as Prisma.TransactionClient,
+    commande.userId,
+    cleReglementCommande(commande.id),
+  )
 
   // Réintégration stock si la commande avait été matérialisée (paiement
   // confirmé OU livraison — QA cmsw9bv3s : une livrée-non-payée a aussi

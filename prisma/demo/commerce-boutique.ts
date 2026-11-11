@@ -182,7 +182,7 @@ export async function seedBoutique(ctx: Contexte): Promise<{ commandes: number; 
     const venteId = await livrer()
     ventes++
     if (c.fin === "payee-especes") {
-      await prisma.$transaction((tx) => confirmCommandeBoutique(cmd.id, { provider: "Manuel" }, tx))
+      await prisma.$transaction((tx) => confirmCommandeBoutique(cmd.id, { provider: "Manuel", modeReglement: "Espèces" }, tx))
     } else if (c.fin === "payee-virement") {
       ajouterOperation(ctx, {
         jour: ouvreSuivant(isoPlus(c.retrait, 1)),

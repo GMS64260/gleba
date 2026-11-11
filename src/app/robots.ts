@@ -5,7 +5,11 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        // Les images des vitrines publiques sont servies par une route d'API :
+        // sans cette exception (la règle la plus longue l'emporte sur
+        // `Disallow: /api/`), les robots de partage et de recherche d'images
+        // ne peuvent pas les lire.
+        allow: ["/", "/api/boutique/public/*/media/"],
         disallow: [
           "/api/",
           "/admin/",
