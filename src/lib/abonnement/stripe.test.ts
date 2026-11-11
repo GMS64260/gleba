@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   query: vi.fn(),
 }))
 vi.mock("@/lib/prisma", () => ({ default: { ...mocks, $transaction: async (fn: (db: unknown) => unknown) => fn({ abonnementGleba: mocks.abonnementGleba, $queryRaw: mocks.query }) } }))
-import { recevoirEvenement, signatureValide, synchroniserAbonnement, creerCheckout } from "./stripe"
+import { recevoirEvenement, signatureValide, synchroniserAbonnement, creerCheckout, traiterEvenement, arreterAvantSuppression } from "./stripe"
 
 const ligne = { userId: "ferme-synthetique", gratuitAVie: false, checkoutCle: "generation-qa", clientStripeId: "cus_synthetique", abonnementStripeId: "sub_synthetique", formule: "complet", payeJusquau: new Date("2027-02-01") }
 function abonnement(overrides: Record<string, unknown> = {}) {
@@ -98,6 +98,145 @@ describe("preuve de paiement et cloisonnement", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+/** Base en mémoire : une seule ligne d'abonnement, mêmes filtres que ceux du module. */
+function baseEnMemoire(depart: Record<string, unknown>) {
+  const etat: Record<string, unknown> = { userId: "ferme-synthetique", gratuitAVie: false, clientStripeId: "cus_synthetique", abonnementStripeId: null, checkoutId: null, checkoutCle: null, checkoutExpireLe: null, formule: null, statut: null, payeJusquau: null, ...depart }
+  const date = (v: unknown) => v instanceof Date ? v.getTime() : null
+  const correspond = (where: Record<string, unknown>): boolean => Object.entries(where).every(([k, v]) => {
+    if (k === "AND") return (v as Record<string, unknown>[]).every(correspond)
+    if (k === "OR") return (v as Record<string, unknown>[]).some(correspond)
+    if (v && typeof v === "object" && !(v instanceof Date)) {
+      const f = v as { not?: unknown, lt?: Date, gt?: Date }
+      if ("not" in f) return etat[k] !== null && etat[k] !== f.not
+      if (f.lt) return date(etat[k]) !== null && date(etat[k])! < f.lt.getTime()
+      if (f.gt) return date(etat[k]) !== null && date(etat[k])! > f.gt.getTime()
+    }
+    return etat[k] === v
+  })
+  mocks.abonnementGleba.findUnique.mockImplementation(async () => ({ ...etat }))
+  mocks.abonnementGleba.findUniqueOrThrow.mockImplementation(async () => ({ ...etat }))
+  mocks.abonnementGleba.findFirst.mockImplementation(async () => ({ ...etat }))
+  mocks.abonnementGleba.upsert.mockImplementation(async () => ({ ...etat }))
+  mocks.abonnementGleba.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...Object.assign(etat, data) }))
+  mocks.abonnementGleba.updateMany.mockImplementation(async ({ where, data }: { where: Record<string, unknown>, data: Record<string, unknown> }) => {
+    if (!correspond(where)) return { count: 0 }
+    Object.assign(etat, data); return { count: 1 }
+  })
+  return etat
+}
+const reponse = (v: unknown) => new Response(JSON.stringify(v))
+const prixValide = { currency: "eur", unit_amount: 1200, recurring: { interval: "month", interval_count: 1 }, active: true, tax_behavior: "exclusive" }
+
+describe("expiration d'un ancien Checkout (PAY-01)", () => {
+  beforeEach(() => {
+    vi.stubEnv("GLEBA_STRIPE_TAX_MODE", "exempt")
+    mocks.user.findUnique.mockResolvedValue({ createdAt: new Date("2026-12-01"), email: "ferme@example.invalid" })
+    mocks.evenementAbonnement.findUniqueOrThrow.mockResolvedValue({ id: "evt_expire", type: "checkout.session.expired", objetId: "cs_ancien", traiteLe: null })
+  })
+  const ancien = { checkoutId: "cs_ancien", checkoutCle: "ancienne-generation", checkoutExpireLe: new Date("2020-01-01"), essaiDebut: new Date("2020-01-01"), essaiFin: new Date("2020-04-01"), statut: "canceled", payeJusquau: new Date("2020-01-01") }
+
+  it.each([
+    ["session antérieure, sans génération en métadonnée", {}],
+    ["session portant sa génération", { metadata: { glebaCheckoutCle: "ancienne-generation" } }],
+  ])("arrivée pendant la création du nouveau paiement, elle ne l'efface pas et les droits s'activent une seule fois : %s", async (_nom, sessionExpiree) => {
+    const etat = baseEnMemoire(ancien)
+    let generation = ""
+    vi.stubGlobal("fetch", vi.fn(async (url: string, opts: { body?: URLSearchParams }) => {
+      if (url.includes("/v1/prices/")) return reponse(prixValide)
+      if (url.includes("/v1/subscriptions?")) return reponse({ data: [], has_more: false })
+      if (url.endsWith("/v1/checkout/sessions")) {
+        generation = opts.body!.get("subscription_data[metadata][glebaCheckoutCle]")!
+        expect(opts.body!.get("metadata[glebaCheckoutCle]")).toBe(generation)
+        await traiterEvenement("evt_expire")
+        return reponse({ id: "cs_nouveau", url: "https://checkout.stripe.com/c/pay_qa" })
+      }
+      if (url.includes("/v1/events/")) return reponse({ data: { object: { id: "cs_ancien", ...sessionExpiree } } })
+      if (url.includes("/v1/subscriptions/sub_nouveau")) return reponse(abonnement({ id: "sub_nouveau", metadata: { glebaUserId: "ferme-synthetique", glebaCheckoutCle: generation } }))
+      throw new Error("Appel inattendu " + url)
+    }))
+    await creerCheckout("ferme-synthetique")
+    expect(etat.checkoutId).toBe("cs_nouveau")
+    expect(etat.checkoutCle).toBe(generation)
+    await synchroniserAbonnement("sub_nouveau")
+    await synchroniserAbonnement("sub_nouveau")
+    expect(etat).toMatchObject({ abonnementStripeId: "sub_nouveau", formule: "complet", statut: "active", payeJusquau: new Date("2027-04-01") })
+  })
+
+  it("l'expiration de la session en cours libère bien la tentative", async () => {
+    const etat = baseEnMemoire({ ...ancien, checkoutExpireLe: new Date(Date.now() + 600000) })
+    vi.stubGlobal("fetch", vi.fn(async () => reponse({ data: { object: { id: "cs_ancien", metadata: { glebaCheckoutCle: "ancienne-generation" } } } })))
+    await traiterEvenement("evt_expire")
+    expect(etat).toMatchObject({ checkoutId: null, checkoutCle: null, checkoutExpireLe: null })
+    expect(mocks.query).toHaveBeenCalled()
+  })
+
+  it("une session d'une autre génération ne libère rien", async () => {
+    const etat = baseEnMemoire({ ...ancien, checkoutCle: "generation-courante" })
+    vi.stubGlobal("fetch", vi.fn(async () => reponse({ data: { object: { id: "cs_ancien", metadata: { glebaCheckoutCle: "ancienne-generation" } } } })))
+    await traiterEvenement("evt_expire")
+    expect(etat.checkoutCle).toBe("generation-courante")
+  })
+})
+
+describe("arrêt des prélèvements avant suppression (PAY-02)", () => {
+  const actif = { abonnementStripeId: "sub_synthetique", checkoutCle: "generation-qa", formule: "complet", statut: "active", payeJusquau: new Date("2027-02-01") }
+  const contrat = { id: "sub_synthetique", status: "active", metadata: { glebaUserId: "ferme-synthetique" }, schedule: "sub_sched_qa" }
+  const etapes = ["/v1/checkout/sessions?", "/expire", "/v1/subscriptions?", "/release", "DELETE"]
+
+  it.each(etapes)("une erreur réseau à l'étape %s ne laisse aucun marqueur, la synchronisation reprend et la suppression se rejoue", async etape => {
+    const etat = baseEnMemoire(actif)
+    let panne = true
+    const appels: string[] = []
+    vi.stubGlobal("fetch", vi.fn(async (url: string, opts: { method: string }) => {
+      appels.push(opts.method + " " + url)
+      if (panne && (etape === "DELETE" ? opts.method === "DELETE" : url.includes(etape))) throw new Error("timeout synthétique")
+      if (url.includes("/v1/checkout/sessions?")) return reponse({ data: [{ id: "cs_ouvert" }], has_more: false })
+      if (url.includes("/v1/subscriptions?")) return reponse({ data: [contrat], has_more: false })
+      if (url.includes("/v1/subscriptions/sub_synthetique") && opts.method === "GET") return reponse(abonnement())
+      return reponse({})
+    }))
+    await expect(arreterAvantSuppression("ferme-synthetique")).rejects.toThrow()
+    expect(etat.statut).toBe("active")
+    expect(etat.checkoutExpireLe).toBeNull()
+    await synchroniserAbonnement("sub_synthetique")
+    expect(etat.payeJusquau).toEqual(new Date("2027-04-01"))
+    panne = false
+    appels.length = 0
+    await arreterAvantSuppression("ferme-synthetique")
+    expect(appels).toContain("DELETE https://api.stripe.com/v1/subscriptions/sub_synthetique")
+    expect(etat.statut).toBe("suppression")
+    expect((etat.checkoutExpireLe as Date).getTime()).toBeLessThanOrEqual(Date.now() + 15 * 60 * 1000)
+  })
+
+  it("le marqueur protège le cascade puis s'éteint : la synchronisation n'est jamais coupée définitivement", async () => {
+    const etat = baseEnMemoire({ ...actif, statut: "suppression", checkoutExpireLe: new Date(Date.now() + 5 * 60 * 1000) })
+    vi.stubGlobal("fetch", vi.fn(async () => reponse(abonnement())))
+    await synchroniserAbonnement("sub_synthetique")
+    expect(etat.statut).toBe("suppression")
+    for (const perime of [new Date(Date.now() - 1000), new Date("9000-01-01")]) {
+      Object.assign(etat, { statut: "suppression", checkoutExpireLe: perime })
+      await synchroniserAbonnement("sub_synthetique")
+      expect(etat.statut).toBe("active")
+    }
+  })
+
+  it("un marqueur périmé ne bloque pas une nouvelle souscription, un marqueur en cours si", async () => {
+    vi.stubEnv("GLEBA_STRIPE_TAX_MODE", "exempt")
+    mocks.user.findUnique.mockResolvedValue({ createdAt: new Date("2026-12-01"), email: "ferme@example.invalid" })
+    const essaiFini = { essaiDebut: new Date("2020-01-01"), essaiFin: new Date("2020-04-01") }
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/v1/prices/")) return reponse(prixValide)
+      if (url.includes("/v1/subscriptions?")) return reponse({ data: [], has_more: false })
+      return reponse({ id: "cs_nouveau", url: "https://checkout.stripe.com/c/pay_qa" })
+    }))
+    baseEnMemoire({ ...essaiFini, statut: "suppression", checkoutExpireLe: new Date(Date.now() + 5 * 60 * 1000) })
+    await expect(creerCheckout("ferme-synthetique")).rejects.toThrow("déjà en cours")
+    const etat = baseEnMemoire({ ...essaiFini, statut: "suppression", checkoutExpireLe: new Date("9000-01-01") })
+    await creerCheckout("ferme-synthetique")
+    expect(etat).toMatchObject({ checkoutId: "cs_nouveau", statut: null })
+  })
+})
+
 describe("clé du compte Stripe de Gleba", () => {
   it.each(["sk_test_synthetique", "rk_test_synthetique"])("accepte %s en mode test", async cle => {
     vi.stubEnv("GLEBA_STRIPE_SECRET_KEY", cle)

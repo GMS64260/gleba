@@ -8,6 +8,13 @@ export const objet = (v: unknown): Objet => v && typeof v === "object" && !Array
 const id = (v: unknown): string | null => typeof v === "string" ? v : typeof objet(v).id === "string" ? objet(v).id as string : null
 const liste = (v: unknown): unknown[] => Array.isArray(v) ? v : []
 const dateUnix = (v: unknown): Date | null => typeof v === "number" && Number.isFinite(v) && v > 0 ? new Date(v * 1000) : null
+/** Durée de vie du marqueur « suppression » : le temps du cascade qui suit l'arrêt des prélèvements. */
+const DUREE_MARQUEUR_SUPPRESSION_MS = 15 * 60 * 1000
+/** Le marqueur n'a d'effet que dans sa fenêtre : une suppression qui n'aboutit pas ne coupe jamais définitivement la synchronisation ni la souscription. */
+function suppressionEnCours(ligne: { statut: string | null, checkoutExpireLe: Date | null }, maintenant = Date.now()): boolean {
+  const fin = ligne.checkoutExpireLe?.getTime()
+  return ligne.statut === "suppression" && fin !== undefined && fin > maintenant && fin <= maintenant + DUREE_MARQUEUR_SUPPRESSION_MS
+}
 export class ErreurFacturation extends Error {
   constructor(message: string, readonly status = 503) { super(message) }
 }
@@ -71,9 +78,15 @@ async function creerCheckoutSousVerrou(userId: string) {
   const debut = new Date()
   const cle = randomUUID()
   await prisma.abonnementGleba.upsert({ where: { userId }, create: { userId }, update: {} })
+  // Un marqueur de suppression périmé (ou hérité, sans borne) est levé : il ne bloque pas une nouvelle souscription.
+  await prisma.abonnementGleba.updateMany({
+    where: { userId, statut: "suppression", abonnementStripeId: null, OR: [{ checkoutExpireLe: null }, { checkoutExpireLe: { lt: debut } }, { checkoutExpireLe: { gt: new Date(debut.getTime() + DUREE_MARQUEUR_SUPPRESSION_MS) } }] },
+    data: { statut: null, checkoutExpireLe: null },
+  })
   const verrou = await prisma.abonnementGleba.updateMany({
     where: { userId, AND: [{ OR: [{ statut: null }, { statut: { not: "suppression" } }] }], abonnementStripeId: null, gratuitAVie: false, OR: [{ checkoutExpireLe: null }, { checkoutExpireLe: { lt: debut } }] },
-    data: { checkoutCle: cle, checkoutExpireLe: new Date(debut.getTime() + 35 * 60 * 1000) },
+    // Nouvelle génération : l'ancien Checkout est détaché tout de suite, son expiration tardive ne peut plus viser cette tentative.
+    data: { checkoutCle: cle, checkoutId: null, checkoutExpireLe: new Date(debut.getTime() + 35 * 60 * 1000) },
   })
   if (!verrou.count) throw new ErreurFacturation("Un abonnement ou un paiement est déjà en cours. Utilisez Gérer mon abonnement ou réessayez à la fin du paiement en cours.", 409)
   try {
@@ -83,7 +96,7 @@ async function creerCheckoutSousVerrou(userId: string) {
       if (!id(client)) throw new ErreurFacturation("La création du compte de facturation a échoué.")
       ligne = await prisma.abonnementGleba.update({ where: { userId }, data: { clientStripeId: id(client) } })
     }
-    const params = new URLSearchParams({ mode: "subscription", customer: ligne.clientStripeId!, "line_items[0][price]": configuration().complet, "line_items[0][quantity]": "1", "payment_method_types[0]": "card", success_url: origine() + "/parametres?section=abonnement&paiement=retour", cancel_url: origine() + "/parametres?section=abonnement", expires_at: String(Math.floor(debut.getTime() / 1000) + 1800), client_reference_id: userId, "subscription_data[metadata][glebaUserId]": userId, "subscription_data[metadata][glebaCheckoutCle]": cle, "subscription_data[metadata][formule]": "complet", "metadata[glebaUserId]": userId, "consent_collection[terms_of_service]": "required", billing_address_collection: "required", "customer_update[address]": "auto", "tax_id_collection[enabled]": "true" })
+    const params = new URLSearchParams({ mode: "subscription", customer: ligne.clientStripeId!, "line_items[0][price]": configuration().complet, "line_items[0][quantity]": "1", "payment_method_types[0]": "card", success_url: origine() + "/parametres?section=abonnement&paiement=retour", cancel_url: origine() + "/parametres?section=abonnement", expires_at: String(Math.floor(debut.getTime() / 1000) + 1800), client_reference_id: userId, "subscription_data[metadata][glebaUserId]": userId, "subscription_data[metadata][glebaCheckoutCle]": cle, "subscription_data[metadata][formule]": "complet", "metadata[glebaUserId]": userId, "metadata[glebaCheckoutCle]": cle, "consent_collection[terms_of_service]": "required", billing_address_collection: "required", "customer_update[address]": "auto", "tax_id_collection[enabled]": "true" })
     if (process.env.GLEBA_STRIPE_TAX_MODE === "automatic") params.set("automatic_tax[enabled]", "true")
     else if (process.env.GLEBA_STRIPE_TAX_RATE) params.set("subscription_data[default_tax_rates][0]", process.env.GLEBA_STRIPE_TAX_RATE)
     else if (process.env.GLEBA_STRIPE_TAX_MODE !== "exempt") throw new ErreurFacturation("Le régime de TVA du service doit être configuré avant de souscrire.")
@@ -123,7 +136,7 @@ async function synchroniserSousVerrou(abonnementId: string, db: Pick<typeof pris
   const config = configuration()
   const sub = await appelerStripe("GET", "/v1/subscriptions/" + encodeURIComponent(abonnementId) + "?expand[]=latest_invoice")
   const ligne = await db.abonnementGleba.findFirst({ where: { OR: [{ abonnementStripeId: abonnementId }, { clientStripeId: id(sub.customer) ?? "absent" }] } })
-  if (!ligne || ligne.gratuitAVie || ligne.statut === "suppression") return
+  if (!ligne || ligne.gratuitAVie || suppressionEnCours(ligne)) return
   if (ligne.abonnementStripeId && ligne.abonnementStripeId !== abonnementId) return
   // Un ancien contrat ne peut pas se rattacher à une nouvelle tentative de souscription.
   if (objet(sub.metadata).glebaUserId !== ligne.userId || id(sub.customer) !== ligne.clientStripeId || sub.livemode !== config.live) throw new ErreurFacturation("Le contrat de paiement ne correspond pas à l’exploitation.")
@@ -188,7 +201,11 @@ export async function traiterEvenement(eventId: string) {
     const subId = ligne.type.startsWith("customer.subscription.") ? id(data) : id(data.subscription) || id(objet(objet(data.parent).subscription_details).subscription)
     if (subId) await synchroniserAbonnement(subId)
     if (ligne.type === "checkout.session.expired") {
-      await prisma.abonnementGleba.updateMany({ where: { checkoutId: ligne.objetId, abonnementStripeId: null }, data: { checkoutExpireLe: null, checkoutCle: null, checkoutId: null } })
+      // Sous le verrou de facturation : jamais pendant la création d'un nouveau Checkout. La libération ne vise
+      // que la génération de la session expirée (sessions antérieures à cette métadonnée : leur identifiant).
+      const generation = objet(data.metadata).glebaCheckoutCle
+      const cible = typeof generation === "string" && generation ? { checkoutCle: generation } : { checkoutId: ligne.objetId }
+      await avecVerrouFacturation(() => prisma.abonnementGleba.updateMany({ where: { ...cible, abonnementStripeId: null, OR: [{ statut: null }, { statut: { not: "suppression" } }] }, data: { checkoutExpireLe: null, checkoutCle: null, checkoutId: null } }))
     }
     await prisma.evenementAbonnement.update({ where: { id: eventId }, data: { traiteLe: new Date(), erreur: null } })
   } catch (e) {
@@ -213,7 +230,6 @@ export async function arreterAvantSuppression(userId: string) {
   return avecVerrouFacturation(async () => {
     const ligne = await prisma.abonnementGleba.findUnique({ where: { userId } })
     if (!ligne?.clientStripeId) return
-    await prisma.abonnementGleba.update({ where: { userId }, data: { statut: "suppression", checkoutExpireLe: new Date("9000-01-01") } })
     const sessions = await appelerStripe("GET", "/v1/checkout/sessions?status=open&limit=100&customer=" + encodeURIComponent(ligne.clientStripeId))
     if (sessions.has_more) throw new ErreurFacturation("La fermeture des paiements doit être vérifiée avant suppression.")
     for (const session of liste(sessions.data).map(objet)) {
@@ -230,5 +246,9 @@ export async function arreterAvantSuppression(userId: string) {
       if (scheduleId) await appelerStripe("POST", "/v1/subscription_schedules/" + scheduleId + "/release", new URLSearchParams(), `gleba-suppression-release-${scheduleId}`)
       await appelerStripe("DELETE", "/v1/subscriptions/" + contratId)
     }
+    // Le marqueur n'est posé qu'une fois l'arrêt confirmé par Stripe, toujours sous le verrou : un échec en cours
+    // de route ne laisse rien derrière lui, la suppression se rejoue telle quelle (appels idempotents) et la
+    // synchronisation continue de suivre le contrat. Il couvre le cascade qui suit, puis s'éteint seul.
+    await prisma.abonnementGleba.update({ where: { userId }, data: { statut: "suppression", checkoutExpireLe: new Date(Date.now() + DUREE_MARQUEUR_SUPPRESSION_MS) } })
   })
 }
