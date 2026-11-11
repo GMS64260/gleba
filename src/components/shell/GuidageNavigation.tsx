@@ -83,10 +83,10 @@ export function GuideNavigationNotice() {
   const entreeMasquee = cible.menu && !entreeNavigationVisible(getEntreeNavigation(cible.menu), modules, process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE === "true", acces)
   return <div data-guide-notice className="rounded-lg border border-sauge bg-sauge-doux p-3 text-sm text-encre">
     <div className="flex items-start justify-between gap-2">
-      <p role="status" className="min-w-0 break-words">{cheminAide(cible)}</p>
+      <Link href={cible.href} onClick={fermer} className="inline-flex min-h-11 min-w-0 items-center text-foret underline underline-offset-2 hover:text-encre focus-visible:outline focus-visible:outline-2 focus-visible:outline-sauge">Ouvrir {cible.libelle}</Link>
       <button type="button" onClick={fermer} aria-label="Fermer le guidage" className="-mr-2 -mt-2 grid min-h-11 min-w-11 shrink-0 place-items-center rounded-md hover:bg-papier focus-visible:outline focus-visible:outline-2 focus-visible:outline-sauge"><X className="h-4 w-4" aria-hidden /></button>
     </div>
+    <p role="status" className="mt-1 min-w-0 break-words">{cheminAide(cible)}</p>
     {entreeMasquee && <p className="text-sm">Cette entrée n’est pas affichée dans votre menu. Vérifiez vos modules et votre accès dans <Link href="/parametres" onClick={fermer} className="underline underline-offset-2">Paramètres</Link>.</p>}
-    <Link href={cible.href} onClick={fermer} className="inline-flex min-h-11 items-center text-foret underline underline-offset-2 hover:text-encre focus-visible:outline focus-visible:outline-2 focus-visible:outline-sauge">Ouvrir {cible.libelle}</Link>
   </div>
 }
