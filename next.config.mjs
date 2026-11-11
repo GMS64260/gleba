@@ -22,6 +22,9 @@ const nextConfig = {
   // `ENOENT: no such file or directory, open '/ROOT/node_modules/pdfkit/js/data/Helvetica.afm'`
   // (registre phyto, factures, calendrier verger, dossier campagne, étiquettes QR).
   outputFileTracingIncludes: {
+    // Les procédures privées du support sont des ressources lues par le serveur.
+    // Le glob vide reste compatible avec le clone public sans assistant.
+    '/api/chat': ['./src/lib/chat/support-skills/**/*.md'],
     '/**': [
       './node_modules/pdfkit/js/data/*.afm',
       './node_modules/pdfkit/js/data/*.trie',

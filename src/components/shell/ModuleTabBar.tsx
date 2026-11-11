@@ -76,6 +76,7 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
                   <button
                     type="button"
                     key={tab.id}
+                    data-module-tab={tab.id}
                     onClick={() => onTabChange(tab.id)}
                     aria-current={isActive ? "page" : undefined}
                     className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors ${
@@ -107,6 +108,7 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
                 <button
                   type="button"
                   key={tab.id}
+                  data-module-tab={tab.id}
                   onClick={() => onTabChange(tab.id)}
                   aria-current={isActive ? "page" : undefined}
                   className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${

@@ -17,6 +17,7 @@ import { BandeauExploitation } from "@/components/exploitation/BandeauExploitati
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { PushRegister } from "@/components/notifications/push-register";
 import { CoquilleV2 } from "@/components/accueil/CoquilleV2";
+import { GuidageNavigationProvider } from "@/components/shell/GuidageNavigation";
 
 
 const spaceGrotesk = Space_Grotesk({
@@ -191,6 +192,7 @@ export default function RootLayout({
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${geist.variable} ${fraunces.variable} font-sans antialiased`}
       >
         <SessionProvider>
+          <GuidageNavigationProvider>
           <ImpersonationBanner />
           <BandeauExploitation />
           <OnboardingRedirect />
@@ -205,6 +207,7 @@ export default function RootLayout({
           {/* DEV2 #2 — Bandeau cookies RGPD/CNIL */}
           <CookieBanner />
           <PushRegister />
+          </GuidageNavigationProvider>
         </SessionProvider>
       </body>
     </html>

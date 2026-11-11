@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Le guidage souligne le vrai contrôle, sans déplacer ni bloquer l'interface. */
+[data-guide-cible="true"] {
+  outline: 2px solid var(--sauge);
+  outline-offset: 3px;
+  scroll-margin-block: 8rem;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
