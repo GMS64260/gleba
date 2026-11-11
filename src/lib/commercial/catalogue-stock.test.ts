@@ -26,12 +26,13 @@ type Ligne = { date?: Date; dateFabrication?: Date }
 const jusqua = (champ: keyof Ligne, lignes: Ligne[]) => async ({ where }: { where: Record<string, { lte?: Date }> }) =>
   lignes.filter(l => !where[champ]?.lte || l[champ]! <= where[champ].lte!)
 
-function base(recoltes: Ligne[]) {
+function base(recoltes: Ligne[], boutique: { produits?: unknown[]; reservees?: Array<{ produitId: number; _sum: { quantite: number } }> } = {}) {
   return {
+    ligneCommandeBoutique: { groupBy: async () => boutique.reservees ?? [] },
     recolte: { findMany: jusqua('date', recoltes) },
     recolteArbre: { findMany: async () => [] },
     productionBois: { findMany: async () => [] },
-    produitBoutique: { findMany: async () => [] },
+    produitBoutique: { findMany: async () => boutique.produits ?? [] },
     productionRuche: { findMany: jusqua('date', []) },
     lotFromage: { findMany: jusqua('dateFabrication', []) },
     lotTransforme: { findMany: jusqua('date', []) },
@@ -60,5 +61,19 @@ describe('catalogue d’un document daté du jour', () => {
     oeufs.lots = [{ id: 7, statut: 'commercialisable', datePonte: new Date('2026-10-28T16:00:00Z'), restant: 12 }]
     const catalogue = await chargerCatalogueStock('u1', base([]), jourDuBl)
     expect(catalogue.find(a => a.type === 'oeufs')?.disponible).toBe(12)
+  })
+})
+
+describe('produits de la boutique dans un document commercial', () => {
+  const produit = (id: number, stockDispo: number | null) => ({ id, nom: `Produit ${id}`, actif: true, stockDispo, unite: 'pièce', prix: 3, categorie: 'oeufs', statutBio: null, recolte: null })
+
+  it('propose le stock net des commandes en cours de la boutique', async () => {
+    const catalogue = await chargerCatalogueStock('u1', base([], {
+      produits: [produit(1, 3), produit(2, 3), produit(3, null)],
+      reservees: [{ produitId: 1, _sum: { quantite: 2 } }, { produitId: 2, _sum: { quantite: 3 } }],
+    }))
+    const boutique = catalogue.filter(a => a.type === 'boutique')
+    // Produit 1 : 3 en rayon, 2 commandés → 1 ; produit 2 : tout est commandé, donc absent ; produit 3 : illimité.
+    expect(boutique.map(a => [a.id, a.disponible])).toEqual([['1', 1], ['3', null]])
   })
 })
