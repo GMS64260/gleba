@@ -69,24 +69,21 @@ async function main() {
     if (existingAdmin.role !== "ADMIN") {
       throw new Error("Le compte configuré comme administrateur existe sans le rôle ADMIN")
     }
-    const isMigrationPlaceholder = existingAdmin.email === "migration-admin@gleba.invalid"
-    const replacementPassword = isMigrationPlaceholder
-      ? await bcrypt.hash(adminPassword, 12)
-      : undefined
-    await prisma.user.update({
-      where: { id: existingAdmin.id },
-      data: {
-        active: true,
-        emailVerified: true,
-        ...(isMigrationPlaceholder
-          ? {
-              email: adminEmail,
-              name: adminName,
-              password: replacementPassword,
-            }
-          : {}),
-      },
-    })
+    // Un administrateur existant n'est jamais modifié au démarrage : le réactiver
+    // à chaque redémarrage annulait une désactivation de sécurité en lui rendant
+    // son ancien mot de passe. Seul le compte provisoire de migration est converti.
+    if (existingAdmin.email === "migration-admin@gleba.invalid") {
+      await prisma.user.update({
+        where: { id: existingAdmin.id },
+        data: {
+          active: true,
+          emailVerified: true,
+          email: adminEmail,
+          name: adminName,
+          password: await bcrypt.hash(adminPassword, 12),
+        },
+      })
+    }
     console.log("✓ Utilisateur admin déjà présent")
   } else {
     const hashedPasswordAdmin = await bcrypt.hash(adminPassword, 12)

@@ -614,8 +614,17 @@ export async function importAccount(
           const delegue = (tx as unknown as Record<string, { findMany: (args: unknown) => Promise<Row[]> }>)[
             meta.delegate
           ]
+          // Présentes ET visibles par le compte : une référence du fichier ne rattache
+          // jamais une ligne du compte à l'entrée privée d'un autre (son contenu sortirait
+          // ensuite embarqué dans les lectures métier). Même règle que l'export ; l'entrée
+          // privée d'autrui est traitée comme absente, sans révéler qu'elle existe.
+          const visibilite = meta.estCommunautaire
+            ? visibiliteReferentiel(userId)
+            : meta.name === "Aliment"
+              ? whereAlimentAccessible(userId)
+              : null
           const presentes = await delegue.findMany({
-            where: { [meta.pkField]: { in: pks } },
+            where: visibilite ? { AND: [{ [meta.pkField]: { in: pks } }, visibilite] } : { [meta.pkField]: { in: pks } },
             select: { [meta.pkField]: true },
           })
           for (const ligne of presentes) {
