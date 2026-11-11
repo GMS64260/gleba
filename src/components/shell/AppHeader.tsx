@@ -27,6 +27,7 @@ import { useVersionAccueil } from "@/hooks/use-version-accueil"
 import { usePathname } from "next/navigation"
 import type { ModuleId } from "@/lib/modules"
 import { estCoquilleV2Active } from "@/lib/navigation-principale"
+import { GuideNavigationNotice } from "@/components/shell/GuidageNavigation"
 
 interface AppHeaderProps {
   className?: string
@@ -128,6 +129,7 @@ export function AppHeader({ current, showLune = false, className = "" }: AppHead
           </Link>
           {session?.user && <UserMenu user={session.user} />}
         </div>
+        <GuideNavigationNotice />
       </div>
     </header>
   )
