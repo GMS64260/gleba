@@ -27,7 +27,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
-import sharp from "sharp"
+import { formatsPhotoSansMetadonnees } from "@/lib/upload-image"
 import { dossierEnvoi, refusEnvoiFichier } from "@/lib/upload-garde"
 
 const MAX_BYTES = 5 * 1024 * 1024
@@ -76,24 +76,10 @@ export async function POST(request: NextRequest) {
   await mkdir(userDir, { recursive: true })
 
   const uuid = randomUUID()
-  // Lit l'image une fois, drop EXIF, auto-rotate, puis 2 outputs.
-  // .rotate() sans argument applique l'orientation EXIF puis le drop.
-  // withMetadata({ exif: {} }) supprime les EXIF (sinon Sharp les recopie).
+  // Deux formats sans aucune métadonnée de l'original (EXIF, GPS) : règle et
+  // piège de Sharp dans `formatsPhotoSansMetadonnees`.
   try {
-    const sharpBase = sharp(buffer).rotate().withMetadata({ exif: {} } as never)
-
-    const [largeBuf, thumbBuf] = await Promise.all([
-      sharpBase
-        .clone()
-        .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
-        .jpeg({ quality: 82, mozjpeg: true })
-        .toBuffer(),
-      sharpBase
-        .clone()
-        .resize(300, 300, { fit: "cover", position: "centre" })
-        .jpeg({ quality: 80, mozjpeg: true })
-        .toBuffer(),
-    ])
+    const { grand: largeBuf, vignette: thumbBuf } = await formatsPhotoSansMetadonnees(buffer)
 
     const largeName = `${uuid}-1200.jpg`
     const thumbName = `${uuid}-300.jpg`
