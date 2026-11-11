@@ -258,3 +258,40 @@ describe("restauration sur un compte déjà rempli", () => {
     expect(new Set(filtres)).toEqual(new Set(["cible"]))
   })
 })
+
+describe("import d'un compte : aucun rattachement à l'entrée privée d'un autre compte (revue du 2026-11-11)", () => {
+  const especes = [
+    { id: "espece-privee-tiers", userId: "tiers", partageCommunaute: false },
+    { id: "espece-partagee-tiers", userId: "tiers", partageCommunaute: true },
+    { id: "espece-officielle", userId: null, partageCommunaute: false },
+    { id: "espece-perso", userId: "importateur", partageCommunaute: false },
+  ]
+  type Filtre = { id?: { in: string[] }; AND?: Filtre[]; OR?: Array<Record<string, unknown>> }
+  const correspond = (ligne: Record<string, unknown>, where: Filtre): boolean =>
+    (!where.id || where.id.in.includes(ligne.id as string))
+    && (where.AND ?? []).every((w) => correspond(ligne, w))
+    && (!where.OR || where.OR.some((w) => Object.entries(w).every(([k, v]) => ligne[k] === v)))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.count.mockResolvedValue(0)
+    mocks.findMany.mockImplementation(async (name: string, args: { where?: Filtre }) =>
+      name === "espece" ? especes.filter((e) => correspond(e, args?.where ?? {})).map(({ id }) => ({ id })) : [])
+    mocks.create.mockImplementation(async (_name: string, { data }: { data: Record<string, unknown> }) => ({ id: 1, ...data }))
+    mocks.createMany.mockResolvedValue({ count: 0 })
+  })
+
+  it("ne lie une culture importée qu'à une espèce officielle, partagée ou du compte", async () => {
+    const resultat = await importAccount("importateur", {
+      format: "2.0", exportDate: "2026-11-11", appVersion: "test", sourceUserId: "source", stats: {},
+      data: {
+        Espece: especes.map(({ id }) => ({ id })),
+        Culture: especes.map(({ id }, i) => ({ id: i + 1, especeId: id, annee: 2026 })),
+      },
+    } as never)
+    const liees = mocks.create.mock.calls.filter(([name]) => name === "culture").map(([, { data }]) => data.especeId)
+    expect(liees).not.toContain("espece-privee-tiers")
+    expect(liees).toEqual(expect.arrayContaining(["espece-partagee-tiers", "espece-officielle", "espece-perso"]))
+    expect(resultat.warnings.join(" ")).toContain("1 référence(s) du fichier n'existent pas")
+  })
+})
