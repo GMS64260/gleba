@@ -300,12 +300,8 @@ aussi des contraintes, des rattrapages historiques et des données de référenc
 ### Premier lancement
 
 1. **Connexion** avec compte démo ou admin
-2. **Importer données démo** (optionnel) - Fichier `gleba_demo_data.json`
-   - 24 planches sur 3 îlots
-   - 76 cultures sur 2024-2026
-   - 62 récoltes historiques
-3. **Explorer** le dashboard
-4. **Utiliser l'assistant** 🪄 pour créer votre première culture
+2. **Explorer** le dashboard
+3. **Utiliser l'assistant** 🪄 pour créer votre première culture
 
 ### Navigation
 
