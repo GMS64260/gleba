@@ -20,6 +20,7 @@ import prisma from '@/lib/prisma'
 import { chargerAccesService } from '@/lib/abonnement/serveur'
 import { operationPermise } from '@/lib/abonnement/requetes'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { formatSurface } from '@/components/parcelles/parcelle-constants'
 
 const TAKE = 8
 
@@ -185,7 +186,10 @@ export async function GET(request: NextRequest) {
     ...parcelles.map((p): SearchItem => ({
       id: `parcelle-${p.id}`,
       label: p.nom || `Parcelle ${p.id}`,
-      sub: p.surface ? `${p.surface} m²` : null,
+      // FRONT-06 (recette du 2026-11-12) : `surface` est en hectares
+      // (`surface_ha`) ; elle sortait suivie de « m² » sans conversion (2 500 m²
+      // affichés « 0.25 m² »). Même format que l'écran Parcelles.
+      sub: p.surface != null ? formatSurface(p.surface) : null,
       type: 'Parcelle',
       href: `/parcelles`,
     })),
