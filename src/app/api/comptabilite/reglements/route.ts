@@ -16,6 +16,7 @@ function erreurReponse(e: unknown) {
   if (e instanceof ErreurReglement)
     return NextResponse.json({ error: e.message }, { status: e.status })
   // Ne jamais imprimer une charge bancaire, une clé ou un jeton de connexion.
+  console.error('/api/comptabilite/reglements error:', e instanceof Error ? e.name : 'inconnue')
   return NextResponse.json(
     { error: 'Le règlement n’a pas été enregistré. Actualisez puis réessayez.' },
     { status: 500 },

@@ -96,10 +96,12 @@ const REFERENTIAL = new Set<string>([
   "Fournisseur",
   "Destination",
   "Fertilisant",
+  // eslint-disable-next-line no-restricted-syntax -- Identifiant technique exact du modèle Prisma.
   "Espece",
   "PorteGreffe",
   "Bioagresseur",
   "EssenceBocagere",
+  // eslint-disable-next-line no-restricted-syntax -- Identifiant technique exact du modèle Prisma.
   "Variete",
   "ITP",
   "Rotation",
@@ -853,6 +855,7 @@ export async function importAccount(
     // Les clés du journal de règlements désignent des pièces polymorphes.
     // Leurs identifiants suivent les pièces remappées sur l'instance cible.
     const sourcesReglements: Record<string, string> = {
+      // eslint-disable-next-line no-restricted-syntax -- Identifiant technique exact du modèle Prisma.
       vente_produit: 'VenteProduit', recolte: 'Recolte', recolte_arbre: 'RecolteArbre',
       production_bois: 'ProductionBois', abattage: 'Abattage', achat_animal: 'LotAnimaux',
       achat_animal_individuel: 'Animal', consommation_aliment: 'ConsommationAliment',

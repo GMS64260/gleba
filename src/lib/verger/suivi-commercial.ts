@@ -2,12 +2,12 @@ import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import type { VenteCommercialeVerger } from './suivi-commercial-types'
 import { deviseFactureReglement } from '@/lib/comptabilite/devise-reglement'
+import { arrondir } from '@/lib/commercial/regles'
 
 type Nature = 'fruit' | 'bois'
 type Ligne = { articleStockType: string | null; articleStockId: string | null; montantTTC: number }
 type Facture = { id: number; numero: string; statut: string; type: string; totalTTC: number; date: Date;
   clientNom: string; factureOrigineId: number | null; emetteurSnapshot: unknown; lignes: Ligne[] }
-const arrondir = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const active = (f: Facture) => !['brouillon', 'annulee'].includes(f.statut)
 
 /** Les quantités viennent des mouvements ; la recette vient une seule fois de

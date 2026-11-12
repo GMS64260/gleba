@@ -148,18 +148,17 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
     }
   }
 
-  // Build calendar grid
-  const monthStart = startOfMonth(currentMonth)
-  const monthEnd = endOfMonth(currentMonth)
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 })
-  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
-
-  const days: Date[] = []
-  let day = calendarStart
-  while (day <= calendarEnd) {
-    days.push(day)
-    day = addDays(day, 1)
-  }
+  // Build calendar grid. Mémoïsé sur le mois affiché : un tableau recréé à
+  // chaque rendu relançait le décompte du mois, qui en dépend.
+  const days = React.useMemo(() => {
+    const calendarStart = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 })
+    const calendarEnd = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 })
+    const jours: Date[] = []
+    for (let day = calendarStart; day <= calendarEnd; day = addDays(day, 1)) {
+      jours.push(day)
+    }
+    return jours
+  }, [currentMonth])
 
   // Group operations by day (use datePrevue for planned, date for done)
   const eventsByDay = React.useMemo(() => {
