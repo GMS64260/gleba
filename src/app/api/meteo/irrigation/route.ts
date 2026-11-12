@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
     // écran : les deux écrans décident sur les mêmes données (aucune station
     // active le 2026-10-10).
     const zones = Array.from(parCoords.values())
-    const meteos = await Promise.all(zones.map((z) => chargerMeteoBilan(z.lat, z.lng).catch(() => null)))
+    const meteos = await Promise.all(zones.map((z) => chargerMeteoBilan(z.lat, z.lng).catch((e) => { console.error('GET /api/meteo/irrigation error:', e); return null })))
 
     // Ce que l'écran montre d'une culture, avec ou sans bilan.
     const contexte = (culture: (typeof cultures)[number], derniereIrrigation: Date | null) => {

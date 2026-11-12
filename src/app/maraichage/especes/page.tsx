@@ -259,6 +259,8 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
 ]
 
+const validTypes = ['legume', 'arbre_fruitier', 'petit_fruit', 'liane', 'aromatique', 'fleur', 'engrais_vert']
+
 function EspecesPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -273,7 +275,6 @@ function EspecesPageContent() {
   // Lire le type depuis l'URL (pour filtrage depuis dashboard arbres)
   // Supporte 'arbres' qui active le mode arbres (types du verger seulement)
   const typeFromUrl = searchParams.get('type')
-  const validTypes = ['legume', 'arbre_fruitier', 'petit_fruit', 'liane', 'aromatique', 'fleur', 'engrais_vert']
 
   // Mode arbres: détecté depuis l'URL, persiste en état
   const [isArbresMode, setIsArbresMode] = React.useState(false)

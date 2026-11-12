@@ -33,6 +33,7 @@
  */
 
 import prisma from "@/lib/prisma"
+import { jourLocalISO } from "@/lib/jour-civil"
 
 /** Préfixe de clé dans `generic_cache`, pour ne pas croiser les autres caches. */
 const PREFIXE = "notif:envoyee:"
@@ -50,10 +51,7 @@ const sentAlerts = new Map<string, EntreeAlerteEnvoyee>()
 
 /** Date du jour locale (YYYY-MM-DD) pour les comparaisons d'expiration. */
 function todayKey(): string {
-  const now = new Date()
-  const m = String(now.getMonth() + 1).padStart(2, "0")
-  const d = String(now.getDate()).padStart(2, "0")
-  return `${now.getFullYear()}-${m}-${d}`
+  return jourLocalISO(new Date())
 }
 
 /**

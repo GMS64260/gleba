@@ -19,6 +19,8 @@ export async function POST(request: Request) {
     await recevoirEvenement(corps, request.headers.get("stripe-signature"))
     return NextResponse.json({ received: true })
   } catch (e) {
+    // Nom seul : ne jamais imprimer le contenu d'un événement de paiement.
+    if (!(e instanceof ErreurFacturation) && !(e instanceof SyntaxError)) console.error("POST /api/abonnement/webhook error:", e instanceof Error ? e.name : "inconnue")
     return NextResponse.json({ error: "Événement non traité." }, { status: e instanceof ErreurFacturation ? e.status : e instanceof SyntaxError ? 400 : 503 })
   }
 }
