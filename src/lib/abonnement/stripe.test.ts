@@ -276,3 +276,73 @@ describe("clé du compte Stripe de Gleba", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * Revue Codex du 2026-11-12, AB-01. Stripe exige un `expires_at` compris entre
+ * 30 minutes et 24 heures APRÈS la création de la session
+ * (https://docs.stripe.com/api/checkout/sessions/create, paramètre
+ * expires_at, vérifié le 2026-11-12). L'expiration était calculée sur
+ * l'instant capturé AVANT la création du client Stripe : chaque seconde
+ * écoulée la faisait passer sous les 30 minutes.
+ */
+describe("expiration de Checkout et bail de souscription (AB-01)", () => {
+  const essaiFini = { clientStripeId: null, essaiDebut: new Date("2020-01-01"), essaiFin: new Date("2020-04-01") }
+  beforeEach(() => {
+    vi.stubEnv("GLEBA_STRIPE_TAX_MODE", "exempt")
+    mocks.user.findUnique.mockResolvedValue({ createdAt: new Date("2026-12-01"), email: "ferme@example.invalid" })
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2030-01-01T12:00:00Z"))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  function stripeSimule(session: (body: URLSearchParams) => Promise<Response> | Response, latenceClientMs = 0) {
+    const envoi = { expiresAt: 0, instantPost: 0 }
+    vi.stubGlobal("fetch", vi.fn(async (url: string, opts: { body?: URLSearchParams }) => {
+      if (url.includes("/v1/prices/")) return reponse(prixValide)
+      if (url.includes("/v1/subscriptions?")) return reponse({ data: [], has_more: false })
+      if (url.endsWith("/v1/customers")) { vi.setSystemTime(Date.now() + latenceClientMs); return reponse({ id: "cus_qa" }) }
+      if (url.endsWith("/v1/checkout/sessions")) {
+        envoi.expiresAt = Number(opts.body!.get("expires_at"))
+        envoi.instantPost = Math.floor(Date.now() / 1000)
+        return session(opts.body!)
+      }
+      throw new Error("Appel inattendu " + url)
+    }))
+    return envoi
+  }
+
+  it("demande au moins 30 minutes plus une marge, comptées au moment du POST, même après une création de client lente", async () => {
+    const etat = baseEnMemoire(essaiFini)
+    const envoi = stripeSimule(() => reponse({ id: "cs_qa", url: "https://checkout.stripe.com/c/qa" }), 9000)
+    await creerCheckout("ferme-synthetique")
+    expect(envoi.expiresAt - envoi.instantPost).toBeGreaterThanOrEqual(1800 + 60)
+    expect(envoi.expiresAt - envoi.instantPost).toBeLessThanOrEqual(24 * 3600)
+    // Le bail couvre toute la vie de la session demandée.
+    expect((etat.checkoutExpireLe as Date).getTime() / 1000).toBeGreaterThanOrEqual(envoi.expiresAt)
+  })
+
+  it("un refus sûr de Stripe (4xx) libère le bail : la session n'existe pas", async () => {
+    const etat = baseEnMemoire(essaiFini)
+    stripeSimule(() => new Response(JSON.stringify({ error: { type: "invalid_request_error" } }), { status: 400 }))
+    await expect(creerCheckout("ferme-synthetique")).rejects.toThrow()
+    expect(etat.checkoutExpireLe).toBeNull()
+  })
+
+  it("un délai réseau ou une erreur 5xx garde le bail : la session a pu être créée", async () => {
+    for (const panne of [() => { throw new DOMException("délai", "TimeoutError") }, () => new Response("{}", { status: 502 })]) {
+      const etat = baseEnMemoire(essaiFini)
+      stripeSimule(panne as () => Response)
+      await expect(creerCheckout("ferme-synthetique")).rejects.toThrow()
+      expect(etat.checkoutExpireLe).not.toBeNull()
+    }
+  })
+
+  it("une configuration de TVA absente refuse avant tout bail et toute session", async () => {
+    vi.stubEnv("GLEBA_STRIPE_TAX_MODE", "")
+    const etat = baseEnMemoire(essaiFini)
+    const envoi = stripeSimule(() => reponse({ id: "cs_qa", url: "https://checkout.stripe.com/c/qa" }))
+    await expect(creerCheckout("ferme-synthetique")).rejects.toThrow("TVA")
+    expect(envoi.expiresAt).toBe(0)
+    expect(etat.checkoutExpireLe).toBeNull()
+  })
+})
