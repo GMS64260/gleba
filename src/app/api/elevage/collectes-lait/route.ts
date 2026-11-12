@@ -45,6 +45,26 @@ async function refusLotFromageHorsCompte(lotFromageId: string, userId: string): 
   )
 }
 
+/**
+ * Jour d'une traite (00:00 UTC) et plage qui le couvre.
+ *
+ * ELEV-01 (revue Codex du 2026-11-12) : le POST ramenait la date au jour, le
+ * PATCH écrivait l'horodatage reçu ; une collecte redatée à midi échappait à
+ * la recherche du POST (égalité à minuit) et la saisie suivante créait un
+ * doublon. Toute écriture passe par `jourTraite`, et toute recherche « même
+ * jour » par la plage, qui retrouve aussi les collectes déjà enregistrées avec
+ * une heure.
+ */
+function jourTraite(date: Date | string): Date {
+  const jour = new Date(date)
+  jour.setUTCHours(0, 0, 0, 0)
+  return jour
+}
+
+function plageJour(jour: Date): { gte: Date; lt: Date } {
+  return { gte: jour, lt: new Date(jour.getTime() + 24 * 60 * 60 * 1000) }
+}
+
 type CibleCollecte = {
   type: 'animal' | 'lot'
   nomEspece: string | null
@@ -209,8 +229,7 @@ export async function POST(request: NextRequest) {
     if (refusVolume) return refusVolume
 
     // Normalise la date au jour (00:00 UTC)
-    const day = new Date(data.date)
-    day.setUTCHours(0, 0, 0, 0)
+    const day = jourTraite(data.date)
     // Écartement automatique CROSS-GRANULARITÉ (review caprin 2026-07-22) :
     // une collecte saisie dans la fenêtre d'attente d'un soin est écartée, que
     // le soin porte sur le MÊME animal/lot OU sur l'animal↔son lot (soin de lot
@@ -229,7 +248,7 @@ export async function POST(request: NextRequest) {
       const existing = await tx.collecteLait.findFirst({
         where: {
           userId: session.user.id,
-          date: day,
+          date: plageJour(day),
           traite: data.traite,
           animalId: data.animalId ?? null,
           lotId: data.lotId ?? null,
@@ -321,22 +340,20 @@ export async function PATCH(request: NextRequest) {
       // Une traite par jour et par cible : redater une collecte sur un jour qui
       // en porte déjà une créait un doublon (la saisie, elle, complète la
       // collecte existante). L'index unique de la base ne l'empêchait pas.
-      if (updates.date !== undefined) {
-        const jour = new Date(updates.date)
-        jour.setUTCHours(0, 0, 0, 0)
+      const jour = updates.date !== undefined ? jourTraite(updates.date) : undefined
+      if (jour) {
         const autre = await tx.collecteLait.findFirst({
           where: {
-            userId: session.user.id, id: { not: id }, date: jour, traite: existing.traite,
+            userId: session.user.id, id: { not: id }, date: plageJour(jour), traite: existing.traite,
             animalId: existing.animalId, lotId: existing.lotId,
           },
           select: { id: true },
         })
         if (autre) throw new ErreurElevage('Une collecte existe déjà ce jour-là pour cette traite : modifiez-la plutôt que d’en créer une seconde.', 409, 'COLLECTE_DEJA_SAISIE')
       }
-      const data: typeof updates & { ecarteAttente?: boolean } = { ...updates }
+      const data: typeof updates & { ecarteAttente?: boolean } = { ...updates, ...(jour ? { date: jour } : {}) }
       if (existing.animalId || existing.lotId) {
-        const day = new Date(updates.date ?? existing.date)
-        day.setUTCHours(0, 0, 0, 0)
+        const day = jour ?? jourTraite(existing.date)
         // Cross-granularité + comparaison au jour (cf. lib attente-lait).
         const soinCouvrant = await soinCouvrantCollecte(tx, session.user.id, existing.animalId, existing.lotId, day)
         if (soinCouvrant) data.ecarteAttente = true
