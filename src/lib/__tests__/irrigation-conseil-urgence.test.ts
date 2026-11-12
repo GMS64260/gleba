@@ -75,6 +75,23 @@ describe("resumeMeteo", () => {
     const r = resumeMeteo({ historique: sec, aujourdhui: { date: "2026-10-07", pluie: 20, et0: 2 }, previsions: [], decalageUtcS: 7200 })
     expect(r.joursSansPluie).toBe(6)
   })
+
+  // FRONT-07 (recette du 2026-11-12) : 12,7 mm annoncés aujourd'hui donnaient
+  // « prochaine pluie dans 4 j » (recherche commencée demain).
+  describe("prochaine pluie significative", () => {
+    const base = (aujourdhui: number, previsions: number[]) =>
+      resumeMeteo({
+        historique: [],
+        aujourdhui: { date: "2026-11-12", pluie: aujourdhui, et0: 1 },
+        decalageUtcS: 3600,
+        previsions: previsions.map((pluie, i) => ({ date: `2026-11-${13 + i}`, pluie, et0: 1 })),
+      }).joursAvantPluie
+
+    it("aujourd'hui au-dessus du seuil : 0", () => expect(base(12.7, [0, 0, 0, 5])).toBe(0))
+    it("aujourd'hui sous le seuil, demain au-dessus : 1", () => expect(base(1, [4])).toBe(1))
+    it("seuil atteint exactement aujourd'hui : 0", () => expect(base(3, [])).toBe(0))
+    it("aucune pluie significative : 99", () => expect(base(2, [1, 2.9])).toBe(99))
+  })
 })
 
 describe("whereCulturesEnPlace", () => {
