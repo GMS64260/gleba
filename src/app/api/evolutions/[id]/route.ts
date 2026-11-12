@@ -52,7 +52,9 @@ export async function PATCH(
 
   try {
     await prisma.evolution.update({ where: { id }, data })
-  } catch {
+  } catch (e) {
+    // P2025 = demande absente, réponse attendue ; toute autre erreur est une panne masquée par le 404.
+    if ((e as { code?: string } | null)?.code !== "P2025") console.error("PATCH /api/evolutions/[id] error:", e)
     return NextResponse.json({ error: "Demande introuvable" }, { status: 404 })
   }
 

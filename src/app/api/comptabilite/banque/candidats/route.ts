@@ -153,6 +153,8 @@ export async function GET(request: NextRequest) {
       { headers: { 'Cache-Control': 'private, no-store' } },
     )
   } catch (e) {
+    // Nom seul : ne jamais imprimer un libellé ou une recherche bancaire.
+    if (!(e instanceof ErreurReglement)) console.error('GET /api/comptabilite/banque/candidats error:', e instanceof Error ? e.name : 'inconnue')
     return NextResponse.json(
       { error: e instanceof ErreurReglement ? e.message : 'Recherche indisponible.' },
       { status: e instanceof ErreurReglement ? e.status : 500 },

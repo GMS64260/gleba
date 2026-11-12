@@ -94,7 +94,6 @@ export const SOURCES_USAGE: SourceUsage[] = [
   { table: "consommations", groupe: "terrain", libelle: "Sorties de stock" },
   { table: "capteurs", groupe: "terrain", libelle: "Capteurs" },
   // Communauté
-  { table: "messages_salon", groupe: "communaute", libelle: "Messages du salon" },
   { table: "discussions_encyclopedie", groupe: "communaute", libelle: "Discussions encyclopédie" },
   { table: "reponses_encyclopedie", groupe: "communaute", libelle: "Réponses encyclopédie" },
   { table: "contributions_encyclopedie", groupe: "communaute", libelle: "Contributions encyclopédie" },

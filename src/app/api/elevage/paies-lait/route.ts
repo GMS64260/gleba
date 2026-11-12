@@ -122,8 +122,10 @@ export async function DELETE(request: NextRequest) {
   })
   invalidateKpi(existing.userId)
 
-  return NextResponse.json({ success: true })  } catch (err) {
+  return NextResponse.json({ success: true })
+  } catch (err) {
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
+    console.error('DELETE /api/elevage/paies-lait error:', err)
     return NextResponse.json({ error: 'Suppression impossible.' }, { status: 500 })
   }
 

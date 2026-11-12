@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import type { AccesSalon } from "@/components/communaute/SalonDiscussion"
 import { urlConnexion } from "@/lib/auth-retour"
 import { messageErreurReponse } from "@/lib/api-erreur"
 import { confirmDialog } from "@/lib/global-dialog"
@@ -22,6 +21,9 @@ const CATEGORIES = [
   { value: "ENCYCLOPEDIE", label: "Encyclopédie", description: "Sources et fiches à enrichir" },
   { value: "GENERAL", label: "Général", description: "Faire connaissance" },
 ] as const
+
+/** Accès au forum selon la session : seul un compte personnel connecté lit et écrit. */
+export type AccesForum = "chargement" | "anonyme" | "demo" | "membre"
 
 interface FilForum { sujet: FilForumVue }
 interface PageForum { sujets: SujetForumVue[]; total: number; page: number; pages: number }
@@ -53,7 +55,7 @@ function DateForum({ value, relative = false }: { value: string; relative?: bool
 }
 function labelCategorie(value: string) { return CATEGORIES.find((categorie) => categorie.value === value)?.label || "Général" }
 
-export function ForumCommunaute({ acces }: { acces: AccesSalon }) {
+export function ForumCommunaute({ acces }: { acces: AccesForum }) {
   const params = useSearchParams()
   if (acces === "chargement") return <ChargementForum />
   if (acces !== "membre") return (

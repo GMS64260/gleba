@@ -12,7 +12,7 @@ Internet → Caddy (HTTPS, reverse proxy) → Docker: gleba_app (:3000) → Dock
 - **URL** : https://gleba.fr
 - **SSL** : Automatique via Caddy (Let's Encrypt)
 - **Container runtime** : Docker Compose
-- **Base image** : `node:20-alpine` (multi-stage build)
+- **Base image** : Node sur Alpine, version fixée en tête de chaque étape du `Dockerfile` (multi-stage build)
 
 ## Docker Build (Production)
 
@@ -27,20 +27,14 @@ Internet → Caddy (HTTPS, reverse proxy) → Docker: gleba_app (:3000) → Dock
 ### Processus de build
 
 ```bash
-# OBLIGATOIRE : Supprimer le cache Next.js avant rebuild
-rm -rf /var/www/gleba/.next
-
-# Stopper les process orphelins
-fuser -k 3000/tcp 2>/dev/null
-
-# Build et restart
-cd /var/www/gleba && docker compose up -d --build app
+# Depuis la racine du dépôt : build et restart
+docker compose up -d --build app
 ```
 
 ### Points critiques
 
-1. **TOUJOURS supprimer `.next/` avant un rebuild** — Docker copie ce dossier via `COPY . .`, servant l'ancien cache
-2. **Process orphelins sur le port 3000** — `fuser -k 3000/tcp` avant restart
+1. **Cache `.next/` local** — `.dockerignore` exclut `.next/` : l'image est construite à partir des sources, sans reprendre un build local
+2. **Port 3000 déjà occupé** — choisir un autre port hôte avec `APP_PORT` dans `.env`
 3. **Cache navigateur** — Next.js en prod envoie `cache-control: immutable`. Hard refresh (Ctrl+Shift+R) si nécessaire
 
 ## Docker Compose
@@ -49,8 +43,10 @@ cd /var/www/gleba && docker compose up -d --build app
 
 | Service | Image | Port | Volume |
 |---------|-------|------|--------|
-| `db` | `postgis/postgis:16-3.4-alpine` | 5433:5432 | `postgres_data` (persistent) |
-| `app` | Build local (Dockerfile) | 3000:3000 | Aucun (standalone) |
+| `db` | `postgis/postgis:16-3.4-alpine` | 5433:5432 (localhost) | `postgres_data` (persistent) |
+| `app` | Build local (Dockerfile) | 3000:3000 (localhost, `APP_PORT`) | `uploads_data`, `justificatifs_data`, `plan_fonds_data`, `registres_elevage_data` |
+
+`docker-compose.override.yml`, versionné, est chargé automatiquement par `docker compose` : il durcit les deux conteneurs (`no-new-privileges`, `cap_drop`, limites de processus, plafond mémoire de `app`). Il fait partie de la configuration de production : ne pas le supprimer ni l'écraser.
 
 ### Healthcheck
 Le service `db` dispose d'un healthcheck (`pg_isready`). Le service `app` attend que `db` soit healthy avant de démarrer.
@@ -59,11 +55,17 @@ Le service `db` dispose d'un healthcheck (`pg_isready`). Le service `app` attend
 
 Le script `docker-entrypoint.sh` exécute au démarrage du container :
 
-1. `prisma db push` — Applique le schéma (idempotent)
-2. `prisma/seed.ts` — Seed si la BDD est vide
-3. `prisma/seed-demo.ts` — Crée le compte démo
-4. `scripts/migrate-data-v1.ts` — Migration données v1.0.0 (si CSV enrichis présents)
-5. `node server.js` — Démarre le serveur Next.js standalone
+1. Refus de démarrer si `NEXTAUTH_SECRET` (ou `AUTH_SECRET`) est vide ou vaut l'exemple publié
+2. `prisma migrate deploy` — Applique les migrations de `prisma/migrations/` pas encore enregistrées
+3. `prisma/seed.ts` — Seed si la BDD est vide
+4. `prisma/seed-demo.ts` — Crée le compte démo
+5. `prisma/seed-races.ts` — Référentiel des races (idempotent)
+6. `prisma/seed-referentiel-geographique.ts` — Référentiel géographique (idempotent)
+7. `prisma/seed-varietes-arbres.ts` — Variétés arboricoles (idempotent)
+8. `scripts/import-enriched-csv.ts` — Complète espèces, ITP et variétés depuis les CSV enrichis, sans écraser les champs déjà remplis
+9. `node server.js` — Démarre le serveur Next.js standalone
+
+Le schéma évolue uniquement par migrations versionnées : jamais de `prisma db push` ni de `db:reset` sur une base qui contient des données.
 
 ## Configuration Caddy
 
@@ -76,50 +78,19 @@ Le Caddyfile (situé dans `/etc/caddy/Caddyfile`) configure le reverse proxy HTT
 docker compose ps
 
 # Vérifier la réponse HTTP
-curl -sk -o /dev/null -w "%{http_code}" https://gleba.fr/login
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/login
 
 # Voir les logs
 docker compose logs app --tail 20
 ```
 
-## Mode dev temporaire (hot reload)
-
-Pour du debug avec hot reload en production :
-
-```bash
-# 1. Créer override
-cat > docker-compose.override.yml << 'EOF'
-services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    volumes:
-      - ./src:/app/src
-      - ./public:/app/public
-      - ./prisma:/app/prisma
-    environment:
-      NODE_ENV: development
-EOF
-
-# 2. Rebuild
-rm -rf .next && fuser -k 3000/tcp 2>/dev/null
-docker compose up -d --build app
-
-# 3. IMPORTANT: Repasser en prod après debug
-rm docker-compose.override.yml
-rm -rf .next && fuser -k 3000/tcp 2>/dev/null
-docker compose up -d --build app
-```
-
-## Déploiement Raspberry Pi
-
-Scripts spécifiques disponibles :
-- `deploy-docker-pi.sh` — Déploiement Docker sur Pi
-- `deploy-docker-pi-prebuild.sh` — Pré-build sur machine puissante, transfert sur Pi
-- `deploy-pi.sh` — Déploiement natif (sans Docker)
-- `gleba-pi.service` — Service systemd pour Pi
-
 ## CI/CD
 
-> **Note** : Pas de pipeline CI/CD configuré (.github/workflows/ absent). Déploiement manuel via SSH + Docker Compose.
+Le workflow `.github/workflows/test.yml` tourne à chaque push et pull request sur `main`, en quatre jobs indépendants :
+
+- `lint` : `npm run test:lint-gate` puis `npm run lint:ci` ;
+- `tests` : `npm test` (Vitest) ;
+- `typage` : `npx tsc --noEmit` ;
+- `base-neuve` : `prisma migrate deploy` et `prisma/seed.ts` joués deux fois sur une base PostGIS vierge, puis un test d'intégration PostgreSQL.
+
+Le déploiement n'est pas automatisé : il se fait avec Docker Compose (voir ci-dessus).

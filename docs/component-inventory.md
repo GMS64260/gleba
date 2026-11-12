@@ -104,7 +104,7 @@ Wizard de création de culture en 5 étapes.
 | `ReferentielTab.tsx` | Table | Base espèces avec filtres type |
 | `TerrainTab.tsx` | Table | Gestion planches avec sous-onglets |
 
-### Verger (`src/components/verger/`) — 9 composants
+### Verger (`src/components/verger/`) — 8 composants
 | Composant | Catégorie | Description |
 |-----------|-----------|-------------|
 | `ArbresTab.tsx` | Table | Liste arbres avec filtres type + dialog ajout |
@@ -113,7 +113,6 @@ Wizard de création de culture en 5 étapes.
 | `OperationsTab.tsx` | Table | Opérations entretien/phytosanitaire |
 | `ProductionsTab.tsx` | Table | Productions (récoltes fruits + bois) |
 | `SanteTab.tsx` | Table | Registre sanitaire + pollinisation |
-| `PlanificationTab.tsx` | Navigation | Hub planification zones, stocks, interventions |
 | `VergerCalendarView.tsx` | Display | Grille mensuelle opérations (planifié/fait) |
 | `TreeCareGantt.tsx` | Chart | Gantt 12 mois soins par espèce |
 
@@ -196,16 +195,6 @@ Wizard de création de culture en 5 étapes.
 |-----------|-----------|-------------|
 | `ChatPanel.tsx` | Display | Interface chat IA avec markdown, historique, streaming |
 | `ChatBubble.tsx` | Navigation | Bulle chat flottante avec détection contexte section |
-
-### Onboarding (`src/components/onboarding/`) — 1 composant
-| Composant | Catégorie | Description |
-|-----------|-----------|-------------|
-| `WelcomeDialog.tsx` | Dialog | Dialog bienvenue avec import données test |
-
-### Root (`src/components/`) — 1 composant
-| Composant | Catégorie | Description |
-|-----------|-----------|-------------|
-| `Footer.tsx` | Layout | Footer global (copyright AGPL-3.0, lien GitHub) |
 
 ---
 

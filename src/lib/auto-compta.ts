@@ -95,25 +95,6 @@ async function suiviDuMiroirVente(
 }
 
 /**
- * Recherche une ecriture auto existante pour eviter les doublons
- */
-export async function findAutoEntry(
-  sourceType: string,
-  sourceId: number,
-  table: 'vente' | 'depense'
-) {
-  if (table === 'vente') {
-    return prisma.venteManuelle.findFirst({
-      where: { sourceType, sourceId, auto: true },
-    })
-  } else {
-    return prisma.depenseManuelle.findFirst({
-      where: { sourceType, sourceId, auto: true },
-    })
-  }
-}
-
-/**
  * Supprime une ecriture auto lorsque la source est supprimee/modifiee
  */
 export async function deleteAutoEntry(
@@ -138,21 +119,6 @@ export async function deleteAutoEntry(
       await verrouillerReglements(db, proprietaire)
       await verifierSuppressionSourceReglee(db, proprietaire, cleSourceReglement(table, sourceType, sourceId))
     }
-    return table === 'vente' ? db.venteManuelle.deleteMany({ where }) : db.depenseManuelle.deleteMany({ where })
-  })
-}
-
-export async function deleteAutoEntryByRef(
-  sourceType: string,
-  sourceRef: string,
-  table: 'vente' | 'depense',
-  userId: string,
-  tx?: AutoComptaTx,
-) {
-  return inAutoComptaTransaction(tx, async (db) => {
-    await verrouillerReglements(db, userId)
-    const where = { sourceType, sourceRef, auto: true, userId }
-    await verifierSuppressionSourceReglee(db, userId, cleSourceReglement(table, sourceType, sourceRef, true))
     return table === 'vente' ? db.venteManuelle.deleteMany({ where }) : db.depenseManuelle.deleteMany({ where })
   })
 }
@@ -472,23 +438,10 @@ export async function createVenteFromVenteProduit(
  * TVA : la paie est saisie HT (montantHT). On applique 5,5 % comme pour toute
  * vente de lait/produit laitier (VenteProduit type 'lait') pour rester cohérent
  * avec le reste de la compta élevage.
+ *
+ * S'appelle dans la transaction qui écrit la PaieLait : une paie validée ne
+ * reste jamais sans sa recette comptable.
  */
-export async function createVenteFromPaieLait(
-  userId: string,
-  paie: {
-    annee: number
-    mois: number
-    montantHT: number
-    litres?: number | null
-    laiterie?: string | null
-    date?: Date | string | null
-  }
-) {
-  return prisma.$transaction((tx) => upsertVenteFromPaieLait(tx, userId, paie))
-}
-
-/** Variante transactionnelle, à utiliser quand la PaieLait est écrite dans la
- * même transaction. Évite une paie validée sans sa recette comptable. */
 export async function upsertVenteFromPaieLait(
   tx: Prisma.TransactionClient,
   userId: string,
@@ -1124,15 +1077,6 @@ export async function upsertVenteFromReservationElevage(
     }))
   }
   return created
-}
-
-export async function createVenteFromReservationElevage(
-  userId: string,
-  reservation: ReservationComptaInput,
-) {
-  return prisma.$transaction((tx) =>
-    upsertVenteFromReservationElevage(tx, userId, reservation),
-  )
 }
 
 /**

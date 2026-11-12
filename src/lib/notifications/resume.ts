@@ -60,21 +60,6 @@ export function labelTypeTache(type: TypeTache): string {
   }
 }
 
-export function labelAlerteMeteo(type: AlerteMeteoNotification["type"]): string {
-  switch (type) {
-    case "gel":
-      return "gel attendu"
-    case "orage":
-      return "orage en cours"
-    case "canicule":
-      return "canicule"
-    case "vent":
-      return "vent fort"
-    case "pluie":
-      return "pluie abondante"
-  }
-}
-
 /** Libellé court d'une alerte pour l'objet de l'email (« gel attendu »). */
 export function labelAlerteMeteoCourt(type: AlerteMeteoNotification["type"]): string {
   switch (type) {

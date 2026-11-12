@@ -31,15 +31,6 @@ export const PRODUITS_RUCHE_LABELS: Record<ProduitRuche, string> = {
   autre: "Autre produit",
 }
 
-export const TYPES_VENTE_PRODUITS_RUCHE_LABELS: Record<TypeVenteProduitRuche, string> = {
-  miel: "Miel",
-  cire: "Cire",
-  propolis: "Propolis",
-  pollen: "Pollen",
-  gelee_royale: "Gelée royale",
-  autre_ruche: "Autre produit de la ruche",
-}
-
 export function uniteProduitRucheParDefaut(produit: ProduitRuche): UniteProduitRuche {
   return produit === "propolis" || produit === "gelee_royale" ? "g" : "kg"
 }

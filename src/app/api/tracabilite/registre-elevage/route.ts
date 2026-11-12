@@ -259,7 +259,7 @@ export async function GET(request: NextRequest) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { name: true },
-    }).catch(() => null)
+    }).catch((e) => { console.error('GET /api/tracabilite/registre-elevage error:', e); return null })
 
     return NextResponse.json({
       annee,

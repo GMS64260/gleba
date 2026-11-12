@@ -79,14 +79,8 @@
 // ÉCARTÉES (classe c, détail dans ECARTEES et dans --lister)
 //   - scripts/verif-navigateur-carte-fond.cjs : BASE figée, attend `networkidle`
 //     (jamais atteint sur gleba.fr), aucun verdict ; remplacée par les carte-fond.
-//   - sonde-soin-rappel.cjs : diagnostic d'un ticket non reproduit, sans correctif à
-//     surveiller ; variantes clavier vouées à l'échec sans interface ; écrit des soins.
 //   - sonde-dates-culture-recolte.cjs, mode « recolte » : exige CULTURE_ID d'une culture
 //     démo déjà récoltée (témoin) ; les modes « culture » et « avant-plantation » restent.
-//   - verif-personnaliser.mjs : si la garde démo régressait, « Terminer » réécrirait la
-//     disposition de l'accueil de la démo sans retour possible ; JSON sans verdict.
-//   - verif-registres.mjs : preuve d'une conversion (pas d'un correctif), JSON sans
-//     verdict, débordement préexistant de /taches à 390 px : bruit à chaque passage.
 //
 // AJOUTER UNE SONDE : une entrée dans SONDES (fichier, lot, tickets, classe, coût,
 // connexions, arguments, analyseur). Une sonde qui imprime « OK  … » / « KO  … » et
@@ -824,28 +818,10 @@ const ECARTEES = [
     raison: "BASE figée sur gleba.fr, attend « networkidle » (jamais atteint sur gleba.fr), aucun verdict (états bruts) ; remplacée par les trois carte-fond",
   },
   {
-    fichier: "scripts/qa/sonde-soin-rappel.cjs",
-    lot: "2026-10-10",
-    tickets: ["cmv29egw6"],
-    raison: "diagnostic d'un ticket non reproduit (aucun correctif à surveiller) ; variantes clavier vouées à l'échec dans Chromium sans interface ; écrit des soins (supprimés) aux dates figées d'octobre 2026",
-  },
-  {
     fichier: "scripts/qa/sonde-dates-culture-recolte.cjs, mode « recolte »",
     lot: "2026-10-10",
     tickets: ["cmv2r0qua"],
     raison: "exige CULTURE_ID d'une culture démo déjà récoltée (témoin) ; supprimer la récolte de sonde ne décoche pas « récolte faite ». Modes « culture » et « avant-plantation » rejoués",
-  },
-  {
-    fichier: "scripts/qa/verif-personnaliser.mjs",
-    lot: "2026-10-10 (accueil v2)",
-    tickets: [],
-    raison: "si la garde démo régressait, « Terminer » enregistrerait l'accueil réordonné de la démo, sans retour arrière ; noms de tuiles figés ; rapport JSON sans verdict",
-  },
-  {
-    fichier: "scripts/qa/verif-registres.mjs",
-    lot: "2026-10-10 (P4)",
-    tickets: [],
-    raison: "preuve d'une conversion (fonctionnalité, pas un correctif), rapport JSON sans verdict ; débordement préexistant de /taches à 390 px : bruit à chaque passage",
   },
 ];
 

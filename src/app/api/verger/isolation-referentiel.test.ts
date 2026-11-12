@@ -11,8 +11,7 @@ import {
 
 /**
  * Revue 2026-10-20 — isolation des référentiels du verger entre comptes
- * (porte-greffes, essences bocagères et forestières, export CSV, détection
- * des triploïdes). L'entrée privée d'un autre compte ne sort pas, ne se
+ * (porte-greffes, essences bocagères et forestières, export CSV). L'entrée privée d'un autre compte ne sort pas, ne se
  * modifie ni ne se supprime (404 comme une inexistante), aucun id tiers.
  */
 
@@ -32,7 +31,6 @@ import { DELETE as DELETE_BOCAGE, PUT as PUT_BOCAGE } from './essences-bocageres
 import { GET as LISTE_FORET } from './essences-forestieres/route'
 import { DELETE as DELETE_FORET, PUT as PUT_FORET } from './essences-forestieres/[id]/route'
 import { GET as EXPORT } from './referentiel/export/route'
-import { GET as TRIPLOIDES } from './triploides/route'
 
 const espece = { id: 'Pommier', nom: 'Pommier', userId: null, partageCommunaute: false }
 const porteGreffes = jeuReferentiel((id, nom) => ({
@@ -142,35 +140,6 @@ describe('GET /api/verger/referentiel/export', () => {
       }
     },
   )
-})
-
-describe('GET /api/verger/triploides', () => {
-  const arbre = { id: 1, nom: 'Arbre 1', espece: 'Pommier', especeId: 'Pommier', variete: 'Reinette du test', gpsLat: null, gpsLng: null, zoneId: null }
-  const variete = (userId: string | null, partageCommunaute: boolean) => ({
-    id: `v-${userId ?? 'gleba'}`,
-    nom: 'Reinette du test',
-    nomNormalise: 'reinette du test',
-    especeId: 'Pommier',
-    userId,
-    partageCommunaute,
-    ploidie: 'Triploïde',
-    groupePollinisation: 'C',
-  })
-
-  it("la ploïdie d'une variété privée d'un autre compte homonyme ne compte pas", async () => {
-    mocks.db.arbre = { findMany: vi.fn(async () => [arbre]) }
-    mocks.db.variete = delegueMemoire([variete(AUTRE, false)])
-    const res = await TRIPLOIDES()
-    expect((await res.json()).alertes).toEqual([])
-  })
-
-  it('la variété du compte, elle, déclenche l’alerte', async () => {
-    mocks.db.arbre = { findMany: vi.fn(async () => [arbre]) }
-    mocks.db.variete = delegueMemoire([variete(AUTRE, false), variete(MOI, false)])
-    const res = await TRIPLOIDES()
-    const { alertes } = await res.json()
-    expect(alertes.map((a: { arbre: { id: number } }) => a.arbre.id)).toEqual([1])
-  })
 })
 
 describe('DELETE /api/verger/porte-greffes/[id] — porte-greffe utilisé (revue du 2026-11-04)', () => {
