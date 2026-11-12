@@ -93,6 +93,12 @@ interface Intervention {
   intrantCout: number | null
   intrantNumLot: string | null
   justification: string | null
+  // Arrêté du 24 décembre 2025, annexe I : mentions « le cas échéant ».
+  stadeBBCH?: string | null
+  heureDebut?: string | null
+  heureFin?: string | null
+  rentreeAnticipee?: string | null
+  siretBeneficiaire?: string | null
   notes: string | null
   createdAt: string
   // Source tracking (virtual entries from other modules)
@@ -304,6 +310,11 @@ export default function InterventionsPage() {
     conditionsMeteo: "",
     zntDistanceM: null as number | null,
     zntRespectee: null as boolean | null,
+    stadeBBCH: "",
+    heureDebut: "",
+    heureFin: "",
+    rentreeAnticipee: "",
+    siretBeneficiaire: "",
     // Intrants
     intrantNom: "",
     intrantQuantite: "",
@@ -504,6 +515,11 @@ export default function InterventionsPage() {
       conditionsMeteo: form.conditionsMeteo,
       zntDistanceM: form.zntDistanceM,
       zntRespectee: form.zntRespectee,
+      stadeBBCH: form.stadeBBCH,
+      heureDebut: form.heureDebut,
+      heureFin: form.heureFin,
+      rentreeAnticipee: form.rentreeAnticipee,
+      siretBeneficiaire: form.siretBeneficiaire,
       // Intrant
       intrantNom: form.intrantNom,
       intrantQuantite: form.intrantQuantite,
@@ -682,6 +698,11 @@ export default function InterventionsPage() {
       conditionsMeteo: intervention.conditionsMeteo || "",
       zntDistanceM: intervention.zntDistanceM ?? null,
       zntRespectee: intervention.zntRespectee ?? null,
+      stadeBBCH: intervention.stadeBBCH || "",
+      heureDebut: intervention.heureDebut || "",
+      heureFin: intervention.heureFin || "",
+      rentreeAnticipee: intervention.rentreeAnticipee || "",
+      siretBeneficiaire: intervention.siretBeneficiaire || "",
       intrantNom: intervention.intrantNom || "",
       intrantQuantite: intervention.intrantQuantite?.toString() || "",
       intrantUnite: intervention.intrantUnite || "kg",
@@ -1080,6 +1101,67 @@ export default function InterventionsPage() {
                         respectee={form.zntRespectee}
                         onChange={(next) => setForm({ ...form, zntDistanceM: next.distanceM, zntRespectee: next.respectee })}
                       />
+                      {/* Arrêté du 24 décembre 2025 (registre d'utilisation des
+                          produits phytopharmaceutiques), annexe I : mentions à
+                          renseigner « le cas échéant ». */}
+                      <div className="space-y-3">
+                        <p className="text-xs text-muted-foreground">
+                          À renseigner si l&apos;AMM ou la réglementation le prévoit (stade, horaires),
+                          en cas de rentrée anticipée sur la parcelle, ou pour une prestation de service.
+                        </p>
+                        <div className="grid gap-4 grid-cols-3">
+                          <div>
+                            <Label htmlFor="phyto-bbch">Stade BBCH</Label>
+                            <Input
+                              id="phyto-bbch"
+                              inputMode="numeric"
+                              maxLength={2}
+                              value={form.stadeBBCH}
+                              onChange={(e) => setForm({ ...form, stadeBBCH: e.target.value.replace(/\D/g, "") })}
+                              placeholder="65"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="phyto-debut">Début</Label>
+                            <Input
+                              id="phyto-debut"
+                              type="time"
+                              value={form.heureDebut}
+                              onChange={(e) => setForm({ ...form, heureDebut: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="phyto-fin">Fin</Label>
+                            <Input
+                              id="phyto-fin"
+                              type="time"
+                              value={form.heureFin}
+                              onChange={(e) => setForm({ ...form, heureFin: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <Label htmlFor="phyto-siret-beneficiaire">SIRET du bénéficiaire (prestation)</Label>
+                            <Input
+                              id="phyto-siret-beneficiaire"
+                              inputMode="numeric"
+                              value={form.siretBeneficiaire}
+                              onChange={(e) => setForm({ ...form, siretBeneficiaire: e.target.value })}
+                              placeholder="14 chiffres"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="phyto-rentree">Rentrée anticipée</Label>
+                            <Input
+                              id="phyto-rentree"
+                              value={form.rentreeAnticipee}
+                              onChange={(e) => setForm({ ...form, rentreeAnticipee: e.target.value })}
+                              placeholder="Moment, lieu, motif, mesures de protection"
+                            />
+                          </div>
+                        </div>
+                      </div>
                       {/* PROMPT 11 LOT B/D — Justification du traitement (obligatoire en PBI). */}
                       <div>
                         <Label>Justification du traitement</Label>

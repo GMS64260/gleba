@@ -13,6 +13,12 @@ import {
   champsManquantsObservationPhyto,
   type ObservationPhyto,
 } from "@/lib/tracabilite/conformite-observation-phyto"
+import { chargerContexteRegistre } from "@/lib/tracabilite/contexte-registre"
+import {
+  journaliserRectificationPhyto,
+  motifRectification,
+  observationAuRegistre,
+} from "@/lib/tracabilite/historique-phyto"
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error, session } = await requireAuthApi()
@@ -58,9 +64,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.traitement !== undefined) data.traitement = body.traitement
     if (body.methodeTraitement !== undefined) data.methodeTraitement = body.methodeTraitement
     if (body.produit !== undefined) data.produit = body.produit
-    if (body.doseAppliquee !== undefined) data.doseAppliquee = body.doseAppliquee ? parseFloat(body.doseAppliquee) : null
+    if (body.doseAppliquee !== undefined) data.doseAppliquee = body.doseAppliquee === "" || body.doseAppliquee == null ? null : parseFloat(body.doseAppliquee)
     if (body.uniteDose !== undefined) data.uniteDose = body.uniteDose
-    if (body.dar !== undefined) data.dar = body.dar ? parseInt(body.dar) : null
+    if (body.dar !== undefined) data.dar = body.dar === "" || body.dar == null ? null : parseInt(body.dar)
     if (body.numAMM !== undefined) data.numAMM = body.numAMM
     if (body.notes !== undefined) data.notes = body.notes
     // PROMPT 11 LOT D — PBI
@@ -136,12 +142,45 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    const observation = await prisma.observationSante.update({
-      where: { id: obsId },
-      data,
-      include: {
-        arbre: { select: { id: true, nom: true, type: true } },
-      },
+    const observation = await prisma.$transaction(async (tx) => {
+      // Contexte du registre figé à nouveau si l'arbre, la parcelle ou la date
+      // change, ou s'il ne l'a jamais été (revue de conformité du 2026-11-12, C4).
+      const apresFusion = { ...existing, ...data } as typeof existing
+      const jamaisFige =
+        existing.cultureRegistre == null && existing.localisationRegistre == null && existing.conduiteBio == null
+      if (observationAuRegistre(apresFusion) && (jamaisFige || "arbreId" in data || "parcelleId" in data || "date" in data)) {
+        Object.assign(
+          data,
+          await chargerContexteRegistre(
+            tx,
+            session!.user.id,
+            { arbreId: apresFusion.arbreId, parcelleId: apresFusion.parcelleId },
+            apresFusion.date,
+          ),
+        )
+      }
+      const observation = await tx.observationSante.update({
+        where: { id: obsId },
+        data,
+        include: {
+          arbre: { select: { id: true, nom: true, type: true } },
+        },
+      })
+      // Arrêté du 24 décembre 2025, art. 3 : l'état d'avant d'un traitement
+      // du registre reste retrouvable (revue de conformité, C3).
+      if (observationAuRegistre(existing)) {
+        await journaliserRectificationPhyto(tx, {
+          userId: session!.user.id,
+          source: "observation_sante",
+          sourceId: existing.id,
+          action: "modification",
+          avant: existing,
+          apres: observation,
+          motif: motifRectification(body.motif),
+          auteurId: session!.user.id,
+        })
+      }
+      return observation
     })
 
     return NextResponse.json(observation)
@@ -169,7 +208,22 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: "Observation non trouvée" }, { status: 404 })
     }
 
-    await prisma.observationSante.delete({ where: { id: obsId } })
+    await prisma.$transaction(async (tx) => {
+      // Un traitement du registre ne disparaît plus sans trace (arrêté du
+      // 24 décembre 2025, art. 3 ; revue de conformité du 2026-11-12, C3).
+      if (observationAuRegistre(existing)) {
+        await journaliserRectificationPhyto(tx, {
+          userId: session!.user.id,
+          source: "observation_sante",
+          sourceId: existing.id,
+          action: "suppression",
+          avant: existing,
+          motif: motifRectification(request.nextUrl.searchParams.get("motif")),
+          auteurId: session!.user.id,
+        })
+      }
+      await tx.observationSante.delete({ where: { id: obsId } })
+    })
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("DELETE /api/arbres/observations error:", err)

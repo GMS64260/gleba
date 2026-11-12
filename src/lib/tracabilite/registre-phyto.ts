@@ -23,7 +23,11 @@ import prisma from '@/lib/prisma'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
 import { jourCivilStocke } from '@/lib/jour-civil'
 import { numAMMValide } from '@/lib/tracabilite/amm'
-import { champsManquantsObservationPhyto } from '@/lib/tracabilite/conformite-observation-phyto'
+import {
+  METHODES_OBSERVATION_REGISTRE,
+  champsManquantsRegistreObservation,
+} from '@/lib/tracabilite/conformite-observation-phyto'
+import { chargerContexteRegistre, type ContexteRegistre } from '@/lib/tracabilite/contexte-registre'
 import {
   applicateurPhyto,
   libelleMeteoPhyto,
@@ -52,6 +56,22 @@ function controlerNumAMM(numAMM: string | null | undefined, champsMissing: strin
 }
 
 /**
+ * Classifications d'un moyen qui n'est pas un produit phytopharmaceutique sous
+ * autorisation : aucun numéro d'AMM ne peut y être exigé (revue de conformité
+ * du 2026-11-12, C1). Le nom, la dose et la surface restent demandés.
+ */
+const CLASSIFICATIONS_SANS_AMM = new Set([
+  'Substance de base / PNPP',
+  'Biologique (purin/décoction)',
+  'Mécanique',
+  'Mécanique/Manuel',
+  'Prophylaxie',
+])
+export function ammExigee(classification: string | null | undefined): boolean {
+  return !classification || !CLASSIFICATIONS_SANS_AMM.has(classification)
+}
+
+/**
  * Champs obligatoires manquants d'une intervention ou d'une opération d'arbre.
  * Les observations santé du verger suivent la règle de leur saisie
  * (`champsManquantsObservationPhyto`, conformite-observation-phyto.ts).
@@ -60,14 +80,20 @@ function champsManquantsRegistre(ligne: {
   produit: string | null | undefined
   numAMM: string | null | undefined
   doseAppliquee: number | null | undefined
+  uniteDose: string | null | undefined
   surfaceM2: number | null
   dar: number | null | undefined
   localise: boolean
+  ammExigee: boolean
 }): string[] {
   const champsMissing: string[] = []
   if (!ligne.produit) champsMissing.push('produitPhyto')
-  controlerNumAMM(ligne.numAMM, champsMissing)
+  // Arrêté du 24 décembre 2025, annexe I : numéro d'autorisation du produit,
+  // dose (annexe II : « numérique + unité ») et surface traitée.
+  if (ligne.ammExigee) controlerNumAMM(ligne.numAMM, champsMissing)
+  else if (ligne.numAMM && !numAMMValide(ligne.numAMM)) champsMissing.push('numAMM invalide')
   if (!ligne.doseAppliquee) champsMissing.push('doseAppliquee')
+  else if (!ligne.uniteDose?.trim()) champsMissing.push('uniteDose')
   if (!ligne.surfaceM2) champsMissing.push('surfaceTraitee')
   if (ligne.dar === null || ligne.dar === undefined) champsMissing.push('dar')
   if (!ligne.localise) champsMissing.push('culture/parcelle')
@@ -93,16 +119,70 @@ function arbreSnapshote(notes: string | null): string | null {
   return trouve ? trouve[1].trim() : null
 }
 
+/**
+ * Classification DÉDUITE DU LIBELLÉ, indicative. Revue de conformité du
+ * 2026-11-12 (C7) : un mot ne prouve pas qu'un produit est utilisable en
+ * agriculture biologique (règlement (UE) 2018/848, art. 9 et 24 ; liste à
+ * l'annexe I du règlement d'exécution (UE) 2021/1165) ni qu'il est autorisé
+ * pour cet usage (règlement (CE) 1107/2009, art. 55). « Chaux vive » ou
+ * « bouillie maison au cuivre » sortaient « Autorisé AB » : l'heuristique ne
+ * renvoie plus jamais ce statut, réservé au référentiel.
+ */
+export const CLASSIFICATION_MINERALE_A_VERIFIER = 'Minéral (AB à vérifier)'
 export function classifierProduitHeuristique(nom: string | null): string | null {
   if (!nom) return null
   const n = nom.toLowerCase()
-  if (/(bouillie|cuivre|sulfate de cuivre|hydroxyde de cuivre)/.test(n)) return 'Autorisé AB'
-  if (/(soufre|huile blanche|kaolinit|chaux)/.test(n)) return 'Autorisé AB'
+  if (/(bouillie|cuivre|sulfate de cuivre|hydroxyde de cuivre)/.test(n)) return CLASSIFICATION_MINERALE_A_VERIFIER
+  if (/(soufre|huile blanche|kaolinit|chaux)/.test(n)) return CLASSIFICATION_MINERALE_A_VERIFIER
   if (/(bacillus|bt |spinosad|pyrévert|pyrethr|phéromone|trichogramm|coccinelle)/.test(n)) return 'Biocontrôle'
   if (/(purin|décoction|savon noir|bicarbonate|vinaigre|consoude|fougère|ortie|prêle|lait)/.test(n)) return 'Substance de base / PNPP'
   if (/(piège|filet|glu|carton)/.test(n)) return 'Mécanique'
   if (/(glyphosate|deltaméthr|roténone|mancozèbe|fosétyl)/.test(n)) return 'Chimique conventionnel'
   return null
+}
+
+/**
+ * Contexte d'une ligne : figé sur le traitement s'il a été enregistré depuis
+ * le 2026-11-13, sinon relu des fiches actuelles (lignes antérieures).
+ */
+async function contexteLigne(
+  ligne: { date?: Date; cultureRegistre?: string | null; localisationRegistre?: string | null; conduiteBio?: boolean | null },
+  userId: string,
+  refs: Parameters<typeof chargerContexteRegistre>[2],
+): Promise<ContexteRegistre & { contexteFige: boolean }> {
+  if (ligne.cultureRegistre != null || ligne.localisationRegistre != null || ligne.conduiteBio != null) {
+    return {
+      cultureRegistre: ligne.cultureRegistre ?? null,
+      localisationRegistre: ligne.localisationRegistre ?? null,
+      conduiteBio: ligne.conduiteBio ?? null,
+      contexteFige: true,
+    }
+  }
+  const relu = await chargerContexteRegistre(prisma, userId, refs, ligne.date ?? new Date())
+  return { ...relu, contexteFige: false }
+}
+
+/** Mentions de l'annexe I ajoutées à chaque ligne (arrêté du 24 décembre 2025). */
+function mentionsAnnexe(
+  contexte: ContexteRegistre & { contexteFige: boolean },
+  m: {
+    stadeBBCH?: string | null
+    heureDebut?: string | null
+    heureFin?: string | null
+    rentreeAnticipee?: string | null
+    siretBeneficiaire?: string | null
+  },
+) {
+  return {
+    localisationReglementaire: contexte.localisationRegistre,
+    conduiteBio: contexte.conduiteBio,
+    contexteFige: contexte.contexteFige,
+    stadeBBCH: m.stadeBBCH ?? null,
+    heureDebut: m.heureDebut ?? null,
+    heureFin: m.heureFin ?? null,
+    rentreeAnticipee: m.rentreeAnticipee ?? null,
+    siretBeneficiaire: m.siretBeneficiaire ?? null,
+  }
 }
 
 export type RegistrePhyto = Awaited<ReturnType<typeof genererRegistrePhyto>>
@@ -205,25 +285,36 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         if (snapshot) cultureNom = snapshot
       }
 
-      // PROMPT 11 — Source de vérité pour la classification : produitPhytoRef si présent,
-      // sinon fallback heuristique sur le nom (rétro-compat saisies historiques).
+      // Revue de conformité du 2026-11-12 (C4) : le registre restitue ce qui a
+      // été ENREGISTRÉ sur le traitement (nom, AMM, DAR). Le référentiel
+      // ProduitPhyto, mis à jour depuis, ne complète que ce que la saisie
+      // n'a jamais porté ; il ne réécrit plus un registre passé.
       const ref = intervention.produitPhytoRef
-      const numAMMRetenu = ref?.amm || intervention.numAMM || null
+      const numAMMRetenu = intervention.numAMM || ref?.amm || null
+      const produitNom = intervention.produitPhyto ?? ref?.nomCommercial ?? null
+      const classification = ref?.classification ?? classifierProduitHeuristique(produitNom)
+      const classificationSource = ref?.classification ? ('referentiel' as const) : classification ? ('heuristique' as const) : null
+      const autoriseAB = ref?.autoriseAB ?? null
+      const contexte = await contexteLigne(intervention, userId, {
+        cultureId: intervention.cultureId,
+        plancheId: intervention.plancheId,
+        arbreId: intervention.arbreId,
+        parcelleId: intervention.parcelleId,
+      })
+      if (intervention.cultureRegistre) cultureNom = intervention.cultureRegistre
 
       // Detecter les champs manquants obligatoires
       const surfaceM2 = surfaceRegistreM2(intervention)
       const champsMissing = champsManquantsRegistre({
-        produit: intervention.produitPhyto,
+        produit: produitNom,
         numAMM: numAMMRetenu,
         doseAppliquee: intervention.doseAppliquee,
+        uniteDose: intervention.uniteDose,
         surfaceM2,
         dar: intervention.dar,
-        localise: Boolean(cultureNom || plancheNom),
+        localise: Boolean(cultureNom || plancheNom || contexte.localisationRegistre),
+        ammExigee: ammExigee(classification),
       })
-
-      const produitNom = ref?.nomCommercial ?? intervention.produitPhyto ?? null
-      const classification = ref?.classification ?? classifierProduitHeuristique(produitNom)
-      const autoriseAB = ref?.autoriseAB ?? null
 
       return {
         id: intervention.id,
@@ -237,6 +328,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         produitId: ref?.id ?? null,
         substanceActive: ref?.substanceActive ?? null,
         classification,
+        classificationSource,
         autoriseAB,
         numAMM: numAMMRetenu,
         doseAppliquee: intervention.doseAppliquee || null,
@@ -246,7 +338,9 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         temperatureC: intervention.temperatureC ?? null,
         ventKmh: intervention.ventKmh ?? null,
         hygrometriePct: intervention.hygrometriePct ?? null,
-        dar: intervention.dar ?? ref?.darJours ?? null,
+        // DAR enregistré seulement : celui du référentiel actuel n'est pas
+        // celui qui s'appliquait le jour du traitement (C4).
+        dar: intervention.dar ?? null,
         delaiReentree: intervention.delaiReentree || null,
         // QA cmsjirrpv — la ZNT (zone non traitée) est réglementaire et
         // stockée, mais n'était pas restituée à l'écran (seulement à l'export).
@@ -262,6 +356,13 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         intrantNumLot: intervention.intrantNumLot || null,
         notes: intervention.notes || null,
         description: intervention.description || null,
+        ...mentionsAnnexe(contexte, {
+          stadeBBCH: intervention.stadeBBCH,
+          heureDebut: intervention.heureDebut,
+          heureFin: intervention.heureFin,
+          rentreeAnticipee: intervention.rentreeAnticipee,
+          siretBeneficiaire: intervention.siretBeneficiaire,
+        }),
         champsManquants: champsMissing,
         complet: champsMissing.length === 0,
       }
@@ -276,7 +377,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       userId,
       date: { gte: startOfYear, lte: endOfYear },
       OR: [
-        { methodeTraitement: { in: ["chimique_conventionnel", "chimique_cuivre", "biocontrole", "biologique_purin", "chimique", "biologique"] } },
+        { methodeTraitement: { in: [...METHODES_OBSERVATION_REGISTRE] } },
         { produit: { not: null } },
         { numAMM: { not: null } },
       ],
@@ -296,12 +397,15 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
     // Revue du 2026-10-20 — même exigence que la saisie (POST/PUT
     // /api/arbres/observations) : champs réglementaires d'une méthode
     // chimique ; ailleurs, seule la forme d'une AMM saisie est contrôlée.
-    const champsMissing = champsManquantsObservationPhyto(o).map((champ) => champ.cle)
+    // Revue de conformité du 2026-11-12 (C1) : mentions de l'annexe I pour
+    // tout produit phytopharmaceutique, biocontrôle compris.
+    const champsMissing = champsManquantsRegistreObservation(o).map((champ) => champ.cle)
     if (o.numAMM && !numAMMValide(o.numAMM)) champsMissing.push('numAMM invalide')
+    const contexte = await contexteLigne(o, userId, { arbreId: o.arbreId, parcelleId: o.parcelleId })
     entries.push({
       id: 1_000_000_000 + o.id, // évite la collision d'id avec les interventions
       date: jourLigne(o.date),
-      culture: o.arbre?.nom || 'Non renseigné',
+      culture: o.cultureRegistre || o.arbre?.nom || 'Non renseigné',
       espece: o.arbre?.espece || '',
       parcelle: o.parcelle?.nom || 'Non renseigné',
       localisation: '',
@@ -310,6 +414,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       produitId: null,
       substanceActive: null,
       classification: classifierProduitHeuristique(produitNom),
+      classificationSource: classifierProduitHeuristique(produitNom) ? ('heuristique' as const) : null,
       autoriseAB: null,
       numAMM: o.numAMM || null,
       doseAppliquee: o.doseAppliquee || null,
@@ -333,6 +438,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       intrantNumLot: null,
       notes: null,
       description: null,
+      ...mentionsAnnexe(contexte, { stadeBBCH: o.stadeBBCH }),
       champsManquants: champsMissing,
       complet: champsMissing.length === 0,
     })
@@ -363,18 +469,23 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
   for (const op of operations) {
     const produitNom = op.produit ?? null
     // AMM, surface et DAR sont absents du modèle OperationArbre : toujours manquants.
+    const classificationOp = classifierProduitHeuristique(produitNom)
     const champsMissing = champsManquantsRegistre({
       produit: op.produit,
       numAMM: null,
       doseAppliquee: op.quantite,
+      uniteDose: op.unite,
       surfaceM2: null,
       dar: null,
       localise: Boolean(op.arbre?.nom),
+      ammExigee: ammExigee(classificationOp),
     })
+    // Contexte figé à la réalisation (CR-PHY-03), sinon relu des fiches actuelles.
+    const contexte = await contexteLigne(op, userId, { arbreId: op.arbreId })
     entries.push({
       id: 2_000_000_000 + op.id, // évite la collision d'id avec interventions et observations
       date: jourLigne(op.date),
-      culture: op.arbre?.nom || 'Non renseigné',
+      culture: op.cultureRegistre || op.arbre?.nom || 'Non renseigné',
       espece: op.arbre?.espece || '',
       parcelle: 'Non renseigné',
       localisation: '',
@@ -382,7 +493,8 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       produit: produitNom,
       produitId: null,
       substanceActive: null,
-      classification: classifierProduitHeuristique(produitNom),
+      classification: classificationOp,
+      classificationSource: classificationOp ? ('heuristique' as const) : null,
       autoriseAB: null,
       numAMM: null,
       doseAppliquee: op.quantite ?? null,
@@ -406,6 +518,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       intrantNumLot: null,
       notes: op.notes || null,
       description: op.description || null,
+      ...mentionsAnnexe(contexte, {}),
       champsManquants: champsMissing,
       complet: champsMissing.length === 0,
     })
@@ -432,7 +545,8 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       case 'Chimique conventionnel': compteurs.chimique += 1; break
       case 'Biocontrôle':            compteurs.biocontrole += 1; break
       case 'Substance de base / PNPP': compteurs.pnpp += 1; break
-      case 'Autorisé AB':            compteurs.ab += 1; break
+      // AB : seulement une classification du référentiel, jamais déduite d'un libellé (C7).
+      case 'Autorisé AB':            if (e.classificationSource === 'referentiel') compteurs.ab += 1; else compteurs.inconnu += 1; break
       case 'Mécanique':              compteurs.mecanique += 1; break
       default:                       compteurs.inconnu += 1
     }

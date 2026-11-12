@@ -753,7 +753,8 @@ function PhytoTab({
                   <td className="p-2 whitespace-nowrap">
                     {entry.doseAppliquee ? (
                       <>
-                        {entry.doseAppliquee} {entry.uniteDose || ""}
+                        {entry.doseAppliquee}{" "}
+                        {entry.uniteDose || <ChampAbsent requis={entry.champsManquants.includes("uniteDose")} />}
                       </>
                     ) : (
                       <ChampAbsent requis={entry.champsManquants.includes("doseAppliquee")} />

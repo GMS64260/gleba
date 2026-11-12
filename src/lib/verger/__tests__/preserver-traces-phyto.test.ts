@@ -51,6 +51,21 @@ const faireTx = (observations: unknown[], operations: unknown[]) => {
           return { id: creations.length }
         }),
       },
+      // Contexte du registre relu tant que l'arbre existe (CR-PHY-01).
+      arbre: {
+        findFirst: vi.fn(async () => ({
+          nom: "Pommier du fond",
+          espece: "Pommier",
+          variete: "Reinette",
+          gpsLat: 43.1,
+          gpsLng: -0.2,
+          parcelleGeo: null,
+          zone: { nom: "Zone A", statutBio: "AB", dateDebutConversion: null },
+        })),
+      },
+      culture: { findFirst: vi.fn(async () => null) },
+      planche: { findFirst: vi.fn(async () => null) },
+      parcelleGeo: { findFirst: vi.fn(async () => null) },
     } as unknown as Prisma.TransactionClient,
   }
 }
@@ -124,3 +139,34 @@ describe("preserverTracesPhytoArbre", () => {
     expect(creations).toHaveLength(0)
   })
 })
+
+// Revue Codex CR-PHY-01 (2026-11-12) : arrêté du 24 décembre 2025, art. 3 et annexe I.
+describe("contexte du registre conservé à la suppression de l'arbre", () => {
+  it("recopie le contexte figé et le stade BBCH de l'observation", async () => {
+    const { tx, creations } = faireTx(
+      [{ ...observation, stadeBBCH: "65", cultureRegistre: "Pommier — Verger nord", localisationRegistre: "Parcelle Nord · GPS 43.0000000, -0.1000000 (WGS84)", conduiteBio: false }],
+      [],
+    )
+    await preserverTracesPhytoArbre(tx, "u1", { id: 9, nom: "Pommier du fond", espece: "Pommier" })
+    expect(creations[0]).toMatchObject({
+      stadeBBCH: "65",
+      cultureRegistre: "Pommier — Verger nord",
+      localisationRegistre: "Parcelle Nord · GPS 43.0000000, -0.1000000 (WGS84)",
+      conduiteBio: false,
+    })
+  })
+
+  it("sans contexte figé : relu de l'arbre tant qu'il existe, sans invention", async () => {
+    const { tx, creations } = faireTx([{ ...observation, parcelleId: null }], [{ id: 3, date: new Date("2026-05-02T09:00:00Z"), produit: "Soufre", description: null, quantite: 2, unite: "kg", notes: null }])
+    await preserverTracesPhytoArbre(tx, "u1", { id: 9, nom: "Pommier du fond", espece: "Pommier" })
+    for (const c of creations) {
+      expect(c).toMatchObject({
+        cultureRegistre: "Pommier Reinette — Pommier du fond",
+        localisationRegistre: "Arbre Pommier du fond · GPS 43.1000000, -0.2000000 (WGS84)",
+        conduiteBio: true,
+      })
+    }
+    expect(creations).toHaveLength(2)
+  })
+})
+
