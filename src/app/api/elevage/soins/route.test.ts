@@ -7,9 +7,11 @@ const mocks = vi.hoisted(() => ({
   collecteUpdateMany: vi.fn(), collecteFindMany: vi.fn(), soinFindMany: vi.fn(),
   soinCount: vi.fn(), animalFindMany: vi.fn(), queryRaw: vi.fn(), executeRaw: vi.fn(),
   stockFindFirst: vi.fn(), stockUpdateMany: vi.fn(), stockUpdate: vi.fn(),
+  annulationCreate: vi.fn(), injectionFindMany: vi.fn(), effectifTraiteAuJour: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
+vi.mock('@/lib/elevage/effectif-traite', () => ({ effectifTraiteAuJour: mocks.effectifTraiteAuJour }))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromSoinAnimal: vi.fn(), deleteAutoEntry: vi.fn() }))
 vi.mock('@/lib/prisma', () => {
   const tx = {
@@ -19,6 +21,8 @@ vi.mock('@/lib/prisma', () => {
     soinAnimal: { create: mocks.soinCreate, update: mocks.soinUpdate, findMany: mocks.soinFindMany, findFirst: mocks.soinFindFirst },
     collecteLait: { updateMany: mocks.collecteUpdateMany, findMany: mocks.collecteFindMany },
     stockMedicamentElevage: { updateMany: mocks.stockUpdateMany, update: mocks.stockUpdate, findFirst: mocks.stockFindFirst },
+    annulationSoinAnimal: { create: mocks.annulationCreate },
+    injectionSoin: { findMany: mocks.injectionFindMany },
     $queryRaw: mocks.queryRaw,
     $executeRaw: mocks.executeRaw,
   }
@@ -27,6 +31,7 @@ vi.mock('@/lib/prisma', () => {
     lotAnimaux: { findFirst: vi.fn() },
     produitVeterinaire: { findUnique: mocks.produitFindUnique },
     soinAnimal: { findFirst: mocks.soinFindFirst, findMany: mocks.soinFindMany, count: mocks.soinCount },
+    injectionSoin: { findMany: mocks.injectionFindMany },
     stockMedicamentElevage: { findFirst: mocks.stockFindFirst },
     $queryRaw: mocks.queryRaw,
     $transaction: vi.fn(async (callback: (arg: typeof tx) => unknown) => callback(tx)),
@@ -34,7 +39,10 @@ vi.mock('@/lib/prisma', () => {
 })
 
 import { GET, PATCH, POST } from './route'
+import prismaMock from '@/lib/prisma'
 import { dateSoinARenvoyer, jourSoin } from '@/lib/elevage/date-soin'
+
+const ERREUR_SAISIE = { nature: 'erreur_saisie', motif: 'Coché « fait » par erreur' }
 
 const request = (method: string, body: object) => new NextRequest('http://localhost/api/elevage/soins', {
   method, body: JSON.stringify(body), headers: { 'content-type': 'application/json' },
@@ -64,6 +72,8 @@ describe('soins planifies et temps attente lait', () => {
       ordonnanceUrl: null,
     })
     mocks.stockUpdateMany.mockResolvedValue({ count: 1 })
+    mocks.injectionFindMany.mockResolvedValue([])
+    mocks.effectifTraiteAuJour.mockResolvedValue(null)
   })
 
   it('ne demarre pas les temps attente pour un soin seulement planifie', async () => {
@@ -183,9 +193,56 @@ describe('soins planifies et temps attente lait', () => {
     mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
     mocks.stockFindFirst.mockResolvedValue({ id: 'stock-1', userId: 'user-1', produitId: 'p1', numeroLot: 'L', quantite: 0, unite: 'mL', datePeremption: null, ordonnanceUrl: null, notes: 'Mis au rebut le 01/11/2026 (3 mL restants).' })
 
-    expect((await PATCH(request('PATCH', { id: 1, fait: false }))).status).toBe(200)
+    // C9 (2026-11-13) : rouvrir un soin réalisé exige de déclarer une erreur
+    // de saisie motivée ; ce test entérinait une réouverture sans trace.
+    expect((await PATCH(request('PATCH', { id: 1, fait: false, annulation: ERREUR_SAISIE }))).status).toBe(200)
     expect(mocks.stockUpdate).not.toHaveBeenCalled()
     expect(mocks.soinUpdate.mock.calls[0][0].data.quantitePreleveeStock).toBe(0)
+  })
+
+  // C9 (revue réglementaire du 2026-11-12) : décocher « fait » rendait les
+  // doses à la pharmacie, levait les délais d'attente et sortait le soin du
+  // registre, en un clic et sans trace.
+  it('refuse de rouvrir un soin réalisé sans erreur de saisie motivée : ni doses rendues ni délais levés', async () => {
+    const existing = { ...soinDeLot(), fait: true, produitId: 'p1', stockMedicamentId: 'stock-1', quantite: 2, quantitePreleveeStock: 2, finAttenteLait: new Date('2026-07-26T00:00:00Z') }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+
+    const sansMotif = await PATCH(request('PATCH', { id: 1, fait: false }))
+    expect(sansMotif.status).toBe(409)
+    expect((await sansMotif.json()).code).toBe('ANNULATION_MOTIVEE_REQUISE')
+
+    const administre = await PATCH(request('PATCH', { id: 1, fait: false, annulation: { nature: 'administre', motif: 'Erreur de case' } }))
+    expect(administre.status).toBe(409)
+    expect((await administre.json()).code).toBe('SOIN_ADMINISTRE_CONSERVE')
+
+    expect(mocks.soinUpdate).not.toHaveBeenCalled()
+    expect(mocks.stockUpdate).not.toHaveBeenCalled()
+    expect(mocks.annulationCreate).not.toHaveBeenCalled()
+  })
+
+  it('rouvrir pour erreur de saisie journalise l’original, motivé et attribué, dans la transaction', async () => {
+    const existing = { ...soinDeLot(), fait: true, produitId: 'p1', stockMedicamentId: 'stock-1', quantite: 2, quantitePreleveeStock: 2 }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1', acteurId: 'invite-3' } } })
+
+    expect((await PATCH(request('PATCH', { id: 1, fait: false, annulation: ERREUR_SAISIE }))).status).toBe(200)
+
+    expect(mocks.annulationCreate).toHaveBeenCalledTimes(1)
+    expect(mocks.annulationCreate.mock.calls[0][0].data).toMatchObject({
+      userId: 'user-1', soinId: 1, soinIdOrigine: 1, action: 'reouverture',
+      nature: 'erreur_saisie', motif: 'Coché « fait » par erreur', acteurId: 'invite-3',
+    })
+  })
+
+  it('une simple correction d’un soin réalisé (notes) ne demande pas de motif', async () => {
+    const existing = { ...soinDeLot(), fait: true }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+
+    expect((await PATCH(request('PATCH', { id: 1, notes: 'Boiterie antérieure gauche' }))).status).toBe(200)
+    expect(mocks.annulationCreate).not.toHaveBeenCalled()
   })
 
   it('type les conditions CASE de resynchronisation des injections', async () => {
@@ -268,7 +325,7 @@ describe('soins planifies et temps attente lait', () => {
       ])
     mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
 
-    const response = await PATCH(request('PATCH', { id: 1, fait: false }))
+    const response = await PATCH(request('PATCH', { id: 1, fait: false, annulation: ERREUR_SAISIE }))
 
     expect(response.status).toBe(200)
     const insertions = mocks.executeRaw.mock.calls.filter(([strings]) =>
@@ -290,6 +347,22 @@ describe('soins planifies et temps attente lait', () => {
   // Ticket cmsof7ccx — « Rappel planifié » d'un soin déjà effectué : le GET
   // ?rappels=1 exige fait=false, un soin fait=true avec datePrevue future ne
   // remontait donc jamais. Le POST doit matérialiser un second soin planifié.
+  // C10 (2026-11-13) : le résumé sanitaire montrait l'effectif d'aujourd'hui
+  // derrière un soin de lot ; l'effectif traité se fige à l'administration.
+  it('fige l’effectif du lot traité dans le soin administré, pas dans un soin planifié', async () => {
+    mocks.soinCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
+    vi.mocked(prismaMock.lotAnimaux.findFirst).mockResolvedValue({ id: 4, especeAnimale: null } as never)
+    mocks.effectifTraiteAuJour.mockResolvedValue(37)
+
+    expect((await POST(request('POST', { lotId: 4, type: 'Vermifuge', produit: 'X', fait: true }))).status).toBe(201)
+    expect(mocks.soinCreate.mock.calls[0][0].data.effectifTraite).toBe(37)
+    expect(mocks.effectifTraiteAuJour.mock.calls[0].slice(1, 3)).toEqual(['user-1', 4])
+
+    mocks.soinCreate.mockClear()
+    expect((await POST(request('POST', { lotId: 4, type: 'Vermifuge', produit: 'X', fait: false }))).status).toBe(201)
+    expect(mocks.soinCreate.mock.calls[0][0].data.effectifTraite).toBeNull()
+  })
+
   it('crée un soin de rappel planifié quand un soin fait porte une datePrevue future', async () => {
     mocks.soinCreate.mockImplementation(async ({ data }) => ({ id: data.fait ? 1 : 2, ...data }))
 

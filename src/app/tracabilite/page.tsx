@@ -2,7 +2,7 @@
 
 /**
  * Page Traçabilité reglementaire
- * Registre phytosanitaire, Registre de culture, Carnet sanitaire
+ * Registre phytosanitaire, Registre de culture, Résumé sanitaire
  */
 
 import * as React from "react"
@@ -183,10 +183,16 @@ interface SanitaireEntry {
   datePrevue: string | null
   fait: boolean
   notes: string | null
+  /** Animaux du lot traités, figé au jour du soin (null : inconnu). */
+  effectifTraite?: number | null
 }
 
 interface SanitaireData {
   carnet: SanitaireEntry[]
+  meta?: {
+    avertissement?: string
+    dossierComplet?: { libelle: string; url: string }
+  }
   stats: {
     totalSoins: number
     parType: Record<string, number>
@@ -228,7 +234,8 @@ interface RegistreElevageData {
 const TABS: readonly { id: RegistreTracabilite; label: string; icon: typeof Shield; shortLabel: string }[] = [
   { id: "phyto", label: "Registre phytosanitaire", icon: Shield, shortLabel: "Phyto" },
   { id: "culture", label: "Registre de culture", icon: Leaf, shortLabel: "Cultures" },
-  { id: "sanitaire", label: "Carnet sanitaire", icon: Bird, shortLabel: "Sanitaire" },
+  // C10 (2026-11-13) : résumé des soins, pas le dossier de contrôle.
+  { id: "sanitaire", label: "Résumé sanitaire", icon: Bird, shortLabel: "Sanitaire" },
   { id: "elevage", label: "Registre d'élevage", icon: FileText, shortLabel: "Élevage" },
 ]
 
@@ -423,7 +430,7 @@ function TraçabilitéContent() {
         <h1 style={{ fontSize: "16pt", fontWeight: "bold", textAlign: "center", marginBottom: "4pt" }}>
           {activeTab === "phyto" && `Registre Phytosanitaire - Année ${selectedYear}`}
           {activeTab === "culture" && `Registre de Culture - Année ${selectedYear}`}
-          {activeTab === "sanitaire" && `Carnet Sanitaire d'Élevage - Année ${selectedYear}`}
+          {activeTab === "sanitaire" && `Résumé sanitaire de l'élevage - Année ${selectedYear}`}
           {activeTab === "elevage" && `Registre d'Élevage - Année ${selectedYear}`}
         </h1>
         <p style={{ textAlign: "center", fontSize: "10pt", color: "#666", marginBottom: "12pt" }}>
@@ -1034,7 +1041,7 @@ function CultureTab({
 }
 
 // ============================================================
-// TAB 3 - CARNET SANITAIRE
+// TAB 3 - RÉSUMÉ SANITAIRE (anciennement « carnet sanitaire »)
 // ============================================================
 
 // Couleur de pastille par clé de type de soin (`cleTypeSoin`).
@@ -1042,6 +1049,33 @@ const COULEUR_TYPE_SOIN: Record<string, string> = {
   Vaccination: "bg-blue-100 text-blue-700",
   Vermifuge: "bg-purple-100 text-purple-700",
   "Traitement vétérinaire": "bg-red-100 text-red-700",
+}
+
+const DOSSIER_SANITAIRE_COMPLET = {
+  libelle: "Registre sanitaire & pharmacie (registre d'élevage complet)",
+  url: "/elevage?tab=alimentation&sub=registre",
+}
+
+/**
+ * C10 (revue réglementaire du 2026-11-12) : cet écran résume les soins
+ * réalisés ; il ne remplace pas le dossier de contrôle (délais d'attente,
+ * durée, ordonnances, fournisseurs et preuves d'achat), réuni par le registre
+ * d'élevage complet et son archive.
+ */
+function AvertissementResumeSanitaire({ meta }: { meta?: SanitaireData["meta"] }) {
+  const dossier = meta?.dossierComplet ?? DOSSIER_SANITAIRE_COMPLET
+  return (
+    <div role="note" className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-left text-sm text-amber-900">
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <p>
+        {meta?.avertissement ??
+          "Résumé des soins réalisés. Ce n'est pas le dossier de contrôle : délais d'attente, durée du traitement, ordonnances, fournisseurs et preuves d'achat figurent dans le registre d'élevage complet et son archive."}{" "}
+        <a href={dossier.url} className="font-medium underline underline-offset-2 no-print">
+          Ouvrir le {dossier.libelle}
+        </a>
+      </p>
+    </div>
+  )
 }
 
 function SanitaireTab({
@@ -1070,7 +1104,8 @@ function SanitaireTab({
     return (
       <Card>
         <CardContent className="py-12 text-center">
-          <Bird className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+          <AvertissementResumeSanitaire meta={data?.meta} />
+          <Bird className="h-12 w-12 mx-auto text-slate-300 mb-4 mt-6" />
           <p className="text-muted-foreground text-lg">
             Aucun soin animal enregistré pour {year}
           </p>
@@ -1095,6 +1130,7 @@ function SanitaireTab({
 
   return (
     <div className="space-y-4">
+      <AvertissementResumeSanitaire meta={data.meta} />
       {/* Stats summary */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
@@ -1150,7 +1186,7 @@ function SanitaireTab({
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Bird className="h-5 w-5 text-indigo-600" />
-              Carnet sanitaire - {year}
+              Résumé sanitaire - {year}
             </CardTitle>
             <div className="flex items-center gap-2 no-print">
               <Filter className="h-4 w-4 text-slate-400" />

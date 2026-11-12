@@ -150,6 +150,7 @@ model User {
   consommationsAliments ConsommationAliment[]
   soinsAnimaux          SoinAnimal[]
   injectionsSoins       InjectionSoin[]
+  annulationsSoins      AnnulationSoinAnimal[]
   naissancesAnimales    NaissanceAnimale[]
   // PROMPT 17 — production laitière
   collectesLait         CollecteLait[]
@@ -2685,8 +2686,13 @@ model SoinAnimal {
   datePrevue                 DateTime?               @map("date_prevue") // Rappel planifié
   fait                       Boolean                 @default(true) @map("fait")
   notes                      String?                 @map("notes")
+  // C10 (2026-11-13) — nombre d'animaux du lot traités, figé au jour du soin.
+  // L'effectif reconstitué d'un lot est celui d'aujourd'hui ; NULL = inconnu
+  // (soin saisi un autre jour que celui de son administration, ou ancien soin).
+  effectifTraite             Int?                    @map("effectif_traite")
   createdAt                  DateTime                @default(now()) @map("created_at")
   injections                 InjectionSoin[]
+  annulations                AnnulationSoinAnimal[]
 
   @@index([userId])
   @@index([animalId])
@@ -2718,6 +2724,38 @@ model InjectionSoin {
   @@index([userId, statut, datePrevue])
   @@index([soinId])
   @@map("injections_soins")
+}
+
+/// Journal des annulations de soins administrés (constat C9, 2026-11-13).
+/// Règlement (UE) 2019/6, art. 108 ; arrêté du 5 juin 2000, art. 7 et 11 :
+/// un soin réalisé ne disparaît plus sans trace. Seule une erreur de saisie
+/// motivée l'efface ou le rouvre ; l'original (`instantane`), la date, l'auteur
+/// et le motif restent ici. Ajout seul : aucune route ne modifie ni ne supprime
+/// une ligne, et un déclencheur refuse toute mise à jour autre que le
+/// rattachement `soin_id` (mis à NULL quand le soin est effacé).
+model AnnulationSoinAnimal {
+  id              String      @id @default(cuid())
+  userId          String      @map("user_id")
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade, map: "annulations_soins_animaux_user_fk")
+  soinId          Int?        @map("soin_id")
+  soin            SoinAnimal? @relation(fields: [soinId], references: [id], onDelete: SetNull, map: "annulations_soins_animaux_soin_fk")
+  /// Identifiant du soin au moment de l'annulation (conservé après effacement).
+  soinIdOrigine   Int         @map("soin_id_origine")
+  /// suppression | reouverture | injection_rouverte | injection_annulee
+  action          String      @map("action")
+  /// erreur_saisie (seule nature acceptée : un soin administré ne s'annule pas)
+  nature          String      @map("nature")
+  motif           String      @map("motif")
+  /// Personne connectée (invitée comprise) qui a demandé l'annulation.
+  acteurId        String      @map("acteur_id")
+  injectionNumero Int?        @map("injection_numero")
+  /// Soin, injections, cible et pharmacie tels qu'ils étaient avant l'annulation.
+  instantane      Json        @map("instantane")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@index([userId, createdAt], map: "annulations_soins_animaux_user_date_idx")
+  @@index([soinId], map: "annulations_soins_animaux_soin_idx")
+  @@map("annulations_soins_animaux")
 }
 
 /// Séquence de numérotation continue pour les lots fromage (POSTREVIEW Sprint 5).

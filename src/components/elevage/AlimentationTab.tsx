@@ -26,6 +26,7 @@ import {
 import { RationSubTab } from "./RationSubTab"
 import { AnimalCombobox } from "./AnimalCombobox"
 import { SanitaireReglementaireSubTab } from "./SanitaireReglementaireSubTab"
+import { DialogueAnnulationSoin, type DemandeAnnulationSoin, type RequeteAnnulationSoin } from "./DialogueAnnulationSoin"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -1105,6 +1106,9 @@ function lotPharmacieFormVide() {
   }
 }
 
+const CONSEQUENCE_REOUVERTURE =
+  "Le soin redevient prévu : le médicament prélevé revient en stock, la dépense automatique est retirée et ses délais d’attente sont levés."
+
 function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { initialAnimalId?: string | null; initialOpen?: boolean; year?: number }) {
   const caps = capacitesSelection(useFiliereSelection())
   const filiereSel = useFiliereSelection()
@@ -1157,15 +1161,38 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   // d'aucun écran, alors que l'API le permet (médicament remis en stock,
   // dépense automatique retirée, attente lait recalculée).
   const [isDeletingSoin, setIsDeletingSoin] = React.useState(false)
+  // C9 (revue réglementaire du 2026-11-12) : un soin administré ne s'efface,
+  // ne se remet « à faire » et n'a d'injection rouverte que pour une erreur de
+  // saisie motivée ; l'original reste au journal des annulations.
+  const [requeteAnnulation, setRequeteAnnulation] = React.useState<RequeteAnnulationSoin | null>(null)
+  const demanderAnnulation = (titre: string, consequence: string, libelleConfirmer: string) =>
+    new Promise<DemandeAnnulationSoin | null>((resolve) => {
+      setRequeteAnnulation({ titre, consequence, libelleConfirmer, resolve })
+    })
   const supprimerSoin = async () => {
     if (!editingSoinId || isDeletingSoin) return
-    if (!(await confirmDialog(
-      "Supprimer définitivement ce soin ? Il disparaît du registre sanitaire ; le médicament prélevé est remis en stock et la dépense automatique retirée.",
+    const soin = soins.find((s) => s.id === editingSoinId)
+    const administre = soin ? soin.fait || soin.injections?.some((i) => i.statut === "realisee") : false
+    let annulation: DemandeAnnulationSoin | null = null
+    if (administre) {
+      annulation = await demanderAnnulation(
+        "Supprimer un soin administré",
+        "Le soin quitte le registre ; le médicament prélevé revient en stock, la dépense automatique est retirée et ses délais d’attente sont levés.",
+        "Supprimer le soin",
+      )
+      if (!annulation) return
+    } else if (!(await confirmDialog(
+      "Supprimer ce soin prévu ? Il n’a pas encore été administré.",
       { title: "Supprimer le soin", confirmLabel: "Supprimer" },
     ))) return
     setIsDeletingSoin(true)
     try {
-      const res = await fetch(`/api/elevage/soins?id=${editingSoinId}`, { method: "DELETE" })
+      const res = await fetch(`/api/elevage/soins?id=${editingSoinId}`, {
+        method: "DELETE",
+        ...(annulation
+          ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ annulation }) }
+          : {}),
+      })
       const payload = await res.json().catch(() => null)
       if (!res.ok) {
         toast({ variant: "destructive", title: "Suppression impossible", description: payload?.error })
@@ -1477,7 +1504,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   const envoyerInjection = async (
     soinId: number,
     injectionId: string,
-    corps: { statut?: "a_faire" | "realisee" | "annulee"; dateRealisee?: string | null },
+    corps: { statut?: "a_faire" | "realisee" | "annulee"; dateRealisee?: string | null; annulation?: DemandeAnnulationSoin },
     titre: string,
   ): Promise<boolean> => {
     try {
@@ -1501,7 +1528,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
 
   const changerInjection = async (
     soinId: number,
-    injection: { id: string; numero: number; datePrevue: string },
+    injection: { id: string; numero: number; datePrevue: string; statut?: "a_faire" | "realisee" | "annulee" },
     statut: "a_faire" | "realisee" | "annulee",
   ) => {
     if (statut === "realisee") {
@@ -1517,7 +1544,21 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       await envoyerInjection(soinId, injection.id, { statut, dateRealisee: new Date().toISOString() }, "Injection enregistrée")
       return
     }
-    await envoyerInjection(soinId, injection.id, { statut, dateRealisee: null }, statut === "annulee" ? "Injection annulée" : "Injection rouverte")
+    let annulation: DemandeAnnulationSoin | null = null
+    if (injection.statut === "realisee") {
+      annulation = await demanderAnnulation(
+        statut === "annulee" ? `Annuler l’injection n° ${injection.numero}` : `Rouvrir l’injection n° ${injection.numero}`,
+        "L’injection n’est plus comptée comme faite : le délai d’attente est recalculé sans elle et, si c’était la première, le médicament prélevé revient en stock.",
+        statut === "annulee" ? "Annuler l’injection" : "Rouvrir l’injection",
+      )
+      if (!annulation) return
+    }
+    await envoyerInjection(
+      soinId,
+      injection.id,
+      { statut, dateRealisee: null, ...(annulation ? { annulation } : {}) },
+      statut === "annulee" ? "Injection annulée" : "Injection rouverte",
+    )
   }
 
   const ouvrirDatation = (soinId: number, injection: { id: string; numero: number; datePrevue: string; dateRealisee: string | null }) => {
@@ -1610,6 +1651,16 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       })
       return
     }
+    // C9 : décocher « Fait » sur un soin administré passe par l'annulation motivée.
+    let annulationEdition: DemandeAnnulationSoin | null = null
+    if (soinEnEdition?.fait && !formData.fait) {
+      annulationEdition = await demanderAnnulation(
+        "Remettre le soin « à faire »",
+        CONSEQUENCE_REOUVERTURE,
+        "Remettre à faire",
+      )
+      if (!annulationEdition) return
+    }
     setIsSavingSoin(true)
     try {
       // Ticket cmvnp6s3z : un jour non touché renvoie la date stockée intacte
@@ -1633,6 +1684,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
         unite: uniteLotSelectionne ?? (formData.unite || null),
         cout: formData.cout ? parseFloat(formData.cout) : null,
         fait: formData.fait,
+        ...(annulationEdition ? { annulation: annulationEdition } : {}),
         notes: formData.notes || null,
         // PROMPT 30 — traitement à plusieurs injections
         nbInjections: Math.max(1, parseInt(formData.nbInjections, 10) || 1),
@@ -1698,21 +1750,35 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     const soinCoche = soins.find((soin) => soin.id === id)
     const dateFait = fait ? undefined : dateRealisationPourFait(soinCoche?.datePrevue ?? soinCoche?.date)
     if (dateFait === null) return
+    // Décocher un soin fait : erreur de saisie motivée (C9).
+    let annulation: DemandeAnnulationSoin | null = null
+    if (fait) {
+      annulation = await demanderAnnulation(
+        "Remettre le soin « à faire »",
+        CONSEQUENCE_REOUVERTURE,
+        "Remettre à faire",
+      )
+      if (!annulation) return
+    }
     try {
       const response = await fetch('/api/elevage/soins', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: dateFait }),
+        body: JSON.stringify({ id, fait: !fait, date: dateFait, ...(annulation ? { annulation } : {}) }),
       })
-      if (!response.ok) throw new Error('Erreur')
+      if (!response.ok) {
+        const corps = await response.json().catch(() => null)
+        throw new Error(corps?.error || 'Mise à jour impossible')
+      }
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur" })
+    } catch (error) {
+      toast({ variant: "destructive", title: "Erreur", description: error instanceof Error ? error.message : undefined })
     }
   }
 
   return (
     <div className="space-y-4">
+      <DialogueAnnulationSoin requete={requeteAnnulation} onFermer={() => setRequeteAnnulation(null)} />
       {/* Filtres + Actions */}
       <div className="flex flex-wrap items-center gap-3">
         <Select value={filterFait} onValueChange={setFilterFait}>
