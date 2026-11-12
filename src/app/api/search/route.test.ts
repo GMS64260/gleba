@@ -47,6 +47,18 @@ beforeEach(() => {
 })
 
 describe('GET /api/search?q=', () => {
+  // FRONT-06 (recette du 2026-11-12) : surface stockée en hectares, affichée en « m² » sans conversion.
+  it('affiche la surface d’une parcelle dans la bonne unité', async () => {
+    mocks.db.parcelleGeo = delegueMemoire([
+      { id: 'p-petite', userId: MOI, nom: 'Ferme debug', surface: 0.25 },
+      { id: 'p-grande', userId: MOI, nom: 'Debug grande', surface: 1.5 },
+    ] as Ligne[])
+    const { items } = await (await GET(new NextRequest('http://localhost/api/search?q=debug'))).json()
+    const parSub = Object.fromEntries(items.filter((i: { type: string }) => i.type === 'Parcelle').map((i: { label: string; sub: string }) => [i.label, i.sub]))
+    expect(parSub['Ferme debug']).toBe('2500 m\u00B2')
+    expect(parSub['Debug grande']).toBe('1.50 ha')
+  })
+
   it('retrouve un devis par son identifiant, sans proposer celui d’une autre exploitation', async () => {
     mocks.db.documentCommercial = delegueMemoire([
       { id: 'devis-moi', userId: MOI, type: 'devis', statut: 'emis', numero: 'D-2026-0001', clientNom: 'Coeur local' },
