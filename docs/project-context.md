@@ -17,7 +17,7 @@ _Ce fichier contient les règles critiques et patterns que les agents IA doivent
 
 | Couche | Technologie | Version | Notes |
 |--------|-------------|---------|-------|
-| Framework | Next.js (App Router) | 16.1.6 | Output standalone pour Docker |
+| Framework | Next.js (App Router) | 16.2.10 | Output standalone pour Docker |
 | Langage | TypeScript | 5.9.3 | strict: true |
 | Runtime | Node.js | 20 (Alpine) | Via Docker |
 | UI | React | 18 | Client components avec "use client" |
@@ -27,14 +27,14 @@ _Ce fichier contient les règles critiques et patterns que les agents IA doivent
 | Graphiques | Recharts | 3.7.0 | — |
 | Cartographie | Leaflet + React-Leaflet | 1.9.4 / 4.2.1 | + leaflet-draw |
 | Formulaires | React Hook Form + Zod | 7.71.1 / 4.3.6 | Validation centralisée |
-| ORM | Prisma | 5.22.0 | 51 modèles |
+| ORM | Prisma | 5.22.0 | Schéma dans `prisma/schema.prisma` |
 | BDD | PostgreSQL (PostGIS) | 16 | Multi-tenancy par userId |
-| Auth | NextAuth v5 (Auth.js) | 5.0.0-beta.30 | JWT + Credentials |
-| Email | Nodemailer | 8.0.1 | Vérification email |
-| IA | Ollama | 0.6.3 | Chat assistant |
-| Maths | mathjs | 15.1.0 | Calculs agricoles |
+| Auth | NextAuth v5 (Auth.js) | 5.0.0-beta.31 | JWT + Credentials |
+| Email | Nodemailer | 9.0.3 | Vérification email |
+| IA | Agents Paperclip via API | — | Chat assistant (zone privée, variables `GLEBA_PAPERCLIP_*`) |
+| Maths | mathjs | 15.2.0 | Déclarée, aucun import actuel |
 | Dates | date-fns | 4.1.0 | Format FR par défaut |
-| Icônes | Lucide React | 0.563.0 | — |
+| Icônes | Phosphor Icons | 2.1.10 | Les imports `lucide-react` sont redirigés vers `src/lib/phosphor-icons.ts` (`tsconfig.json`) |
 | Linting | ESLint | 8 | next/core-web-vitals + next/typescript |
 | Deploy | Docker multi-stage + Caddy | — | HTTPS automatique |
 
@@ -111,14 +111,14 @@ _Ce fichier contient les règles critiques et patterns que les agents IA doivent
 ### Règles de Tests & Vérification
 
 #### Contexte
-- Pas de framework de test automatisé (ni Jest, ni Vitest, ni Playwright)
-- Ne PAS introduire de framework de test sans accord explicite du propriétaire
-- Scripts de vérification manuels dans `scripts/`
+- Tests Vitest : `npm test` (fichiers `src/**/*.test.ts`, configuration `vitest.config.ts`)
+- CI `.github/workflows/test.yml` : quatre jobs (`lint`, `tests`, `typage`, `base-neuve`) sur chaque push et pull request vers `main`
+- Tests d'intégration PostgreSQL : configurations `scripts/qa/vitest-*.config.mjs`, uniquement sur une base jetable
 
 #### Checklist de vérification obligatoire (après toute modification)
 1. `npm run build` → 0 erreurs TypeScript (filet de sécurité minimum)
-2. `rm -rf .next && docker compose up -d --build app` → build Docker réussi
-3. `curl -sk -o /dev/null -w "%{http_code}" https://gleba.fr/login` → 200
+2. `docker compose up -d --build app` → build Docker réussi
+3. `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/login` → 200
 4. `docker compose logs app --tail 20` → pas d'erreur runtime
 5. Si API modifiée : tester l'endpoint avec `curl` (cas nominal + cas d'erreur)
 6. Si schéma Prisma modifié : vérifier migration + `prisma generate`
@@ -180,17 +180,16 @@ _Ce fichier contient les règles critiques et patterns que les agents IA doivent
 
 ### Règles de Workflow de Développement
 
-#### Déploiement production (procédure OBLIGATOIRE)
-1. Supprimer le cache Next.js : `rm -rf /var/www/gleba/.next` (OBLIGATOIRE sinon l'ancien cache est copié dans l'image Docker)
-2. Tuer les process orphelins : `fuser -k 3000/tcp 2>/dev/null`
-3. Rebuild : `cd /var/www/gleba && docker compose up -d --build app`
-4. Vérifier : `docker compose ps` + `curl -sk https://gleba.fr/login`
-5. Logs : `docker compose logs app --tail 20`
+#### Déploiement production
+Voir `docs/deployment-guide.md` et la section « Mise à jour » du `README.md` :
+1. Rebuild depuis la racine du dépôt : `docker compose up -d --build app`
+2. Vérifier : `docker compose ps`
+3. Logs : `docker compose logs app --tail 20`
 
 #### Schéma Prisma
 - Modifier `prisma/schema.prisma`
-- Dev rapide : `npx prisma db push` (pas de migration)
-- Production : créer une migration `npx prisma migrate dev --name ma_migration`
+- Créer la migration : `npx prisma migrate dev --name ma_migration` ; au déploiement, `prisma migrate deploy` l'applique au démarrage du conteneur
+- Jamais de `prisma db push` ni de `db:reset` sur une base qui contient des données
 - Toujours regénérer le client : `npx prisma generate`
 - Seeds : `npx tsx prisma/seed.ts` (chargement référentiels)
 
@@ -201,7 +200,7 @@ _Ce fichier contient les règles critiques et patterns que les agents IA doivent
 
 #### Fichiers sensibles
 - Ne jamais committer `.env` (contient DATABASE_URL, NEXTAUTH_SECRET, SMTP credentials)
-- `docker-compose.override.yml` est temporaire (mode dev) — ne pas committer
+- `docker-compose.override.yml` est le durcissement versionné des conteneurs, chargé automatiquement par `docker compose` : ne jamais le supprimer ni l'écraser
 - Le dossier `.next/` est dans `.gitignore`
 
 ### Règles Critiques — Ne Pas Manquer
@@ -211,7 +210,6 @@ _Ce fichier contient les règles critiques et patterns que les agents IA doivent
 - **Créer une écriture comptable manuellement** au lieu d'utiliser `auto-compta.ts` → désynchronisation revenus/dépenses
 - **Utiliser `import` classique pour Leaflet** → crash SSR (`window is not defined`)
 - **Modifier le schema Prisma sans regénérer le client** → types obsolètes, erreurs runtime
-- **Déployer sans supprimer `.next/`** → ancien build servi malgré les modifications
 - **Ajouter un state manager global** (Redux, Zustand) → casse le pattern existant
 - **Utiliser Radix Select** au lieu de `<select>` natif → migration déjà faite, ne pas régresser
 - **Retourner un objet Prisma brut avec `include: { user: true }`** → fuite du hash password
