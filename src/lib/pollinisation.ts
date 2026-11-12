@@ -25,9 +25,6 @@ export const TRIPLOIDES_PATTERNS = [
   "stayman",
 ]
 
-/** @deprecated Utiliser isTriploide() (POSTREVIEW Sprint 7). */
-export const TRIPLOIDES_CONNUES = new Set<string>(TRIPLOIDES_PATTERNS)
-
 export function isTriploide(variete: { nomNormalise?: string | null; ploidie?: string | null } | null): boolean {
   if (!variete) return false
   if (variete.ploidie === "Triploïde") return true
