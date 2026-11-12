@@ -17,11 +17,14 @@
  * Gleba n'a pas de notion d'exercice clos (vérifié le 2026-10-19 : ni modèle ni
  * verrou de clôture) : la règle couvre tous les exercices, sans exception.
  *
- * Toute suppression de culture passe par ici : la route et l'assistant (zone
- * privée, `delete_culture`).
+ * Toute suppression de culture passe par `supprimerCulture` : la route et
+ * l'assistant (zone privée, `delete_culture`).
  */
 
 import type { Prisma, PrismaClient } from '@prisma/client'
+import prisma from '@/lib/prisma'
+import { invalidateKpi } from '@/lib/kpi'
+import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 
 type Tx = Prisma.TransactionClient | PrismaClient
 
@@ -122,4 +125,95 @@ export function messageSuppressionCultureTraitee(
     `La culture #${culture.id} (${culture.especeId}) porte ${pluriel(traitements, 'traitement phytosanitaire réalisé', 'traitements phytosanitaires réalisés')} : ` +
     `le registre phytosanitaire perdrait la culture traitée. Conservez-la (marquez-la terminée), ou corrigez d'abord ces traitements dans Interventions.`
   )
+}
+
+export interface OptionsSuppressionCulture {
+  /** Invalide le cache des indicateurs une fois la suppression validée (vrai par défaut). */
+  invaliderIndicateurs?: boolean
+}
+
+export type ResultatSuppressionCulture =
+  | { ok: true; cultureId: number; recoltesSupprimees: number }
+  | {
+      ok: false
+      status: 400 | 404 | 409
+      error: string
+      details?: VentesRecoltesCulture | { traitementsPhyto: number }
+    }
+
+/**
+ * Supprime une culture du compte `userId`, avec ses récoltes non vendues.
+ *
+ * Revue Codex MAR-05 (2026-11-12) : les contrôles étaient lus hors transaction,
+ * sans le verrou des ventes. Une vente directe de la récolte, validée entre le
+ * contrôle et la suppression, partait en cascade avec la culture, recette
+ * comprise. Ici, le verrou commun des ventes et du stock commercial
+ * (`verrouillerStockCommercial`, celui de `verrouillerRecolteLibre`) est pris
+ * d'abord, puis TOUS les contrôles sont relus dans la transaction : lots suivis
+ * par un document commercial, traitements phytosanitaires réalisés, récoltes
+ * vendues. La règle métier ne change pas.
+ *
+ * Signature stable, sans dépendance HTTP : la route et l'outil de l'assistant
+ * l'appellent tous deux.
+ */
+export async function supprimerCulture(
+  userId: string,
+  cultureId: number,
+  options: OptionsSuppressionCulture = {}
+): Promise<ResultatSuppressionCulture> {
+  if (!Number.isInteger(cultureId) || cultureId <= 0) {
+    return { ok: false, status: 400, error: 'ID de culture invalide' }
+  }
+
+  const resultat = await prisma.$transaction(async (tx): Promise<ResultatSuppressionCulture> => {
+    await verrouillerStockCommercial(tx, userId)
+    await tx.$queryRaw`SELECT id FROM cultures WHERE id = ${cultureId} AND user_id = ${userId} FOR UPDATE`
+    const culture = await tx.culture.findFirst({
+      where: { id: cultureId, userId },
+      select: { id: true, especeId: true },
+    })
+    if (!culture) return { ok: false, status: 404, error: `Culture #${cultureId} non trouvée` }
+
+    if (await tx.mouvementStockCommercial.count({ where: { userId, recolte: { cultureId } } })) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'Cette culture possède des lots liés à des bons ou factures. Conservez-la pour garder leur traçabilité.',
+      }
+    }
+
+    // Revue du 2026-11-04 — un traitement phyto réalisé retient la culture :
+    // supprimée, elle disparaissait du registre phytosanitaire.
+    const traitements = await compterTraitementsPhytoCulture(tx, cultureId, userId)
+    if (traitements > 0) {
+      return {
+        ok: false,
+        status: 409,
+        error: messageSuppressionCultureTraitee(culture, traitements),
+        details: { traitementsPhyto: traitements },
+      }
+    }
+
+    // Audit 2026-10-08 — une récolte vendue retient la culture : la cascade
+    // effaçait ses ventes de la comptabilité, exercice déjà déclaré compris.
+    const ventes = await compterVentesRecoltesCulture(tx, cultureId, userId)
+    if (aDesVentes(ventes)) {
+      return { ok: false, status: 409, error: messageSuppressionCultureRefusee(culture, ventes), details: ventes }
+    }
+
+    // Les récoltes partent en cascade (recoltes.culture, ON DELETE CASCADE).
+    // Aucune ne porte plus de vente ; la purge des écritures automatiques reste
+    // en filet contre une ligne orpheline.
+    const recoltes = await tx.recolte.findMany({ where: { cultureId, userId }, select: { id: true } })
+    if (recoltes.length > 0) {
+      await tx.venteManuelle.deleteMany({
+        where: { userId, sourceType: 'recolte', sourceId: { in: recoltes.map((r) => r.id) }, auto: true },
+      })
+    }
+    await tx.culture.delete({ where: { id: cultureId } })
+    return { ok: true, cultureId, recoltesSupprimees: recoltes.length }
+  })
+
+  if (resultat.ok && options.invaliderIndicateurs !== false) invalidateKpi(userId)
+  return resultat
 }

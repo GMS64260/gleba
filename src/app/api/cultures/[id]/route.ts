@@ -33,7 +33,7 @@ import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
-import { aDesVentes, compterVentesRecoltesCulture, messageSuppressionCultureRefusee, compterTraitementsPhytoCulture, messageSuppressionCultureTraitee } from '@/lib/cultures/suppression'
+import { supprimerCulture } from '@/lib/cultures/suppression'
 import { quantiteCultureApresModification } from '@/lib/cultures/quantite-plants'
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -716,6 +716,8 @@ export async function PATCH(
 }
 
 // DELETE /api/cultures/[id]
+// Contrôles et suppression sous le verrou commun des ventes : `supprimerCulture`
+// (revue Codex MAR-05, 2026-11-12).
 export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
@@ -734,74 +736,14 @@ export async function DELETE(
       )
     }
 
-    // Vérifier existence et propriété
-    const culture = await prisma.culture.findUnique({
-      where: {
-        id: cultureId,
-        userId: session!.user.id,
-      },
-    })
-
-    if (!culture) {
+    const resultat = await supprimerCulture(session!.user.id, cultureId)
+    if (!resultat.ok) {
       return NextResponse.json(
-        { error: `Culture #${id} non trouvée` },
-        { status: 404 }
+        resultat.details ? { error: resultat.error, details: resultat.details } : { error: resultat.error },
+        { status: resultat.status }
       )
     }
-
-    if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, recolte: { cultureId } } })) return NextResponse.json({ error: 'Cette culture possède des lots liés à des bons ou factures. Conservez-la pour garder leur traçabilité.' }, { status: 409 })
-
-    // Revue du 2026-11-04 — un traitement phyto réalisé retient la culture :
-    // supprimée, elle disparaissait du registre phytosanitaire.
-    const traitements = await compterTraitementsPhytoCulture(prisma, cultureId, session!.user.id)
-    if (traitements > 0) {
-      return NextResponse.json(
-        { error: messageSuppressionCultureTraitee(culture, traitements), details: { traitementsPhyto: traitements } },
-        { status: 409 }
-      )
-    }
-
-    // Audit 2026-10-08 — une récolte vendue retient la culture : la cascade
-    // effaçait ses ventes de la comptabilité, exercice déjà déclaré compris.
-    const ventes = await compterVentesRecoltesCulture(prisma, cultureId, session!.user.id)
-    if (aDesVentes(ventes)) {
-      return NextResponse.json(
-        { error: messageSuppressionCultureRefusee(culture, ventes), details: ventes },
-        { status: 409 }
-      )
-    }
-
-    // Audit compta 2026-06 : les récoltes partent en cascade DB. Depuis la
-    // garde ci-dessus, aucune ne porte plus de vente ; la purge des écritures
-    // auto reste en filet contre une ligne orpheline.
-    const recoltes = await prisma.recolte.findMany({
-      where: { cultureId, userId: session!.user.id },
-      select: { id: true, especeId: true, quantite: true, statut: true },
-    })
-
-    await prisma.$transaction(async (tx) => {
-      if (recoltes.length > 0) {
-        await tx.venteManuelle.deleteMany({
-          where: {
-            userId: session!.user.id,
-            sourceType: 'recolte',
-            sourceId: { in: recoltes.map((r) => r.id) },
-            auto: true,
-          },
-        })
-        // Refonte stock 2026-07 : plus de décrément du compteur inventaire —
-        // les récoltes supprimées en cascade ne seront plus comptées par
-        // calculerStocksNet (qui ne somme que les récoltes 'en_stock').
-      }
-
-      // Suppression (les recoltes seront supprimées en cascade)
-      await tx.culture.delete({
-        where: { id: cultureId },
-      })
-    })
-
-    invalidateKpi(session!.user.id)
-    return NextResponse.json({ success: true, deleted: cultureId })
+    return NextResponse.json({ success: true, deleted: resultat.cultureId })
   } catch (error) {
     console.error('DELETE /api/cultures/[id] error:', error)
     return NextResponse.json(
