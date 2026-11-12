@@ -43,6 +43,8 @@ const annuler = () => POST(
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.verrou.mockReset()
+  mocks.verrou.mockImplementation(async (_tx: unknown, _userId: string, id: number) => ({ id, statut: 'en_stock' }))
   mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
   mocks.cultureFindFirst.mockResolvedValue({
     id: 42, recolteFaite: true, finRecolte: null,
@@ -86,4 +88,21 @@ describe('POST /api/cultures/[id]/annuler-recolte', () => {
     expect(res.status).toBe(409)
     expect(mocks.cultureUpdate).not.toHaveBeenCalled()
   })
+
+  // Revue Codex MAR-01 (2026-11-12) : le statut lu avant le verrou commercial
+  // peut être périmé. Une vente directe qui prend le verrou d'abord passe le lot
+  // en « vendu » ; l'annulation effaçait ensuite la récolte vendue et sa recette.
+  for (const statut of ['vendu', 'consomme', 'perte'] as const) {
+    it(`refuse sans rien supprimer un lot passé « ${statut} » pendant l’attente du verrou`, async () => {
+      mocks.recolteFindMany.mockResolvedValue([{ id: 1, statut: 'en_stock' }, { id: 2, statut: 'en_stock' }])
+      mocks.verrou.mockImplementation(async (_tx: unknown, _userId: string, id: number) =>
+        ({ id, statut: id === 2 ? statut : 'en_stock' }))
+      const res = await annuler()
+      expect(res.status).toBe(409)
+      expect((await res.json()).error).toContain("Rien n'a été supprimé")
+      expect(mocks.deleteAutoEntry).not.toHaveBeenCalled()
+      expect(mocks.recolteDelete).not.toHaveBeenCalled()
+      expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+    })
+  }
 })
