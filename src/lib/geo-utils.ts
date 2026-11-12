@@ -17,22 +17,69 @@ type Polygone = Anneau[]
 
 const RAYON_TERRE_M = 6378137
 
-/** Composantes d'un GeoJSON Polygon/MultiPolygon, ou null s'il est illisible. */
-function lirePolygones(geojsonStr: string): Polygone[] | null {
+/**
+ * Anneau GeoJSON valide (RFC 7946) : au moins quatre positions [lng, lat]
+ * numériques et finies, premier point égal au dernier.
+ */
+export function anneauValide(anneau: unknown): anneau is Anneau {
+  if (!Array.isArray(anneau) || anneau.length < 4) return false
+  if (!anneau.every((c) => Array.isArray(c) && c.length >= 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]))) return false
+  const premier = anneau[0] as number[]
+  const dernier = anneau[anneau.length - 1] as number[]
+  return premier[0] === dernier[0] && premier[1] === dernier[1]
+}
+
+/** Anneau lisible pour le calcul : au moins trois positions numériques finies (fermeture non exigée). */
+function anneauLisible(anneau: unknown): anneau is Anneau {
+  return (
+    Array.isArray(anneau) &&
+    anneau.length >= 3 &&
+    anneau.every((c) => Array.isArray(c) && c.length >= 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]))
+  )
+}
+
+/** Composantes brutes d'un GeoJSON Polygon/MultiPolygon, sans contrôle. */
+function composantesBrutes(geojsonStr: string): unknown[] | null {
   try {
     const geo = JSON.parse(geojsonStr)
     const brut: unknown =
       geo?.type === 'MultiPolygon' ? geo.coordinates
       : geo?.type === 'Polygon' ? [geo.coordinates]
       : null
-    if (!Array.isArray(brut)) return null
-    const polygones = brut.filter(
-      (p): p is Polygone => Array.isArray(p) && p.length > 0 && Array.isArray(p[0]) && p[0].length >= 3
-    )
-    return polygones.length > 0 ? polygones : null
+    return Array.isArray(brut) && brut.length > 0 ? brut : null
   } catch {
     return null
   }
+}
+
+/**
+ * Contrôle strict d'une géométrie à ENREGISTRER : toutes les composantes et
+ * tous leurs anneaux (trous compris) sont valides. Reliquat de GEO-01 (contre-
+ * revue Codex) : seul le premier anneau était contrôlé, et un trou `null`
+ * passait le schéma puis faisait lever le calcul du centroïde (500).
+ */
+export function geometrieParcelleValide(geojsonStr: string): boolean {
+  const composantes = composantesBrutes(geojsonStr)
+  return (
+    composantes != null &&
+    composantes.every((p) => Array.isArray(p) && p.length > 0 && p.every((anneau) => anneauValide(anneau)))
+  )
+}
+
+/**
+ * Composantes LISIBLES d'une géométrie, ou null. Lecture tolérante des données
+ * déjà enregistrées : une composante dont l'extérieur est invalide est
+ * ignorée, un trou invalide aussi ; jamais d'exception.
+ */
+function lirePolygones(geojsonStr: string): Polygone[] | null {
+  const composantes = composantesBrutes(geojsonStr)
+  if (!composantes) return null
+  const polygones: Polygone[] = []
+  for (const p of composantes) {
+    if (!Array.isArray(p) || !anneauLisible(p[0])) continue
+    polygones.push([p[0], ...p.slice(1).filter((t): t is Anneau => anneauLisible(t))])
+  }
+  return polygones.length > 0 ? polygones : null
 }
 
 /** Surface d'un anneau en m², sans signe (formule sphérique de l'ancienne version). */

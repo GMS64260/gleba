@@ -83,3 +83,36 @@ describe("calculateCentroid", () => {
     expect(calculateCentroid("{")).toBeNull()
   })
 })
+
+// Reliquat GEO-01 (contre-revue Codex) : un trou `null` passait le schéma
+// (seul le premier anneau était contrôlé) puis faisait lever le centroïde.
+describe("géométrie mal formée", () => {
+  const ring = (x: number, y: number, w: number, h: number) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]]
+  const A = ring(0, 45, 0.001, 0.001)
+  const malformees = [
+    JSON.stringify({ type: "Polygon", coordinates: [A, null] }),
+    JSON.stringify({ type: "MultiPolygon", coordinates: [[A], [A, null]] }),
+    JSON.stringify({ type: "MultiPolygon", coordinates: [[A], [[[0, 45], [1, 45], [1, 46]]]] }),
+  ]
+
+  it("refusée à l'enregistrement : tous les anneaux de toutes les composantes sont contrôlés", async () => {
+    const { geometrieParcelleValide } = await import("./geo-utils")
+    const { createParcelleSchema } = await import("./validations/parcelle")
+    for (const g of malformees) {
+      expect(geometrieParcelleValide(g)).toBe(false)
+      expect(createParcelleSchema.safeParse({ nom: "synthetique", geometry: g }).success).toBe(false)
+    }
+    expect(geometrieParcelleValide(JSON.stringify({ type: "Polygon", coordinates: [A] }))).toBe(true)
+  })
+
+  it("lue sans exception si elle est déjà en base : l'anneau illisible est ignoré", async () => {
+    const { calculateCentroid, calculateSurfaceHa } = await import("./geo-utils")
+    const seul = calculateSurfaceHa(JSON.stringify({ type: "Polygon", coordinates: [A] }))
+    for (const g of malformees.slice(0, 2)) {
+      expect(() => calculateCentroid(g)).not.toThrow()
+      expect(calculateCentroid(g)).not.toBeNull()
+      expect(calculateSurfaceHa(g)).toBeGreaterThanOrEqual(seul ?? 0)
+    }
+  })
+})
+
