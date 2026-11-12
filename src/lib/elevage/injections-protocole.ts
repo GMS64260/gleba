@@ -155,7 +155,7 @@ import { ciblesLaitAffectees, resyncEcartementLait } from './attente-lait'
 import { fenetreSoin, restituerPrelevement } from './suppression-soin'
 import { debutJourCivilSoin } from './stock-medicament'
 import { invalidateKpi } from '@/lib/kpi'
-import { controlerAnnulation, journaliserAnnulationSoin } from './annulation-soin'
+import { controlerAnnulation, journaliserAnnulationSoin, RefusSousVerrou } from './annulation-soin'
 import { effectifTraiteAuJour } from './effectif-traite'
 
 export type ResultatEcriture<T> =
@@ -237,15 +237,24 @@ export async function daterInjection(
   try {
     const result = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, userId)
-      if (demande?.ok) {
+      // Revue Codex CR-SOI-01 : la garde ci-dessus a lu l'injection AVANT le
+      // verrou. Une autre requête a pu la réaliser entre-temps : on la relit
+      // et on refait la garde ici, sur l'état courant.
+      const injectionsCourantes = await lireInjections(tx, userId, soinId)
+      const cibleCourante = injectionsCourantes.find((i) => i.id === cible.id)
+      if (!cibleCourante) throw new RefusSousVerrou({ ok: false, status: 404, error: 'Injection introuvable' })
+      const demandeCourante =
+        cibleCourante.statut === 'realisee' && statut !== 'realisee' ? demande ?? controlerAnnulation(options.annulation) : null
+      if (demandeCourante && !demandeCourante.ok) throw new RefusSousVerrou(demandeCourante)
+      if (demandeCourante?.ok) {
         await journaliserAnnulationSoin(tx, {
           userId,
           acteurId: options.acteurId ?? userId,
           soinId,
           action: statut === 'annulee' ? 'injection_annulee' : 'injection_rouverte',
-          demande: demande.demande,
-          injectionNumero: cible.numero,
-          injections,
+          demande: demandeCourante.demande,
+          injectionNumero: cibleCourante.numero,
+          injections: injectionsCourantes,
         })
       }
       await tx.$executeRaw`
@@ -314,6 +323,7 @@ export async function daterInjection(
     invalidateKpi(userId)
     return { ok: true, soin: result }
   } catch (error) {
+    if (error instanceof RefusSousVerrou) return error.resultat
     if (error instanceof Error && error.message === 'QUANTITE_MEDICAMENT_REQUISE') {
       return { ok: false, status: 422, error: "Renseignez la quantité de médicament avant de réaliser l'injection." }
     }

@@ -25,6 +25,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/prisma', () => {
   const tx = {
+    // Verrou des écritures de soins (CR-SOI-01).
+    $executeRaw: vi.fn(async () => 1),
     soinAnimal: {
       findFirst: mocks.soinFindFirst,
       delete: vi.fn(async (args: unknown) => { mocks.ordre.push('delete'); return mocks.soinDelete(args) }),

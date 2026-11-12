@@ -142,7 +142,8 @@ describe('injections : calendrier et dates réelles (tickets vigie2cc83585 / cmu
     mocks.soinFindFirst.mockResolvedValue(soinUbrolexin)
     const avant = [{ id: 'i1', numero: 1, statut: 'realisee', datePrevue: J('2026-09-28T00:00:00Z'), dateRealisee: J('2026-10-01T20:13:15Z') }]
     const apres = [{ ...avant[0], dateRealisee: J('2026-07-10T08:00:00Z') }]
-    mocks.queryRaw.mockResolvedValueOnce(avant).mockResolvedValueOnce(apres)
+    // Lecture de garde, relecture sous le verrou (CR-SOI-01), puis état après écriture.
+    mocks.queryRaw.mockResolvedValueOnce(avant).mockResolvedValueOnce(avant).mockResolvedValueOnce(apres)
     const res = await daterInjection('u', 233, { injectionId: 'i1', dateRealisee: J('2026-07-10T08:00:00Z') })
     expect(res.ok).toBe(true)
     const data = mocks.soinUpdate.mock.calls[0][0].data
@@ -190,7 +191,7 @@ describe('injections : calendrier et dates réelles (tickets vigie2cc83585 / cmu
     it('erreur de saisie motivée : journal de l’injection rouverte, puis doses rendues', async () => {
       mocks.soinFindFirst.mockResolvedValue(soinPreleve)
       const rouverte = [{ ...realisee[0], statut: 'a_faire', dateRealisee: null }]
-      mocks.queryRaw.mockResolvedValueOnce(realisee).mockResolvedValueOnce(rouverte)
+      mocks.queryRaw.mockResolvedValueOnce(realisee).mockResolvedValueOnce(realisee).mockResolvedValueOnce(rouverte)
       const res = await daterInjection('u', 233, { injectionId: 'i1', statut: 'a_faire' }, {
         gererStock: true, annulation: { nature: 'erreur_saisie', motif: 'Injection prévue cochée trop tôt' }, acteurId: 'invite-2',
       })
@@ -205,7 +206,7 @@ describe('injections : calendrier et dates réelles (tickets vigie2cc83585 / cmu
     it('annuler une injection encore à faire ne demande rien', async () => {
       mocks.soinFindFirst.mockResolvedValue(soinUbrolexin)
       const aFaire = [{ id: 'i2', numero: 2, statut: 'a_faire', datePrevue: J('2026-09-28T12:00:00Z'), dateRealisee: null }]
-      mocks.queryRaw.mockResolvedValueOnce(aFaire).mockResolvedValueOnce([{ ...aFaire[0], statut: 'annulee' }])
+      mocks.queryRaw.mockResolvedValueOnce(aFaire).mockResolvedValueOnce(aFaire).mockResolvedValueOnce([{ ...aFaire[0], statut: 'annulee' }])
       const res = await daterInjection('u', 233, { injectionId: 'i2', statut: 'annulee' })
       expect(res.ok).toBe(true)
       expect(mocks.annulationCreate).not.toHaveBeenCalled()

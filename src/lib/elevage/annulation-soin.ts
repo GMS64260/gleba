@@ -41,6 +41,16 @@ export interface DemandeAnnulation {
 export const MOTIF_MIN = 3
 export const MOTIF_MAX = 500
 
+/**
+ * Refus décidé SOUS le verrou des écritures de soins (revue Codex CR-SOI-01) :
+ * levé dans la transaction pour l'annuler, rendu tel quel par l'appelant.
+ */
+export class RefusSousVerrou extends Error {
+  constructor(public readonly resultat: { ok: false; status: number; error: string; code?: string }) {
+    super(resultat.error)
+  }
+}
+
 export interface RefusAnnulation {
   ok: false
   status: 409
