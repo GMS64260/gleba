@@ -316,5 +316,3 @@ export async function getTachesPotager(
     },
   }
 }
-
-export type TachesPotager = Awaited<ReturnType<typeof getTachesPotager>>

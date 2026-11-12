@@ -34,9 +34,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AppHeader } from "@/components/shell/AppHeader"
 import { ConteneurPage, PageEntete } from "@/components/shell/PageEntete"
-import type { AccesSalon } from "@/components/communaute/SalonDiscussion"
 import { CatalogueCommunaute } from "@/components/communaute/CatalogueCommunaute"
-import { ForumCommunaute } from "@/components/communaute/ForumCommunaute"
+import { ForumCommunaute, type AccesForum } from "@/components/communaute/ForumCommunaute"
 import { ContributionsSuivi } from "@/components/encyclopedie/ContributionsSuivi"
 import { lireOngletCommunaute, urlOngletCommunaute, type OngletCommunaute } from "@/lib/communaute/navigation"
 import { urlConnexion } from "@/lib/auth-retour"
@@ -124,7 +123,7 @@ function ContenuCommunaute() {
   const isAuthenticated = status === "authenticated"
   const isAdmin = session?.user?.role === "ADMIN"
   const isDemo = useIsDemoAccount()
-  const accesSalon: AccesSalon =
+  const accesForum: AccesForum =
     status === "loading" ? "chargement" : !isAuthenticated ? "anonyme" : isDemo ? "demo" : "membre"
 
   const [items, setItems] = React.useState<Evolution[]>([])
@@ -408,9 +407,9 @@ function ContenuCommunaute() {
             )}
           </TabsContent>
 
-          {/* Aucune lecture du forum ni de l’ancien salon tant que cet onglet est fermé. */}
+          {/* Aucune lecture du forum tant que cet onglet est fermé. */}
           <TabsContent value="salon" className="space-y-6">
-            <ForumCommunaute acces={accesSalon} />
+            <ForumCommunaute acces={accesForum} />
           </TabsContent>
         </Tabs>
       </ConteneurPage>

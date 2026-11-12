@@ -45,7 +45,3 @@ export const parcelleSchema = z.object({
 
 export const createParcelleSchema = parcelleSchema
 export const updateParcelleSchema = parcelleSchema.partial()
-
-export type ParcelleInput = z.infer<typeof parcelleSchema>
-export type CreateParcelleInput = z.infer<typeof createParcelleSchema>
-export type UpdateParcelleInput = z.infer<typeof updateParcelleSchema>

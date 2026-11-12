@@ -64,8 +64,6 @@ export interface StockUnifieItem {
   valeurMethode?: string | null
 }
 
-export type StocksUnifies = Awaited<ReturnType<typeof computeStocksUnifies>>
-
 export async function computeStocksUnifies(userId: string) {
 
   // Récupérer tous les stocks (per-user via UserStock*)

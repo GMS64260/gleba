@@ -16,8 +16,6 @@ export interface ObservationsSanteFiltres {
   resolu?: boolean
 }
 
-export type ObservationsSante = Awaited<ReturnType<typeof listerObservationsSante>>
-
 export async function listerObservationsSante(
   userId: string,
   filtres: ObservationsSanteFiltres = {},

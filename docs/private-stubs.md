@@ -3,14 +3,13 @@
 Gleba publie une version open-source du code sur GitHub mais conserve
 trois familles de fonctionnalités en privé :
 
-1. **Assistant IA** (`/src/lib/chat`, `/src/lib/ollama.ts`, `/src/app/api/chat`,
+1. **Assistant IA** (`/src/lib/chat`, `/src/app/api/chat`,
    `/src/app/api/mcp`, `/src/hooks/use-chat.ts`, `/mcp-server`).
 2. **Boutique en ligne** (`/src/app/boutique`, `/src/components/boutique`,
    `/src/app/api/boutique`).
 3. **Système de feedback** (`/src/app/feedback`, `/src/app/admin/feedback`,
    `/src/app/api/feedback`, `/src/app/api/admin/feedback`,
-   `/src/lib/mail-feedback.ts`, `/scripts/send-feedback-*.ts`,
-   `/scripts/generate-feedback-tokens.ts`). Outil opérationnel propre à
+   `/src/lib/mail-feedback.ts`). Outil opérationnel propre à
    gleba.fr (campagnes emails, enquêtes, signalement de bugs), non distribué
    aux instances auto-hébergées.
 

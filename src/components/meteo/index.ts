@@ -1,5 +1,2 @@
-export { MeteoWidget } from './MeteoWidget'
 export { IrrigationAdvisor } from './IrrigationAdvisor'
 export { StationMeteoConfig } from './StationMeteoConfig'
-export { HeaderMeteoWidget } from './HeaderMeteoWidget'
-export { PluviometriePlanche } from './PluviometriePlanche'

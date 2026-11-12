@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export const ORGANES_MEDIA = ["plante", "feuille", "fleur", "fruit", "graine", "ecorce", "autre"] as const;
-export const LICENCES_MEDIA_MEMBRE = ["CC BY 4.0"] as const;
 export const LICENCES_MEDIA_COMMONS = ["CC0 1.0", "CC BY 4.0", "CC BY-SA 4.0", "Domaine public"] as const;
 
 export const contributionMediaSchema = z.object({

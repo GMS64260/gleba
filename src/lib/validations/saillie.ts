@@ -41,5 +41,3 @@ export const updateSaillieSchema = z.object({
     message: 'La confirmation de gestation ne peut pas précéder la date de saillie',
     path: ['confirmationGestation'],
   })
-
-export type SaillieInput = z.infer<typeof saillieSchema>

@@ -38,7 +38,6 @@ const saisieSchema = z.object({
     quantite: z.number({ error: 'Indiquez les kilos de fruits utilisés.' }).finite().positive('Indiquez les kilos de fruits utilisés.'),
   }), { error: 'Choisissez au moins un lot de fruits.' }).min(1, 'Choisissez au moins un lot de fruits.').max(20),
 })
-export type SaisieTransformation = z.input<typeof saisieSchema>
 
 const arrondi = (n: number) => Math.round(n * 1e6) / 1e6
 

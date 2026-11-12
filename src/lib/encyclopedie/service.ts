@@ -169,11 +169,6 @@ export async function deciderContribution(id: string, validateurId: string, deci
     return { id, statut, decisionMotif: decision.motif, revision }
   })
 }
-export async function discussionPublique(id: string, db: Base = prisma) {
-  const discussion = await db.discussionEncyclopedie.findFirst({ where: { id, espece: visibiliteReferentielPublic } })
-  if (!discussion) throw new ErreurEncyclopedie(404, "Discussion publique introuvable.")
-  return discussion
-}
 
 /** Les membres peuvent lire le forum général ET les sujets de fiches publiques. */
 export async function discussionAccessibleMembre(id: string, db: Base = prisma) {

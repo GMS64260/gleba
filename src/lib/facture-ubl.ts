@@ -183,9 +183,6 @@ export function validerFactureStructuree(d: DonneesFactureStructuree): string[] 
   return issues
 }
 
-/** Alias historique (lot 0) : mêmes contrôles pour les deux formats. */
-export const validateUblInvoice = validerFactureStructuree
-
 function partyXml(tag: 'AccountingSupplierParty' | 'AccountingCustomerParty', party: UblParty, adresseElectronique: { valeur: string; scheme: string } | null): string {
   const address = party.address
   const siret = digits(party.siret)

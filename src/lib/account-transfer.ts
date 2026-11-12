@@ -67,8 +67,10 @@ const EXCLUDED = new Set<string>([
   "TemoignageRecolte",
   "Evolution",
   "EvolutionVote",
-  // Salon de la communauté : conversation entre membres de CETTE instance, qui
-  // n'a pas de sens sur une instance auto-hébergée (ni ses auteurs).
+  // Ancien salon de la communauté : modèle et table retirés par la migration
+  // 20261112160000. L'entrée reste le temps d'une version : un client Prisma
+  // généré d'un schéma qui déclarerait encore ce modèle ne doit pas tenter
+  // d'exporter une table disparue.
   "MessageSalon",
   // Contributions et conversations attachées à la communauté de cette instance.
   "ContributionEncyclopedie",

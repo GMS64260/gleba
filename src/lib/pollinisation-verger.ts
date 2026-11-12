@@ -23,8 +23,6 @@ import {
 import { choisirVarieteArbre, whereVarietesCandidates } from '@/lib/verger/variete-arbre'
 import { TYPES_ARBRE_FRUITIERS } from '@/lib/verger/types-arbre'
 
-export type PollinisationVerger = Awaited<ReturnType<typeof computePollinisationVerger>>
-
 /**
  * QA cmsoeyth0 — règles d'exclusion d'un pollinisateur, partagées entre la
  * dérivation automatique ci-dessous et la garde serveur de

@@ -72,6 +72,3 @@ export const lotFromageSchema = z.object({
   // est déjà sorti (vendu, livré) sur 7 jours (réponse 422 `LAIT_INDISPONIBLE`).
   confirmerLaitIndisponible: z.boolean().optional(),
 })
-
-export type CollecteLaitInput = z.infer<typeof collecteLaitSchema>
-export type LotFromageInput = z.infer<typeof lotFromageSchema>
