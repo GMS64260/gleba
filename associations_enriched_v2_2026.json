@@ -184,68 +184,6 @@
       ]
     },
     {
-      "id": "cml1gbbum00032vbm1wd9zeyz",
-      "nom": "Ail !",
-      "description": "Pomme de terre: Aide contre le mildiou.",
-      "notes": "Éviter la proximité des légumineuses (haricots, pois, fèves) car il inhibe leur croissance. (Source: ITAB, Guide Bio)",
-      "details": [
-        {
-          "id": 10,
-          "associationId": "cml1gbbum00032vbm1wd9zeyz",
-          "especeId": "Ail",
-          "familleId": "Alliaceae",
-          "groupe": null,
-          "requise": true,
-          "notes": null
-        },
-        {
-          "id": 11,
-          "associationId": "cml1gbbum00032vbm1wd9zeyz",
-          "especeId": "Artichaut",
-          "familleId": "Asteraceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 12,
-          "associationId": "cml1gbbum00032vbm1wd9zeyz",
-          "especeId": "Asperge",
-          "familleId": "Asparagaceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 13,
-          "associationId": "cml1gbbum00032vbm1wd9zeyz",
-          "especeId": null,
-          "familleId": "Brassicaceae",
-          "groupe": "Chou",
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 14,
-          "associationId": "cml1gbbum00032vbm1wd9zeyz",
-          "especeId": "Coriandre",
-          "familleId": "Apiaceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 15,
-          "associationId": "cml1gbbum00032vbm1wd9zeyz",
-          "especeId": "Pomme de terre",
-          "familleId": "Solanaceae",
-          "groupe": null,
-          "requise": false,
-          "notes": "Aide contre le mildiou."
-        }
-      ]
-    },
-    {
       "id": "cml1gbbuz00042vbm4qgqcs65",
       "nom": "Ail + Laitue, Topinambour",
       "description": "Association expérimentale ou structurelle avec Ail.",
@@ -2540,13 +2478,13 @@
     {
       "id": "cml1gbccs001p2vbmmm3in7ji",
       "nom": "Chou-rave !",
-      "description": "Association expérimentale ou structurelle avec Chou-fleur.",
+      "description": "Association expérimentale ou structurelle avec Chou-rave.",
       "notes": " (Source: Jardinage Bio Standard)",
       "details": [
         {
           "id": 220,
           "associationId": "cml1gbccs001p2vbmmm3in7ji",
-          "especeId": "Chou-fleur",
+          "especeId": "Chou-rave",
           "familleId": "Brassicaceae",
           "groupe": null,
           "requise": true,
@@ -5059,32 +4997,6 @@
       ]
     },
     {
-      "id": "cml1gbcxi003o2vbmhxl2zvnm",
-      "nom": "Poivron piment !",
-      "description": "Association expérimentale ou structurelle avec Poivron piment.",
-      "notes": " (Source: Jardinage Bio Standard)",
-      "details": [
-        {
-          "id": 437,
-          "associationId": "cml1gbcxi003o2vbmhxl2zvnm",
-          "especeId": "Poivron piment",
-          "familleId": "Solanaceae",
-          "groupe": null,
-          "requise": true,
-          "notes": null
-        },
-        {
-          "id": 438,
-          "associationId": "cml1gbcxi003o2vbmhxl2zvnm",
-          "especeId": null,
-          "familleId": "Alliaceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        }
-      ]
-    },
-    {
       "id": "cml1gbcxo003p2vbmtrtkf5oa",
       "nom": "Culture de Poivron piment",
       "description": "Association expérimentale ou structurelle avec Poivron piment.",
@@ -5711,68 +5623,6 @@
       ]
     },
     {
-      "id": "cml1gbd2q00422vbmgnu2yzu8",
-      "nom": "Romarin !",
-      "description": "Association expérimentale ou structurelle avec Romarin.",
-      "notes": " (Source: Jardinage Bio Standard)",
-      "details": [
-        {
-          "id": 497,
-          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
-          "especeId": "Romarin",
-          "familleId": "Lamiaceae",
-          "groupe": null,
-          "requise": true,
-          "notes": null
-        },
-        {
-          "id": 498,
-          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
-          "especeId": null,
-          "familleId": "Amaranthaceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 499,
-          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
-          "especeId": null,
-          "familleId": "Asteraceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 500,
-          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
-          "especeId": null,
-          "familleId": "Cucurbitaceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 501,
-          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
-          "especeId": null,
-          "familleId": "Fabaceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 502,
-          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
-          "especeId": null,
-          "familleId": "Solanaceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        }
-      ]
-    },
-    {
       "id": "cml1gbd3600432vbmlcqmuyvc",
       "nom": "Sauge !",
       "description": "Association expérimentale ou structurelle avec Sauge.",
@@ -6003,15 +5853,6 @@
           "associationId": "cml1gbd4k00482vbmvmkh22l3",
           "especeId": "Absinthe",
           "familleId": "Asteraceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 524,
-          "associationId": "cml1gbd4k00482vbmvmkh22l3",
-          "especeId": null,
-          "familleId": "Alliaceae",
           "groupe": null,
           "requise": false,
           "notes": null

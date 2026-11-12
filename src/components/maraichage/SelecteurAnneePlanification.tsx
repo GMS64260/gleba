@@ -13,6 +13,7 @@
 
 import * as React from "react"
 
+import { Button } from "@/components/ui/button"
 import { SelectNatif } from "@/components/ui/select-natif"
 import { cn } from "@/lib/utils"
 
@@ -38,5 +39,38 @@ export function SelecteurAnneePlanification({ annee, annees, onChange, className
         </option>
       ))}
     </SelectNatif>
+  )
+}
+
+/**
+ * Bandeau d'échec de chargement des écrans de planification.
+ *
+ * Revue du 2026-11-11 — un échec n'était dit que par un toast fugitif : une
+ * fois disparu, l'écran affirmait « Aucune culture prévue » ou gardait les
+ * chiffres d'une autre saison. L'échec reste nommé à l'écran, avec de quoi
+ * réessayer.
+ */
+export function ErreurChargementPlanification({
+  message,
+  onReessayer,
+  className,
+}: {
+  message: string
+  onReessayer: () => void
+  className?: string
+}) {
+  return (
+    <div
+      role="alert"
+      className={cn(
+        "mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800",
+        className,
+      )}
+    >
+      <p>{message}</p>
+      <Button variant="outline" size="sm" onClick={onReessayer}>
+        Réessayer
+      </Button>
+    </div>
   )
 }

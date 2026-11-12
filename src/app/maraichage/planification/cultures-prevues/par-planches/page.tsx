@@ -15,9 +15,13 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "@/hooks/use-toast"
-import { useAnneePlanification } from "@/hooks/use-annee-planification"
-import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
+import { useAnneePlanification, useChargementPlanification } from "@/hooks/use-annee-planification"
+import {
+  ErreurChargementPlanification,
+  SelecteurAnneePlanification,
+} from "@/components/maraichage/SelecteurAnneePlanification"
+import { telechargerCsv } from "../../export-csv"
+import { statutsAgro, type StatutAgro } from "./statut-agro"
 
 interface CulturePrevue {
   plancheId: string
@@ -39,61 +43,25 @@ interface CulturePrevue {
   existante: boolean
 }
 
-// Bug cmp8sb0at (Marc 2026-05-16) — Le statut OK vert indiquait "ligne créée"
-// pas "plan agronomique valide". On évalue désormais des conflits réels :
-//  - empty : aucune date semis/plantation/récolte (kiwi sans planning)
-//  - overlap : chevauchement temporel avec une autre culture de la même planche
-//  - ok : sinon
-type StatutAgro = 'empty' | 'overlap' | 'ok' | 'todo'
+/** Ligne du tableau : la culture et son statut, calculé une fois par jeu de données. */
+type LigneCulture = CulturePrevue & { statut: StatutAgro }
 
-function periode(c: CulturePrevue): [number, number] | null {
-  const debut = c.semaineSemis ?? c.semainePlantation
-  const fin = c.semaineRecolte
-  if (debut == null || fin == null) return null
-  return [debut, Math.max(debut, fin)]
-}
-
-// Bug feedback testeur 2026-05-26 (cmpm6yi1d) — Avant, toute paire de
-// cultures se touchant d'une seule semaine sur la même planche déclenchait
-// "Chevauchement" (ex. fève S08-S20 + haricot vert S18-S30 : chevauchement
-// de 2 semaines minime). 33/33 cultures étaient marquées → l'alerte
-// perdait toute valeur. On exige désormais un chevauchement RÉEL > 2
-// semaines pour signaler le conflit (tolérance pour les passations de
-// culture en fin/début de saison).
-const SEUIL_CHEVAUCHEMENT_SEM = 2
-
-function evaluerStatut(c: CulturePrevue, toutes: CulturePrevue[]): StatutAgro {
-  if (c.semaineSemis == null && c.semainePlantation == null && c.semaineRecolte == null) {
-    return c.existante ? 'empty' : 'todo'
-  }
-  const p = periode(c)
-  if (p) {
-    const conflits = toutes.filter((o) => {
-      if (o === c) return false
-      if (o.plancheId !== c.plancheId) return false
-      const op = periode(o)
-      if (!op) return false
-      // Largeur du chevauchement en semaines
-      const overlapStart = Math.max(p[0], op[0])
-      const overlapEnd = Math.min(p[1], op[1])
-      return overlapEnd - overlapStart >= SEUIL_CHEVAUCHEMENT_SEM
-    })
-    if (conflits.length > 0) return 'overlap'
-  }
-  return c.existante ? 'ok' : 'todo'
-}
-
-const columns: ColumnDef<CulturePrevue>[] = [
+const columns: ColumnDef<LigneCulture>[] = [
   {
     accessorKey: "plancheId",
     header: "Planche",
-    cell: ({ row }) => (
-      <Link href={`/maraichage/planches/${encodeURIComponent(row.original.plancheId)}`}>
-        <Badge variant="default" className="cursor-pointer">
-          {row.original.plancheId}
-        </Badge>
-      </Link>
-    ),
+    // Une culture sans planche est listée (QA cmsw8wni8) : ni badge vide ni
+    // lien vers une fiche planche inexistante.
+    cell: ({ row }) =>
+      row.original.plancheId ? (
+        <Link href={`/maraichage/planches/${encodeURIComponent(row.original.plancheId)}`}>
+          <Badge variant="default" className="cursor-pointer">
+            {row.original.plancheId}
+          </Badge>
+        </Link>
+      ) : (
+        <Badge variant="secondary">sans planche</Badge>
+      ),
   },
   {
     accessorKey: "ilot",
@@ -135,7 +103,10 @@ const columns: ColumnDef<CulturePrevue>[] = [
     },
   },
   {
-    accessorKey: "especeId",
+    // Tri et recherche sur le NOM affiché : l'identifiant d'une espèce
+    // personnelle est un cuid, introuvable par son nom.
+    id: "especeId",
+    accessorFn: (culture) => culture.especeNom ?? culture.especeId ?? "",
     header: "Espèce",
     cell: ({ row }) => {
       const culture = row.original
@@ -175,9 +146,8 @@ const columns: ColumnDef<CulturePrevue>[] = [
   {
     id: "statut",
     header: "Statut",
-    cell: ({ row, table }) => {
-      const all = table.getCoreRowModel().rows.map((r) => r.original as CulturePrevue)
-      const statut = evaluerStatut(row.original, all)
+    cell: ({ row }) => {
+      const statut = row.original.statut
       if (statut === 'overlap') {
         return (
           <span className="inline-flex items-center gap-1 text-amber-700" title="Chevauchement avec une autre culture sur cette planche">
@@ -212,66 +182,44 @@ const columns: ColumnDef<CulturePrevue>[] = [
   },
 ]
 
-function CulturesPrevuesParPlanchesContent() {
-  const { toast } = useToast()
+const AUCUNE_CULTURE: CulturePrevue[] = []
 
-  const [data, setData] = React.useState<CulturePrevue[]>([])
-  const [isLoading, setIsLoading] = React.useState(true)
+function CulturesPrevuesParPlanchesContent() {
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
-  const [stats, setStats] = React.useState<{ total: number }>({ total: 0 })
-
-
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/planification/cultures-prevues?annee=${annee}&groupBy=planche`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const result = await response.json()
-      setData(result.data)
-      setStats(result.stats)
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les cultures prévues",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [annee, toast])
-
-  React.useEffect(() => {
-    // Ne pas charger la saison courante avant d'avoir restauré la saison
-    // mémorisée : la réponse tardive écraserait les données de la bonne année.
-    if (!anneePrete) return
-    fetchData()
-  }, [anneePrete, fetchData])
+  // Rien n'est demandé avant la restauration de la saison mémorisée ; une
+  // réponse ne vaut que pour la saison qui l'a demandée.
+  const { resultat, chargement: isLoading, erreur, recharger } = useChargementPlanification<{
+    data: CulturePrevue[]
+    stats: { total: number }
+  }>(
+    anneePrete ? `/api/planification/cultures-prevues?annee=${annee}&groupBy=planche` : null,
+    "Impossible de charger les cultures prévues",
+  )
+  const cultures = resultat?.data ?? AUCUNE_CULTURE
+  const total = resultat?.stats.total ?? 0
+  const data = React.useMemo<LigneCulture[]>(() => {
+    const statuts = statutsAgro(cultures)
+    return cultures.map((c, i) => ({ ...c, statut: statuts[i] }))
+  }, [cultures])
 
   const handleExport = () => {
-    const headers = ["Planche", "Îlot", "Rotation", "Année Rot.", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m²)", "Statut"]
-    const rows = data.map(c => [
-      c.plancheId,
-      c.ilot || "",
-      c.rotationId || "",
-      c.rotationAnnee.toString(),
-      c.especeNom ?? c.especeId ?? "",
-      c.semaineSemis?.toString() || "",
-      c.semainePlantation?.toString() || "",
-      c.semaineRecolte?.toString() || "",
-      c.surface.toFixed(1),
-      c.existante ? "Créée" : "À créer",
+    telechargerCsv(`cultures-prevues-planches-${annee}.csv`, [
+      ["Planche", "Îlot", "Rotation", "Année Rot.", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m²)", "Statut"],
+      ...data.map((c) => [
+        c.plancheId,
+        c.ilot || "",
+        c.rotationId || "",
+        c.rotationAnnee.toString(),
+        c.especeNom ?? c.especeId ?? "",
+        c.semaineSemis?.toString() || "",
+        c.semainePlantation?.toString() || "",
+        c.semaineRecolte?.toString() || "",
+        c.surface.toFixed(1),
+        c.existante ? "Créée" : "À créer",
+      ]),
     ])
-
-    const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `cultures-prevues-planches-${annee}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
   }
 
   return (
@@ -292,7 +240,7 @@ function CulturesPrevuesParPlanchesContent() {
         </div>
 
         <div className="flex items-center gap-4">
-          <Badge variant="outline">{stats.total} cultures</Badge>
+          <Badge variant="outline">{total} cultures</Badge>
           <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
         </div>
       </div>
@@ -317,6 +265,13 @@ function CulturesPrevuesParPlanchesContent() {
           </Link>
         </div>
 
+        {erreur && (
+          <ErreurChargementPlanification
+            message={`Les cultures prévues de ${annee} n’ont pas pu être chargées.`}
+            onReessayer={recharger}
+          />
+        )}
+
         <DataTable
           columns={columns}
           data={data}
@@ -325,10 +280,10 @@ function CulturesPrevuesParPlanchesContent() {
           pageIndex={0}
           pageSize={data.length || 50}
           onPaginationChange={() => {}}
-          onRefresh={fetchData}
+          onRefresh={recharger}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucune culture prévue."
+          emptyMessage={erreur ? "Chargement impossible." : "Aucune culture prévue."}
         />
       </main>
     </div>

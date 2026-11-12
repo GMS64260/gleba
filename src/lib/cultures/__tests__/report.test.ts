@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ecrituresReport, type CultureAReporter } from '../report'
+import { jourCivilStocke } from '@/lib/jour-civil'
 
 /**
  * Friction 2026-08-23 : face à des plantations en retard, un maraîcher a
@@ -140,8 +141,9 @@ describe('report et fenêtre de récolte', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     const fin = r.ecritures.finRecolte as Date
-    expect(fin.getMonth()).toBe(11)
-    expect(fin.getDate()).toBe(17) // 10/12 + 7 jours
+    // Jour seul stocké à minuit UTC : se lit par `jourCivilStocke`, pas par
+    // `getDate()`, qui recule d'un jour sur un serveur à l'ouest d'UTC.
+    expect(jourCivilStocke(fin)).toBe('2026-12-17') // 10/12 + 7 jours
   })
 
   it('laisse la fenêtre tranquille quand la récolte ne bouge pas', () => {
@@ -171,6 +173,6 @@ describe('report et fenêtre de récolte', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     const fin = r.ecritures.finRecolte as Date
-    expect(fin.getDate()).toBe(17)
+    expect(jourCivilStocke(fin)).toBe('2026-12-17')
   })
 })

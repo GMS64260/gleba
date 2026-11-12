@@ -306,7 +306,9 @@ export function kcAuStade(profil: ProfilEspece, stade: number): number {
   if (stade < 0.15) return initial
   if (stade < 0.45) return initial + ((stade - 0.15) / 0.3) * (mi - initial)
   if (stade < 0.8) return mi
-  return mi + (Math.min(1, stade - 0.8) / 0.2) * (fin - mi)
+  // Borne sur la part d'arrière-saison parcourue, pas sur l'écart de stade :
+  // un stade au-delà de 1 extrapolait sous le Kc de fin, jusqu'au négatif.
+  return mi + Math.min(1, (stade - 0.8) / 0.2) * (fin - mi)
 }
 
 /** Profondeur racinaire (m) : 0,15 m à la mise en place, pleine en fin de développement. */

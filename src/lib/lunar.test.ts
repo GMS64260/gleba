@@ -209,3 +209,47 @@ describe('jour civil au fuseau du lecteur', () => {
     expect(cal.jours.find((d) => d.date === '2026-08-12')?.phaseIndex).toBe(0)
   })
 })
+
+// Revue 2026-11-11 — le jour civil était pris pour « midi ± 12 h ». Les jours
+// de changement d'heure durent 23 ou 25 heures : la fenêtre débordait d'une
+// heure sur la veille (événement compté deux fois) ou laissait la première
+// heure du jour sans propriétaire (événement perdu).
+describe("jour civil de 23 h et de 25 h (changement d'heure)", () => {
+  const NEW_YORK = 'America/New_York'
+
+  it('un événement à 23 h 31 la veille du passage à l’heure d’été ne compte qu’une fois', async () => {
+    // Premier quartier… tombé le 08/03/2031 à 23:31 EST (04:31 UTC le 09).
+    const veille = await fetchMoonPhase(midiDansFuseau('2031-03-08', NEW_YORK), NEW_YORK)
+    const jourCourt = await fetchMoonPhase(midiDansFuseau('2031-03-09', NEW_YORK), NEW_YORK)
+
+    expect(veille.instantEvenement).toBe('2031-03-09T04:31:18.900Z')
+    expect(jourCourt.instantEvenement).toBeNull()
+  })
+
+  it('chaque événement de 2020 à 2040 appartient à un seul jour, fuseaux à heure d’été compris', () => {
+    for (const fuseau of ['Europe/Paris', NEW_YORK]) {
+      const vus = new Map<number, string>()
+      let veille = midiDansFuseau('2019-12-31', fuseau)
+      for (let t = Date.UTC(2020, 0, 1, 12); t < Date.UTC(2041, 0, 1); t += 24 * HEURE_MS) {
+        const jour = new Date(t).toISOString().slice(0, 10)
+        const midi = midiDansFuseau(jour, fuseau)
+        const { instantEvenement } = phaseVraieDuJour(midi, veille)
+        if (instantEvenement !== null) {
+          expect(vus.get(instantEvenement), `${fuseau} ${jour}`).toBeUndefined()
+          vus.set(instantEvenement, jour)
+          // L'événement tombe bien dans le jour civil qui le porte.
+          expect(jourDansFuseau(new Date(instantEvenement), fuseau)).toBe(jour)
+        }
+        veille = midi
+      }
+    }
+  })
+
+  it('sans midi de la veille, la fenêtre reste midi ± 12 h (appelants existants)', () => {
+    const midiParis = new Date(Date.UTC(2026, 7, 12, 10, 0))
+    expect(phaseVraieDuJour(midiParis)).toEqual(
+      phaseVraieDuJour(midiParis, new Date(Date.UTC(2026, 7, 11, 10, 0)))
+    )
+  })
+})
+

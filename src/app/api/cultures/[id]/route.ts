@@ -7,10 +7,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { updateCultureSchema, normalizeCultureDateFields, retenirDatesCulture } from '@/lib/validations'
 import { jourCivilStocke } from '@/lib/jour-civil'
-import { erreurFinRecolte, fenetreRecolteIncoherente, finRecolteApresModification } from '@/lib/cultures/fenetre-recolte'
+import { evaluerModificationOccupation } from '@/lib/planche-validation'
+import { selectCulturesOccupation } from '@/lib/planches/occupation'
+import { debutOccupation, erreurChronologieCycle, erreurFinRecolte, fenetreRecolteIncoherente, finDeCycle, finRecolteApresModification } from '@/lib/cultures/fenetre-recolte'
 import type { AlerteSaisonCulture } from '@/lib/cultures/saison-culture'
 import { validateCultureDates } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -37,6 +40,21 @@ import { aDesVentes, compterVentesRecoltesCulture, messageSuppressionCultureRefu
 import { quantiteCultureApresModification } from '@/lib/cultures/quantite-plants'
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+/**
+ * Champs non datés du PATCH rapide. Sans ce contrôle, une case envoyée en texte
+ * ou un corps vide partaient tels quels à Prisma et répondaient 500.
+ */
+const champsRapidesSchema = z
+  .object({
+    semisFait: z.boolean(),
+    plantationFaite: z.boolean(),
+    recolteFaite: z.boolean(),
+    terminee: z.string().max(10).nullable(),
+    aIrriguer: z.boolean().nullable(),
+    notes: z.string().max(5000).nullable(),
+  })
+  .partial()
 
 /**
  * ITP d'une culture tel que son propriétaire le voit : visible et en service,
@@ -328,9 +346,11 @@ export async function PUT(
       try {
         const annee = data.annee ?? existing.annee ?? new Date().getFullYear()
         const v = validateCultureDates({
-          dateSemis: data.dateSemis ?? existing.dateSemis,
-          datePlantation: data.datePlantation ?? existing.datePlantation,
-          dateRecolte: data.dateRecolte ?? existing.dateRecolte,
+          // `undefined` = champ non envoyé (valeur stockée) ; `null` = date
+          // effacée, qui ne doit pas revenir par la valeur stockée.
+          dateSemis: data.dateSemis !== undefined ? data.dateSemis : existing.dateSemis,
+          datePlantation: data.datePlantation !== undefined ? data.datePlantation : existing.datePlantation,
+          dateRecolte: data.dateRecolte !== undefined ? data.dateRecolte : existing.dateRecolte,
           itp,
           annee,
         })
@@ -370,19 +390,90 @@ export async function PUT(
     // vérifiait rien. On remonte un warning non bloquant (comme les dates).
     const plancheId = data.plancheId ?? existing.plancheId
     const longueurCulture = data.longueur ?? existing.longueur
-    if (plancheId && longueurCulture) {
+
+    // Relecture du 2026-11-12 — l'édition ne contrôlait pas l'occupation : une
+    // culture de 1 m logée à la suite d'une autre s'étendait à toute la planche
+    // sans refus. Le contrôle ne se fait que si la place ou la période change
+    // (le formulaire complet renvoie tous les champs, même intacts), et jamais
+    // sur une culture terminée, qui n'occupe plus rien.
+    const etatFinal = { ...existing, ...data }
+    const champsPlace = ['longueur', 'nbRangs', 'plancheId', 'itpId'] as const
+    const champsPeriode = ['dateSemis', 'datePlantation', 'dateRecolte', 'finRecolte'] as const
+    const occupationTouchee =
+      !existing.terminee &&
+      (champsPlace.some((c) => data[c] !== undefined && (data[c] ?? null) !== (existing[c] ?? null)) ||
+        champsPeriode.some(
+          (c) => data[c] !== undefined && jourCivilStocke(data[c]) !== jourCivilStocke(existing[c])
+        ))
+
+    if (plancheId && (longueurCulture || occupationTouchee)) {
       try {
+        const lireEspacementRangs = async (itpId: string | null) =>
+          itpId
+            ? (await prisma.iTP.findFirst({ where: { id: itpId }, select: { espacementRangs: true } }))
+                ?.espacementRangs ?? null
+            : null
         const planche = await prisma.planche.findFirst({
           where: { id: plancheId, userId: session!.user.id },
-          select: { nom: true, longueur: true },
+          select: {
+            nom: true,
+            longueur: true,
+            ...(occupationTouchee && {
+              largeur: true,
+              // Sans la culture modifiée : elle ne se fait pas d'ombre.
+              cultures: {
+                where: { terminee: null, id: { not: cultureId } },
+                select: selectCulturesOccupation,
+              },
+            }),
+          },
         })
-        if (planche?.longueur && longueurCulture > planche.longueur) {
+        if (planche?.longueur && longueurCulture && longueurCulture > planche.longueur) {
           dateWarnings.push(
             `Longueur de la culture (${longueurCulture} m) supérieure à la longueur de la planche ${planche.nom} (${planche.longueur} m).`
           )
         }
+        if (planche && occupationTouchee) {
+          const espacementApres = await lireEspacementRangs(itpFinal ?? null)
+          const espacementAvant =
+            (existing.itpId ?? null) === (itpFinal ?? null)
+              ? espacementApres
+              : await lireEspacementRangs(existing.itpId)
+          const etat = (c: typeof existing, espacementRangs: number | null) => ({
+            espacementRangs,
+            nbRangs: c.nbRangs,
+            longueur: c.longueur,
+            debut: debutOccupation(c),
+            fin: finDeCycle(c),
+          })
+          const refus = evaluerModificationOccupation({
+            planche: { largeur: planche.largeur ?? null, longueur: planche.longueur },
+            autresCultures: planche.cultures ?? [],
+            // Arrivée sur une autre planche : pas d'état antérieur à comparer.
+            avant: existing.plancheId === plancheId ? etat(existing, espacementAvant) : null,
+            apres: etat(etatFinal as typeof existing, espacementApres),
+          })
+          if (refus) {
+            return NextResponse.json(
+              {
+                error: `${refus.message}. Espacement entre rangs de l'itinéraire technique : ${refus.espacementRangs} cm.`,
+                suggestions: refus.ajustements.map((a) => a.message),
+                ajustements: refus.ajustements,
+                details: {
+                  largeurPlanche: refus.largeurPlanche,
+                  largeurOccupee: refus.largeurOccupee,
+                  largeurDisponible: refus.largeurDisponible,
+                  largeurNecessaire: refus.largeurNecessaire,
+                  espacementRangsItp: refus.espacementRangs,
+                },
+              },
+              { status: 400 }
+            )
+          }
+        }
       } catch (e) {
-        console.warn('Longueur validation PUT skipped:', e)
+        // Lecture impossible : la modification passe, comme pour la longueur.
+        console.warn('Contrôle de planche ignoré à la modification :', e)
       }
     }
 
@@ -538,6 +629,10 @@ export async function PATCH(
       'finRecolte',
       'derniereIrrigation',
     ]
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Données invalides' }, { status: 400 })
+    }
+
     const updateData: Record<string, unknown> = {}
     for (const field of allowedFields) {
       if (field in body) {
@@ -567,6 +662,42 @@ export async function PATCH(
         { error: 'Aucun champ valide a mettre a jour' },
         { status: 400 }
       )
+    }
+
+    const champsRapides = champsRapidesSchema.safeParse(updateData)
+    if (!champsRapides.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: champsRapides.error.flatten() },
+        { status: 400 }
+      )
+    }
+    // « '' » n'est ni terminée ni en cours : le filtre la rangeait dans
+    // « Terminée » quand l'affichage la disait en cours (`etatCulture`).
+    if (typeof updateData.terminee === 'string' && updateData.terminee.trim() === '') {
+      updateData.terminee = null
+    }
+
+    // Revue du 2026-11-11 — une date déplacée (glisser-déposer du calendrier)
+    // garde l'ordre du cycle, comme à la création, au formulaire complet et au
+    // report : ce chemin écrivait une récolte avant sa plantation. Contrôlé
+    // seulement quand un jour change, pour qu'une fiche ancienne reste
+    // corrigeable sur ses autres champs ; le recalage d'une étape cochée
+    // (plus bas) n'est pas concerné.
+    const CHAMPS_CYCLE = ['dateSemis', 'datePlantation', 'dateRecolte'] as const
+    const cycleFinal = {
+      dateSemis: 'dateSemis' in updateData ? (updateData.dateSemis as Date | null) : existing.dateSemis,
+      datePlantation:
+        'datePlantation' in updateData ? (updateData.datePlantation as Date | null) : existing.datePlantation,
+      dateRecolte: 'dateRecolte' in updateData ? (updateData.dateRecolte as Date | null) : existing.dateRecolte,
+    }
+    const jourDeplace = CHAMPS_CYCLE.some(
+      (champ) => champ in updateData && jourCivilStocke(cycleFinal[champ]) !== jourCivilStocke(existing[champ])
+    )
+    if (jourDeplace) {
+      const erreurCycle = erreurChronologieCycle(cycleFinal)
+      if (erreurCycle) {
+        return NextResponse.json({ error: erreurCycle, errors: [erreurCycle] }, { status: 400 })
+      }
     }
 
     // QA cmsio768u / cmsio8o54 (2026-08-07) — les actions rapides du tableau

@@ -92,6 +92,7 @@ function PluieGraph({ historique, previsions, pluie7j }: { historique: MeteoHist
 
   const maxMm = Math.max(...barres.map(b => b.mm), 5)
   const w = 14, gap = 2, h = 40
+  const MARGE_HAUTE = 8
 
   // QA 2026-09-28 — « Auj. » se décidait par POSITION (dernier point de
   // l'historique, qui est la veille ; premier jour des prévisions) : dès que la
@@ -117,9 +118,11 @@ function PluieGraph({ historique, previsions, pluie7j }: { historique: MeteoHist
       <div className="overflow-x-auto">
         <svg
           width={barres.length * (w + gap) - gap}
-          height={h + 20}
+          height={h + 20 + MARGE_HAUTE}
           style={{ display: "block" }}
         >
+          {/* Marge haute : l'étiquette de la plus haute barre sortait du dessin. */}
+          <g transform={`translate(0, ${MARGE_HAUTE})`}>
           {barres.map((b, i) => {
             const barH = Math.max(2, (b.mm / maxMm) * h)
             const x = i * (w + gap)
@@ -147,6 +150,7 @@ function PluieGraph({ historique, previsions, pluie7j }: { historique: MeteoHist
               </g>
             )
           })}
+          </g>
         </svg>
       </div>
       <div className="flex items-center gap-3 text-[10px] text-slate-400">
@@ -206,7 +210,7 @@ function MeteoWidgetInterne({ parcelleId, lat, lng, compact = false, defaultExpa
 
         let url = "/api/meteo?"
         if (parcelleId) {
-          url += `parcelleId=${parcelleId}`
+          url += `parcelleId=${encodeURIComponent(parcelleId)}`
         } else if (lat && lng) {
           url += `lat=${lat}&lng=${lng}`
         } else {
@@ -217,8 +221,10 @@ function MeteoWidgetInterne({ parcelleId, lat, lng, compact = false, defaultExpa
 
         const res = await fetch(url)
         if (!res.ok) {
-          const err = await res.json()
-          throw new Error(err.error || "Erreur API meteo")
+          // Une page d'erreur du proxy n'est pas du JSON : sans garde, le
+          // message brut de l'analyseur s'affichait.
+          const err = await res.json().catch(() => null)
+          throw new Error(err?.error || "Météo momentanément indisponible")
         }
 
         setData(await res.json())
@@ -261,7 +267,11 @@ function MeteoWidgetInterne({ parcelleId, lat, lng, compact = false, defaultExpa
   const prochainsJours = previsions.filter((j) => j.date >= aujourdhui).slice(0, 5)
   const traitement = prochainsJours.find(j => j.windSpeedMax < 19 && j.precipitation < 1)
   const recolte = prochainsJours.find(j => j.precipitation < 1 && j.precipitationProba < 30 && j.windSpeedMax < 35)
-  const chaleur = Math.max(...prochainsJours.map(j => j.tempMax), -Infinity)
+  // Sans jour à venir, pas de pic : `Math.max()` vide affichait « -Infinity°C ».
+  const chaleur = prochainsJours.length > 0 ? Math.max(...prochainsJours.map(j => j.tempMax)) : null
+  // Le jour civil d'aujourd'hui, pas le premier élément de la série (qui peut
+  // être la veille ou le lendemain selon le fuseau et l'âge du cache).
+  const jourCourant = previsions.find((j) => j.date === aujourdhui) ?? null
   const gel = prochainsJours.find(j => j.tempMin <= 2)
   const jourCourt = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric" })
 
@@ -319,9 +329,9 @@ function MeteoWidgetInterne({ parcelleId, lat, lng, compact = false, defaultExpa
           <div className="px-3 py-3 bg-emerald-50/50 border-b">
             <p className="text-xs font-semibold text-emerald-900 flex items-center gap-2 mb-2"><Tractor className="h-4 w-4" /> Fenêtres de travail · 5 jours</p>
             <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Traitement</p><p className="text-slate-500 mt-0.5">{traitement ? `${jourCourt(traitement.date)} · vent ${Math.round(traitement.windSpeedMax)} km/h, pluie ${traitement.precipitation.toFixed(1)} mm` : "Aucune fenêtre favorable"}</p></div>
+              <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Traitement</p><p className="text-slate-500 mt-0.5">{traitement ? `${jourCourt(traitement.date)} · vent ${Math.round(traitement.windSpeedMax)} km/h, pluie ${traitement.precipitation.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mm` : "Aucune fenêtre favorable"}</p></div>
               <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><Tractor className="h-3.5 w-3.5 text-amber-600" /> Récolte / foin</p><p className="text-slate-500 mt-0.5">{recolte ? `${jourCourt(recolte.date)} · fenêtre sèche, risque pluie ${Math.round(recolte.precipitationProba)} %` : "Pas de créneau sec assez fiable"}</p></div>
-              <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><PawPrint className="h-3.5 w-3.5 text-orange-600" /> Élevage</p><p className="text-slate-500 mt-0.5">{chaleur >= 30 ? `Pic ${Math.round(chaleur)}°C · sécuriser eau, ombre, ventilation` : `Pic ${Math.round(chaleur)}°C · stress thermique limité`}</p></div>
+              <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><PawPrint className="h-3.5 w-3.5 text-orange-600" /> Élevage</p><p className="text-slate-500 mt-0.5">{chaleur === null ? "Prévisions indisponibles" : chaleur >= 30 ? `Pic ${Math.round(chaleur)}°C · sécuriser eau, ombre, ventilation` : `Pic ${Math.round(chaleur)}°C · stress thermique limité`}</p></div>
               <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><Trees className="h-3.5 w-3.5 text-lime-700" /> Verger / plants</p><p className="text-slate-500 mt-0.5">{gel ? `${jourCourt(gel.date)} · ${Math.round(gel.tempMin)}°C, préparer les protections` : "Pas de gel proche détecté"}</p></div>
             </div>
             <p className="text-[10px] text-slate-400 mt-2">Aide à la décision : confirmer les conditions sur la parcelle avant intervention.</p>
@@ -401,21 +411,21 @@ function MeteoWidgetInterne({ parcelleId, lat, lng, compact = false, defaultExpa
               <div>
                 <Thermometer className="h-4 w-4 mx-auto text-orange-500 mb-0.5" />
                 <p className="text-xs font-medium">
-                  {previsions[0] ? `${Math.round(previsions[0].tempMax)}°` : "-"}
+                  {jourCourant ? `${Math.round(jourCourant.tempMax)}°` : "-"}
                 </p>
                 <p className="text-[10px] text-slate-400">Max aujourd&apos;hui</p>
               </div>
               <div>
                 <Droplets className="h-4 w-4 mx-auto text-blue-500 mb-0.5" />
                 <p className="text-xs font-medium">
-                  {Math.round(previsions.slice(0, 3).reduce((s, d) => s + d.precipitation, 0))}mm
+                  {Math.round(prochainsJours.slice(0, 3).reduce((s, d) => s + d.precipitation, 0))} mm
                 </p>
                 <p className="text-[10px] text-slate-400">Pluie 3j</p>
               </div>
               <div>
                 <Wind className="h-4 w-4 mx-auto text-slate-500 mb-0.5" />
                 <p className="text-xs font-medium">
-                  {previsions[0] ? `${Math.round(previsions[0].windSpeedMax)}` : "-"} km/h
+                  {jourCourant ? `${Math.round(jourCourant.windSpeedMax)} km/h` : "-"}
                 </p>
                 <p className="text-[10px] text-slate-400">Vent max</p>
               </div>

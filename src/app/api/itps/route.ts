@@ -7,6 +7,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createITPSchema } from '@/lib/validations'
+import {
+  messageIncoherenceSemainesItp,
+  messageRefusTriggerDatesItp,
+  type CreateITPInput,
+} from '@/lib/validations/itp'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
@@ -16,6 +21,7 @@ import {
   conflitNomItp,
   doublonVisibleItp,
   estConflitPeriodeItp,
+  estViolationUnicite,
   itpMemePeriode,
   messageConflitNomItp,
   messageConflitPeriodeItp,
@@ -56,6 +62,48 @@ const ORDRE_CONFIANCE: Prisma.ITPOrderByWithRelationInput[] = [
   { id: 'asc' },
 ]
 
+/**
+ * Projection allégée, demandée par `champs=calendrier`.
+ *
+ * Les deux calendriers ITP chargent jusqu'à 1 000 itinéraires d'un coup pour en
+ * tracer les barres : ils recevaient la ligne entière (notes, provenance,
+ * commentaires agronomiques), l'espèce entière et sa famille, plus deux
+ * compteurs par ligne. Ne sont gardés ici que les champs lus par ces vues
+ * (`ItpVue` : tracé, libellé, calage climatique, droit d'édition, catégorie
+ * lunaire). La réponse par défaut reste la ligne complète.
+ */
+const SELECT_CALENDRIER = {
+  id: true,
+  nom: true,
+  userId: true,
+  especeId: true,
+  zoneClimat: true,
+  semaineSemis: true,
+  semainePlantation: true,
+  semaineRecolte: true,
+  semaineImplantationDebut: true,
+  semaineImplantationFin: true,
+  semaineRecolteFin: true,
+  dureeRecolte: true,
+  dureePepiniere: true,
+  typePlanche: true,
+  implantation: true,
+  statutValidation: true,
+  sourceRecordId: true,
+  espece: {
+    select: {
+      id: true,
+      nom: true,
+      // Lu pour être masqué comme dans la réponse complète, jamais renvoyé nu.
+      userId: true,
+      couleur: true,
+      modeSemis: true,
+      typeCultureSemis: true,
+      famille: { select: { id: true } },
+    },
+  },
+} satisfies Prisma.ITPSelect
+
 function positiveInteger(value: string | null, fallback: number, max: number): number {
   const parsed = Number.parseInt(value ?? '', 10)
   if (!Number.isFinite(parsed) || parsed < 1) return fallback
@@ -88,6 +136,7 @@ export async function GET(request: NextRequest) {
     const statutValidation = searchParams.get('statutValidation')
     const applicable = searchParams.get('applicable') === '1'
     const calibrer = searchParams.get('calibre') === '1'
+    const projectionCalendrier = searchParams.get('champs') === 'calendrier'
     const userZone = applicable || calibrer
       ? await zoneEffectiveUser(prisma, userId)
       : null
@@ -142,26 +191,35 @@ export async function GET(request: NextRequest) {
     // cultures affichées (réel = 2)". Le `_count.cultures` était global,
     // ce qui agrégeait les cultures des autres tenants (comptes démo).
     // On filtre désormais sur l'utilisateur courant.
+    const orderBy = sortBy === 'confiance' ? ORDRE_CONFIANCE : { [sortBy]: sortOrder }
     const [itps, total] = await Promise.all([
-      prisma.iTP.findMany({
-        where: whereVisible,
-        include: {
-          espece: {
+      projectionCalendrier
+        ? prisma.iTP.findMany({
+            where: whereVisible,
+            select: SELECT_CALENDRIER,
+            orderBy,
+            skip,
+            take: pageSize,
+          })
+        : prisma.iTP.findMany({
+            where: whereVisible,
             include: {
-              famille: true,
+              espece: {
+                include: {
+                  famille: true,
+                },
+              },
+              _count: {
+                select: {
+                  cultures: { where: { userId } },
+                  rotationsDetails: true,
+                },
+              },
             },
-          },
-          _count: {
-            select: {
-              cultures: { where: { userId } },
-              rotationsDetails: true,
-            },
-          },
-        },
-        orderBy: sortBy === 'confiance' ? ORDRE_CONFIANCE : { [sortBy]: sortOrder },
-        skip,
-        take: pageSize,
-      }),
+            orderBy,
+            skip,
+            take: pageSize,
+          }),
       prisma.iTP.count({ where: whereVisible }),
     ])
 
@@ -223,6 +281,9 @@ export async function POST(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
   const isAdmin = session!.user.role === 'ADMIN'
+  // Gardée hors du `try` : le `catch` en a besoin pour nommer un conflit de
+  // période, et le corps d'une requête ne se lit qu'une fois.
+  let saisie: CreateITPInput | null = null
 
   try {
     const body = await request.json()
@@ -237,6 +298,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validationResult.data
+    saisie = data
 
     // `data.id` porte le NOM saisi. Le nom affiché vit dans `nom` ; l'id technique
     // dépend de l'origine (officiel = nom lisible, perso = cuid).
@@ -245,6 +307,14 @@ export async function POST(request: NextRequest) {
     // « TEST-Marc-Phacelie-v7 » était stocké « TEST Marc Phacelie v7 » et
     // devenait introuvable par le nom tapé.
     const { nom: nomSaisi, nomNormalise } = nomItpDepuisSaisie(data.id)
+    // Un nom fait d'espaces passe `min(1)` puis se réduit à rien : l'ITP était
+    // créé sans nom (et, pour un admin, avec un identifiant vide).
+    if (!nomSaisi) {
+      return NextResponse.json(
+        { error: "Le nom de l'ITP ne peut pas être vide." },
+        { status: 400 }
+      )
+    }
     const attrib = attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true)
     const estOfficiel = attrib.userId === null
 
@@ -269,7 +339,7 @@ export async function POST(request: NextRequest) {
       // L'espèce parente doit être VISIBLE (sinon rattachement/divulgation d'un privé d'autrui).
       const espece = await prisma.espece.findFirst({
         where: { AND: [{ id: data.especeId }, visibiliteReferentiel(session!.user.id)] },
-        select: { id: true, typeCultureSemis: true },
+        select: { id: true, nom: true, typeCultureSemis: true },
       })
       if (!espece) {
         return NextResponse.json(
@@ -280,10 +350,21 @@ export async function POST(request: NextRequest) {
       if (espece.typeCultureSemis === 'semis_direct' && data.semainePlantation != null) {
         return NextResponse.json(
           {
-            error: `L'espèce "${data.especeId}" est en semis direct (racine pivot ou semis en place). Le champ Plantation doit être vide.`,
+            // Le libellé, pas l'identifiant : une espèce personnelle a un cuid.
+            error: `L'espèce "${espece.nom ?? espece.id}" est en semis direct (racine pivot ou semis en place). Le champ Plantation doit être vide.`,
           },
           { status: 400 }
         )
+      }
+      // Règles du trigger `enforce_itp_dates`, annoncées avant l'écriture.
+      const incoherence = messageIncoherenceSemainesItp({
+        typeCultureSemis: espece.typeCultureSemis,
+        semaineSemis: data.semaineSemis,
+        semainePlantation: data.semainePlantation,
+        semaineRecolte: data.semaineRecolte,
+      })
+      if (incoherence) {
+        return NextResponse.json({ error: incoherence }, { status: 400 })
       }
     }
 
@@ -344,20 +425,28 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     // Conflit de période (index `itps_periode_unique_idx`) : le dire, au lieu du
     // 500 muet « Erreur lors de la création de l'ITP ».
-    if (estConflitPeriodeItp(error)) {
-      const body = await request.clone().json().catch(() => ({}))
+    if (saisie && estViolationUnicite(error)) {
+      // La cible rendue par Prisma n'est pas toujours lisible (index sur
+      // expressions) : l'itinéraire jumeau, s'il existe, tranche.
       const conflit = await itpMemePeriode(prisma, {
-        proprietaireId: session!.user.role === 'ADMIN' ? null : session!.user.id,
-        especeId: body?.especeId,
-        semaineSemis: body?.semaineSemis,
-        semainePlantation: body?.semainePlantation,
-        semaineRecolte: body?.semaineRecolte,
-        typePlanche: body?.typePlanche,
-      })
-      return NextResponse.json(
-        { error: messageConflitPeriodeItp(conflit), conflit: conflit?.id },
-        { status: 409 }
-      )
+        proprietaireId: isAdmin ? null : session!.user.id,
+        especeId: saisie.especeId,
+        semaineSemis: saisie.semaineSemis,
+        semainePlantation: saisie.semainePlantation,
+        semaineRecolte: saisie.semaineRecolte,
+        typePlanche: saisie.typePlanche,
+      }).catch(() => null)
+      if (conflit || estConflitPeriodeItp(error)) {
+        return NextResponse.json(
+          { error: messageConflitPeriodeItp(conflit), conflit: conflit?.id },
+          { status: 409 }
+        )
+      }
+    }
+    // Refus du trigger de dates qui aurait échappé au contrôle applicatif.
+    const refusDates = messageRefusTriggerDatesItp(error)
+    if (refusDates) {
+      return NextResponse.json({ error: refusDates }, { status: 400 })
     }
     console.error('POST /api/itps error:', error)
     return NextResponse.json(

@@ -69,6 +69,22 @@ export function fenetreItp(itp: {
 }
 
 /**
+ * Fenêtre de semaines d'une colonne de liste (« S14–S16 », « S05 »).
+ *
+ * Une fin de fenêtre peut exister sans début (la validation l'accepte) : la
+ * liste écrivait alors « Sundefined–S20 » ou « Snull–S30 ».
+ */
+export function libelleFenetreSemaines(
+  debut: number | null | undefined,
+  fin: number | null | undefined
+): string {
+  if (debut && fin) return `S${debut}–S${fin}`
+  if (debut) return `S${String(debut).padStart(2, "0")}`
+  if (fin) return `jusqu'à S${fin}`
+  return "-"
+}
+
+/**
  * Nom d'un ITP tel qu'il doit apparaître à l'écran — la SEULE fonction à
  * appeler pour l'afficher, quel que soit l'écran.
  *

@@ -47,19 +47,23 @@ const GENERIC_TO_VARIANTS: Record<string, string[]> = {
  *   getEspeceAliases("Carotte")     → ["Carotte"]
  */
 export function getEspeceAliases(especeId: string): string[] {
-  // Cas 1 : c'est un nom générique → on retourne lui + ses variantes
-  if (GENERIC_TO_VARIANTS[especeId]) {
-    return [especeId, ...GENERIC_TO_VARIANTS[especeId]]
-  }
-  // Cas 2 : c'est une variante → on retrouve le générique et on retourne
-  // [variante, générique, autres variantes du même groupe]
+  // Comparaison sans casse : les alertes manipulent des identifiants en
+  // minuscules (« haricot vert »), la fiche des identifiants tels quels.
+  const cle = normaliser(especeId)
   for (const [generic, variants] of Object.entries(GENERIC_TO_VARIANTS)) {
-    if (variants.includes(especeId)) {
-      return [especeId, generic, ...variants.filter((v) => v !== especeId)]
+    // Cas 1 : c'est un nom générique → lui + ses variantes
+    if (normaliser(generic) === cle) return [especeId, ...variants]
+    // Cas 2 : c'est une variante → [variante, générique, autres variantes]
+    if (variants.some((v) => normaliser(v) === cle)) {
+      return [especeId, generic, ...variants.filter((v) => normaliser(v) !== cle)]
     }
   }
   // Cas 3 : pas de synonyme connu
   return [especeId]
+}
+
+function normaliser(nom: string): string {
+  return nom.trim().toLowerCase()
 }
 
 /**

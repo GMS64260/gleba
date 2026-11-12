@@ -18,16 +18,21 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { telechargerCsv } from "@/app/maraichage/planification/export-csv"
+import { libelleBilan, lignesCsvVoisinage, texteCulturesVoisines } from "./texte-voisinage"
 
 interface AssociationCulture {
   plancheId: string
   ilot: string | null
   cultureEspeceId: string | null
+  cultureEspeceNom?: string | null
   cultureSemaine: number | null
   planchesVoisines: string[]
   culturesVoisines: {
     plancheId: string
     especeId: string | null
+    especeNom?: string | null
+    memePlanche?: boolean
     eval: "favorable" | "defavorable" | "neutre"
     evalMessage: string | null
   }[]
@@ -52,14 +57,16 @@ const columns: ColumnDef<AssociationCulture>[] = [
     cell: ({ getValue }) => getValue() || "-",
   },
   {
-    accessorKey: "cultureEspeceId",
+    id: "cultureEspeceId",
+    // Le nom, pas l'identifiant technique d'une espèce personnelle.
+    accessorFn: (a) => a.cultureEspeceNom || a.cultureEspeceId || "",
     header: "Culture",
     cell: ({ row }) => {
-      const { cultureEspeceId, cultureSemaine } = row.original
+      const { cultureEspeceId, cultureEspeceNom, cultureSemaine } = row.original
       if (!cultureEspeceId) return "-"
       return (
         <div className="flex items-center gap-2">
-          <span className="font-medium">{cultureEspeceId}</span>
+          <span className="font-medium">{cultureEspeceNom || cultureEspeceId}</span>
           {cultureSemaine && (
             <Badge variant="outline" className="text-xs">
               S{cultureSemaine}
@@ -90,6 +97,8 @@ const columns: ColumnDef<AssociationCulture>[] = [
   },
   {
     id: "culturesVoisines",
+    // Valeur texte : sans elle la colonne n'est ni cherchable ni triable.
+    accessorFn: (a) => texteCulturesVoisines(a),
     header: "Cultures voisines",
     cell: ({ row }) => {
       const voisines = row.original.culturesVoisines
@@ -108,14 +117,15 @@ const columns: ColumnDef<AssociationCulture>[] = [
       } as const
       return (
         <div className="flex flex-wrap gap-1">
-          {voisines.map((cv) => (
+          {voisines.map((cv, i) => (
             <Badge
-              key={`${cv.plancheId}:${cv.especeId ?? "?"}`}
+              // Deux successions de la même espèce sur la planche voisine : l'index départage.
+              key={`${cv.plancheId}:${cv.especeId ?? "?"}:${i}`}
               variant="outline"
               className={`text-xs ${colorByEval[cv.eval]}`}
               title={cv.evalMessage || undefined}
             >
-              {iconByEval[cv.eval]} {cv.plancheId}: {cv.especeId || "?"}
+              {iconByEval[cv.eval]} {cv.memePlanche ? "même planche" : cv.plancheId}: {cv.especeNom || cv.especeId || "?"}
             </Badge>
           ))}
         </div>
@@ -124,6 +134,8 @@ const columns: ColumnDef<AssociationCulture>[] = [
   },
   {
     id: "scoreAssociation",
+    // Permet d'isoler les lignes « Défavorable » par la recherche ou le tri.
+    accessorFn: (a) => libelleBilan(a.scoreAssociation),
     header: "Bilan",
     cell: ({ row }) => {
       const s = row.original.scoreAssociation
@@ -140,6 +152,7 @@ function AssociationsContent() {
 
   const [data, setData] = React.useState<AssociationCulture[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [erreur, setErreur] = React.useState(false)
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
@@ -151,6 +164,7 @@ function AssociationsContent() {
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
+    setErreur(false)
     try {
       const response = await fetch(`/api/planification/associations?annee=${annee}`)
       if (!response.ok) throw new Error("Erreur lors du chargement")
@@ -158,6 +172,10 @@ function AssociationsContent() {
       setData(result.data)
       setStats(result.stats)
     } catch {
+      // Un échec ne doit pas se lire comme « aucune culture prévue ».
+      setErreur(true)
+      setData([])
+      setStats({ totalPlanches: 0, planchesAvecVoisins: 0 })
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -176,25 +194,7 @@ function AssociationsContent() {
   }, [anneePrete, fetchData])
 
   const handleExport = () => {
-    const headers = ["Planche", "Îlot", "Culture", "Semaine", "Planches voisines", "Cultures voisines", "Bilan"]
-    const rows = data.map(a => [
-      a.plancheId,
-      a.ilot || "",
-      a.cultureEspeceId || "",
-      a.cultureSemaine?.toString() || "",
-      a.planchesVoisines.join(", "),
-      a.culturesVoisines.map(cv => `${cv.eval === "favorable" ? "+" : cv.eval === "defavorable" ? "-" : "="} ${cv.plancheId}:${cv.especeId || "?"}`).join(", "),
-      a.scoreAssociation,
-    ])
-
-    const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `associations-${annee}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
+    telechargerCsv(`associations-${annee}.csv`, lignesCsvVoisinage(data))
   }
 
   return (
@@ -216,7 +216,8 @@ function AssociationsContent() {
 
         <div className="flex items-center gap-4">
           <Badge variant="outline">
-            {stats.planchesAvecVoisins} / {stats.totalPlanches} avec voisins
+            {/* Le compte porte sur les cultures prévues, pas sur les planches. */}
+            {stats.planchesAvecVoisins} / {stats.totalPlanches} cultures avec planches voisines
           </Badge>
           <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
         </div>
@@ -231,10 +232,23 @@ function AssociationsContent() {
             Cette page affiche les cultures prévues et leurs voisines, dérivées
             de la <Link href="/jardin" className="underline">cartographie du jardin</Link> :
             deux planches sont considérées voisines si elles partagent un côté ou
-            se trouvent à moins de 2 m l&apos;une de l&apos;autre. Cela permet
-            de vérifier les associations bénéfiques ou néfastes entre cultures.
+            se trouvent à moins de 2 m l&apos;une de l&apos;autre. Seules les cultures
+            en place en même temps sont comparées, y compris sur une même planche.
+            Cela permet de vérifier les associations bénéfiques ou néfastes entre cultures.
           </p>
         </div>
+
+        {erreur && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+          >
+            <span>Les associations de {annee} n&apos;ont pas pu être chargées.</span>
+            <Button variant="outline" size="sm" onClick={fetchData}>
+              Réessayer
+            </Button>
+          </div>
+        )}
 
         <DataTable
           columns={columns}
@@ -247,7 +261,11 @@ function AssociationsContent() {
           onRefresh={fetchData}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucune association trouvée. Définissez les planches influencées dans les paramètres des planches."
+          emptyMessage={
+            erreur
+              ? "Chargement impossible."
+              : `Aucune culture prévue en ${annee}. Les voisinages se lisent sur les cultures planifiées et la position des planches sur le plan du jardin.`
+          }
         />
       </main>
     </div>

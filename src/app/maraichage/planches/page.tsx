@@ -138,6 +138,9 @@ export default function PlanchesPage() {
   const { toast } = useToast()
   const [data, setData] = React.useState<PlancheWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  // Nombre réel de planches (au-delà de la page lue) et échec de chargement.
+  const [totalServeur, setTotalServeur] = React.useState<number | null>(null)
+  const [erreurChargement, setErreurChargement] = React.useState(false)
   const [showAssistant, setShowAssistant] = React.useState(false)
   // Bug #11 — modale de complétion en masse + chargement des rotations actives.
   const [showCompleter, setShowCompleter] = React.useState(false)
@@ -147,11 +150,16 @@ export default function PlanchesPage() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/planches?pageSize=200")
+      // Toutes les planches : à 200, la liste, le total de surface et la
+      // complétion en masse ignoraient les suivantes sans le dire.
+      const response = await fetch("/api/planches?pageSize=5000")
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
-      setData(result.data)
+      setData(Array.isArray(result.data) ? result.data : [])
+      setTotalServeur(typeof result.total === "number" ? result.total : null)
+      setErreurChargement(false)
     } catch {
+      setErreurChargement(true)
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -242,7 +250,7 @@ export default function PlanchesPage() {
           )}
           <AssistantButton onClick={() => setShowAssistant(true)} />
           <div className="text-sm text-muted-foreground">
-            {data.length} planches • {totalSurface.toFixed(1)} m² total
+            {data.length}{totalServeur !== null && totalServeur > data.length ? ` sur ${totalServeur}` : ""} planches • {totalSurface.toFixed(1)} m² total
           </div>
         </div>
       </PageToolbar>
@@ -285,7 +293,11 @@ export default function PlanchesPage() {
           rowEditLabel="Voir et modifier"
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher une planche..."
-          emptyMessage="Aucune planche trouvée. Cliquez sur Ajouter pour créer la première."
+          emptyMessage={
+            erreurChargement
+              ? "Les planches n'ont pas pu être chargées. Utilisez Actualiser pour réessayer."
+              : "Aucune planche trouvée. Cliquez sur Ajouter pour créer la première."
+          }
         />
       </main>
 

@@ -4,6 +4,8 @@
  * Page Plan du jardin - Visualisation 2D avec éditeur complet
  */
 
+import type { AssociationEvaluable } from "@/lib/associations-alertes"
+import { liaisonEntrePlanches } from "@/lib/associations-voisinage"
 import * as React from "react"
 import { AppHeader } from "@/components/shell/AppHeader"
 import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
@@ -136,10 +138,8 @@ interface PlancheWithCulture {
   }[]
 }
 
-interface RegleAssociation {
-  type: string
-  details: { especeId: string | null; familleId: string | null }[]
-}
+// Règle telle que l'évaluateur commun la lit (pivot, groupe, notes compris).
+type RegleAssociation = AssociationEvaluable
 
 interface ObjetJardin {
   id: number
@@ -999,9 +999,18 @@ function JardinContent() {
       .then((data) => {
         if (!Array.isArray(data)) return
         setReglesAssociations(
-          data.map((a: { type: string; details?: { especeId: string | null; familleId: string | null }[] }) => ({
+          data.map((a: RegleAssociation) => ({
+            id: a.id,
+            nom: a.nom,
             type: a.type,
-            details: (a.details || []).map(d => ({ especeId: d.especeId, familleId: d.familleId })),
+            description: a.description,
+            details: (a.details || []).map(d => ({
+              especeId: d.especeId,
+              familleId: d.familleId,
+              groupe: d.groupe,
+              requise: d.requise,
+              notes: d.notes,
+            })),
           }))
         )
       })
@@ -1034,15 +1043,6 @@ function JardinContent() {
   // Liaisons d'association entre planches voisines (centres < 4 m)
   const liaisons = React.useMemo<LiaisonAssociation[]>(() => {
     if (!layers.associations || reglesAssociations.length === 0) return []
-    const matche = (
-      details: RegleAssociation["details"],
-      espece: { id: string; famille: { id: string } | null }
-    ) =>
-      details.some(
-        d =>
-          (d.especeId && d.especeId === espece.id) ||
-          (d.familleId && espece.famille && d.familleId === espece.famille.id)
-      )
     const actives = planchesAffichees.filter(p => p.cultures.length > 0 && p.posX !== null && p.posY !== null)
     const result: LiaisonAssociation[] = []
     for (let i = 0; i < actives.length; i++) {
@@ -1054,22 +1054,13 @@ function JardinContent() {
         const bx = (b.posX ?? 0) + (b.largeur ?? 0.8) / 2
         const by = (b.posY ?? 0) + (b.longueur ?? 2) / 2
         if (Math.hypot(bx - ax, by - ay) > 4) continue
-        let type: LiaisonAssociation["type"] | null = null
-        for (const regle of reglesAssociations) {
-          if (regle.type !== "favorable" && regle.type !== "incompatible") continue
-          const concerne = a.cultures.some(c1 =>
-            b.cultures.some(
-              c2 =>
-                c1.espece.id !== c2.espece.id &&
-                matche(regle.details, c1.espece) &&
-                matche(regle.details, c2.espece)
-            )
-          )
-          if (concerne) {
-            type = regle.type
-            if (type === "incompatible") break // l'avertissement prime
-          }
-        }
+        // Même moteur que les alertes : pivot, alias, règle d'espèce avant
+        // règle de famille (voir `liaisonEntrePlanches`).
+        const type = liaisonEntrePlanches(
+          reglesAssociations,
+          a.cultures.map(c => c.espece),
+          b.cultures.map(c => c.espece)
+        )
         if (type) result.push({ x1: ax, y1: ay, x2: bx, y2: by, type })
       }
     }

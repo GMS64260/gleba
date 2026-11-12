@@ -34,6 +34,7 @@
  */
 import { etatCulture, type EtatCulture } from './etat'
 import { estVivaceEnPlace } from './fenetre-recolte'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { JOURS_APRES_DEBUT_RECOLTE_SANS_FIN, JOURS_APRES_FIN_RECOLTE } from '@/lib/irrigation/seuils'
 
 const JOUR_MS = 86_400_000
@@ -85,7 +86,13 @@ export type PresenceSurPlanche =
  * appels météo) que ce prédicat ne peut pas importer.
  */
 function jourCivil(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // Minuit UTC se lit en UTC, le reste en local (`jourCivilStocke`) : lu en
+  // local seul, un jour stocké à minuit UTC reculait d'un jour sur un serveur
+  // à l'ouest d'UTC.
+  return (
+    jourCivilStocke(d) ??
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  )
 }
 
 /** JJ/MM/AAAA d'un jour AAAA-MM-JJ. */

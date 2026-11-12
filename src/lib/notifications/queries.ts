@@ -11,7 +11,13 @@ import { serviceAutorise } from "@/lib/abonnement/serveur"
 import prisma from "@/lib/prisma"
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from "@/lib/meteo"
 import { chargerArrosagesDuJour } from "@/lib/irrigation/a-arroser"
-import { alertesAssociations } from "@/lib/associations-alertes"
+import {
+  chargerContexteEspeces,
+  evaluerAssociations,
+  INCLUDE_DETAILS_EVALUATION,
+  whereAssociationsConcernant,
+} from "@/lib/associations-alertes"
+import { estEnPlace, SELECT_EN_PLACE } from "@/lib/cultures/en-place"
 import { zoneEffectiveUser } from "@/lib/terroir"
 import type { ZoneClimat } from "@/lib/terroir"
 import { itpApplicableAZone } from "@/lib/calendrier-climat"
@@ -30,7 +36,11 @@ import {
   fusionnerStocksBas,
   rappelsArrosageCritique,
 } from "./detect"
-import { semaineCourante, tachesItpSemainePourCultures } from "./itp-semaine"
+import {
+  resumeTachesItpSemaine,
+  semaineCourante,
+  tachesItpSemainePourCultures,
+} from "./itp-semaine"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 import type { CultureItpInput, ItpSemaineInput } from "./itp-semaine"
 import type {
@@ -436,33 +446,57 @@ async function detecterArrosagesCritiques(userId: string): Promise<AlerteUrgente
   return rappelsArrosageCritique(arrosages)
 }
 
-/** Associations défavorables (incompatibles) sur les planches actives. */
-async function detecterAssociationsIncompatibles(userId: string): Promise<AlerteUrgente[]> {
+/**
+ * Associations défavorables (incompatibles) entre cultures réellement en place
+ * sur une même planche.
+ *
+ * « En place » suit la règle commune (`estEnPlace`) : `recolteFaite: false`
+ * écartait une culture en cours de récolte, encore sur sa planche, et gardait
+ * une campagne ancienne jamais close. Les règles sont lues UNE fois pour
+ * toutes les planches (avant : une requête par planche), puis évaluées en
+ * mémoire.
+ */
+export async function detecterAssociationsIncompatibles(
+  userId: string,
+  maintenant: Date = new Date()
+): Promise<AlerteUrgente[]> {
   const planches = await prisma.planche.findMany({
     where: { userId },
     select: {
       id: true,
       nom: true,
       cultures: {
-        // Cultures « en place » : pas encore récoltées, cycle non terminé.
-        where: { recolteFaite: false, terminee: null },
-        select: { especeId: true },
+        where: { terminee: null },
+        select: { especeId: true, ...SELECT_EN_PLACE, espece: { select: { vivace: true } } },
       },
     },
   })
 
+  const especesParPlanche = planches
+    .map((planche) => ({
+      planche,
+      especesIds: Array.from(
+        new Set(
+          planche.cultures
+            .filter((c) => c.especeId && estEnPlace(c, maintenant))
+            .map((c) => c.especeId as string)
+        )
+      ),
+    }))
+    .filter((p) => p.especesIds.length >= 2)
+  if (especesParPlanche.length === 0) return []
+
+  let associations: Awaited<ReturnType<typeof chargerAssociations>>
+  try {
+    associations = await chargerAssociations(especesParPlanche.flatMap((p) => p.especesIds))
+  } catch (error) {
+    console.warn("[notifications] lecture des associations en échec:", error)
+    return []
+  }
+
   const urgentes: AlerteUrgente[] = []
-  for (const planche of planches) {
-    const especesIds = planche.cultures.map((c) => c.especeId).filter(Boolean) as string[]
-    if (especesIds.length < 2) continue
-    let alertes
-    try {
-      alertes = await alertesAssociations(prisma, especesIds)
-    } catch (error) {
-      console.warn(`[notifications] alertesAssociations planche ${planche.id} en échec:`, error)
-      continue
-    }
-    for (const alerte of alertes) {
+  for (const { planche, especesIds } of especesParPlanche) {
+    for (const alerte of evaluerAssociations(associations.regles, especesIds, associations.contexte)) {
       if (alerte.type !== "defavorable") continue
       const [a, b] = alerte.especes
       urgentes.push({
@@ -474,6 +508,16 @@ async function detecterAssociationsIncompatibles(userId: string): Promise<Alerte
     }
   }
   return urgentes
+}
+
+async function chargerAssociations(especesIds: string[]) {
+  const ids = Array.from(new Set(especesIds.map((e) => e.toLowerCase())))
+  const contexte = await chargerContexteEspeces(prisma, ids)
+  const regles = await prisma.association.findMany({
+    where: whereAssociationsConcernant(ids, contexte),
+    include: INCLUDE_DETAILS_EVALUATION,
+  })
+  return { regles, contexte }
 }
 
 /** Tâches (semis/plantation/récolte) dont l'échéance est dépassée et non faites. */
@@ -609,6 +653,12 @@ const ITP_TACHE_SELECT = {
   zoneClimat: true,
   semaineSemis: true,
   semainePlantation: true,
+  // Ancrage des ITP sans semis ni plantation, et délai des pérennes : sans eux
+  // la récolte de la semaine était posée avant l'implantation ou des années
+  // trop tôt (cf. `operationsItp`).
+  semaineImplantationDebut: true,
+  dureeCulture: true,
+  delaiPremiereRecolteAnnees: true,
   semaineRecolte: true,
   semaineRecolteFin: true,
   dureeRecolte: true,
@@ -658,6 +708,9 @@ interface ItpCandidat {
   zoneClimat: ZoneClimat | null
   semaineSemis: number | null
   semainePlantation: number | null
+  semaineImplantationDebut: number | null
+  dureeCulture: number | null
+  delaiPremiereRecolteAnnees: number | null
   semaineRecolte: number | null
   semaineRecolteFin: number | null
   dureeRecolte: number | null
@@ -731,13 +784,6 @@ export async function chargerTachesItpSemaine(
   return tachesItpSemainePourCultures(inputs, { userZone, lecteurId: userId, aujourdHui })
 }
 
-/** Verbe d'action pour le message de l'alerte dédiée. */
-const VERBE_PAR_TYPE: Record<TacheItpSemaine["type"], string> = {
-  semis: "Semer",
-  plantation: "Planter",
-  recolte: "Récolter",
-}
-
 /**
  * Alerte dédiée « tâches ITP de la semaine » : UN email par utilisateur et par
  * semaine — la clé `tache-itp-semaine:YYYY-Sww` (anti-redondance store) change
@@ -750,22 +796,8 @@ async function detecterTachesItpSemaine(userId: string): Promise<AlerteUrgente[]
   if (taches.length === 0) return []
 
   const semaine = semaineCourante()
-  const types: TacheItpSemaine["type"][] = ["semis", "plantation", "recolte"]
-  const detail = types
-    .map((type) => taches.filter((tache) => tache.type === type))
-    .filter((liste) => liste.length > 0)
-    // Garde-fou anti-spam : on résume, le détail complet vit dans le résumé quotidien.
-    .map((liste) => {
-      const verbe = VERBE_PAR_TYPE[liste[0].type]
-      const libelles = liste
-        .slice(0, 12)
-        .map((tache) =>
-          tache.plancheName ? `${tache.especeNom} (planche ${tache.plancheName})` : tache.especeNom
-        )
-      const reste = liste.length - libelles.length
-      return `${verbe} ${libelles.join(", ")}${reste > 0 ? `… et ${reste} autre${reste > 1 ? "s" : ""}` : ""}`
-    })
-    .join(" ; ")
+  // Résumé dédoublonné par espèce et planche (cf. `resumeTachesItpSemaine`).
+  const detail = resumeTachesItpSemaine(taches)
 
   return [
     {

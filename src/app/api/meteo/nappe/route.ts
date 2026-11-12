@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { fetchNappeInfo } from '@/lib/hubeau'
+import { fetchNappeInfo, RAYON_RECHERCHE_NAPPE_KM } from '@/lib/hubeau'
 
-function isTimeoutError(err: unknown): boolean {
+/**
+ * Panne de Hub'Eau (délai, réseau, HTTP en erreur) : l'écran la traite comme
+ * une indisponibilité passagère. Reconnue par son nom : l'erreur peut venir du
+ * recul du cache, qui la rejoue telle quelle.
+ */
+function estPanneAmont(err: unknown): boolean {
   if (!(err instanceof Error)) return false
-  return err.name === 'TimeoutError' || err.name === 'AbortError'
+  return err.name === 'TimeoutError' || err.name === 'AbortError' || err.name === 'HubEauIndisponibleError'
 }
 
 /**
@@ -28,10 +33,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const lat = parseFloat(latStr)
-    const lng = parseFloat(lngStr)
+    // `Number`, pas `parseFloat` : « 43.6abc » n'est pas une coordonnée.
+    const lat = Number(latStr)
+    const lng = Number(lngStr)
 
-    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
       return NextResponse.json(
         { error: 'Coordonnées invalides' },
         { status: 400 }
@@ -42,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     if (!nappeInfo) {
       return NextResponse.json(
-        { error: 'Aucune station piézométrique trouvée dans un rayon de 50 km' },
+        { error: `Aucune station piézométrique en service dans un rayon de ${RAYON_RECHERCHE_NAPPE_KM} km` },
         { status: 404 }
       )
     }
@@ -70,8 +76,8 @@ export async function GET(request: NextRequest) {
       })),
     })
   } catch (err) {
-    if (isTimeoutError(err)) {
-      console.warn('GET /api/meteo/nappe HubEau timeout:', err)
+    if (estPanneAmont(err)) {
+      console.warn('GET /api/meteo/nappe HubEau indisponible:', err)
       return NextResponse.json(
         { error: "Données nappe temporairement indisponibles" },
         { status: 503 }

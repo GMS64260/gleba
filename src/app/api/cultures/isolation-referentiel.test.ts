@@ -165,7 +165,10 @@ beforeEach(() => {
     userStockEspece: { findMany: vi.fn(async () => []) },
     $transaction: async (fn: (tx: unknown) => unknown) =>
       fn({
+        // Verrou de création et relecture de l'occupation sous ce verrou.
+        $executeRaw: async () => 1,
         culture: {
+          findMany: async () => [],
           // Comme Prisma : la ligne créée revient avec ses relations incluses.
           create: vi.fn(async ({ data }: { data: Ligne }) => ({ ...culture(), ...data, id: 1193 })),
         },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ETATS_CULTURE, estEtatCulture, etatCulture, whereEtatCulture } from '../etat'
+import { ETATS_CULTURE, estEtatCulture, etatCulture, etatCultureHistorique, whereEtatCulture } from '../etat'
 import type { CultureAvancement } from '../etat'
 
 /**
@@ -70,5 +70,21 @@ describe('etatCulture / whereEtatCulture', () => {
     expect(estEtatCulture('Planifiée')).toBe(true)
     expect(estEtatCulture('planifiee')).toBe(false)
     expect(estEtatCulture(null)).toBe(false)
+  })
+})
+
+describe('etatCultureHistorique', () => {
+  it('dit le motif de fin, et suit etatCulture pour le reste', () => {
+    expect(etatCultureHistorique({ terminee: 'v', recolteFaite: true })).toBe('Vivace')
+    expect(etatCultureHistorique({ terminee: 'NS' })).toBe('Non significative')
+    expect(etatCultureHistorique({ terminee: 'x', recolteFaite: true })).toBe('Terminée')
+    expect(etatCultureHistorique({ terminee: null, plantationFaite: true })).toBe('Plantée')
+  })
+
+  // Revue du 2026-11-11 : la copie locale de l'historique de planche montrait
+  // « En récolte » une culture close par une autre valeur que x, v ou NS.
+  it("ne montre jamais en cours une culture close par une valeur inattendue", () => {
+    expect(etatCultureHistorique({ terminee: 'X', recolteFaite: true })).toBe('Terminée')
+    expect(etatCultureHistorique({ terminee: 'oui', semisFait: true })).toBe('Terminée')
   })
 })

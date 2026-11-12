@@ -39,9 +39,19 @@ export function semaineVersDate(annee: number, semaine: number): Date {
  * Le mois est donc celui du LUNDI de la semaine ISO : le même calendrier que
  * les dates réellement stockées sur les cultures. Ne pas réintroduire de
  * division par 4,33.
+ *
+ * Une exception : la S01 dont le lundi tombe fin décembre de l'année
+ * PRÉCÉDENTE (S01 de 2026 = du 29/12/2025 au 04/01/2026). Rendre « décembre »
+ * la rangeait à l'autre bout de l'année demandée ; ses jours de l'année
+ * `annee` sont en janvier. Aucune autre semaine n'a son lundi hors de l'année.
  */
 export function moisDepuisSemaine(annee: number, semaine: number): number {
-  return semaineVersDate(annee, semaine).getMonth() + 1
+  const lundi = semaineVersDate(annee, semaine)
+  if (lundi.getFullYear() < annee) return 1
+  // S53 demandée pour une année qui n'en compte que 52 : le lundi déborde sur
+  // janvier de l'année suivante. La semaine reste la dernière de `annee`.
+  if (lundi.getFullYear() > annee) return 12
+  return lundi.getMonth() + 1
 }
 
 export type SemainesItp = {
@@ -166,15 +176,120 @@ export function dureeCycleItpJours(itp: SemainesItp): number | null {
   return null
 }
 
+/** Jours civils de `a` à `b` en heure locale, insensible aux changements d'heure. */
+function joursCivilsEntre(a: Date, b: Date): number {
+  return Math.round(
+    (Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) -
+      Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) /
+      86_400_000
+  )
+}
+
+/**
+ * Cycle théorique (`datesDepuisItp`) dont le jalon `repere` est le plus proche
+ * de `date` : la saison de l'ITP à laquelle une date réelle se rattache.
+ */
+function cycleLePlusProche(
+  date: Date,
+  itp: SemainesItp,
+  repere: (cycle: DatesCycle) => Date | null
+): { cycle: DatesCycle; jalon: Date } | null {
+  let meilleur: { cycle: DatesCycle; jalon: Date; ecart: number } | null = null
+  // Un jalon reporté peut tomber jusqu'à deux ans après l'année de saison.
+  for (let annee = date.getFullYear() - 3; annee <= date.getFullYear() + 1; annee++) {
+    const cycle = datesDepuisItp(annee, itp)
+    const jalon = repere(cycle)
+    if (!jalon) return null
+    const ecart = Math.abs(joursCivilsEntre(jalon, date))
+    if (!meilleur || ecart < meilleur.ecart) meilleur = { cycle, jalon, ecart }
+  }
+  return meilleur
+}
+
 /**
  * Récolte recalée sur le début réel du cycle (plantation, sinon semis), en
  * préservant la durée du cycle ITP. Null si l'ITP ne permet aucun calcul.
+ *
+ * La durée est celle du cycle théorique le plus proche du début réel, mesurée
+ * au CALENDRIER et non par `dureeCycleItpJours` (modulo 52, N × 365 jours).
+ * Les deux s'écartaient d'une semaine dès qu'une année ISO à 53 semaines
+ * séparait le début de la récolte (ail planté S42/2026 : création au 21/06/2027,
+ * recalage au 14/06/2027), et de quelques jours sur les pluriannuelles (la
+ * récolte quittait le lundi). Au début théorique, cette fonction rend donc
+ * exactement la récolte de `datesDepuisItp`.
+ *
+ * `debut` doit être l'ancrage de la récolte : voir `debutCyclePourRecolte`.
  */
 export function recolteApresDebut(debut: Date, itp: SemainesItp): Date | null {
-  const duree = dureeCycleItpJours(itp)
+  const reference = cycleLePlusProche(debut, itp, (c) => c.datePlantation ?? c.dateSemis)
+  const calendaire = reference?.cycle.dateRecolte
+    ? joursCivilsEntre(reference.jalon, reference.cycle.dateRecolte)
+    : 0
+  // Sans semaine de récolte (ou récolte la semaine même de l'ancrage), la
+  // durée de culture déclarée reste le seul repère.
+  const duree = calendaire > 0 ? calendaire : dureeCycleItpJours(itp)
   if (!duree) return null
   const recolte = new Date(debut)
   recolte.setDate(recolte.getDate() + duree)
+  return recolte
+}
+
+/**
+ * Début de cycle à passer à `recolteApresDebut` d'après les dates saisies.
+ *
+ * La récolte d'un ITP à plantation se compte depuis la PLANTATION. Quand seule
+ * la date de semis est connue, partir du semis avançait la récolte de toute la
+ * durée de pépinière : on déduit la plantation en ajoutant au semis réel
+ * l'écart semis → plantation de l'ITP. Sans semaine de semis dans l'ITP, cet
+ * écart est inconnu et le semis reste le seul ancrage possible.
+ */
+export function debutCyclePourRecolte(
+  dates: { dateSemis?: Date | null; datePlantation?: Date | null },
+  itp: SemainesItp
+): Date | null {
+  if (dates.datePlantation) return dates.datePlantation
+  const semis = dates.dateSemis
+  if (!semis) return null
+  if (!itp.semainePlantation || !itp.semaineSemis) return semis
+
+  const reference = cycleLePlusProche(semis, itp, (c) => c.dateSemis)
+  if (!reference?.cycle.datePlantation) return semis
+  const plantation = new Date(semis)
+  plantation.setDate(plantation.getDate() + joursCivilsEntre(reference.jalon, reference.cycle.datePlantation))
+  return plantation
+}
+
+/**
+ * Récolte à écrire quand le début de cycle saisi bouge, ou null s'il n'y a rien
+ * à changer. Règle unique des trois formulaires (nouvelle culture, fiche,
+ * création depuis le jardin), qui la recopiaient chacun.
+ *
+ * - Rien sans début saisi (plantation, sinon semis).
+ * - La récolte ne bouge que si le début vient de changer (`debutChange`) ou si
+ *   elle est incohérente (pas après le début).
+ * - Une récolte saisie à la main (`recolteSaisie`) n'est réécrite que si elle
+ *   est incohérente.
+ * - L'ancrage passe par `debutCyclePourRecolte` : avec le seul semis d'un ITP à
+ *   plantation, la récolte se compte depuis la plantation déduite, pas depuis
+ *   le semis (tomate semée le 16/02 : récolte au 06/07, et non au 27/04).
+ */
+export function recolteRecalee(args: {
+  dateSemis?: Date | null
+  datePlantation?: Date | null
+  dateRecolte: Date
+  itp: SemainesItp
+  debutChange: boolean
+  recolteSaisie?: boolean
+}): Date | null {
+  const debutSaisi = args.datePlantation ?? args.dateSemis
+  if (!debutSaisi) return null
+  const incoherente = args.dateRecolte <= debutSaisi
+  if (!args.debutChange && !incoherente) return null
+  if (args.recolteSaisie && !incoherente) return null
+  const ancrage = debutCyclePourRecolte(args, args.itp)
+  if (!ancrage) return null
+  const recolte = recolteApresDebut(ancrage, args.itp)
+  if (!recolte || recolte.getTime() === args.dateRecolte.getTime()) return null
   return recolte
 }
 

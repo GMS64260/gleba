@@ -4,7 +4,7 @@
  */
 
 import { getISOWeek } from 'date-fns'
-import { semaineVersDate } from './cultures/dates-itp'
+import { datesDepuisItp, semaineVersDate } from './cultures/dates-itp'
 import { projectionRecolte, type UniteQuantite } from './recolte/projection'
 import { nbPlantsCulture } from './cultures/quantite-plants'
 
@@ -40,15 +40,41 @@ export function getSemaineDepuisDate(date: Date): number {
  * cible est antérieure à une semaine de référence (l'étape précédente), l'étape
  * tombe l'année suivante. Indispensable pour les ITP qui chevauchent deux années
  * (ex : semis semaine 31 en août → récolte semaine 2 en janvier de l'année +1).
- * `calculerDateDepuisSemaine` gère naturellement les semaines > 52 (débordement
- * sur l'année suivante).
+ * Le report passe par `dateDepuisSemaineAbsolue` : laisser déborder « S57 » sur
+ * l'année suivante tombait une semaine trop tôt après une année à 53 semaines.
  */
 export function dateSemaineChrono(
   annee: number,
   semaine: number,
   semaineReference?: number | null
 ): Date {
-  return calculerDateDepuisSemaine(annee, semaineAbsolue(semaine, semaineReference))
+  // Le report se lit sur l'écart à la semaine demandée, pas sur la valeur
+  // absolue : une « S53 » d'itinéraire sans report valait 53 en absolu, que
+  // `dateDepuisSemaineAbsolue` décode en S1 de l'année suivante.
+  const s = Math.max(Math.round(semaine), 1)
+  const reports = Math.round((semaineAbsolue(s, semaineReference) - s) / 52)
+  return calculerDateDepuisSemaine(annee + reports, s)
+}
+
+/**
+ * Lundi d'une semaine ABSOLUE (valeur rendue par `semaineAbsolue` : la semaine
+ * 1–52 plus 52 par année de report).
+ *
+ * Une semaine absolue n'est pas un nombre de semaines écoulées : « 57 » veut
+ * dire « S5 de l'année suivante ». La passer telle quelle à
+ * `calculerDateDepuisSemaine` comptait 56 semaines depuis la S1, soit la S4 de
+ * 2027 quand l'année de départ en compte 53 (2020, 2026, 2032, 2037) : la
+ * plantation ou la récolte reportée arrivait une semaine trop tôt. On décode
+ * donc le report en années, puis on demande la semaine ISO de cette année-là.
+ *
+ * Une valeur absolue ne distingue pas « S53 » de « S1 reportée » : 53 est lu
+ * comme la S1 de l'année suivante. Pour une semaine d'itinéraire qui peut
+ * valoir 53, passer par `dateSemaineChrono`, qui garde la semaine demandée.
+ */
+export function dateDepuisSemaineAbsolue(annee: number, semaine: number): Date {
+  const s = Math.max(Math.round(semaine), 1)
+  const reports = Math.floor((s - 1) / 52)
+  return calculerDateDepuisSemaine(annee + reports, ((s - 1) % 52) + 1)
 }
 
 /**
@@ -96,6 +122,8 @@ export function calculerDatesCulture(
     semaineRecolte?: number | null
     dureePepiniere?: number | null
     dureeCulture?: number | null
+    semaineImplantationDebut?: number | null
+    delaiPremiereRecolteAnnees?: number | null
   },
   annee: number,
   decalage: number = 0 // Semaines de décalage par rapport à l'ITP
@@ -104,33 +132,31 @@ export function calculerDatesCulture(
   datePlantation: Date | null
   dateRecolte: Date | null
 } {
-  let dateSemis: Date | null = null
-  let datePlantation: Date | null = null
-  let dateRecolte: Date | null = null
-
-  const sSemis = itp.semaineSemis ? Math.max(itp.semaineSemis + decalage, 1) : null
-  const sPlant = itp.semainePlantation ? Math.max(itp.semainePlantation + decalage, 1) : null
-  const sRec = itp.semaineRecolte ? Math.max(itp.semaineRecolte + decalage, 1) : null
-
-  if (sSemis != null) dateSemis = calculerDateDepuisSemaine(annee, sSemis)
-
-  // Semaine "absolue" de plantation (≥ semis)
-  let semPlantAbs: number | null = null
-  if (sPlant != null) {
-    semPlantAbs = sPlant
-    if (sSemis != null) while (semPlantAbs < sSemis) semPlantAbs += 52
-    datePlantation = calculerDateDepuisSemaine(annee, semPlantAbs)
-  }
-
-  // Récolte ≥ plantation (ou semis si pas de plantation)
-  if (sRec != null) {
-    const ref = semPlantAbs ?? sSemis
-    let semRecAbs = sRec
-    if (ref != null) while (semRecAbs < ref) semRecAbs += 52
-    dateRecolte = calculerDateDepuisSemaine(annee, semRecAbs)
-  }
-
-  return { dateSemis, datePlantation, dateRecolte }
+  // Même cascade que la création unitaire et par lot (`datesDepuisItp`) :
+  // l'ancien report « + 52 semaines » tombait une semaine trop tôt après une
+  // année à 53 semaines (semis S45/2026, plantation posée en S4/2027 au lieu
+  // de S5) et ignorait la fenêtre d'implantation et les pluriannuelles.
+  //
+  // Le décalage peut pousser une semaine au-delà de 52 : elle se lit alors
+  // modulo 52, et l'année de saison avance si c'est le début du cycle qui
+  // déborde (semis S50 + 4 : S2 de l'année suivante).
+  const decale = (semaine: number | null | undefined) =>
+    semaine ? Math.max(Math.round(semaine + decalage), 1) : null
+  const bornee = (semaine: number | null) => (semaine == null ? null : ((semaine - 1) % 52) + 1)
+  const semis = decale(itp.semaineSemis)
+  const plantation = decale(itp.semainePlantation)
+  const recolte = decale(itp.semaineRecolte)
+  const implantation = decale(itp.semaineImplantationDebut)
+  const debut = semis ?? plantation ?? implantation ?? recolte
+  const reports = debut ? Math.floor((debut - 1) / 52) : 0
+  return datesDepuisItp(annee + reports, {
+    semaineSemis: bornee(semis),
+    semainePlantation: bornee(plantation),
+    semaineRecolte: bornee(recolte),
+    semaineImplantationDebut: bornee(implantation),
+    dureeCulture: itp.dureeCulture,
+    delaiPremiereRecolteAnnees: itp.delaiPremiereRecolteAnnees,
+  })
 }
 
 /**

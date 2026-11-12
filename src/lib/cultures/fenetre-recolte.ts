@@ -44,6 +44,27 @@ export function erreurFinRecolte(c: {
     : null
 }
 
+/**
+ * Ordre des étapes d'un cycle, en jours civils : semis, plantation, récolte
+ * (le même jour est admis). Rend le message du premier écart, sinon null.
+ * Mêmes messages que `validateCultureDates` (création, formulaire complet) ;
+ * comparer des jours évite de refuser une plantation datée du jour où le semis
+ * vient d'être coché (date d'exécution horodatée).
+ */
+export function erreurChronologieCycle(c: {
+  dateSemis?: Date | string | null
+  datePlantation?: Date | string | null
+  dateRecolte?: Date | string | null
+}): string | null {
+  const semis = jourCivilStocke(c.dateSemis)
+  const plantation = jourCivilStocke(c.datePlantation)
+  const recolte = jourCivilStocke(c.dateRecolte)
+  if (semis && plantation && semis > plantation) return 'La date de semis doit être avant la date de plantation'
+  if (plantation && recolte && plantation > recolte) return 'La date de plantation doit être avant la date de récolte'
+  if (semis && recolte && !plantation && semis > recolte) return 'La date de semis doit être avant la date de récolte'
+  return null
+}
+
 export interface SourceFenetreItp {
   /** Semaine ISO de début de récolte au référentiel (1-52). */
   semaineRecolte?: number | null

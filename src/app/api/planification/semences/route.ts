@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { lireAnnee } from '@/lib/api/annee'
 import { getBesoinsSemences } from '@/lib/planification'
 import { computeManquantsBreakdown } from '@/lib/semences/manquants'
 
@@ -19,7 +20,8 @@ export async function GET(request: NextRequest) {
     const userId = getUserId(session)
     const { searchParams } = new URL(request.url)
 
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
+    // Année illisible (« abc », vide) : année courante, jamais NaN en base.
+    const { annee } = lireAnnee(searchParams)
 
     const besoins = await getBesoinsSemences(userId, annee)
 
@@ -59,20 +61,23 @@ export async function GET(request: NextRequest) {
     // `greffe`, `tubercule` et `rejet`, qui n'apparaissent dans aucun onglet :
     // la carte « À commander » passait au rouge avec « 1 espèce sans stock »
     // et aucune ligne correspondante n'était affichable. Ces modes restent
-    // signalés par le bandeau « donnée manquante » ci-dessous.
+    // signalés par le bandeau « mode sans onglet » ci-dessous.
     const besoinsListes = [...graineDirecte, ...plantRepique, ...bulbeCaieu]
 
     const nbMissing = besoinsListes.filter(b => b.statut === 'MISSING').length
     const nbLow     = besoinsListes.filter(b => b.statut === 'LOW').length
     // QA cmswxo3ri — espèces planifiées dont le référentiel ne permet aucun
     // calcul : l'écran annonçait « 3 espèces » et n'en listait que 2.
+    // Bornées aux lignes des trois onglets, comme les compteurs : le texte de
+    // ces bandeaux renvoie à des lignes visibles. Une espèce sans onglet
+    // (bouture…) est nommée par son propre bandeau, `especesModeNonListe`.
     const especesDonneeManquante = [
-      ...new Set(besoins.filter(b => b.statut === 'DONNEE_MANQUANTE').map(b => b.especeId)),
+      ...new Set(besoinsListes.filter(b => b.statut === 'DONNEE_MANQUANTE').map(b => b.especeId)),
     ]
     // QA 2026-09-28 — cause distincte, corrigée sur la culture et non au
     // référentiel : dose connue mais culture sans surface (sans planche).
     const especesSurfaceManquante = [
-      ...new Set(besoins.filter(b => b.statut === 'SURFACE_MANQUANTE').map(b => b.especeId)),
+      ...new Set(besoinsListes.filter(b => b.statut === 'SURFACE_MANQUANTE').map(b => b.especeId)),
     ]
     // Espèces planifiées dont le MODE de propagation n'a aucun onglet
     // (bouture, greffe, tubercule, rejet) : elles pesaient sur les compteurs

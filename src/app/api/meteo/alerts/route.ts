@@ -8,6 +8,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import { genererAlertesMeteo } from '@/lib/meteo-agro'
+import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
 
 export async function GET() {
   const { error, session } = await requireAuthApi()
@@ -38,64 +39,66 @@ export async function GET() {
       })
     }
 
-    // Éviter les appels API redondants pour les parcelles proches
-    // Map: coordKey → alertes déjà calculées pour ce point
-    const alertesParCoords = new Map<string, ReturnType<typeof genererAlertesMeteo>>()
-    const toutesAlertes: Array<{
-      parcelle: { id: string; nom: string }
-      alertes: ReturnType<typeof genererAlertesMeteo>
-    }> = []
-
+    // Un point météo par centième de degré (environ 1 km) : les parcelles
+    // voisines partagent les mêmes prévisions, donc les mêmes alertes.
+    type ParcelleRef = { id: string; nom: string }
+    const points = new Map<string, { lat: number; lng: number; parcelles: ParcelleRef[] }>()
     for (const parcelle of parcelles) {
       const lat = parcelle.centroidLat!
       const lng = parcelle.centroidLng!
       const key = `${Math.round(lat * 100)}_${Math.round(lng * 100)}`
-
-      if (alertesParCoords.has(key)) {
-        // Réutiliser les alertes déjà calculées pour ces coordonnées
-        toutesAlertes.push({
-          parcelle: { id: parcelle.id, nom: parcelle.nom },
-          alertes: alertesParCoords.get(key)!,
-        })
-        continue
-      }
-
-      try {
-        const { daily } = await fetchOpenMeteoForecast(lat, lng)
-
-        // Historique pour la sécheresse
-        const today = new Date()
-        const weekAgo = new Date(today)
-        weekAgo.setDate(weekAgo.getDate() - 8)
-        const yesterday = new Date(today)
-        yesterday.setDate(yesterday.getDate() - 1)
-
-        let historique: Awaited<ReturnType<typeof fetchOpenMeteoHistory>> = []
-        try {
-          historique = await fetchOpenMeteoHistory(
-            lat, lng,
-            weekAgo.toISOString().split('T')[0],
-            yesterday.toISOString().split('T')[0]
-          )
-        } catch { /* ignore */ }
-
-        const alertes = genererAlertesMeteo(daily, historique)
-
-        alertesParCoords.set(key, alertes)
-        toutesAlertes.push({
-          parcelle: { id: parcelle.id, nom: parcelle.nom },
-          alertes,
-        })
-      } catch {
-        // Parcelle inaccessible, on continue
-      }
+      const point = points.get(key)
+      const ref = { id: parcelle.id, nom: parcelle.nom }
+      if (point) point.parcelles.push(ref)
+      else points.set(key, { lat, lng, parcelles: [ref] })
     }
 
-    // Aplatir et dédupliquer les alertes
-    const alertesUniques = toutesAlertes.flatMap(a =>
-      a.alertes.map(alerte => ({
+    // Bornes d'archive en jours civils du serveur : en jours UTC, la fenêtre
+    // glissait d'un jour entre minuit et 1 h ou 2 h du matin.
+    const maintenant = new Date()
+    const debutArchive = new Date(maintenant)
+    debutArchive.setDate(debutArchive.getDate() - 8)
+    const hier = new Date(maintenant)
+    hier.setDate(hier.getDate() - 1)
+    const start = jourCivilLocalISO(debutArchive)
+    const end = jourCivilLocalISO(hier)
+
+    // Les points sont interrogés ensemble : en série, une exploitation
+    // dispersée attendait la somme des délais.
+    const resultats = await Promise.all(
+      [...points.values()].map(async (point) => {
+        try {
+          const [{ daily }, historique] = await Promise.all([
+            fetchOpenMeteoForecast(point.lat, point.lng),
+            // L'archive ne sert qu'à l'alerte sécheresse : sa panne ne doit pas
+            // faire perdre les alertes de prévision.
+            fetchOpenMeteoHistory(point.lat, point.lng, start, end).catch(() => []),
+          ])
+          return { point, alertes: genererAlertesMeteo(daily, historique) }
+        } catch {
+          return { point, alertes: null }
+        }
+      })
+    )
+
+    // Une panne météo ne doit pas se lire « aucune alerte ».
+    const parcellesSansMeteo = resultats
+      .filter((r) => r.alertes === null)
+      .flatMap((r) => r.point.parcelles)
+    if (parcellesSansMeteo.length === parcelles.length) {
+      return NextResponse.json(
+        { error: 'Prévisions météo momentanément indisponibles' },
+        { status: 503 }
+      )
+    }
+
+    // Une alerte par événement et par point : `parcelle` (première concernée)
+    // reste pour les clients existants, `parcelles` les liste toutes.
+    const alertesUniques = resultats.flatMap((r) =>
+      (r.alertes ?? []).map((alerte) => ({
         ...alerte,
-        parcelle: a.parcelle,
+        parcelle: r.point.parcelles[0],
+        parcelles: r.point.parcelles,
       }))
     )
 
@@ -109,6 +112,7 @@ export async function GET() {
       alertes: alertesUniques,
       total: alertesUniques.length,
       dangers: alertesUniques.filter(a => a.niveau === 'danger').length,
+      ...(parcellesSansMeteo.length > 0 ? { parcellesSansMeteo } : {}),
     })
   } catch (err) {
     console.error('GET /api/meteo/alerts error:', err)

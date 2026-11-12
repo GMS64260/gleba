@@ -7,6 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ArrowLeft, RefreshCw, Save, Plus, Trash2, LayoutGrid } from "lucide-react"
 import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -17,6 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { renumeroterEtapes } from "@/lib/rotations/numerotation"
 import {
   Form,
   FormControl,
@@ -84,6 +86,10 @@ export default function EditRotationPage() {
   const params = useParams()
   const id = decodeURIComponent(params.id as string)
   const { toast } = useToast()
+  const { data: session } = useSession()
+  // Référentiel global : seul un administrateur peut modifier ou supprimer le
+  // plan (la route répond 403 aux autres) ; rattacher ses planches reste ouvert.
+  const peutModifier = session?.user?.role === "ADMIN"
 
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -139,7 +145,7 @@ export default function EditRotationPage() {
           nbAnnees: rotation.nbAnnees,
           notes: rotation.notes,
           details: rotation.details.length > 0
-            ? rotation.details.map(d => ({ annee: d.annee, itpId: d.itpId }))
+            ? renumeroterEtapes(rotation.details.map(d => ({ annee: d.annee, itpId: d.itpId })))
             : [{ annee: 1, itpId: null }],
         })
       } catch {
@@ -186,15 +192,22 @@ export default function EditRotationPage() {
   }
 
   const onSubmit = async (data: UpdateRotationInput) => {
+    if (!peutModifier) return
     setIsSubmitting(true)
     try {
       // Une rotation au plan incomplet ne peut pas rester active : on normalise
       // avant l'envoi pour éviter un état "active + plan vide" incohérent.
-      const details = data.details ?? []
+      // Les étapes partent numérotées par leur rang, comme l'écran les affiche
+      // (« Année 1, 2, 3 ») : après un retrait, la ligne gardait son ancienne
+      // année et le plan partait en [2, 3, 3].
+      const details = renumeroterEtapes(data.details ?? [])
       const planComplet = details.length > 0 && details.some((d) => d.itpId)
-      const cycleCoherent = !data.nbAnnees || data.nbAnnees === details.length
-      const peutActiver = planComplet && cycleCoherent
-      const payload = { ...data, active: data.active && peutActiver }
+      const payload = {
+        ...data,
+        details,
+        nbAnnees: details.length || null,
+        active: Boolean(data.active) && planComplet,
+      }
 
       const response = await fetch(`/api/rotations/${encodeURIComponent(id)}`, {
         method: "PUT",
@@ -269,6 +282,15 @@ export default function EditRotationPage() {
     const nextYear = fields.length + 1
     append({ annee: nextYear, itpId: null })
   }
+
+  // Le cycle suit le nombre d'étapes : il n'a pas de champ à l'écran, et
+  // ajouter ou retirer une année laissait l'ancien cycle, donc un plan dit
+  // « incomplet » et une rotation désactivée sans que rien ne le dise.
+  const nbEtapesPlan = fields.length
+  React.useEffect(() => {
+    if (isLoading) return
+    form.setValue("nbAnnees", nbEtapesPlan > 0 ? nbEtapesPlan : null)
+  }, [nbEtapesPlan, isLoading, form])
 
   if (isLoading) {
     return (
@@ -429,12 +451,13 @@ export default function EditRotationPage() {
                         </FormItem>
                       )}
                     />
-                    {fields.length > 1 && (
+                    {peutModifier && fields.length > 1 && (
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
                         onClick={() => remove(index)}
+                        aria-label={`Retirer l'année ${index + 1}`}
                         className="shrink-0 text-red-500 hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -443,15 +466,17 @@ export default function EditRotationPage() {
                   </div>
                 ))}
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={addYear}
-                  className="w-full"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Ajouter une année
-                </Button>
+                {peutModifier && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addYear}
+                    className="w-full"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Ajouter une année
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
@@ -554,6 +579,7 @@ export default function EditRotationPage() {
             </Card>
 
             {/* Actions */}
+            {peutModifier ? (
             <div className="flex justify-between">
               <Button
                 type="button"
@@ -577,6 +603,19 @@ export default function EditRotationPage() {
                 </Button>
               </div>
             </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Les plans de rotation sont un référentiel partagé, géré par l&apos;équipe Gleba : vous
+                  pouvez y rattacher vos planches, pas modifier le plan.
+                </p>
+                <Link href="/maraichage/rotations">
+                  <Button variant="outline" type="button">
+                    Retour
+                  </Button>
+                </Link>
+              </div>
+            )}
           </form>
         </Form>
       </main>

@@ -139,7 +139,8 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       const especeId = espece?.id || culture.especeId
       if (!especeId) return
       try {
-        const res = await fetch(`/api/associations?especeId=${encodeURIComponent(especeId)}`)
+        // Favorables seulement : « Ail × Pois (incompatible) » sortait comme recommandée.
+        const res = await fetch(`/api/associations?especeId=${encodeURIComponent(especeId)}&type=favorable`)
         if (res.ok) {
           const data = await res.json()
           const associationsList = Array.isArray(data) ? data : (data.data || [])

@@ -21,6 +21,7 @@ import {
 } from '@/lib/irrigation-recording'
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
 import { tourneeDuJour } from '@/lib/irrigation/a-arroser'
+import { AccesServiceRefuse } from '@/lib/abonnement/serveur'
 
 // ── GET ─────────────────────────────────────────────────────
 
@@ -31,14 +32,40 @@ export async function GET(request: NextRequest) {
   try {
     const userId = getUserId(session)
     const { searchParams } = new URL(request.url)
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
+    // Une année illisible donnait NaN, puis une erreur Prisma et un 500.
+    const anneeDemandee = searchParams.get('annee')
+    if (anneeDemandee !== null && !/^\d{4}$/.test(anneeDemandee)) {
+      return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
+    }
+    const annee = anneeDemandee === null ? new Date().getFullYear() : Number(anneeDemandee)
 
-    const payload = await computeConseilIrrigation(userId, annee)
-    // QA cmvge3o5z — « À arroser aujourd'hui » comptait toutes les urgences,
-    // cultures non cochées « à irriguer » comprises, quand la page Tâches n'en
-    // retient que les cochées : même tournée ici, avec ce qu'elle écarte.
-    return NextResponse.json({ ...payload, tournee: tourneeDuJour(payload.data, annee) })
+    const conseil = await computeConseilIrrigation(userId, annee)
+    // Les regroupements `parIlot` et `parTypeIrrigation` du conseil répètent
+    // chaque culture : la page regroupe elle-même `data`, ils ne partent donc
+    // pas sur le réseau.
+    return NextResponse.json({
+      data: conseil.data,
+      stats: conseil.stats,
+      annee: conseil.annee,
+      meteo: conseil.meteo,
+      zonesIndisponibles: conseil.zonesIndisponibles,
+      culturesSansMeteo: conseil.culturesSansMeteo,
+      indisponible: conseil.indisponible,
+      // QA cmvge3o5z — « À arroser aujourd'hui » comptait toutes les urgences,
+      // cultures non cochées « à irriguer » comprises, quand la page Tâches n'en
+      // retient que les cochées : même tournée ici, avec ce qu'elle écarte.
+      tournee: tourneeDuJour(conseil.data, annee),
+    })
   } catch (error) {
+    // Le conseil exige la capacité « météo » alors que la route est classée
+    // « maraîchage » : un carnet sans météo recevait 500. Même réponse que
+    // `refusAbonnementApi`.
+    if (error instanceof AccesServiceRefuse) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, abonnementUrl: '/parametres?section=abonnement' },
+        { status: error.status }
+      )
+    }
     console.error('GET /api/cultures/irriguer error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération des cultures à irriguer', details: "Erreur interne du serveur" },
@@ -57,7 +84,10 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const userId = getUserId(session)
-    const body = await request.json()
+    const body = await request.json().catch(() => null)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Corps de requête invalide' }, { status: 400 })
+    }
     const { cultureId, cultureIds, aIrriguer, marquerArrosage } = body
     const notes = typeof body.notes === 'string' ? body.notes : null
 
@@ -99,6 +129,12 @@ export async function PATCH(request: NextRequest) {
         cultureIds,
         notes,
       })
+      // Aucune culture du compte parmi celles demandées (page périmée,
+      // exploitation changée dans un autre onglet) : rien n'a été noté, la
+      // réponse ne dit plus « succès ». Comme les deux autres voies.
+      if (result.cultureIds.length === 0) {
+        return NextResponse.json({ error: 'Culture non trouvée' }, { status: 404 })
+      }
       return NextResponse.json({
         success: true,
         ...result,
@@ -133,7 +169,11 @@ export async function PATCH(request: NextRequest) {
       })
     }
 
-    // Toggle aIrriguer
+    // Toggle aIrriguer : la coche est une valeur explicite. Absente, la mise à
+    // jour était vide et rendait « succès » ; autre chose, Prisma levait (500).
+    if (typeof aIrriguer !== 'boolean') {
+      return NextResponse.json({ error: 'Valeur « à irriguer » requise (vrai ou faux)' }, { status: 400 })
+    }
     const culture = await prisma.culture.findFirst({
       where: { id: cultureId, userId },
       select: { id: true },

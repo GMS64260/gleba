@@ -35,7 +35,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }))
 
-import { DELETE, PUT } from './route'
+import { DELETE, GET, PUT } from './route'
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) })
 
@@ -153,6 +153,164 @@ describe('PUT /api/itps/[id] — renommage', () => {
       id: 'Phacelie-printemps',
       nom: 'Phacelie-printemps',
     })
+  })
+})
+
+/** Erreur telle que Prisma la lève sur une violation d'unicité. */
+function p2002(target: unknown) {
+  return Object.assign(new Error('Unique constraint failed'), { code: 'P2002', meta: { target } })
+}
+
+describe('PUT /api/itps/[id] — semaines : conflit de période et règles du trigger', () => {
+  const ITP_TOMATE = {
+    ...ITP_PERSO,
+    especeId: 'cmespece1',
+    semaineSemis: 7,
+    semainePlantation: 11,
+    semaineRecolte: 27,
+    typePlanche: 'Sous abri',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mocks.findFirst.mockReset()
+    mocks.update.mockReset()
+    mocks.requireAuthApi.mockResolvedValue({
+      error: null,
+      session: { user: { id: 'user-1', role: 'USER' } },
+    })
+    mocks.findUnique.mockResolvedValue(ITP_TOMATE)
+    mocks.findFirst.mockResolvedValue(null)
+    mocks.especeFindFirst.mockResolvedValue({
+      id: 'cmespece1',
+      nom: 'Tomate ancienne',
+      typeCultureSemis: 'pepiniere_puis_repiquage',
+    })
+    mocks.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      ...ITP_TOMATE,
+      ...data,
+    }))
+  })
+
+  it('traduit la collision de période en 409, avec les semaines EFFECTIVES (saisie, sinon existant)', async () => {
+    mocks.update.mockRejectedValue(
+      p2002(['COALESCE(user_id', "'<officiel>'::text)", 'espece', 'COALESCE(s_semis', '-1)', 'COALESCE(s_recolte', '-1)'])
+    )
+    mocks.findFirst.mockResolvedValueOnce({ id: 'cmjumeau', nom: 'Tomate hâtive' })
+
+    // Seule la récolte change : semis, plantation et planche viennent de l'existant.
+    const res = await PUT(requete({ semaineRecolte: 29 }), params('cmperso1'))
+
+    expect(res.status).toBe(409)
+    const corps = await res.json()
+    expect(corps.error).toContain('Tomate hâtive')
+    expect(corps.conflit).toBe('cmjumeau')
+    expect(mocks.findFirst.mock.calls[0][0].where).toMatchObject({
+      userId: 'user-1',
+      especeId: 'cmespece1',
+      semaineSemis: 7,
+      semainePlantation: 11,
+      semaineRecolte: 29,
+      typePlanche: 'Sous abri',
+      NOT: { id: 'cmperso1' },
+    })
+  })
+
+  it('une semaine explicitement vidée est cherchée vide, pas reprise de l’existant', async () => {
+    mocks.update.mockRejectedValue(p2002('itps_periode_unique_idx'))
+
+    const res = await PUT(requete({ semainePlantation: null }), params('cmperso1'))
+
+    expect(res.status).toBe(409)
+    expect(mocks.findFirst.mock.calls[0][0].where.semainePlantation).toBeNull()
+  })
+
+  it('refuse en 400 une récolte ramenée à moins de 4 semaines du semis existant', async () => {
+    const res = await PUT(requete({ semaineRecolte: 9 }), params('cmperso1'))
+
+    expect(res.status).toBe(400)
+    expect(mocks.update).not.toHaveBeenCalled()
+    expect((await res.json()).error).toMatch(/4 semaines/)
+  })
+
+  it('refuse en 400 une plantation ramenée à la semaine du semis (espèce de pépinière)', async () => {
+    const res = await PUT(requete({ semainePlantation: 7 }), params('cmperso1'))
+
+    expect(res.status).toBe(400)
+    expect(mocks.update).not.toHaveBeenCalled()
+    expect((await res.json()).error).toMatch(/plantation/i)
+  })
+
+  it('annonce aussi l’incohérence déjà en base : le trigger refuse toute écriture sur cette ligne', async () => {
+    mocks.findUnique.mockResolvedValue({ ...ITP_TOMATE, semaineRecolte: 8 })
+
+    const res = await PUT(requete({ notes: 'Paillage fin' }), params('cmperso1'))
+
+    expect(res.status).toBe(400)
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it('ne lit pas l’espèce et laisse passer une modification sans rapport avec les semaines', async () => {
+    const res = await PUT(requete({ notes: 'Paillage fin' }), params('cmperso1'))
+
+    expect(res.status).toBe(200)
+    expect(mocks.especeFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('traduit en 400 le refus du trigger qui aurait échappé au contrôle', async () => {
+    mocks.update.mockRejectedValue(
+      new Error('Message: `ITP cmperso1: plantation S7 doit suivre le semis S7 (au moins 1 semaine)`')
+    )
+    // Espèce devenue invisible : le contrôle applicatif ne lit pas son type.
+    mocks.especeFindFirst.mockResolvedValue(null)
+
+    const res = await PUT(requete({ semainePlantation: 7 }), params('cmperso1'))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/plantation/i)
+  })
+
+  it('nomme l’espèce en semis direct par son libellé', async () => {
+    mocks.especeFindFirst.mockResolvedValue({
+      id: 'cmespece1',
+      nom: 'Carotte de Guérande',
+      typeCultureSemis: 'semis_direct',
+    })
+
+    const res = await PUT(requete({ semainePlantation: 12 }), params('cmperso1'))
+
+    expect(res.status).toBe(400)
+    const corps = await res.json()
+    expect(corps.error).toContain('Carotte de Guérande')
+    expect(corps.error).not.toContain('cmespece1')
+  })
+})
+
+describe('GET /api/itps/[id] — repli par espèce', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.findFirst.mockReset()
+    mocks.requireAuthApi.mockResolvedValue({
+      error: null,
+      session: { user: { id: 'user-1', role: 'USER' } },
+    })
+  })
+
+  it('classe les ITP sans durée de culture en dernier, avec un départage stable', async () => {
+    // PostgreSQL range les NULL en tête d'un tri décroissant : « le plus long »
+    // devenait un ITP sans durée.
+    mocks.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'Tomate-plein-champ', userId: null, espece: null })
+
+    const res = await GET(new NextRequest('http://localhost/api/itps/Tomate'), params('Tomate'))
+
+    expect(res.status).toBe(200)
+    expect(mocks.findFirst.mock.calls[1][0].orderBy).toEqual([
+      { dureeCulture: { sort: 'desc', nulls: 'last' } },
+      { id: 'asc' },
+    ])
   })
 })
 

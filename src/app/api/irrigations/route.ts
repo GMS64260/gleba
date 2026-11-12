@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
+import { corpsObjet, dateLisible, entierPositif } from '@/lib/irrigation/validation-requete'
 import type { Prisma } from '@prisma/client'
 
 // GET /api/irrigations
@@ -26,15 +27,19 @@ export async function GET(request: NextRequest) {
 
     const where: Prisma.IrrigationPlanifieeWhereInput = { userId }
 
+    // Filtres illisibles : 400, plutôt qu'un NaN ou une date invalide que
+    // Prisma refuse (500).
     if (cultureId) {
-      where.cultureId = parseInt(cultureId)
+      const id = entierPositif(cultureId)
+      if (id === null) return NextResponse.json({ error: 'cultureId invalide' }, { status: 400 })
+      where.cultureId = id
     }
 
     if (start && end) {
-      where.datePrevue = {
-        gte: new Date(start),
-        lte: new Date(end),
-      }
+      const gte = dateLisible(start)
+      const lte = dateLisible(end)
+      if (!gte || !lte) return NextResponse.json({ error: 'Période invalide' }, { status: 400 })
+      where.datePrevue = { gte, lte }
     }
 
     if (fait !== null && fait !== undefined) {
@@ -76,16 +81,21 @@ export async function POST(request: NextRequest) {
 
   try {
     const userId = getUserId(session)
-    const body = await request.json()
+    const body = await corpsObjet(request)
+    if (!body) return NextResponse.json({ error: 'Corps de requête invalide' }, { status: 400 })
 
-    const { cultureId, datePrevue, notes } = body
-
-    if (!cultureId || !datePrevue) {
+    const cultureId = entierPositif(body.cultureId)
+    const datePrevue = dateLisible(body.datePrevue)
+    if (cultureId === null || !datePrevue) {
       return NextResponse.json(
         { error: 'cultureId et datePrevue sont requis' },
         { status: 400 }
       )
     }
+    if (body.notes != null && typeof body.notes !== 'string') {
+      return NextResponse.json({ error: 'notes invalides' }, { status: 400 })
+    }
+    const notes = typeof body.notes === 'string' ? body.notes : undefined
 
     // Vérifier que la culture appartient à l'utilisateur
     const culture = await prisma.culture.findFirst({
@@ -103,7 +113,7 @@ export async function POST(request: NextRequest) {
       data: {
         userId,
         cultureId,
-        datePrevue: new Date(datePrevue),
+        datePrevue,
         notes,
       },
       include: {

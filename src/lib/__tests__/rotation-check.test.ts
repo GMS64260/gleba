@@ -57,6 +57,49 @@ describe('etapePourAnnee', () => {
     expect(etapePourAnnee(2026, 3, ambigu, [h(2025, 'Fabaceae')])?.etape).toBe(3)
   })
 
+  // Revue du 2026-11-11 : deux cultures de la même année peuvent désigner deux
+  // étapes différentes (une culture dérobée de l'étape suivante derrière la
+  // culture principale). Le repère dépendait alors de l'ordre des lignes lues,
+  // que la requête ne fixe pas : l'avertissement de rotation changeait d'un
+  // appel à l'autre pour le même historique.
+  describe('année portant deux étapes', () => {
+    const fabacee = h(2026, 'Fabaceae')
+    const cucurbitacee = h(2026, 'Cucurbitaceae')
+
+    it("rend le même résultat quel que soit l'ordre des cultures", () => {
+      const a = etapePourAnnee(2027, 3, COURGES, [cucurbitacee, fabacee])
+      const b = etapePourAnnee(2027, 3, COURGES, [fabacee, cucurbitacee])
+      expect(a).toEqual(b)
+    })
+
+    it("n'affirme rien quand aucun repère antérieur ne départage", () => {
+      expect(etapePourAnnee(2027, 3, COURGES, [cucurbitacee, fabacee])).toBeNull()
+      expect(etapePourAnnee(2026, 3, COURGES, [fabacee, cucurbitacee])).toBeNull()
+    })
+
+    it('départage par le repère antérieur déroulé', () => {
+      // 2025 = étape 1 → 2026 = étape 2 (Fabaceae), présente en 2026.
+      for (const ordre of [
+        [h(2025, 'Cucurbitaceae'), cucurbitacee, fabacee],
+        [fabacee, cucurbitacee, h(2025, 'Cucurbitaceae')],
+      ]) {
+        expect(etapePourAnnee(2026, 3, COURGES, ordre)?.etape).toBe(2)
+        expect(etapePourAnnee(2027, 3, COURGES, ordre)?.etape).toBe(3)
+      }
+    })
+
+    it("n'affirme rien quand le repère antérieur contredit l'année ambiguë", () => {
+      // 2025 = étape 2 → 2026 attendue à l'étape 3, que ni l'une ni l'autre
+      // culture de 2026 ne confirme.
+      const histo = [h(2025, 'Fabaceae'), cucurbitacee, fabacee]
+      expect(etapePourAnnee(2027, 3, COURGES, histo)).toBeNull()
+    })
+
+    it("deux cultures de la même étape dans l'année restent un repère", () => {
+      expect(etapePourAnnee(2027, 3, COURGES, [fabacee, h(2026, 'Fabaceae')])?.etape).toBe(3)
+    })
+  })
+
   it('reste dans les bornes du cycle sur un grand écart', () => {
     const histo = [h(2000, 'Cucurbitaceae')]
     for (const annee of [2026, 2027, 2028, 2029]) {

@@ -4,12 +4,13 @@
 
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useRef, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PlancheHistory, RotationAdvice } from '@/components/planche'
 import { PlancheInfoTable } from '@/components/planches/PlancheInfoTable'
 import { etapeCycleRotation } from '@/lib/rotation/etape-cycle'
+import { useToast } from '@/hooks/use-toast'
 
 interface Planche {
   id: string
@@ -60,22 +61,41 @@ export default function PlancheDetailPage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'info' | 'history' | 'rotation'>('info')
 
+  const { toast } = useToast()
+  // Planche déjà affichée : une relecture après modification se fait sans
+  // repasser la page en « Chargement… », qui démontait les onglets (et la
+  // saisie en cours) à chaque enregistrement.
+  const plancheAfficheeRef = useRef<string | null>(null)
+
   const fetchPlanche = async () => {
+    const premiereLecture = plancheAfficheeRef.current !== plancheId
     try {
-      setLoading(true)
+      if (premiereLecture) setLoading(true)
       const res = await fetch(`/api/planches/${encodeURIComponent(plancheId)}`)
       if (!res.ok) {
+        // Planche supprimée entre-temps : la fiche ne reste pas affichée.
         if (res.status === 404) {
+          plancheAfficheeRef.current = null
           setError('Planche non trouvée')
-        } else {
-          throw new Error('Erreur lors du chargement')
+          return
         }
-        return
+        throw new Error('Erreur lors du chargement')
       }
       const data = await res.json()
+      plancheAfficheeRef.current = plancheId
       setPlanche(data)
+      // Une erreur passée ne survit pas à une lecture réussie.
+      setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue')
+      if (premiereLecture) {
+        setError(err instanceof Error ? err.message : 'Erreur inconnue')
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Fiche non rafraîchie',
+          description: "La planche n'a pas pu être relue : les valeurs affichées peuvent dater d'avant votre modification.",
+        })
+      }
     } finally {
       setLoading(false)
     }

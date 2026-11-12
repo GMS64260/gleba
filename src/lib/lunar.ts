@@ -101,7 +101,19 @@ function getCached(cle: string): JourLunaire | null {
   return entry.data
 }
 
+/**
+ * Plafond du cache. Une entrée n'expirait qu'à sa relecture : la clé combinant
+ * fuseau et jour (un siècle de jours, des centaines de fuseaux), le cache ne
+ * faisait que grossir pendant la vie du processus. Au-delà du plafond, la plus
+ * ancienne entrée insérée sort (un `Map` garde l'ordre d'insertion).
+ */
+const CACHE_MAX_ENTREES = 20_000
+
 function setCache(cle: string, data: JourLunaire): void {
+  if (!cache.has(cle) && cache.size >= CACHE_MAX_ENTREES) {
+    const plusAncienne = cache.keys().next().value
+    if (plusAncienne !== undefined) cache.delete(plusAncienne)
+  }
   cache.set(cle, { data, cachedAt: Date.now() })
 }
 
@@ -270,8 +282,15 @@ function evenementsAutour(dateMs: number): EvenementLunaire[] {
  * - croissante tant que la pleine lune vraie n'est pas passée (élongation
  *   < 180°) ;
  * - illumination = (1 − cos élongation) / 2.
+ *
+ * `midiVeille` (midi local du jour civil précédent) borne exactement la
+ * journée : [midi de la veille + 12 h, midi + 12 h). Sans lui, « midi − 12 h »
+ * déborde d'une heure sur la veille le jour du passage à l'heure d'été (23 h :
+ * un événement de fin de soirée comptait pour deux jours) et laisse sans
+ * propriétaire la première heure du jour de retour à l'heure d'hiver (25 h).
+ * Les journées ainsi bornées se suivent sans trou ni recouvrement.
  */
-export function phaseVraieDuJour(midiLocal: Date): {
+export function phaseVraieDuJour(midiLocal: Date, midiVeille?: Date): {
   phaseIndex: number
   age: number
   illumination: number
@@ -280,7 +299,7 @@ export function phaseVraieDuJour(midiLocal: Date): {
   instantEvenement: number | null
 } {
   const midi = midiLocal.getTime()
-  const debutJour = midi - JOUR_MS / 2
+  const debutJour = (midiVeille ? midiVeille.getTime() : midi - JOUR_MS) + JOUR_MS / 2
   const finJour = midi + JOUR_MS / 2
   const evts = evenementsAutour(midi)
 
@@ -373,7 +392,18 @@ export async function fetchMoonPhase(date: Date, fuseau?: string): Promise<JourL
   const cached = getCached(cle)
   if (cached) return cached
 
-  const { phaseIndex, age, illumination, croissante, instantEvenement } = phaseVraieDuJour(ancre)
+  // Midi de la veille au même fuseau : borne exacte du jour civil, y compris
+  // les jours de 23 h et de 25 h (cf. `phaseVraieDuJour`).
+  let midiVeille: Date
+  if (fuseau) {
+    const [a, m, j] = dateStr.split('-').map(Number)
+    midiVeille = midiDansFuseau(new Date(Date.UTC(a, m - 1, j - 1)).toISOString().slice(0, 10), fuseau)
+  } else {
+    midiVeille = new Date(ancre)
+    midiVeille.setDate(midiVeille.getDate() - 1)
+  }
+
+  const { phaseIndex, age, illumination, croissante, instantEvenement } = phaseVraieDuJour(ancre, midiVeille)
   const phaseName = PHASE_NOMS[phaseIndex] || 'Inconnue'
 
   const typeJour = getTypeJour(age)

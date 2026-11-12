@@ -24,6 +24,11 @@ export interface MeteoJournaliere {
    * défaut et ne doit pas être lu comme « jour sans pluie ».
    */
   precipitationInconnue?: boolean
+  /**
+   * Vrai quand l'archive n'a pas encore publié l'ensoleillement de ce jour :
+   * `sunshine` vaut 0 par défaut et ne doit pas être lu comme « jour gris ».
+   */
+  ensoleillementInconnu?: boolean
   et0: number // mm (évapotranspiration de reference FAO)
   radiation: number // MJ/m²
   sunshine: number // heures
@@ -34,6 +39,23 @@ export interface MeteoJournaliere {
 
 export interface MeteoPrevision extends MeteoJournaliere {
   precipitationProba: number // %
+}
+
+/** Relevé d'une station personnelle, ramené à la forme d'un jour. */
+export interface MesureStation extends MeteoJournaliere {
+  /**
+   * Vrai quand la station n'a rendu qu'une température instantanée :
+   * `tempMin` et `tempMax` la répètent et ne sont pas les extrêmes du jour.
+   */
+  extremesInconnus?: boolean
+}
+
+/** Prévisions d'un point, avec le décalage horaire du lieu quand il est connu. */
+export interface PrevisionsOpenMeteo {
+  current: MeteoActuelle | null
+  daily: MeteoPrevision[]
+  /** Décalage du lieu par rapport à UTC (s) ; absent d'une entrée de cache ancienne. */
+  decalageUtcS?: number
 }
 
 export interface MeteoActuelle {
@@ -120,10 +142,7 @@ function roundCoord(v: number): number {
  * perdu à chaque déploiement — et sa clé en pleine précision ne mutualisait
  * rien entre le widget d'en-tête et la page Météo.
  */
-export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<{
-  current: MeteoActuelle | null
-  daily: MeteoPrevision[]
-}> {
+export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<PrevisionsOpenMeteo> {
   // 2026-10-23 (motif « un cache sans date dans sa clé sert la veille ») — la
   // clé ne portait pas le jour : jusqu'à 30 min après minuit, les prévisions
   // de la veille étaient servies, et les lectures qui prennent `daily[0]` pour
@@ -141,10 +160,7 @@ export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<
   )
 }
 
-async function fetchOpenMeteoForecastUncached(lat: number, lng: number): Promise<{
-  current: MeteoActuelle | null
-  daily: MeteoPrevision[]
-}> {
+async function fetchOpenMeteoForecastUncached(lat: number, lng: number): Promise<PrevisionsOpenMeteo> {
   const params = new URLSearchParams({
     latitude: lat.toString(),
     longitude: lng.toString(),
@@ -220,7 +236,18 @@ async function fetchOpenMeteoForecastUncached(lat: number, lng: number): Promise
     windSpeedMax: data.daily.wind_speed_10m_max[i] ?? 0,
   }))
 
-  return { current, daily }
+  const decalage = Number(data.utc_offset_seconds)
+  return { current, daily, ...(Number.isFinite(decalage) ? { decalageUtcS: decalage } : {}) }
+}
+
+/**
+ * Jour civil du lieu des prévisions (Outre-mer compris). Sans décalage connu,
+ * celui du serveur (Europe/Paris), jamais le jour UTC.
+ */
+function jourDuLieuPrevisions(previsions: Pick<PrevisionsOpenMeteo, 'decalageUtcS'>, maintenant: Date = new Date()): string {
+  return typeof previsions.decalageUtcS === 'number' && Number.isFinite(previsions.decalageUtcS)
+    ? new Date(maintenant.getTime() + previsions.decalageUtcS * 1000).toISOString().slice(0, 10)
+    : jourCivilLocalISO(maintenant)
 }
 
 /**
@@ -293,10 +320,20 @@ async function fetchOpenMeteoHistoryUncached(
     et0: data.daily.et0_fao_evapotranspiration[i] ?? 0,
     radiation: data.daily.shortwave_radiation_sum[i] ?? 0,
     sunshine: (data.daily.sunshine_duration[i] ?? 0) / 3600,
+    ...(data.daily.sunshine_duration[i] == null ? { ensoleillementInconnu: true } : {}),
     humidityMin: data.daily.relative_humidity_2m_min[i] ?? 0,
     humidityMax: data.daily.relative_humidity_2m_max[i] ?? 0,
     windSpeedMax: data.daily.wind_speed_10m_max[i] ?? 0,
   }))
+}
+
+/**
+ * Un jour d'archive est rangeable en base quand il est publié : `meteo_cache`
+ * n'a pas de colonne pour « valeur inconnue », un jour sans pluie ni
+ * température y deviendrait « 0 mm, 0 °C » et serait relu comme une mesure.
+ */
+function jourArchivePublie(jour: MeteoJournaliere): boolean {
+  return !jour.precipitationInconnue && Number.isFinite(jour.tempMin) && Number.isFinite(jour.tempMax)
 }
 
 // ============================================================
@@ -304,13 +341,26 @@ async function fetchOpenMeteoHistoryUncached(
 // ============================================================
 
 /**
- * Récupère les données d'une station Ecowitt via leur API
+ * Délai accordé à une station personnelle. Sans lui, une station muette
+ * retenait `/api/meteo` et l'ajout d'une station jusqu'au délai du serveur.
+ */
+const DELAI_STATION_MS = 8000
+
+function nombreOuNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : parseFloat(String(v))
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Récupère les données d'une station Ecowitt via leur API.
+ * Rend null sans température : une valeur absente n'est pas 0 °C.
  */
 export async function fetchEcowittData(
   appKey: string,
   apiKey: string,
   stationMac: string
-): Promise<MeteoJournaliere | null> {
+): Promise<MesureStation | null> {
   try {
     const params = new URLSearchParams({
       application_key: appKey,
@@ -323,7 +373,10 @@ export async function fetchEcowittData(
       rainfall_unitid: '12', // mm
     })
 
-    const res = await fetch(`https://api.ecowitt.net/api/v3/device/real_time?${params}`)
+    const res = await fetch(`https://api.ecowitt.net/api/v3/device/real_time?${params}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(DELAI_STATION_MS),
+    })
     if (!res.ok) return null
 
     const data = await res.json()
@@ -334,30 +387,26 @@ export async function fetchEcowittData(
     const solar = data.data?.solar_and_uvi || {}
     const wind = data.data?.wind || {}
 
-    const today = new Date().toISOString().split('T')[0]
-
-    const parseNum = (v: unknown): number | null => {
-      const n = parseFloat(String(v ?? ''))
-      return Number.isNaN(n) ? null : n
-    }
-
-    const tempCurrent = parseNum(outdoor.temperature?.value) ?? 0
-    const tempMin = parseNum(outdoor.temperature?.min) ?? tempCurrent
-    const tempMax = parseNum(outdoor.temperature?.max) ?? tempCurrent
-    const humCurrent = parseNum(outdoor.humidity?.value) ?? 0
+    const tempCurrent = nombreOuNull(outdoor.temperature?.value)
+    if (tempCurrent === null) return null
+    const tempMin = nombreOuNull(outdoor.temperature?.min)
+    const tempMax = nombreOuNull(outdoor.temperature?.max)
+    const humCurrent = nombreOuNull(outdoor.humidity?.value) ?? 0
 
     return {
-      date: today,
-      tempMin,
-      tempMax,
+      // Jour du serveur ; `getMeteoForParcelle` le remplace par le jour du lieu.
+      date: jourCivilLocalISO(new Date()),
+      tempMin: tempMin ?? tempCurrent,
+      tempMax: tempMax ?? tempCurrent,
+      ...(tempMin === null || tempMax === null ? { extremesInconnus: true } : {}),
       tempMoy: tempCurrent,
-      precipitation: parseNum(rainfall.daily?.value) ?? 0,
+      precipitation: nombreOuNull(rainfall.daily?.value) ?? 0,
       et0: 0, // Non disponible sur Ecowitt
-      radiation: parseNum(solar.solar?.value) ?? 0,
+      radiation: nombreOuNull(solar.solar?.value) ?? 0,
       sunshine: 0, // Non disponible directement
-      humidityMin: parseNum(outdoor.humidity?.min) ?? humCurrent,
-      humidityMax: parseNum(outdoor.humidity?.max) ?? humCurrent,
-      windSpeedMax: parseNum(wind.wind_gust?.value) ?? 0,
+      humidityMin: nombreOuNull(outdoor.humidity?.min) ?? humCurrent,
+      humidityMax: nombreOuNull(outdoor.humidity?.max) ?? humCurrent,
+      windSpeedMax: nombreOuNull(wind.wind_gust?.value) ?? 0,
     }
   } catch {
     return null
@@ -365,16 +414,21 @@ export async function fetchEcowittData(
 }
 
 /**
- * Récupère les données d'une station Weather Underground
+ * Récupère les données d'une station Weather Underground.
+ * Rend null sans température : une valeur absente n'est pas 0 °C.
  */
 export async function fetchWundergroundData(
   apiKey: string,
   stationId: string
-): Promise<MeteoJournaliere | null> {
+): Promise<MesureStation | null> {
   try {
-    const res = await fetch(
-      `https://api.weather.com/v2/pws/observations/current?stationId=${stationId}&format=json&units=m&apiKey=${apiKey}`
-    )
+    // Identifiant et clé encodés : saisis par l'utilisateur, ils ne doivent
+    // pas pouvoir ajouter ni remplacer un paramètre de la requête.
+    const params = new URLSearchParams({ stationId, format: 'json', units: 'm', apiKey })
+    const res = await fetch(`https://api.weather.com/v2/pws/observations/current?${params}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(DELAI_STATION_MS),
+    })
     if (!res.ok) return null
 
     const data = await res.json()
@@ -382,20 +436,26 @@ export async function fetchWundergroundData(
     if (!obs) return null
 
     const metric = obs.metric || {}
-    const today = new Date().toISOString().split('T')[0]
+    const temp = nombreOuNull(metric.temp)
+    if (temp === null) return null
+    const tempMin = nombreOuNull(metric.tempLow)
+    const tempMax = nombreOuNull(metric.tempHigh)
+    const humidite = nombreOuNull(obs.humidity) ?? 0
 
     return {
-      date: today,
-      tempMin: metric.tempLow ?? metric.temp ?? 0,
-      tempMax: metric.tempHigh ?? metric.temp ?? 0,
-      tempMoy: metric.temp ?? 0,
-      precipitation: metric.precipTotal ?? 0,
+      // Jour du serveur ; `getMeteoForParcelle` le remplace par le jour du lieu.
+      date: jourCivilLocalISO(new Date()),
+      tempMin: tempMin ?? temp,
+      tempMax: tempMax ?? temp,
+      ...(tempMin === null || tempMax === null ? { extremesInconnus: true } : {}),
+      tempMoy: temp,
+      precipitation: nombreOuNull(metric.precipTotal) ?? 0,
       et0: 0,
-      radiation: metric.solarRadiation ?? 0,
+      radiation: nombreOuNull(metric.solarRadiation) ?? 0,
       sunshine: 0,
-      humidityMin: metric.humidityLow ?? obs.humidity ?? 0,
-      humidityMax: metric.humidityHigh ?? obs.humidity ?? 0,
-      windSpeedMax: metric.windGust ?? metric.windSpeed ?? 0,
+      humidityMin: nombreOuNull(metric.humidityLow) ?? humidite,
+      humidityMax: nombreOuNull(metric.humidityHigh) ?? humidite,
+      windSpeedMax: nombreOuNull(metric.windGust) ?? nombreOuNull(metric.windSpeed) ?? 0,
     }
   } catch {
     return null
@@ -569,9 +629,6 @@ export async function getMeteoForParcelle(
 
   let source = 'open-meteo'
 
-  // Vérifier le cache d'abord (prévisions < 1h)
-  const cachedToday = await getMeteoWithCache(lat, lng, new Date().toISOString().split('T')[0], SOURCE_PREVISION)
-
   // Historique 7 derniers jours : indépendant du forecast, on le lance en
   // parallèle au lieu de l'attendre en série (il pesait 30 à 50 % du temps
   // de réponse de /api/meteo).
@@ -593,17 +650,28 @@ export async function getMeteoForParcelle(
   // Fetch prévisions Open-Meteo (necessaire pour current + daily 7j)
   const forecast = await fetchOpenMeteoForecast(lat, lng)
   let current = forecast.current
-  const daily = forecast.daily
+  // Copie : le tableau rendu par le cache est partagé entre les appels
+  // simultanés, la station ne doit pas le modifier en place.
+  const daily = [...forecast.daily]
+  // Jour du lieu, pas le jour UTC : le soir à l'ouest d'UTC, la mesure de la
+  // station tombait sur la prévision du lendemain (revue du 2026-11-11).
+  const jourLieu = jourDuLieuPrevisions(forecast)
 
-  // Sauvegarder en cache seulement si le cache est périmé ou absent. Source
-  // propre : une prévision ne devient jamais l'archive de son jour.
-  if (!cachedToday) {
+  // Garde horaire des écritures : prévisions, archive et relevé de station ne
+  // sont rangés que si la prévision du jour a plus d'une heure ou manque. Sans
+  // elle, chaque affichage de /api/meteo écrivait neuf lignes.
+  const cachedToday = await getMeteoWithCache(lat, lng, jourLieu, SOURCE_PREVISION)
+  const aRanger = !cachedToday
+
+  // Source propre : une prévision ne devient jamais l'archive de son jour.
+  if (aRanger) {
     await Promise.all(daily.map(day => saveMeteoCache(lat, lng, day, SOURCE_PREVISION)))
   }
 
   // Si station perso, enrichir les données du jour
   if (station) {
-    let stationData: MeteoJournaliere | null = null
+    let stationData: MesureStation | null = null
+    let actuelleStation: MeteoActuelle | null = null
 
     if (station.provider === 'ecowitt' && station.appKey && station.apiKey) {
       stationData = await fetchEcowittData(station.appKey, station.apiKey, station.stationId)
@@ -611,14 +679,20 @@ export async function getMeteoForParcelle(
       stationData = await fetchWundergroundData(station.apiKey, station.stationId)
     } else if (station.provider === 'open-meteo-reference' && station.lat && station.lng) {
       const stationForecast = await fetchOpenMeteoForecast(station.lat, station.lng)
-      stationData = stationForecast.daily[0] ?? null
+      // Le jour de la station, pas le premier de la liste ; et ses conditions
+      // relevées, pas la moyenne du minimum et du maximum du jour.
+      const jourStation = jourDuLieuPrevisions(stationForecast)
+      stationData = stationForecast.daily.find(d => d.date === jourStation) ?? null
+      actuelleStation = stationForecast.current
     }
 
     if (stationData) {
       source = station.provider === 'open-meteo-reference'
         ? `station publique de référence (${station.nom} · ${station.stationId}) via Open-Meteo`
         : `station personnelle (${station.nom})`
-      if (current) {
+      if (actuelleStation) {
+        current = actuelleStation
+      } else if (current && station.provider !== 'open-meteo-reference') {
         current = {
           ...current,
           temperature: stationData.tempMoy,
@@ -627,16 +701,26 @@ export async function getMeteoForParcelle(
           precipitation: stationData.precipitation,
         }
       }
-      await saveMeteoCache(lat, lng, stationData, 'station_perso')
-      // Remplacer les données du jour par celles de la station (nullish coalescing pour gérer 0°C/0mm)
-      const todayIdx = daily.findIndex(d => d.date === stationData!.date)
+      if (aRanger) await saveMeteoCache(lat, lng, { ...stationData, date: jourLieu }, 'station_perso')
+      const todayIdx = daily.findIndex(d => d.date === jourLieu)
       if (todayIdx >= 0) {
+        const prevu = daily[todayIdx]
+        // Une température instantanée n'est ni le minimum ni le maximum du
+        // jour : elle ne peut qu'élargir la fourchette prévue. Écrasée, la
+        // prévision perdait son gel du matin et sa pointe de l'après-midi.
+        const instantanee = stationData.extremesInconnus === true
+        const tempMin = instantanee && Number.isFinite(prevu.tempMin)
+          ? Math.min(prevu.tempMin, stationData.tempMin)
+          : stationData.tempMin ?? prevu.tempMin
+        const tempMax = instantanee && Number.isFinite(prevu.tempMax)
+          ? Math.max(prevu.tempMax, stationData.tempMax)
+          : stationData.tempMax ?? prevu.tempMax
         daily[todayIdx] = {
-          ...daily[todayIdx],
-          tempMin: stationData.tempMin ?? daily[todayIdx].tempMin,
-          tempMax: stationData.tempMax ?? daily[todayIdx].tempMax,
-          precipitation: stationData.precipitation ?? daily[todayIdx].precipitation,
-          windSpeedMax: stationData.windSpeedMax ?? daily[todayIdx].windSpeedMax,
+          ...prevu,
+          tempMin,
+          tempMax,
+          precipitation: stationData.precipitation ?? prevu.precipitation,
+          windSpeedMax: stationData.windSpeedMax ?? prevu.windSpeedMax,
         }
       }
     }
@@ -644,10 +728,11 @@ export async function getMeteoForParcelle(
 
   // Historique 7 derniers jours (lancé en parallèle plus haut)
   const historique7j = await historiqueSafe
-  if (historique7j.length > 0) {
+  if (aRanger && historique7j.length > 0) {
     // Sauvegarder l'historique en cache (batch) ; les derniers jours restent
-    // provisoires (`JOURS_CONSOLIDATION_ARCHIVE`) et seront relus.
-    await Promise.all(historique7j.map(day => saveMeteoCache(lat, lng, day, SOURCE_ARCHIVE)))
+    // provisoires (`JOURS_CONSOLIDATION_ARCHIVE`) et seront relus. Un jour
+    // pas encore publié n'est pas rangé.
+    await Promise.all(historique7j.filter(jourArchivePublie).map(day => saveMeteoCache(lat, lng, day, SOURCE_ARCHIVE)))
   }
 
   return {
@@ -686,10 +771,13 @@ export async function getMeteoHistorique(
   const lng = parcelle.centroidLng
 
   // Vérifier le cache d'abord — chercher toutes les dates de la période
+  // Jours comptés en UTC de bout en bout : avancés en heure locale puis lus
+  // en UTC, ils doublaient un jour au passage à l'heure d'été et perdaient le
+  // dernier de la période.
   const startD = new Date(startDate)
   const endD = new Date(endDate)
   const dates: string[] = []
-  for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(startD); d <= endD; d.setUTCDate(d.getUTCDate() + 1)) {
     dates.push(d.toISOString().split('T')[0])
   }
 
@@ -707,7 +795,7 @@ export async function getMeteoHistorique(
   } else {
     // Fetch API + sauvegarder en cache (batch)
     donnees = await fetchOpenMeteoHistory(lat, lng, startDate, endDate)
-    await Promise.all(donnees.map(day => saveMeteoCache(lat, lng, day, SOURCE_ARCHIVE)))
+    await Promise.all(donnees.filter(jourArchivePublie).map(day => saveMeteoCache(lat, lng, day, SOURCE_ARCHIVE)))
   }
 
   return {
@@ -727,19 +815,25 @@ export async function getPrecipitationsRecentes(
   lng: number,
   jours: number = 7
 ): Promise<{ total: number; jours: number; joursSansPluie: number; details: { date: string; mm: number }[] }> {
+  // Nombre de jours borné : la valeur vient d'un appelant externe.
+  const nbJours = Number.isFinite(jours) ? Math.min(Math.max(Math.trunc(jours), 1), 365) : 7
   const end = new Date()
   end.setDate(end.getDate() - 1) // Hier (archive n'a pas aujourd'hui)
   const start = new Date(end)
-  start.setDate(start.getDate() - jours + 1)
+  start.setDate(start.getDate() - nbJours + 1)
 
   try {
+    // Jours civils locaux : en UTC, entre 0 h et 2 h à Paris, la plage
+    // reculait d'un jour.
     const data = await fetchOpenMeteoHistory(
       lat, lng,
-      start.toISOString().split('T')[0],
-      end.toISOString().split('T')[0]
+      jourCivilLocalISO(start),
+      jourCivilLocalISO(end)
     )
 
-    const details = data.map(d => ({ date: d.date, mm: d.precipitation }))
+    // Jours pas encore publiés ignorés : comptés à 0 mm, ils allongeaient les
+    // « jours sans pluie » (cf. `resumerPluie`).
+    const details = data.filter(d => !d.precipitationInconnue).map(d => ({ date: d.date, mm: d.precipitation }))
     const total = details.reduce((sum, d) => sum + d.mm, 0)
 
     // Compter les jours consécutifs sans pluie (depuis le plus récent)

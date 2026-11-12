@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   operationsItp,
   operationsItpDansSemaine,
+  resumeTachesItpSemaine,
   semaineCourante,
   tachesItpSemainePourCultures,
 } from "./itp-semaine"
@@ -98,11 +99,13 @@ describe("operationsItp", () => {
 
   it("rejette la plantation postérieure au semis sur l'année suivante", () => {
     // Semis S31 (début août), plantation S3 → l'année suivante (janvier).
+    // Le lundi de la S3 de 2027 est le 18/01 ; l'attendu précédent (11/01, la
+    // S2) entérinait le décalage d'une semaine après 2026 et ses 53 semaines.
     const ops = operationsItp(itp({ semaineSemis: 31, semainePlantation: 3 }), {
       anneeCulture: 2026,
     })
     const plantation = ops.find((o) => o.type === "plantation")
-    expect(plantation?.debut).toEqual(new Date(2027, 0, 11))
+    expect(plantation?.debut).toEqual(new Date(2027, 0, 18))
   })
 
   it("étale la récolte sur la fenêtre [début, fin]", () => {
@@ -129,6 +132,80 @@ describe("operationsItp", () => {
     })
     const recolte = ops.find((o) => o.type === "recolte")
     expect(recolte?.debut).toEqual(new Date(2026, 7, 10)) // S33
+  })
+})
+
+// Revue 2026-11-11, point 23 : les opérations de la semaine suivent désormais
+// la même cascade que la création d'une culture (`datesDepuisItp`).
+describe("operationsItp — même cascade que les dates d'une culture", () => {
+  it("ancre un ITP sans semis ni plantation sur sa fenêtre d'implantation", () => {
+    // Mesclun : implantation S40, récolte S5. La récolte était posée en S5 de
+    // l'année de la culture, huit mois AVANT l'implantation.
+    const ops = operationsItp(itp({ semaineImplantationDebut: 40, semaineRecolte: 5 }), {
+      anneeCulture: 2027,
+    })
+    const semis = ops.find((o) => o.type === "semis")
+    const recolte = ops.find((o) => o.type === "recolte")
+    expect(semis?.debut).toEqual(new Date(2027, 9, 4)) // lundi S40/2027
+    expect(recolte?.debut).toEqual(new Date(2028, 0, 31)) // lundi S5/2028
+  })
+
+  it("attend le délai de première récolte d'une pérenne", () => {
+    // Asperge : plantée S12, première récolte S16 deux ans plus tard — et non la
+    // semaine suivant la plantation.
+    const ops = operationsItp(
+      itp({ semainePlantation: 12, semaineRecolte: 16, delaiPremiereRecolteAnnees: 2 }),
+      { anneeCulture: 2026 }
+    )
+    expect(ops.find((o) => o.type === "recolte")?.debut).toEqual(new Date(2028, 3, 17))
+  })
+
+  it("déduit ce délai de la durée de culture quand il n'est pas déclaré", () => {
+    const ops = operationsItp(itp({ semainePlantation: 25, semaineRecolte: 26, dureeCulture: 1095 }), {
+      anneeCulture: 2026,
+    })
+    expect(ops.find((o) => o.type === "recolte")?.debut).toEqual(new Date(2029, 5, 25))
+  })
+
+  it("reporte sur la bonne semaine après une année ISO à 53 semaines", () => {
+    // 2026 compte 53 semaines : « S5 + 52 » tombait en S4 de 2027.
+    const ops = operationsItp(itp({ semaineSemis: 40, semainePlantation: 5, semaineRecolte: 20 }), {
+      anneeCulture: 2026,
+    })
+    expect(ops.find((o) => o.type === "plantation")?.debut).toEqual(new Date(2027, 1, 1)) // lundi S5/2027
+    expect(ops.find((o) => o.type === "recolte")?.debut).toEqual(new Date(2027, 4, 17)) // lundi S20/2027
+  })
+})
+
+describe("resumeTachesItpSemaine", () => {
+  const tache = (overrides: Partial<Parameters<typeof resumeTachesItpSemaine>[0][number]> = {}) => ({
+    cultureId: 1,
+    type: "semis" as const,
+    especeNom: "Radis",
+    varieteNom: null,
+    plancheName: "A1",
+    ilot: null,
+    date: "2026-08-10",
+    semaine: 33,
+    couleur: null,
+    ...overrides,
+  })
+
+  it("ne cite qu'une fois la même espèce sur la même planche", () => {
+    // Trois séries de radis sur la planche A1 : « Radis (planche A1) » trois fois.
+    const resume = resumeTachesItpSemaine([
+      tache({ cultureId: 1 }),
+      tache({ cultureId: 2 }),
+      tache({ cultureId: 3 }),
+      tache({ cultureId: 4, plancheName: "B2" }),
+      tache({ cultureId: 5, type: "recolte", especeNom: "Tomate", plancheName: null }),
+    ])
+    expect(resume).toBe("Semer Radis (planche A1), Radis (planche B2) ; Récolter Tomate")
+  })
+
+  it("résume au-delà de douze libellés distincts", () => {
+    const taches = Array.from({ length: 14 }, (_, i) => tache({ cultureId: i, especeNom: `Espèce ${i}` }))
+    expect(resumeTachesItpSemaine(taches)).toMatch(/… et 2 autres$/)
   })
 })
 
@@ -176,14 +253,16 @@ describe("operationsItpDansSemaine", () => {
   })
 
   it("retient une récolte d'hiver reportée sur l'année suivante", () => {
-    // Semis S31 (2026), récolte S4 → semaine 4 de 2027.
-    const cibleHiver = semaineCourante(new Date(2027, 0, 18))
+    // Semis S31 (2026), récolte S4 → semaine 4 de 2027, soit le lundi 25/01
+    // (le 18/01 attendu auparavant est la S3 : même décalage qu'au-dessus).
+    const cibleHiver = semaineCourante(new Date(2027, 0, 25))
+    expect(cibleHiver.semaine).toBe(4)
     const ops = operationsItpDansSemaine(itp({ semaineSemis: 31, semaineRecolte: 4 }), cibleHiver, {
       anneeCulture: 2026,
     })
     expect(ops).toHaveLength(1)
     expect(ops[0].type).toBe("recolte")
-    expect(ops[0].date).toBe("2027-01-18")
+    expect(ops[0].date).toBe("2027-01-25")
   })
 })
 
