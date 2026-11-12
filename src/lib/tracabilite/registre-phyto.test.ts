@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
   cultureFindUnique: vi.fn(),
   plancheFindUnique: vi.fn(),
   arbreFindUnique: vi.fn(),
+  // Contexte relu des fiches (contexte-registre.ts) pour les lignes sans contexte figé.
+  cultureFindFirst: vi.fn(),
+  plancheFindFirst: vi.fn(),
+  arbreFindFirst: vi.fn(),
+  parcelleFindFirst: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -21,9 +26,10 @@ vi.mock('@/lib/prisma', () => ({
     intervention: { findMany: mocks.interventionFindMany },
     observationSante: { findMany: mocks.observationFindMany },
     operationArbre: { findMany: mocks.operationFindMany },
-    culture: { findUnique: mocks.cultureFindUnique },
-    planche: { findUnique: mocks.plancheFindUnique },
-    arbre: { findUnique: mocks.arbreFindUnique },
+    culture: { findUnique: mocks.cultureFindUnique, findFirst: mocks.cultureFindFirst },
+    planche: { findUnique: mocks.plancheFindUnique, findFirst: mocks.plancheFindFirst },
+    arbre: { findUnique: mocks.arbreFindUnique, findFirst: mocks.arbreFindFirst },
+    parcelleGeo: { findFirst: mocks.parcelleFindFirst },
   },
 }))
 
@@ -119,7 +125,9 @@ describe('genererRegistrePhyto — 3ᵉ source operations_arbres', () => {
     expect(ligne.espece).toBe('Pommier')
     expect(ligne.numAMM).toBeNull() // champ absent du modèle OperationArbre
     expect(ligne.dar).toBeNull()
-    expect(ligne.classification).toBe('Autorisé AB') // heuristique bouillie/cuivre
+    // C7 (revue de conformité du 2026-11-12) : un libellé ne vaut pas statut AB.
+    expect(ligne.classification).toBe('Minéral (AB à vérifier)')
+    expect(ligne.classificationSource).toBe('heuristique')
     expect(ligne.description).toBe('Traitement préventif tavelure')
     expect(stats.totalTraitements).toBe(1)
     expect(stats.produitsUtilises).toContain('Bouillie bordelaise')
@@ -130,9 +138,11 @@ describe('genererRegistrePhyto — 3ᵉ source operations_arbres', () => {
     mocks.interventionFindMany.mockResolvedValue([
       fakeIntervention({ id: 1, numAMM: 'ABC' }),
       fakeIntervention({ id: 2, numAMM: '2100123' }),
-      fakeIntervention({ id: 3, numAMM: null }),
-      // Référentiel produit : son AMM prime sur la saisie libre.
-      fakeIntervention({ id: 4, numAMM: 'ABC', produitPhytoRef: { id: 'p1', nomCommercial: 'Produit X', amm: '9800203', classification: 'Chimique conventionnel', autoriseAB: false, substanceActive: null, darJours: 3 } }),
+      // Produit sans classification connue : l'AMM est exigée (le savon noir
+      // des autres fiches est classé PNPP, sans AMM attendue).
+      fakeIntervention({ id: 3, numAMM: null, produitPhyto: 'Produit inconnu' }),
+      // Référentiel produit : il complète une AMM jamais saisie.
+      fakeIntervention({ id: 4, numAMM: null, produitPhytoRef: { id: 'p1', nomCommercial: 'Produit X', amm: '9800203', classification: 'Chimique conventionnel', autoriseAB: false, substanceActive: null, darJours: 3 } }),
     ])
 
     const { registre, stats } = await genererRegistrePhyto('user-1', 2026)
@@ -270,7 +280,11 @@ describe('genererRegistrePhyto — traitement du registre Verger (observation sa
     expect(registre[0].complet).toBe(false)
   })
 
-  it("revue : biocontrôle sans AMM, surface ni DAR reste conforme (la saisie ne les exige pas)", async () => {
+  // Revue de conformité du 2026-11-12 (C1) : l'ancien test entérinait une
+  // règle fausse. Un produit de biocontrôle sous AMM est un produit
+  // phytopharmaceutique (code rural, art. L. 253-6, 2°) : l'annexe I de
+  // l'arrêté du 24 décembre 2025 exige son AMM, sa dose et sa surface.
+  it("biocontrôle sous AMM : AMM et surface manquantes signalées (DAR, météo et Certiphyto non exigés)", async () => {
     mocks.observationFindMany.mockResolvedValue([
       fakeObservationVerger({
         methodeTraitement: 'biocontrole',
@@ -285,8 +299,89 @@ describe('genererRegistrePhyto — traitement du registre Verger (observation sa
 
     const { registre } = await genererRegistrePhyto('user-1', 2026)
 
+    expect(registre[0].champsManquants).toEqual(['numAMM', 'surfaceTraitee'])
+    expect(registre[0].complet).toBe(false)
+  })
+
+  it('macro-organismes auxiliaires : aucune AMM exigée, la ligne reste conforme', async () => {
+    mocks.observationFindMany.mockResolvedValue([
+      fakeObservationVerger({
+        methodeTraitement: 'macro_organismes',
+        produit: 'Trichogrammes',
+        numAMM: null,
+        surfaceTraiteeHa: null,
+        dar: null,
+        temperatureC: null,
+        certiphytoNum: null,
+        zntRespectee: null,
+      }),
+    ])
+
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+
     expect(registre[0].champsManquants).toEqual([])
     expect(registre[0].complet).toBe(true)
+  })
+
+  // Revue de conformité du 2026-11-12 (C4) : le registre passé ne doit plus
+  // suivre le référentiel actuel ni les fiches vivantes.
+  it("AMM, nom et DAR enregistrés priment sur le référentiel mis à jour depuis", async () => {
+    mocks.interventionFindMany.mockResolvedValue([
+      fakeIntervention({
+        id: 1,
+        produitPhyto: 'Produit A',
+        numAMM: '2100123',
+        dar: null,
+        produitPhytoRef: { id: 'p1', nomCommercial: 'Produit B', amm: '9800203', classification: 'Chimique conventionnel', autoriseAB: false, substanceActive: null, darJours: 14 },
+      }),
+    ])
+
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+
+    expect(registre[0]).toMatchObject({ produit: 'Produit A', numAMM: '2100123', dar: null })
+    expect(registre[0].champsManquants).toContain('dar')
+  })
+
+  it('contexte figé : culture, localisation et conduite bio lues sur le traitement, pas sur les fiches', async () => {
+    mocks.interventionFindMany.mockResolvedValue([
+      fakeIntervention({
+        cultureId: 12,
+        cultureRegistre: 'Tomate (Cœur de bœuf)',
+        localisationRegistre: 'Planche P3 · GPS 43.2951234, -0.3707890 (WGS84)',
+        conduiteBio: true,
+        stadeBBCH: '65',
+        heureDebut: '06:30',
+      }),
+    ])
+    // Une fiche culture relue donnerait autre chose : elle ne doit pas l'être.
+    mocks.cultureFindUnique.mockResolvedValue(null)
+
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+
+    expect(registre[0]).toMatchObject({
+      culture: 'Tomate (Cœur de bœuf)',
+      localisationReglementaire: 'Planche P3 · GPS 43.2951234, -0.3707890 (WGS84)',
+      conduiteBio: true,
+      contexteFige: true,
+      stadeBBCH: '65',
+      heureDebut: '06:30',
+    })
+    expect(mocks.cultureFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('une dose sans unité est signalée (annexe II : valeur et unité)', async () => {
+    mocks.interventionFindMany.mockResolvedValue([fakeIntervention({ uniteDose: null })])
+
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+
+    expect(registre[0].champsManquants).toContain('uniteDose')
+  })
+
+  it("C7 : « Chaux vive » ou « bouillie maison au cuivre » ne donnent jamais « Autorisé AB »", async () => {
+    const { classifierProduitHeuristique } = await import('./registre-phyto')
+    for (const nom of ['Chaux vive', 'Bouillie maison au cuivre', 'Soufre mouillable']) {
+      expect(classifierProduitHeuristique(nom)).not.toBe('Autorisé AB')
+    }
   })
 
   it('une AMM saisie mal formée reste signalée, quelle que soit la méthode', async () => {

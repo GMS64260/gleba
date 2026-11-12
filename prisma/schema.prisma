@@ -190,6 +190,7 @@ model User {
   interventions          Intervention[]
   // PROMPT 11 — Interventions où ce user est l'opérateur (≠ propriétaire de la fiche).
   interventionsOperateur Intervention[]     @relation("InterventionOperateur")
+  registrePhytoHistorique RegistrePhytoHistorique[]
   // DEV3 #1 — Observations phyto où ce user est l'opérateur.
   observationsOperateur  ObservationSante[] @relation("ObservationOperateur")
   // DEV3 #6 — Opérations verger où ce user est l'opérateur.
@@ -1958,6 +1959,10 @@ model ObservationSante {
   zntDistanceM         Int?         @map("znt_distance_m")
   parcelleId           String?      @map("parcelle_id")
   parcelle             ParcelleGeo? @relation("ObservationParcelle", fields: [parcelleId], references: [id], onDelete: SetNull, map: "observations_sante_parcelle_fkey")
+  // Contexte du registre figé au jour de l'enregistrement (arrêté du 24 décembre 2025, art. 3).
+  cultureRegistre      String?      @map("culture_registre")
+  localisationRegistre String?      @map("localisation_registre")
+  conduiteBio          Boolean?     @map("conduite_bio")
   operateurId          String?      @map("operateur_id")
   operateur            User?        @relation("ObservationOperateur", fields: [operateurId], references: [id], onDelete: SetNull, map: "observations_sante_operateur_fkey")
   certiphytoNum        String?      @map("certiphyto_num")
@@ -3941,6 +3946,28 @@ model UserStockEspece {
 // ============================================================
 
 /// Interventions terrain (opérations culturales)
+/// Historique des rectifications du registre phytosanitaire (arrêté du
+/// 24 décembre 2025, art. 3 : conservation au moins cinq ans, pérennité et
+/// intégrité). Chaque modification ou suppression d'un traitement réalisé y
+/// dépose l'état complet d'avant ; la table n'est jamais mise à jour.
+model RegistrePhytoHistorique {
+  id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "registre_phyto_historique_user_fkey")
+  source    String   @map("source") // intervention | observation_sante | operation_arbre
+  sourceId  Int      @map("source_id")
+  action    String   @map("action") // modification | suppression
+  avant     Json     @map("avant")
+  apres     Json?    @map("apres")
+  motif     String?  @map("motif")
+  auteurId  String?  @map("auteur_id") // compte qui a rectifié (sans clé étrangère : la trace survit au compte)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, source, sourceId], map: "registre_phyto_historique_source_idx")
+  @@index([userId, createdAt], map: "registre_phyto_historique_date_idx")
+  @@map("registre_phyto_historique")
+}
+
 model Intervention {
   id                   Int               @id @default(autoincrement())
   userId               String            @map("user_id")
@@ -4001,6 +4028,20 @@ model Intervention {
   zntDistanceM         Int?              @map("znt_distance_m")
   parcelleId           String?           @map("parcelle_id")
   parcelle             ParcelleGeo?      @relation("InterventionParcelle", fields: [parcelleId], references: [id], onDelete: SetNull, map: "interventions_parcelle_fkey")
+  // Arrêté du 24 décembre 2025 (registre d'utilisation des PPP), annexe I :
+  // mentions « le cas échéant » (stade, horaires prévus par la réglementation
+  // ou l'AMM, rentrée anticipée, établissement bénéficiaire d'une prestation).
+  stadeBBCH            String?           @map("stade_bbch") // 2 chiffres (annexe II)
+  heureDebut           String?           @map("heure_debut") // HH:MM, heure de Paris
+  heureFin             String?           @map("heure_fin") // HH:MM, heure de Paris
+  rentreeAnticipee     String?           @map("rentree_anticipee") // moment, lieu, motif, mesures
+  siretBeneficiaire    String?           @map("siret_beneficiaire") // prestation de service
+  // Contexte figé au jour de l'enregistrement (art. 3 : intégrité) : la culture,
+  // la localisation et la conduite biologique ne sont plus relues des fiches
+  // vivantes, qu'un renommage ou une conversion modifierait après coup.
+  cultureRegistre      String?           @map("culture_registre")
+  localisationRegistre String?           @map("localisation_registre")
+  conduiteBio          Boolean?          @map("conduite_bio")
   // Intrants consommés
   intrantNom           String?           @map("intrant_nom") // Nom de l'intrant utilisé
   intrantQuantite      Float?            @map("intrant_quantite")

@@ -11,6 +11,11 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import {
+  journaliserRectificationPhyto,
+  motifRectification,
+  operationAuRegistre,
+} from "@/lib/tracabilite/historique-phyto"
 import { createDepenseFromOperationArbre, deleteAutoEntry } from "@/lib/auto-compta"
 
 interface Params {
@@ -135,6 +140,20 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
     })
 
+      // Arrêté du 24 décembre 2025, art. 3 : l'état d'avant d'un traitement
+      // du registre reste retrouvable (revue de conformité du 2026-11-12, C3).
+      if (operationAuRegistre(existing)) {
+        await journaliserRectificationPhyto(tx, {
+          userId: session!.user.id,
+          source: "operation_arbre",
+          sourceId: existing.id,
+          action: "modification",
+          avant: existing,
+          apres: operation,
+          motif: motifRectification(body.motif),
+          auteurId: session!.user.id,
+        })
+      }
       await createDepenseFromOperationArbre(session!.user.id, {
         id: operation.id,
         type: operation.type,
@@ -184,6 +203,17 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      if (operationAuRegistre(existing)) {
+        await journaliserRectificationPhyto(tx, {
+          userId: session!.user.id,
+          source: "operation_arbre",
+          sourceId: existing.id,
+          action: "suppression",
+          avant: existing,
+          motif: motifRectification(request.nextUrl.searchParams.get("motif")),
+          auteurId: session!.user.id,
+        })
+      }
       await deleteAutoEntry('operation_arbre', operationId, 'depense', session!.user.id, tx)
       await tx.operationArbre.delete({ where: { id: operationId, userId: session!.user.id } })
     })
