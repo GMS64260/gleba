@@ -12,7 +12,7 @@
  *   3. Espèces tropicales officielles (userId null) + leurs ITP calés PAR ZONE
  *      sur les saisons locales (attention : hémisphère sud = saisons inversées).
  *
- * Convention prod (cf. migrate-data-v1) : on peuple nom + nomNormalise +
+ * Convention du référentiel officiel : on peuple nom + nomNormalise +
  * uniteRendement + modeSemis. L'id officiel = le nom lisible (rétro-compat FK).
  */
 import { PrismaClient } from '@prisma/client'

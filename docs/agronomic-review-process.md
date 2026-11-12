@@ -26,14 +26,15 @@ suivre le processus ci-dessous.
    - `commentaire_agronome` : entrée datée avec la justification courte.
    - `source_reference`     : nom + édition + page si applicable.
    - `derniere_revision`    : `NOW()`.
-4. **Export CSV avant / après** : regénérer `audit/itp-current.csv` via
-   `npx tsx scripts/export-itp.ts > audit/itp-current.csv` et commiter le
-   diff. Ça permet à n'importe qui de relire l'impact sans ouvrir la base.
+4. **Export CSV avant / après** : exporter le référentiel avant et après la
+   modification via `npx tsx scripts/export-itp.ts > audit/itp-before-<sujet>-AAAA-MM-JJ.csv`
+   (puis `itp-after-<sujet>-AAAA-MM-JJ.csv`) et commiter les deux fichiers,
+   comme `audit/itp-before-inrae-2026-07-29.csv`. Ça permet à n'importe qui
+   de relire l'impact sans ouvrir la base.
 5. **PR taguée** :
    - `needs-agronomic-review` (obligatoire).
    - Marquer la PR en **draft** tant qu'aucun mainteneur agronome n'a validé.
-6. **Revue** : un mainteneur identifié comme agronome référent (cf.
-   `CODEOWNERS` ou le fichier `MAINTAINERS.md` s'il existe) doit approuver
+6. **Revue** : un mainteneur identifié comme agronome référent doit approuver
    avant merge. À défaut, deux relecteurs non-agronomes consultent au moins
    deux sources convergentes.
 

@@ -1,11 +1,9 @@
 /**
  * Glossaire des termes métier de Gleba.
  *
- * Utilisé par <GlossaireTerm /> pour afficher des tooltips contextuels,
- * et potentiellement par une page Glossaire dans les parametres.
+ * Affiché par la page `/glossaire` (`listGlossaireEntries`).
  *
- * Les clés sont normalisées en MAJUSCULES (ou la casse canonique du terme)
- * — la recherche est insensible à la casse via getGlossaireEntry().
+ * Les clés portent la casse canonique du terme (sigles en MAJUSCULES).
  */
 
 export interface GlossaireEntry {
@@ -121,20 +119,7 @@ export const GLOSSAIRE: Record<string, GlossaireEntry> = {
 }
 
 /**
- * Recherche une entrée du glossaire, insensible à la casse.
- */
-export function getGlossaireEntry(term: string): GlossaireEntry | undefined {
-  const direct = GLOSSAIRE[term]
-  if (direct) return direct
-  const normalized = term.trim().toLowerCase()
-  const found = Object.entries(GLOSSAIRE).find(
-    ([key]) => key.toLowerCase() === normalized
-  )
-  return found?.[1]
-}
-
-/**
- * Liste triée des entrées (utile pour une page Glossaire).
+ * Liste triée des entrées, pour la page Glossaire.
  */
 export function listGlossaireEntries(): Array<{ key: string } & GlossaireEntry> {
   return Object.entries(GLOSSAIRE)

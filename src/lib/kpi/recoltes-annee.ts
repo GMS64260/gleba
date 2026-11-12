@@ -27,7 +27,7 @@
 
 import prisma from '@/lib/prisma'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
-import { projectionRecolte, uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
+import { projectionRecolte, type UniteQuantite } from '@/lib/recolte/projection'
 import {
   ajouterQuantite,
   arrondirQuantites,
@@ -216,19 +216,4 @@ export async function getRecoltesAnneeAggregat(
 function volumeTotal(e: RecoltesParEspece): number {
   const total = fusionnerQuantites(e.realiseesParUnite, e.projectionParUnite)
   return Object.values(total).reduce((somme, valeur) => somme + (valeur ?? 0), 0)
-}
-
-/** Unité de quantité d'une espèce chez cet utilisateur (surcharge comprise). */
-export async function uniteEspecePourUtilisateur(
-  userId: string,
-  especeId: string,
-): Promise<UniteQuantite> {
-  const [espece, surcharges] = await Promise.all([
-    prisma.espece.findUnique({
-      where: { id: especeId },
-      select: { rendement: true, uniteRendement: true },
-    }),
-    chargerSurchargesRendement(userId, [especeId]),
-  ])
-  return uniteQuantiteRecolte(rendementEffectif(espece, surcharges.get(especeId)).uniteRendement)
 }

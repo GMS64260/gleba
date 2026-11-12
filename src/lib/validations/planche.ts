@@ -4,18 +4,6 @@
 
 import { z } from 'zod'
 
-// Types de planche
-export const PLANCHE_TYPES = ['Serre', 'Plein champ', 'Tunnel', 'Chassis'] as const
-
-// Types d'irrigation
-export const PLANCHE_IRRIGATION = ['Goutte-a-goutte', 'Aspersion', 'Manuel', 'Aucun'] as const
-
-// Types de sol
-export const TYPES_SOL = ['Argileux', 'Limoneux', 'Sableux', 'Mixte'] as const
-
-// Niveaux de rétention eau
-export const RETENTION_EAU = ['Faible', 'Moyenne', 'Élevée'] as const
-
 export const plancheSchema = z.object({
   nom: z.string().min(1, "Le nom de la planche est requis").max(50),
   rotationId: z.string().nullable().optional(),
@@ -53,6 +41,4 @@ export const createPlancheSchema = plancheSchema
 // qui renvoie un 409 explicite plutôt qu'une violation de contrainte brute.
 export const updatePlancheSchema = plancheSchema.partial()
 
-export type PlancheInput = z.infer<typeof plancheSchema>
 export type CreatePlancheInput = z.infer<typeof createPlancheSchema>
-export type UpdatePlancheInput = z.infer<typeof updatePlancheSchema>

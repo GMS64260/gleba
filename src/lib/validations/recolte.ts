@@ -74,8 +74,3 @@ export const recoltePatchSchema = z.object({
     }
   }
 })
-
-export type RecolteInput = z.infer<typeof recolteSchema>
-export type CreateRecolteInput = z.infer<typeof createRecolteSchema>
-export type UpdateRecolteInput = z.infer<typeof updateRecolteSchema>
-export type RecoltePatchInput = z.infer<typeof recoltePatchSchema>
