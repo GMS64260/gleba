@@ -5,6 +5,3 @@
 
 /** Code de la réponse 422 qu'un formulaire peut confirmer. */
 export const CODE_LAIT_INDISPONIBLE = 'LAIT_INDISPONIBLE'
-
-/** Champ booléen du corps de requête qui confirme la saisie malgré l'alerte. */
-export const CHAMP_CONFIRMATION_LAIT = 'confirmerLaitIndisponible'

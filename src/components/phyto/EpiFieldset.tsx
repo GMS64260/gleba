@@ -21,8 +21,6 @@ export const EPI_OPTIONS = [
   { slug: "bottes", label: "Bottes étanches" },
 ] as const
 
-export type EpiSlug = (typeof EPI_OPTIONS)[number]["slug"]
-
 interface EpiFieldsetProps {
   value: string[]
   onChange: (next: string[]) => void

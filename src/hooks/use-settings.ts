@@ -75,31 +75,3 @@ export function useSettings(parcelleId?: string | null): GardenSettings {
 
   return settings
 }
-
-export function getSettings(parcelleId?: string | null): GardenSettings {
-  if (typeof window === 'undefined') return defaultSettings
-
-  const key = settingsKey(parcelleId)
-  const stored = localStorage.getItem(key)
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored)
-      return { ...defaultSettings, ...parsed }
-    } catch {
-      // Ignorer les erreurs de parsing
-    }
-  }
-  return defaultSettings
-}
-
-/**
- * Sauvegarde les settings pour une parcelle donnée (ou les settings globaux)
- */
-export function saveSettings(settings: Partial<GardenSettings>, parcelleId?: string | null): void {
-  if (typeof window === 'undefined') return
-
-  const key = settingsKey(parcelleId)
-  const current = getSettings(parcelleId)
-  const merged = { ...current, ...settings }
-  localStorage.setItem(key, JSON.stringify(merged))
-}

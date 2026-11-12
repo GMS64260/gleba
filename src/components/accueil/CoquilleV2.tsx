@@ -11,7 +11,6 @@ import { AccueilRail } from "./AccueilRail"
 import { NavigationBasse } from "./NavigationBasse"
 import { AppTopBar } from "@/components/shell/AppTopBar"
 import { estCoquilleV2Active } from "@/lib/navigation-principale"
-export { estCheminSansShell } from "@/lib/navigation-principale"
 
 /**
  * Shell de l'accueil v2 sur toutes les pages (livraison L4) : pour un compte

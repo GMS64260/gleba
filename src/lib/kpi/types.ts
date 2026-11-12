@@ -102,30 +102,6 @@ export interface KPICompta extends KPIBase {
   nbRevenusNonPayes: number
 }
 
-export interface KPIVerger extends KPIBase {
-  arbresCount: number
-  recoltesKgYtd: number
-  recoltesKgN1Ytd: number
-  recoltesKgN1Total: number
-}
-
-export interface KPIElevage extends KPIBase {
-  animauxCount: number
-  lotsCount: number
-  productionOeufsYtd: number
-  productionOeufsN1Ytd: number
-  productionOeufsN1Total: number
-}
-
-/**
- * Indique si l'on est avant la fin de l'année courante : dans ce cas, ne
- * jamais comparer YTD à une base annuelle complète.
- */
-export function isMidYear(asOf: Date, year: number): boolean {
-  if (asOf.getFullYear() !== year) return false
-  return asOf.getMonth() < 11 || asOf.getDate() < 31
-}
-
 /**
  * Convertit `asOf` en sa date homologue de l'année précédente.
  * 29 février → 28 février N-1.

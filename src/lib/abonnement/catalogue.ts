@@ -3,9 +3,6 @@ export const ATELIERS = ["maraichage", "verger", "elevage"] as const
 export type Atelier = typeof ATELIERS[number]
 /** Une seule formule payante ; le carnet gratuit n'est pas une formule souscrite. */
 export type Formule = "complet"
-export const NOMS_ATELIERS: Record<Atelier, string> = {
-  maraichage: "Jardin et maraîchage", verger: "Verger", elevage: "Élevage",
-}
 export const GRATUIT = {
   nom: "Gratuit",
   description: "Tout votre carnet de terrain, pour toujours.",
@@ -21,5 +18,3 @@ export const GRATUITE_EXISTANTS_JUSQUAU = "2026-11-08T20:32:07.000Z"
 export const VERSION_CONDITIONS_OFFRE = "2026-11-09"
 export const TEXTE_OFFRE = "Gleba est gratuit pour tenir votre carnet. Complet à 12 € HT/mois ajoute l’assistant IA, la météo, la boutique et la gestion ; essayez-le 3 mois sans carte bancaire."
 export const TEXTE_EXISTANTS = "Les comptes déjà inscrits lors de l’annonce conservent gratuitement à vie leur accès complet."
-export function estAtelier(v: unknown): v is Atelier { return ATELIERS.includes(v as Atelier) }
-export function estFormule(v: unknown): v is Formule { return v === "complet" }

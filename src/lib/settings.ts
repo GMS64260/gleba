@@ -260,21 +260,6 @@ export async function getSetting<K extends SettingKey>(
   return resolved.value as SettingValueFor<K>
 }
 
-/** Lit toutes les valeurs effectives du registre. */
-export async function getSettings(): Promise<{
-  [K in SettingKey]: SettingValueFor<K>
-}> {
-  const entries = await Promise.all(
-    (Object.keys(settingsRegistry) as SettingKey[]).map(async (cle) => [
-      cle,
-      await getSetting(cle),
-    ] as const)
-  )
-  return Object.fromEntries(entries) as {
-    [K in SettingKey]: SettingValueFor<K>
-  }
-}
-
 /** Lit les valeurs effectives avec leur provenance pour l'API d'administration. */
 export async function getSettingsWithProvenance(): Promise<
   Record<SettingKey, SettingDetails>

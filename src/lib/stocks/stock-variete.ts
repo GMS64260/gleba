@@ -7,8 +7,9 @@
  * partagées par tous les comptes (une variété du catalogue est commune),
  * pendant que Planification > Stocks lisait `UserStockVariete` : « 80 g » d'un
  * côté, « Cliquer pour ajouter » de l'autre. Ces colonnes ne sont plus ni lues,
- * ni écrites, ni exposées par l'application (reprise historique :
- * `prisma/migrate-stocks-to-users.ts`). Un seul chemin d'écriture :
+ * ni écrites, ni exposées par l'application (leur reprise vers
+ * `UserStockVariete` relevait d'un script ponctuel, retiré du dépôt). Un seul
+ * chemin d'écriture :
  * `enregistrerStockVariete`, appelé par `/api/stocks`, `/api/varietes` et
  * l'import.
  */
