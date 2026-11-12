@@ -9,7 +9,9 @@ import prisma from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
 import { ZodError } from "zod"
 import { requireAdminApi, requireAuthApi } from "@/lib/auth-utils"
-import { createAssociationSchema } from "@/lib/validations/association"
+import { ASSOCIATION_TYPES, createAssociationSchema, type AssociationType } from "@/lib/validations/association"
+import { getEspeceAliases } from "@/lib/especes/aliases"
+import { INCLUDE_DETAILS, MESSAGE_TROP_PEU_DE_MEMBRES, MESSAGE_REFERENCE_INCONNUE, detailsAEcrire, estReferenceInconnue } from "./details"
 
 function generateAssociationId(nom: string): string {
   return "asso-" + nom
@@ -29,8 +31,15 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")
     const especeId = searchParams.get("especeId")
     const familleId = searchParams.get("familleId")
+    const type = searchParams.get("type")
 
     const where: Prisma.AssociationWhereInput = {}
+
+    // Filtre additif : un appelant qui veut les seules associations favorables
+    // (recommandations) n'a plus à trier lui-même. Valeur inconnue ignorée.
+    if (type && (ASSOCIATION_TYPES as readonly string[]).includes(type)) {
+      where.type = type as AssociationType
+    }
 
     if (search) {
       where.OR = [
@@ -43,7 +52,9 @@ export async function GET(request: NextRequest) {
       where.details = {
         some: {
           OR: [
-            especeId ? { especeId } : {},
+            // Alias compris : « Haricot vert » remonte les règles de « Haricot »,
+            // comme la fiche espèce et les alertes.
+            especeId ? { especeId: { in: getEspeceAliases(especeId), mode: "insensitive" as const } } : {},
             familleId ? { familleId } : {},
           ].filter(obj => Object.keys(obj).length > 0),
         },
@@ -52,14 +63,7 @@ export async function GET(request: NextRequest) {
 
     const associations = await prisma.association.findMany({
       where,
-      include: {
-        details: {
-          include: {
-            espece: { select: { id: true, couleur: true } },
-            famille: { select: { id: true, couleur: true } },
-          },
-        },
-      },
+      include: INCLUDE_DETAILS,
       orderBy: { nom: "asc" },
     })
 
@@ -87,6 +91,10 @@ export async function POST(request: NextRequest) {
     const validated = createAssociationSchema.parse(body)
 
     const { details, ...associationData } = validated
+    // Une règle à moins de deux membres ne relie personne : muette partout.
+    if (detailsAEcrire(details ?? []).length < 2) {
+      return NextResponse.json({ error: MESSAGE_TROP_PEU_DE_MEMBRES }, { status: 400 })
+    }
     const id = generateAssociationId(associationData.nom)
 
     // Audit Marc 2026-05-14 — Bug 19 : `type` est validé par Zod (default
@@ -95,26 +103,9 @@ export async function POST(request: NextRequest) {
       data: {
         id,
         ...associationData,
-        details: details
-          ? {
-              create: details.map((d) => ({
-                especeId: d.especeId || null,
-                familleId: d.familleId || null,
-                groupe: d.groupe || null,
-                requise: d.requise || false,
-                notes: d.notes || null,
-              })),
-            }
-          : undefined,
+        details: details ? { create: detailsAEcrire(details) } : undefined,
       },
-      include: {
-        details: {
-          include: {
-            espece: { select: { id: true, couleur: true } },
-            famille: { select: { id: true, couleur: true } },
-          },
-        },
-      },
+      include: INCLUDE_DETAILS,
     })
 
     return NextResponse.json(association, { status: 201 })
@@ -133,6 +124,10 @@ export async function POST(request: NextRequest) {
         { error: "Une association avec ce nom existe déjà" },
         { status: 409 }
       )
+    }
+
+    if (estReferenceInconnue(err)) {
+      return NextResponse.json({ error: MESSAGE_REFERENCE_INCONNUE }, { status: 400 })
     }
 
     return NextResponse.json(

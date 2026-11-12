@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { lireAnnee } from '@/lib/api/annee'
 import { getStatsPlanification } from '@/lib/planification'
 import { getKpiMaraichage } from '@/lib/kpi'
 import { getRecoltesAnneeAggregat } from '@/lib/kpi/recoltes-annee'
@@ -17,7 +18,8 @@ export async function GET(request: NextRequest) {
     const userId = getUserId(session)
     const { searchParams } = new URL(request.url)
 
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
+    // Année illisible (« abc », vide) : année courante, jamais NaN en base.
+    const { annee } = lireAnnee(searchParams)
     const asOf = new Date()
 
     // getStatsPlanification fournit toujours les compteurs purement

@@ -7,8 +7,8 @@ describe("associationDetailTitle", () => {
     expect(associationDetailTitle("incompatible", true)).toBe("Association incompatible")
   })
 
-  it("distingue les associations favorables requises et facultatives", () => {
-    expect(associationDetailTitle("favorable", true)).toBe("Association requise")
+  it("nomme le pivot d'une association favorable sans parler d'obligation", () => {
+    expect(associationDetailTitle("favorable", true)).toBe("Espèce pivot (association favorable)")
     expect(associationDetailTitle("favorable", false)).toBe("Association favorable")
   })
 })

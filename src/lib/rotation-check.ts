@@ -55,6 +55,7 @@ export type EtapeCycle = {
  * la culture la plus récente (année ≤ `annee`) dont la famille correspond à une
  * étape et une seule : une famille présente à deux étapes du cycle ne permet pas
  * de trancher, l'inclure fabriquerait un ancrage arbitraire.
+ * Le résultat ne dépend pas de l'ordre de `historique`.
  *
  * Exporté pour être testable sans base.
  */
@@ -73,21 +74,42 @@ export function etapePourAnnee(
     else etapesParFamille.set(famille, [etape])
   }
 
-  let repere: { annee: number; etape: number } | null = null
+  // Étapes désignées sans ambiguïté par les cultures de chaque année.
+  const etapesParAnnee = new Map<number, Set<number>>()
   for (const culture of historique) {
     if (culture.annee == null || culture.familleId == null) continue
     if (culture.annee > annee) continue
     const etapes = etapesParFamille.get(culture.familleId)
     if (!etapes || etapes.length !== 1) continue
-    if (!repere || culture.annee > repere.annee) {
-      repere = { annee: culture.annee, etape: etapes[0] }
-    }
+    const vues = etapesParAnnee.get(culture.annee)
+    if (vues) vues.add(etapes[0])
+    else etapesParAnnee.set(culture.annee, new Set([etapes[0]]))
   }
+
+  const etapeDeroulee = (depuis: { annee: number; etape: number }, cible: number) =>
+    ((((depuis.etape - 1 + cible - depuis.annee) % nbAnnees) + nbAnnees) % nbAnnees) + 1
+
+  // Repère : l'année la plus récente qui désigne UNE étape. Une année qui en
+  // désigne plusieurs (culture dérobée d'une autre étape derrière la culture
+  // principale) ne tranche pas seule : le repère dépendait de l'ordre des
+  // lignes lues, que la requête ne fixe pas (revue du 2026-11-11). Elle est
+  // départagée par le repère antérieur déroulé jusqu'à elle ; s'il manque ou
+  // s'il la contredit, la position est inconnue et rien n'est affirmé.
+  const annees = [...etapesParAnnee.keys()].sort((a, b) => b - a)
+  const repereDepuis = (rang: number): { annee: number; etape: number } | null => {
+    if (rang >= annees.length) return null
+    const anneeRepere = annees[rang]
+    const etapes = etapesParAnnee.get(anneeRepere)!
+    if (etapes.size === 1) return { annee: anneeRepere, etape: [...etapes][0] }
+    const anterieur = repereDepuis(rang + 1)
+    if (!anterieur) return null
+    const attendue = etapeDeroulee(anterieur, anneeRepere)
+    return etapes.has(attendue) ? { annee: anneeRepere, etape: attendue } : null
+  }
+  const repere = repereDepuis(0)
   if (!repere) return null
 
-  const decalage = annee - repere.annee
-  const index = (((repere.etape - 1 + decalage) % nbAnnees) + nbAnnees) % nbAnnees
-  const etape = index + 1
+  const etape = etapeDeroulee(repere, annee)
   const familleAttendue = familleParEtape.get(etape)
   if (!familleAttendue) return null
   return { etape, familleAttendue }

@@ -39,7 +39,7 @@ vi.mock("@/lib/prisma", () => ({
     iTP: { findFirst: mocks.itpFindFirst },
     planche: { findFirst: mocks.plancheFindFirst, findUnique: mocks.plancheFindUnique },
     culture: { findUnique: mocks.cultureFindUnique, update: mocks.cultureUpdate },
-    $transaction: (fn: (tx: unknown) => unknown) => fn({ culture: { create: mocks.cultureCreate } }),
+    $transaction: (fn: (tx: unknown) => unknown) => fn({ $executeRaw: async () => 1, culture: { create: mocks.cultureCreate, findMany: async () => [] } }),
   },
 }))
 

@@ -25,6 +25,7 @@ import {
   type UniteQuantite,
 } from "@/lib/recolte/projection"
 import { lienChezMoiEspece } from "@/lib/especes/fiche-url"
+import { midiLocalDuJour } from "@/lib/cultures/champ-date"
 import {
   ajouterQuantite,
   formatQuantiteParUnite,
@@ -52,19 +53,25 @@ interface Culture {
   totalRecolteParUnite?: Partial<Record<UniteQuantite, number>>
 }
 
+/** Cultures en cours demandées en une page ; au-delà, la liste le dit. */
+const TAILLE_LISTE_CULTURES = 500
+/** Saisies de la session affichées ; le total, lui, les compte toutes. */
+const NB_SAISIES_AFFICHEES = 5
+
 /** Vérifie si une culture est prête à récolter (dateRecolte dans ±14 jours). */
 function estPreteARecolter(culture: Culture, reference = new Date()): boolean {
-  if (!culture.dateRecolte) return false
-  const dateRecolte = new Date(culture.dateRecolte)
+  // Jour civil de la récolte (pas le jour local d'un minuit UTC, qui recule
+  // d'un jour à l'ouest d'UTC).
+  const dateRecolte = midiLocalDuJour(culture.dateRecolte)
+  if (!dateRecolte) return false
   const diff = differenceInDays(dateRecolte, reference)
   return diff >= -14 && diff <= 14
 }
 
 /** Formate une date de recolte pour l'affichage dans le sélecteur */
 function formaterDateRecolte(dateStr: string | null): string {
-  if (!dateStr) return ""
-  const date = new Date(dateStr)
-  return format(date, "d MMM", { locale: fr })
+  const date = midiLocalDuJour(dateStr)
+  return date ? format(date, "d MMM", { locale: fr }) : ""
 }
 
 function libelleCulture(culture: Culture): string {
@@ -84,6 +91,10 @@ function libelleCulture(culture: Culture): string {
 export default function SaisieRecoltePage() {
   const { toast } = useToast()
   const [cultures, setCultures] = React.useState<Culture[]>([])
+  // Échec de chargement et liste incomplète sont dits : un sélecteur vide
+  // laissait croire qu'il n'y avait rien à récolter.
+  const [etatCultures, setEtatCultures] = React.useState<"chargement" | "ok" | "erreur">("chargement")
+  const [culturesNonListees, setCulturesNonListees] = React.useState(0)
   const [selectedCulture, setSelectedCulture] = React.useState<string>("")
   const [quantite, setQuantite] = React.useState<string>("")
   // Date par défaut = jour du navigateur, vide au prérendu du build et à
@@ -111,8 +122,13 @@ export default function SaisieRecoltePage() {
 
   // Charger les cultures actives (en cours de recolte ou plantées)
   React.useEffect(() => {
-    fetch("/api/cultures?pageSize=200")
-      .then((r) => r.json())
+    // `enCours=1` : les cultures terminées ne prennent pas la place de cultures
+    // plus anciennes encore en récolte (la page est triée par identifiant).
+    fetch(`/api/cultures?pageSize=${TAILLE_LISTE_CULTURES}&enCours=1`)
+      .then((r) => {
+        if (!r.ok) throw new Error("Chargement des cultures impossible")
+        return r.json()
+      })
       .then((data) => {
         // Filtrer pour garder les cultures actives (non terminées)
         const actives = (data.data || []).filter(
@@ -133,8 +149,13 @@ export default function SaisieRecoltePage() {
           return 0
         })
         setCultures(actives)
+        setCulturesNonListees(Math.max(0, (Number(data.total) || 0) - (data.data || []).length))
+        setEtatCultures("ok")
       })
-      .catch(() => setCultures([]))
+      .catch(() => {
+        setCultures([])
+        setEtatCultures("erreur")
+      })
   }, [])
 
   const selectedCultureData = cultures.find((c) => c.id.toString() === selectedCulture)
@@ -297,7 +318,9 @@ export default function SaisieRecoltePage() {
           // au kilo et un dahlia à la tige.
           unite: uniteEnregistree,
         },
-        ...prev.slice(0, 4),
+        // Toutes les saisies sont gardées : le total de session et le reste
+        // à récolter les comptent, l'affichage se limite aux dernières.
+        ...prev,
       ])
 
       toast({
@@ -439,6 +462,21 @@ export default function SaisieRecoltePage() {
                     </select>
                   )
                 })()}
+                {etatCultures === "erreur" && (
+                  <p role="alert" className="mt-1 text-sm text-red-700">
+                    Les cultures n&apos;ont pas pu être chargées. Rechargez la page pour réessayer.
+                  </p>
+                )}
+                {etatCultures === "ok" && cultures.length === 0 && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Aucune culture en cours. Créez une culture avant de saisir sa récolte.
+                  </p>
+                )}
+                {culturesNonListees > 0 && (
+                  <p className="mt-1 text-sm text-amber-700">
+                    Liste limitée aux {TAILLE_LISTE_CULTURES} cultures en cours les plus récentes : {culturesNonListees} plus ancienne{culturesNonListees > 1 ? "s" : ""} n&apos;y figure{culturesNonListees > 1 ? "nt" : ""} pas.
+                  </p>
+                )}
                 {selectedCultureData && (
                   <div className="mt-1 space-y-1">
                     <p className="text-sm text-muted-foreground">
@@ -446,7 +484,7 @@ export default function SaisieRecoltePage() {
                       {selectedCultureData.dateRecolte && (
                         <span>
                           {" — Récolte prévue : "}
-                          {format(new Date(selectedCultureData.dateRecolte), "d MMMM yyyy", { locale: fr })}
+                          {format(midiLocalDuJour(selectedCultureData.dateRecolte) ?? new Date(selectedCultureData.dateRecolte), "d MMMM yyyy", { locale: fr })}
                           {estPreteARecolter(selectedCultureData) && (
                             <Badge variant="outline" className="ml-2 text-green-700 border-green-300 bg-green-50">
                               Prête
@@ -569,7 +607,7 @@ export default function SaisieRecoltePage() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-2">
-                {recentRecoltes.map((r, i) => (
+                {recentRecoltes.slice(0, NB_SAISIES_AFFICHEES).map((r, i) => (
                   <li key={r.id ?? i} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <span>{r.especeNom ?? r.especeId}</span>
                     <span className="font-medium text-green-600">
@@ -579,8 +617,13 @@ export default function SaisieRecoltePage() {
                   </li>
                 ))}
               </ul>
+              {recentRecoltes.length > NB_SAISIES_AFFICHEES && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {recentRecoltes.length - NB_SAISIES_AFFICHEES} saisie{recentRecoltes.length - NB_SAISIES_AFFICHEES > 1 ? "s" : ""} plus ancienne{recentRecoltes.length - NB_SAISIES_AFFICHEES > 1 ? "s" : ""} comptée{recentRecoltes.length - NB_SAISIES_AFFICHEES > 1 ? "s" : ""} dans le total.
+                </p>
+              )}
               <div className="border-t mt-3 pt-3 flex justify-between font-medium">
-                <span>Total session</span>
+                <span>Total session ({recentRecoltes.length} saisie{recentRecoltes.length > 1 ? "s" : ""})</span>
                 {/* Une session peut mêler des kilos et des tiges : on ventile
                     plutôt que d'additionner. */}
                 <span className="text-green-600">

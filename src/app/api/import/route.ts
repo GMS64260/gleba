@@ -4,6 +4,7 @@
  * Importe les données pour l'utilisateur connecté
  */
 
+import { typeAssociationImporte } from "@/lib/validations/association"
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { nomItpDepuisSaisie } from '@/lib/itp-nom'
@@ -220,6 +221,7 @@ interface ImportData {
   associations?: Array<{
     id: string
     nom: string
+    type?: string | null
     description?: string | null
     notes?: string | null
     details?: Array<{
@@ -679,6 +681,8 @@ export async function POST(request: NextRequest) {
               nom: item.nom,
               description: item.description,
               notes: item.notes,
+              // Sans lui, une incompatibilité importée devenait favorable.
+              type: typeAssociationImporte(item.type),
             },
           })
           associationId = existingByNom.id
@@ -690,6 +694,8 @@ export async function POST(request: NextRequest) {
               nom: item.nom,
               description: item.description,
               notes: item.notes,
+              // Sans lui, une incompatibilité importée devenait favorable.
+              type: typeAssociationImporte(item.type),
             },
           })
         }

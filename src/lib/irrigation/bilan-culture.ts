@@ -10,6 +10,7 @@ import { formatNombre } from '@/lib/format-utils'
 import type { ArrosageSaisi } from './arrosages-saisis'
 import { jourDuLieu, jourLocalIso, type MeteoBilan } from './meteo-bilan'
 import { debutSurPlanche } from '@/lib/cultures/en-place'
+import { jourCivilStocke } from '@/lib/jour-civil'
 
 export interface CultureBilan {
   espece: string
@@ -39,7 +40,9 @@ export { debutSurPlanche }
 function jourArrosage(a: { date: Date; calendaire: boolean }, meteo: MeteoBilan): string {
   const minuit = (d: Date) =>
     (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) || (d.getHours() === 0 && d.getMinutes() === 0)
-  return a.calendaire && minuit(a.date) ? jourLocalIso(a.date) : jourDuLieu(a.date, meteo)
+  // `jourCivilStocke` : minuit UTC se lit en UTC, minuit local en local. Lu en
+  // local seul, un minuit UTC reculait d'un jour sur un serveur à l'ouest d'UTC.
+  return a.calendaire && minuit(a.date) ? (jourCivilStocke(a.date) ?? jourLocalIso(a.date)) : jourDuLieu(a.date, meteo)
 }
 
 /**

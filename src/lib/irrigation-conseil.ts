@@ -32,6 +32,7 @@ import {
 import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
 import { consommationHebdoTotale } from '@/lib/irrigation/consommation'
+import type { CauseSansMeteo } from '@/lib/irrigation/meteo-indisponible'
 
 // ── Types internes ──────────────────────────────────────────
 
@@ -46,7 +47,7 @@ interface MeteoParCoord {
   joursSansPluie: number   // jours consécutifs sans pluie significative reçue, aujourd'hui compris
   pluiePrevue48h: number   // mm annoncés aujourd'hui (pas encore reçus), demain et après-demain, comme le moteur
   pluiePrevue5j: number    // mm prévus dans les 5 prochains jours
-  joursAvantPluie: number  // jours avant la prochaine pluie significative (99 = aucune)
+  joursAvantPluie: number  // jours avant la prochaine pluie significative (0 = annoncée aujourd'hui, 99 = aucune)
 }
 
 // Seuils partagés avec le conseiller du Calendrier (meteo-agro.ts) et le moteur.
@@ -67,7 +68,9 @@ export function resumeMeteo(bilan: MeteoBilan): Omit<MeteoParCoord, 'lat' | 'lng
   const derniers7 = bilan.historique.slice(-7)
   // La pluie du jour n'est qu'annoncée : elle ne remet pas le compteur à zéro.
   const joursSansPluie = joursSansPluieRecue(bilan)
-  const idx = bilan.previsions.findIndex((j) => j.pluie >= SEUIL_PLUIE_SIGNIFICATIVE)
+  // La pluie annoncée aujourd'hui est la prochaine pluie : sans elle, l'écran
+  // disait « +15mm prévus (48h) » puis « Prochaine pluie dans 4j ».
+  const idx = [bilan.aujourdhui, ...bilan.previsions].findIndex((j) => j.pluie >= SEUIL_PLUIE_SIGNIFICATIVE)
   return {
     pluie48hPassees: bilan.historique.slice(-2).reduce((s, j) => s + j.pluie, 0),
     // Ticket QA cmv2rf6mb : même définition que /meteo (`pluieSeptDerniersJours`).
@@ -78,7 +81,7 @@ export function resumeMeteo(bilan: MeteoBilan): Omit<MeteoParCoord, 'lat' | 'lng
     // jamais dans les cumuls passés, comme dans `bilanReserveSol`.
     pluiePrevue48h: [bilan.aujourdhui, ...bilan.previsions.slice(0, 2)].reduce((s, j) => s + j.pluie, 0),
     pluiePrevue5j: bilan.previsions.slice(0, 5).reduce((s, j) => s + j.pluie, 0),
-    joursAvantPluie: idx >= 0 ? idx + 1 : 99,
+    joursAvantPluie: idx >= 0 ? idx : 99,
   }
 }
 
@@ -313,8 +316,12 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
       joursSansEau = Math.max(0, joursEntre(jourLocalIso(dernierArrosageConnu), jourLocalIso(new Date(now))))
     }
 
-    // Âge depuis plantation/semis
-    const dateReference = c.datePlantation || c.dateSemis
+    // Âge depuis la plantation, sinon le semis. Une date à venir ne date
+    // rien : un plant semé dont la plantation est prévue dans 44 jours
+    // sortait « -44j (jeune) » ; son âge se compte depuis le semis.
+    const dateReference = [c.datePlantation, c.dateSemis].find(
+      (d): d is Date => d != null && new Date(d).getTime() <= now,
+    )
     let ageJours: number | null = null
     let isJeune = false
     if (dateReference) {
@@ -360,13 +367,15 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
           { sousAbri: abri, arrosages },
         )
       : null
+    // Sans bilan, la culture le dit (`sansMeteo`) : la page Irriguer ne lit
+    // plus « Aucune urgence » là où rien n'a pu être calculé.
     const coordKeyCulture = cultureCoordKey.get(c.id)
+    const sansMeteo: CauseSansMeteo | null = bilan
+      ? null
+      : coordKeyCulture && zonesEnEchec.has(coordKeyCulture) ? 'meteo-indisponible' : 'sans-coordonnees'
     const { urgence, raison } = bilan
       ? { urgence: bilan.urgence, raison: bilan.raison }
-      : urgenceFallback(
-          joursSansEau, besoinEau, retentionEauSol,
-          coordKeyCulture && zonesEnEchec.has(coordKeyCulture) ? 'meteo-indisponible' : 'sans-coordonnees',
-        )
+      : urgenceFallback(joursSansEau, besoinEau, retentionEauSol, sansMeteo ?? 'sans-coordonnees')
 
     // Besoin de la semaine : ETc potentielle moyenne des 7 derniers jours ×
     // surface (mm × m² = L). Pas la consommation réelle, que le manque d'eau
@@ -403,6 +412,8 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
       isJeune,
       urgence,
       raisonUrgence: raison,
+      /** Cause de l'absence de bilan hydrique ; null quand il est calculé. */
+      sansMeteo,
       sousAbri,
       alerteSecheresse: alerteSecheresseActive,
       consommationEauSemaine: Math.round(consommationSemaine * 10) / 10,
@@ -487,5 +498,10 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
     stats,
     annee,
     meteo: meteoGlobal,
+    // Mêmes champs que le conseiller du Calendrier (`/api/meteo/irrigation`),
+    // lus par `bandeauMeteoIndisponible`.
+    zonesIndisponibles: zonesEnEchec.size,
+    culturesSansMeteo: culturesAvecUrgence.filter((c) => c.sansMeteo !== null).length,
+    indisponible: zonesEnEchec.size > 0 && zonesEnEchec.size === coordsParZone.size,
   }
 }

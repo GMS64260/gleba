@@ -13,14 +13,21 @@ import prisma from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
 import { z } from "zod"
 
+// Nombre fini, ou chaîne qui en écrit un. `z.coerce.number()` lisait null, ''
+// et false comme 0 : la planche partait à l'origine du plan sans erreur.
+const coordonnee = z.preprocess(
+  (valeur) => (typeof valeur === "string" && valeur.trim() !== "" ? Number(valeur) : valeur),
+  z.number().finite()
+)
+
 const schema = z.object({
   updates: z
     .array(
       z.object({
         id: z.string().min(1),
-        posX: z.coerce.number().optional(),
-        posY: z.coerce.number().optional(),
-        rotation2D: z.coerce.number().optional(),
+        posX: coordonnee.optional(),
+        posY: coordonnee.optional(),
+        rotation2D: coordonnee.optional(),
       })
     )
     .min(1)

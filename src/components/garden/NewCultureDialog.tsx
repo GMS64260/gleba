@@ -31,7 +31,7 @@ import {
   NouvelleEspecePersoDialog,
   type NouvelleEspecePerso,
 } from "@/components/especes/NouvelleEspecePersoDialog"
-import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
+import { datesDepuisItp, recolteRecalee } from "@/lib/cultures/dates-itp"
 import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { validateCultureDates } from "@/lib/validations/date-validation"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -245,12 +245,20 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     if (!dateRecolte) return
     const recolte = new Date(dateRecolte)
     if (Number.isNaN(recolte.getTime())) return
-    const recolteIncoherente = recolte <= debut
-    if (!debutChange && !recolteIncoherente) return
-
     const itp = itps.find((i) => i.id === itpId)
     if (!itp) return
-    const nouvelleRecolte = recolteApresDebut(debut, itp)
+    const dateValide = (brute: string): Date | null => {
+      if (!brute) return null
+      const date = new Date(brute)
+      return Number.isNaN(date.getTime()) ? null : date
+    }
+    const nouvelleRecolte = recolteRecalee({
+      dateSemis: dateValide(dateSemis),
+      datePlantation: dateValide(datePlantation),
+      dateRecolte: recolte,
+      itp,
+      debutChange,
+    })
     if (!nouvelleRecolte) return
     const nouvelleStr = format(nouvelleRecolte, "yyyy-MM-dd")
     if (nouvelleStr !== dateRecolte) setDateRecolte(nouvelleStr)

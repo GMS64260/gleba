@@ -10,16 +10,19 @@
 
 import * as React from "react"
 import { AlertTriangle, Sparkles, Loader2 } from "lucide-react"
+import { valeurChampDate } from "@/lib/cultures/champ-date"
 
 type AlerteAdjacence = {
   type: "favorable" | "defavorable"
   especes: [string, string]
   message: string
   plancheNom: string
+  memePlanche?: boolean
 }
 
 type SuggestionCompagnon = {
   especeId: string
+  especeNom?: string
   message: string
 }
 
@@ -33,26 +36,44 @@ type Result = {
 export function AdjacenceAdvisor({
   especeId,
   plancheId,
+  debut,
+  fin,
 }: {
   especeId: string
   plancheId: string
+  /** Occupation prévue de la culture : avec les deux dates, la planche elle-même est analysée. */
+  debut?: Date | string | null
+  fin?: Date | string | null
 }) {
   const [data, setData] = React.useState<Result | null>(null)
   const [loading, setLoading] = React.useState(false)
+  const [erreur, setErreur] = React.useState(false)
+
+  // Jours civils : valeurs stables d'un rendu à l'autre, et lisibles par la route.
+  const jourDebut = valeurChampDate(debut)
+  const jourFin = valeurChampDate(fin)
 
   React.useEffect(() => {
     if (!especeId || !plancheId) return
     let cancelled = false
     setLoading(true)
+    setErreur(false)
     fetch(
-      `/api/cultures/check-adjacence?especeId=${encodeURIComponent(especeId)}&plancheId=${encodeURIComponent(plancheId)}`
+      `/api/cultures/check-adjacence?especeId=${encodeURIComponent(especeId)}&plancheId=${encodeURIComponent(plancheId)}` +
+        (jourDebut && jourFin ? `&debut=${jourDebut}&fin=${jourFin}` : "")
     )
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (!r.ok) throw new Error("check-adjacence")
+        return r.json()
+      })
       .then((res) => {
         if (!cancelled) setData(res)
       })
       .catch(() => {
-        if (!cancelled) setData(null)
+        if (cancelled) return
+        // Un échec n'est pas « rien à signaler » : on le dit, sans bloquer la saisie.
+        setData(null)
+        setErreur(true)
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -60,7 +81,7 @@ export function AdjacenceAdvisor({
     return () => {
       cancelled = true
     }
-  }, [especeId, plancheId])
+  }, [especeId, plancheId, jourDebut, jourFin])
 
   if (loading) {
     return (
@@ -71,8 +92,16 @@ export function AdjacenceAdvisor({
     )
   }
 
+  if (erreur) {
+    return (
+      <div role="status" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        Le voisinage n’a pas pu être analysé : les associations avec les cultures voisines ne sont pas vérifiées.
+      </div>
+    )
+  }
   if (!data) return null
-  if (data.planchesVoisines.length === 0) {
+  // Une alerte sur la planche elle-même se montre même sans planche voisine.
+  if (data.planchesVoisines.length === 0 && data.alertes.length === 0) {
     return (
       <div className="rounded-md border bg-slate-50 p-3 text-xs text-muted-foreground">
         {data.ilot
@@ -96,12 +125,13 @@ export function AdjacenceAdvisor({
             <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
             <div className="flex-1">
               <p className="font-medium text-red-900">
-                Incompatibilité avec une culture voisine
+                Incompatibilité avec une culture voisine ou de la même planche
               </p>
               <ul className="mt-1 space-y-1 text-xs text-red-800">
                 {incompatibilites.map((a, i) => (
                   <li key={i}>
-                    Sur <span className="font-medium">{a.plancheNom}</span> : {a.message}
+                    Sur <span className="font-medium">{a.plancheNom}</span>
+                    {a.memePlanche ? " (même planche)" : ""} : {a.message}
                   </li>
                 ))}
               </ul>
@@ -118,12 +148,13 @@ export function AdjacenceAdvisor({
             <Sparkles className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
             <div className="flex-1">
               <p className="font-medium text-emerald-900">
-                Bonne association avec une culture voisine
+                Bonne association avec une culture voisine ou de la même planche
               </p>
               <ul className="mt-1 space-y-1 text-xs text-emerald-800">
                 {favorables.map((a, i) => (
                   <li key={i}>
-                    Sur <span className="font-medium">{a.plancheNom}</span> : {a.message}
+                    Sur <span className="font-medium">{a.plancheNom}</span>
+                    {a.memePlanche ? " (même planche)" : ""} : {a.message}
                   </li>
                 ))}
               </ul>
@@ -140,7 +171,8 @@ export function AdjacenceAdvisor({
               <ul className="mt-1 space-y-1 text-xs text-blue-800">
                 {data.suggestions.slice(0, 3).map((s, i) => (
                   <li key={i}>
-                    💡 <span className="font-medium">{s.especeId}</span> — {s.message}
+                    {/* Le message commence déjà par le nom de l'espèce. */}
+                    💡 {s.message}
                   </li>
                 ))}
               </ul>

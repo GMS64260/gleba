@@ -11,7 +11,6 @@ import { useRouter, useParams } from "next/navigation"
 import { ArrowLeft, Sprout, Save, SprayCan, Trash2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,9 +42,13 @@ import { AIDE_QUANTITE_PLANTS, libelleQuantitePlants, useQuantiteManuelle } from
 import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { AvisItpPlanche } from "@/components/cultures/AvisItpPlanche"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
-import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
+import { datesDepuisItp, recolteRecalee } from "@/lib/cultures/dates-itp"
 import { finRecolteApresModification } from "@/lib/cultures/fenetre-recolte"
 import { jourCivilStocke } from "@/lib/jour-civil"
+import { datesApresChangementItp, datesCalculeesEnJoursSeuls, valeurChampDate } from "@/lib/cultures/champ-date"
+
+/** Valeur du menu « Terminée » pour une culture en cours (Radix refuse la chaîne vide). */
+const NON_TERMINEE = "en-cours"
 
 interface ITPData {
   id: string
@@ -80,7 +83,7 @@ export default function EditCulturePage() {
   const params = useParams()
   const cultureId = params.id as string
   const { toast } = useToast()
-  const [especes, setEspeces] = React.useState<{ id: string }[]>([])
+  const [especes, setEspeces] = React.useState<{ id: string; nom?: string | null }[]>([])
   const [varietes, setVarietes] = React.useState<{ id: string; nom: string | null; especeId: string }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null; type?: string | null }[]>([])
@@ -281,13 +284,21 @@ export default function EditCulturePage() {
     // deux années, et ITP « implantation seule » dont la récolte était posée en
     // absolu, donc parfois avant le semis de la culture (QA cmsfxvbab).
     const cycle = datesDepuisItp(year, itp)
-    if (cycle.dateSemis) form.setValue("dateSemis", cycle.dateSemis)
-    if (cycle.datePlantation) form.setValue("datePlantation", cycle.datePlantation)
-    if (cycle.dateRecolte) form.setValue("dateRecolte", cycle.dateRecolte)
-    // Le cycle vient d'être posé en bloc : mémoriser son début pour que le
-    // recalage de la récolte ne réécrive pas celle de datesDepuisItp.
-    const debutCycle = cycle.datePlantation ?? cycle.dateSemis
-    if (debutCycle) debutCycleRef.current = debutCycle.toISOString()
+    // Une étape faite garde sa date d'exécution ; un jalon que le nouvel
+    // itinéraire n'a pas ne reste pas à la date de l'ancien.
+    const dates = datesApresChangementItp(cycle, {
+      semisFait: form.getValues("semisFait"),
+      plantationFaite: form.getValues("plantationFaite"),
+      recolteFaite: form.getValues("recolteFaite"),
+    })
+    for (const champ of ["dateSemis", "datePlantation", "dateRecolte"] as const) {
+      if (champ in dates) form.setValue(champ, dates[champ] ?? null)
+    }
+    // Le cycle vient d'être posé en bloc : mémoriser son début (celui de la
+    // fiche, étape faite comprise) pour que le recalage de la récolte ne
+    // réécrive pas celle de datesDepuisItp.
+    const debutCycle = form.getValues("datePlantation") ?? form.getValues("dateSemis")
+    if (debutCycle) debutCycleRef.current = new Date(debutCycle).toISOString()
 
     // Auto-remplir nbRangs seulement si vide ou encore égal à la valeur de l'ITP précédent
     const currentNbRangs = form.getValues("nbRangs")
@@ -321,25 +332,31 @@ export default function EditCulturePage() {
   const watchedDatePlantation = form.watch("datePlantation")
   React.useEffect(() => {
     if (!initialLoadDone.current) return
-    const debutRaw = watchedDatePlantation ?? watchedDateSemis
-    if (!debutRaw) return
-    const debut = new Date(debutRaw)
-    if (Number.isNaN(debut.getTime())) return
+    const dateValide = (brute: unknown): Date | null => {
+      if (!brute) return null
+      const date = new Date(brute as Date | string)
+      return Number.isNaN(date.getTime()) ? null : date
+    }
+    const semis = dateValide(watchedDateSemis)
+    const plantation = dateValide(watchedDatePlantation)
+    const debut = plantation ?? semis
+    if (!debut) return
     const debutKey = debut.toISOString()
     const debutChange = debutCycleRef.current !== null && debutCycleRef.current !== debutKey
     debutCycleRef.current = debutKey
 
-    const recolteRaw = form.getValues("dateRecolte")
-    if (!recolteRaw) return
-    const recolte = new Date(recolteRaw)
-    if (Number.isNaN(recolte.getTime())) return
-    const recolteIncoherente = recolte <= debut
-    if (!debutChange && !recolteIncoherente) return
-
+    const recolte = dateValide(form.getValues("dateRecolte"))
+    if (!recolte) return
     const itp = itps.find((i) => i.id === selectedItp)
     if (!itp) return
-    const nouvelleRecolte = recolteApresDebut(debut, itp)
-    if (!nouvelleRecolte || nouvelleRecolte.getTime() === recolte.getTime()) return
+    const nouvelleRecolte = recolteRecalee({
+      dateSemis: semis,
+      datePlantation: plantation,
+      dateRecolte: recolte,
+      itp,
+      debutChange,
+    })
+    if (!nouvelleRecolte) return
     form.setValue("dateRecolte", nouvelleRecolte)
   }, [watchedDateSemis, watchedDatePlantation, selectedItp, itps, form])
 
@@ -401,7 +418,9 @@ export default function EditCulturePage() {
       const response = await fetch(`/api/cultures/${cultureId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        // Dates calculées à l'écran envoyées en jour seul : en instant (minuit
+        // local), elles étaient enregistrées la veille à l'est de Paris.
+        body: JSON.stringify(datesCalculeesEnJoursSeuls(data)),
       })
 
       if (!response.ok) {
@@ -566,7 +585,8 @@ export default function EditCulturePage() {
                         <SelectContent>
                           {especes.map((e) => (
                             <SelectItem key={e.id} value={e.id}>
-                              {e.id}
+                              {/* Espèce personnelle : son identifiant est opaque, le nom vit dans `nom`. */}
+                              {e.nom ?? e.id}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -720,7 +740,7 @@ export default function EditCulturePage() {
                         <FormControl>
                           <Input
                             type="date"
-                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            value={valeurChampDate(field.value)}
                             onChange={(e) =>
                               field.onChange(e.target.value ? e.target.value : null)
                             }
@@ -740,7 +760,7 @@ export default function EditCulturePage() {
                         <FormControl>
                           <Input
                             type="date"
-                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            value={valeurChampDate(field.value)}
                             onChange={(e) =>
                               field.onChange(e.target.value ? e.target.value : null)
                             }
@@ -760,7 +780,7 @@ export default function EditCulturePage() {
                         <FormControl>
                           <Input
                             type="date"
-                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            value={valeurChampDate(field.value)}
                             onChange={(e) =>
                               field.onChange(e.target.value ? e.target.value : null)
                             }
@@ -782,7 +802,7 @@ export default function EditCulturePage() {
                         <FormControl>
                           <Input
                             type="date"
-                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            value={valeurChampDate(field.value)}
                             onChange={(e) => {
                               finSaisieRef.current = true
                               field.onChange(e.target.value ? e.target.value : null)
@@ -851,9 +871,11 @@ export default function EditCulturePage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Terminée</FormLabel>
+                      {/* « Non terminée » est un choix comme les autres : sans lui,
+                          une culture close par erreur ne pouvait plus être rouverte. */}
                       <Select
-                        onValueChange={field.onChange}
-                        value={field.value || undefined}
+                        onValueChange={(value) => field.onChange(value === NON_TERMINEE ? null : value)}
+                        value={field.value || NON_TERMINEE}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -861,6 +883,7 @@ export default function EditCulturePage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          <SelectItem value={NON_TERMINEE}>Non terminée</SelectItem>
                           <SelectItem value="x">Terminée</SelectItem>
                           <SelectItem value="v">Vivace (continue)</SelectItem>
                           <SelectItem value="NS">Non significative</SelectItem>

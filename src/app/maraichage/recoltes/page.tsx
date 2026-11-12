@@ -137,6 +137,11 @@ export default function RecoltesPage() {
   const [data, setData] = React.useState<RecolteWithRelations[]>([])
   const [clients, setClients] = React.useState<Client[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  // Un échec de chargement est dit dans les onglets : « Aucune récolte en
+  // stock » sous une erreur laissait croire le stock vide.
+  const [erreurChargement, setErreurChargement] = React.useState(false)
+  // Seule la dernière demande écrit (année ou espèce changée entre-temps).
+  const demandeRef = React.useRef(0)
   const [activeTab, setActiveTab] = React.useState("stock")
 
   const [selectedAnnee, setSelectedAnnee] = React.useState<string>('all')
@@ -165,6 +170,7 @@ export default function RecoltesPage() {
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
+    const demande = ++demandeRef.current
     setIsLoading(true)
     try {
       // Revue du 2026-11-04 — deux lectures : les lots EN STOCK sans plafond
@@ -187,6 +193,8 @@ export default function RecoltesPage() {
 
       if (stockRes.ok && historiqueRes.ok) {
         const [stock, historique] = await Promise.all([stockRes.json(), historiqueRes.json()])
+        if (demande !== demandeRef.current) return
+        setErreurChargement(false)
         setData([...(stock.data || []), ...(historique.data || [])])
         setHistoriqueTronque(
           typeof historique.total === "number" && historique.total > (historique.data?.length ?? 0)
@@ -201,18 +209,31 @@ export default function RecoltesPage() {
       }
       if (clientsRes.ok) {
         const result = await clientsRes.json()
-        setClients(result.data || [])
+        if (demande === demandeRef.current) setClients(result.data || [])
       }
     } catch {
+      if (demande !== demandeRef.current) return
+      // Les lignes d'un autre filtre ne restent pas sous le nouveau.
+      setData([])
+      setHistoriqueTronque(null)
+      setErreurChargement(true)
       toast({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de charger les récoltes",
       })
     } finally {
-      setIsLoading(false)
+      if (demande === demandeRef.current) setIsLoading(false)
     }
   }, [selectedAnnee, selectedEspece, toast])
+
+  /** Texte d'un onglet sans ligne : chargement, échec, ou vraiment vide. */
+  const messageSansLigne = (vide: string) =>
+    isLoading
+      ? "Chargement..."
+      : erreurChargement
+        ? "Les récoltes n'ont pas pu être chargées. Changez de filtre ou rechargez la page pour réessayer."
+        : vide
 
   React.useEffect(() => {
     fetchData()
@@ -679,10 +700,10 @@ export default function RecoltesPage() {
                   </div>
                 )}
                 {data.some((r) => r.produitsBoutique?.length) && <p className="mb-3 text-sm text-muted-foreground">Les récoltes mises en boutique sont suivies dans leur catalogue. <Link className="text-primary underline" href="/boutique?tab=produits">Voir les stocks boutique</Link></p>}
-                {isLoading ? (
-                  <p className="text-muted-foreground">Chargement...</p>
-                ) : stockRecoltes.length === 0 ? (
-                  <p className="text-muted-foreground">Aucune récolte en stock</p>
+                {isLoading || stockRecoltes.length === 0 ? (
+                  <p className="text-muted-foreground" role={erreurChargement ? "alert" : undefined}>
+                    {messageSansLigne("Aucune récolte en stock")}
+                  </p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -708,7 +729,16 @@ export default function RecoltesPage() {
                             key={r.id}
                             className={isPerime ? "bg-red-50" : isBientotPerime ? "bg-amber-50" : ""}
                           >
-                            <TableCell>{format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                            <TableCell>
+                              {/* Seul accès à la fiche de la récolte (correction de la date, de la quantité, des notes). */}
+                              <Link
+                                className="text-primary underline"
+                                href={`/maraichage/recoltes/${r.id}`}
+                                title="Ouvrir la fiche de cette récolte"
+                              >
+                                {format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}
+                              </Link>
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <div
@@ -805,7 +835,9 @@ export default function RecoltesPage() {
               </CardHeader>
               <CardContent>
                 {venduRecoltes.length === 0 ? (
-                  <p className="text-muted-foreground">Aucune vente enregistrée</p>
+                  <p className="text-muted-foreground" role={erreurChargement ? "alert" : undefined}>
+                    {messageSansLigne("Aucune vente enregistrée")}
+                  </p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -872,7 +904,9 @@ export default function RecoltesPage() {
               </CardHeader>
               <CardContent>
                 {sortiesRecoltes.length === 0 ? (
-                  <p className="text-muted-foreground">Aucune perte ni consommation personnelle enregistrée</p>
+                  <p className="text-muted-foreground" role={erreurChargement ? "alert" : undefined}>
+                    {messageSansLigne("Aucune perte ni consommation personnelle enregistrée")}
+                  </p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -889,7 +923,8 @@ export default function RecoltesPage() {
                     <TableBody>
                       {sortiesRecoltes.map((r) => (
                         <TableRow key={r.id}>
-                          <TableCell>{format(new Date(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                          {/* Jour civil stocké : `new Date(r.date)` reculait d'un jour à l'ouest d'UTC. */}
+                          <TableCell>{format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
                           <TableCell>
                             {r.statut === "perte" ? (
                               <Badge variant="outline" className="border-orange-300 text-orange-700">Perte</Badge>

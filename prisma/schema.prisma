@@ -2150,8 +2150,11 @@ model AssociationDetail {
   id            Int         @id @default(autoincrement())
   associationId String      @map("association_id")
   association   Association @relation(fields: [associationId], references: [id], onDelete: Cascade)
+  // Cascade et non SetNull : une ligne d'espèce dont l'espèce disparaît ne doit pas
+  // survivre en ligne « famille seule », que les alertes liraient comme une règle
+  // valant pour toute la famille (revue du 2026-11-12).
   especeId      String?     @map("espece")
-  espece        Espece?     @relation(fields: [especeId], references: [id], onDelete: SetNull)
+  espece        Espece?     @relation(fields: [especeId], references: [id], onDelete: Cascade)
   familleId     String?     @map("famille")
   famille       Famille?    @relation(fields: [familleId], references: [id], onDelete: SetNull)
   groupe        String?     @map("groupe") // Groupe libre (ex: "Liliacées")

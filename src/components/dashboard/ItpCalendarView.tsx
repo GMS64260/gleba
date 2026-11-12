@@ -10,6 +10,7 @@ import * as React from "react"
 import { useSession } from "next-auth/react"
 import { Filter, MapPin } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -21,6 +22,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
+import { correspondRechercheItp, texteRechercheItp } from "@/components/itps/recherche-itp"
 import { decalageItpPourLecteur, itpApplicableAZone } from "@/lib/calendrier-climat"
 import type { ItpVue } from "@/components/itps/types"
 import type { ZoneClimat } from "@/lib/terroir"
@@ -32,12 +34,13 @@ export function ItpCalendarView() {
   const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null
   const [itps, setItps] = React.useState<ItpVue[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  // Échec du chargement : distinct d'un catalogue vide (« Aucun ITP trouvé »).
+  const [erreurChargement, setErreurChargement] = React.useState(false)
+  const [tentative, setTentative] = React.useState(0)
   const [filtreTypePlanche, setFiltreTypePlanche] = React.useState('all')
   const [recherche, setRecherche] = React.useState('')
   const [editingItp, setEditingItp] = React.useState<ItpVue | null>(null)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
-  // Décalage climatique (zone de l'exploitation) appliqué aux barres.
-  const [decalageZone, setDecalageZone] = React.useState(0)
   const [zoneLabel, setZoneLabel] = React.useState<string | null>(null)
   const [zone, setZone] = React.useState<string | null>(null)
   const [horsReference, setHorsReference] = React.useState(false)
@@ -49,7 +52,6 @@ export function ItpCalendarView() {
         if (!d) return
         // Outre-mer : ITP calés sur la zone, donc aucun décalage métropolitain.
         setHorsReference(d.horsReference ?? false)
-        setDecalageZone(d.horsReference ? 0 : (d.decalage ?? 0))
         setZoneLabel(d.label ?? null)
         setZone(d.zone ?? null)
       })
@@ -57,24 +59,37 @@ export function ItpCalendarView() {
   }, [])
 
   React.useEffect(() => {
+    let annule = false
     async function fetchITPs() {
       setIsLoading(true)
       try {
         const response = await fetch(
-          '/api/itps?pageSize=1000&applicable=1&sortBy=confiance'
+          '/api/itps?pageSize=1000&applicable=1&sortBy=confiance&champs=calendrier'
         )
-        if (response.ok) {
-          const data = await response.json()
-          setItps(data.data || data.itps || [])
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const data = await response.json()
+        if (annule) return
+        setItps(data.data || data.itps || [])
+        setErreurChargement(false)
       } catch (error) {
+        if (annule) return
         console.error('Erreur chargement ITPs:', error)
+        setErreurChargement(true)
       } finally {
-        setIsLoading(false)
+        if (!annule) setIsLoading(false)
       }
     }
     fetchITPs()
-  }, [])
+    return () => {
+      annule = true
+    }
+  }, [tentative])
+
+  // Texte de recherche normalisé, calculé une fois par chargement.
+  const textesRecherche = React.useMemo(
+    () => new Map(itps.map((itp) => [itp.id, texteRechercheItp(itp)])),
+    [itps]
+  )
 
   const itpsFiltres = React.useMemo(() => {
     return itps.filter(itp => {
@@ -85,18 +100,11 @@ export function ItpCalendarView() {
       if (filtreTypePlanche !== 'all' && itp.typePlanche !== filtreTypePlanche) {
         return false
       }
-      if (recherche) {
-        const search = recherche.toLowerCase()
-        return (
-          itp.id.toLowerCase().includes(search) ||
-          itp.nom?.toLowerCase().includes(search) ||
-          itp.especeId?.toLowerCase().includes(search) ||
-          false
-        )
-      }
-      return true
+      // Même recherche que la page Calendrier : sans accents ni ponctuation,
+      // nom d'espèce compris.
+      return correspondRechercheItp(textesRecherche.get(itp.id) ?? '', recherche)
     })
-  }, [itps, filtreTypePlanche, recherche, zone])
+  }, [itps, textesRecherche, filtreTypePlanche, recherche, zone])
 
   const conduitesDisponibles = React.useMemo(
     () =>
@@ -106,10 +114,11 @@ export function ItpCalendarView() {
     [itps]
   )
 
-  const handleEdit = (itp: ItpVue) => {
+  // Stable : les lignes du Gantt sont mémoïsées.
+  const handleEdit = React.useCallback((itp: ItpVue) => {
     setEditingItp(itp)
     setEditDialogOpen(true)
-  }
+  }, [])
 
   const handleSaved = (updated: ItpVue) => {
     setItps(prev => prev.map(itp => itp.id === updated.id ? updated : itp))
@@ -167,10 +176,13 @@ export function ItpCalendarView() {
             {zoneLabel} — calé sur vos saisons
           </span>
         )}
-        {zoneLabel && !horsReference && decalageZone !== 0 && (
+        {/* Pas de « +N sem. » ici : chaque ligne est transposée depuis le climat
+            de SA source (`decalageItpPourLecteur`), le décalage varie d'un
+            itinéraire à l'autre. Un chiffre unique contredisait les barres. */}
+        {zoneLabel && !horsReference && (
           <span className="inline-flex items-center gap-1 text-emerald-700">
             <MapPin className="h-3 w-3" />
-            {zoneLabel} ({decalageZone > 0 ? "+" : "−"}{Math.abs(decalageZone)} sem.)
+            {zoneLabel} — transposé ligne par ligne
           </span>
         )}
         <span className="ml-auto text-muted-foreground">{itpsFiltres.length} itinéraires</span>
@@ -179,6 +191,13 @@ export function ItpCalendarView() {
       {/* Tableau Gantt */}
       {isLoading ? (
         <Skeleton className="h-[300px] w-full" />
+      ) : erreurChargement ? (
+        <div className="text-center py-12 text-muted-foreground space-y-3" role="alert">
+          <p className="text-sm">Les itinéraires n&apos;ont pas pu être chargés.</p>
+          <Button variant="outline" size="sm" onClick={() => setTentative((n) => n + 1)}>
+            Réessayer
+          </Button>
+        </div>
       ) : itpsFiltres.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           {horsReference ? (

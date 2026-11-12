@@ -24,15 +24,22 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  const db = {
     iTP: { findMany: mocks.itpFindMany },
     planche: { findMany: mocks.plancheFindMany },
     culture: { findFirst: mocks.cultureFindFirst, create: mocks.cultureCreate, findMany: mocks.cultureFindMany },
     intervention: { findMany: mocks.interventionFindMany },
     fertilisation: { findMany: mocks.fertilisationFindMany },
-  },
-}))
+    // La création par lot pose la variété de repli de l'espèce, comme la
+    // création unitaire : elle existe déjà dans ce scénario.
+    variete: { findFirst: async () => ({ id: "variete-repli" }) },
+    // Le lot s'exécute dans une transaction, sous verrou consultatif.
+    $executeRaw: async () => 0,
+    $transaction: async (lot: (tx: unknown) => Promise<unknown>) => lot(db),
+  }
+  return { default: db }
+})
 // Mock partiel : `calendrier-climat` dérive ses zones de `terroir` au chargement.
 vi.mock("@/lib/terroir", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/terroir")>()),

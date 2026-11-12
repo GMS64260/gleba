@@ -11,6 +11,7 @@ import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { fetchOpenMeteoHistory, resumerPluie } from '@/lib/meteo'
 import { estSousAbri } from '@/lib/irrigation/abri'
+import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
 
 export interface PluviometrieBulkItem {
   plancheId: string
@@ -91,8 +92,10 @@ export async function GET(request: NextRequest) {
         try {
           const historique = await fetchOpenMeteoHistory(
             lat, lng,
-            sevenDaysAgo.toISOString().split('T')[0],
-            yesterday.toISOString().split('T')[0]
+            // Jours civils du serveur : en jours UTC, la fenêtre glissait d'un
+            // jour entre minuit et 1 h ou 2 h du matin.
+            jourCivilLocalISO(sevenDaysAgo),
+            jourCivilLocalISO(yesterday)
           )
           // Jours non encore publiés par l'archive ignorés (cf. `resumerPluie`).
           const resume = resumerPluie(historique)

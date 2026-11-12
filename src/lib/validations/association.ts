@@ -41,3 +41,15 @@ export const updateAssociationSchema = baseAssociationSchema.partial().extend({
 export type AssociationDetail = z.infer<typeof associationDetailSchema>
 export type CreateAssociationInput = z.infer<typeof createAssociationSchema>
 export type UpdateAssociationInput = z.infer<typeof updateAssociationSchema>
+
+/**
+ * Type d'une association lue dans un fichier d'import : la valeur du fichier
+ * si elle est connue, sinon `undefined` (on ne touche pas au type existant ;
+ * à la création, la valeur par défaut de la colonne s'applique). Les imports
+ * ignoraient ce champ : une incompatibilité importée devenait favorable.
+ */
+export function typeAssociationImporte(type: unknown): AssociationType | undefined {
+  return typeof type === "string" && (ASSOCIATION_TYPES as readonly string[]).includes(type)
+    ? (type as AssociationType)
+    : undefined
+}

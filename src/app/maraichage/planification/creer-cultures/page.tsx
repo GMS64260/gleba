@@ -10,7 +10,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { ArrowLeft, FileStack, CheckCircle2, Plus, Loader2 } from "lucide-react"
 import { formatSemaine } from "@/lib/assistant-helpers"
-import { useAnneePlanification } from "@/hooks/use-annee-planification"
+import { useAnneePlanification, useChargementPlanification } from "@/hooks/use-annee-planification"
 import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
 
 import { Button } from "@/components/ui/button"
@@ -63,54 +63,36 @@ interface EtapeNonSuivie {
   etapeEntamee?: boolean
 }
 
+const AUCUNE_CULTURE: CulturePrevue[] = []
+const AUCUNE_ETAPE: EtapeNonSuivie[] = []
+
 function CreerCulturesContent() {
   const { toast } = useToast()
 
-  const [data, setData] = React.useState<CulturePrevue[]>([])
-  const [etapesNonSuivies, setEtapesNonSuivies] = React.useState<EtapeNonSuivie[]>([])
-  const [isLoading, setIsLoading] = React.useState(true)
   const [isCreating, setIsCreating] = React.useState(false)
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
-  // QA cmswunyun — même motif que cultures-prevues (cmsp5p3v4) : l'URL est
-  // la source de vérité de l'année. Le repli silencieux sur l'année courante
-  // affichait « Total prévues 0 » (2026, tout créé) alors que l'écran voisin
-  // listait 13 cultures 2028.
-  const [hasError, setHasError] = React.useState(false)
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
-
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
-    setSelectedIds(new Set())
-    try {
-      const response = await fetch(`/api/planification/cultures-prevues?annee=${annee}`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const result = await response.json()
-      setData(result.data)
-      setEtapesNonSuivies(Array.isArray(result.etapesNonSuivies) ? result.etapesNonSuivies : [])
-      setHasError(false)
-    } catch {
-      // QA cmswunyun — un échec de chargement laissait data=[] et l'écran
-      // affichait « Total prévues 0 » : l'erreur reste visible après le toast.
-      setHasError(true)
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les cultures prévues",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [annee, toast])
-
+  // QA cmswunyun — un échec de chargement reste visible après le toast, au
+  // lieu d'un « Total prévues 0 ».
+  // Revue du 2026-11-11 — une réponse ne vaut que pour la saison qui l'a
+  // demandée : après un échec, ou pendant le chargement d'une autre saison,
+  // la liste de l'année précédente restait affichée, « Créer » actif dessus.
+  const { resultat, chargement: isLoading, erreur: hasError, recharger: fetchData } = useChargementPlanification<{
+    data: CulturePrevue[]
+    etapesNonSuivies?: EtapeNonSuivie[]
+  }>(
+    anneePrete ? `/api/planification/cultures-prevues?annee=${annee}` : null,
+    "Impossible de charger les cultures prévues",
+  )
+  const data = resultat?.data ?? AUCUNE_CULTURE
+  const etapesNonSuivies = Array.isArray(resultat?.etapesNonSuivies) ? resultat.etapesNonSuivies : AUCUNE_ETAPE
+  // La sélection ne survit pas à un changement de liste (autre saison,
+  // rechargement après création).
   React.useEffect(() => {
-    // Ne pas charger la saison courante avant d'avoir restauré la saison
-    // mémorisée : la réponse tardive écraserait les données de la bonne année.
-    if (!anneePrete) return
-    fetchData()
-  }, [anneePrete, fetchData])
-
+    setSelectedIds(new Set())
+  }, [resultat])
 
   // Cultures à créer (non existantes avec un ITP)
   const culturesACreer = data.filter(c => !c.existante && c.itpId)
@@ -183,6 +165,13 @@ function CreerCulturesContent() {
       // culture existante. On disait « 3 créées » sans dire que 5 étaient
       // demandées : l'écart est désormais nommé, motif par motif.
       const ignorees: { plancheId: string; itpId: string; motif: string }[] = result.ignorees ?? []
+      // Créées sans contrôle de largeur (espacement entre rangs inconnu de
+      // l'itinéraire) : dit en une phrase, pas ligne par ligne.
+      const nonVerifiees: number = (result.avertissements ?? []).length
+      const noteNonVerifiees =
+        nonVerifiees > 0
+          ? ` ${nonVerifiees} créée(s) sans vérification de la largeur de planche (espacement entre rangs inconnu).`
+          : ""
       if (ignorees.length > 0) {
         // Un motif par planche : un refus de largeur porte ses propres chiffres,
         // deux refus juxtaposés ne disaient plus lequel allait avec quelle planche.
@@ -192,12 +181,12 @@ function CreerCulturesContent() {
             result.created > 0
               ? `${result.created} culture(s) créée(s), ${ignorees.length} écartée(s)`
               : "Aucune culture créée",
-          description: ignorees.map((i) => `${i.plancheId} : ${i.motif}`).join(" ; ") + ".",
+          description: ignorees.map((i) => `${i.plancheId} : ${i.motif}`).join(" ; ") + "." + noteNonVerifiees,
         })
       } else {
         toast({
           title: "Cultures créées",
-          description: `${result.created} culture(s) créée(s) avec succès`,
+          description: `${result.created} culture(s) créée(s) avec succès.${noteNonVerifiees}`,
         })
       }
 

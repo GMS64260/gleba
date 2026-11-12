@@ -3,6 +3,7 @@
  * POST /api/admin/referentiels/import
  */
 
+import { typeAssociationImporte } from "@/lib/validations/association"
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 
@@ -165,8 +166,9 @@ export async function POST(request: NextRequest) {
         for (const item of data.associations || []) {
           await db.association.upsert({
             where: { id: item.id },
-            update: { nom: item.nom, description: item.description, notes: item.notes },
-            create: { id: item.id, nom: item.nom, description: item.description, notes: item.notes },
+            // `type` (favorable | incompatible | neutre) suit le fichier quand il le porte.
+            update: { nom: item.nom, description: item.description, notes: item.notes, type: typeAssociationImporte(item.type) },
+            create: { id: item.id, nom: item.nom, description: item.description, notes: item.notes, type: typeAssociationImporte(item.type) },
           })
           stats.associations++
 

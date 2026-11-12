@@ -50,6 +50,17 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { libelleIrrigation } from '@/lib/planches/libelle-irrigation'
 import { formatNombre } from '@/lib/format-utils'
 import { phraseExcluesTournee, phraseHorsTournee, type CultureHorsTournee } from '@/lib/irrigation/hors-tournee'
+import { bandeauMeteoIndisponible, type CauseSansMeteo } from '@/lib/irrigation/meteo-indisponible'
+import {
+  anneeDemandee,
+  etiquetteUrgence,
+  filtrerCultures,
+  niveauBesoinEau,
+  optionsTypeIrrigation,
+  phraseSansBilan,
+  type FiltreBesoinEau,
+  type FiltreUrgence,
+} from '@/lib/irrigation/page-irriguer'
 
 interface MeteoResume {
   pluie48h: number
@@ -75,6 +86,8 @@ interface CultureIrriguer {
   sousAbri: boolean
   urgence: 'critique' | 'haute' | 'moyenne' | 'faible' | 'aucune'
   raisonUrgence: string
+  /** Cause de l'absence de bilan hydrique ; null quand il est calculé. */
+  sansMeteo?: CauseSansMeteo | null
   consommationEauSemaine: number
   meteo: MeteoResume | null
   /** Bilan hydrique (null sans météo) : dose pour remplir la réserve du sol. */
@@ -127,27 +140,41 @@ interface Stats {
   aucune: number
   jamaisArrose: number
   consommationTotaleEstimee: number
-  parTypeIrrigation: { type: string; count: number }[]
 }
+
+/** Ce que la réponse dit des cultures qu'elle n'a pas pu calculer (`bandeauMeteoIndisponible`). */
+interface EtatMeteo {
+  zonesIndisponibles?: number
+  culturesSansMeteo?: number
+  indisponible?: boolean
+}
+
+/** Échec du chargement : le message, et le lien d'abonnement quand l'accès ne comprend pas la météo. */
+interface ErreurChargement {
+  message: string
+  abonnementUrl: string | null
+}
+
+const ERREUR_CHARGEMENT = "Les cultures à irriguer n'ont pas pu être chargées."
 
 function CulturesIrriguerContent() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [data, setData] = React.useState<CultureIrriguer[]>([])
-  const [parIlot, setParIlot] = React.useState<Record<string, CultureIrriguer[]>>({})
-  const [, setParTypeIrrigation] = React.useState<Record<string, CultureIrriguer[]>>({})
   const [stats, setStats] = React.useState<Stats | null>(null)
   const [tournee, setTournee] = React.useState<Tournee | null>(null)
   const [meteoGlobal, setMeteoGlobal] = React.useState<MeteoResume | null>(null)
+  const [etatMeteo, setEtatMeteo] = React.useState<EtatMeteo>({})
   const [isLoading, setIsLoading] = React.useState(true)
-  const [annee, setAnnee] = React.useState(
-    parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
-  )
+  // Un chargement raté n'est pas une liste vide : l'écran le dit et propose de réessayer.
+  const [erreur, setErreur] = React.useState<ErreurChargement | null>(null)
+  // Une année illisible dans l'adresse (NaN) faisait échouer le chargement.
+  const [annee, setAnnee] = React.useState(() => anneeDemandee(searchParams.get("annee")))
   const [groupBy, setGroupBy] = React.useState<'ilot' | 'type-irrigation' | 'urgence'>('ilot')
-  const [filtreUrgence, setFiltreUrgence] = React.useState<'all' | 'critique' | 'haute' | 'aucune' | 'jamais'>('all')
+  const [filtreUrgence, setFiltreUrgence] = React.useState<FiltreUrgence>('all')
   const [filtreTypeIrrigation, setFiltreTypeIrrigation] = React.useState<string>('all')
-  const [filtreBesoinEau, setFiltreBesoinEau] = React.useState<'all' | '3' | '4'>('all')
+  const [filtreBesoinEau, setFiltreBesoinEau] = React.useState<FiltreBesoinEau>('all')
   // Culture dont on note l'arrosage (dialogue « Noter l'arrosage »).
   const [arrosageANoter, setArrosageANoter] = React.useState<CultureIrriguer | null>(null)
   const [arrosageEnCours, setArrosageEnCours] = React.useState(false)
@@ -157,27 +184,55 @@ function CulturesIrriguerContent() {
     return Array.from({ length: 6 }, (_, i) => currentYear - 3 + i)
   }, [])
 
-  // `silencieux` : relecture après un changement de coche, sans squelette.
+  // Numéro du dernier chargement lancé : une réponse arrivée après une plus
+  // récente (coche, puis autre année) ne l'écrase pas.
+  const dernierChargement = React.useRef(0)
+
+  // `silencieux` : relecture après une coche ou un arrosage noté, sans
+  // squelette (la page gardait ni sa position ni sa liste) ; en cas d'échec,
+  // la liste affichée reste.
   const fetchData = React.useCallback(async (silencieux = false) => {
+    const tour = ++dernierChargement.current
     if (!silencieux) setIsLoading(true)
     try {
       const response = await fetch(`/api/cultures/irriguer?annee=${annee}`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const result = await response.json()
+      const result = await response.json().catch(() => null)
+      if (tour !== dernierChargement.current) return
+      if (!response.ok || !result || !Array.isArray(result.data)) {
+        // Accès sans la météo (403 de la route) : pas une panne, l'écran
+        // reprend le message du serveur et mène à l'abonnement.
+        if (response.status === 403 && result?.code === "FORMULE_INSUFFISANTE") {
+          const lien = typeof result.abonnementUrl === "string" && /^\/(?!\/)/.test(result.abonnementUrl)
+            ? result.abonnementUrl
+            : "/parametres?section=abonnement"
+          setErreur({ message: typeof result.error === "string" ? result.error : ERREUR_CHARGEMENT, abonnementUrl: lien })
+          return
+        }
+        throw new Error(ERREUR_CHARGEMENT)
+      }
       setData(result.data)
-      setParIlot(result.parIlot)
-      setParTypeIrrigation(result.parTypeIrrigation || {})
-      setStats(result.stats)
+      setStats(result.stats ?? null)
       setTournee(result.tournee ?? null)
       setMeteoGlobal(result.meteo || null)
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les cultures à irriguer",
+      setEtatMeteo({
+        zonesIndisponibles: result.zonesIndisponibles,
+        culturesSansMeteo: result.culturesSansMeteo,
+        indisponible: result.indisponible,
       })
+      setErreur(null)
+    } catch {
+      if (tour !== dernierChargement.current) return
+      if (silencieux) {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: "Impossible d'actualiser les cultures à irriguer",
+        })
+      } else {
+        setErreur({ message: ERREUR_CHARGEMENT, abonnementUrl: null })
+      }
     } finally {
-      setIsLoading(false)
+      if (tour === dernierChargement.current) setIsLoading(false)
     }
   }, [annee, toast])
 
@@ -197,15 +252,6 @@ function CulturesIrriguerContent() {
       setData(prev => prev.map(c =>
         c.id === cultureId ? { ...c, aIrriguer: !currentValue } : c
       ))
-      setParIlot(prev => {
-        const n: Record<string, CultureIrriguer[]> = {}
-        for (const [ilot, cultures] of Object.entries(prev)) {
-          n[ilot] = cultures.map(c =>
-            c.id === cultureId ? { ...c, aIrriguer: !currentValue } : c
-          )
-        }
-        return n
-      })
 
       toast({
         title: "Mis à jour",
@@ -237,9 +283,9 @@ function CulturesIrriguerContent() {
       const resultat = await noterArrosage([culture.id], notes, litres, "irriguer")
       if (!resultat.ok) throw new Error(resultat.erreur)
       setArrosageANoter(null)
-      await fetchData()
 
-      // Un geste de trop s'annule : inverse exact, comme sur les Tâches.
+      // Un geste de trop s'annule : inverse exact, comme sur les Tâches. La
+      // confirmation n'attend pas la relecture, faite sans squelette.
       notifierEnregistrement({
         titre: "Arrosage noté",
         // `||` : un nom de planche vide tombe sur le repli.
@@ -247,9 +293,10 @@ function CulturesIrriguerContent() {
         annuler: async () => {
           const annule = await annulerArrosage(resultat.annulation)
           if (!annule.ok) throw new Error(annule.erreur)
-          await fetchData()
+          await fetchData(true)
         },
       })
+      void fetchData(true)
     } catch (e) {
       toast({
         variant: "destructive",
@@ -261,17 +308,21 @@ function CulturesIrriguerContent() {
     }
   }
 
-  const marquerIlotArrose = async (ilot: string) => {
-    const culturesIlot = parIlot[ilot]
-    if (!culturesIlot || culturesIlot.length === 0) return
+  // `culturesIlot` : les cultures AFFICHÉES de l'îlot. Le geste notait l'îlot
+  // entier, cultures écartées par les filtres comprises.
+  const marquerIlotArrose = async (ilot: string, culturesIlot: CultureIrriguer[]) => {
+    if (culturesIlot.length === 0) return
 
     // Un îlot porte plusieurs planches : une seule quantité n'y aurait pas de
     // sens, ce geste note un arrosage complet par planche. On le dit avant.
     const nbPlanches = new Set(culturesIlot.map(c => c.planche?.id ?? `culture:${c.id}`)).size
-    // Clé de regroupement des planches sans îlot (`irrigation-conseil.ts`).
+    // Clé de regroupement des planches sans îlot (`groupedData`).
     const lieu = ilot === "Sans îlot" ? "sans îlot" : `de l'îlot ${ilot}`
+    // Sous filtre, l'îlot n'est noté qu'en partie : la confirmation le dit.
+    const partiel = culturesIlot.length < data.filter(c => (c.planche?.ilot || "Sans îlot") === ilot).length
+    const affichees = partiel ? (nbPlanches > 1 ? " affichées" : " affichée") : ""
     const confirme = await confirmDialog(
-      `${nbPlanches > 1 ? `Les ${nbPlanches} planches` : "La planche"} ${lieu} ${nbPlanches > 1 ? "compteront comme arrosées" : "comptera comme arrosée"}, réserve du sol remplie. Pour noter les litres réellement versés, utilisez le bouton d'arrosage de chaque culture.`,
+      `${nbPlanches > 1 ? `Les ${nbPlanches} planches` : "La planche"}${affichees} ${lieu} ${nbPlanches > 1 ? "compteront comme arrosées" : "comptera comme arrosée"}, réserve du sol remplie. Pour noter les litres réellement versés, utilisez le bouton d'arrosage de chaque culture.`,
       { title: "Noter un arrosage complet ?", confirmLabel: "Noter l'arrosage complet" },
     )
     if (!confirme) return
@@ -281,7 +332,6 @@ function CulturesIrriguerContent() {
       // les autres vues, et annulation exacte du geste.
       const resultat = await noterArrosage(culturesIlot.map(c => c.id), null, null, "irriguer")
       if (!resultat.ok) throw new Error(resultat.erreur)
-      await fetchData()
 
       notifierEnregistrement({
         titre: "Îlot arrosé",
@@ -289,9 +339,10 @@ function CulturesIrriguerContent() {
         annuler: async () => {
           const annule = await annulerArrosage(resultat.annulation)
           if (!annule.ok) throw new Error(annule.erreur)
-          await fetchData()
+          await fetchData(true)
         },
       })
+      void fetchData(true)
     } catch (e) {
       toast({
         variant: "destructive",
@@ -310,21 +361,19 @@ function CulturesIrriguerContent() {
   }
 
   const getUrgenceBadge = (urgence: string, jamais: boolean) => {
-    if (urgence === 'aucune') return <Badge variant="secondary" className="bg-green-100 text-green-700">OK</Badge>
-    if (jamais && urgence !== 'critique') return <Badge variant="secondary" className="bg-slate-100 text-slate-600">Jamais</Badge>
-    if (urgence === 'critique') return <Badge variant="destructive">Urgent</Badge>
-    if (urgence === 'haute') return <Badge className="bg-orange-500">Priorité</Badge>
-    if (urgence === 'moyenne') return <Badge className="bg-yellow-500">Moyen</Badge>
+    const etiquette = etiquetteUrgence(urgence, jamais)
+    if (etiquette === 'ok') return <Badge variant="secondary" className="bg-green-100 text-green-700">OK</Badge>
+    if (etiquette === 'urgent') return <Badge variant="destructive">Urgent</Badge>
+    if (etiquette === 'priorite') return <Badge className="bg-orange-500">Priorité</Badge>
+    if (etiquette === 'jamais') return <Badge variant="secondary" className="bg-slate-100 text-slate-600">Jamais</Badge>
+    if (etiquette === 'moyen') return <Badge className="bg-yellow-500">Moyen</Badge>
     return <Badge variant="secondary" className="bg-blue-100 text-blue-700">Faible</Badge>
   }
 
   const getBesoinEauBadge = (besoinEau: number | null, irrigation: string | null) => {
-    if (irrigation === 'Eleve' || irrigation === 'Élevé' || (besoinEau && besoinEau >= 4)) {
-      return <Badge variant="destructive">Élevé</Badge>
-    }
-    if (besoinEau && besoinEau >= 3) {
-      return <Badge variant="default" className="bg-orange-500">Moyen</Badge>
-    }
+    const niveau = niveauBesoinEau(besoinEau, irrigation)
+    if (niveau === 'eleve') return <Badge variant="destructive">Élevé</Badge>
+    if (niveau === 'moyen') return <Badge variant="default" className="bg-orange-500">Moyen</Badge>
     return <Badge variant="secondary">Faible</Badge>
   }
 
@@ -338,28 +387,14 @@ function CulturesIrriguerContent() {
     [tournee],
   )
 
-  const filteredData = React.useMemo(() => {
-    let filtered = data
-
-    if (filtreUrgence !== 'all') {
-      if (filtreUrgence === 'jamais') {
-        filtered = filtered.filter(c => c.joursSansEau === null)
-      } else {
-        filtered = filtered.filter(c => c.urgence === filtreUrgence)
-      }
-    }
-
-    if (filtreTypeIrrigation !== 'all') {
-      filtered = filtered.filter(c => c.planche?.irrigation === filtreTypeIrrigation)
-    }
-
-    if (filtreBesoinEau !== 'all') {
-      const seuil = parseInt(filtreBesoinEau)
-      filtered = filtered.filter(c => (c.espece?.besoinEau || 0) >= seuil)
-    }
-
-    return filtered
-  }, [data, filtreUrgence, filtreTypeIrrigation, filtreBesoinEau])
+  // Règles des filtres et options du type d'irrigation : `page-irriguer.ts`.
+  const filteredData = React.useMemo(
+    () => filtrerCultures(data, { urgence: filtreUrgence, typeIrrigation: filtreTypeIrrigation, besoinEau: filtreBesoinEau }),
+    [data, filtreUrgence, filtreTypeIrrigation, filtreBesoinEau],
+  )
+  const typesIrrigation = React.useMemo(() => optionsTypeIrrigation(data), [data])
+  const bandeauSansMeteo = bandeauMeteoIndisponible(etatMeteo)
+  const sansBilan = phraseSansBilan(etatMeteo.culturesSansMeteo)
 
   const groupedData = React.useMemo(() => {
     if (groupBy === 'ilot') {
@@ -451,6 +486,34 @@ function CulturesIrriguerContent() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
+        {erreur ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground" role="alert">
+              <p className={`text-lg font-medium ${erreur.abonnementUrl ? "text-foreground" : "text-red-600"}`}>
+                {erreur.abonnementUrl ? "Conseil d'irrigation indisponible" : "Chargement impossible"}
+              </p>
+              <p className="mt-2">{erreur.message}</p>
+              {erreur.abonnementUrl ? (
+                <Link href={erreur.abonnementUrl}>
+                  <Button variant="outline" className="mt-4">Voir l&apos;abonnement</Button>
+                </Link>
+              ) : (
+                <Button variant="outline" className="mt-4" onClick={() => fetchData()}>
+                  Réessayer
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+        <>
+        {/* Météo muette : le conseil est au repli, l'écran le dit avant les chiffres. */}
+        {bandeauSansMeteo && (
+          <div className="mb-4 p-4 rounded-lg border bg-amber-50 border-amber-200 flex items-start gap-3 text-sm text-amber-900" role="status">
+            <Info className="h-5 w-5 flex-shrink-0 mt-0.5 text-amber-600" aria-hidden="true" />
+            <span>{bandeauSansMeteo}</span>
+          </div>
+        )}
+
         {/* Bandeau meteo */}
         {meteoGlobal && (
           <div className={`mb-4 p-4 rounded-lg border ${
@@ -528,16 +591,16 @@ function CulturesIrriguerContent() {
             </SelectContent>
           </Select>
 
-          {stats && stats.parTypeIrrigation.length > 0 && (
+          {typesIrrigation.length > 0 && (
             <Select value={filtreTypeIrrigation} onValueChange={setFiltreTypeIrrigation}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Type irrigation" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous types</SelectItem>
-                {stats.parTypeIrrigation.map(t => (
-                  <SelectItem key={t.type} value={t.type}>
-                    {t.type} ({t.count})
+                {typesIrrigation.map(t => (
+                  <SelectItem key={t.valeur} value={t.valeur}>
+                    {t.libelle} ({t.nombre})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -577,7 +640,8 @@ function CulturesIrriguerContent() {
                 )}
               </CardContent>
             </Card>
-            <Card className={stats.critique > 0 ? "border-red-300 bg-red-50" : stats.critique + stats.haute === 0 ? "border-green-300 bg-green-50" : ""}>
+            {/* Sans bilan hydrique, « 0 urgence » n'est pas « tout va bien » : pas de vert. */}
+            <Card className={stats.critique > 0 ? "border-red-300 bg-red-50" : stats.critique + stats.haute === 0 && !sansBilan ? "border-green-300 bg-green-50" : ""}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground">Urgences</CardTitle>
               </CardHeader>
@@ -588,6 +652,14 @@ function CulturesIrriguerContent() {
                     <p className="text-xs text-muted-foreground mt-1">
                       {stats.critique} critique · {stats.haute} haute
                     </p>
+                    {sansBilan && <p className="text-xs text-amber-700 mt-1">{sansBilan}</p>}
+                  </>
+                ) : sansBilan ? (
+                  <>
+                    <p className="text-2xl font-bold text-slate-500">
+                      {(etatMeteo.culturesSansMeteo ?? 0) >= stats.total ? "—" : "0"}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">{sansBilan} : urgence non calculée</p>
                   </>
                 ) : (
                   <>
@@ -675,7 +747,7 @@ function CulturesIrriguerContent() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => marquerIlotArrose(groupe)}
+                            onClick={() => marquerIlotArrose(groupe, cultures)}
                             className="text-cyan-600 border-cyan-300 hover:bg-cyan-50 whitespace-nowrap"
                           >
                             <Droplet className="h-4 w-4 mr-1" />
@@ -700,7 +772,9 @@ function CulturesIrriguerContent() {
                       // Volume conseillé pour la PLANCHE : le chiffre que le
                       // dialogue « Noter l'arrosage » préremplit.
                       const litresPlanche = phraseLitresPlanche(contexteQuantiteVersee(culture))
-                      const libelleNoter = `Noter l'arrosage de ${culture.espece?.nom || culture.especeId}${culture.planche ? ` (${culture.planche.nom || culture.planche.id})` : ""}`
+                      const nomLigne = `${culture.espece?.nom || culture.especeId}${culture.planche ? ` (${culture.planche.nom || culture.planche.id})` : ""}`
+                      const libelleNoter = `Noter l'arrosage de ${nomLigne}`
+                      const libelleCoche = `À irriguer : ${nomLigne}`
 
                       return (
                         <div
@@ -719,6 +793,7 @@ function CulturesIrriguerContent() {
                                 checked={culture.aIrriguer || false}
                                 onCheckedChange={() => toggleIrrigation(culture.id, culture.aIrriguer)}
                                 className="mt-1 sm:mt-0"
+                                aria-label={libelleCoche}
                               />
 
                               <div className="flex-1 min-w-0">
@@ -893,6 +968,8 @@ function CulturesIrriguerContent() {
               </div>
             </CardContent>
           </Card>
+        )}
+        </>
         )}
       </main>
 

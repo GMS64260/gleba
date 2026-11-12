@@ -314,3 +314,26 @@ describe("PUT /api/cultures/[id] — alerte de saison (culture B)", () => {
     expect(mocks.cultureUpdate).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("PUT : une date effacée ne revient pas par la valeur stockée", () => {
+  // Revue du 2026-11-11 : `data.x ?? existing.x` remettait la date stockée à la
+  // place d'une date vidée, et la chronologie était jugée sur une plantation
+  // que l'utilisateur venait justement de retirer.
+  it("plantation vidée et récolte avancée avant l'ancienne plantation : accepté", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...cultureA, itpId: null, finRecolte: null })
+    const res = await PUT(
+      requete("PUT", { datePlantation: null, dateRecolte: "2026-09-15" }),
+      { params }
+    )
+    expect(res.status).toBe(200)
+    expect(ecrit().datePlantation).toBeNull()
+    expect(jour(ecrit().dateRecolte)).toBe("2026-09-15")
+  })
+
+  it("une plantation gardée reste comparée à la récolte avancée", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...cultureA, itpId: null, finRecolte: null })
+    const res = await PUT(requete("PUT", { dateRecolte: "2026-09-15" }), { params })
+    expect(res.status).toBe(400)
+    expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+  })
+})

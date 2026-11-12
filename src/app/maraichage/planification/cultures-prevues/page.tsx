@@ -15,9 +15,12 @@ import { ArrowLeft, Leaf, CheckCircle2, XCircle, Info } from "lucide-react"
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useToast } from "@/hooks/use-toast"
-import { useAnneePlanification } from "@/hooks/use-annee-planification"
-import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
+import { useAnneePlanification, useChargementPlanification } from "@/hooks/use-annee-planification"
+import {
+  ErreurChargementPlanification,
+  SelecteurAnneePlanification,
+} from "@/components/maraichage/SelecteurAnneePlanification"
+import { telechargerCsv } from "../export-csv"
 
 interface CulturePrevue {
   plancheId: string
@@ -38,7 +41,10 @@ interface CulturePrevue {
 
 const columns: ColumnDef<CulturePrevue>[] = [
   {
-    accessorKey: "especeId",
+    // Tri et recherche sur le NOM affiché : l'identifiant d'une espèce ou d'un
+    // itinéraire personnel est un cuid, introuvable par son nom.
+    id: "especeId",
+    accessorFn: (culture) => culture.especeNom ?? culture.especeId ?? "",
     header: "Espèce",
     cell: ({ row }) => {
       const culture = row.original
@@ -56,7 +62,8 @@ const columns: ColumnDef<CulturePrevue>[] = [
     },
   },
   {
-    accessorKey: "itpId",
+    id: "itpId",
+    accessorFn: (culture) => culture.itpNom ?? culture.itpId ?? "",
     header: "ITP",
     cell: ({ row }) => row.original.itpNom ?? row.original.itpId ?? "-",
   },
@@ -133,69 +140,41 @@ const columns: ColumnDef<CulturePrevue>[] = [
   },
 ]
 
-function CulturesPrevuesContent() {
-  const { toast } = useToast()
+type StatsCulturesPrevues = { total: number; existantes: number; aCreer: number; etapesNonSuivies?: number }
+const STATS_VIDES: StatsCulturesPrevues = { total: 0, existantes: 0, aCreer: 0 }
+const AUCUNE_CULTURE: CulturePrevue[] = []
 
-  const [data, setData] = React.useState<CulturePrevue[]>([])
-  const [isLoading, setIsLoading] = React.useState(true)
+function CulturesPrevuesContent() {
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
-  const [stats, setStats] = React.useState<{ total: number; existantes: number; aCreer: number; etapesNonSuivies?: number }>({
-    total: 0,
-    existantes: 0,
-    aCreer: 0,
-  })
-
-
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/planification/cultures-prevues?annee=${annee}&groupBy=espece`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const result = await response.json()
-      setData(result.data)
-      setStats(result.stats)
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les cultures prévues",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [annee, toast])
-
-  React.useEffect(() => {
-    // Ne pas charger la saison courante avant d'avoir restauré la saison
-    // mémorisée : la réponse tardive écraserait les données de la bonne année.
-    if (!anneePrete) return
-    fetchData()
-  }, [anneePrete, fetchData])
+  // Rien n'est demandé avant la restauration de la saison mémorisée ; une
+  // réponse ne vaut que pour la saison qui l'a demandée.
+  const { resultat, chargement: isLoading, erreur, recharger } = useChargementPlanification<{
+    data: CulturePrevue[]
+    stats: StatsCulturesPrevues
+  }>(
+    anneePrete ? `/api/planification/cultures-prevues?annee=${annee}&groupBy=espece` : null,
+    "Impossible de charger les cultures prévues",
+  )
+  const data = resultat?.data ?? AUCUNE_CULTURE
+  const stats = resultat?.stats ?? STATS_VIDES
 
   const handleExport = () => {
-    const headers = ["Espèce", "ITP", "Planche", "Îlot", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m²)", "Statut"]
-    const rows = data.map(c => [
-      c.especeNom ?? c.especeId ?? "",
-      c.itpNom ?? c.itpId ?? "",
-      c.plancheId,
-      c.ilot || "",
-      c.semaineSemis?.toString() || "",
-      c.semainePlantation?.toString() || "",
-      c.semaineRecolte?.toString() || "",
-      c.surface.toFixed(1),
-      c.existante ? "Créée" : "À créer",
+    telechargerCsv(`cultures-prevues-${annee}.csv`, [
+      ["Espèce", "ITP", "Planche", "Îlot", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m²)", "Statut"],
+      ...data.map((c) => [
+        c.especeNom ?? c.especeId ?? "",
+        c.itpNom ?? c.itpId ?? "",
+        c.plancheId,
+        c.ilot || "",
+        c.semaineSemis?.toString() || "",
+        c.semainePlantation?.toString() || "",
+        c.semaineRecolte?.toString() || "",
+        c.surface.toFixed(1),
+        c.existante ? "Créée" : "À créer",
+      ]),
     ])
-
-    const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `cultures-prevues-${annee}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
   }
 
   return (
@@ -268,6 +247,13 @@ function CulturesPrevuesContent() {
           </p>
         </div>
 
+        {erreur && (
+          <ErreurChargementPlanification
+            message={`Les cultures prévues de ${annee} n’ont pas pu être chargées.`}
+            onReessayer={recharger}
+          />
+        )}
+
         <DataTable
           columns={columns}
           data={data}
@@ -276,10 +262,10 @@ function CulturesPrevuesContent() {
           pageIndex={0}
           pageSize={data.length || 50}
           onPaginationChange={() => {}}
-          onRefresh={fetchData}
+          onRefresh={recharger}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucune culture prévue. Assignez des rotations à vos planches."
+          emptyMessage={erreur ? "Chargement impossible." : "Aucune culture prévue. Assignez des rotations à vos planches."}
         />
       </main>
     </div>

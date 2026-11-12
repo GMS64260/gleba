@@ -12,7 +12,7 @@ import { ArrowLeft, Sprout, Save } from "lucide-react"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { useForm, type FieldErrors } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { addDays, addYears, differenceInCalendarDays, format } from "date-fns"
+import { addDays, addYears, differenceInCalendarDays } from "date-fns"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,6 +51,7 @@ import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 import { AIDE_QUANTITE_PLANTS, libelleQuantitePlants, useQuantiteManuelle } from "@/hooks/use-quantite-manuelle"
 import { RotationAdviceCompact } from "@/components/planche"
 import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
+import { datesCalculeesEnJoursSeuls, valeurChampDate } from "@/lib/cultures/champ-date"
 import { AdjacenceAdvisor } from "@/components/cultures/AdjacenceAdvisor"
 import {
   DASHBOARD_YEAR_STORAGE_KEY,
@@ -60,7 +61,7 @@ import { nomAffichableItp, nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { choisirItpParDefaut, type MotifProposition } from "@/lib/cultures/itp-planche"
 import { AvisItpPlanche } from "@/components/cultures/AvisItpPlanche"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
-import { datesDepuisItp, recolteApresDebut, semaineSemisEffective } from "@/lib/cultures/dates-itp"
+import { datesDepuisItp, recolteRecalee, semaineSemisEffective } from "@/lib/cultures/dates-itp"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cocherApresSaisieManuelle, etapeDejaRealisable } from "@/lib/cultures/deja-fait"
 import { alerteSaisonCulture } from "@/lib/cultures/saison-culture"
@@ -343,6 +344,29 @@ export default function NewCulturePage() {
       })
   }, [form])
 
+  // Dernier début de cycle APPLIQUÉ (par l'effet ITP ou par l'utilisateur).
+  // Sert au recalage de la récolte : seul un CHANGEMENT de début le déclenche,
+  // jamais une édition de la seule récolte ni le remplissage initial de l'ITP.
+  const debutCycleRef = React.useRef<string | null>(null)
+
+  // QA cmv2qzhkf — les ITP arrivent en différé après le choix de l'espèce (et
+  // l'effet ci-dessous rejoue au changement d'année ou à la ré-affirmation de
+  // l'ITP auto-sélectionné) : des dates saisies entre-temps étaient écrasées
+  // par le calendrier de l'ITP, et la culture partait aux dates ITP. Une date
+  // touchée par l'utilisateur n'est plus réécrite par le pré-remplissage ; seul
+  // le bouton du bandeau rapplique l'ITP. Même règle pour rangs et espacement,
+  // et la récolte saisie ne suit plus le début de cycle tant qu'elle lui reste
+  // postérieure.
+  const saisiesManuellesRef = React.useRef(new Set<ChampSaisi>())
+  // Un ITP retiré n'emporte que ce qu'il avait posé : dates, rangs et
+  // espacement que l'utilisateur n'a pas saisis ne lui survivent pas.
+  const retirerValeursItp = React.useCallback(() => {
+    for (const champ of [...CHAMPS_DATE, "nbRangs", "espacement"] as const) {
+      if (!saisiesManuellesRef.current.has(champ)) form.setValue(champ, null)
+    }
+    debutCycleRef.current = null
+  }, [form])
+
   // Charger les varietes et ITPs quand l'espece change
   React.useEffect(() => {
     if (selectedEspece) {
@@ -365,6 +389,9 @@ export default function NewCulturePage() {
             autoItpRef.current = null
             setMotifProposition(null)
             form.setValue("itpId", null)
+            // Espèce sans itinéraire : le calendrier de l'itinéraire de
+            // l'espèce précédente ne s'applique pas à elle.
+            retirerValeursItp()
           }
         })
         .catch(() => {
@@ -373,28 +400,15 @@ export default function NewCulturePage() {
           autoItpRef.current = null
           setMotifProposition(null)
           form.setValue("itpId", null)
+          retirerValeursItp()
         })
     } else {
       setVarietes([])
       setItps([])
       setMotifProposition(null)
     }
-  }, [selectedEspece, form])
+  }, [selectedEspece, form, retirerValeursItp])
 
-  // Dernier début de cycle APPLIQUÉ (par l'effet ITP ou par l'utilisateur).
-  // Sert au recalage de la récolte : seul un CHANGEMENT de début le déclenche,
-  // jamais une édition de la seule récolte ni le remplissage initial de l'ITP.
-  const debutCycleRef = React.useRef<string | null>(null)
-
-  // QA cmv2qzhkf — les ITP arrivent en différé après le choix de l'espèce (et
-  // l'effet ci-dessous rejoue au changement d'année ou à la ré-affirmation de
-  // l'ITP auto-sélectionné) : des dates saisies entre-temps étaient écrasées
-  // par le calendrier de l'ITP, et la culture partait aux dates ITP. Une date
-  // touchée par l'utilisateur n'est plus réécrite par le pré-remplissage ; seul
-  // le bouton du bandeau rapplique l'ITP. Même règle pour rangs et espacement,
-  // et la récolte saisie ne suit plus le début de cycle tant qu'elle lui reste
-  // postérieure.
-  const saisiesManuellesRef = React.useRef(new Set<ChampSaisi>())
   const [datesSaisies, setDatesSaisies] = React.useState(false)
   const marquerSaisie = React.useCallback((champ: ChampSaisi) => {
     saisiesManuellesRef.current.add(champ)
@@ -483,11 +497,8 @@ export default function NewCulturePage() {
       return
     }
     form.setValue("itpId", null)
-    for (const champ of [...CHAMPS_DATE, "nbRangs", "espacement"] as const) {
-      if (!saisiesManuellesRef.current.has(champ)) form.setValue(champ, null)
-    }
-    debutCycleRef.current = null
-  }, [itps, plancheSelectionnee, form])
+    retirerValeursItp()
+  }, [itps, plancheSelectionnee, form, retirerValeursItp])
 
   // PROMPT 20b — Auto-remplissage ITP → dates de culture
   // L'année est dans les deps : changer d'année recalcule les dates si ITP fixé ;
@@ -597,26 +608,33 @@ export default function NewCulturePage() {
     // l'ITP), les valeurs observées sont encore celles d'avant, et la récolte
     // était recalée sur le semis avec la durée prévue depuis la plantation
     // (récolte au 20/12 pour une plantation au 06/12, constaté en production).
-    const debutRaw = form.getValues("datePlantation") ?? form.getValues("dateSemis")
-    if (!debutRaw) return
-    const debut = new Date(debutRaw)
-    if (Number.isNaN(debut.getTime())) return
+    const dateValide = (brute: unknown): Date | null => {
+      if (!brute) return null
+      const date = new Date(brute as Date | string)
+      return Number.isNaN(date.getTime()) ? null : date
+    }
+    const semis = dateValide(form.getValues("dateSemis"))
+    const plantation = dateValide(form.getValues("datePlantation"))
+    const debut = plantation ?? semis
+    if (!debut) return
     const debutKey = debut.toISOString()
     const debutChange = debutCycleRef.current !== null && debutCycleRef.current !== debutKey
     debutCycleRef.current = debutKey
 
-    const recolteRaw = form.getValues("dateRecolte")
-    if (!recolteRaw) return // une récolte volontairement vide n'est jamais re-remplie ici
-    const recolte = new Date(recolteRaw)
-    if (Number.isNaN(recolte.getTime())) return
-    const recolteIncoherente = recolte <= debut
-    if (!debutChange && !recolteIncoherente) return
-    if (saisiesManuellesRef.current.has("dateRecolte") && !recolteIncoherente) return
-
+    // Une récolte volontairement vide n'est jamais re-remplie ici.
+    const recolte = dateValide(form.getValues("dateRecolte"))
+    if (!recolte) return
     const itp = itps.find((i) => i.id === selectedItp)
     if (!itp) return
-    const nouvelleRecolte = recolteApresDebut(debut, itp)
-    if (!nouvelleRecolte || nouvelleRecolte.getTime() === recolte.getTime()) return
+    const nouvelleRecolte = recolteRecalee({
+      dateSemis: semis,
+      datePlantation: plantation,
+      dateRecolte: recolte,
+      itp,
+      debutChange,
+      recolteSaisie: saisiesManuellesRef.current.has("dateRecolte"),
+    })
+    if (!nouvelleRecolte) return
     form.setValue("dateRecolte", nouvelleRecolte)
   }, [watchedDateSemis, watchedDatePlantation, selectedItp, itps, form])
 
@@ -667,11 +685,16 @@ export default function NewCulturePage() {
     setSubmitError(null)
     setAjustementsRefus([])
     setInfoAjustement(null)
+    // Culture créée : le bouton reste inactif pendant la navigation, sinon un
+    // second clic créait un doublon.
+    let creee = false
     try {
       const response = await fetch("/api/cultures", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, confirmRotation }),
+        // Dates calculées à l'écran envoyées en jour seul : en instant (minuit
+        // local), elles étaient enregistrées la veille à l'est de Paris.
+        body: JSON.stringify({ ...datesCalculeesEnJoursSeuls(data), confirmRotation }),
       })
 
       // QA cmsp5927v — le corps était lu deux fois sur un 409 sans
@@ -704,6 +727,7 @@ export default function NewCulturePage() {
       }
 
       const culture = payload
+      creee = true
       toast({
         title: "Culture créée",
         description: `La culture #${culture.id} a été créée avec succès`,
@@ -727,7 +751,7 @@ export default function NewCulturePage() {
         description: error instanceof Error ? error.message : "Erreur inconnue",
       })
     } finally {
-      setIsSubmitting(false)
+      if (!creee) setIsSubmitting(false)
     }
   }
 
@@ -955,7 +979,13 @@ export default function NewCulturePage() {
 
                 {/* Bug #10 — Compatibilités voisinage (planches du même îlot). */}
                 {selectedEspece && selectedPlanche && (
-                  <AdjacenceAdvisor especeId={selectedEspece} plancheId={selectedPlanche} />
+                  <AdjacenceAdvisor
+                    especeId={selectedEspece}
+                    plancheId={selectedPlanche}
+                    // Occupation prévue : permet d'analyser aussi la planche elle-même.
+                    debut={watchedDatePlantation ?? watchedDateSemis}
+                    fin={form.watch("finRecolte") ?? form.watch("dateRecolte")}
+                  />
                 )}
 
                 <FormField
@@ -1037,7 +1067,7 @@ export default function NewCulturePage() {
                           <Input
                             type="date"
                             {...field}
-                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            value={valeurChampDate(field.value)}
                             onChange={(e) => {
                               const date = e.target.value ? new Date(e.target.value) : null
                               marquerSaisie("dateSemis")
@@ -1085,7 +1115,7 @@ export default function NewCulturePage() {
                           <Input
                             type="date"
                             {...field}
-                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            value={valeurChampDate(field.value)}
                             onChange={(e) => {
                               const date = e.target.value ? new Date(e.target.value) : null
                               marquerSaisie("datePlantation")
@@ -1127,7 +1157,7 @@ export default function NewCulturePage() {
                           <Input
                             type="date"
                             {...field}
-                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            value={valeurChampDate(field.value)}
                             onChange={(e) => {
                               marquerSaisie("dateRecolte")
                               field.onChange(e.target.value ? new Date(e.target.value) : null)
@@ -1152,7 +1182,7 @@ export default function NewCulturePage() {
                           <Input
                             type="date"
                             {...field}
-                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            value={valeurChampDate(field.value)}
                             onChange={(e) => {
                               marquerSaisie("finRecolte")
                               field.onChange(e.target.value ? new Date(e.target.value) : null)

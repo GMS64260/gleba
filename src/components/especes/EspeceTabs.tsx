@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Bug, Leaf, ThumbsDown, ThumbsUp } from "lucide-react"
+import { useSession } from "next-auth/react"
 
 interface AssocItem {
   associationId: string
@@ -34,13 +35,38 @@ interface BioagresseurItem {
 
 export function AssociationsEspeceTab({ especeId }: { especeId: string }) {
   const [items, setItems] = React.useState<AssocItem[] | null>(null)
+  const [erreur, setErreur] = React.useState(false)
+  // Le référentiel des associations est géré par l'administration.
+  const { data: session } = useSession()
+  const estAdmin = session?.user?.role === "ADMIN"
 
   React.useEffect(() => {
+    let annule = false
+    setErreur(false)
     fetch(`/api/maraichage/especes/${encodeURIComponent(especeId)}/associations`)
-      .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((j) => setItems(j.data || []))
+      .then((r) => {
+        if (!r.ok) throw new Error("associations")
+        return r.json()
+      })
+      .then((j) => {
+        if (!annule) setItems(j.data || [])
+      })
+      .catch(() => {
+        // Un échec ne doit pas se lire « Aucune association connue ».
+        if (!annule) setErreur(true)
+      })
+    return () => {
+      annule = true
+    }
   }, [especeId])
 
+  if (erreur) {
+    return (
+      <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        Les associations de cette espèce n&apos;ont pas pu être chargées. Rechargez la page pour réessayer.
+      </p>
+    )
+  }
   if (!items) return <Skeleton className="h-40 w-full" />
 
   const favorables = items.filter((i) => i.type === "favorable")
@@ -69,7 +95,7 @@ export function AssociationsEspeceTab({ especeId }: { especeId: string }) {
           ) : (
             <ul className="space-y-1.5">
               {favorables.map((a) => (
-                <li key={a.associationId} className="border rounded p-2 bg-green-50/50">
+                <li key={`${a.associationId}:${a.partenaire}`} className="border rounded p-2 bg-green-50/50">
                   <div className="font-medium">{a.partenaire}</div>
                   <div className="text-xs text-slate-600">{a.description || a.nom}</div>
                   {a.notes && <div className="text-[11px] text-slate-500 mt-1 italic">Source : {a.notes}</div>}
@@ -89,7 +115,7 @@ export function AssociationsEspeceTab({ especeId }: { especeId: string }) {
           ) : (
             <ul className="space-y-1.5">
               {defavorables.map((a) => (
-                <li key={a.associationId} className="border rounded p-2 bg-red-50/50">
+                <li key={`${a.associationId}:${a.partenaire}`} className="border rounded p-2 bg-red-50/50">
                   <div className="font-medium">{a.partenaire}</div>
                   <div className="text-xs text-slate-600">{a.description || a.nom}</div>
                   {a.notes && <div className="text-[11px] text-slate-500 mt-1 italic">Source : {a.notes}</div>}
@@ -99,7 +125,8 @@ export function AssociationsEspeceTab({ especeId }: { especeId: string }) {
           )}
         </div>
         <p className="text-xs text-slate-500 mt-3">
-          Vous pouvez gérer les associations dans <Link href="/maraichage/associations" className="underline">Associations</Link>.
+          {estAdmin ? "Vous pouvez gérer les associations dans " : "Toutes les règles sont consultables dans "}
+          <Link href="/maraichage/associations" className="underline">Associations</Link>.
         </p>
       </CardContent>
     </Card>

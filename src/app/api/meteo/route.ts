@@ -52,10 +52,13 @@ export async function GET(request: NextRequest) {
 
     // Mode 2: par coordonnées directes
     if (lat && lng) {
-      const latNum = parseFloat(lat)
-      const lngNum = parseFloat(lng)
+      // `Number`, pas `parseFloat` (« 43.6abc » n'est pas une coordonnée), et
+      // bornes du globe : hors d'elles, Open-Meteo refuse et la route rendait
+      // 500 après avoir créé une clé de cache par valeur fantaisiste.
+      const latNum = Number(lat)
+      const lngNum = Number(lng)
 
-      if (isNaN(latNum) || isNaN(lngNum)) {
+      if (!Number.isFinite(latNum) || !Number.isFinite(lngNum) || latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
         return NextResponse.json(
           { error: 'Coordonnées invalides' },
           { status: 400 }

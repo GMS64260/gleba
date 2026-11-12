@@ -32,7 +32,7 @@ import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
 import { SemisLunaireEncart } from "@/components/itps/SemisLunaireEncart"
 import { decalageItpPourLecteur, itpApplicableAZone } from "@/lib/calendrier-climat"
 import type { ZoneClimat } from "@/lib/terroir"
-import { normalizeReferentielKey } from "@/lib/normalize"
+import { correspondRechercheItp, texteRechercheItp } from "@/components/itps/recherche-itp"
 import type { ItpVue } from "@/components/itps/types"
 import { alertDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
@@ -75,6 +75,11 @@ export default function ITCalendrierPage() {
   const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null
   const [itps, setItps] = React.useState<ItpVue[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  // Échec du chargement : distinct d'un calendrier vide (« Aucun ITP trouvé »).
+  const [erreurChargement, setErreurChargement] = React.useState(false)
+  // Incrémenté pour recharger les ITP : nouvel essai, ou zone climatique
+  // changée (la liste est filtrée par le serveur sur la zone, `applicable=1`).
+  const [rechargement, setRechargement] = React.useState(0)
   const [filtreTypePlanche, setFiltreTypePlanche] = React.useState("all")
   const [recherche, setRecherche] = React.useState("")
   const [editingItp, setEditingItp] = React.useState<ItpVue | null>(null)
@@ -92,24 +97,31 @@ export default function ITCalendrierPage() {
 
   // Charger les ITPs
   React.useEffect(() => {
+    let annule = false
     async function fetchITPs() {
       setIsLoading(true)
       try {
         const response = await fetch(
-          "/api/itps?pageSize=1000&applicable=1&sortBy=confiance"
+          "/api/itps?pageSize=1000&applicable=1&sortBy=confiance&champs=calendrier"
         )
-        if (response.ok) {
-          const data = await response.json()
-          setItps(data.data || data.itps || [])
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const data = await response.json()
+        if (annule) return
+        setItps(data.data || data.itps || [])
+        setErreurChargement(false)
       } catch (error) {
+        if (annule) return
         console.error("Erreur chargement ITPs:", error)
+        setErreurChargement(true)
       } finally {
-        setIsLoading(false)
+        if (!annule) setIsLoading(false)
       }
     }
     fetchITPs()
-  }, [])
+    return () => {
+      annule = true
+    }
+  }, [rechargement])
 
   // Charger la zone climatique + les planches de l'utilisateur
   React.useEffect(() => {
@@ -150,6 +162,10 @@ export default function ITCalendrierPage() {
       })
       if (r.ok) {
         setClimat(await r.json())
+        // Les ITP chargés sont ceux de l'ANCIENNE zone : passer de la métropole
+        // à l'outre-mer (ou l'inverse) laissait un calendrier vide jusqu'au
+        // rechargement de la page.
+        setRechargement((n) => n + 1)
       } else {
         const p = await r.json().catch(() => null)
         await alertDialog(p?.error || "Impossible de changer la zone climatique", { title: "Erreur" })
@@ -160,6 +176,13 @@ export default function ITCalendrierPage() {
       setSavingZone(false)
     }
   }
+
+  // Texte de recherche normalisé, calculé une fois par chargement et non à
+  // chaque frappe (quatre normalisations par ITP et par caractère saisi).
+  const textesRecherche = React.useMemo(
+    () => new Map(itps.map((itp) => [itp.id, texteRechercheItp(itp)])),
+    [itps]
+  )
 
   // Filtrer les ITPs
   const itpsFiltres = React.useMemo(() => {
@@ -184,17 +207,9 @@ export default function ITCalendrierPage() {
       // Filtre recherche. Insensible aux accents et à la ponctuation, comme la
       // recherche serveur de la liste ITP (QA cmswxyuoi) : chercher
       // « TEST-Marc » doit trouver « TEST Marc », et « mache » trouver « mâche ».
-      if (recherche.trim()) {
-        const cle = normalizeReferentielKey(recherche)
-        if (!cle) return true
-        return [itp.id, itp.nom, itp.especeId, itp.espece?.nom]
-          .filter(Boolean)
-          .some((champ) => normalizeReferentielKey(String(champ)).includes(cle))
-      }
-
-      return true
+      return correspondRechercheItp(textesRecherche.get(itp.id) ?? "", recherche)
     })
-  }, [itps, filtreTypePlanche, recherche, userADeLAbri, userADuPleinChamp, climat?.zone])
+  }, [itps, textesRecherche, filtreTypePlanche, recherche, userADeLAbri, userADuPleinChamp, climat?.zone])
 
   React.useEffect(() => {
     setPageIndex(0)
@@ -208,10 +223,11 @@ export default function ITCalendrierPage() {
     (safePageIndex + 1) * ganttPageSize
   )
 
-  const handleEdit = (itp: ItpVue) => {
+  // Stable : les lignes du Gantt sont mémoïsées.
+  const handleEdit = React.useCallback((itp: ItpVue) => {
     setEditingItp(itp)
     setEditDialogOpen(true)
-  }
+  }, [])
 
   const handleSaved = (updated: ItpVue) => {
     setItps((prev) => prev.map((itp) => (itp.id === updated.id ? updated : itp)))
@@ -350,7 +366,7 @@ export default function ITCalendrierPage() {
         </Card>
 
         {/* Encart biodynamique */}
-        {!isLoading && itps.length > 0 && (
+        {!isLoading && !erreurChargement && itps.length > 0 && (
           <div className="mb-4">
             <SemisLunaireEncart
               itps={itps}
@@ -422,7 +438,9 @@ export default function ITCalendrierPage() {
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle>{itpsFiltres.length} itinéraires</CardTitle>
+              <CardTitle>
+                {erreurChargement ? "Itinéraires" : `${itpsFiltres.length} itinéraires`}
+              </CardTitle>
               <div className="flex items-center gap-2">
                 {itpsFiltres.length > ganttPageSize && (
                   <>
@@ -459,6 +477,13 @@ export default function ITCalendrierPage() {
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-96 w-full" />
+            ) : erreurChargement ? (
+              <div className="text-center py-12 text-muted-foreground space-y-3" role="alert">
+                <p>Les itinéraires n&apos;ont pas pu être chargés.</p>
+                <Button variant="outline" size="sm" onClick={() => setRechargement((n) => n + 1)}>
+                  Réessayer
+                </Button>
+              </div>
             ) : itpsFiltres.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 {horsReference ? (

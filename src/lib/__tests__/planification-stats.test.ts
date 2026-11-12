@@ -3,7 +3,7 @@
  * et n'inclut pas les ITPs comme cultures.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterAll, beforeAll, describe, it, expect, vi, beforeEach } from 'vitest'
 
 const terroirMocks = vi.hoisted(() => ({
   zoneEffectiveUser: vi.fn(),
@@ -27,6 +27,18 @@ vi.mock('@/lib/terroir', async (importOriginal) => ({
 
 import prisma from '@/lib/prisma'
 import { getCulturesPrevues, getCulturesPrevuesEtEtapesNonSuivies, getStatsPlanification } from '../planification'
+
+// Les instants avec heure (« minuit de Paris », étape cochée faite) se lisent
+// au jour local du processus (`jourCivilStocke`) : le conteneur de production
+// tourne en Europe/Paris, les tests aussi.
+const tzAvant = process.env.TZ
+beforeAll(() => {
+  process.env.TZ = 'Europe/Paris'
+})
+afterAll(() => {
+  if (tzAvant === undefined) delete process.env.TZ
+  else process.env.TZ = tzAvant
+})
 
 const mocked = prisma as unknown as {
   planche: { findMany: ReturnType<typeof vi.fn> }
@@ -164,7 +176,8 @@ describe('getCulturesPrevues (inventaire annuel)', () => {
     const where = mocked.culture.findMany.mock.calls.at(-1)![0].where
     expect(where.annee).toBeUndefined()
     expect(where.OR[0]).toEqual({ annee: 2027 })
-    expect(where.OR[1].annee).toBe(2026)
+    // Toute année antérieure (relecture du 2026-11-12), pas la seule précédente.
+    expect(where.OR[1].annee).toEqual({ lt: 2027 })
     expect(avecOption).toHaveLength(1)
     // Récolte lue dans l'année ; plantation de 2026 hors année ; aucun repli sur
     // les semaines de l'itinéraire (qui décrivent 2026).

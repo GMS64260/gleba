@@ -365,8 +365,20 @@ export async function DELETE(
     }
 
     // Suppression (plus aucune variété ni itinéraire attaché à ce stade)
-    await prisma.espece.delete({
-      where: { id },
+    // Ses lignes d'association partent avec elle (clé en cascade). Une règle
+    // qui tombe ainsi à moins de deux membres ne relie plus personne : elle
+    // part aussi, dans la même transaction, plutôt que de rester muette.
+    await prisma.$transaction(async (tx) => {
+      const reglesTouchees = await tx.associationDetail.findMany({
+        where: { especeId: id },
+        select: { associationId: true },
+        distinct: ['associationId'],
+      })
+      await tx.espece.delete({ where: { id } })
+      for (const { associationId } of reglesTouchees) {
+        const membres = await tx.associationDetail.count({ where: { associationId } })
+        if (membres < 2) await tx.association.delete({ where: { id: associationId } })
+      }
     })
 
     return NextResponse.json({ success: true, deleted: id })

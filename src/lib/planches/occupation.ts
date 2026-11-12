@@ -18,5 +18,7 @@ export const selectCulturesOccupation = {
   dateRecolte: true,
   finRecolte: true,
   nbRangs: true,
+  // Portion cultivée : deux cultures bout à bout ne se prennent pas de largeur.
+  longueur: true,
   itp: { select: { espacementRangs: true } },
 } satisfies Prisma.CultureSelect

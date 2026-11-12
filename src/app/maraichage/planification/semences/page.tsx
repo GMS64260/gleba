@@ -15,8 +15,13 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useAnneePlanification } from "@/hooks/use-annee-planification"
-import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
+import { useAnneePlanification, useChargementPlanification } from "@/hooks/use-annee-planification"
+import {
+  ErreurChargementPlanification,
+  SelecteurAnneePlanification,
+} from "@/components/maraichage/SelecteurAnneePlanification"
+import { telechargerCsv } from "../export-csv"
+import { besoinEnUnites, formatUnites } from "./besoin-unites"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Sprout, AlertTriangle, Package, Clock } from "lucide-react"
 
@@ -30,7 +35,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
 import {
   besoinGrainesSansMarge,
   totalGrainesACommander,
@@ -145,7 +149,10 @@ function StatutBadge({ statut, partiel = false }: { statut: BesoinSemence["statu
 
 const baseColumns: ColumnDef<BesoinSemence>[] = [
   {
-    accessorKey: "especeId",
+    // Tri et recherche sur le NOM affiché : l'identifiant d'une espèce ou
+    // d'une variété personnelle est un cuid, introuvable par son nom.
+    id: "especeId",
+    accessorFn: (b) => b.especeNom ?? b.especeId,
     header: "Espèce",
     cell: ({ row }) => {
       const b = row.original
@@ -163,7 +170,8 @@ const baseColumns: ColumnDef<BesoinSemence>[] = [
     },
   },
   {
-    accessorKey: "varieteId",
+    id: "varieteId",
+    accessorFn: (b) => b.varieteNom ?? b.varieteId ?? "",
     header: "Variété",
     cell: ({ row }) => row.original.varieteNom ?? row.original.varieteId ?? "-",
   },
@@ -204,6 +212,17 @@ function formatGrammes(v: number): string {
   if (v <= 0) return "0 g"
   if (v < 0.1) return "<0.1 g"
   return `${v.toFixed(1)} g`
+}
+
+// Besoin compté en unités (cf. `besoinEnUnites`) : le nombre, marge comprise,
+// à la place d'un « 0 g » qui laissait croire qu'il n'y avait rien à prévoir.
+function CelluleUnites({ texte }: { texte: string }) {
+  return <span title="Compté en unités, marge de sécurité comprise">{texte}</span>
+}
+
+// Le stock opposé à un besoin en unités est le stock de plants de la variété.
+function formatStockPlants(n: number): string {
+  return n > 0 ? `${n.toLocaleString("fr-FR")} plant${n > 1 ? "s" : ""}` : "—"
 }
 
 // Audit Marc BUG-01 — Tooltip explicite : dose × surface, puis marge,
@@ -267,17 +286,26 @@ function makeGrainesColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[]
     {
       accessorKey: "grainesNecessaires",
       header: appliquerMarge ? "Graines (g) avec marge" : "Graines (g) sans marge",
-      cell: ({ row }) => <GrainesTooltip b={row.original} appliquerMarge={appliquerMarge} />,
+      cell: ({ row }) => {
+        const unites = besoinEnUnites(row.original)
+        if (unites) return <CelluleUnites texte={formatUnites(unites.quantite, unites)} />
+        return <GrainesTooltip b={row.original} appliquerMarge={appliquerMarge} />
+      },
     },
     {
       accessorKey: "stockActuel",
       header: "Stock (g)",
-      cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
+      cell: ({ row }) =>
+        besoinEnUnites(row.original)
+          ? formatStockPlants(row.original.stockUnites)
+          : `${row.original.stockActuel.toFixed(1)} g`,
     },
     {
       accessorKey: "aCommander",
       header: "À commander",
       cell: ({ row }) => {
+        const unites = besoinEnUnites(row.original)
+        if (unites) return unites.aCommander > 0 ? formatUnites(unites.aCommander, unites) : "—"
         const cible = appliquerMarge ? row.original.grainesNecessaires : brutGraines(row.original)
         const v = Math.max(0, cible - row.original.stockActuel)
         return v > 0 ? `${v.toFixed(1)} g` : "—"
@@ -310,6 +338,8 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
       accessorKey: "grainesNecessaires",
       header: appliquerMarge ? "Graines (g) avec marge" : "Graines (g) sans marge",
       cell: ({ row }) => {
+        const unites = besoinEnUnites(row.original)
+        if (unites) return <CelluleUnites texte={formatUnites(unites.quantite, unites)} />
         const v = appliquerMarge ? row.original.grainesNecessaires : brutGraines(row.original)
         return formatGrammes(v)
       },
@@ -317,12 +347,17 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
     {
       accessorKey: "stockActuel",
       header: "Stock (g)",
-      cell: ({ getValue }) => formatGrammes(getValue() as number),
+      cell: ({ row }) =>
+        besoinEnUnites(row.original)
+          ? formatStockPlants(row.original.stockUnites)
+          : formatGrammes(row.original.stockActuel),
     },
     {
       accessorKey: "aCommander",
       header: "À commander",
       cell: ({ row }) => {
+        const unites = besoinEnUnites(row.original)
+        if (unites) return unites.aCommander > 0 ? formatUnites(unites.aCommander, unites) : "—"
         const cible = appliquerMarge ? row.original.grainesNecessaires : brutGraines(row.original)
         const v = Math.max(0, cible - row.original.stockActuel)
         return v > 0 ? formatGrammes(v) : "—"
@@ -398,15 +433,23 @@ const caieuxColumns: ColumnDef<BesoinSemence>[] = [
   },
 ]
 
-function SemencesContent() {
-  const { toast } = useToast()
+const AUCUN_BESOIN: BesoinSemence[] = []
 
-  const [data, setData] = React.useState<BesoinSemence[]>([])
-  const [stats, setStats] = React.useState<Stats | null>(null)
-  const [isLoading, setIsLoading] = React.useState(true)
+function SemencesContent() {
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
+  // Rien n'est demandé avant la restauration de la saison mémorisée ; une
+  // réponse ne vaut que pour la saison qui l'a demandée.
+  const { resultat, chargement: isLoading, erreur, recharger } = useChargementPlanification<{
+    data: BesoinSemence[]
+    stats: Stats
+  }>(
+    anneePrete ? `/api/planification/semences?annee=${annee}` : null,
+    "Impossible de charger les besoins en semences",
+  )
+  const data = resultat?.data ?? AUCUN_BESOIN
+  const stats = resultat?.stats ?? null
   // BUG-01 audit Marc : toggle pour basculer entre besoin brut et besoin
   // majoré (marge sécurité). Persistence via localStorage afin que la
   // préférence du maraîcher tienne d'une session à l'autre.
@@ -426,70 +469,37 @@ function SemencesContent() {
   const plantsColumns = React.useMemo(() => makePlantsColumns(appliquerMarge), [appliquerMarge])
 
 
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/planification/semences?annee=${annee}`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const result = await response.json()
-      setData(result.data)
-      setStats(result.stats)
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les besoins en semences",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [annee, toast])
-
-  React.useEffect(() => {
-    // Ne pas charger la saison courante avant d'avoir restauré la saison
-    // mémorisée : la réponse tardive écraserait les données de la bonne année.
-    if (!anneePrete) return
-    fetchData()
-  }, [anneePrete, fetchData])
-
   const handleExport = () => {
-    const headers = [
-      "Espèce",
-      "Variété",
-      "Mode",
-      "Surface (m²)",
-      "Nb plants",
-      "Graines nec. (g)",
-      "Caïeux nec.",
-      "Stock (g)",
-      "Stock (unités)",
-      "À commander (g)",
-      "À commander (caïeux)",
-      "Statut",
-    ]
-    const rows = data.map(b => [
-      b.especeNom ?? b.especeId,
-      b.varieteNom ?? b.varieteId ?? "",
-      b.mode,
-      b.surfaceTotale.toFixed(1),
-      b.nbPlants.toString(),
-      b.grainesNecessaires.toFixed(1),
-      b.besoinCaieux.toString(),
-      b.stockActuel.toFixed(1),
-      b.stockUnites.toString(),
-      b.aCommander.toFixed(1),
-      b.caieuxACommander.toString(),
-      b.statut,
+    telechargerCsv(`semences-necessaires-${annee}.csv`, [
+      [
+        "Espèce",
+        "Variété",
+        "Mode",
+        "Surface (m²)",
+        "Nb plants",
+        "Graines nec. (g)",
+        "Caïeux nec.",
+        "Stock (g)",
+        "Stock (unités)",
+        "À commander (g)",
+        "À commander (caïeux)",
+        "Statut",
+      ],
+      ...data.map((b) => [
+        b.especeNom ?? b.especeId,
+        b.varieteNom ?? b.varieteId ?? "",
+        b.mode,
+        b.surfaceTotale.toFixed(1),
+        b.nbPlants,
+        b.grainesNecessaires.toFixed(1),
+        b.besoinCaieux,
+        b.stockActuel.toFixed(1),
+        b.stockUnites,
+        b.aCommander.toFixed(1),
+        b.caieuxACommander,
+        b.statut,
+      ]),
     ])
-
-    const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `semences-necessaires-${annee}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
   }
 
   // Bug #10 — Aligner le filtrage table avec le compteur d'onglet :
@@ -574,6 +584,13 @@ function SemencesContent() {
       </div>
 
       <main>
+        {erreur && (
+          <ErreurChargementPlanification
+            message={`Les besoins en semences de ${annee} n’ont pas pu être chargés.`}
+            onReessayer={recharger}
+          />
+        )}
+
         {/* Alerte stock obsolète */}
         {stats?.stockObsolete && (
           <Card className="mb-4 border-amber-300 bg-amber-50">
@@ -830,10 +847,10 @@ function SemencesContent() {
               pageIndex={0}
               pageSize={graineDirecte.length || 50}
               onPaginationChange={() => {}}
-              onRefresh={fetchData}
+              onRefresh={recharger}
               onExport={handleExport}
               searchPlaceholder="Rechercher..."
-              emptyMessage="Aucune culture en semis direct planifiée."
+              emptyMessage={erreur ? "Chargement impossible." : "Aucune culture en semis direct planifiée."}
             />
           </TabsContent>
 
@@ -846,10 +863,10 @@ function SemencesContent() {
               pageIndex={0}
               pageSize={plantRepique.length || 50}
               onPaginationChange={() => {}}
-              onRefresh={fetchData}
+              onRefresh={recharger}
               onExport={handleExport}
               searchPlaceholder="Rechercher..."
-              emptyMessage="Aucune culture à repiquer planifiée."
+              emptyMessage={erreur ? "Chargement impossible." : "Aucune culture à repiquer planifiée."}
             />
           </TabsContent>
 
@@ -862,10 +879,10 @@ function SemencesContent() {
               pageIndex={0}
               pageSize={bulbeCaieu.length || 50}
               onPaginationChange={() => {}}
-              onRefresh={fetchData}
+              onRefresh={recharger}
               onExport={handleExport}
               searchPlaceholder="Rechercher..."
-              emptyMessage="Aucune culture en caïeux/bulbes planifiée."
+              emptyMessage={erreur ? "Chargement impossible." : "Aucune culture en caïeux/bulbes planifiée."}
             />
           </TabsContent>
         </Tabs>

@@ -8,8 +8,6 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { format } from "date-fns"
-import { fr } from "date-fns/locale"
 import { ArrowLeft, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle, Droplets } from "lucide-react"
 import { AssistantDialog, AssistantButton } from "@/components/assistant"
 
@@ -24,6 +22,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { masquerActionPlantation } from "@/components/potager/CulturesTab"
 import { etatCulture } from "@/lib/cultures/etat"
+import { jourMoisCourt } from "@/lib/cultures/champ-date"
 
 // Types d'états pour le filtre
 const CULTURE_ETATS = [
@@ -216,24 +215,24 @@ function createColumns(
       accessorKey: "dateSemis",
       header: "Semis",
       cell: ({ getValue }) => {
-        const date = getValue() as string | null
-        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+        // Jour civil stocké, pas le jour local du navigateur (outre-mer).
+        return jourMoisCourt(getValue() as string | null) ?? "-"
       },
     },
     {
       accessorKey: "datePlantation",
       header: "Plantation",
       cell: ({ getValue }) => {
-        const date = getValue() as string | null
-        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+        // Jour civil stocké, pas le jour local du navigateur (outre-mer).
+        return jourMoisCourt(getValue() as string | null) ?? "-"
       },
     },
     {
       accessorKey: "dateRecolte",
       header: "Récolte",
       cell: ({ getValue }) => {
-        const date = getValue() as string | null
-        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+        // Jour civil stocké, pas le jour local du navigateur (outre-mer).
+        return jourMoisCourt(getValue() as string | null) ?? "-"
       },
     },
     {
@@ -298,6 +297,14 @@ function CulturesPageInner() {
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [selectedEtat, setSelectedEtat] = React.useState('all')
+  // Recherche envoyée au serveur : filtrer les 50 lignes de la page chargée
+  // laissait croire qu'une culture d'une autre page n'existait pas.
+  const [searchInput, setSearchInput] = React.useState('')
+  const [debouncedSearch, setDebouncedSearch] = React.useState('')
+  const [erreurChargement, setErreurChargement] = React.useState(false)
+  // Seule la dernière demande écrit dans la liste (onglet ou recherche changés
+  // pendant qu'une réponse plus ancienne arrive).
+  const demandeRef = React.useRef(0)
   const [showAssistant, setShowAssistant] = React.useState(false)
   const pageSize = 50
 
@@ -339,10 +346,24 @@ function CulturesPageInner() {
         throw new Error(detail?.error || 'Erreur')
       }
 
+      // Le serveur recale la date d'une étape marquée faite (et rend la date
+      // de plan quand on l'annule) : la ligne reprend ce qu'il a écrit.
+      const ecrite = (await response.json().catch(() => null)) as Partial<CultureWithRelations> | null
+      const relu: Partial<CultureWithRelations> = {}
+      if (ecrite) {
+        for (const champ of ['dateSemis', 'datePlantation', 'dateRecolte'] as const) {
+          if (champ in ecrite) relu[champ] = ecrite[champ] ?? null
+        }
+        for (const champ of ['semisFait', 'plantationFaite', 'recolteFaite'] as const) {
+          if (typeof ecrite[champ] === 'boolean') relu[champ] = ecrite[champ]
+        }
+        if ('terminee' in ecrite) relu.terminee = ecrite.terminee ?? null
+      }
+
       // Mettre a jour localement
       setData(prev => prev.map(c => {
         if (c.id !== id) return c
-        const updated = { ...c, [field]: value }
+        const updated = { ...c, [field]: value, ...relu }
         // Recalculer l'etat (même cascade que l'API : cf. lib/cultures/etat)
         updated.etat = etatCulture(updated)
         return updated
@@ -369,6 +390,7 @@ function CulturesPageInner() {
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
+    const demande = ++demandeRef.current
     setIsLoading(true)
     try {
       let url = `/api/cultures?page=${pageIndex + 1}&pageSize=${pageSize}`
@@ -384,21 +406,41 @@ function CulturesPageInner() {
       if (anneeFiltre !== null) {
         url += `&annee=${anneeFiltre}`
       }
+      if (debouncedSearch) {
+        url += `&search=${encodeURIComponent(debouncedSearch)}`
+      }
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
-      setData(result.data)
-      setPageCount(result.totalPages)
+      if (demande !== demandeRef.current) return
+      setData(Array.isArray(result.data) ? result.data : [])
+      setPageCount(result.totalPages ?? 0)
+      setErreurChargement(false)
     } catch {
+      if (demande !== demandeRef.current) return
+      // Les lignes d'un autre filtre ne restent pas sous le nouvel onglet, et
+      // l'état vide dit l'échec au lieu d'annoncer « aucune culture ».
+      setData([])
+      setPageCount(0)
+      setErreurChargement(true)
       toast({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de charger les cultures",
       })
     } finally {
-      setIsLoading(false)
+      if (demande === demandeRef.current) setIsLoading(false)
     }
-  }, [pageIndex, selectedEtat, toast, varieteId, plancheFiltre, anneeFiltre])
+  }, [pageIndex, selectedEtat, toast, varieteId, plancheFiltre, anneeFiltre, debouncedSearch])
+
+  // Anti-rebond de la recherche (300 ms), comme la liste des espèces.
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput.trim())
+      setPageIndex(0)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   React.useEffect(() => {
     fetchData()
@@ -581,8 +623,16 @@ function CulturesPageInner() {
           onRowClick={handleRowClick}
           onRowEdit={handleEdit}
           onRowDelete={handleDelete}
+          onSearch={setSearchInput}
+          searchValue={searchInput}
           searchPlaceholder="Rechercher une culture..."
-          emptyMessage="Aucune culture trouvée. Cliquez sur Ajouter pour créer la première."
+          emptyMessage={
+            erreurChargement
+              ? "Les cultures n'ont pas pu être chargées. Utilisez Actualiser pour réessayer."
+              : debouncedSearch || selectedEtat !== 'all' || varieteId || plancheFiltre || anneeFiltre !== null
+                ? "Aucune culture ne correspond à cette recherche ou à ces filtres."
+                : "Aucune culture trouvée. Cliquez sur Ajouter pour créer la première."
+          }
         />
       </main>
 

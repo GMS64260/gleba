@@ -9,6 +9,8 @@ import { kcAuStade, phraseVolume, profilEspece, volumeArrosage } from './irrigat
 import { bilanCulture, joursDepuisArrosage, type CultureBilan } from './irrigation/bilan-culture'
 import type { ArrosageSaisi } from './irrigation/arrosages-saisis'
 import { joursSansPluieRecue, pluieSeptDerniersJours, type MeteoBilan } from './irrigation/meteo-bilan'
+import { SEUIL_PLUIE_SIGNIFICATIVE } from './irrigation/seuils'
+import { jourCivilLocalISO } from './irrigation-meteo-decision'
 
 // ============================================================
 // TYPES
@@ -189,7 +191,12 @@ export function genererRecommandationIrrigation(
   // Jours sans pluie significative reçue : la pluie annoncée pour aujourd'hui
   // ne compte pas comme tombée (revue du 2026-10-28, même règle que le bilan).
   const joursSansPluie = sousAbri ? 0 : joursSansPluieRecue(meteo)
-  const prochainePluie = sousAbri ? null : meteo.previsions.find((j) => j.pluie >= 5)?.date ?? null
+  // Même définition que le conseil d'irrigation (`resumeMeteo`) : la première
+  // pluie significative annoncée, aujourd'hui compris. Au seuil de 5 mm et
+  // sans le jour même, les deux écrans ne nommaient pas le même jour.
+  const prochainePluie = sousAbri
+    ? null
+    : [meteo.aujourdhui, ...meteo.previsions].find((j) => j.pluie >= SEUIL_PLUIE_SIGNIFICATIVE)?.date ?? null
 
   // Dose : remplir la réserve, à l'efficacité du système près.
   const volume = volumeArrosage(res.doseMm, planche.surface, planche.irrigation)
@@ -229,8 +236,9 @@ export function genererAlertesMeteo(
   const alertes: AlerteMeteo[] = []
 
   for (const jour of previsions) {
-    // Alerte gel
-    if (jour.tempMin <= 0) {
+    // Alerte gel. Une température absente (null) n'est pas 0 °C : sans cette
+    // garde, `null <= 0` annonçait « Risque de gel : null°C ».
+    if (Number.isFinite(jour.tempMin) && jour.tempMin <= 0) {
       alertes.push({
         type: 'gel',
         niveau: jour.tempMin <= -3 ? 'danger' : 'attention',
@@ -243,7 +251,7 @@ export function genererAlertesMeteo(
     }
 
     // Alerte canicule
-    if (jour.tempMax >= 35) {
+    if (Number.isFinite(jour.tempMax) && jour.tempMax >= 35) {
       alertes.push({
         type: 'canicule',
         niveau: jour.tempMax >= 40 ? 'danger' : 'attention',
@@ -268,17 +276,23 @@ export function genererAlertesMeteo(
     }
   }
 
-  // Alerte sécheresse (basée sur l'historique)
-  if (historique.length >= 7) {
-    const precip7j = historique.slice(-7).reduce((sum, d) => sum + d.precipitation, 0)
-    const et0_7j = historique.slice(-7).reduce((sum, d) => sum + d.et0, 0)
+  // Alerte sécheresse (basée sur l'historique). Seuls les jours mesurés
+  // comptent : un jour que l'archive n'a pas encore publié vaut 0 mm par
+  // défaut et annonçait une sécheresse au lendemain d'un orage. Sans sept
+  // jours mesurés, le cumul de la semaine est inconnu : pas d'alerte.
+  const mesures = historique.filter((d) => !d.precipitationInconnue)
+  if (mesures.length >= 7) {
+    const precip7j = mesures.slice(-7).reduce((sum, d) => sum + d.precipitation, 0)
+    const et0_7j = mesures.slice(-7).reduce((sum, d) => sum + d.et0, 0)
     const pluiePrevue3j = previsions.slice(0, 3).reduce((sum, d) => sum + d.precipitation, 0)
 
     if (precip7j < 5 && et0_7j > 30 && pluiePrevue3j < 5) {
       alertes.push({
         type: 'secheresse',
         niveau: precip7j < 2 ? 'danger' : 'attention',
-        date: new Date().toISOString().split('T')[0],
+        // Jour civil du serveur : en UTC, l'alerte était datée de la veille
+        // entre 0 h et 2 h.
+        date: jourCivilLocalISO(new Date()),
         message: `Sécheresse : ${Math.round(precip7j)}mm en 7j, ET0 de ${Math.round(et0_7j)}mm`,
         details: `Seulement ${Math.round(precip7j)}mm de pluie en 7 jours pour ${Math.round(et0_7j)}mm d'évapotranspiration. Pas de pluie significative prévue dans les 3 prochains jours. Prioriser l'irrigation des cultures exigeantes en eau.`,
       })
@@ -295,7 +309,10 @@ export function genererAlertesMeteo(
 /**
  * Calcule le résumé d'ensoleillement sur une période
  */
-export function calculerEnsoleillement(meteoData: MeteoJournaliere[]): EnsoleillementResume {
+export function calculerEnsoleillement(donnees: MeteoJournaliere[]): EnsoleillementResume {
+  // Un jour dont l'archive n'a pas encore publié l'ensoleillement vaut 0 h par
+  // défaut : il n'entre ni dans les jours gris ni dans la moyenne.
+  const meteoData = donnees.filter((d) => !d.ensoleillementInconnu)
   if (meteoData.length === 0) {
     return { totalHeures: 0, moyenneJour: 0, radiationTotaleMJ: 0, joursSoleil: 0, joursGris: 0 }
   }

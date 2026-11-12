@@ -14,6 +14,7 @@ import prisma from '@/lib/prisma'
 import { z } from 'zod'
 import { SELECT_ETAPES, ecrituresPassageAFait } from '@/lib/cultures/execution'
 import type { ChampEtape } from '@/lib/cultures/execution'
+import { invalidateKpi } from '@/lib/kpi'
 
 const FIELD_MAP = {
   semis: 'semisFait',
@@ -93,6 +94,10 @@ export async function POST(request: NextRequest) {
         }),
       ),
     ])
+
+    // La « surface cultivée » des indicateurs compte les cultures dont une étape
+    // est faite : même invalidation que le PATCH unitaire.
+    if (concernees.length > 0) invalidateKpi(session.user.id)
 
     return NextResponse.json({ updated: concernees.length, ignores: ids.length - concernees.length })
   } catch (err) {

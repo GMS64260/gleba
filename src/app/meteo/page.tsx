@@ -30,6 +30,11 @@ import BandeauLocalisationExemple, {
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 const PARCELLE_METEO_KEY = "gleba_meteo_parcelle"
 
+/** Parcelle mémorisée, ou null si le stockage du navigateur est refusé. */
+function lireParcelleMemorisee(): string | null {
+  try { return window.localStorage.getItem(PARCELLE_METEO_KEY) } catch { return null }
+}
+
 interface ParcelleMeteo {
   id: string
   nom: string
@@ -49,6 +54,8 @@ export default function MeteoPage() {
   const [parcelles, setParcelles] = React.useState<ParcelleMeteo[]>([])
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [erreurParcelles, setErreurParcelles] = React.useState(false)
+  const [erreurSource, setErreurSource] = React.useState<string | null>(null)
   const [stations, setStations] = React.useState<StationMeteo[]>([])
   const [sourceVersion, setSourceVersion] = React.useState(0)
   // Suivi 2026-08-16 — le bandeau de recalage n'existait que sur /jardin/carte,
@@ -85,7 +92,10 @@ export default function MeteoPage() {
     async function load() {
       try {
         const [res, stationRes] = await Promise.all([fetch("/api/carte"), fetch("/api/meteo/station")])
-        if (!res.ok) return
+        // Un échec n'est pas « aucune parcelle géolocalisée » : l'écran le dit
+        // et propose de réessayer.
+        if (!res.ok) { setErreurParcelles(true); return }
+        setErreurParcelles(false)
         const data = await res.json()
         const avecCoords = (data as Array<{ id: string; nom: string; surface?: number | null; centroidLat: number | null; centroidLng: number | null }>)
           .filter((p) => p.centroidLat && p.centroidLng)
@@ -101,7 +111,7 @@ export default function MeteoPage() {
           // la clé que lit le bandeau météo du haut de page, qui restait sinon
           // figé sur la première parcelle pendant que cet écran en suivait une
           // autre — deux affichages contradictoires en permanence.
-          const memorisee = window.localStorage.getItem(PARCELLE_METEO_KEY)
+          const memorisee = lireParcelleMemorisee()
           const retenue = demandee && avecCoords.some((p) => p.id === demandee)
             ? demandee
             : memorisee && avecCoords.some((p) => p.id === memorisee)
@@ -111,7 +121,7 @@ export default function MeteoPage() {
         }
         if (stationRes.ok) setStations((await stationRes.json()).data || [])
       } catch {
-        // silencieux — l'état vide guide l'utilisateur
+        setErreurParcelles(true)
       } finally {
         setLoading(false)
       }
@@ -124,7 +134,8 @@ export default function MeteoPage() {
 
   const selectionnerParcelle = (id: string) => {
     setSelectedId(id)
-    window.localStorage.setItem(PARCELLE_METEO_KEY, id)
+    // Stockage refusé (navigation privée, quota) : le choix vaut pour la page.
+    try { window.localStorage.setItem(PARCELLE_METEO_KEY, id) } catch { /* sans mémoire */ }
     // Le bandeau d'en-tête écoute ce signal pour changer de parcelle sans
     // rechargement (QA cmsqmf6om).
     window.dispatchEvent(new CustomEvent("gleba:parcelle-meteo", { detail: id }))
@@ -166,8 +177,19 @@ export default function MeteoPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(value === "parcelle" ? { id: null, active: false } : { id: value, active: true }),
-    })
-    if (!res.ok) return
+    }).catch(() => null)
+    if (!res) {
+      setErreurSource("Le changement de source météo n'a pas été enregistré.")
+      return
+    }
+    if (!res.ok) {
+      // Le sélecteur revient seul à la source active : sans message, le choix
+      // semblait ignoré.
+      const corps = await res.json().catch(() => null)
+      setErreurSource(corps?.error || "Le changement de source météo n'a pas été enregistré.")
+      return
+    }
+    setErreurSource(null)
     setStations((current) => current.map((s) => ({ ...s, active: value !== "parcelle" && s.id === value })))
     setSourceVersion((v) => v + 1)
   }
@@ -214,7 +236,7 @@ export default function MeteoPage() {
           <CardContent className="py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <Radio className="h-4 w-4 text-sky-600 shrink-0" />
-              <div className="min-w-0"><p className="text-sm font-medium">Source météo de l&apos;exploitation</p><p className="text-xs text-slate-500 truncate">Ce choix s&apos;applique aussi aux alertes et aux conseils d&apos;irrigation.</p></div>
+              <div className="min-w-0"><p className="text-sm font-medium">Source météo de l&apos;exploitation</p><p className="text-xs text-slate-500 truncate">Ce choix s&apos;applique aussi aux alertes et aux conseils d&apos;irrigation.</p>{erreurSource && <p className="text-xs text-red-600" role="alert">{erreurSource}</p>}</div>
             </div>
             <Select value={activeStation?.id ?? "parcelle"} onValueChange={selectSource}>
               <SelectTrigger className="w-full sm:w-[320px]"><SelectValue /></SelectTrigger>
@@ -239,6 +261,18 @@ export default function MeteoPage() {
             <Skeleton className="h-96 w-full" />
             <Skeleton className="h-96 w-full" />
           </div>
+        ) : erreurParcelles && !parcelle ? (
+          <Card>
+            <CardContent className="py-10 text-center space-y-3">
+              <CloudSun className="h-10 w-10 text-slate-300 mx-auto" />
+              <p className="text-sm text-slate-600" role="alert">
+                Impossible de charger vos parcelles pour le moment.
+              </p>
+              <Button variant="outline" size="sm" className="mt-1" onClick={() => { setLoading(true); setParcellesVersion((v) => v + 1) }}>
+                Réessayer
+              </Button>
+            </CardContent>
+          </Card>
         ) : !parcelle ? (
           <Card>
             <CardContent className="py-10 text-center space-y-3">
