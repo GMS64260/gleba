@@ -527,10 +527,12 @@ export class ErreurCompteDejaRempli extends Error {
  * Modèles qui signent une ferme déjà saisie. Un compte neuf n'en porte aucun
  * (ses réglages, son abonnement et son exploitation ne comptent pas).
  */
-const MODELES_FERME_SAISIE = [
+export const MODELES_FERME_SAISIE = [
   "planche", "culture", "recolte", "arbre", "animal", "lotAnimaux",
-  "facture", "venteManuelle", "depenseManuelle", "client", "fournisseur",
+  "facture", "venteManuelle", "depenseManuelle", "client",
 ] as const
+// Pas de fournisseur ici : c'est un référentiel partagé, sans `userId`. Le
+// compter par `userId` faisait échouer tout import (champ inconnu de Prisma).
 
 /**
  * Compte, par modèle, les données de ferme déjà présentes sur le compte.

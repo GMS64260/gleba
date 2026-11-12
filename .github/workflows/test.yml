@@ -104,6 +104,17 @@ jobs:
           ADMIN_NAME: "Test Admin"
           ADMIN_PASSWORD: "ci-only-password"
 
+      # Dérive schéma ↔ migrations : le SQL que `prisma migrate dev` générerait
+      # sur cette base neuve doit être exactement prisma/derive-acceptee.sql.
+      # Sinon une migration générée supprimerait ou renommerait des contraintes,
+      # index ou défauts posés en SQL. Le message d'échec dit quoi faire.
+      - name: Schema drift against migrations
+        run: |
+          node --test scripts/verifier-derive-schema.test.mjs
+          node scripts/verifier-derive-schema.mjs
+        env:
+          DATABASE_URL: "postgresql://postgres:gleba_test@localhost:5432/gleba_test"
+
       # Tests d'intégration sur PostgreSQL : SQL brut de l'attente lait et
       # lecture des traitements, sur une base dédiée et vide (le test refuse
       # toute base qui ne porte pas ce nom).
