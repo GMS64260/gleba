@@ -1,14 +1,20 @@
 /**
- * API Carnet Sanitaire d'Elevage
+ * Résumé sanitaire de l'élevage (anciennement « carnet sanitaire »)
  * GET /api/tracabilite/carnet-sanitaire?annee=2026
- * Genere le carnet sanitaire a partir des SoinAnimal
+ *
+ * C10 (revue réglementaire du 2026-11-12) : ce n'est qu'un RÉSUMÉ des soins
+ * réalisés, pas le dossier de contrôle. Il ne reprend ni les délais d'attente,
+ * ni la durée du traitement, ni l'ordonnance, ni le fournisseur et la preuve
+ * d'achat (règlement (UE) 2019/6, art. 108 §2). Ces pièces sont réunies par le
+ * registre d'élevage complet et son archive (`/api/elevage/registre-elevage-complet`),
+ * vers lesquels `meta.dossierComplet` oriente. L'URL reste inchangée pour les
+ * écrans et liens existants.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { cleTypeSoin, libelleTypeSoin } from '@/lib/elevage/types-soin'
-import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi(request)
@@ -45,22 +51,12 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             nom: true,
-            quantiteInitiale: true,
-            quantiteActuelle: true,
             especeAnimale: { select: { nom: true } },
           },
         },
       },
       orderBy: { date: 'asc' },
     })
-
-    // Revue 2026-10-20 — l'effectif affiché derrière un lot est l'effectif
-    // reconstitué (écran Lots), pas le compteur stocké `quantiteActuelle`, qui
-    // dérive (la mort d'une fiche rattachée ne le décrémente pas). Comme lui,
-    // c'est l'effectif d'aujourd'hui, pas celui du jour du soin (non daté).
-    const lotsSoignes = new Map<number, { id: number; quantiteInitiale: number; quantiteActuelle: number }>()
-    for (const soin of soins) if (soin.lot) lotsSoignes.set(soin.lot.id, soin.lot)
-    const effectifsLots = await reconstituerEffectifsLots(userId, [...lotsSoignes.values()])
 
     const entries = soins.map((soin) => {
       // Determiner l'animal ou le lot concerne
@@ -73,10 +69,13 @@ export async function GET(request: NextRequest) {
         especeNom = soin.animal.especeAnimale.nom
       } else if (soin.lot) {
         animalLot = soin.lot.nom || `Lot #${soin.lot.id}`
-        // Un lot vidé depuis (abattu, réformé) n'affiche pas « (0 animaux) »
-        // derrière un soin qui a bien traité des animaux.
-        const effectif = effectifsLots.get(soin.lot.id)?.effectifCalcule ?? soin.lot.quantiteActuelle
-        if (effectif > 0) animalLot += ` (${effectif} ${effectif > 1 ? 'animaux' : 'animal'})`
+        // C10 : seul l'effectif figé au jour du soin est affiché. L'effectif
+        // reconstitué (revue du 2026-10-20) était celui d'aujourd'hui, présenté
+        // comme le groupe traité ; inconnu, il n'est pas inventé.
+        const effectif = soin.effectifTraite
+        if (effectif != null && effectif > 0) {
+          animalLot += ` (${effectif} ${effectif > 1 ? 'animaux traités' : 'animal traité'})`
+        }
         especeNom = soin.lot.especeAnimale.nom
       } else {
         animalLot = 'Non renseigné'
@@ -89,6 +88,7 @@ export async function GET(request: NextRequest) {
         espece: especeNom,
         animalId: soin.animalId,
         lotId: soin.lotId,
+        effectifTraite: soin.lot ? soin.effectifTraite ?? null : null,
         // Clé et libellé du type : table unique `types-soin.ts`, partagée avec
         // l'Élevage. Le résumé `parType` et le filtre de l'écran comparent
         // cette même clé (QA 2026-10-19 : tout s'affichait « Autre »).
@@ -133,13 +133,19 @@ export async function GET(request: NextRequest) {
       meta: {
         annee,
         generatedAt: new Date().toISOString(),
-        type: 'carnet_sanitaire',
+        type: 'resume_sanitaire',
+        avertissement:
+          "Résumé des soins réalisés. Ce n'est pas le dossier de contrôle : délais d'attente, durée du traitement, ordonnances, fournisseurs et preuves d'achat figurent dans le registre d'élevage complet et son archive.",
+        dossierComplet: {
+          libelle: "Registre sanitaire & pharmacie (registre d'élevage complet)",
+          url: '/elevage?tab=alimentation&sub=registre',
+        },
       },
     })
   } catch (err) {
     console.error('GET /api/tracabilite/carnet-sanitaire error:', err)
     return NextResponse.json(
-      { error: 'Erreur lors de la génération du carnet sanitaire' },
+      { error: 'Erreur lors de la génération du résumé sanitaire' },
       { status: 500 }
     )
   }

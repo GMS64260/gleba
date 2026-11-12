@@ -62,6 +62,12 @@ import {
   type EtapeId,
 } from "@/lib/onboarding-config"
 import { MODULES, type ModuleId } from "@/lib/modules"
+import {
+  erreursDepuisReponse,
+  premierChampEnErreur,
+  resumeErreurs,
+  type ErreursFacturation,
+} from "@/lib/onboarding/erreurs-facturation"
 
 const ETAPE_LABELS: Record<EtapeId, string> = {
   exploitation: "Exploitation",
@@ -162,6 +168,8 @@ export default function OnboardingPage() {
   const { toast } = useToast()
   const [s, setS] = React.useState<OnboardingState>(initial)
   const [saving, setSaving] = React.useState(false)
+  // FRONT-01 : erreurs de l'identité de facturation, affichées sous leur champ.
+  const [erreursFacturation, setErreursFacturation] = React.useState<ErreursFacturation>({})
   const [hydrating, setHydrating] = React.useState(true)
   const [suggestions, setSuggestions] = React.useState<CommuneApi[]>([])
   const [chercheCommune, setChercheCommune] = React.useState(false)
@@ -173,8 +181,11 @@ export default function OnboardingPage() {
     lots: string[]
   }>({ lots: [] })
 
-  const set = <K extends keyof OnboardingState>(key: K, v: OnboardingState[K]) =>
+  const set = <K extends keyof OnboardingState>(key: K, v: OnboardingState[K]) => {
     setS((prev) => ({ ...prev, [key]: v }))
+    // Le champ corrigé perd son message d'erreur.
+    setErreursFacturation((prev) => (prev[key as string] ? { ...prev, [key as string]: undefined } : prev))
+  }
 
   const modulesActifsList = React.useMemo(
     () => (Object.entries(s.modulesActifs) as [ModuleId, boolean][]).filter(([, on]) => on).map(([id]) => id),
@@ -445,9 +456,18 @@ export default function OnboardingPage() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => null)
-        toast({ variant: "destructive", title: "Champs incorrects", description: j?.error || "Vérifiez la saisie" })
+        const erreurs = erreursDepuisReponse(j)
+        setErreursFacturation(erreurs)
+        toast({
+          variant: "destructive",
+          title: "Identité de facturation à compléter",
+          description: resumeErreurs(erreurs) ?? j?.error ?? "Vérifiez la saisie",
+        })
+        const champ = premierChampEnErreur(erreurs)
+        if (champ) requestAnimationFrame(() => document.getElementById(`facturation-${champ}`)?.focus())
         return
       }
+      setErreursFacturation({})
       suivante()
     } finally {
       setSaving(false)
@@ -794,14 +814,21 @@ export default function OnboardingPage() {
                   </CardTitle>
                   <CardDescription>
                     Requise pour émettre des factures conformes (art. 242 nonies A CGI). Vous pouvez passer
-                    et compléter plus tard dans Paramètres &gt; Exploitation.
+                    et compléter plus tard dans Paramètres &gt; Exploitation. Pour enregistrer, les champs
+                    marqués <span className="text-red-600">*</span> sont obligatoires.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid md:grid-cols-2 gap-3">
                     <div>
-                      <Label>Raison sociale</Label>
-                      <Input value={s.raisonSociale} onChange={(e) => set("raisonSociale", e.target.value)} placeholder={s.nomExploitation || "EARL Le Pré Vert"} />
+                      <Label htmlFor="facturation-raisonSociale">Raison sociale</Label>
+                      <Input
+                        id="facturation-raisonSociale"
+                        value={s.raisonSociale} onChange={(e) => set("raisonSociale", e.target.value)} placeholder={s.nomExploitation || "EARL Le Pré Vert"}
+                        aria-invalid={erreursFacturation.raisonSociale ? true : undefined}
+                        aria-describedby={erreursFacturation.raisonSociale ? "facturation-raisonSociale-erreur" : undefined}
+                      />
+                      <ErreurChamp id="facturation-raisonSociale-erreur" message={erreursFacturation.raisonSociale} />
                     </div>
                     <div>
                       <Label>Forme juridique</Label>
@@ -828,33 +855,75 @@ export default function OnboardingPage() {
                     <div>
                       {usesSiret ? (
                         <>
-                          <Label>SIRET</Label>
-                          <Input value={s.siret} onChange={(e) => set("siret", e.target.value)} placeholder="123 456 789 00012" inputMode="numeric" />
+                          <Label htmlFor="facturation-siret">SIRET <span aria-hidden="true" className="text-red-600">*</span></Label>
+                          <Input
+                            id="facturation-siret"
+                            value={s.siret} onChange={(e) => set("siret", e.target.value)} placeholder="123 456 789 00012" inputMode="numeric"
+                            aria-invalid={erreursFacturation.siret ? true : undefined}
+                            aria-describedby={erreursFacturation.siret ? "facturation-siret-erreur" : undefined}
+                            aria-required="true"
+                          />
+                          <ErreurChamp id="facturation-siret-erreur" message={erreursFacturation.siret} />
                         </>
                       ) : (
                         <>
-                          <Label>{terr.labelIdentifiant}</Label>
-                          <Input value={s.identifiantLegal} onChange={(e) => set("identifiantLegal", e.target.value)} placeholder={terr.placeholderIdentifiant} />
+                          <Label htmlFor="facturation-identifiantLegal">{terr.labelIdentifiant} {terr.typeIdentifiant !== "AUTRE" && <span aria-hidden="true" className="text-red-600">*</span>}</Label>
+                          <Input
+                            id="facturation-identifiantLegal"
+                            value={s.identifiantLegal} onChange={(e) => set("identifiantLegal", e.target.value)} placeholder={terr.placeholderIdentifiant}
+                            aria-invalid={erreursFacturation.identifiantLegal ? true : undefined}
+                            aria-describedby={erreursFacturation.identifiantLegal ? "facturation-identifiantLegal-erreur" : undefined}
+                            aria-required={terr.typeIdentifiant !== "AUTRE"}
+                          />
+                          <ErreurChamp id="facturation-identifiantLegal-erreur" message={erreursFacturation.identifiantLegal} />
                         </>
                       )}
                     </div>
                     <div>
-                      <Label>Email contact</Label>
-                      <Input type="email" value={s.emailContact} onChange={(e) => set("emailContact", e.target.value)} placeholder="contact@..." />
+                      <Label htmlFor="facturation-emailContact">Email contact <span aria-hidden="true" className="text-red-600">*</span></Label>
+                      <Input
+                        id="facturation-emailContact" type="email"
+                        value={s.emailContact} onChange={(e) => set("emailContact", e.target.value)} placeholder="contact@..."
+                        aria-invalid={erreursFacturation.emailContact ? true : undefined}
+                        aria-describedby={erreursFacturation.emailContact ? "facturation-emailContact-erreur" : undefined}
+                        aria-required="true"
+                      />
+                      <ErreurChamp id="facturation-emailContact-erreur" message={erreursFacturation.emailContact} />
                     </div>
                   </div>
                   <div>
-                    <Label>Adresse</Label>
-                    <Input value={s.adresseSiege} onChange={(e) => set("adresseSiege", e.target.value)} placeholder="Lieu-dit Les Tilleuls" />
+                    <Label htmlFor="facturation-adresseSiege">Adresse <span aria-hidden="true" className="text-red-600">*</span></Label>
+                    <Input
+                      id="facturation-adresseSiege"
+                      value={s.adresseSiege} onChange={(e) => set("adresseSiege", e.target.value)} placeholder="Lieu-dit Les Tilleuls"
+                      aria-invalid={erreursFacturation.adresseSiege ? true : undefined}
+                      aria-describedby={erreursFacturation.adresseSiege ? "facturation-adresseSiege-erreur" : undefined}
+                      aria-required="true"
+                    />
+                    <ErreurChamp id="facturation-adresseSiege-erreur" message={erreursFacturation.adresseSiege} />
                   </div>
                   <div className="grid md:grid-cols-2 gap-3">
                     <div>
-                      <Label>Code postal</Label>
-                      <Input value={s.codePostal} onChange={(e) => set("codePostal", e.target.value)} placeholder="24000" />
+                      <Label htmlFor="facturation-codePostal">Code postal <span aria-hidden="true" className="text-red-600">*</span></Label>
+                      <Input
+                        id="facturation-codePostal"
+                        value={s.codePostal} onChange={(e) => set("codePostal", e.target.value)} placeholder="24000"
+                        aria-invalid={erreursFacturation.codePostal ? true : undefined}
+                        aria-describedby={erreursFacturation.codePostal ? "facturation-codePostal-erreur" : undefined}
+                        aria-required="true"
+                      />
+                      <ErreurChamp id="facturation-codePostal-erreur" message={erreursFacturation.codePostal} />
                     </div>
                     <div>
-                      <Label>Ville</Label>
-                      <Input value={s.ville} onChange={(e) => set("ville", e.target.value)} placeholder="Périgueux" />
+                      <Label htmlFor="facturation-ville">Ville <span aria-hidden="true" className="text-red-600">*</span></Label>
+                      <Input
+                        id="facturation-ville"
+                        value={s.ville} onChange={(e) => set("ville", e.target.value)} placeholder="Périgueux"
+                        aria-invalid={erreursFacturation.ville ? true : undefined}
+                        aria-describedby={erreursFacturation.ville ? "facturation-ville-erreur" : undefined}
+                        aria-required="true"
+                      />
+                      <ErreurChamp id="facturation-ville-erreur" message={erreursFacturation.ville} />
                     </div>
                   </div>
                   <div className="grid md:grid-cols-2 gap-3">
@@ -947,3 +1016,14 @@ export default function OnboardingPage() {
     </div>
   )
 }
+
+/** Message d'erreur d'un champ, relié à son champ par `aria-describedby` (FRONT-01). */
+function ErreurChamp({ id, message }: { id: string; message?: string }) {
+  if (!message) return null
+  return (
+    <p id={id} className="mt-1 text-xs text-red-600">
+      {message}
+    </p>
+  )
+}
+

@@ -19,6 +19,7 @@
  */
 
 import type { Prisma } from '@prisma/client'
+import { chargerContexteRegistre, type ContexteRegistre } from '@/lib/tracabilite/contexte-registre'
 
 export interface ArbreSupprime {
   id: number
@@ -69,6 +70,30 @@ const METHODES_TRAITEMENT = [
   'biologique',
 ]
 
+/**
+ * Contexte du registre (culture, localisation, conduite biologique) à porter
+ * par la trace détachée. Revue Codex CR-PHY-01 (2026-11-12) : la trace perdait
+ * le contexte figé et le stade BBCH, alors que l'arbre, sa parcelle et sa zone
+ * disparaissent avec lui (arrêté du 24 décembre 2025, art. 3 et annexe I). Le
+ * contexte figé est recopié ; à défaut, il est relu MAINTENANT, tant que
+ * l'arbre existe encore, sans rien inventer.
+ */
+export async function contexteAConserver(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  ligne: { date: Date; cultureRegistre?: string | null; localisationRegistre?: string | null; conduiteBio?: boolean | null },
+  refs: Parameters<typeof chargerContexteRegistre>[2],
+): Promise<ContexteRegistre> {
+  if (ligne.cultureRegistre != null || ligne.localisationRegistre != null || ligne.conduiteBio != null) {
+    return {
+      cultureRegistre: ligne.cultureRegistre ?? null,
+      localisationRegistre: ligne.localisationRegistre ?? null,
+      conduiteBio: ligne.conduiteBio ?? null,
+    }
+  }
+  return chargerContexteRegistre(tx, userId, refs, ligne.date)
+}
+
 export interface TracesPhytoPreservees {
   observations: number
   operations: number
@@ -95,6 +120,7 @@ export async function preserverTracesPhytoArbre(
   })
 
   for (const o of observations) {
+    const contexte = await contexteAConserver(tx, userId, o, { arbreId: arbre.id, parcelleId: o.parcelleId })
     await tx.intervention.create({
       data: {
         userId,
@@ -130,6 +156,8 @@ export async function preserverTracesPhytoArbre(
         operateurId: o.operateurId,
         certiphytoNum: o.certiphytoNum,
         justification: o.traitement ?? null,
+        stadeBBCH: o.stadeBBCH ?? null,
+        ...contexte,
         notes: [snapshot, o.notes].filter(Boolean).join('\n'),
       },
     })
@@ -149,6 +177,7 @@ export async function preserverTracesPhytoArbre(
   })
 
   for (const op of operations) {
+    const contexte = await contexteAConserver(tx, userId, op, { arbreId: arbre.id })
     await tx.intervention.create({
       data: {
         userId,
@@ -169,6 +198,7 @@ export async function preserverTracesPhytoArbre(
         pluie24h: op.pluie24h,
         pluie24hMm: op.pluie24hMm,
         operateurId: op.operateurId,
+        ...contexte,
         notes: [snapshot, op.notes].filter(Boolean).join('\n'),
       },
     })

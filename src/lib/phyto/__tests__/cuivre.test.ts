@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import {
   isProduitCuivre,
-  doseCuivreMetalKg,
+  evaluerDoseCuivre,
   cumuleParParcelle,
   PLAFOND_CU_KG_HA_AN,
   PLAFOND_CU_KG_HA_7ANS,
+  type TraitementCuivreInput,
 } from '../cuivre'
+
+/** kg de cuivre métal, null quand l'apport ne se calcule pas. */
+const doseCuivreMetalKg = (t: TraitementCuivreInput) => evaluerDoseCuivre(t).kg
 
 describe('isProduitCuivre', () => {
   it('détecte le flag explicite contientCuivre', () => {
@@ -88,7 +92,10 @@ describe('doseCuivreMetalKg', () => {
     expect(cu).toBeCloseTo(5, 1)
   })
 
-  it("g/L sans volume bouillie → 0 (donnée incomplète)", () => {
+  // Revue réglementaire du 2026-11-12 (C6) : ce test attendait 0, ce qui
+  // sommait l'apport comme nul et laissait le statut « OK ». Un apport
+  // incalculable n'est pas un apport nul.
+  it("g/L sans volume bouillie → incalculable (null), pas 0", () => {
     const cu = doseCuivreMetalKg({
       date: new Date('2026-04-08'),
       parcelleId: 'P1',
@@ -98,11 +105,13 @@ describe('doseCuivreMetalKg', () => {
       volumeBouillieLHa: null,
       produit: { contientCuivre: true, cuivreMetalPct: 20 },
     })
-    expect(cu).toBe(0)
+    expect(cu).toBeNull()
   })
 
-  it("L/ha équivaut à kg/ha (densité ~1)", () => {
-    const cu = doseCuivreMetalKg({
+  // C6 : ce test validait « L/ha équivaut à kg/ha » sans le dire. Le calcul
+  // reste possible, mais l'hypothèse de densité est désormais nommée.
+  it("L/ha avec une teneur massique : calculé avec l'hypothèse de densité nommée", () => {
+    const dose = evaluerDoseCuivre({
       date: new Date('2026-04-08'),
       parcelleId: 'P1',
       surfaceHa: 2,
@@ -111,7 +120,33 @@ describe('doseCuivreMetalKg', () => {
       volumeBouillieLHa: null,
       produit: { contientCuivre: true, cuivreMetalPct: 20 },
     })
-    expect(cu).toBeCloseTo(2, 1)
+    expect(dose.kg).toBeCloseTo(2, 1)
+    expect(dose.hypotheses).toEqual(['densite_supposee'])
+  })
+
+  it("L/ha avec une teneur en g de cuivre par litre : exact, sans hypothèse", () => {
+    const dose = evaluerDoseCuivre({
+      date: new Date('2026-04-08'), parcelleId: 'P1', surfaceHa: 2, doseAppliquee: 5, uniteDose: 'L/ha',
+      volumeBouillieLHa: null, produit: { contientCuivre: true, cuivreMetalGParUnite: 200 },
+    })
+    // 5 L/ha × 2 ha = 10 L × 200 g/L = 2 kg
+    expect(dose).toEqual({ kg: 2, hypotheses: [] })
+  })
+
+  it("composition non renseignée : 20 % supposés et nommés", () => {
+    const dose = evaluerDoseCuivre({
+      date: new Date('2026-04-08'), parcelleId: 'P1', surfaceHa: 1, doseAppliquee: 5, uniteDose: 'kg/ha',
+      volumeBouillieLHa: null, produit: { nomCommercial: 'Bouillie bordelaise' },
+    })
+    expect(dose.kg).toBeCloseTo(1, 3)
+    expect(dose.hypotheses).toEqual(['composition_supposee'])
+  })
+
+  it("unité inconnue ou absente : incalculable, plus jamais lue comme des kg/ha", () => {
+    const base = { date: new Date('2026-04-08'), parcelleId: 'P1', surfaceHa: 1, doseAppliquee: 3, volumeBouillieLHa: 500, produit: { contientCuivre: true, cuivreMetalPct: 20 } }
+    expect(doseCuivreMetalKg({ ...base, uniteDose: 'pulvérisateurs' })).toBeNull()
+    expect(doseCuivreMetalKg({ ...base, uniteDose: '' })).toBeNull()
+    expect(doseCuivreMetalKg({ ...base, uniteDose: null })).toBeNull()
   })
 
   it("g/ha divise par 1000 pour obtenir kg produit", () => {
@@ -157,13 +192,14 @@ describe('doseCuivreMetalKg', () => {
     }
     // 3 kg × 20% = 0.6 kg Cu
     expect(doseCuivreMetalKg({ ...base, doseAppliquee: 3, uniteDose: 'kg' })).toBeCloseTo(0.6, 3)
-    // 2 L ≈ 2 kg × 20% = 0.4 kg Cu
-    expect(doseCuivreMetalKg({ ...base, doseAppliquee: 2, uniteDose: 'L' })).toBeCloseTo(0.4, 3)
+    // 2 L ≈ 2 kg × 20% = 0.4 kg Cu : deux hypothèses, dites (C6)
+    expect(evaluerDoseCuivre({ ...base, doseAppliquee: 2, uniteDose: 'L' })).toEqual({ kg: 0.4, hypotheses: ['composition_supposee', 'densite_supposee'] })
     // 500 g = 0.5 kg × 20% = 0.1 kg Cu
     expect(doseCuivreMetalKg({ ...base, doseAppliquee: 500, uniteDose: 'g' })).toBeCloseTo(0.1, 3)
   })
 
-  it('retourne 0 si surface ou dose manquantes', () => {
+  // C6 : null (incalculable) au lieu de 0, qui se confondait avec « aucun cuivre ».
+  it('retourne null si surface ou dose manquantes', () => {
     expect(
       doseCuivreMetalKg({
         date: new Date(),
@@ -174,7 +210,7 @@ describe('doseCuivreMetalKg', () => {
         volumeBouillieLHa: null,
         produit: { contientCuivre: true },
       })
-    ).toBe(0)
+    ).toBeNull()
     expect(
       doseCuivreMetalKg({
         date: new Date(),
@@ -185,7 +221,7 @@ describe('doseCuivreMetalKg', () => {
         volumeBouillieLHa: null,
         produit: { contientCuivre: true },
       })
-    ).toBe(0)
+    ).toBeNull()
   })
 })
 
@@ -409,5 +445,48 @@ describe('cumuleParParcelle', () => {
     ]
     const cumuls = cumuleParParcelle(traitements, new Map(), new Date('2026-06-01'))
     expect(cumuls.find((x) => x.parcelleId === 'P9')?.statut ?? 'ok').toBe('ok')
+  })
+
+  // Revue réglementaire du 2026-11-12 (C6).
+  describe('cumul partiel ou estimé', () => {
+    const cu = { contientCuivre: true, cuivreMetalPct: 20 }
+    const ligne = (t: Partial<TraitementCuivreInput>): TraitementCuivreInput => ({
+      date: new Date('2026-04-08'), parcelleId: 'P1', surfaceHa: 1, doseAppliquee: 5, uniteDose: 'kg/ha', volumeBouillieLHa: null, produit: cu, ...t,
+    })
+
+    it('un apport en g/L sans volume de bouillie rend le statut indéterminé, pas « OK »', () => {
+      const [p] = cumuleParParcelle([ligne({}), ligne({ doseAppliquee: 50, uniteDose: 'g/L' })], new Map([['P1', 1]]), new Date('2026-06-01'))
+      expect(p.cumulAnnuelKg).toBeCloseTo(1, 3)
+      expect(p.partiel).toBe(true)
+      expect(p.nbTraitementsCuivreSansDose7ans).toBe(1)
+      expect(p.statut).toBe('indetermine')
+    })
+
+    it('un seul apport incalculable : indéterminé, même sans aucun kilo compté', () => {
+      const [p] = cumuleParParcelle([ligne({ uniteDose: 'pulvérisateurs' })], new Map([['P1', 1]]), new Date('2026-06-01'))
+      expect(p.cumulAnnuelKg).toBe(0)
+      expect(p.statut).toBe('indetermine')
+    })
+
+    it('un dépassement déjà atteint par le cumul connu reste un dépassement', () => {
+      const [p] = cumuleParParcelle([ligne({ doseAppliquee: 25 }), ligne({ doseAppliquee: null })], new Map([['P1', 1]]), new Date('2026-06-01'))
+      expect(p.partiel).toBe(true)
+      expect(p.statut).toBe('alert')
+    })
+
+    it('une hypothèse de calcul donne « estime » au lieu de « ok », et elle est listée', () => {
+      const [p] = cumuleParParcelle([ligne({ uniteDose: 'L/ha', produit: { nomCommercial: 'Bouillie bordelaise' } })], new Map([['P1', 1]]), new Date('2026-06-01'))
+      expect(p.statut).toBe('estime')
+      expect(p.hypotheses).toEqual(['composition_supposee', 'densite_supposee'])
+    })
+
+    it('un calcul exact sous les repères reste « ok », sans hypothèse', () => {
+      const [p] = cumuleParParcelle([ligne({})], new Map([['P1', 1]]), new Date('2026-06-01'))
+      expect(p).toMatchObject({ statut: 'ok', partiel: false, hypotheses: [] })
+    })
+
+    it('les traitements non cuivrés ne créent pas de ligne', () => {
+      expect(cumuleParParcelle([ligne({ produit: { nomCommercial: 'Savon noir' } })], new Map([['P1', 1]]), new Date('2026-06-01'))).toEqual([])
+    })
   })
 })

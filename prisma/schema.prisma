@@ -150,6 +150,7 @@ model User {
   consommationsAliments ConsommationAliment[]
   soinsAnimaux          SoinAnimal[]
   injectionsSoins       InjectionSoin[]
+  annulationsSoins      AnnulationSoinAnimal[]
   naissancesAnimales    NaissanceAnimale[]
   // PROMPT 17 — production laitière
   collectesLait         CollecteLait[]
@@ -190,6 +191,7 @@ model User {
   interventions          Intervention[]
   // PROMPT 11 — Interventions où ce user est l'opérateur (≠ propriétaire de la fiche).
   interventionsOperateur Intervention[]     @relation("InterventionOperateur")
+  registrePhytoHistorique RegistrePhytoHistorique[]
   // DEV3 #1 — Observations phyto où ce user est l'opérateur.
   observationsOperateur  ObservationSante[] @relation("ObservationOperateur")
   // DEV3 #6 — Opérations verger où ce user est l'opérateur.
@@ -1851,6 +1853,11 @@ model OperationArbre {
   pluie24hMm        Float?    @map("pluie_24h_mm")
   materiel          String[]  @default([]) @map("materiel")
   notes             String?   @map("notes")
+  // Contexte du registre phyto figé quand un traitement est réalisé (arrêté du
+  // 24 décembre 2025, art. 3 ; revue Codex CR-PHY-03).
+  cultureRegistre      String?   @map("culture_registre")
+  localisationRegistre String?   @map("localisation_registre")
+  conduiteBio          Boolean?  @map("conduite_bio")
   createdAt         DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
@@ -1958,6 +1965,10 @@ model ObservationSante {
   zntDistanceM         Int?         @map("znt_distance_m")
   parcelleId           String?      @map("parcelle_id")
   parcelle             ParcelleGeo? @relation("ObservationParcelle", fields: [parcelleId], references: [id], onDelete: SetNull, map: "observations_sante_parcelle_fkey")
+  // Contexte du registre figé au jour de l'enregistrement (arrêté du 24 décembre 2025, art. 3).
+  cultureRegistre      String?      @map("culture_registre")
+  localisationRegistre String?      @map("localisation_registre")
+  conduiteBio          Boolean?     @map("conduite_bio")
   operateurId          String?      @map("operateur_id")
   operateur            User?        @relation("ObservationOperateur", fields: [operateurId], references: [id], onDelete: SetNull, map: "observations_sante_operateur_fkey")
   certiphytoNum        String?      @map("certiphyto_num")
@@ -2675,8 +2686,13 @@ model SoinAnimal {
   datePrevue                 DateTime?               @map("date_prevue") // Rappel planifié
   fait                       Boolean                 @default(true) @map("fait")
   notes                      String?                 @map("notes")
+  // C10 (2026-11-13) — nombre d'animaux du lot traités, figé au jour du soin.
+  // L'effectif reconstitué d'un lot est celui d'aujourd'hui ; NULL = inconnu
+  // (soin saisi un autre jour que celui de son administration, ou ancien soin).
+  effectifTraite             Int?                    @map("effectif_traite")
   createdAt                  DateTime                @default(now()) @map("created_at")
   injections                 InjectionSoin[]
+  annulations                AnnulationSoinAnimal[]
 
   @@index([userId])
   @@index([animalId])
@@ -2708,6 +2724,38 @@ model InjectionSoin {
   @@index([userId, statut, datePrevue])
   @@index([soinId])
   @@map("injections_soins")
+}
+
+/// Journal des annulations de soins administrés (constat C9, 2026-11-13).
+/// Règlement (UE) 2019/6, art. 108 ; arrêté du 5 juin 2000, art. 7 et 11 :
+/// un soin réalisé ne disparaît plus sans trace. Seule une erreur de saisie
+/// motivée l'efface ou le rouvre ; l'original (`instantane`), la date, l'auteur
+/// et le motif restent ici. Ajout seul : aucune route ne modifie ni ne supprime
+/// une ligne, et un déclencheur refuse toute mise à jour autre que le
+/// rattachement `soin_id` (mis à NULL quand le soin est effacé).
+model AnnulationSoinAnimal {
+  id              String      @id @default(cuid())
+  userId          String      @map("user_id")
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade, map: "annulations_soins_animaux_user_fk")
+  soinId          Int?        @map("soin_id")
+  soin            SoinAnimal? @relation(fields: [soinId], references: [id], onDelete: SetNull, map: "annulations_soins_animaux_soin_fk")
+  /// Identifiant du soin au moment de l'annulation (conservé après effacement).
+  soinIdOrigine   Int         @map("soin_id_origine")
+  /// suppression | reouverture | injection_rouverte | injection_annulee
+  action          String      @map("action")
+  /// erreur_saisie (seule nature acceptée : un soin administré ne s'annule pas)
+  nature          String      @map("nature")
+  motif           String      @map("motif")
+  /// Personne connectée (invitée comprise) qui a demandé l'annulation.
+  acteurId        String      @map("acteur_id")
+  injectionNumero Int?        @map("injection_numero")
+  /// Soin, injections, cible et pharmacie tels qu'ils étaient avant l'annulation.
+  instantane      Json        @map("instantane")
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@index([userId, createdAt], map: "annulations_soins_animaux_user_date_idx")
+  @@index([soinId], map: "annulations_soins_animaux_soin_idx")
+  @@map("annulations_soins_animaux")
 }
 
 /// Séquence de numérotation continue pour les lots fromage (POSTREVIEW Sprint 5).
@@ -3941,6 +3989,28 @@ model UserStockEspece {
 // ============================================================
 
 /// Interventions terrain (opérations culturales)
+/// Historique des rectifications du registre phytosanitaire (arrêté du
+/// 24 décembre 2025, art. 3 : conservation au moins cinq ans, pérennité et
+/// intégrité). Chaque modification ou suppression d'un traitement réalisé y
+/// dépose l'état complet d'avant ; la table n'est jamais mise à jour.
+model RegistrePhytoHistorique {
+  id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "registre_phyto_historique_user_fkey")
+  source    String   @map("source") // intervention | observation_sante | operation_arbre
+  sourceId  Int      @map("source_id")
+  action    String   @map("action") // modification | suppression
+  avant     Json     @map("avant")
+  apres     Json?    @map("apres")
+  motif     String?  @map("motif")
+  auteurId  String?  @map("auteur_id") // compte qui a rectifié (sans clé étrangère : la trace survit au compte)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, source, sourceId], map: "registre_phyto_historique_source_idx")
+  @@index([userId, createdAt], map: "registre_phyto_historique_date_idx")
+  @@map("registre_phyto_historique")
+}
+
 model Intervention {
   id                   Int               @id @default(autoincrement())
   userId               String            @map("user_id")
@@ -4001,6 +4071,20 @@ model Intervention {
   zntDistanceM         Int?              @map("znt_distance_m")
   parcelleId           String?           @map("parcelle_id")
   parcelle             ParcelleGeo?      @relation("InterventionParcelle", fields: [parcelleId], references: [id], onDelete: SetNull, map: "interventions_parcelle_fkey")
+  // Arrêté du 24 décembre 2025 (registre d'utilisation des PPP), annexe I :
+  // mentions « le cas échéant » (stade, horaires prévus par la réglementation
+  // ou l'AMM, rentrée anticipée, établissement bénéficiaire d'une prestation).
+  stadeBBCH            String?           @map("stade_bbch") // 2 chiffres (annexe II)
+  heureDebut           String?           @map("heure_debut") // HH:MM, heure de Paris
+  heureFin             String?           @map("heure_fin") // HH:MM, heure de Paris
+  rentreeAnticipee     String?           @map("rentree_anticipee") // moment, lieu, motif, mesures
+  siretBeneficiaire    String?           @map("siret_beneficiaire") // prestation de service
+  // Contexte figé au jour de l'enregistrement (art. 3 : intégrité) : la culture,
+  // la localisation et la conduite biologique ne sont plus relues des fiches
+  // vivantes, qu'un renommage ou une conversion modifierait après coup.
+  cultureRegistre      String?           @map("culture_registre")
+  localisationRegistre String?           @map("localisation_registre")
+  conduiteBio          Boolean?          @map("conduite_bio")
   // Intrants consommés
   intrantNom           String?           @map("intrant_nom") // Nom de l'intrant utilisé
   intrantQuantite      Float?            @map("intrant_quantite")

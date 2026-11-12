@@ -25,19 +25,20 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock('@/lib/irrigation-cache', () => ({ irrigationCache: { invalidateUser: vi.fn() } }))
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: mocks.invalidateKpi }))
-vi.mock('@/lib/prisma', () => ({
-  default: {
+// Contrôles et suppression se font dans la transaction, sous le verrou commun
+// des ventes (revue Codex MAR-05) : le client transactionnel porte tout.
+vi.mock('@/lib/prisma', () => {
+  const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(0),
+    $queryRaw: vi.fn().mockResolvedValue([]),
     mouvementStockCommercial: { count: mocks.stockCommercialCount },
     intervention: { count: mocks.interventionCount },
-    culture: { findUnique: mocks.cultureFindUnique },
+    culture: { findFirst: mocks.cultureFindUnique, delete: mocks.cultureDelete },
     recolte: { findMany: mocks.recolteFindMany },
-    venteManuelle: { findMany: mocks.venteFindMany },
-    $transaction: (callback: (tx: unknown) => unknown) => callback({
-      venteManuelle: { deleteMany: mocks.venteDeleteMany },
-      culture: { delete: mocks.cultureDelete },
-    }),
-  },
-}))
+    venteManuelle: { findMany: mocks.venteFindMany, deleteMany: mocks.venteDeleteMany },
+  }
+  return { default: { $transaction: (callback: (client: typeof tx) => unknown) => callback(tx) } }
+})
 
 import { DELETE } from './route'
 

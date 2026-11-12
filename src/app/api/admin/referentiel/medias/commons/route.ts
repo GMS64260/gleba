@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdminApi } from "@/lib/auth-utils";
+import { getActeurId } from "@/lib/exploitation/garde-session";
 import { stockerImageReferentiel, supprimerImagesStockees, verifierTailleImage } from "@/lib/media-storage";
 import { importCommonsSchema } from "@/lib/validations/media-referentiel";
 
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     const media = await prisma.$transaction(async (tx) => {
       if (parsed.data.principale) await tx.mediaReferentiel.updateMany({ where: { especeId: espece.id, statut: "VALIDE", principale: true }, data: { principale: false } });
       return tx.mediaReferentiel.create({
-        data: { especeId: espece.id, source: "WIKIMEDIA_COMMONS", statut: "VALIDE", url: stored!.url, miniatureUrl: stored!.miniatureUrl, urlOrigine: parsed.data.urlOrigine, auteur: parsed.data.auteur, licence: parsed.data.licence, urlLicence: parsed.data.urlLicence, citation: parsed.data.citation, organe: parsed.data.organe, description: parsed.data.description || null, principale: parsed.data.principale, valideParId: session!.user.id, valideAt: new Date(), controleAt: new Date() },
+        data: { especeId: espece.id, source: "WIKIMEDIA_COMMONS", statut: "VALIDE", url: stored!.url, miniatureUrl: stored!.miniatureUrl, urlOrigine: parsed.data.urlOrigine, auteur: parsed.data.auteur, licence: parsed.data.licence, urlLicence: parsed.data.urlLicence, citation: parsed.data.citation, organe: parsed.data.organe, description: parsed.data.description || null, principale: parsed.data.principale, valideParId: getActeurId(session), valideAt: new Date(), controleAt: new Date() },
         select: { id: true, url: true, miniatureUrl: true },
       });
     });

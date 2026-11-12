@@ -17,7 +17,7 @@ import type L from "leaflet"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import type { ParcelleGeoData } from "@/components/carte/ParcelleLayer"
-import { decalerGeometrieParcelle, nomCopieParcelle } from "@/lib/geo-duplication"
+import { corpsCopieParcelle } from "@/lib/geo-duplication"
 import type { CadastreResult } from "@/components/carte/CadastreSearch"
 
 // Composants non-Leaflet : import statique
@@ -268,8 +268,9 @@ function CartePageContent() {
   const handleDuplicate = useCallback(async (id: string) => {
     const source = parcelles.find((p) => p.id === id)
     if (!source) return
-    const geometry = decalerGeometrieParcelle(source.geometry)
-    if (!geometry) {
+    // Activités (couches) comprises : la copie les perdait (PLAN-03, 2026-11-12).
+    const corps = corpsCopieParcelle(source, parcelles.map((p) => p.nom))
+    if (!corps) {
       toast({ title: "Duplication impossible", description: "Le tracé de cette parcelle n'est pas exploitable.", variant: "destructive" })
       return
     }
@@ -277,14 +278,7 @@ function CartePageContent() {
       const res = await fetch("/api/carte", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nom: nomCopieParcelle(source.nom, parcelles.map((p) => p.nom)),
-          geometry,
-          usage: source.usage ?? null,
-          typeSol: source.typeSol ?? null,
-          couleur: source.couleur ?? null,
-          notes: source.notes ?? null,
-        }),
+        body: JSON.stringify(corps),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)

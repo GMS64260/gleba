@@ -444,6 +444,24 @@ export async function DELETE(request: NextRequest) {
         }
       }
       await tx.naissanceAnimale.delete({ where: { id: parseInt(id) } })
+      // Revue Codex ELEV-04 (2026-11-12) : le POST avait passé la saillie en
+      // « Mise-bas réalisée ». Sans sa naissance, elle sortait des gestantes et
+      // des alertes de mise-bas, et faussait les indicateurs ; le PATCH des
+      // saillies refuse d'ailleurs ce statut sans mise-bas enregistrée. Elle
+      // reprend le statut qu'aurait sa création : gestante si un diagnostic l'a
+      // confirmée, en attente sinon. Un statut changé depuis reste tel quel.
+      if (existing.saillieId) {
+        const saillie = await tx.saillie.findFirst({
+          where: { id: existing.saillieId, userId: session.user.id },
+          select: { confirmationGestation: true },
+        })
+        if (saillie) {
+          await tx.saillie.updateMany({
+            where: { id: existing.saillieId, userId: session.user.id, statut: 'Mise-bas réalisée' },
+            data: { statut: saillie.confirmationGestation ? 'Gestante' : 'En attente' },
+          })
+        }
+      }
     })
 
     return NextResponse.json({ success: true })

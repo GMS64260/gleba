@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAdminApi } from '@/lib/auth-utils'
+import { getActeurId } from '@/lib/exploitation/garde-session'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -37,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       data: {
         statut,
         resolvedAt: rouvert ? null : new Date(),
-        resolvedById: rouvert ? null : session!.user.id,
+        resolvedById: rouvert ? null : getActeurId(session),
       },
     })
     return NextResponse.json(sig)

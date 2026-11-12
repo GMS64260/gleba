@@ -37,6 +37,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { ImageUploader } from "@/components/ui/image-uploader"
 import { METHODES_TRAITEMENT, labelMethode, methodeExigeCertiphyto } from "@/lib/phyto/methodes"
+import { estMethodeProduitPhytopharmaceutique } from "@/lib/tracabilite/conformite-observation-phyto"
 import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/phyto/WeatherFieldset"
 import { EpiFieldset } from "@/components/phyto/EpiFieldset"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
@@ -733,10 +734,20 @@ function ObservationsSubTab() {
                           <Label>Produit</Label>
                           <Input value={formData.produit} onChange={(e) => setFormData({ ...formData, produit: e.target.value })} placeholder="Nom commercial" />
                         </div>
-                        {methodeExigeCertiphyto(formData.methodeTraitement) && (
+                        {/* Biocontrôle sous AMM : l'AMM figure au registre (arrêté du
+                            24 décembre 2025, annexe I) sans bloquer la saisie. */}
+                        {estMethodeProduitPhytopharmaceutique(formData.methodeTraitement) && (
                           <div>
-                            <Label>N° AMM <span className="text-red-600">*</span></Label>
-                            <Input value={formData.numAMM} onChange={(e) => setFormData({ ...formData, numAMM: e.target.value })} placeholder="Ex: 2210548" required />
+                            <Label>
+                              N° AMM{" "}
+                              {methodeExigeCertiphyto(formData.methodeTraitement) && <span className="text-red-600">*</span>}
+                            </Label>
+                            <Input
+                              value={formData.numAMM}
+                              onChange={(e) => setFormData({ ...formData, numAMM: e.target.value })}
+                              placeholder="Ex: 2210548"
+                              required={methodeExigeCertiphyto(formData.methodeTraitement)}
+                            />
                           </div>
                         )}
                       </div>
@@ -1207,7 +1218,7 @@ function RegistrePhytoSubTab() {
     return m
   }
   const isChimique = (s: string) => s === "chimique_conventionnel" || s === "chimique_cuivre"
-  const isBiologique = (s: string) => s === "biocontrole" || s === "biologique_purin"
+  const isBiologique = (s: string) => s === "biocontrole" || s === "biologique_purin" || s === "macro_organismes"
   const isMecanique = (s: string) => s === "mecanique_manuel" || s === "prophylaxie"
 
   const chimiques = observations.filter((o) => isChimique(getMethode(o)))
@@ -1327,7 +1338,14 @@ function RegistrePhytoSubTab() {
                   const methode = getMethode(obs)
                   const needsAmm = isChimique(methode)
                   const needsDose = isChimique(methode) || isBiologique(methode)
-                  const isComplete = needsAmm ? (obs.numAMM && obs.doseAppliquee && obs.dar) : needsDose ? (obs.produit && obs.doseAppliquee) : true
+                  // Biocontrôle sous AMM : AMM, dose et surface au registre (arrêté du 24 décembre 2025, annexe I).
+                  const isComplete = needsAmm
+                    ? (obs.numAMM && obs.doseAppliquee && obs.dar)
+                    : methode === "biocontrole"
+                      ? (obs.numAMM && obs.doseAppliquee && obs.surfaceTraiteeHa)
+                      : methode === "macro_organismes"
+                        ? Boolean(obs.produit)
+                        : needsDose ? (obs.produit && obs.doseAppliquee) : true
                   const def = METHODES_TRAITEMENT.find((m) => m.slug === methode)
                   const methodeBadge = def ? (
                     <Badge variant="outline" className={`text-xs ${def.badge.bg} ${def.badge.text} ${def.badge.border}`}>{def.label}</Badge>
@@ -1442,9 +1460,10 @@ function RegistrePhytoSubTab() {
                     <Label>Produit{champObligatoireObservation(editForm.methodeTraitement, "produitPhyto") && <span className="text-red-600"> *</span>}</Label>
                     <Input value={editForm.produit} onChange={(e) => setEditForm({ ...editForm, produit: e.target.value })} placeholder="Nom commercial" />
                   </div>
-                  {methodeExigeCertiphyto(editForm.methodeTraitement) && (
+                  {estMethodeProduitPhytopharmaceutique(editForm.methodeTraitement) && (
                     <div>
-                      <Label>N° AMM <span className="text-red-600">*</span></Label>
+                      <Label>N° AMM{" "}
+                        {methodeExigeCertiphyto(editForm.methodeTraitement) && <span className="text-red-600">*</span>}</Label>
                       <Input value={editForm.numAMM} onChange={(e) => setEditForm({ ...editForm, numAMM: e.target.value })} placeholder="Ex: 2210548" />
                     </div>
                   )}
@@ -1582,9 +1601,10 @@ function RegistrePhytoSubTab() {
                         <Label>Produit{champObligatoireObservation(addForm.methodeTraitement, "produitPhyto") && <span className="text-red-600"> *</span>}</Label>
                         <Input value={addForm.produit} onChange={(e) => setAddForm({ ...addForm, produit: e.target.value })} placeholder="Nom commercial" />
                       </div>
-                      {methodeExigeCertiphyto(addForm.methodeTraitement) && (
+                      {estMethodeProduitPhytopharmaceutique(addForm.methodeTraitement) && (
                         <div>
-                          <Label>N° AMM <span className="text-red-600">*</span></Label>
+                          <Label>N° AMM{" "}
+                        {methodeExigeCertiphyto(addForm.methodeTraitement) && <span className="text-red-600">*</span>}</Label>
                           <Input value={addForm.numAMM} onChange={(e) => setAddForm({ ...addForm, numAMM: e.target.value })} placeholder="Ex: 2210548" />
                         </div>
                       )}

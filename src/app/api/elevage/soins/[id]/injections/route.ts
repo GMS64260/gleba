@@ -4,6 +4,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { daterInjection } from "@/lib/elevage/injections-protocole"
 import { createDepenseFromSoinAnimal } from "@/lib/auto-compta"
 import { ErreurReglement } from "@/lib/comptabilite/monnaie"
+import { annulationSoinSchema } from "@/lib/validations/elevage-soin"
 
 // Tickets vigie2cc83585 / cmupz9djj (2026-10-01) : une injection déjà
 // acquittée doit pouvoir être redatée depuis l'écran — `statut` devient
@@ -12,6 +13,9 @@ const patchSchema = z.object({
   injectionId: z.string().min(1),
   statut: z.enum(["a_faire", "realisee", "annulee"]).optional(),
   dateRealisee: z.coerce.date().nullable().optional(),
+  // C9 : rouvrir ou annuler une injection RÉALISÉE exige une erreur de saisie
+  // motivée (`src/lib/elevage/annulation-soin.ts`).
+  annulation: annulationSoinSchema.optional(),
 }).refine((d) => d.statut !== undefined || d.dateRealisee !== undefined, {
   message: "Indiquez un statut ou une date réelle.",
   path: ["statut"],
@@ -37,6 +41,8 @@ export async function PATCH(
       dateRealisee: parsed.data.dateRealisee,
     }, {
       gererStock: true,
+      annulation: parsed.data.annulation,
+      acteurId: session.user.acteurId ?? session.user.id,
       // Le miroir de coût s'écrit dans la transaction de l'injection : écrit
       // après coup avec le client global, son échec laissait l'injection
       // rouverte et le stock rendu, avec le coût du soin toujours en place.
@@ -48,7 +54,12 @@ export async function PATCH(
         fait: soin.fait,
       }, tx),
     })
-    if (!resultat.ok) return NextResponse.json({ error: resultat.error }, { status: resultat.status })
+    if (!resultat.ok) {
+      return NextResponse.json(
+        { error: resultat.error, ...(resultat.code ? { code: resultat.code } : {}) },
+        { status: resultat.status },
+      )
+    }
     return NextResponse.json({ data: resultat.soin })
   } catch (transactionError) {
     if (transactionError instanceof ErreurReglement) {

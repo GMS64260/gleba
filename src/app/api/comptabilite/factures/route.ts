@@ -20,6 +20,7 @@ import { noteLibreDeFacture } from '@/lib/facture-structuree'
 import { cleFacture } from '@/lib/comptabilite/cle-reglement'
 import { suiviReglementActif, suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
 import { enCentimes } from '@/lib/comptabilite/monnaie'
+import { refusFiscaliteChangee } from '@/lib/comptabilite/fiscalite-emission'
 
 async function nombreVentesLiees(db: Pick<Prisma.TransactionClient, 'facture' | 'recolte'>, userId: string, id: number) {
   const lien = await db.facture.findUnique({
@@ -468,6 +469,16 @@ export async function PATCH(request: NextRequest) {
         if (courante.type === 'avoir' && courante.factureOrigineId) await verrouillerOrigineAvoir(tx, session.user.id, courante.factureOrigineId)
         // Import dynamique pour rester compatible avec les autres branches PATCH
         const { reserverProchainNumeroForEmission, snapshotEmetteurForEmission } = await import('@/lib/facture-utils')
+        // Instantanés de l'émetteur et de l'acheteur pris AVANT de réserver un
+        // numéro : une fiscalité changée depuis le brouillon arrête l'émission
+        // (COM-01, revue Codex du 2026-11-12), lignes, totaux et mentions ayant
+        // été calculés pour l'ancienne.
+        const emetteur = await snapshotEmetteurForEmission(tx, session.user.id)
+        const client = existing.clientId
+          ? await tx.client.findFirst({ where: { id: existing.clientId, userId: session.user.id } })
+          : null
+        const refusFiscal = refusFiscaliteChangee(courante, emetteur, client?.exonererTVA === true)
+        if (refusFiscal) throw new ErreurCommerciale(refusFiscal)
         await verrouillerStocksDesLignes(tx, session.user.id, courante.lignes)
         const dateEmission = new Date()
         const exercice = dateEmission.getFullYear()
@@ -477,12 +488,9 @@ export async function PATCH(request: NextRequest) {
         if (courante.type === 'facture') await sortirStockCommercial(tx, session.user.id, courante.lignes, { factureId: courante.id, numero, date: courante.dateLivraison ?? dateEmission })
         data.date = dateEmission
         // Json? : `null` (pas d'exploitation) est passé tel quel, comme avant.
-        data.emetteurSnapshot = (await snapshotEmetteurForEmission(tx, session.user.id)) as unknown as Prisma.InputJsonValue
+        data.emetteurSnapshot = emetteur as unknown as Prisma.InputJsonValue
         // L'identité de l'acheteur est figée au même moment que celle de l'émetteur.
-        if (existing.clientId) {
-          const client = await tx.client.findFirst({ where: { id: existing.clientId, userId: session.user.id } })
-          if (client) Object.assign(data, identiteAcheteur(client))
-        }
+        if (client) Object.assign(data, identiteAcheteur(client))
       }
 
       // TICKET cmsogchrf — le pointage « payée » se propage aux ventes sources

@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+import { partielSansDefauts } from './partiel'
 
 export const varieteSchema = z.object({
   id: z.string().min(1, "Le nom de la variété est requis").max(100),
@@ -28,9 +29,9 @@ export const createVarieteSchema = varieteSchema
 /**
  * Mise à jour : l'`id` est la clé étrangère des cultures, le LIBELLÉ est
  * corrigeable (même raison que pour les espèces et les ITP). Renommage borné aux
- * variétés perso, où l'id est un cuid opaque.
+ * variétés perso, où l'id est un cuid opaque. Sans le défaut `bio: false` : un
+ * PUT qui ne parle pas de bio ne la change pas (revue Codex DATA-02).
  */
-export const updateVarieteSchema = varieteSchema
-  .partial()
+export const updateVarieteSchema = partielSansDefauts(varieteSchema)
   .omit({ id: true })
   .extend({ nom: z.string().min(1, 'Le nom de la variété est requis').max(100).optional() })

@@ -20,6 +20,13 @@ import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
 import { verifierReferencesIntervention } from '@/lib/interventions/references'
+import { resoudreOperateurExploitation } from '@/lib/tracabilite/operateur-exploitation'
+import { chargerContexteRegistre } from '@/lib/tracabilite/contexte-registre'
+import {
+  interventionAuRegistre,
+  journaliserRectificationPhyto,
+  motifRectification,
+} from '@/lib/tracabilite/historique-phyto'
 import type { Prisma } from '@prisma/client'
 import type { ZodError } from 'zod'
 
@@ -555,9 +562,25 @@ export async function POST(request: NextRequest) {
     const references = await verifierReferencesIntervention(prisma, userId, d)
     if (!references.ok) return NextResponse.json({ error: references.error, champ: references.champ }, { status: 400 })
     const plancheIdNormalise = references.plancheId ?? null
+    const phyto = await verifierChampsPhyto(userId, d)
+    if ('refus' in phyto) return NextResponse.json({ error: phyto.refus, champ: phyto.champ }, { status: 400 })
+    // Produit choisi au référentiel : son nom, son AMM et son DAR sont COPIÉS
+    // sur le traitement au jour de la saisie (revue de conformité du
+    // 2026-11-12, C4) ; une mise à jour ultérieure du référentiel ne
+    // réécrit plus ce traitement au registre.
+    const ref = phyto.produit
 
     const intervention = await prisma.$transaction(async tx => {
       await verrouillerReglements(tx, session!.user.id)
+      // Contexte du registre (culture, localisation, conduite biologique)
+      // figé au jour de l'enregistrement d'un traitement (C4).
+      const contexte = d.type === 'traitement_phyto'
+        ? await chargerContexteRegistre(tx, userId, {
+            cultureId: d.cultureId ?? null,
+            plancheId: plancheIdNormalise,
+            arbreId: d.arbreId ?? null,
+          }, d.date)
+        : null
       const intervention = await tx.intervention.create({
         data: {
           userId,
@@ -574,13 +597,13 @@ export async function POST(request: NextRequest) {
           datePrevue: d.datePrevue ?? null,
           fait: d.fait,
           // Phyto fields
-          produitPhyto: d.produitPhyto ?? null,
-          numAMM: d.numAMM ?? null,
+          produitPhyto: d.produitPhyto ?? ref?.nomCommercial ?? null,
+          numAMM: d.numAMM ?? ref?.amm ?? null,
           cibleTraitement: d.cibleTraitement ?? null,
           doseAppliquee: d.doseAppliquee ?? null,
           uniteDose: d.uniteDose ?? null,
           surfaceTraitee: d.surfaceTraitee ?? null,
-          dar: d.dar ?? null,
+          dar: d.dar ?? ref?.darJours ?? null,
           delaiReentree: d.delaiReentree ?? null,
           conditionsMeteo: d.conditionsMeteo ?? null,
           // Intrant fields
@@ -602,6 +625,18 @@ export async function POST(request: NextRequest) {
           // l'export du registre, mais jamais écrites par cette route.
           zntDistanceM: d.zntDistanceM ?? null,
           zntRespectee: d.zntRespectee ?? null,
+          // Revue de conformité du 2026-11-12 (C8) : acceptés par le schéma
+          // mais jamais écrits jusque-là.
+          operateurId: phyto.operateurId,
+          certiphytoNum: d.certiphytoNum ?? null,
+          certiphytoValidite: d.certiphytoValidite ?? null,
+          // Arrêté du 24 décembre 2025, annexe I : mentions « le cas échéant ».
+          stadeBBCH: d.stadeBBCH ?? null,
+          heureDebut: d.heureDebut ?? null,
+          heureFin: d.heureFin ?? null,
+          rentreeAnticipee: d.rentreeAnticipee ?? null,
+          siretBeneficiaire: d.siretBeneficiaire ?? null,
+          ...(contexte ?? {}),
         },
       })
 
@@ -708,47 +743,67 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: MESSAGE_REALISEE_FUTURE }, { status: 400 })
     }
 
-    // Build update data
-    const data: Prisma.InterventionUncheckedUpdateInput = {}
-    if (updates.date !== undefined) data.date = new Date(updates.date)
-    if (updates.type !== undefined) data.type = updates.type
-    if (updates.description !== undefined) data.description = updates.description || null
-    if (updates.dureeMinutes !== undefined) data.dureeMinutes = updates.dureeMinutes ? parseInt(updates.dureeMinutes) : null
-    if (updates.nbPersonnes !== undefined) data.nbPersonnes = updates.nbPersonnes ? parseInt(updates.nbPersonnes) : 1
-    if (updates.coutMainOeuvre !== undefined) data.coutMainOeuvre = updates.coutMainOeuvre ? parseFloat(updates.coutMainOeuvre) : null
-    if (updates.coutTotal !== undefined) data.coutTotal = updates.coutTotal ? parseFloat(updates.coutTotal) : null
-    if (updates.fait !== undefined) data.fait = updates.fait
-    if (updates.cultureId !== undefined) data.cultureId = updates.cultureId || null
-    // Planche inchangée : la valeur stockée (ancien nom compris) est gardée.
-    if (referenceChange('plancheId')) {
-      data.plancheId = references.plancheId ?? null
-    }
-    if (updates.arbreId !== undefined) data.arbreId = updates.arbreId || null
-    if (updates.datePrevue !== undefined) data.datePrevue = updates.datePrevue ? new Date(updates.datePrevue) : null
-    // Phyto
-    if (updates.produitPhyto !== undefined) data.produitPhyto = updates.produitPhyto || null
-    if (updates.numAMM !== undefined) data.numAMM = updates.numAMM || null
-    if (updates.cibleTraitement !== undefined) data.cibleTraitement = updates.cibleTraitement || null
-    if (updates.doseAppliquee !== undefined) data.doseAppliquee = updates.doseAppliquee ? parseFloat(updates.doseAppliquee) : null
-    if (updates.uniteDose !== undefined) data.uniteDose = updates.uniteDose || null
-    if (updates.surfaceTraitee !== undefined) data.surfaceTraitee = updates.surfaceTraitee ? parseFloat(updates.surfaceTraitee) : null
-    if (updates.dar !== undefined) data.dar = updates.dar ? parseInt(updates.dar) : null
-    if (updates.delaiReentree !== undefined) data.delaiReentree = updates.delaiReentree ? parseInt(updates.delaiReentree) : null
-    if (updates.conditionsMeteo !== undefined) data.conditionsMeteo = updates.conditionsMeteo || null
-    if (updates.zntDistanceM !== undefined) data.zntDistanceM = updates.zntDistanceM ? parseInt(updates.zntDistanceM) : null
-    if (updates.zntRespectee !== undefined) data.zntRespectee = updates.zntRespectee ?? null
-    if (updates.justification !== undefined) data.justification = updates.justification || null
-    // Intrant
-    if (updates.intrantNom !== undefined) data.intrantNom = updates.intrantNom || null
-    if (updates.intrantQuantite !== undefined) data.intrantQuantite = updates.intrantQuantite ? parseFloat(updates.intrantQuantite) : null
-    if (updates.intrantUnite !== undefined) data.intrantUnite = updates.intrantUnite || null
-    if (updates.intrantCout !== undefined) data.intrantCout = updates.intrantCout ? parseFloat(updates.intrantCout) : null
-    if (updates.intrantNumLot !== undefined) data.intrantNumLot = updates.intrantNumLot || null
-    if (updates.notes !== undefined) data.notes = updates.notes || null
+    // Revue de conformité du 2026-11-12 (C8) : la persistance lit les valeurs
+    // VALIDÉES (le corps brut transformait un DAR numérique 0 en NULL et
+    // ignorait référence produit, météo structurée, opérateur, certificat et
+    // observation liée). Un champ absent du corps n'est pas touché ; présent
+    // et vide, il est effacé ; zéro reste zéro.
+    const v = parsedUpdates.data
+    const phyto = await verifierChampsPhyto(userId, {
+      operateurId: 'operateurId' in updates ? v.operateurId : undefined,
+      produitPhytoId: 'produitPhytoId' in updates ? v.produitPhytoId : undefined,
+      observationLieeId: 'observationLieeId' in updates ? v.observationLieeId : undefined,
+    })
+    if ('refus' in phyto) return NextResponse.json({ error: phyto.refus, champ: phyto.champ }, { status: 400 })
 
+    const data: Prisma.InterventionUncheckedUpdateInput = {}
+    const present = (champ: string) => champ in updates
+    if (present('date') && v.date) data.date = v.date
+    if (present('type') && v.type) data.type = v.type
+    if (present('nbPersonnes')) data.nbPersonnes = v.nbPersonnes ?? 1
+    if (present('fait') && v.fait !== undefined) data.fait = v.fait
+    // Planche inchangée : la valeur stockée (ancien nom compris) est gardée.
+    if (referenceChange('plancheId')) data.plancheId = references.plancheId ?? null
+    if (present('operateurId')) data.operateurId = phyto.operateurId
+    for (const champ of CHAMPS_PATCH_SIMPLES) {
+      if (!present(champ)) continue
+      const valeur = v[champ]
+      // Texte vide → null, comme l'ancien `|| null` ; zéro numérique conservé.
+      ;(data as Record<string, unknown>)[champ] =
+        typeof valeur === 'string' && valeur.trim() === '' ? null : valeur ?? null
+    }
+
+    const avantModification = interventionAuRegistre(existing) ? existing : null
+    const typeFinal = v.type ?? existing.type
     const updated = await prisma.$transaction(async tx => {
       await verrouillerReglements(tx, session!.user.id)
+      // Contexte du registre figé à nouveau quand ce qui le détermine change
+      // (lieu, culture, date, passage en « fait ») ou qu'il n'a jamais été figé.
+      const lieuChange = ['cultureId', 'plancheId', 'arbreId', 'date', 'fait', 'type'].some(present)
+      const jamaisFige = existing.cultureRegistre == null && existing.localisationRegistre == null && existing.conduiteBio == null
+      if (typeFinal === 'traitement_phyto' && (lieuChange || jamaisFige)) {
+        Object.assign(data, await chargerContexteRegistre(tx, userId, {
+          cultureId: present('cultureId') ? v.cultureId ?? null : existing.cultureId,
+          plancheId: referenceChange('plancheId') ? references.plancheId ?? null : existing.plancheId,
+          arbreId: present('arbreId') ? v.arbreId ?? null : existing.arbreId,
+          parcelleId: existing.parcelleId,
+        }, dateFinale))
+      }
       const updated = await tx.intervention.update({ where: { id: parseInt(id), userId }, data })
+      // Arrêté du 24 décembre 2025, art. 3 : l'état d'avant d'un traitement
+      // réalisé reste retrouvable (revue de conformité du 2026-11-12, C3).
+      if (avantModification) {
+        await journaliserRectificationPhyto(tx, {
+          userId,
+          source: 'intervention',
+          sourceId: existing.id,
+          action: 'modification',
+          avant: avantModification,
+          apres: updated,
+          motif: motifRectification(updates.motif),
+          auteurId: session!.user.id,
+        })
+      }
       // Le helper retire aussi le miroir d'une intervention planifiée ou sans coût.
       await createDepenseFromIntervention(userId, updated, tx)
       return updated
@@ -788,6 +843,20 @@ export async function DELETE(request: NextRequest) {
 
     await prisma.$transaction(async tx => {
       await verrouillerReglements(tx, session!.user.id)
+      // Un traitement réalisé ne disparaît plus sans trace : son état complet
+      // est déposé dans l'historique du registre avant la suppression
+      // (arrêté du 24 décembre 2025, art. 3 ; revue de conformité, C3).
+      if (interventionAuRegistre(existing)) {
+        await journaliserRectificationPhyto(tx, {
+          userId,
+          source: 'intervention',
+          sourceId: existing.id,
+          action: 'suppression',
+          avant: existing,
+          motif: motifRectification(searchParams.get('motif')),
+          auteurId: session!.user.id,
+        })
+      }
       await deleteAutoEntry('intervention', parseInt(id), 'depense', userId, tx)
       await tx.intervention.delete({ where: { id: parseInt(id), userId } })
     })
@@ -800,4 +869,46 @@ export async function DELETE(request: NextRequest) {
     console.error('Erreur DELETE /api/interventions:', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
+}
+
+/**
+ * Champs du PATCH recopiés tels que validés par `updateInterventionSchema`
+ * (vide → null, zéro conservé). Les références (planche, opérateur) ont leur
+ * propre traitement.
+ */
+const CHAMPS_PATCH_SIMPLES = [
+  'description', 'dureeMinutes', 'coutMainOeuvre', 'coutTotal', 'cultureId', 'arbreId', 'datePrevue',
+  'produitPhyto', 'numAMM', 'cibleTraitement', 'doseAppliquee', 'uniteDose', 'surfaceTraitee', 'dar',
+  'delaiReentree', 'conditionsMeteo', 'zntDistanceM', 'zntRespectee', 'justification',
+  'intrantNom', 'intrantQuantite', 'intrantUnite', 'intrantCout', 'intrantNumLot', 'notes',
+  'produitPhytoId', 'volumeBouillieLHa', 'temperatureC', 'ventKmh', 'hygrometriePct',
+  'certiphytoNum', 'certiphytoValidite', 'observationLieeId',
+  'stadeBBCH', 'heureDebut', 'heureFin', 'rentreeAnticipee', 'siretBeneficiaire',
+] as const
+
+/**
+ * Références d'un traitement contrôlées avant écriture : opérateur titulaire
+ * ou membre de l'exploitation (il sort en Applicateur au registre), produit
+ * existant au référentiel, observation liée du même compte.
+ */
+async function verifierChampsPhyto(
+  userId: string,
+  d: { operateurId?: string | null; produitPhytoId?: string | null; observationLieeId?: number | null },
+): Promise<
+  | { operateurId: string | null; produit: { nomCommercial: string; amm: string | null; darJours: number | null } | null }
+  | { refus: string; champ: string }
+> {
+  const operateur = await resoudreOperateurExploitation(userId, d.operateurId ?? null)
+  if ('refus' in operateur) return { refus: operateur.refus, champ: 'operateurId' }
+  const produit = d.produitPhytoId
+    ? await prisma.produitPhyto.findUnique({
+        where: { id: d.produitPhytoId },
+        select: { nomCommercial: true, amm: true, darJours: true },
+      })
+    : null
+  if (d.produitPhytoId && !produit) return { refus: 'Produit introuvable au référentiel.', champ: 'produitPhytoId' }
+  if (d.observationLieeId != null && !await prisma.observationSante.findFirst({
+    where: { id: d.observationLieeId, userId }, select: { id: true },
+  })) return { refus: 'Observation liée introuvable pour votre exploitation.', champ: 'observationLieeId' }
+  return { operateurId: operateur.operateurId, produit }
 }

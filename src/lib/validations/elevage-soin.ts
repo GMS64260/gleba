@@ -8,6 +8,12 @@ export const TYPES_SOIN: readonly string[] = TYPES_SOIN_ECRAN.map((t) => t.valeu
 
 export const VOIES_ADMIN = ['IM', 'SC', 'IV', 'PO', 'Local', 'IN', 'Vaginal', 'Intra-mamm.', 'Pour-on', 'Autre'] as const
 
+/** Nature et motif d'une annulation de soin administré (contrôle métier : `controlerAnnulation`). */
+export const annulationSoinSchema = z.object({
+  nature: z.enum(['erreur_saisie', 'administre']),
+  motif: z.string().max(2000),
+})
+
 export const soinFieldsSchema = z.object({
     animalId: z.number().int().nullable().optional(),
     lotId: z.number().int().nullable().optional(),
@@ -53,6 +59,9 @@ export const soinPatchSchema = soinFieldsSchema.partial().extend({
   // PATCH qui n'envoie que des notes passait le soin planifié à « fait »
   // (décompte de pharmacie, délais d'attente, lait écarté, dépense).
   fait: z.boolean().optional(),
+  // C9 (2026-11-13) — décocher « fait » sur un soin administré exige de
+  // déclarer une erreur de saisie motivée (`src/lib/elevage/annulation-soin.ts`).
+  annulation: annulationSoinSchema.optional(),
 }).superRefine((d, ctx) => {
   if (d.nbInjections != null && d.nbInjections > 1 && d.intervalleInjectionsHeures == null) {
     ctx.addIssue({

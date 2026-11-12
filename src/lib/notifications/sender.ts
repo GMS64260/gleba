@@ -213,18 +213,22 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
           console.error(`[notifications] Envoi alerte urgente échoué pour ${user.id}:`, error)
         }
 
+        // L'alerte est scellée dès que l'email a été livré, AVANT le push :
+        // une subscription push lente, morte ou indisponible ne doit ni
+        // retarder ce scellement ni provoquer un doublon email (revue Codex du
+        // 2026-11-12, SEC-05).
+        if (emailEnvoye) {
+          await marquerAlerteEnvoyee(cle)
+          envoyees++
+        }
+
         try {
+          // Chaque abonnement est borné par son propre délai (`push-reseau.ts`) :
+          // un service push muet ne tient plus le scan des comptes suivants.
           await envoyerPushUtilisateur(user.id, construirePayloadAlerteUrgente(alerte))
         } catch (error) {
           // Une panne push ne doit jamais empêcher la livraison email ni le scan.
           console.error(`[notifications] Envoi push urgent échoué pour ${user.id}:`, error)
-        }
-
-        // L'alerte est scellée dès que l'email a été livré ; une subscription
-        // push morte ou indisponible ne doit pas provoquer un doublon email.
-        if (emailEnvoye) {
-          await marquerAlerteEnvoyee(cle)
-          envoyees++
         }
       }
       total += envoyees

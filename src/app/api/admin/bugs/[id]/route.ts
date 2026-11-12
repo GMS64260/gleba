@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireAdminApi } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 import prisma from "@/lib/prisma"
 import { z } from "zod"
 import type { BugStatus, BugPriority, Prisma } from "@prisma/client"
@@ -84,7 +85,7 @@ export async function PATCH(
         bugReportId: id,
         fromStatus: existing.status,
         toStatus: status as BugStatus,
-        changedById: session!.user.id,
+        changedById: getActeurId(session),
         note: statusNote ?? (!notifier && status === "RESOLVED" ? "Résolu sans mail à l'auteur." : null),
       },
     })

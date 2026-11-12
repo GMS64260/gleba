@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { hashPassword } from "@/lib/auth-utils"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
+import { REVOCATION_CHANGEMENT_MOT_DE_PASSE } from "@/lib/mot-de-passe-revocation"
 
 export async function POST(request: NextRequest) {
   const ip = getClientIP(request)
@@ -65,18 +66,26 @@ export async function POST(request: NextRequest) {
 
     const newHash = await hashPassword(password)
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        password: newHash,
-        resetPasswordToken: null,
-        resetPasswordExpires: null,
-        // Sécurité (audit 2026-07, #20) : une réinitialisation de mot de passe
-        // révoque le token API MCP (glb_). Sans cela, un attaquant ayant généré
-        // un token conservait un accès permanent malgré le changement de mdp.
-        apiToken: null,
+    // Consommation atomique du jeton (SEC-01, revue Codex du 2026-11-12) :
+    // l'écriture n'a lieu que si CE jeton est toujours posé et valable au
+    // moment d'écrire. Un changement de mot de passe ou une autre
+    // réinitialisation survenus depuis la lecture l'ont effacé : rien n'est
+    // écrit. Révoque aussi le jeton d'API (audit 2026-07, #20).
+    const { count } = await prisma.user.updateMany({
+      where: {
+        id: user.id,
+        resetPasswordToken: token,
+        resetPasswordExpires: { gt: new Date() },
+        active: true,
       },
+      data: { password: newHash, ...REVOCATION_CHANGEMENT_MOT_DE_PASSE },
     })
+    if (count !== 1) {
+      return NextResponse.json(
+        { error: "Lien invalide ou expiré" },
+        { status: 400 }
+      )
+    }
 
     return NextResponse.json({ ok: true, message: "Mot de passe modifié avec succès" })
   } catch (err) {

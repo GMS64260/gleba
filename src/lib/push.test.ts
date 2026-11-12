@@ -1,15 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { AlerteUrgente } from "./notifications/types"
 
-const { generateVAPIDKeys, getSetting, sendNotification, setVapidDetails } = vi.hoisted(() => ({
+const { generateVAPIDKeys, getSetting, generateRequestDetails, sendNotification } = vi.hoisted(() => ({
   generateVAPIDKeys: vi.fn(),
   getSetting: vi.fn(),
+  generateRequestDetails: vi.fn(() => ({ endpoint: "https://push.example.com/test", method: "POST", headers: {}, body: null })),
+  // Revue Codex du 2026-11-12 (SEC-05) : l'envoi ne passe plus par
+  // `webpush.sendNotification`, sans délai, mais par `posterNotificationPush`,
+  // borné. Ce double porte le nom de l'ancien pour garder les cas lisibles.
   sendNotification: vi.fn(),
-  setVapidDetails: vi.fn(),
 }))
 
 vi.mock("web-push", () => ({
-  default: { generateVAPIDKeys, sendNotification, setVapidDetails },
+  default: { generateVAPIDKeys, generateRequestDetails },
+}))
+vi.mock("./push-reseau", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./push-reseau")>()),
+  posterNotificationPush: sendNotification,
 }))
 
 vi.mock("@/lib/settings", () => ({ getSetting }))
@@ -93,7 +100,33 @@ describe("notifications push", () => {
     )
 
     expect(resultat).toBe("gone")
-    expect(setVapidDetails).toHaveBeenCalled()
+    expect(generateRequestDetails).toHaveBeenCalledWith(expect.anything(), expect.any(String), {
+      vapidDetails: { subject: "mailto:contact@gleba.fr", publicKey: "public", privateKey: "private" },
+    })
     expect(sendNotification).toHaveBeenCalledOnce()
+  })
+
+  // Revue Codex du 2026-11-12, SEC-05 : une erreur réseau ou un 5xx était
+  // compté comme une livraison réussie (« ok »).
+  it("qualifie un échec d'envoi au lieu de le compter comme livré", async () => {
+    process.env.VAPID_PUBLIC_KEY = "public"
+    process.env.VAPID_PRIVATE_KEY = "private"
+    sendNotification.mockRejectedValueOnce({ statusCode: 500 })
+    const resultat = await envoyerPushSubscription(
+      { endpoint: "https://push.example.com/test", keys: { p256dh: "p256dh", auth: "auth" } },
+      { title: "Test", body: "Test", url: "/", tag: "test" }
+    )
+    expect(resultat).toBe("echec")
+  })
+
+  it("refuse sans le contacter un endpoint non public, même déjà enregistré", async () => {
+    process.env.VAPID_PUBLIC_KEY = "public"
+    process.env.VAPID_PRIVATE_KEY = "private"
+    const resultat = await envoyerPushSubscription(
+      { endpoint: "https://192.168.1.10/push", keys: { p256dh: "p256dh", auth: "auth" } },
+      { title: "Test", body: "Test", url: "/", tag: "test" }
+    )
+    expect(resultat).toBe("refuse")
+    expect(sendNotification).not.toHaveBeenCalled()
   })
 })

@@ -14,6 +14,7 @@ import { requireAuthApi, hashPassword, verifyPassword } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
+import { REVOCATION_CHANGEMENT_MOT_DE_PASSE } from "@/lib/mot-de-passe-revocation"
 
 const MIN_PASSWORD_LENGTH = 12
 
@@ -94,13 +95,21 @@ export async function POST(request: NextRequest) {
     }
 
     const hashed = await hashPassword(newPassword)
-    await prisma.user.update({
-      where: { id: user.id },
-      // Comme la réinitialisation (audit 2026-07, #20) : changer son mot de
-      // passe après un soupçon de fuite révoque aussi le jeton d'API (MCP),
-      // sinon il restait valable (revue du 2026-11-04).
-      data: { password: hashed, apiToken: null },
+    // Écriture conditionnelle sur le hash vérifié : si une réinitialisation
+    // par lien a posé un autre mot de passe depuis la lecture, ce changement
+    // ne l'écrase pas (SEC-01, revue Codex du 2026-11-12). Le nouveau mot de
+    // passe révoque le jeton d'API (revue du 2026-11-04) et tout lien de
+    // réinitialisation en cours.
+    const { count } = await prisma.user.updateMany({
+      where: { id: user.id, password: user.password },
+      data: { password: hashed, ...REVOCATION_CHANGEMENT_MOT_DE_PASSE },
     })
+    if (count !== 1) {
+      return NextResponse.json(
+        { error: "Le mot de passe a été modifié entre-temps. Reconnectez-vous puis réessayez." },
+        { status: 409 }
+      )
+    }
 
     return NextResponse.json({ success: true, message: "Mot de passe modifié" })
   } catch (err) {

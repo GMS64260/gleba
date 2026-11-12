@@ -46,7 +46,7 @@ interface MeteoParCoord {
   joursSansPluie: number   // jours consécutifs sans pluie significative reçue, aujourd'hui compris
   pluiePrevue48h: number   // mm annoncés aujourd'hui (pas encore reçus), demain et après-demain, comme le moteur
   pluiePrevue5j: number    // mm prévus dans les 5 prochains jours
-  joursAvantPluie: number  // jours avant la prochaine pluie significative (99 = aucune)
+  joursAvantPluie: number  // jours avant la prochaine pluie significative (0 = aujourd'hui, 99 = aucune)
 }
 
 // Seuils partagés avec le conseiller du Calendrier (meteo-agro.ts) et le moteur.
@@ -67,6 +67,9 @@ export function resumeMeteo(bilan: MeteoBilan): Omit<MeteoParCoord, 'lat' | 'lng
   const derniers7 = bilan.historique.slice(-7)
   // La pluie du jour n'est qu'annoncée : elle ne remet pas le compteur à zéro.
   const joursSansPluie = joursSansPluieRecue(bilan)
+  // FRONT-07 (recette du 2026-11-12) : la recherche commençait demain
+  // (`previsions`), et 12,7 mm annoncés aujourd'hui donnaient « dans 4 j ».
+  // 0 = aujourd'hui. Affichage seulement : la dose compte déjà la pluie du jour.
   const idx = bilan.previsions.findIndex((j) => j.pluie >= SEUIL_PLUIE_SIGNIFICATIVE)
   return {
     pluie48hPassees: bilan.historique.slice(-2).reduce((s, j) => s + j.pluie, 0),
@@ -78,7 +81,7 @@ export function resumeMeteo(bilan: MeteoBilan): Omit<MeteoParCoord, 'lat' | 'lng
     // jamais dans les cumuls passés, comme dans `bilanReserveSol`.
     pluiePrevue48h: [bilan.aujourdhui, ...bilan.previsions.slice(0, 2)].reduce((s, j) => s + j.pluie, 0),
     pluiePrevue5j: bilan.previsions.slice(0, 5).reduce((s, j) => s + j.pluie, 0),
-    joursAvantPluie: idx >= 0 ? idx + 1 : 99,
+    joursAvantPluie: bilan.aujourdhui.pluie >= SEUIL_PLUIE_SIGNIFICATIVE ? 0 : idx >= 0 ? idx + 1 : 99,
   }
 }
 

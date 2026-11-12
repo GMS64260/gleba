@@ -11,6 +11,7 @@
 
 import { NextResponse } from "next/server"
 import { requireAdminApi } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 import prisma from "@/lib/prisma"
 import { getClientIP } from "@/lib/rate-limit"
 import {
@@ -23,7 +24,8 @@ export async function POST(request: Request) {
   const { session, error } = await requireAdminApi(request)
   if (error) return error
 
-  const adminId = session!.user.id
+  // SEC-04 : la personne connectée, pas l'exploitation qu'elle visite.
+  const adminId = getActeurId(session)
 
   let body: { userId?: string }
   try {

@@ -2,8 +2,17 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
+import { endpointPushValide } from "@/lib/push-reseau"
 
 export const dynamic = "force-dynamic"
+
+/**
+ * Navigateurs abonnés par compte. Revue Codex du 2026-11-12 (SEC-05) : le POST
+ * n'avait aucun quota, et chaque abonnement est contacté à chaque alerte. Au
+ * delà, les abonnements les plus anciens du compte sont retirés (un appareil
+ * remplacé ne bloque pas le nouveau).
+ */
+const MAX_ABONNEMENTS_PUSH_PAR_COMPTE = 10
 
 function estSubscriptionValide(body: unknown): body is {
   endpoint: string
@@ -15,7 +24,8 @@ function estSubscriptionValide(body: unknown): body is {
   if (typeof value.endpoint !== "string" || value.endpoint.length === 0 || value.endpoint.length > 2048) {
     return false
   }
-  if (!value.endpoint.startsWith("https://")) return false
+  // HTTPS, port 443, hôte public : ni boucle locale ni réseau privé (SEC-05).
+  if (!endpointPushValide(value.endpoint).ok) return false
   if (!keys || typeof keys !== "object") return false
   const subscriptionKeys = keys as Record<string, unknown>
   return (
@@ -42,21 +52,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Subscription push invalide" }, { status: 400 })
   }
 
-  await prisma.pushSubscription.upsert({
-    where: { endpoint: body.endpoint },
-    update: {
-      userId: getActeurId(session),
-      p256dh: body.keys.p256dh,
-      auth: body.keys.auth,
-      userAgent: request.headers.get("user-agent")?.slice(0, 2048) ?? null,
-    },
-    create: {
-      userId: getActeurId(session),
-      endpoint: body.endpoint,
-      p256dh: body.keys.p256dh,
-      auth: body.keys.auth,
-      userAgent: request.headers.get("user-agent")?.slice(0, 2048) ?? null,
-    },
+  const userId = getActeurId(session)
+  const userAgent = request.headers.get("user-agent")?.slice(0, 2048) ?? null
+  await prisma.$transaction(async (tx) => {
+    // Deux abonnements simultanés du même compte ne doivent pas dépasser le quota.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:push-abonnements:${userId}`}))`
+    const dejaAuCompte = await tx.pushSubscription.findUnique({ where: { endpoint: body.endpoint }, select: { userId: true } })
+    if (dejaAuCompte?.userId !== userId) {
+      const nombre = await tx.pushSubscription.count({ where: { userId } })
+      const enTrop = nombre - MAX_ABONNEMENTS_PUSH_PAR_COMPTE + 1
+      if (enTrop > 0) {
+        const anciens = await tx.pushSubscription.findMany({ where: { userId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: enTrop, select: { id: true } })
+        await tx.pushSubscription.deleteMany({ where: { id: { in: anciens.map((a) => a.id) } } })
+      }
+    }
+    await tx.pushSubscription.upsert({
+      where: { endpoint: body.endpoint },
+      update: { userId, p256dh: body.keys.p256dh, auth: body.keys.auth, userAgent },
+      create: { userId, endpoint: body.endpoint, p256dh: body.keys.p256dh, auth: body.keys.auth, userAgent },
+    })
   })
 
   return NextResponse.json({ ok: true })

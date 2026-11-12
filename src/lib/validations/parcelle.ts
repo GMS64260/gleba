@@ -3,27 +3,13 @@
  */
 
 import { z } from 'zod'
+import { partielSansDefauts } from './partiel'
+import { geometrieParcelleValide } from '@/lib/geo-utils'
 
 export const COUCHES_ACTIVITE = ['MARAICHAGE', 'VERGER', 'ELEVAGE', 'PATURAGE'] as const
 
-const geojsonSchema = z.string().refine((val) => {
-  try {
-    const geo = JSON.parse(val)
-    if (!['Polygon', 'MultiPolygon'].includes(geo.type)) return false
-    const ring = geo.type === 'MultiPolygon'
-      ? geo.coordinates?.[0]?.[0]
-      : geo.coordinates?.[0]
-    if (!Array.isArray(ring) || ring.length < 4) return false
-    // Verifier que chaque coordonnee est un [number, number]
-    if (!ring.every((c: unknown) => Array.isArray(c) && c.length >= 2
-      && typeof c[0] === 'number' && typeof c[1] === 'number'
-      && isFinite(c[0]) && isFinite(c[1]))) return false
-    // Verifier que le polygon est ferme (premier point = dernier point, RFC 7946)
-    const first = ring[0], last = ring[ring.length - 1]
-    if (first[0] !== last[0] || first[1] !== last[1]) return false
-    return true
-  } catch { return false }
-}, { message: "Contour GeoJSON invalide (Polygon ferme avec au moins 3 sommets et coordonnees numeriques requis)" })
+// Tous les anneaux de toutes les composantes (reliquat GEO-01) : voir geo-utils.
+const geojsonSchema = z.string().refine((val) => geometrieParcelleValide(val), { message: "Contour GeoJSON invalide (chaque contour et chaque trou : fermé, au moins 3 sommets, coordonnées numériques)" })
 
 const coucheActiviteSchema = z.enum(COUCHES_ACTIVITE)
 
@@ -44,4 +30,6 @@ export const parcelleSchema = z.object({
 })
 
 export const createParcelleSchema = parcelleSchema
-export const updateParcelleSchema = parcelleSchema.partial()
+// Sans le défaut `couches: []` : renommer une parcelle ne lui retire plus ses
+// ateliers (revue Codex DATA-02).
+export const updateParcelleSchema = partielSansDefauts(parcelleSchema)

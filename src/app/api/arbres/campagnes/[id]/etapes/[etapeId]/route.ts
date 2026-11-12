@@ -7,6 +7,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { createDepenseFromCampagnePlantation } from "@/lib/auto-compta"
+import { invalidateKpi } from "@/lib/kpi/cache"
+import { verrouillerReglements } from "@/lib/comptabilite/verrou-reglements"
+import { ErreurReglement } from "@/lib/comptabilite/monnaie"
 
 interface Params {
   params: Promise<{ id: string; etapeId: string }>
@@ -31,38 +35,48 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   const body = await request.json()
+  const userId = session!.user.id
+  // Seul un changement de « fait » sur l'étape Plantation touche la campagne.
+  const toucheLaPlantation = body.fait !== undefined && (body.type ?? existing.type) === "plantation"
 
-  const etape = await prisma.etapeCampagne.update({
-    where: { id: eId },
-    data: {
-      type: body.type !== undefined ? body.type : undefined,
-      ordre: body.ordre !== undefined ? body.ordre : undefined,
-      description: body.description !== undefined ? (body.description || null) : undefined,
-      datePrevue: body.datePrevue !== undefined ? (body.datePrevue ? new Date(body.datePrevue) : null) : undefined,
-      dateRealisation: body.dateRealisation !== undefined ? (body.dateRealisation ? new Date(body.dateRealisation) : null) : undefined,
-      fait: body.fait !== undefined ? body.fait : undefined,
-      cout: body.cout !== undefined ? (body.cout ? parseFloat(body.cout) : null) : undefined,
-      dureeMinutes: body.dureeMinutes !== undefined ? (body.dureeMinutes ? parseInt(body.dureeMinutes) : null) : undefined,
-      nbPersonnes: body.nbPersonnes !== undefined ? (body.nbPersonnes ? parseInt(body.nbPersonnes) : null) : undefined,
-      produit: body.produit !== undefined ? (body.produit || null) : undefined,
-      quantite: body.quantite !== undefined ? (body.quantite ? parseFloat(body.quantite) : null) : undefined,
-      unite: body.unite !== undefined ? (body.unite || null) : undefined,
-      notes: body.notes !== undefined ? (body.notes || null) : undefined,
-    },
-  })
+  try {
+    const { etape, miroirRegenere } = await prisma.$transaction(async (tx) => {
+      // Revue Codex du 2026-11-12 (COM-05) : même verrou que le PUT de la
+      // campagne, pris avant toute écriture, pour que la date de plantation
+      // et le miroir comptable de son coût changent ensemble.
+      if (toucheLaPlantation) await verrouillerReglements(tx, userId)
+      const etape = await tx.etapeCampagne.update({
+        where: { id: eId },
+        data: {
+          type: body.type !== undefined ? body.type : undefined,
+          ordre: body.ordre !== undefined ? body.ordre : undefined,
+          description: body.description !== undefined ? (body.description || null) : undefined,
+          datePrevue: body.datePrevue !== undefined ? (body.datePrevue ? new Date(body.datePrevue) : null) : undefined,
+          dateRealisation: body.dateRealisation !== undefined ? (body.dateRealisation ? new Date(body.dateRealisation) : null) : undefined,
+          fait: body.fait !== undefined ? body.fait : undefined,
+          cout: body.cout !== undefined ? (body.cout ? parseFloat(body.cout) : null) : undefined,
+          dureeMinutes: body.dureeMinutes !== undefined ? (body.dureeMinutes ? parseInt(body.dureeMinutes) : null) : undefined,
+          nbPersonnes: body.nbPersonnes !== undefined ? (body.nbPersonnes ? parseInt(body.nbPersonnes) : null) : undefined,
+          produit: body.produit !== undefined ? (body.produit || null) : undefined,
+          quantite: body.quantite !== undefined ? (body.quantite ? parseFloat(body.quantite) : null) : undefined,
+          unite: body.unite !== undefined ? (body.unite || null) : undefined,
+          notes: body.notes !== undefined ? (body.notes || null) : undefined,
+        },
+      })
 
-  // Tickets cmsog4sbz + cmsog61e5 — le cycle de vie de la campagne suit
-  // l'étape Plantation : cocher l'étape renseigne datePlantationReelle (et
-  // avance le statut s'il est encore amont), la décocher annule cette date si
-  // elle en provenait, et ramène le statut à "planifiee".
-  if (etape.type === "plantation" && body.fait !== undefined) {
-    const campagne = await prisma.campagnePlantation.findFirst({
-      where: { id: campagneId, userId: session!.user.id },
-      select: { statut: true, datePlantationReelle: true },
-    })
-    if (campagne) {
+      // Tickets cmsog4sbz + cmsog61e5 — le cycle de vie de la campagne suit
+      // l'étape Plantation : cocher l'étape renseigne datePlantationReelle (et
+      // avance le statut s'il est encore amont), la décocher annule cette date si
+      // elle en provenait, et ramène le statut à "planifiee".
+      if (etape.type !== "plantation" || body.fait === undefined) return { etape, miroirRegenere: false }
+      const campagne = await tx.campagnePlantation.findFirst({
+        where: { id: campagneId, userId },
+        select: { statut: true, datePlantationReelle: true },
+      })
+      if (!campagne) return { etape, miroirRegenere: false }
+      let source: Awaited<ReturnType<typeof tx.campagnePlantation.update>> | null = null
       if (body.fait === true) {
-        await prisma.campagnePlantation.update({
+        source = await tx.campagnePlantation.update({
           where: { id: campagneId },
           data: {
             datePlantationReelle: etape.dateRealisation ?? new Date(),
@@ -82,7 +96,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         // datePlantationReelle provenait de cette étape (mêmes dates) : on la
         // retire. Le statut redescend à "planifiee" sauf s'il est terminal
         // (terminee / echec), acté explicitement par l'utilisateur.
-        await prisma.campagnePlantation.update({
+        source = await tx.campagnePlantation.update({
           where: { id: campagneId },
           data: {
             datePlantationReelle: null,
@@ -92,10 +106,27 @@ export async function PUT(request: NextRequest, { params }: Params) {
           },
         })
       }
-    }
+      if (!source) return { etape, miroirRegenere: false }
+      // COM-05 : la dépense miroir du coût de la campagne est datée par la
+      // plantation réelle, sinon prévue, sinon la création. Sans cette
+      // régénération, le FEC et les indicateurs gardaient l'ancienne date,
+      // parfois sur un autre exercice. Règle de TVA inchangée.
+      await createDepenseFromCampagnePlantation(userId, {
+        id: source.id,
+        nom: source.nom,
+        coutReel: source.coutReel,
+        datePlantationReelle: source.datePlantationReelle,
+        datePlantationPrevue: source.datePlantationPrevue,
+        createdAt: source.createdAt,
+      }, tx)
+      return { etape, miroirRegenere: true }
+    })
+    if (miroirRegenere) invalidateKpi(userId)
+    return NextResponse.json(etape)
+  } catch (err) {
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
+    throw err
   }
-
-  return NextResponse.json(etape)
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {

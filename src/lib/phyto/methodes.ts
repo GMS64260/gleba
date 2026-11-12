@@ -23,9 +23,20 @@ export const METHODES_TRAITEMENT = [
   },
   {
     slug: 'biocontrole',
-    label: 'Biocontrôle',
-    description: 'Macro-organismes, médiateurs chimiques, substances naturelles',
+    label: 'Biocontrôle (produit sous AMM)',
+    // Micro-organismes, médiateurs chimiques, substances naturelles : des
+    // produits phytopharmaceutiques autorisés, dont le registre exige l'AMM,
+    // la dose et la surface (arrêté du 24 décembre 2025, annexe I).
+    description: 'Micro-organismes, phéromones, substances naturelles autorisées (n° AMM)',
     badge: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  },
+  {
+    slug: 'macro_organismes',
+    label: 'Macro-organismes auxiliaires',
+    // Code rural, art. L. 253-6 : biocontrôle, mais 1° distinct des produits
+    // phytopharmaceutiques du 2° ; aucune AMM n'est attendue au registre.
+    description: 'Lâchers d\'auxiliaires : trichogrammes, coccinelles, chrysopes…',
+    badge: { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
   },
   {
     slug: 'biologique_purin',

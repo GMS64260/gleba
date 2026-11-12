@@ -5,7 +5,12 @@
  *   - Chimique conventionnel
  *   - Substance de base / PNPP
  *   - Biocontrôle (liste DGAL — produits homologués biocontrôle)
- *   - Autorisé AB (annexe II du règlement (UE) 2021/1165)
+ *   - Autorisé AB (annexe I du règlement d'exécution (UE) 2021/1165 :
+ *     substances actives des PPP utilisables en production biologique ;
+ *     l'annexe II vise les engrais). Classification INDICATIVE d'une famille
+ *     de produits : l'emploi autorisé dépend de l'AMM du produit précis et de
+ *     son usage (revue réglementaire du 2026-11-12, C7). De même, `darJours`
+ *     est un ordre de grandeur générique, pas le DAR d'une AMM.
  *   - Mécanique (piège, filet, confusion : pas de molécule active)
  *
  * Notes :

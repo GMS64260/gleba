@@ -1,4 +1,3 @@
-import { versCentimes } from '@/lib/comptabilite/fec'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * API Ventes Manuelles
@@ -15,6 +14,8 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { Prisma } from '@prisma/client'
 import { createVenteManuelleSchema, updateVenteManuelleSchema } from '@/lib/validations/vente-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
+import { ventilationRetenue } from '@/lib/comptabilite/ventilation-ttc'
+import { ventilationSousVerrou } from '@/lib/comptabilite/ventilation-sous-verrou'
 import { champsEnvoyes, refusModificationDerivee } from '@/lib/comptabilite/ecriture-derivee'
 import { enregistrerReglementVente, ReglementVenteError } from '@/lib/comptabilite/reglement-vente'
 import {
@@ -94,8 +95,9 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     const { montant, tauxTVA, ...rest } = parsed.data
 
-    const montantHT = rest.montantHT ?? montant / (1 + tauxTVA / 100)
-    const montantTVA = rest.montantTVA ?? montant - montantHT
+    // COM-02 (revue Codex du 2026-11-12) : TTC et taux font foi, HT + TVA = TTC
+    // au centime ; une ventilation fournie a déjà été contrôlée par le schéma.
+    const { montantHT, montantTVA } = ventilationRetenue(montant, tauxTVA, rest.montantHT, rest.montantTVA)
 
     // QA Camille 2026-05-15 — Bug #3 : la création était un simple
     // `create` sans transaction, donc une vente avec clientId pointant
@@ -244,30 +246,19 @@ export async function PATCH(request: NextRequest) {
       // Si on modifie le taux manuellement, on ne considère plus la TVA comme inférée.
       updateData.tvaInferee = false
     }
-    if (updates.montantHT !== undefined) updateData.montantHT = updates.montantHT
-    if (updates.montantTVA !== undefined) updateData.montantTVA = updates.montantTVA
-    // Audit 2026-07 (#9) : modifier le montant ou le taux sans fournir HT/TVA
-    // laissait montantHT/montantTVA périmés (TVA fausse dans la CA3/FEC/bilan).
-    // On les recalcule à partir des valeurs effectives.
-    if (
-      (envoyes.has('montant') || envoyes.has('tauxTVA')) &&
-      updates.montantHT === undefined &&
-      updates.montantTVA === undefined
-    ) {
-      const montant = updateData.montant ?? existing.montant
-      const taux = updateData.tauxTVA ?? existing.tauxTVA ?? 5.5
-      // Revue du 2026-11-01 — TVA = TTC − HT arrondi : arrondis séparément,
-      // 24,99 € à 20 % donnaient 20,82 + 4,16 = 24,98 € (FEC déséquilibré).
-      const ht = versCentimes(montant / (1 + taux / 100))
-      updateData.montantHT = ht / 100
-      updateData.montantTVA = (versCentimes(montant) - ht) / 100
-    }
     if (envoyes.has('journal') && updates.journal !== undefined) updateData.journal = updates.journal
     if (updates.modeReglement !== undefined) updateData.modeReglement = updates.modeReglement
     if (updates.numeroPiece !== undefined) updateData.numeroPiece = updates.numeroPiece
     if (updates.pjUrl !== undefined) updateData.pjUrl = updates.pjUrl || null
 
-    const vente = await enregistrerReglementVente(session.user.id, existing, updateData)
+    // COM-03 (revue Codex du 2026-11-12) : HT et TVA se recalculent sur
+    // l'écriture relue sous le verrou, pas sur la lecture d'avant : deux
+    // corrections concurrentes du montant et du taux laissaient sinon une
+    // ventilation fausse. Ventilation fournie contrôlée au même endroit (COM-02).
+    const vente = await enregistrerReglementVente(session.user.id, existing, (courante) => ({
+      ...updateData,
+      ...ventilationSousVerrou(courante, envoyes, updateData, updates, 5.5),
+    }))
 
     invalidateKpi(session.user.id)
     return NextResponse.json({ data: vente })

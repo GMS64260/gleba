@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   unlink: vi.fn(),
   transaction: vi.fn(),
   reconstituerEffectifsLots: vi.fn(),
+  annulationFindMany: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -40,6 +41,7 @@ vi.mock("@/lib/prisma", () => ({
     naissanceAnimale: { findMany: mocks.naissanceFindMany },
     abattage: { findMany: mocks.abattageFindMany },
     soinAnimal: { findMany: mocks.soinFindMany },
+    annulationSoinAnimal: { findMany: mocks.annulationFindMany },
     prophylaxieElevage: { findMany: mocks.prophylaxieFindMany },
     stockMedicamentElevage: { findMany: mocks.stockFindMany },
     consommationAliment: { findMany: mocks.consommationAlimentFindMany },
@@ -79,6 +81,7 @@ describe("registre d'élevage complet", () => {
     mocks.naissanceFindMany.mockResolvedValue([])
     mocks.abattageFindMany.mockResolvedValue([])
     mocks.soinFindMany.mockResolvedValue([])
+    mocks.annulationFindMany.mockResolvedValue([])
     mocks.prophylaxieFindMany.mockResolvedValue([])
     mocks.stockFindMany.mockResolvedValue([])
     mocks.consommationAlimentFindMany.mockResolvedValue([])
@@ -422,5 +425,31 @@ describe("registre d'élevage complet", () => {
       ["Canards 2025 ×5", "Réforme / fin de lot"],
       ["Lapins 2025 (soldé)", "Réforme / fin de lot, têtes déjà sorties"],
     ])
+  })
+
+  // C9 (2026-11-13) : un soin administré effacé ou rouvert pour erreur de
+  // saisie reste visible au dossier, avec son original, et entre dans
+  // l'empreinte de l'archive.
+  it("reprend les annulations de soins de l'exercice dans le dossier et son empreinte", async () => {
+    mocks.annulationFindMany.mockResolvedValue([{
+      id: "ann-1",
+      soinIdOrigine: 41,
+      action: "suppression",
+      nature: "erreur_saisie",
+      motif: "Saisi sur la mauvaise chèvre",
+      acteurId: "user-1",
+      injectionNumero: null,
+      instantane: { soin: { id: 41, date: "2026-03-02T08:00:00.000Z", type: "Traitement vétérinaire", produit: "Pénicilline", animal: { identifiant: "FR123", nom: null } }, injections: [] },
+      createdAt: new Date("2026-03-03T10:00:00Z"),
+    }])
+
+    const response = await GET(new NextRequest("http://localhost/api/elevage/registre-elevage-complet?year=2026"))
+
+    expect(response.status).toBe(200)
+    expect(mocks.annulationFindMany.mock.calls[0][0].where).toMatchObject({ userId: "user-1" })
+    const { annulationsSoins } = vi.mocked(empreinteDeclaration).mock.calls[0][0] as {
+      annulationsSoins: Array<{ id: string; soinIdOrigine: number; action: string }>
+    }
+    expect(annulationsSoins).toEqual([expect.objectContaining({ id: "ann-1", soinIdOrigine: 41, action: "suppression" })])
   })
 })

@@ -27,7 +27,11 @@ vi.mock("@/lib/prisma", () => ({
     intervention: { findMany: mocks.interventionFindMany },
     observationSante: { findMany: mocks.observationFindMany },
     operationArbre: { findMany: mocks.operationFindMany },
-    culture: { findUnique: mocks.cultureFindUnique, findMany: mocks.cultureFindMany },
+    culture: { findUnique: mocks.cultureFindUnique, findMany: mocks.cultureFindMany, findFirst: async () => null },
+    planche: { findFirst: async () => null },
+    arbre: { findFirst: async () => null },
+    parcelleGeo: { findFirst: async () => null },
+    registrePhytoHistorique: { findMany: async () => [] },
     fertilisation: { findMany: mocks.fertilisationFindMany },
     user: { findUnique: mocks.userFindUnique },
     exploitation: { findUnique: mocks.exploitationFindUnique },
@@ -155,6 +159,7 @@ describe("un traitement de 00:30 à Paris : même jour dans les deux registres e
     expect(res.status).toBe(200)
     const ligne = (await res.text()).split("\r\n").find((l) => l.includes("Savon noir"))
 
-    expect(ligne?.split(";")[0]).toBe("2027-04-12")
+    // Annexe II de l'arrêté du 24 décembre 2025 : date au format JJ/MM/AAAA.
+    expect(ligne?.split(";")[0]).toBe('"12/04/2027"')
   })
 })

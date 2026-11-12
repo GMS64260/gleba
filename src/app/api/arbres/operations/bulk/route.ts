@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createDepenseFromOperationArbre } from "@/lib/auto-compta"
+import { contexteOperationTraitement } from "@/lib/tracabilite/contexte-registre"
 
 const ACTIONS = ["fait", "solder"] as const
 type Action = (typeof ACTIONS)[number]
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
       await verrouillerReglements(tx, userId)
       const cibles = await tx.operationArbre.findMany({
         where: { id: { in: ids }, userId, fait: false, abandonneeLe: null },
-        select: { id: true, type: true, description: true, cout: true },
+        select: { id: true, type: true, description: true, cout: true, arbreId: true },
       })
       if (!cibles.length) return { count: 0, action, ignored: ids.length }
       const cibleIds = cibles.map((operation) => operation.id)
@@ -84,6 +85,9 @@ export async function POST(request: NextRequest) {
         data: action === 'fait' ? { fait: true, date: maintenant } : { abandonneeLe: maintenant },
       })
       if (action === 'fait') for (const operation of cibles) {
+        // Traitement réalisé : contexte du registre figé (CR-PHY-03).
+        const contexte = await contexteOperationTraitement(tx, userId, { ...operation, fait: true, date: maintenant })
+        if (contexte) await tx.operationArbre.update({ where: { id: operation.id }, data: contexte })
         await createDepenseFromOperationArbre(userId, { ...operation, date: maintenant, fait: true }, tx)
       }
       return { count: cibleIds.length, action, ignored: ids.length - cibleIds.length }

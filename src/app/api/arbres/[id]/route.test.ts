@@ -56,7 +56,11 @@ vi.mock("@/lib/prisma", () => ({
         },
         observationSante: { findMany: mocks.txObservationFindMany },
         operationArbre: { findMany: mocks.txOperationFindMany },
-        arbre: { findUnique: mocks.arbreFindUnique, update: mocks.arbreUpdate, delete: mocks.txArbreDelete },
+        arbre: { findUnique: mocks.arbreFindUnique, update: mocks.arbreUpdate, delete: mocks.txArbreDelete, findFirst: vi.fn(async () => null) },
+        // Contexte du registre relu avant la suppression (CR-PHY-01).
+        culture: { findFirst: vi.fn(async () => null) },
+        planche: { findFirst: vi.fn(async () => null) },
+        parcelleGeo: { findFirst: vi.fn(async () => null) },
       }),
   },
 }))
@@ -354,6 +358,28 @@ describe("DELETE /api/arbres/[id]", () => {
     expect(mocks.txArbreDelete).not.toHaveBeenCalled()
   })
 
+  // Revue Codex CR-PHY-01 (2026-11-12) : un traitement détaché garde son contexte figé.
+  it("un traitement phyto détaché garde son contexte du registre", async () => {
+    mocks.interventionFindMany.mockResolvedValue([
+      {
+        id: 79, notes: null, type: "traitement_phyto", date: new Date("2026-05-02T08:00:00Z"),
+        cultureId: null, plancheId: null, parcelleId: null,
+        cultureRegistre: "Pêcher — Pêcher du fond", localisationRegistre: "Arbre Pêcher du fond", conduiteBio: true,
+      },
+    ])
+    const response = await DELETE(deleteRequest() as never, params)
+    expect(response.status).toBe(200)
+    expect(mocks.txInterventionUpdate).toHaveBeenCalledWith({
+      where: { id: 79 },
+      data: expect.objectContaining({
+        arbreId: null,
+        cultureRegistre: "Pêcher — Pêcher du fond",
+        localisationRegistre: "Arbre Pêcher du fond",
+        conduiteBio: true,
+      }),
+    })
+  })
+
   it("détache les interventions phyto en snapshotant le nom de l'arbre", async () => {
     mocks.interventionFindMany.mockResolvedValue([
       { id: 77, notes: "Vent faible" },
@@ -365,7 +391,7 @@ describe("DELETE /api/arbres/[id]", () => {
     expect(response.status).toBe(200)
     expect(mocks.interventionFindMany).toHaveBeenCalledWith({
       where: { arbreId: 42, userId: "user-1" },
-      select: { id: true, notes: true },
+      select: expect.objectContaining({ id: true, notes: true, type: true, cultureRegistre: true }),
     })
     // Jamais de suppression : détachement + snapshot en tête de notes.
     expect(mocks.txInterventionUpdate).toHaveBeenCalledTimes(2)

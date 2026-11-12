@@ -11,6 +11,12 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { contexteOperationTraitement } from "@/lib/tracabilite/contexte-registre"
+import {
+  journaliserRectificationPhyto,
+  motifRectification,
+  operationAuRegistre,
+} from "@/lib/tracabilite/historique-phyto"
 import { createDepenseFromOperationArbre, deleteAutoEntry } from "@/lib/auto-compta"
 
 interface Params {
@@ -90,9 +96,23 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const operation = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      // Traitement réalisé : contexte du registre figé quand il le devient, ou
+      // quand sa date ou son type change, ou s'il ne l'a jamais été (CR-PHY-03).
+      const jamaisFige =
+        existing.cultureRegistre == null && existing.localisationRegistre == null && existing.conduiteBio == null
+      const contexte =
+        jamaisFige || "fait" in body || "date" in body || "type" in body
+          ? await contexteOperationTraitement(tx, session!.user.id, {
+              type: body.type ?? existing.type,
+              fait: body.fait ?? existing.fait,
+              arbreId: existing.arbreId,
+              date: body.date ? new Date(body.date) : existing.date,
+            })
+          : null
       const operation = await tx.operationArbre.update({
       where: { id: operationId },
       data: {
+        ...(contexte ?? {}),
         date: body.date ? new Date(body.date) : undefined,
         type: body.type,
         description: body.description,
@@ -135,6 +155,20 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
     })
 
+      // Arrêté du 24 décembre 2025, art. 3 : l'état d'avant d'un traitement
+      // du registre reste retrouvable (revue de conformité du 2026-11-12, C3).
+      if (operationAuRegistre(existing)) {
+        await journaliserRectificationPhyto(tx, {
+          userId: session!.user.id,
+          source: "operation_arbre",
+          sourceId: existing.id,
+          action: "modification",
+          avant: existing,
+          apres: operation,
+          motif: motifRectification(body.motif),
+          auteurId: session!.user.id,
+        })
+      }
       await createDepenseFromOperationArbre(session!.user.id, {
         id: operation.id,
         type: operation.type,
@@ -184,6 +218,17 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      if (operationAuRegistre(existing)) {
+        await journaliserRectificationPhyto(tx, {
+          userId: session!.user.id,
+          source: "operation_arbre",
+          sourceId: existing.id,
+          action: "suppression",
+          avant: existing,
+          motif: motifRectification(request.nextUrl.searchParams.get("motif")),
+          auteurId: session!.user.id,
+        })
+      }
       await deleteAutoEntry('operation_arbre', operationId, 'depense', session!.user.id, tx)
       await tx.operationArbre.delete({ where: { id: operationId, userId: session!.user.id } })
     })

@@ -1,9 +1,10 @@
 import { z } from 'zod'
+import { refusVentilationFournie } from '@/lib/comptabilite/ventilation-ttc'
 import { modeReglementSchema } from './reglement'
 
 const JOURNAUX = ['VE', 'AC', 'BQ', 'CA', 'OD'] as const
 
-export const createVenteManuelleSchema = z.object({
+const venteManuelleBase = z.object({
   date: z.coerce.date().optional(),
   categorie: z.string().min(1, 'Catégorie requise'),
   description: z.string().min(1, 'Description requise').max(500),
@@ -26,6 +27,17 @@ export const createVenteManuelleSchema = z.object({
   pjUrl: z.string().url().nullable().optional().or(z.literal('')),
 })
 
-export const updateVenteManuelleSchema = createVenteManuelleSchema.partial().extend({
+/**
+ * COM-02 (revue Codex du 2026-11-12) : HT et TVA fournis doivent être
+ * cohérents avec le TTC et le taux (somme exacte au centime) ; absents, la
+ * route les calcule. Une modification partielle se contrôle dans la route,
+ * contre l'écriture relue sous verrou.
+ */
+export const createVenteManuelleSchema = venteManuelleBase.superRefine((v, ctx) => {
+  const refus = refusVentilationFournie(v.montant, v.tauxTVA, v.montantHT, v.montantTVA)
+  if (refus) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['montantTVA'], message: refus })
+})
+
+export const updateVenteManuelleSchema = venteManuelleBase.partial().extend({
   id: z.number().int().min(1, 'ID requis'),
 })

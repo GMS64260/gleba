@@ -1,4 +1,3 @@
-import { versCentimes } from '@/lib/comptabilite/fec'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * API Dépenses Manuelles
@@ -15,6 +14,8 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { Prisma } from '@prisma/client'
 import { createDepenseManuelleSchema, updateDepenseManuelleSchema } from '@/lib/validations/depense-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
+import { ventilationRetenue } from '@/lib/comptabilite/ventilation-ttc'
+import { ventilationSousVerrou } from '@/lib/comptabilite/ventilation-sous-verrou'
 import { champsEnvoyes, refusModificationDerivee } from '@/lib/comptabilite/ecriture-derivee'
 import { ensureFournisseurForUser } from '@/lib/comptabilite/ensure-fournisseur'
 
@@ -89,8 +90,9 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     const { montant, tauxTVA, ...rest } = parsed.data
 
-    const montantHT = rest.montantHT ?? montant / (1 + tauxTVA / 100)
-    const montantTVA = rest.montantTVA ?? montant - montantHT
+    // COM-02 (revue Codex du 2026-11-12) : TTC et taux font foi, HT + TVA = TTC
+    // au centime ; une ventilation fournie a déjà été contrôlée par le schéma.
+    const { montantHT, montantTVA } = ventilationRetenue(montant, tauxTVA, rest.montantHT, rest.montantTVA)
 
     // QA 2026-05-15 — Bug #11 : auto-création du fournisseur si seul
     // un `fournisseurNom` est fourni (saisie rapide). Le find-or-create
@@ -198,23 +200,6 @@ export async function PATCH(request: NextRequest) {
       updateData.tauxTVA = updates.tauxTVA
       updateData.tvaInferee = false
     }
-    if (updates.montantHT !== undefined) updateData.montantHT = updates.montantHT
-    if (updates.montantTVA !== undefined) updateData.montantTVA = updates.montantTVA
-    // Audit 2026-07 (#9) : recalcul HT/TVA si montant ou taux changent sans
-    // HT/TVA fournis (sinon TVA déductible périmée dans CA3/FEC/bilan).
-    if (
-      (envoyes.has('montant') || envoyes.has('tauxTVA')) &&
-      updates.montantHT === undefined &&
-      updates.montantTVA === undefined
-    ) {
-      const montant = updateData.montant ?? existing.montant
-      const taux = updateData.tauxTVA ?? existing.tauxTVA ?? 20
-      // Revue du 2026-11-01 — TVA = TTC − HT arrondi : arrondis séparément,
-      // 24,99 € à 20 % donnaient 20,82 + 4,16 = 24,98 € (FEC déséquilibré).
-      const ht = versCentimes(montant / (1 + taux / 100))
-      updateData.montantHT = ht / 100
-      updateData.montantTVA = (versCentimes(montant) - ht) / 100
-    }
     if (updates.fournisseurNom !== undefined) updateData.fournisseurNom = updates.fournisseurNom
     if (updates.fournisseurId !== undefined) updateData.fournisseurId = updates.fournisseurId
     if (updates.refFacture !== undefined) updateData.refFacture = updates.refFacture
@@ -231,7 +216,10 @@ export async function PATCH(request: NextRequest) {
       const courante = await db.depenseManuelle.findFirst({ where: { id, userId: session.user.id } })
       if (!courante) throw new ErreurReglement('Écriture introuvable. Actualisez les transactions.', 404)
       const projection = await verifierPointageDetaille(db, session.user.id, cleMiroirReglement('depense', courante), updateData.montant ?? courante.montant, typeof updateData.paye === 'boolean' ? updateData.paye : undefined)
-      return db.depenseManuelle.update({ where: { id, userId: session.user.id }, data: { ...updateData, ...projection } })
+      // COM-03 (revue Codex du 2026-11-12) : HT et TVA se recalculent sur
+      // l'écriture relue sous le verrou ; ventilation fournie contrôlée ici (COM-02).
+      const ventilation = ventilationSousVerrou(courante, envoyes, updateData, updates, 20)
+      return db.depenseManuelle.update({ where: { id, userId: session.user.id }, data: { ...updateData, ...ventilation, ...projection } })
     })
 
     invalidateKpi(session.user.id)

@@ -58,10 +58,18 @@ import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
 import { projeterGpsSurPlan, projeterPlanSurGps } from "@/lib/gps-plan-utils"
 import { partitionnerArbresPourSauvegarde } from "@/lib/plan-sauvegarde"
 import {
-  confirmerEtatSauve,
   entitesModifiees,
   indexerEtatSauve,
 } from "@/lib/jardin/sauvegarde-differentielle"
+import {
+  annonceSauvegarde,
+  aSauvegarder,
+  champsPersistes,
+  confirmerSauvegarde,
+  enAttenteHorsVue,
+  fusionnerRechargement,
+} from "@/lib/jardin/rechargement-plan"
+import { parcelleDeCreation } from "@/lib/jardin/filtre-parcelle"
 import { nomsCopiesEnLot } from "@/lib/jardin/noms-copie"
 import { parcelleParDefautArbre } from "@/lib/verger/espece-arbre"
 import {
@@ -260,55 +268,60 @@ interface ParcelleOption {
 // L'empreinte porte exactement sur les champs envoyés par handleSave. Les
 // relations et valeurs calculées chargées pour l'affichage ne doivent pas
 // transformer un geste unique en une réécriture de tout le plan.
-const empreintePlanche = (planche: PlancheWithCulture) => JSON.stringify([
-  planche.posX,
-  planche.posY,
-  planche.rotation2D,
-  planche.largeur,
-  planche.longueur,
+// Empreinte (comparée à la référence sauvée) et report des champs locaux sur
+// une version relue en base partagent la même liste (PLAN-01, 2026-11-12).
+const PLANCHE_PERSISTEE = champsPersistes<PlancheWithCulture>([
+  "posX",
+  "posY",
+  "rotation2D",
+  "largeur",
+  "longueur",
 ])
+const empreintePlanche = PLANCHE_PERSISTEE.empreinte
 
-const empreinteObjet = (objet: ObjetJardin) => JSON.stringify([
-  objet.nom,
-  objet.type,
-  objet.largeur,
-  objet.longueur,
-  objet.posX,
-  objet.posY,
-  objet.rotation2D,
-  objet.couleur,
+const OBJET_PERSISTE = champsPersistes<ObjetJardin>([
+  "nom",
+  "type",
+  "largeur",
+  "longueur",
+  "posX",
+  "posY",
+  "rotation2D",
+  "couleur",
 ])
+const empreinteObjet = OBJET_PERSISTE.empreinte
 
-const empreinteArbre = (arbre: Arbre) => JSON.stringify([
-  arbre.nom,
-  arbre.type,
-  arbre.espece,
-  arbre.variete,
-  arbre.portGreffe,
-  arbre.porteGreffeId,
-  arbre.formeTaille,
-  arbre.circonferenceCm,
-  arbre.fournisseur,
-  arbre.datePlantation,
-  arbre.age,
-  arbre.dateAchat,
-  arbre.prixAchat,
-  arbre.posX,
-  arbre.posY,
-  arbre.envergure,
-  arbre.envergureAdulte,
-  arbre.hauteur,
-  arbre.etat,
-  arbre.productif,
-  arbre.anneeProduction,
-  arbre.rendementMoyen,
-  arbre.pollinisateur,
-  arbre.couleur,
-  arbre.notes,
-  arbre.gpsLat,
-  arbre.gpsLng,
-  arbre.parcelleGeoId,
+const ARBRE_PERSISTE = champsPersistes<Arbre>([
+  "nom",
+  "type",
+  "espece",
+  "variete",
+  "portGreffe",
+  "porteGreffeId",
+  "formeTaille",
+  "circonferenceCm",
+  "fournisseur",
+  "datePlantation",
+  "age",
+  "dateAchat",
+  "prixAchat",
+  "posX",
+  "posY",
+  "envergure",
+  "envergureAdulte",
+  "hauteur",
+  "etat",
+  "productif",
+  "anneeProduction",
+  "rendementMoyen",
+  "pollinisateur",
+  "couleur",
+  "notes",
+  "gpsLat",
+  "gpsLng",
+  "parcelleGeoId",
 ])
+const empreinteArbre = ARBRE_PERSISTE.empreinte
 
 export default function JardinPage() {
   return (
@@ -344,6 +357,26 @@ function JardinContent() {
   const planchesSauveesRef = React.useRef<Map<string | number, string>>(new Map())
   const objetsSauvesRef = React.useRef<Map<string | number, string>>(new Map())
   const arbresSauvesRef = React.useRef<Map<string | number, string>>(new Map())
+  // PLAN-01 (2026-11-12) : un rechargement garde les modifications pas encore
+  // écrites (src/lib/jardin/rechargement-plan.ts). Il lit les dernières
+  // entités affichées ; celles qui sortent de la vue (autre parcelle) attendent
+  // dans une file que la sauvegarde suivante envoie. Une entité supprimée n'y
+  // entre jamais (ids jamais réutilisés : la liste dure la session).
+  const planchesRef = React.useRef(planches)
+  planchesRef.current = planches
+  const objetsRef = React.useRef(objets)
+  objetsRef.current = objets
+  // (arbres : `arbresRef`, déclaré plus bas, sert aussi la confirmation GPS)
+  const planchesHorsVueRef = React.useRef(new Map<string | number, PlancheWithCulture>())
+  const objetsHorsVueRef = React.useRef(new Map<string | number, ObjetJardin>())
+  const arbresHorsVueRef = React.useRef(new Map<string | number, Arbre>())
+  // Empreintes des planches sans position posées par l'écran au chargement.
+  const placementsLocauxRef = React.useRef(new Map<string | number, string>())
+  const supprimesRef = React.useRef({
+    planches: new Set<string | number>(),
+    objets: new Set<string | number>(),
+    arbres: new Set<string | number>(),
+  })
   const [, setEspeces] = React.useState<Espece[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [scale, setScale] = React.useState(16)
@@ -500,7 +533,7 @@ function JardinContent() {
 
       // Capturé avant l'auto-positionnement local : les anciennes planches
       // sans coordonnées seront persistées au prochain vrai geste.
-      planchesSauveesRef.current = indexerEtatSauve(data, empreintePlanche)
+      const etatServeur = indexerEtatSauve(data, empreintePlanche)
 
       // Auto-positionner les planches sans position
       const positioned = data.filter(p => p.posX !== null && p.posY !== null)
@@ -521,7 +554,21 @@ function JardinContent() {
         data = [...positioned, ...unpositioned]
       }
 
-      setPlanches(data)
+      const fusion = fusionnerRechargement({
+        rechargees: data,
+        etatServeur,
+        locales: planchesRef.current,
+        etatSauve: planchesSauveesRef.current,
+        horsVue: planchesHorsVueRef.current,
+        supprimees: supprimesRef.current.planches,
+        placementsLocaux: placementsLocauxRef.current,
+        empreinte: empreintePlanche,
+        reporter: PLANCHE_PERSISTEE.reporter,
+      })
+      placementsLocauxRef.current = new Map(unpositioned.map(p => [p.id, empreintePlanche(p)]))
+      planchesSauveesRef.current = fusion.etatSauve
+      planchesHorsVueRef.current = fusion.horsVue
+      setPlanches(fusion.entites)
       // QA Camille 2026-05-15 — bonus : ne plus marquer `hasChanges`
       // sur un simple repositionnement auto au chargement. Avant,
       // ouvrir /jardin déclenchait un PUT cascade sur toutes les
@@ -548,8 +595,19 @@ function JardinContent() {
       if (!response.ok) return
       const data = await response.json()
       const rows: ObjetJardin[] = data || []
-      objetsSauvesRef.current = indexerEtatSauve(rows, empreinteObjet)
-      setObjets(rows)
+      const fusion = fusionnerRechargement({
+        rechargees: rows,
+        etatServeur: indexerEtatSauve(rows, empreinteObjet),
+        locales: objetsRef.current,
+        etatSauve: objetsSauvesRef.current,
+        horsVue: objetsHorsVueRef.current,
+        supprimees: supprimesRef.current.objets,
+        empreinte: empreinteObjet,
+        reporter: OBJET_PERSISTE.reporter,
+      })
+      objetsSauvesRef.current = fusion.etatSauve
+      objetsHorsVueRef.current = fusion.horsVue
+      setObjets(fusion.entites)
     } catch {
       // Ignorer
     }
@@ -607,8 +665,19 @@ function JardinContent() {
         : selectedParcelleId === 'none'
           ? rows.filter((a: { parcelleGeoId?: string | null }) => !a.parcelleGeoId)
           : rows.filter((a: { parcelleGeoId?: string | null }) => a.parcelleGeoId === selectedParcelleId)
-      arbresSauvesRef.current = indexerEtatSauve(filtered, empreinteArbre)
-      setArbres(filtered)
+      const fusion = fusionnerRechargement<Arbre>({
+        rechargees: filtered,
+        etatServeur: indexerEtatSauve(filtered, empreinteArbre),
+        locales: arbresRef.current,
+        etatSauve: arbresSauvesRef.current,
+        horsVue: arbresHorsVueRef.current,
+        supprimees: supprimesRef.current.arbres,
+        empreinte: empreinteArbre,
+        reporter: ARBRE_PERSISTE.reporter,
+      })
+      arbresSauvesRef.current = fusion.etatSauve
+      arbresHorsVueRef.current = fusion.horsVue
+      setArbres(fusion.entites)
     } catch {
       // Ignorer
     }
@@ -1285,18 +1354,21 @@ function JardinContent() {
     // modale abandonnée sans réponse rendait planches, objets et tous les
     // autres arbres non sauvegardables, silencieusement et sans issue (il n'y a
     // pas de bouton « Enregistrer » manuel). Cf. src/lib/plan-sauvegarde.ts.
+    // PLAN-01 : les modifications sorties de la vue par un rechargement
+    // (file hors vue) partent avec celles qui sont affichées.
+    const arbresHorsVue = enAttenteHorsVue(arbres, arbresHorsVueRef.current)
+    const idsArbresHorsVue = new Set(arbresHorsVue.map(a => a.id))
     const { aEcrire: arbresAEcrire, differes: arbresDifferes } =
-      partitionnerArbresPourSauvegarde(arbres, pendingGpsMovesRef.current.keys())
-    const planchesAEcrire = entitesModifiees(
+      partitionnerArbresPourSauvegarde([...arbres, ...arbresHorsVue], pendingGpsMovesRef.current.keys())
+    const planchesAEcrire = aSauvegarder(
       planches,
       planchesSauveesRef.current,
+      planchesHorsVueRef.current,
       empreintePlanche
     )
-    const objetsAEcrire = entitesModifiees(objets, objetsSauvesRef.current, empreinteObjet)
-    const arbresModifies = entitesModifiees(
-      arbresAEcrire,
-      arbresSauvesRef.current,
-      empreinteArbre
+    const objetsAEcrire = aSauvegarder(objets, objetsSauvesRef.current, objetsHorsVueRef.current, empreinteObjet)
+    const arbresModifies = arbresAEcrire.filter(a =>
+      idsArbresHorsVue.has(a.id) || arbresSauvesRef.current.get(a.id) !== empreinteArbre(a)
     )
     setSaving(true)
     try {
@@ -1371,25 +1443,27 @@ function JardinContent() {
       )
 
       const results = await Promise.all([...planchePromises, ...objetPromises, ...arbrePromises])
+      const reussi = results.every(r => r.ok)
 
-      if (results.every(r => r.ok)) {
-        confirmerEtatSauve(planchesSauveesRef.current, planchesAEcrire, empreintePlanche)
-        confirmerEtatSauve(objetsSauvesRef.current, objetsAEcrire, empreinteObjet)
-        confirmerEtatSauve(arbresSauvesRef.current, arbresModifies, empreinteArbre)
+      if (reussi) {
+        confirmerSauvegarde(planchesSauveesRef.current, planchesHorsVueRef.current, planchesAEcrire, empreintePlanche)
+        confirmerSauvegarde(objetsSauvesRef.current, objetsHorsVueRef.current, objetsAEcrire, empreinteObjet)
+        confirmerSauvegarde(arbresSauvesRef.current, arbresHorsVueRef.current, arbresModifies, empreinteArbre)
         if (versionPlanRef.current === versionAuDepart) setHasChanges(false)
-        toast({
-          title: "Plan sauvegardé",
-          description: arbresDifferes.length > 0
-            ? `Positions enregistrées. ${arbresDifferes.length} arbre${arbresDifferes.length > 1 ? "s" : ""} en attente de confirmation GPS ${arbresDifferes.length > 1 ? "n'ont" : "n'a"} pas été déplacé${arbresDifferes.length > 1 ? "s" : ""}.`
-            : "Les positions ont été enregistrées"
-        })
       } else {
-        toast({
-          variant: "destructive",
-          title: "Erreur",
-          description: "Certaines positions n'ont pas pu être enregistrées"
-        })
+        // Un élément en file hors vue qui n'existe plus (404, supprimé
+        // ailleurs) ne peut plus être écrit : le garder ferait échouer
+        // toutes les sauvegardes suivantes.
+        const files = [
+          ...planchesAEcrire.map(p => [planchesHorsVueRef.current, p.id] as const),
+          ...objetsAEcrire.map(o => [objetsHorsVueRef.current, o.id] as const),
+          ...arbresModifies.map(a => [arbresHorsVueRef.current, a.id] as const),
+        ]
+        results.forEach((r, i) => { if (r.status === 404) files[i][0].delete(files[i][1]) })
       }
+      // Jamais « Plan sauvegardé » sans envoi (PLAN-01).
+      const annonce = annonceSauvegarde({ envoyes: results.length, differes: arbresDifferes.length, reussi })
+      if (annonce) toast(annonce)
     } catch {
       toast({
         variant: "destructive",
@@ -1595,6 +1669,7 @@ function JardinContent() {
         throw new Error(err.error || "Erreur suppression")
       }
 
+      supprimesRef.current.planches.add(selectedPlanche)
       toast({ title: "Planche supprimée" })
       setSelection([])
       fetchPlanches()
@@ -1691,6 +1766,7 @@ function JardinContent() {
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error || "Erreur conversion")
 
+      supprimesRef.current.planches.add(selectedPlanche)
       toast({ title: `Reclassé en ${label.toLowerCase()}`, description: source?.nom })
       setSelection(payload?.objet?.id ? [{ type: 'objet', id: payload.objet.id }] : [])
       setDetailsMobilesOuverts(Boolean(payload?.objet?.id))
@@ -1734,7 +1810,7 @@ function JardinContent() {
           longueur: newObjet.longueur,
           posX: 0,
           posY: maxY + 0.5,
-          parcelleGeoId: selectedParcelleId || undefined,
+          parcelleGeoId: parcelleDeCreation(selectedParcelleId),
         })
       })
 
@@ -1773,6 +1849,7 @@ function JardinContent() {
         throw new Error(err.error || "Erreur suppression")
       }
 
+      supprimesRef.current.objets.add(selectedObjet)
       toast({ title: "Objet supprimé" })
       setSelection([])
       fetchObjets()
@@ -1823,7 +1900,7 @@ function JardinContent() {
             posY,
             rotation2D: source.rotation2D,
             couleur: source.couleur,
-            parcelleGeoId: selectedParcelleId || undefined,
+            parcelleGeoId: parcelleDeCreation(selectedParcelleId),
           })
         })
 
@@ -1909,7 +1986,7 @@ function JardinContent() {
           // datePlantation est requise par l'API ; la création rapide depuis
           // le plan ne la demande pas → date du jour par défaut (audit #22).
           datePlantation: todayLocalISO(),
-          parcelleGeoId: selectedParcelleId || undefined,
+          parcelleGeoId: parcelleDeCreation(selectedParcelleId),
         })
       })
 
@@ -2008,6 +2085,7 @@ function JardinContent() {
         throw new Error(err.error || "Erreur suppression")
       }
 
+      supprimesRef.current.arbres.add(selectedArbre)
       toast({ title: "Arbre supprimé" })
       setSelection([])
       fetchArbres()

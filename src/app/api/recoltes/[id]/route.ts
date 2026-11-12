@@ -21,6 +21,7 @@ import { jourCivilLocal } from '@/lib/cultures/execution'
 import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
+import { snapshotStatutBio } from '@/lib/statut-bio'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -120,11 +121,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       const especeCible = data.especeId ?? lot.especeId
       const dateCible = data.date ?? lot.date
       const dateChange = data.date !== undefined && jourCivilLocal(data.date) !== jourCivilLocal(lot.date)
+      // Statut bio : le corps n'en porte jamais (schéma), il suit l'origine. Redatée
+      // ou rattachée à une autre culture, la récolte reprend le calcul de la
+      // création (planche de la culture, à la date de récolte) ; sinon le statut
+      // figé reste (MAR-04, 2026-11-12, parité avec PUT /api/arbres/recoltes/[id]).
+      let statutBioSnapshot: string | null | undefined
       // Vérifier les références après le verrou, dans le même état que l’écriture.
       if (cultureCible !== lot.cultureId || especeCible !== lot.especeId || dateChange) {
         const culture = await tx.culture.findUnique({
           where: { id: cultureCible, userId },
-          select: { id: true, especeId: true, dateSemis: true, datePlantation: true, semisFait: true, plantationFaite: true },
+          select: {
+            id: true, especeId: true, dateSemis: true, datePlantation: true, semisFait: true, plantationFaite: true,
+            planche: { select: { statutBio: true, dateDebutConversion: true } },
+          },
         })
         if (!culture) throw new ErreurCommerciale(`La culture #${cultureCible} n'existe pas`, 400)
         if (culture.especeId !== especeCible) return { ok: false as const, response: NextResponse.json(
@@ -132,8 +141,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         ) }
         const refusDate = refusRecolteAvantDebut(culture, dateCible)
         if (refusDate) return { ok: false as const, response: NextResponse.json({ error: refusDate, champ: 'date' }, { status: 400 }) }
+        if (cultureCible !== lot.cultureId || dateChange) {
+          statutBioSnapshot = culture.planche
+            ? snapshotStatutBio(culture.planche.statutBio, culture.planche.dateDebutConversion, dateCible)
+            : null
+        }
       }
-      const recolte = await tx.recolte.update({ where: { id: recolteId }, data, include: { espece: true, culture: true } })
+      const recolte = await tx.recolte.update({
+        where: { id: recolteId },
+        data: { ...data, ...(statutBioSnapshot !== undefined ? { statutBioSnapshot } : {}) },
+        include: { espece: true, culture: true },
+      })
       return { ok: true as const, recolte }
     })
     if (!resultat.ok) return resultat.response

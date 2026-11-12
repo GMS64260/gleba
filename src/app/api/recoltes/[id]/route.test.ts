@@ -145,6 +145,64 @@ describe("PUT /api/recoltes/[id] — date de récolte et cycle de la culture", (
   })
 })
 
+// MAR-04 (revue Codex du 2026-11-12) : redater une récolte, ou la rattacher à
+// une autre culture, recalcule son statut bio comme à la création (planche de
+// la culture, à la nouvelle date). Le PUT gardait le statut d'origine.
+describe("PUT /api/recoltes/[id] — statut bio recalculé quand l'origine change", () => {
+  const RECOLTE_AB = { ...RECOLTE, date: new Date("2026-11-11T23:00:00.000Z"), statutBioSnapshot: "AB" }
+  // Planche en conversion depuis le 2023-11-12 (minuit de Paris).
+  const PLANCHE_C1 = { statutBio: "C1", dateDebutConversion: new Date("2023-11-11T23:00:00.000Z") }
+  const CULTURE_BIO = { ...ZINNIA, dateSemis: new Date("2025-03-01T00:00:00.000Z"), datePlantation: null, planche: PLANCHE_C1 }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
+    mocks.recolteFindUnique.mockResolvedValue(RECOLTE_AB)
+    mocks.cultureFindUnique.mockResolvedValue(CULTURE_BIO)
+    mocks.recolteUpdate.mockImplementation(async ({ data }) => ({ ...RECOLTE_AB, ...data }))
+  })
+
+  it("redatée du 2026-11-12 au 2025-11-12 : C3, comme à la création", async () => {
+    const res = await modifier({ date: "2025-11-11T23:00:00.000Z" })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data.statutBioSnapshot).toBe("C3")
+    // Lecture faite après le verrou, scopée au compte.
+    expect(mocks.cultureFindUnique.mock.calls[0][0].where).toEqual({ id: RECOLTE.cultureId, userId: "u1" })
+  })
+
+  it("rattachée à une culture sur planche conventionnelle : Conventionnel", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...CULTURE_BIO, id: 1190, planche: { statutBio: "Conventionnel", dateDebutConversion: null } })
+    const res = await modifier({ cultureId: 1190 })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data.statutBioSnapshot).toBe("Conventionnel")
+  })
+
+  it("culture sans planche : plus de statut bio (comme à la création)", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...CULTURE_BIO, id: 1191, planche: null })
+    const res = await modifier({ cultureId: 1191 })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data.statutBioSnapshot).toBeNull()
+  })
+
+  it("même jour civil, autre heure : le statut figé n'est pas touché", async () => {
+    const res = await modifier({ date: "2026-11-12T00:00:00.000Z", quantite: 30 })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).not.toHaveProperty("statutBioSnapshot")
+  })
+
+  it("retouche de la quantité seule : le statut figé n'est pas touché", async () => {
+    const res = await modifier({ quantite: 30 })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).not.toHaveProperty("statutBioSnapshot")
+  })
+
+  it("un statut forgé dans le corps est ignoré", async () => {
+    const res = await modifier({ quantite: 30, statutBioSnapshot: "AB" })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).not.toHaveProperty("statutBioSnapshot")
+  })
+})
+
 describe("PATCH /api/recoltes/[id] — vente d'une récolte comptée en tiges (QA cmv2r1oao)", () => {
   beforeEach(() => {
     vi.clearAllMocks()

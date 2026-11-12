@@ -89,3 +89,36 @@ export function nomCopieParcelle(nom: string, nomsExistants: Iterable<string>): 
   }
   return candidat
 }
+
+/** Ce que la carte connaît d'une parcelle source. */
+export interface SourceCopieParcelle {
+  nom: string
+  geometry: string
+  couches?: readonly string[] | null
+  usage?: string | null
+  typeSol?: string | null
+  couleur?: string | null
+  notes?: string | null
+}
+
+/**
+ * Corps du POST /api/carte qui crée la copie, ou null si le tracé n'est pas
+ * exploitable. Reprend les activités (`couches`), l'usage, le sol, la couleur
+ * et les notes ; jamais la référence cadastrale (l'API refuserait le doublon)
+ * ni la surface (recalculée sur le tracé).
+ * PLAN-03 (revue Codex du 2026-11-12) : `couches` était omis, et la création
+ * le met à [] par défaut : la copie perdait ses activités.
+ */
+export function corpsCopieParcelle(source: SourceCopieParcelle, nomsExistants: Iterable<string>) {
+  const geometry = decalerGeometrieParcelle(source.geometry)
+  if (!geometry) return null
+  return {
+    nom: nomCopieParcelle(source.nom, nomsExistants),
+    geometry,
+    couches: [...(source.couches ?? [])],
+    usage: source.usage ?? null,
+    typeSol: source.typeSol ?? null,
+    couleur: source.couleur ?? null,
+    notes: source.notes ?? null,
+  }
+}

@@ -12,16 +12,51 @@
  * DAR) : une ligne biocontrôle sortait « Non conforme » sans qu'aucun écran
  * ne permette de la corriger. Une seule liste désormais.
  *
- * Arrêté du 4 mai 2017 modifié : pour une méthode chimique (conventionnelle,
- * cuivrée, ou la valeur historique « chimique »), produit, AMM, dose, surface,
- * DAR, bouillie, conditions météo, certificat de l'opérateur et ZNT. Les
- * autres méthodes (biocontrôle, purin, mécanique…) n'ont pas d'exigence de
- * saisie ; seule la forme d'une AMM saisie est contrôlée (sept chiffres).
+ * Deux règles distinctes depuis la revue de conformité du 2026-11-12 (C1) :
+ *
+ * 1. Saisie (bloquante, inchangée) : pour une méthode chimique
+ *    (conventionnelle, cuivrée, ou la valeur historique « chimique »),
+ *    produit, AMM, dose, surface, DAR, bouillie, conditions météo, certificat
+ *    de l'opérateur et ZNT (`champsManquantsObservationPhyto`).
+ *
+ * 2. Registre (non bloquante) : arrêté du 24 décembre 2025 relatif aux
+ *    registres d'utilisation des produits phytopharmaceutiques, annexe I.
+ *    Toute utilisation d'un produit phytopharmaceutique (PPP) doit porter le
+ *    nom commercial, le numéro d'autorisation, la dose et la surface traitée,
+ *    biocontrôle compris : un produit de biocontrôle à base de
+ *    micro-organismes, de médiateurs chimiques ou de substances naturelles
+ *    est un PPP (code rural, art. L. 253-6, 2°) soumis à autorisation
+ *    (art. L. 253-1). L'ancienne règle tenait une ligne biocontrôle pour
+ *    « conforme » sans AMM, dose ni surface. Les macro-organismes
+ *    (trichogrammes, coccinelles…), au 1° du même article, ne sont pas
+ *    présentés comme des PPP : ils ont leur propre méthode et aucune AMM
+ *    n'est exigée, pas
+ *    plus que pour un purin, un moyen mécanique ou la prophylaxie
+ *    (`champsManquantsRegistreObservation`). Un fait réel incomplet reste
+ *    enregistrable : le registre signale ce qui manque.
  *
  * Module pur (aucun accès base) : importable côté écran.
  */
 
 import { methodeExigeCertiphyto } from "@/lib/phyto/methodes"
+
+/** Méthodes d'une observation santé qui la font figurer au registre (registre, export, historique). */
+export const METHODES_OBSERVATION_REGISTRE = [
+  "chimique_conventionnel",
+  "chimique_cuivre",
+  "biocontrole",
+  "biologique_purin",
+  "chimique",
+  "biologique",
+] as const
+
+/**
+ * Méthode qui emploie un produit phytopharmaceutique soumis à autorisation :
+ * chimique (valeur historique comprise) ou biocontrôle sous AMM.
+ */
+export function estMethodeProduitPhytopharmaceutique(methode: string | null | undefined): boolean {
+  return estMethodeChimiqueObservation(methode) || methode === "biocontrole"
+}
 
 /** Méthode soumise aux champs réglementaires (valeur historique « chimique » comprise). */
 export function estMethodeChimiqueObservation(methode: string | null | undefined): boolean {
@@ -34,6 +69,7 @@ export interface ObservationPhyto {
   produit?: string | null
   numAMM?: string | null
   doseAppliquee?: number | string | null
+  uniteDose?: string | null
   surfaceTraiteeHa?: number | string | null
   dar?: number | string | null
   volumeBouillieLHa?: number | string | null
@@ -76,7 +112,41 @@ export const CHAMPS_OBLIGATOIRES_CHIMIQUE: readonly ChampObligatoirePhyto[] = [
   { cle: "zntRespectee", libelle: "ZNT cours d'eau", manque: (o) => o.zntRespectee == null },
 ]
 
-/** Champs réglementaires manquants d'une observation, vides hors méthode chimique. */
+/**
+ * Mentions de l'annexe I de l'arrêté du 24 décembre 2025 propres à
+ * l'utilisation d'un produit : nom commercial, numéro d'autorisation, dose avec
+ * son unité (annexe II : « numérique + unité ») et surface traitée.
+ */
+export const MENTIONS_PRODUIT_ANNEXE_I: readonly ChampObligatoirePhyto[] = [
+  { cle: "produitPhyto", libelle: "Produit", manque: (o) => !renseigne(o.produit) },
+  { cle: "numAMM", libelle: "N° AMM", manque: (o) => !renseigne(o.numAMM) },
+  { cle: "doseAppliquee", libelle: "Dose", manque: (o) => !positif(o.doseAppliquee) },
+  {
+    cle: "uniteDose",
+    libelle: "Unité de dose",
+    manque: (o) => positif(o.doseAppliquee) && !renseigne(o.uniteDose),
+  },
+  { cle: "surfaceTraitee", libelle: "Surface traitée (ha)", manque: (o) => !positif(o.surfaceTraiteeHa) },
+]
+
+/**
+ * Mentions manquantes d'une observation au registre : règle de saisie d'une
+ * méthode chimique, plus les mentions produit de l'annexe I pour tout PPP
+ * (biocontrôle compris). Vide pour un macro-organisme, un purin, un moyen
+ * mécanique ou la prophylaxie : aucune autorisation n'y est attendue.
+ */
+export function champsManquantsRegistreObservation(o: ObservationPhyto): ChampObligatoirePhyto[] {
+  if (!estMethodeProduitPhytopharmaceutique(o.methodeTraitement)) return []
+  const manquants = estMethodeChimiqueObservation(o.methodeTraitement)
+    ? CHAMPS_OBLIGATOIRES_CHIMIQUE.filter((champ) => champ.manque(o))
+    : []
+  for (const mention of MENTIONS_PRODUIT_ANNEXE_I) {
+    if (mention.manque(o) && !manquants.some((m) => m.cle === mention.cle)) manquants.push(mention)
+  }
+  return manquants
+}
+
+/** Champs bloquants à la saisie d'une observation, vides hors méthode chimique. */
 export function champsManquantsObservationPhyto(o: ObservationPhyto): ChampObligatoirePhyto[] {
   if (!estMethodeChimiqueObservation(o.methodeTraitement)) return []
   return CHAMPS_OBLIGATOIRES_CHIMIQUE.filter((champ) => champ.manque(o))
@@ -87,4 +157,5 @@ export function champObligatoireObservation(methode: string | null | undefined, 
   return estMethodeChimiqueObservation(methode) && CHAMPS_OBLIGATOIRES_CHIMIQUE.some((c) => c.cle === cle)
 }
 
-export const MESSAGE_CHAMPS_REGLEMENTAIRES = "Champs réglementaires manquants (arrêté du 4 mai 2017 modifié) : "
+export const MESSAGE_CHAMPS_REGLEMENTAIRES =
+  "Champs réglementaires manquants (registre phytosanitaire, arrêté du 24 décembre 2025) : "

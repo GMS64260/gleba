@@ -18,6 +18,26 @@ function suppressionEnCours(ligne: { statut: string | null, checkoutExpireLe: Da
 export class ErreurFacturation extends Error {
   constructor(message: string, readonly status = 503) { super(message) }
 }
+/** Réponse non 2xx de Stripe : son code HTTP dit si la requête a pu être exécutée. */
+export class ErreurStripe extends ErreurFacturation {
+  constructor(message: string, readonly statutHttp: number) { super(message) }
+}
+/**
+ * Refus que Stripe rend AVANT d'exécuter la requête (validation, droits,
+ * limite de débit) : aucune session n'a été créée, le bail peut être libéré.
+ * Un délai réseau, une erreur 5xx ou un 409 d'idempotence restent ambigus.
+ */
+const REFUS_SANS_EFFET = new Set([400, 401, 402, 403, 404, 429])
+/**
+ * Revue Codex du 2026-11-12 (AB-01). Stripe exige un `expires_at` entre
+ * 30 minutes et 24 heures après la création de la session
+ * (https://docs.stripe.com/api/checkout/sessions/create, paramètre
+ * expires_at). Il est calculé à l'instant du POST, avec une minute de marge
+ * pour la latence et l'écart d'horloge avec Stripe.
+ */
+const DUREE_SESSION_CHECKOUT_S = 31 * 60
+/** Le bail survit à la session qu'il protège : une expiration tardive ne rouvre rien trop tôt. */
+const MARGE_BAIL_CHECKOUT_MS = 5 * 60 * 1000
 /** Clé secrète (sk_) ou restreinte (rk_) du compte Stripe de Gleba ; la clé restreinte est recommandée. */
 function configuration() {
   const cle = process.env.GLEBA_STRIPE_SECRET_KEY
@@ -37,7 +57,7 @@ export async function appelerStripe(methode: "GET" | "POST" | "DELETE", chemin: 
     body: methode === "POST" ? parametres : undefined,
     signal: AbortSignal.timeout(10000), cache: "no-store", redirect: "error",
   })
-  if (!reponse.ok) throw new ErreurFacturation("Le prestataire de paiement n’a pas confirmé l’opération. Réessayez dans un instant.")
+  if (!reponse.ok) throw new ErreurStripe("Le prestataire de paiement n’a pas confirmé l’opération. Réessayez dans un instant.", reponse.status)
   return objet(await reponse.json())
 }
 export function signatureValide(corps: string, signature: string | null, secret: string, maintenant = Date.now()): boolean {
@@ -75,6 +95,12 @@ async function creerCheckoutSousVerrou(userId: string) {
       throw new ErreurFacturation("Un contrat de paiement existe déjà. Gérez-le depuis votre abonnement avant de souscrire à nouveau.", 409)
     }
   }
+  // Régime de TVA vérifié avant de prendre le bail : son absence ne doit ni
+  // bloquer la souscription 35 minutes ni rien créer chez le prestataire.
+  const tva: Record<string, string> = process.env.GLEBA_STRIPE_TAX_MODE === "automatic" ? { "automatic_tax[enabled]": "true" }
+    : process.env.GLEBA_STRIPE_TAX_RATE ? { "subscription_data[default_tax_rates][0]": process.env.GLEBA_STRIPE_TAX_RATE }
+    : process.env.GLEBA_STRIPE_TAX_MODE === "exempt" ? {}
+    : (() => { throw new ErreurFacturation("Le régime de TVA du service doit être configuré avant de souscrire.") })()
   const debut = new Date()
   const cle = randomUUID()
   await prisma.abonnementGleba.upsert({ where: { userId }, create: { userId }, update: {} })
@@ -89,6 +115,10 @@ async function creerCheckoutSousVerrou(userId: string) {
     data: { checkoutCle: cle, checkoutId: null, checkoutExpireLe: new Date(debut.getTime() + 35 * 60 * 1000) },
   })
   if (!verrou.count) throw new ErreurFacturation("Un abonnement ou un paiement est déjà en cours. Utilisez Gérer mon abonnement ou réessayez à la fin du paiement en cours.", 409)
+  // Tant que la requête de session peut avoir abouti chez Stripe, le bail
+  // reste posé jusqu'à son expiration : une réponse perdue peut cacher une
+  // session ouverte, et une seconde souscription serait alors possible.
+  let sessionPeutExister = false
   try {
     let ligne = await prisma.abonnementGleba.findUniqueOrThrow({ where: { userId } })
     if (!ligne.clientStripeId) {
@@ -96,16 +126,24 @@ async function creerCheckoutSousVerrou(userId: string) {
       if (!id(client)) throw new ErreurFacturation("La création du compte de facturation a échoué.")
       ligne = await prisma.abonnementGleba.update({ where: { userId }, data: { clientStripeId: id(client) } })
     }
-    const params = new URLSearchParams({ mode: "subscription", customer: ligne.clientStripeId!, "line_items[0][price]": configuration().complet, "line_items[0][quantity]": "1", "payment_method_types[0]": "card", success_url: origine() + "/parametres?section=abonnement&paiement=retour", cancel_url: origine() + "/parametres?section=abonnement", expires_at: String(Math.floor(debut.getTime() / 1000) + 1800), client_reference_id: userId, "subscription_data[metadata][glebaUserId]": userId, "subscription_data[metadata][glebaCheckoutCle]": cle, "subscription_data[metadata][formule]": "complet", "metadata[glebaUserId]": userId, "metadata[glebaCheckoutCle]": cle, "consent_collection[terms_of_service]": "required", billing_address_collection: "required", "customer_update[address]": "auto", "tax_id_collection[enabled]": "true" })
-    if (process.env.GLEBA_STRIPE_TAX_MODE === "automatic") params.set("automatic_tax[enabled]", "true")
-    else if (process.env.GLEBA_STRIPE_TAX_RATE) params.set("subscription_data[default_tax_rates][0]", process.env.GLEBA_STRIPE_TAX_RATE)
-    else if (process.env.GLEBA_STRIPE_TAX_MODE !== "exempt") throw new ErreurFacturation("Le régime de TVA du service doit être configuré avant de souscrire.")
+    // AB-01 : expiration comptée à l'instant du POST, bail aligné dessus.
+    const expireA = Math.floor(Date.now() / 1000) + DUREE_SESSION_CHECKOUT_S
+    const bail = await prisma.abonnementGleba.updateMany({ where: { userId, checkoutCle: cle }, data: { checkoutExpireLe: new Date(expireA * 1000 + MARGE_BAIL_CHECKOUT_MS) } })
+    if (!bail.count) throw new ErreurFacturation("La tentative de paiement a été remplacée. Réessayez.", 409)
+    const params = new URLSearchParams({ mode: "subscription", customer: ligne.clientStripeId!, "line_items[0][price]": configuration().complet, "line_items[0][quantity]": "1", "payment_method_types[0]": "card", success_url: origine() + "/parametres?section=abonnement&paiement=retour", cancel_url: origine() + "/parametres?section=abonnement", expires_at: String(expireA), client_reference_id: userId, "subscription_data[metadata][glebaUserId]": userId, "subscription_data[metadata][glebaCheckoutCle]": cle, "subscription_data[metadata][formule]": "complet", "metadata[glebaUserId]": userId, "metadata[glebaCheckoutCle]": cle, "consent_collection[terms_of_service]": "required", billing_address_collection: "required", "customer_update[address]": "auto", "tax_id_collection[enabled]": "true", ...tva })
+    sessionPeutExister = true
     const session = await appelerStripe("POST", "/v1/checkout/sessions", params, `gleba-checkout-${cle}`)
     if (typeof session.url !== "string" || !session.url.startsWith("https://checkout.stripe.com/")) throw new ErreurFacturation("La page de paiement n’est pas disponible.")
     await prisma.abonnementGleba.update({ where: { userId }, data: { checkoutId: id(session), conditionsVersion: VERSION_CONDITIONS_OFFRE, conditionsAccepteesLe: debut } })
     return session.url
   } catch (e) {
-    // Ne libérer le verrou qu'après son expiration : une réponse réseau perdue peut cacher une session créée.
+    // Libérer le bail seulement quand aucune session n'a pu naître : échec
+    // avant le POST, ou refus de Stripe rendu avant exécution (4xx sûr).
+    // Un délai réseau ou une erreur 5xx gardent le bail jusqu'à son terme.
+    const sansSession = !sessionPeutExister || (e instanceof ErreurStripe && REFUS_SANS_EFFET.has(e.statutHttp))
+    if (sansSession) {
+      await prisma.abonnementGleba.updateMany({ where: { userId, checkoutCle: cle, checkoutId: null }, data: { checkoutExpireLe: null } }).catch(() => {})
+    }
     throw e
   }
 }

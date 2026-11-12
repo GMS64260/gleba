@@ -16,6 +16,7 @@ import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import { refusModificationCollecteEntamee } from '@/lib/elevage/stock-oeufs'
 
 class CollecteEntameeError extends Error {}
+class CollecteIntrouvableError extends Error {}
 
 /** Bornes [jour ; lendemain[ d'une collecte, pour chercher une collecte du même jour. */
 function bornesJourCollecte(date: Date | string) {
@@ -390,28 +391,38 @@ export async function PATCH(request: NextRequest) {
     // Contrôle et écriture sous le verrou du stock d'œufs, celui que prennent
     // les ventes : une vente qui puise dans cette ponte pendant la correction
     // attend, et la correction voit ses sorties.
+    //
+    // ELEV-02 (revue Codex du 2026-11-12) : la collecte est relue SOUS le
+    // verrou. Fusionner les champs absents avec la lecture d'avant le verrou
+    // laissait passer deux corrections concurrentes ({quantite} puis {casses})
+    // qui, validées chacune sur l'état périmé, faisaient descendre le net sous
+    // les œufs déjà vendus.
     const production = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${session!.user.id}`}))`
+      const courante = await tx.productionOeuf.findFirst({
+        where: { id: existing.id, userId: session!.user.id },
+      })
+      if (!courante) throw new CollecteIntrouvableError()
       const sorties = await tx.mouvementStockOeuf.findMany({
-        where: { productionId: existing.id, userId: session!.user.id },
+        where: { productionId: courante.id, userId: session!.user.id },
         select: { quantite: true, date: true },
       })
       const refus = refusModificationCollecteEntamee(
-        existing,
+        courante,
         {
-          quantite: updateData.quantite ?? existing.quantite,
-          casses: updateData.casses ?? existing.casses,
-          sales: updateData.sales ?? existing.sales,
-          date: updateData.date ?? existing.date,
-          lotId: updateData.lotId !== undefined ? updateData.lotId : existing.lotId,
-          animalId: updateData.animalId !== undefined ? updateData.animalId : existing.animalId,
+          quantite: updateData.quantite ?? courante.quantite,
+          casses: updateData.casses ?? courante.casses,
+          sales: updateData.sales ?? courante.sales,
+          date: updateData.date ?? courante.date,
+          lotId: updateData.lotId !== undefined ? updateData.lotId : courante.lotId,
+          animalId: updateData.animalId !== undefined ? updateData.animalId : courante.animalId,
         },
         sorties,
         finJourLivraison,
       )
       if (refus) throw new CollecteEntameeError(refus)
       return tx.productionOeuf.update({
-        where: { id: existing.id },
+        where: { id: courante.id },
         data: updateData,
         include: {
           lot: { select: { id: true, nom: true } },
@@ -422,6 +433,9 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: production })
   } catch (error) {
+    if (error instanceof CollecteIntrouvableError) {
+      return NextResponse.json({ error: 'Production non trouvée' }, { status: 404 })
+    }
     if (error instanceof CollecteEntameeError) {
       return NextResponse.json({ error: error.message, code: 'STOCK_OEUFS_MOUVEMENTS_EXISTANTS' }, { status: 409 })
     }

@@ -26,6 +26,35 @@ const mouvementSchema = z
     message: 'Renseignez un animal ou un lot, pas les deux.',
   })
 
+type CibleMouvement = { animalId: number | null; lotId: number | null }
+
+/**
+ * Sérialise les mouvements d'une même bête ou d'un même lot : sans ce verrou,
+ * deux saisies concurrentes recalculaient chacune la position sans voir l'autre.
+ */
+async function verrouillerCible(tx: Prisma.TransactionClient, userId: string, cible: CibleMouvement) {
+  if (cible.animalId) await tx.$queryRaw`SELECT id FROM animaux WHERE id = ${cible.animalId} AND user_id = ${userId} FOR UPDATE`
+  else if (cible.lotId) await tx.$queryRaw`SELECT id FROM lots_animaux WHERE id = ${cible.lotId} AND user_id = ${userId} FOR UPDATE`
+}
+
+/**
+ * Revue Codex ELEV-05 (2026-11-12). Toute écriture de `parcelleGeoId` journalise
+ * un mouvement : le journal fait foi. La position courante est la destination
+ * du mouvement le plus récent par date (à date égale, le dernier saisi) ; sans
+ * mouvement, `repli`. Avant, un POST antidaté écrasait la position, et la
+ * suppression du seul mouvement A→B laissait la bête sans parcelle.
+ */
+async function recalerPosition(tx: Prisma.TransactionClient, userId: string, cible: CibleMouvement, repli: string | null) {
+  const dernier = await tx.mouvementCheptel.findFirst({
+    where: { userId, ...(cible.animalId ? { animalId: cible.animalId } : { lotId: cible.lotId }) },
+    orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    select: { parcelleApresId: true },
+  })
+  const parcelleGeoId = dernier ? dernier.parcelleApresId : repli
+  if (cible.animalId) await tx.animal.updateMany({ where: { id: cible.animalId, userId }, data: { parcelleGeoId } })
+  else if (cible.lotId) await tx.lotAnimaux.updateMany({ where: { id: cible.lotId, userId }, data: { parcelleGeoId } })
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -94,6 +123,7 @@ export async function POST(request: NextRequest) {
     // Le journal et l'emplacement courant forment une seule opération : une
     // erreur ne doit jamais laisser la carte et l'historique en désaccord.
     const m = await prisma.$transaction(async (tx) => {
+      await verrouillerCible(tx, userId, { animalId: d.animalId ?? null, lotId: d.lotId ?? null })
       const mouvement = await tx.mouvementCheptel.create({
         data: {
           userId,
@@ -107,18 +137,9 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      if (d.lotId) {
-        await tx.lotAnimaux.updateMany({
-          where: { id: d.lotId, userId },
-          data: { parcelleGeoId: d.parcelleApresId ?? null },
-        })
-      }
-      if (d.animalId) {
-        await tx.animal.updateMany({
-          where: { id: d.animalId, userId },
-          data: { parcelleGeoId: d.parcelleApresId ?? null },
-        })
-      }
+      // Un mouvement antidaté complète l'historique sans déplacer la bête :
+      // la position reste celle du mouvement le plus récent (ELEV-05).
+      await recalerPosition(tx, userId, { animalId: d.animalId ?? null, lotId: d.lotId ?? null }, d.parcelleApresId ?? null)
       return mouvement
     })
 
@@ -140,23 +161,12 @@ export async function DELETE(request: NextRequest) {
   if (!existing) return NextResponse.json({ error: 'Mouvement non trouvé' }, { status: 404 })
 
   await prisma.$transaction(async (tx) => {
+    const cible = { animalId: existing.animalId, lotId: existing.lotId }
+    await verrouillerCible(tx, session.user.id, cible)
     await tx.mouvementCheptel.delete({ where: { id } })
-    const precedent = await tx.mouvementCheptel.findFirst({
-      where: {
-        userId: session.user.id,
-        ...(existing.animalId ? { animalId: existing.animalId } : { lotId: existing.lotId }),
-      },
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-      select: { parcelleApresId: true },
-    })
-    if (existing.animalId) await tx.animal.updateMany({
-      where: { id: existing.animalId, userId: session.user.id },
-      data: { parcelleGeoId: precedent?.parcelleApresId ?? null },
-    })
-    if (existing.lotId) await tx.lotAnimaux.updateMany({
-      where: { id: existing.lotId, userId: session.user.id },
-      data: { parcelleGeoId: precedent?.parcelleApresId ?? null },
-    })
+    // Sans mouvement restant, la bête retourne d'où ce mouvement l'avait sortie
+    // (ELEV-05) : la parcelle d'origine est enregistrée, elle n'est pas perdue.
+    await recalerPosition(tx, session.user.id, cible, existing.parcelleAvantId)
   })
   return NextResponse.json({ success: true })
 }
