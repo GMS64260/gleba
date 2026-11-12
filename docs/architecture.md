@@ -23,7 +23,7 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 | Auth | NextAuth v5 (Auth.js) | 5.0.0-beta.31 |
 | IA | Agents Paperclip (Normal/Support/Extra) via API | — |
 | Email | Nodemailer | 9.0.3 |
-| Build | Docker multi-stage | Node 20 Alpine |
+| Build | Docker multi-stage | Node sur Alpine (version fixée par le `Dockerfile`) |
 | Reverse Proxy | Caddy | — |
 
 ## Pattern architectural

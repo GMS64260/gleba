@@ -19,7 +19,7 @@ _Ce fichier contient les règles critiques et patterns que les agents IA doivent
 |--------|-------------|---------|-------|
 | Framework | Next.js (App Router) | 16.2.10 | Output standalone pour Docker |
 | Langage | TypeScript | 5.9.3 | strict: true |
-| Runtime | Node.js | 20 (Alpine) | Via Docker |
+| Runtime | Node.js | Version du `Dockerfile` (Alpine) | Via Docker |
 | UI | React | 18 | Client components avec "use client" |
 | CSS | TailwindCSS | 3.4.1 | + tailwindcss-animate |
 | Design System | Shadcn/UI (Radix UI) | Multiple | Composants headless |
@@ -32,7 +32,6 @@ _Ce fichier contient les règles critiques et patterns que les agents IA doivent
 | Auth | NextAuth v5 (Auth.js) | 5.0.0-beta.31 | JWT + Credentials |
 | Email | Nodemailer | 9.0.3 | Vérification email |
 | IA | Agents Paperclip via API | — | Chat assistant (zone privée, variables `GLEBA_PAPERCLIP_*`) |
-| Maths | mathjs | 15.2.0 | Déclarée, aucun import actuel |
 | Dates | date-fns | 4.1.0 | Format FR par défaut |
 | Icônes | Phosphor Icons | 2.1.10 | Les imports `lucide-react` sont redirigés vers `src/lib/phosphor-icons.ts` (`tsconfig.json`) |
 | Linting | ESLint | 8 | next/core-web-vitals + next/typescript |

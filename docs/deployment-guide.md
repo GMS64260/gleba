@@ -12,7 +12,7 @@ Internet → Caddy (HTTPS, reverse proxy) → Docker: gleba_app (:3000) → Dock
 - **URL** : https://gleba.fr
 - **SSL** : Automatique via Caddy (Let's Encrypt)
 - **Container runtime** : Docker Compose
-- **Base image** : `node:20-alpine` (multi-stage build)
+- **Base image** : Node sur Alpine, version fixée en tête de chaque étape du `Dockerfile` (multi-stage build)
 
 ## Docker Build (Production)
 
