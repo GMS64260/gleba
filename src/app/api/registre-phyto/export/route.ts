@@ -332,13 +332,30 @@ export async function GET(request: NextRequest) {
     .filter((l) => !produitFilter || (l.produit?.toLowerCase().includes(produitFilter)))
     .sort((a, b) => a.date.localeCompare(b.date))
 
-  // Rectifications et suppressions de traitements faites pendant la période
-  // (arrêté du 24 décembre 2025, art. 3 : l'original reste retrouvable).
-  const rectifications = await prisma.registrePhytoHistorique.findMany({
-    where: { userId, createdAt: { gte: from, lte: to } },
+  // Rectifications et suppressions (arrêté du 24 décembre 2025, art. 3 :
+  // l'original reste retrouvable). Revue Codex CR-PHY-02 : une rectification
+  // figure dans l'export de la période où elle a été faite ET dans celui de
+  // la date d'utilisation du traitement d'origine. Un traitement 2025 supprimé
+  // en 2026 disparaissait sinon de l'export 2025. Volume faible par compte :
+  // filtrage sur la date d'origine (stockée en JSON) côté serveur.
+  const historique = await prisma.registrePhytoHistorique.findMany({
+    where: { userId },
     orderBy: { createdAt: "asc" },
-    select: { createdAt: true, source: true, sourceId: true, action: true, avant: true, motif: true },
+    select: { createdAt: true, source: true, sourceId: true, action: true, avant: true, motif: true, auteurId: true },
   })
+  const dansPeriode = (d: Date | null) => d != null && d >= from && d <= to
+  const rectificationsBrutes = historique.filter(
+    (r) => dansPeriode(r.createdAt) || dansPeriode(dateUtilisationOriginale(r.avant)),
+  )
+  const auteurIds = [...new Set(rectificationsBrutes.map((r) => r.auteurId).filter((x): x is string => !!x))]
+  const auteurs = auteurIds.length
+    ? await prisma.user.findMany({ where: { id: { in: auteurIds } }, select: { id: true, name: true, email: true } })
+    : []
+  const nomAuteur = new Map(auteurs.map((a) => [a.id, a.name || a.email]))
+  const rectifications: Rectification[] = rectificationsBrutes.map((r) => ({
+    ...r,
+    auteur: r.auteurId ? nomAuteur.get(r.auteurId) ?? "compte supprimé" : null,
+  }))
 
   if (format === "csv") {
     return buildCsv(lignes, user, exploitation, from, to, rectifications)
@@ -353,16 +370,65 @@ type Rectification = {
   action: string
   avant: unknown
   motif: string | null
+  auteur: string | null
 }
 
-/** Résumé lisible de l'état d'avant d'une rectification. */
-function resumeAvant(r: Rectification): string {
+/** Date d'utilisation du traitement d'origine, lue dans l'état conservé. */
+function dateUtilisationOriginale(avant: unknown): Date | null {
+  const brut = (avant as { date?: unknown } | null)?.date
+  if (typeof brut !== "string") return null
+  const d = new Date(brut)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+const NON_CONSERVE = "non conservé"
+
+/**
+ * État d'origine COMPLET d'une rectification, pour les trois sources
+ * (revue Codex CR-PHY-02 : le résumé ne rendait que date, produit, AMM et
+ * dose ; culture, localisation, conduite biologique, surface, stade et
+ * horaires existaient dans l'état conservé sans être exportables). Une valeur
+ * jamais enregistrée à l'époque est dite « non conservé », pas inventée.
+ */
+function etatOriginal(r: Pick<Rectification, "avant">) {
   const a = (r.avant ?? {}) as Record<string, unknown>
-  const date = typeof a.date === "string" ? dateFr(jourCivilStocke(new Date(a.date)) ?? "") : ""
-  const produit = a.produitPhyto ?? a.produit ?? a.description ?? ""
-  const amm = a.numAMM ? ` (AMM ${a.numAMM})` : ""
-  const dose = a.doseAppliquee != null ? ` ${a.doseAppliquee} ${a.uniteDose ?? ""}`.trimEnd() : a.quantite != null ? ` ${a.quantite} ${a.unite ?? ""}`.trimEnd() : ""
-  return [date, `${produit}${amm}${dose}`.trim()].filter(Boolean).join(" · ")
+  const texte = (v: unknown) => (v == null || v === "" ? null : String(v))
+  const date = dateUtilisationOriginale(a)
+  const surfaceHa =
+    typeof a.surfaceTraiteeHa === "number"
+      ? a.surfaceTraiteeHa
+      : typeof a.surfaceTraitee === "number"
+        ? a.surfaceTraitee / 10000
+        : null
+  const bio = a.conduiteBio === true ? "Oui" : a.conduiteBio === false ? "Non" : NON_CONSERVE
+  return {
+    dateUtilisation: date ? dateFr(jourCivilStocke(date) ?? "") : NON_CONSERVE,
+    horaires: [texte(a.heureDebut), texte(a.heureFin)].filter(Boolean).join("-") || null,
+    produit: texte(a.produitPhyto ?? a.produit ?? a.description),
+    amm: texte(a.numAMM),
+    dose: typeof a.doseAppliquee === "number" ? a.doseAppliquee : typeof a.quantite === "number" ? a.quantite : null,
+    unite: texte(a.uniteDose ?? a.unite),
+    surfaceHa,
+    culture: texte(a.cultureRegistre) ?? NON_CONSERVE,
+    localisation: texte(a.localisationRegistre) ?? NON_CONSERVE,
+    conduiteBio: bio,
+    stadeBBCH: texte(a.stadeBBCH),
+  }
+}
+
+/** Ligne lisible de l'état d'origine (PDF). */
+function texteEtatOriginal(r: Rectification): string {
+  const e = etatOriginal(r)
+  return [
+    `utilisé le ${e.dateUtilisation}${e.horaires ? ` (${e.horaires})` : ""}`,
+    `${e.produit ?? "—"}${e.amm ? ` (AMM ${e.amm})` : ""}`,
+    e.dose != null ? `${e.dose} ${e.unite ?? ""}`.trim() : null,
+    e.surfaceHa != null ? `${e.surfaceHa} ha` : null,
+    `culture : ${e.culture}`,
+    `lieu : ${e.localisation}`,
+    `bio : ${e.conduiteBio}`,
+    e.stadeBBCH ? `BBCH ${e.stadeBBCH}` : null,
+  ].filter(Boolean).join(" · ")
 }
 
 /** Mentions de l'annexe I de l'arrêté du 24 décembre 2025, communes aux trois sources. */
@@ -525,16 +591,29 @@ function buildCsv(
   }
   if (rectifications.length > 0) {
     rows.push("")
-    rows.push(["Rectifications et suppressions de la période", "", "", "", ""].map(celluleCsv).join(";"))
-    rows.push(["Le", "Action", "Source", "État d'avant", "Motif"].map(celluleCsv).join(";"))
+    rows.push(
+      [
+        "Rectifications et suppressions (état d'origine conservé ; ces lignes ne sont pas des traitements en vigueur)",
+      ].map(celluleCsv).join(";"),
+    )
+    rows.push(
+      [
+        "Rectifié le", "Action", "Auteur", "Motif", "Source",
+        "Date d'utilisation d'origine", "Horaires", "Produit", "N° AMM", "Dose (valeur)", "Unité de dose",
+        "Surface traitée (ha)", "Culture", "Localisation", "Conduite biologique", "Stade BBCH",
+      ].map(celluleCsv).join(";"),
+    )
     for (const r of rectifications) {
+      const e = etatOriginal(r)
       rows.push(
         [
           dateFr(jourLocalISO(r.createdAt)),
           r.action,
-          `${LIBELLES_SOURCE[r.source as SourceRegistre] ?? r.source} n° ${r.sourceId}`,
-          resumeAvant(r),
+          r.auteur,
           r.motif,
+          `${LIBELLES_SOURCE[r.source as SourceRegistre] ?? r.source} n° ${r.sourceId}`,
+          e.dateUtilisation, e.horaires, e.produit, e.amm, e.dose, e.unite,
+          e.surfaceHa, e.culture, e.localisation, e.conduiteBio, e.stadeBBCH,
         ]
           .map(celluleCsv)
           .join(";"),
@@ -782,14 +861,14 @@ async function buildPdf(
         y += 16
       }
       doc.fontSize(9).fillColor("#0f172a").font("Helvetica-Bold")
-        .text("Rectifications et suppressions de la période", 30, y)
+        .text("Rectifications et suppressions : état d'origine conservé (ne sont pas des traitements en vigueur)", 30, y)
       y += 14
       doc.fontSize(7).font("Helvetica").fillColor("#1e293b")
       for (const r of rectifications) {
         const texte =
-          `${dateFr(jourLocalISO(r.createdAt))} · ${r.action} · ` +
+          `${dateFr(jourLocalISO(r.createdAt))} · ${r.action}${r.auteur ? ` par ${r.auteur}` : ""} · ` +
           `${LIBELLES_SOURCE[r.source as SourceRegistre] ?? r.source} n° ${r.sourceId} · ` +
-          `avant : ${resumeAvant(r) || "—"}${r.motif ? ` · motif : ${r.motif}` : ""}`
+          `origine : ${texteEtatOriginal(r)}${r.motif ? ` · motif : ${r.motif}` : ""}`
         const h = doc.heightOfString(texte, { width: doc.page.width - 60 }) + 3
         if (y + h > doc.page.height - 55) {
           totalPages++

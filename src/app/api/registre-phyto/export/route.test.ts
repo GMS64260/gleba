@@ -22,7 +22,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({
   default: {
-    user: { findUnique: async () => ({ name: "Exploitant", email: "e@example.com", certiphytoNum: null, certiphytoValidite: null }) },
+    user: {
+      findUnique: async () => ({ name: "Exploitant", email: "e@example.com", certiphytoNum: null, certiphytoValidite: null }),
+      findMany: async () => [{ id: "u1", name: "Exploitant", email: "e@example.com" }],
+    },
     exploitation: {
       findUnique: async () => ({
         raisonSociale: "Ferme d'essai",
@@ -150,23 +153,61 @@ describe("export CSV du registre phytosanitaire", () => {
     expect(valeur(lignes[iEntete + 1], "Cible")).toMatch(/^"'=HYPERLINK/)
   })
 
-  it("les rectifications et suppressions de la période sont exportées (C3)", async () => {
-    mocks.historiqueFindMany.mockResolvedValue([
-      {
-        createdAt: new Date("2026-06-01T10:00:00Z"),
-        source: "intervention",
-        sourceId: 9,
-        action: "suppression",
-        avant: { date: "2026-05-20T00:00:00.000Z", produitPhyto: "Produit C", numAMM: "2000001", doseAppliquee: 2, uniteDose: "kg/ha" },
-        motif: "Saisie en double",
-      },
-    ])
+  const suppression2025 = {
+    createdAt: new Date("2026-02-01T10:00:00Z"),
+    source: "intervention",
+    sourceId: 9,
+    action: "suppression",
+    auteurId: "u1",
+    motif: "Saisie en double",
+    avant: {
+      date: "2025-05-20T00:00:00.000Z",
+      produitPhyto: "Produit C",
+      numAMM: "2000001",
+      doseAppliquee: 2,
+      uniteDose: "kg/ha",
+      surfaceTraitee: 1500,
+      cultureRegistre: "Tomate",
+      localisationRegistre: "Planche P3 · GPS 43.2951234, -0.3707890 (WGS84)",
+      conduiteBio: true,
+      stadeBBCH: "65",
+      heureDebut: "06:30",
+    },
+  }
+
+  it("état d'origine COMPLET exporté, avec auteur et motif (C3, CR-PHY-02)", async () => {
+    mocks.historiqueFindMany.mockResolvedValue([{ ...suppression2025, createdAt: new Date("2026-06-01T10:00:00Z") }])
     const { lignes } = await exporter()
     const i = lignes.findIndex((l) => l.includes("Rectifications et suppressions"))
     expect(i).toBeGreaterThan(0)
-    const rectif = lignes[i + 2]
-    expect(rectif).toContain('"suppression"')
-    expect(rectif).toContain("Produit C (AMM 2000001) 2 kg/ha")
-    expect(rectif).toContain('"Saisie en double"')
+    const entete = lignes[i + 1].split(";")
+    const rectif = lignes[i + 2].split(";")
+    const col = (nom: string) => rectif[entete.indexOf(`"${nom}"`)]
+    expect(col("Action")).toBe('"suppression"')
+    expect(col("Auteur")).toBe('"Exploitant"')
+    expect(col("Motif")).toBe('"Saisie en double"')
+    expect(col("Date d'utilisation d'origine")).toBe('"20/05/2025"')
+    expect(col("Culture")).toBe('"Tomate"')
+    expect(col("Localisation")).toContain("43.2951234")
+    expect(col("Conduite biologique")).toBe('"Oui"')
+    expect(col("Surface traitée (ha)")).toBe("0.15")
+    expect(col("Stade BBCH")).toBe('"65"')
+    expect(col("Horaires")).toBe('"06:30"')
+  })
+
+  it("un traitement 2025 supprimé en 2026 reste dans l'export 2025 (CR-PHY-02)", async () => {
+    mocks.historiqueFindMany.mockResolvedValue([suppression2025])
+    const res = await GET(
+      new NextRequest("http://localhost/api/registre-phyto/export?from=2025-01-01&to=2025-12-31&format=csv"),
+    )
+    const texte = await res.text()
+    expect(texte).toContain("Rectifications et suppressions")
+    expect(texte).toContain('"20/05/2025"')
+  })
+
+  it("une rectification hors période, d'un traitement hors période, n'apparaît pas", async () => {
+    mocks.historiqueFindMany.mockResolvedValue([{ ...suppression2025, createdAt: new Date("2024-02-01T10:00:00Z"), avant: { ...suppression2025.avant, date: "2024-01-10T00:00:00.000Z" } }])
+    const { lignes } = await exporter()
+    expect(lignes.some((l) => l.includes("Rectifications et suppressions"))).toBe(false)
   })
 })
