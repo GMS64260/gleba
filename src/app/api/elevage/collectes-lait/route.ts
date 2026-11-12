@@ -336,15 +336,22 @@ export async function PATCH(request: NextRequest) {
       await verrouillerReglements(tx, session.user.id)
       const existing = await tx.collecteLait.findFirst({ where: { id, userId: session.user.id } })
       if (!existing) throw new ErreurElevage('Collecte non trouvée', 404)
-      protegerCollecteAffectee(existing, updates)
-      // Une traite par jour et par cible : redater une collecte sur un jour qui
-      // en porte déjà une créait un doublon (la saisie, elle, complète la
-      // collecte existante). L'index unique de la base ne l'empêchait pas.
       const jour = updates.date !== undefined ? jourTraite(updates.date) : undefined
-      if (jour) {
+      // Redater dans le même jour n'est pas un changement de date (heure seule).
+      const jourChange = jour !== undefined && jour.getTime() !== jourTraite(existing.date).getTime()
+      protegerCollecteAffectee(existing, { ...updates, date: jourChange ? jour : undefined })
+      // Une traite par jour et par cible : redater une collecte ou changer sa
+      // traite vers une clé qui porte déjà une collecte créait un doublon (la
+      // saisie, elle, complète la collecte existante). L'index unique de la
+      // base ne l'empêche pas (lot_id NULL distinct). La clé contrôlée est la
+      // clé FINALE : jour, traite et cible après modification (reliquat
+      // d'ELEV-01 relevé par Codex le 2026-11-12 : traite seule non
+      // contrôlée, ancienne traite comparée quand les deux changeaient).
+      const traiteFinale = updates.traite ?? existing.traite
+      if (jourChange || traiteFinale !== existing.traite) {
         const autre = await tx.collecteLait.findFirst({
           where: {
-            userId: session.user.id, id: { not: id }, date: plageJour(jour), traite: existing.traite,
+            userId: session.user.id, id: { not: id }, date: plageJour(jour ?? jourTraite(existing.date)), traite: traiteFinale,
             animalId: existing.animalId, lotId: existing.lotId,
           },
           select: { id: true },

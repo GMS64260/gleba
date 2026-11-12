@@ -128,4 +128,41 @@ describe('ELEV-01 : une traite par jour civil', () => {
     expect((await res.json()).code).toBe('COLLECTE_DEJA_SAISIE')
     expect(etat.table.find((l) => l.id === 'c2')!.date.toISOString()).toBe('2026-10-31T00:00:00.000Z')
   })
+
+  // Reliquat signalé par Codex sur la première correction : la clé unique
+  // finale (jour, traite, cible) se contrôle aussi quand seule la traite
+  // change, et avec la traite CIBLE quand date et traite changent ensemble.
+  const ligne = (id: string, date: string, traite: string) => ({
+    id, userId: 'u1', date: new Date(date), traite, animalId: 501, lotId: null,
+    quantiteLitres: 2, lotFromageId: null, ecarteAttente: false,
+  })
+
+  it('changer seulement la traite vers une traite déjà saisie ce jour-là est refusé', async () => {
+    etat.table.push(ligne('matin', '2026-11-01T00:00:00Z', 'Matin'), ligne('soir', '2026-11-01T00:00:00Z', 'Soir'))
+
+    const res = await PATCH(requete('PATCH', { id: 'matin', traite: 'Soir' }))
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('COLLECTE_DEJA_SAISIE')
+    expect(etat.table.find((l) => l.id === 'matin')!.traite).toBe('Matin')
+  })
+
+  it('changer date et traite contrôle la traite cible, pas l’ancienne', async () => {
+    etat.table.push(ligne('a', '2026-10-31T00:00:00Z', 'Matin'), ligne('soir-1er', '2026-11-01T00:00:00Z', 'Soir'))
+
+    const res = await PATCH(requete('PATCH', { id: 'a', date: '2026-11-01', traite: 'Soir' }))
+
+    expect(res.status).toBe(409)
+    expect(etat.table.find((l) => l.id === 'a')).toMatchObject({ traite: 'Matin' })
+  })
+
+  it('pas de faux refus : la traite d’origine présente le jour cible n’empêche pas de passer sur une autre traite', async () => {
+    etat.table.push(ligne('a', '2026-10-31T00:00:00Z', 'Matin'), ligne('matin-1er', '2026-11-01T00:00:00Z', 'Matin'))
+
+    const res = await PATCH(requete('PATCH', { id: 'a', date: '2026-11-01', traite: 'Soir' }))
+
+    expect(res.status).toBe(200)
+    expect(etat.table.find((l) => l.id === 'a')!.date.toISOString()).toBe('2026-11-01T00:00:00.000Z')
+    expect(etat.table.find((l) => l.id === 'a')!.traite).toBe('Soir')
+  })
 })
