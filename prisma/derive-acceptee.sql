@@ -1,0 +1,10 @@
+-- Écarts acceptés entre prisma/schema.prisma et une base migrée de zéro.
+--
+-- Contrôlé en CI (job base-neuve) par scripts/verifier-derive-schema.mjs :
+-- la sortie de `prisma migrate diff --from-schema-datasource
+-- prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script`
+-- doit contenir exactement ces instructions (ordre et commentaires ignorés).
+-- Toute nouvelle instruction fait échouer la CI. Ce fichier n'est jamais
+-- exécuté ; il ne doit contenir que des écarts sans risque, justifiés ici.
+--
+-- Aucun écart accepté : le schéma et les migrations décrivent la même base.
