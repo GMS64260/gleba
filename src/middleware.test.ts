@@ -136,3 +136,44 @@ describe("middleware : adresse inexistante sans session (audit SEO du 2026-11-09
     expect(res.status).toBe(200)
   })
 })
+
+describe("middleware : photos envoyées d'une autre exploitation (revue de sécurité du 2026-11-11)", () => {
+  const FICHIER = "0f8fad5b-d9cb-469f-a165-70867728950e-1200.jpg"
+  const demander = (chemin: string) => (middleware as unknown as (req: NextRequest) => Response)(new NextRequest("http://localhost" + chemin))
+
+  it("laisse le propriétaire du dossier lire sa photo en direct", () => {
+    session.courante = { user: { id: "compte-a", role: "USER" } }
+    const reponse = demander(`/uploads/compte-a/${FICHIER}`)
+    expect(reponse.headers.get("x-middleware-rewrite")).toBeNull()
+    expect(reponse.headers.get("x-middleware-next")).toBe("1")
+  })
+
+  it("confie à la route contrôlée la photo d'un dossier qui n'est pas celui de la personne connectée", () => {
+    session.courante = { user: { id: "compte-a", role: "USER" } }
+    const reponse = demander(`/uploads/compte-b/${FICHIER}`)
+    expect(reponse.headers.get("x-middleware-rewrite")).toBe(`http://localhost/api/upload/photo/compte-b/${FICHIER}`)
+  })
+
+  it("transmet à la route réécrite le contexte de la destination, que la garde d'abonnement laisse passer", async () => {
+    const { ENTETE_CHEMIN, ENTETE_METHODE, operationPermise } = await import("@/lib/abonnement/requetes")
+    const { accesGratuit } = await import("@/lib/abonnement/politique")
+    session.courante = { user: { id: "compte-a", role: "USER" } }
+    const reponse = demander(`/uploads/compte-b/${FICHIER}`)
+    // Next transmet les en-têtes de requête modifiés sous ce préfixe.
+    const transmis = (nom: string) => reponse.headers.get("x-middleware-request-" + nom)
+    expect(transmis(ENTETE_CHEMIN)).toBe(`/api/upload/photo/compte-b/${FICHIER}`)
+    expect(transmis(ENTETE_METHODE)).toBe("GET")
+    expect(operationPermise(accesGratuit("gratuit"), transmis(ENTETE_CHEMIN)!, transmis(ENTETE_METHODE)!)).toBe(true)
+    // Témoin : avec le chemin d'origine, la même garde refusait.
+    expect(operationPermise(accesGratuit("gratuit"), `/uploads/compte-b/${FICHIER}`, "GET")).toBe(false)
+  })
+
+  it("garde le refus des anciens justificatifs d'un autre compte et le renvoi d'un visiteur vers la connexion", () => {
+    session.courante = { user: { id: "compte-a", role: "USER" } }
+    expect(demander("/uploads/compte-b/justificatifs/a.pdf").status).toBe(404)
+    session.courante = null
+    const reponse = demander(`/uploads/compte-b/${FICHIER}`)
+    expect(reponse.status).toBe(307)
+    expect(reponse.headers.get("x-middleware-rewrite")).toBeNull()
+  })
+})
