@@ -8,8 +8,6 @@
  * l'équipe, sans journal des suppressions.
  */
 
-import { jourLocalISO } from "@/lib/jour-civil"
-
 /** Nombre de messages par page (fenêtre récente comme historique). */
 export const TAILLE_PAGE_SALON = 50
 
@@ -81,7 +79,12 @@ export function ajouterPageAncienneSalon(
 }
 
 /** Clé de jour local (AAAA-MM-JJ) d'une date, pour séparer le fil par jour. */
-export const cleJourSalon = jourLocalISO
+export function cleJourSalon(date: Date): string {
+  const a = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const j = String(date.getDate()).padStart(2, "0")
+  return `${a}-${m}-${j}`
+}
 
 /** « Aujourd'hui », « Hier », sinon la date en toutes lettres. */
 export function libelleJourSalon(date: Date, maintenant: Date = new Date()): string {
