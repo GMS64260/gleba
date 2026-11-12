@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { arreterAvantSuppression } from "@/lib/abonnement/stripe"
 import { requireAdminApi, hashPassword } from "@/lib/auth-utils"
+import { REVOCATION_CHANGEMENT_MOT_DE_PASSE } from "@/lib/mot-de-passe-revocation"
 import { reprendreReferentielCommunaute, COMMUNAUTE_USER_ID, supprimerDonneesSansCleEtrangere, supprimerFichiersUtilisateur } from "@/lib/account-lifecycle"
 
 interface RouteParams {
@@ -114,6 +115,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updateData: {
       name?: string | null
       password?: string
+      resetPasswordToken?: null
+      resetPasswordExpires?: null
+      apiToken?: null
       role?: "ADMIN" | "USER"
       active?: boolean
       emailVerified?: boolean
@@ -135,6 +139,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         )
       }
       updateData.password = await hashPassword(password)
+      // Un mot de passe posé par l'administrateur révoque, comme les autres
+      // chemins, le lien de réinitialisation en cours et le jeton d'API
+      // (SEC-01, revue Codex du 2026-11-12).
+      Object.assign(updateData, REVOCATION_CHANGEMENT_MOT_DE_PASSE)
     }
 
     // Mise a jour
