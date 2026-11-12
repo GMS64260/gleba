@@ -111,7 +111,6 @@
 | POST | `/api/arbres/observations` | Créer observation santé |
 | GET | `/api/arbres/pollinisation` | Matrice de pollinisation |
 | GET | `/api/arbres/zones` | Lister zones verger |
-| POST | `/api/arbres/zones` | Créer zone verger |
 | GET | `/api/arbres/taches` | Tâches verger à venir |
 
 ## Module Élevage

@@ -11,8 +11,8 @@ import { surfacePlanche } from './surface'
  * ni l'écran Planches ne proposaient de série. Il a fini par saisir ses 33
  * planches à la main, en laissant 29 sans îlot.
  *
- * Source de vérité unique du nommage et de la création, partagée par la route
- * `POST /api/planches/serie` et l'outil d'assistant `create_planches_serie`.
+ * Source de vérité unique du nommage et de la création, utilisée par l'outil
+ * d'assistant `create_planches_serie`.
  */
 
 /** Plafond volontaire : au-delà, c'est un import, pas une saisie guidée. */
