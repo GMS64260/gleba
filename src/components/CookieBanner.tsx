@@ -136,7 +136,7 @@ export function CookieBanner() {
                     className="h-4 w-4"
                   />
                   <span className="text-xs">
-                    <strong>Mesure d&apos;audience</strong> — statistiques de fréquentation anonymes.
+                    <strong>Mesure d&apos;audience</strong> — statistiques de fréquentation anonymes, sans cookie. Décochez pour vous y opposer.
                   </span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
