@@ -2,13 +2,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 const mocks = vi.hoisted(() => ({
   soinFindFirst: vi.fn(), soinUpdate: vi.fn(), queryRaw: vi.fn(), executeRaw: vi.fn(),
-  resync: vi.fn(), cibles: vi.fn(),
+  resync: vi.fn(), cibles: vi.fn(), annulationCreate: vi.fn(), stockUpdate: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => {
   const tx = {
     soinAnimal: { update: mocks.soinUpdate, findFirst: mocks.soinFindFirst },
-    stockMedicamentElevage: { updateMany: vi.fn(), update: vi.fn(), findFirst: vi.fn().mockResolvedValue(null) },
+    stockMedicamentElevage: { updateMany: vi.fn(), update: mocks.stockUpdate, findFirst: vi.fn().mockResolvedValue({ quantite: 5, notes: null }) },
+    annulationSoinAnimal: { create: mocks.annulationCreate },
+    injectionSoin: { findMany: vi.fn().mockResolvedValue([]) },
     $queryRaw: mocks.queryRaw,
     $executeRaw: mocks.executeRaw,
   }
@@ -155,5 +157,58 @@ describe('injections : calendrier et dates réelles (tickets vigie2cc83585 / cmu
     mocks.queryRaw.mockResolvedValueOnce([{ id: 'i2', numero: 2, statut: 'a_faire', datePrevue: J('2026-07-11T00:00:00Z'), dateRealisee: null }])
     const res = await daterInjection('u', 233, { injectionId: 'i2', statut: 'a_faire', dateRealisee: J('2026-07-11T00:00:00Z') })
     expect(res).toMatchObject({ ok: false, status: 400 })
+  })
+
+  // C9 (revue réglementaire du 2026-11-12) : « Rouvrir » une injection
+  // réalisée rendait les doses et raccourcissait ou levait le délai d'attente,
+  // en un clic, sans trace. Elle n'est plus rouverte que pour une erreur de
+  // saisie motivée, journalisée.
+  describe('rouvrir ou annuler une injection réalisée (C9)', () => {
+    const soinPreleve = { ...soinUbrolexin, nbInjections: 1, intervalleInjectionsHeures: null, stockMedicamentId: 'stock-1', quantite: 3, quantitePreleveeStock: 3 }
+    const realisee = [{ id: 'i1', numero: 1, statut: 'realisee', datePrevue: soinUbrolexin.date, dateRealisee: soinUbrolexin.date }]
+
+    it.each(['a_faire', 'annulee'] as const)('vers « %s » sans motif : refus, rien n’est rendu ni recalculé', async (statut) => {
+      mocks.soinFindFirst.mockResolvedValue(soinPreleve)
+      mocks.queryRaw.mockResolvedValueOnce(realisee)
+      const res = await daterInjection('u', 233, { injectionId: 'i1', statut }, { gererStock: true })
+      expect(res).toMatchObject({ ok: false, status: 409, code: 'ANNULATION_MOTIVEE_REQUISE' })
+      expect(mocks.executeRaw).not.toHaveBeenCalled()
+      expect(mocks.stockUpdate).not.toHaveBeenCalled()
+      expect(mocks.resync).not.toHaveBeenCalled()
+    })
+
+    it('administration réelle déclarée : refus', async () => {
+      mocks.soinFindFirst.mockResolvedValue(soinPreleve)
+      mocks.queryRaw.mockResolvedValueOnce(realisee)
+      const res = await daterInjection('u', 233, { injectionId: 'i1', statut: 'a_faire' }, {
+        gererStock: true, annulation: { nature: 'administre', motif: 'Mauvais bouton' },
+      })
+      expect(res).toMatchObject({ ok: false, status: 409, code: 'SOIN_ADMINISTRE_CONSERVE' })
+      expect(mocks.executeRaw).not.toHaveBeenCalled()
+    })
+
+    it('erreur de saisie motivée : journal de l’injection rouverte, puis doses rendues', async () => {
+      mocks.soinFindFirst.mockResolvedValue(soinPreleve)
+      const rouverte = [{ ...realisee[0], statut: 'a_faire', dateRealisee: null }]
+      mocks.queryRaw.mockResolvedValueOnce(realisee).mockResolvedValueOnce(rouverte)
+      const res = await daterInjection('u', 233, { injectionId: 'i1', statut: 'a_faire' }, {
+        gererStock: true, annulation: { nature: 'erreur_saisie', motif: 'Injection prévue cochée trop tôt' }, acteurId: 'invite-2',
+      })
+      expect(res.ok).toBe(true)
+      expect(mocks.annulationCreate.mock.calls[0][0].data).toMatchObject({
+        userId: 'u', soinId: 233, action: 'injection_rouverte', injectionNumero: 1,
+        nature: 'erreur_saisie', motif: 'Injection prévue cochée trop tôt', acteurId: 'invite-2',
+      })
+      expect(mocks.stockUpdate).toHaveBeenCalledWith({ where: { id: 'stock-1' }, data: { quantite: { increment: 3 } } })
+    })
+
+    it('annuler une injection encore à faire ne demande rien', async () => {
+      mocks.soinFindFirst.mockResolvedValue(soinUbrolexin)
+      const aFaire = [{ id: 'i2', numero: 2, statut: 'a_faire', datePrevue: J('2026-09-28T12:00:00Z'), dateRealisee: null }]
+      mocks.queryRaw.mockResolvedValueOnce(aFaire).mockResolvedValueOnce([{ ...aFaire[0], statut: 'annulee' }])
+      const res = await daterInjection('u', 233, { injectionId: 'i2', statut: 'annulee' })
+      expect(res.ok).toBe(true)
+      expect(mocks.annulationCreate).not.toHaveBeenCalled()
+    })
   })
 })

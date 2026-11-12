@@ -48,6 +48,26 @@ const formatDate = (date: Date | string | null | undefined) =>
 const texteNormalise = (value: string | null | undefined) =>
   (value ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
 
+const LIBELLES_ACTION_ANNULATION: Record<string, string> = {
+  suppression: "soin effacé",
+  reouverture: "soin remis « à faire »",
+  injection_rouverte: "injection remise « à faire »",
+  injection_annulee: "injection annulée",
+}
+
+/** Résumé lisible de l'original conservé au journal des annulations (C9). */
+function resumeInstantaneSoin(instantane: unknown): string {
+  const soin = (instantane as { soin?: Record<string, unknown> } | null)?.soin ?? {}
+  const animal = soin.animal as { identifiant?: string | null; nom?: string | null } | null | undefined
+  const lot = soin.lot as { nom?: string | null; id?: number } | null | undefined
+  const produit = (soin.produitVeterinaire as { nom?: string } | null | undefined)?.nom || (soin.produit as string | null) || "produit non renseigné"
+  const cible = animal
+    ? animal.identifiant || animal.nom || "animal"
+    : lot ? lot.nom || `Lot #${lot.id}` : "cible non renseignée"
+  const quantite = soin.quantite != null ? ` · ${soin.quantite} ${soin.unite ?? ""}`.trimEnd() : ""
+  return `original : ${formatDate(soin.date as string | undefined)} · ${soin.type ?? "type ?"} · ${cible} · ${produit}${quantite}`
+}
+
 type LigneMouvement = {
   date: Date
   type: string
@@ -97,6 +117,7 @@ export async function GET(request: NextRequest) {
     justificatifsAliments,
     justificatifsEquarrissage,
     declarations,
+    annulationsSoins,
   ] = await Promise.all([
     prisma.exploitation.findUnique({
       where: { userId },
@@ -244,6 +265,23 @@ export async function GET(request: NextRequest) {
       },
     }),
     chargerDeclarationsReglementaires(userId, { year, maintenant }),
+    // C9 (2026-11-13) : soins administrés effacés ou rouverts pour erreur de
+    // saisie, avec leur original. Le dossier les montre plutôt que de les taire.
+    prisma.annulationSoinAnimal.findMany({
+      where: { userId, createdAt: { gte: debut, lt: fin } },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        soinIdOrigine: true,
+        action: true,
+        nature: true,
+        motif: true,
+        acteurId: true,
+        injectionNumero: true,
+        instantane: true,
+        createdAt: true,
+      },
+    }),
   ])
 
   const inventaireAnimaux = animaux.filter((animal) => animal.statut === "actif")
@@ -712,7 +750,9 @@ export async function GET(request: NextRequest) {
     for (const soin of soins) {
       const cible = soin.animal
         ? soin.animal.identifiant || soin.animal.nom || `Animal #${soin.animal.id}`
-        : soin.lot?.nom || (soin.lot ? `Lot #${soin.lot.id}` : "Cible non renseignée")
+        : soin.lot
+          ? `${soin.lot.nom || `Lot #${soin.lot.id}`}${soin.effectifTraite ? ` (${soin.effectifTraite} traité${soin.effectifTraite > 1 ? "s" : ""} au jour du soin)` : ""}`
+          : "Cible non renseignée"
       const produit = soin.produitVeterinaire?.nom || soin.produit || "produit non renseigné"
       const injections = soin.injections.length > 1
         ? ` · injections ${soin.injections.filter((injection) => injection.dateRealisee).length}/${soin.injections.length}`
@@ -722,6 +762,13 @@ export async function GET(request: NextRequest) {
       )
     }
     if (!soins.length) vide("Aucun soin enregistré sur la période.")
+    titreSection("4 bis. Soins annulés pour erreur de saisie")
+    for (const annulation of annulationsSoins) {
+      ligne(
+        `${formatDate(annulation.createdAt)} · soin n° ${annulation.soinIdOrigine} · ${LIBELLES_ACTION_ANNULATION[annulation.action] ?? annulation.action}${annulation.injectionNumero ? ` (injection ${annulation.injectionNumero})` : ""} · ${resumeInstantaneSoin(annulation.instantane)} · motif : ${annulation.motif}`,
+      )
+    }
+    if (!annulationsSoins.length) vide("Aucune annulation de soin administré sur la période.")
 
     titreSection("5. Prophylaxies, analyses et visites")
     for (const prophylaxie of prophylaxies) {
@@ -850,6 +897,12 @@ export async function GET(request: NextRequest) {
         dateRealisee: injection.dateRealisee,
       })),
     })),
+    annulationsSoins: annulationsSoins.map((item) => ({
+      id: item.id,
+      soinIdOrigine: item.soinIdOrigine,
+      action: item.action,
+      createdAt: item.createdAt,
+    })),
     prophylaxies: prophylaxies.map((item) => ({ id: item.id, updatedAt: item.updatedAt })),
     pharmacie: pharmacie.map((item) => ({ id: item.id, updatedAt: item.updatedAt })),
     consommationsAliments: consommationsAliments.map((item) => ({
@@ -885,6 +938,7 @@ export async function GET(request: NextRequest) {
     lots: inventaireLots.length,
     mouvements: mouvements.length,
     soins: soins.length,
+    annulationsSoins: annulationsSoins.length,
     declarations: declarations.declarations.length,
     annexesReferencees: pieces.length,
     distributionsAliments: consommationsAliments.length,

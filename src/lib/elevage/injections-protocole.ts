@@ -155,10 +155,12 @@ import { ciblesLaitAffectees, resyncEcartementLait } from './attente-lait'
 import { fenetreSoin, restituerPrelevement } from './suppression-soin'
 import { debutJourCivilSoin } from './stock-medicament'
 import { invalidateKpi } from '@/lib/kpi'
+import { controlerAnnulation, journaliserAnnulationSoin } from './annulation-soin'
+import { effectifTraiteAuJour } from './effectif-traite'
 
 export type ResultatEcriture<T> =
   | { ok: true; soin: T }
-  | { ok: false; status: number; error: string }
+  | { ok: false; status: number; error: string; code?: string }
 
 export interface DatationInjection {
   injectionId?: string
@@ -194,6 +196,13 @@ export async function daterInjection(
      * coût) : une source et son miroir ne se séparent pas.
      */
     dansTransaction?: (tx: Prisma.TransactionClient, soin: Prisma.SoinAnimalGetPayload<Record<string, never>>) => Promise<unknown>
+    /**
+     * C9 : nature et motif, exigés pour rouvrir ou annuler une injection
+     * RÉALISÉE (`controlerAnnulation`). Une injection à faire s'annule librement.
+     */
+    annulation?: unknown
+    /** Personne connectée ; le titulaire du compte par défaut. */
+    acteurId?: string
   } = {},
 ): Promise<ResultatEcriture<Prisma.SoinAnimalGetPayload<Record<string, never>> & { injections: InjectionLigne[] }>> {
   const soin = await prisma.soinAnimal.findFirst({ where: { id: soinId, userId } })
@@ -217,10 +226,28 @@ export async function daterInjection(
     return { ok: false, status: 400, error: 'Date réelle invalide.' }
   }
 
+  // C9 (revue réglementaire du 2026-11-12) : « Rouvrir » une injection
+  // réalisée rendait ses doses et raccourcissait ou levait le délai d'attente,
+  // en un clic et sans trace. Seule une erreur de saisie motivée la défait.
+  const defaitRealisation = cible.statut === 'realisee' && statut !== 'realisee'
+  const demande = defaitRealisation ? controlerAnnulation(options.annulation) : null
+  if (demande && !demande.ok) return demande
+
   const beforeMax = soin.finAttenteLait
   try {
     const result = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, userId)
+      if (demande?.ok) {
+        await journaliserAnnulationSoin(tx, {
+          userId,
+          acteurId: options.acteurId ?? userId,
+          soinId,
+          action: statut === 'annulee' ? 'injection_annulee' : 'injection_rouverte',
+          demande: demande.demande,
+          injectionNumero: cible.numero,
+          injections,
+        })
+      }
       await tx.$executeRaw`
         UPDATE injections_soins
         SET statut = ${statut}, date_realisee = ${dateRealisee}, updated_at = NOW()
@@ -268,6 +295,13 @@ export async function daterInjection(
           quantitePreleveeStock = 0
         }
         data.quantitePreleveeStock = quantitePreleveeStock
+      }
+      // C10 : effectif du lot traité figé quand le soin devient administré le
+      // jour même ; effacé s'il redevient « à faire ».
+      if (fenetres.fait !== courant.fait) {
+        data.effectifTraite = fenetres.fait
+          ? await effectifTraiteAuJour(tx, userId, soin.lotId, dateRealisee ?? soin.date)
+          : null
       }
 
       const updated = await tx.soinAnimal.update({ where: { id: soinId }, data })
