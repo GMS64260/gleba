@@ -41,7 +41,9 @@ export async function GET(
       session.user.id,
       archive.stockageNom,
     ))
-  } catch {
+  } catch (e) {
+    // Une archive réglementaire référencée en base mais illisible est un incident.
+    console.error("GET /api/elevage/registres-archives/[id] error:", e)
     return NextResponse.json(
       { error: "Le fichier archivé est introuvable. Contactez le support." },
       { status: 404 },

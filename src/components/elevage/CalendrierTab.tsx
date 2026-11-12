@@ -37,6 +37,7 @@ import { PastilleEtat } from "@/components/accueil/PastilleEtat"
 import { etatEcheance } from "@/lib/accueil/elevage"
 import type { EcheanceElevage } from "@/lib/elevage/agenda.server"
 import { libelleDatePrevue, libelleRetard } from "@/lib/accueil/etat-tache"
+import { jourLocalISO } from "@/lib/jour-civil"
 
 // ============================================================
 // Types
@@ -161,9 +162,7 @@ function lundiDe(date: Date): Date {
 }
 
 /** AAAA-MM-JJ en heure locale (pas d'ISO UTC : un lundi 00:00 à Paris serait un dimanche). */
-function cleJourLocal(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
-}
+const cleJourLocal = jourLocalISO
 
 /** Décalage en semaines entre la semaine courante et celle du paramètre d'URL ; 0 si absent ou invalide. */
 function offsetDepuisParam(param: string | null): number {
@@ -213,12 +212,7 @@ function libelleCibleSoin(soin: Pick<SoinTask, 'animal' | 'lot'>): string {
 // `toISOString()` retourne du UTC : un dimanche local 00:00 CEST devient
 // samedi 22:00 UTC, donc split('T')[0] décale la clé d'un jour. On clé
 // désormais sur le couple année-mois-jour local de la date.
-function localDateKey(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+const localDateKey = jourLocalISO
 
 // ============================================================
 // Composant principal

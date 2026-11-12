@@ -60,6 +60,7 @@ export function DocumentsCommerciaux({ type, onFacture }: { type: 'devis' | 'liv
     setDocumentCible(q.get('document') || '')
     if (q.get('stock') && type === 'livraison') { setPreselection(q.get('stock')!); setEditeur({ cle: crypto.randomUUID() }) }
     setPret(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lecture unique de l'URL au montage
   }, [])
 
   React.useEffect(() => {

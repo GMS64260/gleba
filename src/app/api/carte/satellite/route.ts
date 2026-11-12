@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     })
 
     if (!response.ok) {
-      console.error(`WMS IGN erreur: ${response.status} ${response.statusText}`)
+      console.error(`GET /api/carte/satellite error: WMS IGN erreur ${response.status} ${response.statusText}`)
       return NextResponse.json(
         { error: 'Impossible de récupérer l\'image satellite depuis l\'IGN' },
         { status: 502 }
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     // Si l'IGN retourne du XML au lieu d'une image, c'est une erreur
     if (contentType.includes('xml') || contentType.includes('text')) {
       const text = await response.text()
-      console.error('WMS IGN a retourné une erreur:', text)
+      console.error('GET /api/carte/satellite error: WMS IGN a retourné une erreur:', text)
       return NextResponse.json(
         { error: 'L\'IGN a retourné une erreur au lieu d\'une image' },
         { status: 502 }

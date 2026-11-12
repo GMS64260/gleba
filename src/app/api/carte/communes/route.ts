@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     })
 
     if (!response.ok) {
-      console.error(`API Geo erreur ${response.status}:`, await response.text().catch(() => ''))
+      console.error(`GET /api/carte/communes error: API Geo erreur ${response.status}:`, await response.text().catch(() => ''))
       return NextResponse.json(
         { error: 'L\'API Geo est temporairement indisponible' },
         { status: 502 }

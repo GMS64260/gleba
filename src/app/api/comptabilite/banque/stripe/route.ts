@@ -14,6 +14,8 @@ export async function POST() {
   try {
     return NextResponse.json(await preparerConnexionStripe(session.user.id, session.user.acteurId))
   } catch (e) {
+    // Nom seul : ne jamais imprimer une clé ou un jeton de connexion.
+    if (!(e instanceof ErreurReglement)) console.error('POST /api/comptabilite/banque/stripe error:', e instanceof Error ? e.name : 'inconnue')
     return NextResponse.json(
       { error: e instanceof ErreurReglement ? e.message : 'Connexion indisponible.' },
       { status: e instanceof ErreurReglement ? e.status : 500 },

@@ -43,9 +43,17 @@ describe('Courriels commerciaux : traçabilité sans double envoi', () => {
     expect(await envoyerCommercial('ferme', entree)).toMatchObject({ statut: 'refuse' })
   })
   it('rend un résultat incertain après coupure et ne lance aucun second envoi', async () => {
-    m.send.mockRejectedValue(new Error('coupure'))
-    expect(await envoyerCommercial('ferme', entree)).toMatchObject({ statut: 'a_verifier' })
-    expect(m.send).toHaveBeenCalledTimes(1)
+    m.send.mockRejectedValue(Object.assign(new Error('coupure après RCPT TO <client@example.test>'), { code: 'ECONNECTION' }))
+    const journal = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await envoyerCommercial('ferme', entree)).toMatchObject({ statut: 'a_verifier' })
+      expect(m.send).toHaveBeenCalledTimes(1)
+      // La panne laisse une trace, sans l'adresse du destinataire.
+      expect(journal).toHaveBeenCalledWith('[commercial] envoi document error:', 'Error', 'ECONNECTION')
+      expect(journal.mock.calls.flat().map(String).join(' ')).not.toContain('client@example.test')
+    } finally {
+      journal.mockRestore()
+    }
   })
   it('refuse la démo, un SMTP absent, un brouillon et un document étranger', async () => {
     m.user.mockResolvedValue({ email: 'demo@gleba.fr' })

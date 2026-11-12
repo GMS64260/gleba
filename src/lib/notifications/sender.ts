@@ -41,17 +41,11 @@ import {
   type NotifPrefs,
 } from "./prefs"
 import { fetchOpenMeteoForecast } from "@/lib/meteo"
+import { jourLocalISO } from "@/lib/jour-civil"
 import {
   construirePayloadAlerteUrgente,
   envoyerPushUtilisateur,
 } from "@/lib/push"
-
-/** Jour civil local au format YYYY-MM-DD, pour sceller un envoi quotidien. */
-function jourLocalIso(date = new Date()): string {
-  const mois = String(date.getMonth() + 1).padStart(2, "0")
-  const jour = String(date.getDate()).padStart(2, "0")
-  return `${date.getFullYear()}-${mois}-${jour}`
-}
 
 /** Nombre maximal d'emails envoyés par utilisateur et par scan (anti-spam). */
 const MAX_EMAILS_PAR_UTILISATEUR = 15
@@ -114,7 +108,7 @@ export async function envoyerAlertesMeteoTempsReel(): Promise<number> {
       if (!prefs.meteo) continue
       total += await traiterMeteoUtilisateur(user)
     } catch (error) {
-      console.error(`[notifications] Scan météo échoué pour ${user.email}:`, error)
+      console.error(`[notifications] Scan météo échoué pour ${user.id}:`, error)
     }
   }
   return total
@@ -168,7 +162,7 @@ async function traiterMeteoUtilisateur(user: DestinataireNotification): Promise<
       envoyees.add(cle)
       total++
     } catch (error) {
-      console.error(`[notifications] Envoi alerte météo échoué pour ${user.email}:`, error)
+      console.error(`[notifications] Envoi alerte météo échoué pour ${user.id}:`, error)
     }
   }
   return total
@@ -216,14 +210,14 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
           await sendMail({ to: user.email, subject, html, headers })
           emailEnvoye = true
         } catch (error) {
-          console.error(`[notifications] Envoi alerte urgente échoué pour ${user.email}:`, error)
+          console.error(`[notifications] Envoi alerte urgente échoué pour ${user.id}:`, error)
         }
 
         try {
           await envoyerPushUtilisateur(user.id, construirePayloadAlerteUrgente(alerte))
         } catch (error) {
           // Une panne push ne doit jamais empêcher la livraison email ni le scan.
-          console.error(`[notifications] Envoi push urgent échoué pour ${user.email}:`, error)
+          console.error(`[notifications] Envoi push urgent échoué pour ${user.id}:`, error)
         }
 
         // L'alerte est scellée dès que l'email a été livré ; une subscription
@@ -235,7 +229,7 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
       }
       total += envoyees
     } catch (error) {
-      console.error(`[notifications] Scan urgent échoué pour ${user.email}:`, error)
+      console.error(`[notifications] Scan urgent échoué pour ${user.id}:`, error)
     }
   }
   return total
@@ -255,7 +249,7 @@ export async function envoyerResumeQuotidien(): Promise<number> {
   await nettoyerAlertesEnvoyees()
   await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()
-  const jour = jourLocalIso()
+  const jour = jourLocalISO(new Date())
   let total = 0
   for (const user of users) {
     try {
@@ -281,7 +275,7 @@ export async function envoyerResumeQuotidien(): Promise<number> {
       await marquerAlerteEnvoyee(cleResume, { until: jour })
       total++
     } catch (error) {
-      console.error(`[notifications] Résumé quotidien échoué pour ${user.email}:`, error)
+      console.error(`[notifications] Résumé quotidien échoué pour ${user.id}:`, error)
     }
   }
   return total

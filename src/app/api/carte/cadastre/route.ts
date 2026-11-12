@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         )
       }
-      console.error(`API IGN erreur ${response.status}:`, await response.text().catch(() => ''))
+      console.error(`GET /api/carte/cadastre error: API IGN erreur ${response.status}:`, await response.text().catch(() => ''))
       return NextResponse.json(
         { error: 'L\'API IGN est temporairement indisponible' },
         { status: 502 }

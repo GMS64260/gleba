@@ -16,6 +16,7 @@
 
 import type { MeteoActuelle, MeteoPrevision } from "@/lib/meteo"
 import { DUREE_CULTURE_DEFAUT } from "@/lib/plan-croissance"
+import { jourLocalISO } from "@/lib/jour-civil"
 import type { AlerteMeteoNotification, AlerteUrgente, TypeAlerteMeteo } from "./types"
 
 export const SEUILS_METEO = {
@@ -30,10 +31,7 @@ export const SEUILS_METEO = {
 const CODES_GRÊLE = [96, 99]
 
 function todayIso(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
-    now.getDate()
-  ).padStart(2, "0")}`
+  return jourLocalISO(new Date())
 }
 
 /**
@@ -188,10 +186,7 @@ export function coordKey(lat: number, lng: number): string {
 
 /** Date locale du serveur (fuseau TZ, ex. Europe/Paris) au format YYYY-MM-DD. */
 export function dateLocaleIso(date: Date = new Date()): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
+  return jourLocalISO(date)
 }
 
 /** Début de journée locale (minuit) sous forme de Date. */

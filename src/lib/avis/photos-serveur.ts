@@ -62,6 +62,7 @@ export async function preparerPhotosAvis(value: unknown, droits: unknown, nouvel
 export function reponseErreurAvis(error: unknown): Response {
   const code = error && typeof error === 'object' && 'code' in error ? error.code : null
   const status = error instanceof ErreurAvis ? error.status : code === 'P2002' || code === 'P2034' ? 409 : code === 'P2003' || code === 'P2025' ? 404 : 500
+  if (status === 500) console.error('Avis error:', error)
   const message = error instanceof ErreurAvis ? error.message : status === 409 ? 'Cet avis vient de changer. Rechargez-le avant de réessayer.' : status === 404 ? 'Cet élément n’est plus disponible.' : 'L’opération n’a pas pu être enregistrée.'
   return Response.json({ error: message }, { status, headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie' } })
 }

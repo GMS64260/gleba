@@ -46,24 +46,56 @@ afterEach(() => {
 describe('retour OAuth Stripe', () => {
   it('signale un compte déjà actif dans une autre exploitation par une valeur dédiée', async () => {
     mocks.terminer.mockRejectedValue(new ErreurStripeActifAilleurs())
+    const journal = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    const reponse = await retour()
+    try {
+      const reponse = await retour()
 
-    expect(reponse.status).toBe(307)
-    expect(reponse.headers.get('location')).toBe(
-      'https://gleba.test/comptabilite/banque?connexion=deja-active',
-    )
-    expect(mocks.terminer).toHaveBeenCalledWith('u1', 'u1', 'etat', 'ac_fictif')
+      expect(reponse.status).toBe(307)
+      expect(reponse.headers.get('location')).toBe(
+        'https://gleba.test/comptabilite/banque?connexion=deja-active',
+      )
+      expect(mocks.terminer).toHaveBeenCalledWith('u1', 'u1', 'etat', 'ac_fictif')
+      expect(journal).not.toHaveBeenCalled()
+    } finally {
+      journal.mockRestore()
+    }
   })
 
   it('garde l’échec générique pour les autres erreurs, même en 409', async () => {
     mocks.terminer.mockRejectedValue(new ErreurReglement('Cette connexion a expiré.'))
+    const journal = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    const reponse = await retour()
+    try {
+      const reponse = await retour()
 
-    expect(reponse.headers.get('location')).toBe(
-      'https://gleba.test/comptabilite/banque?connexion=echec',
-    )
+      expect(reponse.headers.get('location')).toBe(
+        'https://gleba.test/comptabilite/banque?connexion=echec',
+      )
+      expect(journal).not.toHaveBeenCalled()
+    } finally {
+      journal.mockRestore()
+    }
+  })
+
+  it('journalise une panne inattendue par son seul nom, sans le jeton', async () => {
+    mocks.terminer.mockRejectedValue(new TypeError('jeton ac_fictif refusé'))
+    const journal = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const reponse = await retour()
+
+      expect(reponse.headers.get('location')).toBe(
+        'https://gleba.test/comptabilite/banque?connexion=echec',
+      )
+      expect(journal).toHaveBeenCalledWith(
+        'GET /api/comptabilite/banque/stripe/retour error:',
+        'TypeError',
+      )
+      expect(journal.mock.calls.flat().map(String).join(' ')).not.toContain('ac_fictif')
+    } finally {
+      journal.mockRestore()
+    }
   })
 
   it('confirme une connexion réussie', async () => {
