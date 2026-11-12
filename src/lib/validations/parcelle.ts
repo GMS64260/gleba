@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+import { partielSansDefauts } from './partiel'
 
 export const COUCHES_ACTIVITE = ['MARAICHAGE', 'VERGER', 'ELEVAGE', 'PATURAGE'] as const
 
@@ -44,4 +45,6 @@ export const parcelleSchema = z.object({
 })
 
 export const createParcelleSchema = parcelleSchema
-export const updateParcelleSchema = parcelleSchema.partial()
+// Sans le défaut `couches: []` : renommer une parcelle ne lui retire plus ses
+// ateliers (revue Codex DATA-02).
+export const updateParcelleSchema = partielSansDefauts(parcelleSchema)
