@@ -86,7 +86,7 @@ model User {
   active               Boolean   @default(true)
   emailVerified        Boolean   @default(false) @map("email_verified")
   emailVerifyToken     String?   @unique @map("email_verify_token")
-  emailVerifyExpires   DateTime? @map("email_verify_expires")
+  emailVerifyExpires   DateTime? @map("email_verify_expires") @db.Timestamptz(6)
   resetPasswordToken   String?   @unique @map("reset_password_token")
   resetPasswordExpires DateTime? @map("reset_password_expires")
   apiToken             String?   @unique @map("api_token")
@@ -359,7 +359,7 @@ model PushSubscription {
 model CookieConsent {
   id               String    @id @default(cuid())
   userId           String?   @map("user_id")
-  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull, map: "cookie_consents_user_fkey")
   sessionId        String?   @map("session_id") // cookie technique anonyme
   ipHash           String?   @map("ip_hash") // IP hashée (RGPD)
   userAgent        String?   @map("user_agent")
@@ -371,9 +371,9 @@ model CookieConsent {
   expiresAt        DateTime  @map("expires_at")
   revokedAt        DateTime? @map("revoked_at")
 
-  @@index([userId])
-  @@index([sessionId])
-  @@index([expiresAt])
+  @@index([userId], map: "cookie_consents_user_idx")
+  @@index([sessionId], map: "cookie_consents_session_idx")
+  @@index([expiresAt], map: "cookie_consents_expires_idx")
   @@map("cookie_consents")
 }
 
@@ -387,11 +387,11 @@ model LoginLog {
   reason    String? // "ok", "bad_password", "inactive", "not_found"
   ip        String?
   userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  @@index([userId])
-  @@index([createdAt])
-  @@index([email])
+  @@index([userId], map: "idx_login_logs_user_id")
+  @@index([createdAt], map: "idx_login_logs_created_at")
+  @@index([email], map: "idx_login_logs_email")
   @@map("login_logs")
 }
 
@@ -450,10 +450,10 @@ model FeedbackResponse {
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   lang        String // "fr" | "en"
   rating      Int // 1..10
-  blockers    String[] // codes des points bloquants cochés
+  blockers    String[] @default([]) // codes des points bloquants cochés
   whatBlocked String?       @map("what_blocked") // freins première visite (texte libre)
   missing     String? // fonctionnalités manquantes (texte libre)
-  modules     String[] // modules utilisés (jardin, verger, elevage, ...)
+  modules     String[] @default([]) // modules utilisés (jardin, verger, elevage, ...)
   willReturn  String?       @map("will_return") // yes / maybe / no
   comment     String?
   createdAt   DateTime      @default(now()) @map("created_at")
@@ -622,6 +622,7 @@ model Fournisseur {
   varietes Variete[]
   aliments Aliment[]
 
+  @@index([siret])
   @@map("fournisseurs")
 }
 
@@ -810,7 +811,7 @@ model PorteGreffe {
   nom               String   @unique @map("nom")
   vigueur           Int      @map("vigueur") // 1-5
   precocite         Int      @map("precocite") // 1-5
-  sensibilites      String[] @map("sensibilites") // ['asphyxie','calcaire','secheresse']
+  sensibilites      String[] @default([]) @map("sensibilites") // ['asphyxie','calcaire','secheresse']
   drageonnement     Boolean  @default(false) @map("drageonnement")
   notes             String?  @map("notes")
   // Référentiel communautaire (cf. src/lib/referentiel-communaute.ts). null = Gleba officiel.
@@ -818,24 +819,25 @@ model PorteGreffe {
   auteur            User?    @relation("PorteGreffePerso", fields: [userId], references: [id], onDelete: Cascade)
   partageCommunaute Boolean  @default(false) @map("partage_communaute")
   createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
 
   especes   PorteGreffeEspece[]
   campagnes CampagnePlantation[]
   arbres    Arbre[]              @relation("ArbrePorteGreffe")
 
+  @@index([userId])
   @@map("porte_greffes")
 }
 
 /// Jointure many-to-many porte_greffes ↔ especes (espèces fruitières portées)
 model PorteGreffeEspece {
   porteGreffeId String      @map("porte_greffe_id")
-  porteGreffe   PorteGreffe @relation(fields: [porteGreffeId], references: [id], onDelete: Cascade)
+  porteGreffe   PorteGreffe @relation(fields: [porteGreffeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   especeId      String      @map("espece_id")
   espece        Espece      @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([porteGreffeId, especeId])
-  @@index([especeId])
+  @@index([especeId], map: "porte_greffe_especes_espece_idx")
   @@map("porte_greffe_especes")
 }
 
@@ -846,12 +848,12 @@ model Bioagresseur {
   nomLatin         String   @map("nom_latin")
   type             String   @map("type") // 'Maladie' | 'Ravageur' | 'Adventice'
   organeCible      String   @map("organe_cible") // 'Feuille' | 'Fruit' | 'Bois' | 'Racine' | 'Tige'
-  periodePression  String[] @map("periode_pression") // ['S10-S20']
-  methodesPbi      String[] @map("methodes_pbi") // ['piège','filet','biocontrôle','traitement_AB']
+  periodePression  String[] @default([]) @map("periode_pression") // ['S10-S20']
+  methodesPbi      String[] @default([]) @map("methodes_pbi") // ['piège','filet','biocontrôle','traitement_AB']
   seuilNuisibilite String?  @map("seuil_nuisibilite")
   notes            String?  @map("notes")
   createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
 
   especes BioagresseurEspece[]
 
@@ -862,12 +864,12 @@ model Bioagresseur {
 /// Jointure many-to-many bioagresseurs ↔ especes (espèces cibles).
 model BioagresseurEspece {
   bioagresseurId String       @map("bioagresseur_id")
-  bioagresseur   Bioagresseur @relation(fields: [bioagresseurId], references: [id], onDelete: Cascade)
+  bioagresseur   Bioagresseur @relation(fields: [bioagresseurId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   especeId       String       @map("espece_id")
   espece         Espece       @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([bioagresseurId, especeId])
-  @@index([especeId])
+  @@index([especeId], map: "bioagresseur_especes_espece_idx")
   @@map("bioagresseur_especes")
 }
 
@@ -879,7 +881,7 @@ model EssenceBocagere {
   nomLatin          String   @map("nom_latin")
   hauteurM          Float    @map("hauteur_m")
   croissance        String   @map("croissance") // 'Lente' | 'Moyenne' | 'Rapide'
-  roles             String[] @map("roles") // ['brise-vent','refuge auxiliaires','mellifère','bois énergie']
+  roles             String[] @default([]) @map("roles") // ['brise-vent','refuge auxiliaires','mellifère','bois énergie']
   persistant        Boolean  @default(false) @map("persistant")
   epineux           Boolean  @default(false) @map("epineux")
   notes             String?  @map("notes")
@@ -888,7 +890,7 @@ model EssenceBocagere {
   auteur            User?    @relation("EssenceBocagerePerso", fields: [userId], references: [id], onDelete: Cascade)
   partageCommunaute Boolean  @default(false) @map("partage_communaute")
   createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([nomLatin])
@@ -915,7 +917,7 @@ model EssenceForestiere {
   auteur            User?    @relation("EssenceForestierePerso", fields: [userId], references: [id], onDelete: Cascade)
   partageCommunaute Boolean  @default(false) @map("partage_communaute")
   createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([nomLatin])
@@ -980,7 +982,8 @@ model Variete {
   // car Prisma ne sait pas exprimer un index unique partiel (WHERE) :
   //   officiel : UNIQUE (espece, nom_normalise) WHERE user_id IS NULL
   //   perso    : UNIQUE (user_id, espece, nom_normalise) WHERE user_id IS NOT NULL
-  @@index([especeId, nomNormalise])
+  // Pas d'index simple (espece, nom_normalise) : supprimé en base par la migration
+  // 20260514010000_unique_variete_nom_normalise ; seuls les index partiels ci-dessus existent.
   @@index([isPlaceholder])
   @@index([userId])
   @@map("varietes")
@@ -1471,7 +1474,7 @@ model Recolte {
   @@index([cultureId, date])
   @@index([date])
   @@index([statut])
-  @@index([statutBioSnapshot])
+  @@index([statutBioSnapshot], map: "recoltes_statut_bio_idx")
   @@map("recoltes")
   temoignagesAvis TemoignageRecolte[]
 
@@ -1612,7 +1615,7 @@ model Arbre {
   variete             String?      @map("variete") // Variété (ex: "Golden", "Malling Promise")
   portGreffe          String?      @map("port_greffe") // Porte-greffe (texte libre, rétro-compat)
   porteGreffeId       String?      @map("porte_greffe_id") // FK référentiel PorteGreffe (PROMPT 10)
-  porteGreffeRef      PorteGreffe? @relation("ArbrePorteGreffe", fields: [porteGreffeId], references: [id], onDelete: SetNull)
+  porteGreffeRef      PorteGreffe? @relation("ArbrePorteGreffe", fields: [porteGreffeId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "arbres_porte_greffe_fkey")
   circonferenceCm     Float?       @map("circonference_cm") // Mesure standard tronc — utile PCAE/HVE
   gpsLat              Float?       @map("gps_lat") // Latitude WGS84
   gpsLng              Float?       @map("gps_lng") // Longitude WGS84
@@ -1679,7 +1682,7 @@ model Arbre {
   @@index([type])
   @@index([especeId])
   @@index([zoneId])
-  @@index([porteGreffeId])
+  @@index([porteGreffeId], map: "arbres_porte_greffe_idx")
   @@map("arbres")
 }
 
@@ -1687,17 +1690,17 @@ model Arbre {
 model LotArbres {
   id             Int         @id @default(autoincrement())
   userId         String      @map("user_id")
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   nom            String      @map("nom")
   espece         String      @map("espece")
   variete        String?     @map("variete")
   effectif       Int         @map("effectif")
   parcelleGeoId  String      @map("parcelle_geo_id")
-  parcelleGeo    ParcelleGeo @relation(fields: [parcelleGeoId], references: [id], onDelete: Restrict)
+  parcelleGeo    ParcelleGeo @relation(fields: [parcelleGeoId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   datePlantation DateTime?   @map("date_plantation")
   notes          String?     @map("notes")
   createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
+  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([parcelleGeoId])
@@ -1733,7 +1736,7 @@ model RecolteArbre {
   // DEV3 audit Marc 2026-05-14 - Bloquant #4
   // Traçabilité Bio/HVE : parcelle d'origine, N° lot, catégorie, destination, conditionnement
   parcelleId           String?      @map("parcelle_id")
-  parcelle             ParcelleGeo? @relation("RecolteArbreParcelle", fields: [parcelleId], references: [id], onDelete: SetNull)
+  parcelle             ParcelleGeo? @relation("RecolteArbreParcelle", fields: [parcelleId], references: [id], onDelete: SetNull, map: "recoltes_arbres_parcelle_fkey")
   numLot               String?      @map("num_lot") // YYYYMMDD-PARCELLE-ESPECE-NN
   categorieCommerciale String?      @map("categorie_commerciale") // Cat I Extra | Cat I | Cat II | Industrie | Écart de tri
   destinationCommerce  String?      @map("destination_commerce") // Frais marché | Frais AMAP | Transformation | Jus/Cidre | Industrie | Don | Compost
@@ -1746,8 +1749,8 @@ model RecolteArbre {
   @@index([date])
   @@index([statut])
   @@index([factureId])
-  @@index([statutBioSnapshot])
-  @@index([parcelleId])
+  @@index([statutBioSnapshot], map: "recoltes_arbres_statut_bio_idx")
+  @@index([parcelleId], map: "recoltes_arbres_parcelle_idx")
   @@index([numLot])
   @@map("recoltes_arbres")
   stockDisponibleCommercial Float? @map("stock_disponible_commercial")
@@ -1773,7 +1776,7 @@ model ProductionBois {
   // DEV3 audit Marc 2026-05-14 - Bloquant #4
   // Traçabilité Bois : parcelle d'origine, N° lot, qualité
   parcelleId  String?      @map("parcelle_id")
-  parcelle    ParcelleGeo? @relation("ProductionBoisParcelle", fields: [parcelleId], references: [id], onDelete: SetNull)
+  parcelle    ParcelleGeo? @relation("ProductionBoisParcelle", fields: [parcelleId], references: [id], onDelete: SetNull, map: "production_bois_parcelle_fkey")
   numLot      String?      @map("num_lot") // YYYYMMDD-PARCELLE-ESPECE-NN
   qualiteBois String?      @map("qualite_bois") // Bois d'œuvre | Bois de chauffage | BRF | Plaquette | Piquet | Déchet vert
   // Vente
@@ -1794,7 +1797,7 @@ model ProductionBois {
   @@index([date])
   @@index([statut])
   @@index([factureId])
-  @@index([parcelleId])
+  @@index([parcelleId], map: "production_bois_parcelle_idx")
   @@index([numLot])
   @@map("production_bois")
   stockDisponibleCommercial Float? @map("stock_disponible_commercial")
@@ -1839,7 +1842,7 @@ model OperationArbre {
   // DEV3 audit Marc 2026-05-14 - Majeur #6
   // Opérateur, temps, météo, matériel pour traçabilité complète
   operateurId       String?   @map("operateur_id")
-  operateur         User?     @relation("OperationArbreOperateur", fields: [operateurId], references: [id], onDelete: SetNull)
+  operateur         User?     @relation("OperationArbreOperateur", fields: [operateurId], references: [id], onDelete: SetNull, map: "operations_arbres_operateur_fkey")
   tempsHeures       Float?    @map("temps_heures")
   temperatureC      Float?    @map("temperature_c")
   ventKmh           Float?    @map("vent_kmh")
@@ -1856,6 +1859,7 @@ model OperationArbre {
   @@index([fait])
   @@index([datePrevue])
   @@index([dateLimite])
+  @@index([operateurId], map: "operations_arbres_operateur_idx")
   @@map("operations_arbres")
 }
 
@@ -1953,9 +1957,9 @@ model ObservationSante {
   zntRespectee         Boolean?     @map("znt_respectee")
   zntDistanceM         Int?         @map("znt_distance_m")
   parcelleId           String?      @map("parcelle_id")
-  parcelle             ParcelleGeo? @relation("ObservationParcelle", fields: [parcelleId], references: [id], onDelete: SetNull)
+  parcelle             ParcelleGeo? @relation("ObservationParcelle", fields: [parcelleId], references: [id], onDelete: SetNull, map: "observations_sante_parcelle_fkey")
   operateurId          String?      @map("operateur_id")
-  operateur            User?        @relation("ObservationOperateur", fields: [operateurId], references: [id], onDelete: SetNull)
+  operateur            User?        @relation("ObservationOperateur", fields: [operateurId], references: [id], onDelete: SetNull, map: "observations_sante_operateur_fkey")
   certiphytoNum        String?      @map("certiphyto_num")
 
   // PROMPT 11 LOT D — Interventions phyto déclenchées par cette observation.
@@ -1966,6 +1970,8 @@ model ObservationSante {
   @@index([date])
   @@index([type])
   @@index([resolu])
+  @@index([operateurId], map: "observations_sante_operateur_idx")
+  @@index([parcelleId], map: "observations_sante_parcelle_idx")
   @@map("observations_sante")
 }
 
@@ -1992,7 +1998,7 @@ model CampagnePlantation {
   essencePrecedente       String?              @map("essence_precedente") // Essence dominante précédente
   // Champs Assistant Plantation (PROMPT 09) — pertinents surtout pour verger / agroforesterie fruitière.
   porteGreffeId           String?              @map("porte_greffe_id")
-  porteGreffe             PorteGreffe?         @relation(fields: [porteGreffeId], references: [id], onDelete: SetNull)
+  porteGreffe             PorteGreffe?         @relation(fields: [porteGreffeId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "campagnes_plantation_porte_greffe_fkey")
   typePlant               String?              @map("type_plant") // Scion | Fléché | Baliveau | Haute-tige | Demi-tige | Basse-tige
   conduite                String?              @map("conduite") // Gobelet | Axe central | Palmette | Espalier | Libre
   labelProvenance         String?              @map("label_provenance") // MFR contrôlé | Végétal Local | Plante Bleue | Pépinière certifiée Bio | Aucun
@@ -2062,6 +2068,8 @@ model CampagnePlantation {
   @@index([parcelleGeoId])
   @@index([zoneVergerId])
   @@index([productionBoisId])
+  @@index([campagneMereId])
+  @@index([porteGreffeId], map: "campagnes_plantation_porte_greffe_idx")
   @@map("campagnes_plantation")
 }
 
@@ -2140,6 +2148,7 @@ model Association {
   // Relations
   details AssociationDetail[]
 
+  @@index([type])
   @@map("associations")
 }
 
@@ -2358,6 +2367,7 @@ model Animal {
   @@index([mereId])
   @@index([pereId])
   @@index([parcelleGeoId])
+  @@index([raceAnimaleId])
   @@map("animaux")
 }
 
@@ -2440,17 +2450,17 @@ model ProductionOeuf {
 model MouvementStockOeuf {
   id           String         @id @default(cuid())
   userId       String         @map("user_id")
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade, map: "mouvements_stock_oeufs_user_fk")
   productionId Int            @map("production_id")
-  production   ProductionOeuf @relation(fields: [productionId], references: [id], onDelete: Restrict)
+  production   ProductionOeuf @relation(fields: [productionId], references: [id], onDelete: Restrict, map: "mouvements_stock_oeufs_production_fk")
   date         DateTime       @default(now()) @map("date")
   type         String         @map("type") // vente|autoconsommation|don|destruction|casse|ajustement
   quantite     Int            @map("quantite")
   notes        String?        @map("notes")
   createdAt    DateTime       @default(now()) @map("created_at")
 
-  @@index([userId, date])
-  @@index([productionId])
+  @@index([userId, date], map: "mouvements_stock_oeufs_user_date_idx")
+  @@index([productionId], map: "mouvements_stock_oeufs_production_idx")
   @@map("mouvements_stock_oeufs")
   mouvementsCommerciaux MouvementStockCommercial[]
 
@@ -2631,7 +2641,7 @@ model SoinAnimal {
   produitId                  String?                 @map("produit_id")
   produitVeterinaire         ProduitVeterinaire?     @relation(fields: [produitId], references: [id], onDelete: SetNull)
   stockMedicamentId          String?                 @map("stock_medicament_id")
-  stockMedicament            StockMedicamentElevage? @relation(fields: [stockMedicamentId], references: [id], onDelete: Restrict)
+  stockMedicament            StockMedicamentElevage? @relation(fields: [stockMedicamentId], references: [id], onDelete: Restrict, map: "soins_animaux_stock_medicament_fk")
   numeroLotMedicament        String?                 @map("numero_lot_medicament")
   peremptionMedicament       DateTime?               @map("peremption_medicament")
   quantitePreleveeStock      Float                   @default(0) @map("quantite_prelevee_stock")
@@ -2674,7 +2684,7 @@ model SoinAnimal {
   @@index([type])
   @@index([fait])
   @@index([produitId])
-  @@index([stockMedicamentId])
+  @@index([stockMedicamentId], map: "soins_animaux_stock_medicament_idx")
   @@index([finAttenteLait])
   @@index([finAttenteViande])
   @@index([finAttenteOeufs])
@@ -2713,7 +2723,7 @@ model SequenceLotFromage {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@unique([userId, exercice, semaineIso])
+  @@unique([userId, exercice, semaineIso], map: "sequences_lot_fromage_user_exercice_semaine_key")
   @@map("sequences_lot_fromage")
 }
 
@@ -2752,19 +2762,19 @@ model ProduitVeterinaire {
 model ProduitVeterinaireEspece {
   id                  String             @id @default(cuid())
   produitId           String             @map("produit_id")
-  produit             ProduitVeterinaire @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  produit             ProduitVeterinaire @relation(fields: [produitId], references: [id], onDelete: Cascade, map: "produits_veterinaires_especes_produit_fk")
   especeAnimaleId     String             @map("espece_animale_id")
-  especeAnimale       EspeceAnimale      @relation(fields: [especeAnimaleId], references: [id], onDelete: Cascade)
+  especeAnimale       EspeceAnimale      @relation(fields: [especeAnimaleId], references: [id], onDelete: Cascade, map: "produits_veterinaires_especes_espece_fk")
   tempsAttenteLaitJ   Int                @default(0) @map("temps_attente_lait_j")
   tempsAttenteViandeJ Int                @default(0) @map("temps_attente_viande_j")
   tempsAttenteOeufsJ  Int                @default(0) @map("temps_attente_oeufs_j")
   couvertAmm          Boolean            @default(true) @map("couvert_amm")
   source              String?            @map("source")
   createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
+  updatedAt           DateTime           @default(now()) @updatedAt @map("updated_at")
 
-  @@unique([produitId, especeAnimaleId])
-  @@index([especeAnimaleId])
+  @@unique([produitId, especeAnimaleId], map: "produits_veterinaires_especes_produit_espece_key")
+  @@index([especeAnimaleId], map: "produits_veterinaires_especes_espece_idx")
   @@map("produits_veterinaires_especes")
 }
 
@@ -2773,19 +2783,19 @@ model ProduitVeterinaireEspece {
 model MaladieElevage {
   id            String                   @id @default(cuid())
   userId        String?                  @map("user_id")
-  user          User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User?                    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "maladies_elevage_user_fk")
   code          String                   @map("code")
   nom           String                   @map("nom")
   especesCibles String[]                 @default([]) @map("especes_cibles")
   description   String?                  @map("description")
   active        Boolean                  @default(true) @map("active")
   createdAt     DateTime                 @default(now()) @map("created_at")
-  updatedAt     DateTime                 @updatedAt @map("updated_at")
+  updatedAt     DateTime                 @default(now()) @updatedAt @map("updated_at")
   statuts       StatutSanitaireElevage[]
 
-  @@unique([userId, code])
+  @@unique([userId, code], map: "maladies_elevage_user_code_key")
   @@index([code])
-  @@index([userId, active])
+  @@index([userId, active], map: "maladies_elevage_user_active_idx")
   @@map("maladies_elevage")
 }
 
@@ -2795,25 +2805,25 @@ model MaladieElevage {
 model StatutSanitaireElevage {
   id            String         @id @default(cuid())
   userId        String         @map("user_id")
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade, map: "statuts_sanitaires_user_fk")
   animalId      Int?           @map("animal_id")
-  animal        Animal?        @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  animal        Animal?        @relation(fields: [animalId], references: [id], onDelete: Cascade, map: "statuts_sanitaires_animal_fk")
   lotId         Int?           @map("lot_id")
-  lot           LotAnimaux?    @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  lot           LotAnimaux?    @relation(fields: [lotId], references: [id], onDelete: Cascade, map: "statuts_sanitaires_lot_fk")
   maladieId     String         @map("maladie_id")
-  maladie       MaladieElevage @relation(fields: [maladieId], references: [id], onDelete: Restrict)
+  maladie       MaladieElevage @relation(fields: [maladieId], references: [id], onDelete: Restrict, map: "statuts_sanitaires_maladie_fk")
   statut        String         @default("inconnu") @map("statut") // indemne|en_cours|positif|inconnu
   dateControle  DateTime?      @map("date_controle")
   laboratoire   String?        @map("laboratoire")
   numeroAnalyse String?        @map("numero_analyse")
   notes         String?        @map("notes")
   createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at")
 
   @@unique([animalId, maladieId])
   @@unique([lotId, maladieId])
-  @@index([userId, statut])
-  @@index([maladieId])
+  @@index([userId, statut], map: "statuts_sanitaires_user_statut_idx")
+  @@index([maladieId], map: "statuts_sanitaires_maladie_idx")
   @@map("statuts_sanitaires_elevage")
 }
 
@@ -2821,9 +2831,9 @@ model StatutSanitaireElevage {
 model StockMedicamentElevage {
   id             String             @id @default(cuid())
   userId         String             @map("user_id")
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade, map: "stocks_medicaments_elevage_user_fk")
   produitId      String             @map("produit_id")
-  produit        ProduitVeterinaire @relation(fields: [produitId], references: [id], onDelete: Restrict)
+  produit        ProduitVeterinaire @relation(fields: [produitId], references: [id], onDelete: Restrict, map: "stocks_medicaments_elevage_produit_fk")
   numeroLot      String             @map("numero_lot")
   quantite       Float              @map("quantite")
   unite          String             @map("unite")
@@ -3077,7 +3087,7 @@ model DeclarationReglementaireSuivi {
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
   @@unique([userId, declarationKey])
-  @@index([userId, statut, transmisAt])
+  @@index([userId, statut, transmisAt], map: "declarations_reglementaires_suivis_user_id_statut_transmis_at_i")
   @@map("declarations_reglementaires_suivis")
 }
 
@@ -3130,8 +3140,8 @@ model DeclarationReglementaireEvenement {
   metadata       Json?    @map("metadata")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  @@index([userId, declarationKey, createdAt])
-  @@index([userId, action, createdAt])
+  @@index([userId, declarationKey, createdAt], map: "declarations_reglementaires_evenements_user_id_declaration_key_")
+  @@index([userId, action, createdAt], map: "declarations_reglementaires_evenements_user_id_action_created_a")
   @@map("declarations_reglementaires_evenements")
 }
 
@@ -3516,6 +3526,8 @@ model Client {
 
   @@index([userId])
   @@index([nom])
+  @@index([siren])
+  @@index([siret])
   @@map("clients")
 }
 
@@ -3580,12 +3592,17 @@ model Facture {
   commandesBoutique CommandeBoutique[] @relation("CommandeFacture")
   documentsCommerciaux DocumentCommercial[]
   envoisCommerciaux EnvoiCommercial[]
+  // Avoir → facture d'origine. Contrainte posée en SQL (migration
+  // 20260514340000_facture_avoir_fk_origine), déclarée ici pour que Prisma ne la supprime pas.
+  factureOrigineRef Facture?  @relation("AvoirFactureOrigine", fields: [factureOrigineId], references: [id], onDelete: Restrict, map: "factures_facture_origine_fkey")
+  avoirsLies        Facture[] @relation("AvoirFactureOrigine")
 
   @@unique([userId, numero])
   @@index([userId])
   @@index([clientId])
   @@index([date])
   @@index([statut])
+  @@index([factureOrigineId])
   @@map("factures")
   cleCreationStock String? @map("cle_creation_stock")
   mouvementsStock MouvementStockCommercial[]
@@ -3959,7 +3976,7 @@ model Intervention {
   // PROMPT 11 LOT A — FK vers le référentiel ProduitPhyto. Le champ TEXT
   // `produitPhyto` ci-dessus est conservé pour les saisies historiques.
   produitPhytoId       String?           @map("produit_phyto_id")
-  produitPhytoRef      ProduitPhyto?     @relation(fields: [produitPhytoId], references: [id], onDelete: SetNull)
+  produitPhytoRef      ProduitPhyto?     @relation(fields: [produitPhytoId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "interventions_produit_phyto_fkey")
   // PROMPT 11 LOT A — Action sans produit (taille sanitaire, désherbage manuel, etc.)
   geste                String?           @map("geste")
   // PROMPT 11 LOT B — Champs réglementaires détaillés (Arrêté 16 juin 2009).
@@ -3968,12 +3985,12 @@ model Intervention {
   ventKmh              Float?            @map("vent_kmh")
   hygrometriePct       Int?              @map("hygrometrie_pct")
   operateurId          String?           @map("operateur_id")
-  operateur            User?             @relation("InterventionOperateur", fields: [operateurId], references: [id], onDelete: SetNull)
+  operateur            User?             @relation("InterventionOperateur", fields: [operateurId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "interventions_operateur_fkey")
   certiphytoNum        String?           @map("certiphyto_num") // snapshot
   certiphytoValidite   DateTime?         @map("certiphyto_validite") // snapshot
   justification        String?           @map("justification")
   observationLieeId    Int?              @map("observation_liee_id")
-  observationLiee      ObservationSante? @relation("InterventionObservation", fields: [observationLieeId], references: [id], onDelete: SetNull)
+  observationLiee      ObservationSante? @relation("InterventionObservation", fields: [observationLieeId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "interventions_observation_liee_fkey")
   // DEV3 audit Marc 2026-05-14 — Bloquant #1 : compléments réglementaires
   surfaceTraiteeHa     Float?            @map("surface_traitee_ha")
   volumeBouillieLTotal Float?            @map("volume_bouillie_l_total")
@@ -3983,7 +4000,7 @@ model Intervention {
   zntRespectee         Boolean?          @map("znt_respectee")
   zntDistanceM         Int?              @map("znt_distance_m")
   parcelleId           String?           @map("parcelle_id")
-  parcelle             ParcelleGeo?      @relation("InterventionParcelle", fields: [parcelleId], references: [id], onDelete: SetNull)
+  parcelle             ParcelleGeo?      @relation("InterventionParcelle", fields: [parcelleId], references: [id], onDelete: SetNull, map: "interventions_parcelle_fkey")
   // Intrants consommés
   intrantNom           String?           @map("intrant_nom") // Nom de l'intrant utilisé
   intrantQuantite      Float?            @map("intrant_quantite")
@@ -4001,9 +4018,10 @@ model Intervention {
   @@index([arbreId])
   @@index([type])
   @@index([fait])
-  @@index([produitPhytoId])
-  @@index([operateurId])
-  @@index([observationLieeId])
+  @@index([produitPhytoId], map: "interventions_produit_phyto_idx")
+  @@index([operateurId], map: "interventions_operateur_idx")
+  @@index([observationLieeId], map: "interventions_observation_liee_idx")
+  @@index([parcelleId], map: "interventions_parcelle_idx")
   @@map("interventions")
 }
 
@@ -4027,7 +4045,7 @@ model ProduitPhyto {
   cuivreMetalPct       Float?   @map("cuivre_metal_pct") // % Cu métal (ex: 20)
   cuivreMetalGParUnite Float?   @map("cuivre_metal_g_par_unite") // g Cu / kg ou L
   createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at")
 
   interventions Intervention[]
 
@@ -4400,9 +4418,9 @@ model CommandeBoutique {
   paiementProvider     String?        @map("paiement_provider") // Stripe | SumUp | Manuel | Virement
   paiementRef          String?        @map("paiement_ref") // ID transaction provider
   venteManuelleId      Int?           @map("vente_manuelle_id")
-  venteManuelle        VenteManuelle? @relation("CommandeVente", fields: [venteManuelleId], references: [id], onDelete: SetNull)
+  venteManuelle        VenteManuelle? @relation("CommandeVente", fields: [venteManuelleId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "commandes_boutique_vente_manuelle_fkey")
   factureId            Int?           @map("facture_id")
-  facture              Facture?       @relation("CommandeFacture", fields: [factureId], references: [id], onDelete: SetNull)
+  facture              Facture?       @relation("CommandeFacture", fields: [factureId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "commandes_boutique_facture_fkey")
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
 
@@ -4413,8 +4431,8 @@ model CommandeBoutique {
   @@index([boutiqueId])
   @@index([statut])
   @@index([paiementStatut])
-  @@index([venteManuelleId])
-  @@index([factureId])
+  @@index([venteManuelleId], map: "commandes_boutique_vente_manuelle_idx")
+  @@index([factureId], map: "commandes_boutique_facture_idx")
   @@index([createdAt])
   @@map("commandes_boutique")
 }
@@ -5199,7 +5217,7 @@ model VirementBancaire {
 /// Contrat du service Gleba, séparé des factures et connexions bancaires des producteurs.
 model AbonnementGleba {
   userId String @id @map("user_id")
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   gratuitAVie Boolean @default(false) @map("gratuit_a_vie")
   essaiDebut DateTime? @map("essai_debut")
   essaiFin DateTime? @map("essai_fin")
@@ -5216,7 +5234,7 @@ model AbonnementGleba {
   checkoutCle String? @map("checkout_cle")
   checkoutExpireLe DateTime? @map("checkout_expire_le")
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
   @@map("abonnements_gleba")
 }
 
