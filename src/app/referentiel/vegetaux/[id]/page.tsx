@@ -22,6 +22,7 @@ import { nomAffichableItp } from "@/lib/itp-label";
 import { dureeCycleItpJours } from "@/lib/cultures/dates-itp";
 import { ogBase } from "@/lib/seo/og";
 import { valeurRenseignee } from "@/lib/referentiel-valeur";
+import { srcImageReferentielPublique } from "@/lib/referentiel-medias-public";
 
 export const dynamic = "force-dynamic";
 
@@ -199,7 +200,7 @@ export default async function FicheVegetalPage({ params }: PageProps) {
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-display text-2xl text-foret">Images documentaires</h2><AjouterPhoto especeId={espece.id} nom={name} /></div>
           {espece.medias.length ? (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {espece.medias.map((media) => <figure key={media.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="relative aspect-[4/3] bg-slate-100"><Image src={media.url} alt={`${name} — ${media.organe}`} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover" /></div><figcaption className="p-4 text-xs leading-5 text-slate-600"><div className="font-medium text-slate-800">{media.organe}{media.description ? ` — ${media.description}` : ""}</div><div className="mt-1">{media.citation}</div><div className="mt-1 flex flex-wrap gap-3"><a href={media.urlLicence} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">{media.licence}</a>{media.urlOrigine && <a href={media.urlOrigine} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">Voir l’original</a>}</div></figcaption></figure>)}
+              {espece.medias.map((media) => <figure key={media.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="relative aspect-[4/3] bg-slate-100"><Image src={srcImageReferentielPublique(media.id)} alt={`${name} — ${media.organe}`} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" className="object-cover" /></div><figcaption className="p-4 text-xs leading-5 text-slate-600"><div className="font-medium text-slate-800">{media.organe}{media.description ? ` — ${media.description}` : ""}</div><div className="mt-1">{media.citation}</div><div className="mt-1 flex flex-wrap gap-3"><a href={media.urlLicence} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">{media.licence}</a>{media.urlOrigine && <a href={media.urlOrigine} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">Voir l’original</a>}</div></figcaption></figure>)}
             </div>
           ) : <Empty>Aucune image validée pour le moment. Vous pouvez proposer votre propre photo.</Empty>}
         </section>

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { MESSAGE_AMM_INVALIDE, numAMMValide } from '@/lib/tracabilite/amm'
+import { isValidSiret } from '@/lib/siret'
 
 /**
  * Les formulaires HTML envoient TOUJOURS des chaînes (`<input type="number">`
@@ -21,6 +22,18 @@ const coerceNum = (v: unknown): unknown => {
 }
 const numInput = () => z.preprocess(coerceNum, z.number().min(0).nullable()).optional()
 const intInput = () => z.preprocess(coerceNum, z.number().int().min(0).nullable()).optional()
+/** Chaîne facultative : "" et espaces → null. */
+const texteFacultatif = (max: number) =>
+  z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? null : typeof v === 'string' ? v.trim() : v),
+    z.string().max(max).nullable(),
+  ).optional()
+/** Heure « HH:MM » sur 24 h (arrêté du 24 décembre 2025, annexe II). */
+const heureInput = () =>
+  z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Heure au format HH:MM').nullable(),
+  ).optional()
 
 export const createInterventionSchema = z.object({
   date: z.coerce.date(),
@@ -74,6 +87,19 @@ export const createInterventionSchema = z.object({
   certiphytoValidite: z.coerce.date().nullable().optional(),
   justification: z.string().max(2000).nullable().optional(),
   observationLieeId: z.preprocess(coerceNum, z.number().int().nullable()).optional(),
+  // Arrêté du 24 décembre 2025 relatif aux registres d'utilisation des
+  // produits phytopharmaceutiques, annexe I, mentions « le cas échéant ».
+  stadeBBCH: z.preprocess(
+    (v) => (v === '' ? null : typeof v === 'number' ? String(v).padStart(2, '0') : v),
+    z.string().regex(/^\d{2}$/, 'Stade BBCH sur deux chiffres (ex. 65)').nullable(),
+  ).optional(),
+  heureDebut: heureInput(),
+  heureFin: heureInput(),
+  rentreeAnticipee: texteFacultatif(1000),
+  siretBeneficiaire: z.preprocess(
+    (v) => (typeof v === 'string' ? v.replace(/\s/g, '') || null : v),
+    z.string().refine((v) => isValidSiret(v), { message: 'SIRET du bénéficiaire invalide (14 chiffres)' }).nullable(),
+  ).optional(),
 })
 
 export const updateInterventionSchema = createInterventionSchema.partial().extend({

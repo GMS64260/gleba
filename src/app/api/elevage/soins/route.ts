@@ -9,6 +9,8 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
  *  - écartement des collectes de lait existantes dans la fenêtre
  *
  * À la suppression d'un soin :
+ *  - un soin administré n'est effacé que pour une erreur de saisie motivée,
+ *    journalisée (C9, `src/lib/elevage/annulation-soin.ts`) ;
  *  - les collectes éventuellement écartées sont remises en circulation
  *    si aucun autre soin actif ne les couvre.
  */
@@ -30,8 +32,10 @@ import { randomUUID } from 'node:crypto'
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
 import { ciblesLaitAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
 import { fenetreSoin, restituerPrelevement, supprimerSoin } from '@/lib/elevage/suppression-soin'
+import { controlerAnnulation, journaliserAnnulationSoin, MESSAGE_ANNULATION_REQUISE } from '@/lib/elevage/annulation-soin'
 import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import { whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
+import { effectifTraiteAuJour } from '@/lib/elevage/effectif-traite'
 import { TYPES_SOIN_MEDICAMENTEUX } from '@/lib/elevage/types-soin'
 import {
   PLANCHER_CASCADE_LAIT_J,
@@ -348,11 +352,17 @@ export async function POST(request: NextRequest) {
           throw new Error(`STOCK_MEDICAMENT_INSUFFISANT:${stockMedicament!.quantite}`)
         }
       }
+      // C10 : nombre d'animaux du lot traités, figé le jour même de
+      // l'administration (inconnu, donc NULL, pour une saisie d'un autre jour).
+      const effectifTraite = d.fait
+        ? await effectifTraiteAuJour(tx, session.user.id, d.lotId, dateSoin)
+        : null
       const soin = await tx.soinAnimal.create({
         data: {
           userId: session.user.id,
           animalId: d.animalId || null,
           lotId: d.lotId || null,
+          effectifTraite,
           date: dateSoin,
           type: d.type,
           description: d.description ?? null,
@@ -514,12 +524,24 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
-    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteOeufsJ, tempsAttenteViandeJ, stockMedicamentId, produitId } = parsed.data
+    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteOeufsJ, tempsAttenteViandeJ, stockMedicamentId, produitId, annulation } = parsed.data
 
     const existing = await prisma.soinAnimal.findFirst({
       where: { id, userId: session.user.id },
     })
     if (!existing) return NextResponse.json({ error: 'Soin non trouvé' }, { status: 404 })
+
+    // C9 (revue réglementaire du 2026-11-12) : décocher « fait » rendait les
+    // doses, levait les délais d'attente et sortait l'acte du registre, en un
+    // clic et sans trace. Un soin administré ne se rouvre plus que pour une
+    // erreur de saisie motivée, journalisée dans la transaction ci-dessous.
+    const demandeReouverture = fait === false && existing.fait ? controlerAnnulation(annulation) : null
+    if (demandeReouverture && !demandeReouverture.ok) {
+      return NextResponse.json(
+        { error: demandeReouverture.error, code: demandeReouverture.code },
+        { status: demandeReouverture.status },
+      )
+    }
 
     // Les champs sont relus (dates, délais, injections) : valeurs scalaires du
     // modèle, pas des opérations Prisma.
@@ -612,7 +634,10 @@ export async function PATCH(request: NextRequest) {
       )
     ) {
       return NextResponse.json(
-        { error: "Le produit, le lot ou la quantité d'un soin déjà prélevé ne peut pas être modifié. Annulez d'abord le soin." },
+        // C9 : la correction passe par l'annulation motivée (erreur de saisie,
+        // original journalisé) puis une nouvelle saisie : la pharmacie reste
+        // juste et l'erreur reste retrouvable.
+        { error: "Le produit, le lot ou la quantité d'un soin déjà prélevé ne peut pas être modifié. S'il s'agit d'une erreur de saisie, supprimez le soin en indiquant le motif, puis ressaisissez-le." },
         { status: 409 },
       )
     }
@@ -729,6 +754,18 @@ export async function PATCH(request: NextRequest) {
       }) ?? existing
       const devientRealise = fait === true && !courant.fait && courant.quantitePreleveeStock <= 0
       const devientPlanifie = fait === false && courant.fait && courant.quantitePreleveeStock > 0
+      if (fait === false && courant.fait) {
+        // Relu sous le mutex : la garde ci-dessus a pu voir un soin encore à faire.
+        const controle = demandeReouverture ?? controlerAnnulation(annulation)
+        if (!controle.ok) throw new Error('ANNULATION_MOTIVEE_REQUISE')
+        await journaliserAnnulationSoin(tx, {
+          userId: session.user.id,
+          acteurId: session.user.acteurId ?? session.user.id,
+          soinId: id,
+          action: 'reouverture',
+          demande: controle.demande,
+        })
+      }
       if (devientRealise && stockEffectif) {
         const quantiteADecompter = quantite ?? existing.quantite ?? 0
         if (quantiteADecompter <= 0) {
@@ -752,6 +789,19 @@ export async function PATCH(request: NextRequest) {
       } else if (devientPlanifie && existing.stockMedicamentId) {
         await restituerPrelevement(tx, session.user.id, existing.stockMedicamentId, courant.quantitePreleveeStock)
         updateData.quantitePreleveeStock = 0
+      }
+      // C10 : l'effectif traité se fige au passage à « fait », ou se recalcule
+      // si la cible ou la date d'un soin fait change ; jamais l'effectif d'un
+      // autre jour que celui du soin.
+      const cibleModifiee =
+        (updateData.animalId !== undefined && updateData.animalId !== existing.animalId) ||
+        (updateData.lotId !== undefined && updateData.lotId !== existing.lotId)
+      if (faitChange || cibleModifiee || dateChangee) {
+        const seraFait = updateData.fait ?? existing.fait
+        const lotFinal = updateData.lotId !== undefined ? updateData.lotId : existing.lotId
+        updateData.effectifTraite = seraFait
+          ? await effectifTraiteAuJour(tx, session.user.id, lotFinal, updateData.date ?? existing.date)
+          : null
       }
       const updated = await tx.soinAnimal.update({
         where: { id },
@@ -834,6 +884,9 @@ export async function PATCH(request: NextRequest) {
         { status: 422 },
       )
     }
+    if (error instanceof Error && error.message === 'ANNULATION_MOTIVEE_REQUISE') {
+      return NextResponse.json({ error: MESSAGE_ANNULATION_REQUISE, code: 'ANNULATION_MOTIVEE_REQUISE' }, { status: 409 })
+    }
     if (error instanceof Error && error.message.startsWith('LOT_MEDICAMENT_PERIME:')) {
       return NextResponse.json(
         { error: `Le lot ${error.message.split(':')[1]} est périmé à la date du soin.` },
@@ -855,8 +908,19 @@ export async function DELETE(request: NextRequest) {
 
     const soinId = parseInt(id)
     if (Number.isNaN(soinId)) return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
-    const resultat = await supprimerSoin(session.user.id, soinId)
-    if (!resultat.ok) return NextResponse.json({ error: resultat.error }, { status: resultat.status })
+    // C9 : un soin administré ne s'efface que pour une erreur de saisie
+    // motivée, transmise dans le corps ({ annulation: { nature, motif } }).
+    const corps = await request.json().catch(() => null) as { annulation?: unknown } | null
+    const resultat = await supprimerSoin(session.user.id, soinId, {
+      annulation: corps?.annulation,
+      acteurId: session.user.acteurId ?? session.user.id,
+    })
+    if (!resultat.ok) {
+      return NextResponse.json(
+        { error: resultat.error, ...('code' in resultat ? { code: resultat.code } : {}) },
+        { status: resultat.status },
+      )
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

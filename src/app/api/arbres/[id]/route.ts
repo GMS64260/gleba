@@ -19,7 +19,7 @@ import { doitInfererParcelle, trouverParcelleGpsProche } from "@/lib/parcelle-gp
 import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
 import { resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
-import { noteArbreSupprime, preserverTracesPhytoArbre } from "@/lib/verger/preserver-traces-phyto"
+import { contexteAConserver, noteArbreSupprime, preserverTracesPhytoArbre } from "@/lib/verger/preserver-traces-phyto"
 import { normaliserDateApi } from "@/lib/validations/date-api"
 import { estTypeArbre, messageTypeArbreInvalide } from "@/lib/verger/types-arbre"
 
@@ -419,7 +419,10 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       // l'identité de l'arbre dans les notes, puis on détache le lien.
       const interventionsADetacher = await tx.intervention.findMany({
         where: { arbreId, userId: session!.user.id },
-        select: { id: true, notes: true },
+        select: {
+          id: true, notes: true, type: true, date: true, cultureId: true, plancheId: true, parcelleId: true,
+          cultureRegistre: true, localisationRegistre: true, conduiteBio: true,
+        },
       })
       const snapshotArbre = noteArbreSupprime({
         id: arbreId,
@@ -439,11 +442,22 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       // QA cmsofhlzg — détacher les interventions (registre phyto) en
       // conservant l'identité de l'arbre dans les notes.
       for (const intervention of interventionsADetacher) {
+        // CR-PHY-01 : un traitement détaché garde son contexte du registre,
+        // relu tant que l'arbre existe s'il n'avait jamais été figé.
+        const contexte = intervention.type === 'traitement_phyto'
+          ? await contexteAConserver(tx, session!.user.id, intervention, {
+              cultureId: intervention.cultureId,
+              plancheId: intervention.plancheId,
+              arbreId,
+              parcelleId: intervention.parcelleId,
+            })
+          : null
         await tx.intervention.update({
           where: { id: intervention.id },
           data: {
             arbreId: null,
             notes: intervention.notes ? `${snapshotArbre}\n${intervention.notes}` : snapshotArbre,
+            ...(contexte ?? {}),
           },
         })
       }

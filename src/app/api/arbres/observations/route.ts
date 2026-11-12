@@ -14,6 +14,8 @@ import {
   MESSAGE_CHAMPS_REGLEMENTAIRES,
   champsManquantsObservationPhyto,
 } from "@/lib/tracabilite/conformite-observation-phyto"
+import { chargerContexteRegistre } from "@/lib/tracabilite/contexte-registre"
+import { observationAuRegistre } from "@/lib/tracabilite/historique-phyto"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -98,12 +100,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: operateur.refus }, { status: 400 })
     }
     const operateurId = operateur.operateurId
+    const dateObservation = body.date ? new Date(body.date) : new Date()
+    // Contexte du registre figé au jour de l'enregistrement d'un traitement
+    // (arrêté du 24 décembre 2025, art. 3 ; revue de conformité, C4).
+    const contexte = observationAuRegistre({
+      methodeTraitement: body.methodeTraitement || null,
+      produit: body.produit || null,
+      numAMM: body.numAMM || null,
+    })
+      ? await chargerContexteRegistre(prisma, session!.user.id, { arbreId: parseInt(body.arbreId), parcelleId }, dateObservation)
+      : null
 
     const observation = await prisma.observationSante.create({
       data: {
         userId: session!.user.id,
         arbreId: parseInt(body.arbreId),
-        date: body.date ? new Date(body.date) : new Date(),
+        date: dateObservation,
         type: body.type,
         symptome: body.symptome || null,
         diagnostic: body.diagnostic || null,
@@ -112,9 +124,9 @@ export async function POST(request: NextRequest) {
         traitement: body.traitement || null,
         methodeTraitement: body.methodeTraitement || null,
         produit: body.produit || null,
-        doseAppliquee: body.doseAppliquee ? parseFloat(body.doseAppliquee) : null,
+        doseAppliquee: body.doseAppliquee === "" || body.doseAppliquee == null ? null : parseFloat(body.doseAppliquee),
         uniteDose: body.uniteDose || null,
-        dar: body.dar ? parseInt(body.dar) : null,
+        dar: body.dar === "" || body.dar == null ? null : parseInt(body.dar),
         numAMM: body.numAMM || null,
         resolu: body.resolu || false,
         dateResolution: body.dateResolution ? new Date(body.dateResolution) : null,
@@ -146,6 +158,7 @@ export async function POST(request: NextRequest) {
         // historiquement envoyé du texte libre) provoquerait une violation FK.
         operateurId: operateurId,
         certiphytoNum: body.certiphytoNum || null,
+        ...(contexte ?? {}),
       },
       include: {
         arbre: {

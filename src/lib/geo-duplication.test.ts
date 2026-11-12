@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { decalerGeometrieParcelle, nomCopieParcelle } from "./geo-duplication"
+import { corpsCopieParcelle, decalerGeometrieParcelle, nomCopieParcelle } from "./geo-duplication"
 
 const carre = JSON.stringify({
   type: "Polygon",
@@ -43,5 +43,45 @@ describe("nomCopieParcelle", () => {
     expect(nomCopieParcelle("Tunnel 1", ["Tunnel 1", "tunnel 1 (copie)"])).toBe("Tunnel 1 (copie 2)")
     expect(nomCopieParcelle("Tunnel 1 (copie)", ["Tunnel 1", "Tunnel 1 (copie)"])).toBe("Tunnel 1 (copie 2)")
     expect(nomCopieParcelle("   ", [])).toBe("Parcelle (copie)")
+  })
+})
+
+// PLAN-03 (revue Codex du 2026-11-12) : la copie perdait ses activités. Le
+// POST de duplication omettait `couches`, que la création met à [] par défaut.
+describe("corpsCopieParcelle", () => {
+  const source = {
+    nom: "Tunnel 1",
+    geometry: carre,
+    couches: ["MARAICHAGE", "VERGER"],
+    usage: "Maraîchage",
+    typeSol: "Limoneux",
+    couleur: "#123456",
+    notes: "Nord",
+    commune: "Mellionnec",
+    section: "WK",
+    numero: "0016",
+  }
+
+  it("conserve les couches d'activité de la source", () => {
+    expect(corpsCopieParcelle(source, ["Tunnel 1"])!.couches).toEqual(["MARAICHAGE", "VERGER"])
+  })
+
+  it("reprend usage, sol, couleur et notes, nomme la copie, décale le tracé", () => {
+    const corps = corpsCopieParcelle(source, ["Tunnel 1", "Tunnel 1 (copie)"])!
+    expect(corps).toMatchObject({ nom: "Tunnel 1 (copie 2)", usage: "Maraîchage", typeSol: "Limoneux", couleur: "#123456", notes: "Nord" })
+    expect(corps.geometry).toBe(decalerGeometrieParcelle(carre))
+  })
+
+  it("ne recopie ni la référence cadastrale ni la surface", () => {
+    const corps = corpsCopieParcelle(source, [])! as Record<string, unknown>
+    for (const champ of ["commune", "section", "numero", "prefixe", "contenance", "surface"]) expect(corps).not.toHaveProperty(champ)
+  })
+
+  it("source sans couches connues : liste vide, champs absents à null", () => {
+    expect(corpsCopieParcelle({ nom: "P", geometry: carre }, [])).toMatchObject({ couches: [], usage: null, typeSol: null, couleur: null, notes: null })
+  })
+
+  it("tracé inexploitable : pas de copie", () => {
+    expect(corpsCopieParcelle({ ...source, geometry: "pas du json" }, [])).toBeNull()
   })
 })

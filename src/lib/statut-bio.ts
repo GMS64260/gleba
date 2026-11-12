@@ -3,9 +3,9 @@
  *
  * Réglementation (Règlement (UE) 2018/848) :
  *   - C1 : année 1 de conversion (premier jour de l'inscription en bio)
- *   - C2 : année 2 (= 12 mois après la date de début)
- *   - C3 : année 3 (= 24 mois après) — récoltes vendues "AB en conversion"
- *   - AB : à partir du début de l'année 4 (= 36 mois après la date de début)
+ *   - C2 : année 2 (dès le 1er anniversaire de la date de début, au jour près)
+ *   - C3 : année 3 (dès le 2e anniversaire) — récoltes vendues "AB en conversion"
+ *   - AB : à partir du début de l'année 4 (dès le 3e anniversaire de la date de début)
  *           pour les cultures annuelles. Pour les cultures pérennes (verger,
  *           petits fruits) le délai est aussi de 36 mois — on garde la même
  *           règle ici (la précision par culture sortira d'un PROMPT futur).
@@ -36,16 +36,32 @@ export function statutBioCourant(
 
   if (!dateDebutConversion) return nominal
   const debut = typeof dateDebutConversion === "string" ? new Date(dateDebutConversion) : dateDebutConversion
-  if (Number.isNaN(debut.getTime()) || debut > refDate) return nominal
+  if (Number.isNaN(debut.getTime())) return nominal
 
-  // Mois écoulés depuis le début de la conversion
-  const monthsElapsed =
-    (refDate.getFullYear() - debut.getFullYear()) * 12 +
-    (refDate.getMonth() - debut.getMonth())
-  if (monthsElapsed < 12) return "C1"
-  if (monthsElapsed < 24) return "C2"
-  if (monthsElapsed < 36) return "C3"
+  // Comparaison en journées civiles locales (conteneur en Europe/Paris), jamais
+  // en mois entamés : compter les changements de mois faisait passer AB une
+  // conversion du 30/11 dès le 1er du mois de son 3e anniversaire (MAR-02,
+  // 2026-11-12). Le statut change le jour anniversaire lui-même.
+  const jourRef = jourCivil(refDate)
+  if (jourRef < jourCivil(debut)) return nominal
+  if (jourRef < anniversaire(debut, 1)) return "C1"
+  if (jourRef < anniversaire(debut, 2)) return "C2"
+  if (jourRef < anniversaire(debut, 3)) return "C3"
   return "AB"
+}
+
+/** Journée civile locale comparable (AAAAMMJJ). */
+function jourCivil(date: Date): number {
+  return date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate()
+}
+
+/**
+ * Jour anniversaire `annees` ans après `debut`. Un début au 29 février n'a pas
+ * d'anniversaire les années non bissextiles : le dépassement de `Date` le reporte
+ * au 1er mars, jamais au 28 février, pour ne pas avancer le changement de statut.
+ */
+function anniversaire(debut: Date, annees: number): number {
+  return jourCivil(new Date(debut.getFullYear() + annees, debut.getMonth(), debut.getDate()))
 }
 
 /**

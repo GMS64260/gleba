@@ -493,8 +493,12 @@ function CulturesIrriguerContent() {
                       +{Math.round(meteoGlobal.pluiePrevue5j)}mm prévus (5j)
                     </span>
                   )}
-                  {meteoGlobal.joursAvantPluie !== null && meteoGlobal.joursAvantPluie > 0 && (
-                    <span>Prochaine pluie dans {meteoGlobal.joursAvantPluie}j</span>
+                  {meteoGlobal.joursAvantPluie !== null && (
+                    <span>
+                      {meteoGlobal.joursAvantPluie === 0
+                        ? "Pluie annoncée aujourd'hui"
+                        : `Prochaine pluie dans ${meteoGlobal.joursAvantPluie}j`}
+                    </span>
                   )}
                 </div>
               </div>

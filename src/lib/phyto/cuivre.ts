@@ -1,34 +1,53 @@
 /**
  * DEV3 audit Marc 2026-05-14 - Majeur #7.
  *
- * Compteur de cuivre métal pour producteurs Bio.
+ * Compteur indicatif de cuivre métal par parcelle. Ce n'est pas une
+ * attestation de conformité : la limite qui s'impose est celle de l'AMM de
+ * chaque produit (règlement (CE) 1107/2009, art. 55 : un produit s'utilise
+ * dans les conditions de son autorisation).
  *
- * Plafond réglementaire (Règl. UE 2018/1981 modifiant 2018/1584,
- * confirmé Règl. 2023/2660) :
- *   - 4 kg de cuivre métal / ha / an (par parcelle)
- *   - 28 kg de cuivre métal / ha / sur 7 années glissantes
+ * Repères réglementaires vérifiés le 2026-11-12 :
+ *   - règlement d'exécution (UE) 2018/1981, annexe I, dispositions
+ *     spécifiques : « Seules les utilisations entraînant une application
+ *     totale maximale de 28 kg de cuivre par hectare sur une période de sept
+ *     ans sont autorisées. » Les États membres « peuvent » fixer un taux
+ *     annuel ne dépassant pas 4 kg/ha : ce plafond annuel n'est donc pas
+ *     universel, il vaut quand l'AMM le fixe. 4 kg/ha/an est la moyenne.
+ *     https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32018R1981
+ *   - règlement d'exécution (UE) 2025/1489 : approbation des composés de
+ *     cuivre prolongée jusqu'au 30 juin 2029, seule la date d'expiration est
+ *     modifiée. Les « 7 ans glissants » ci-dessous sont un repère de calcul de
+ *     Gleba, pas la période réglementaire de chaque AMM.
+ *
+ * Revue réglementaire du 2026-11-12 (constat C6) : une composition inconnue
+ * valait 20 %, une unité inconnue valait des kg/ha, les litres valaient des
+ * kilos, et un apport incalculable (g/L sans volume de bouillie) laissait le
+ * statut « OK ». Désormais :
+ *   - un apport incalculable (dose, unité, surface ou volume de bouillie
+ *     manquant, unité inconnue) n'est jamais converti : le cumul est partiel
+ *     et le statut « indetermine », sauf dépassement déjà atteint ;
+ *   - une hypothèse (teneur supposée à 20 %, densité 1 kg/L) reste calculée
+ *     mais nommée : statut « estime » au lieu de « ok », et l'écran la dit.
  *
  * On considère un traitement comme "cuivre" si :
  *   - le produit phyto a `contientCuivre = true` (flag manuel) OU
  *   - sa classification = "Chimique cuivré" OU
  *   - le nom ou la substance active contient "cuivre" / "bouillie bordelaise"
- *
- * La dose en cuivre métal est dérivée :
- *   - si `cuivreMetalGParUnite` est renseigné : dose × cuivreMetalGParUnite / 1000 = kg Cu
- *   - sinon si `cuivreMetalPct` : dose × (cuivreMetalPct/100) = kg Cu
- *   - sinon : 20% par défaut (taux moyen Bouillie bordelaise)
  */
 
 export const PLAFOND_CU_KG_HA_AN = 4
 export const PLAFOND_CU_KG_HA_7ANS = 28
-export const DEFAULT_CUIVRE_METAL_PCT = 20 // Bouillie bordelaise 20% Cu
+/** Teneur supposée quand la composition du produit n'est pas renseignée (hypothèse affichée). */
+export const DEFAULT_CUIVRE_METAL_PCT = 20
 
 export type ProduitCuivre = {
   contientCuivre?: boolean | null
   classification?: string | null
   nomCommercial?: string | null
   substanceActive?: string | null
+  /** % de cuivre métal en masse. */
   cuivreMetalPct?: number | null
+  /** g de cuivre métal par unité de produit telle que dosée (kg ou L). */
   cuivreMetalGParUnite?: number | null
 }
 
@@ -51,82 +70,91 @@ export interface TraitementCuivreInput {
   produit?: ProduitCuivre | null
 }
 
-/**
- * Convertit la dose appliquée en quantité de produit total (kg ou L) selon
- * l'unité de saisie. Permet de gérer "kg/ha", "L/ha" (≈ kg/ha pour bouillies),
- * "g/L" (concentration en bouillie : nécessite volume bouillie L/ha) et "mL/L".
- *
- * Hypothèse : 1 L de bouillie ≈ 1 kg (densité eau ~1, négligeable variation).
- * Pour des produits concentrés > 1.2 kg/L, l'opérateur saisit en kg/ha
- * directement et le calcul reste correct.
- *
- * Retourne le total en kg de PRODUIT (pas Cu) appliqué sur la parcelle entière.
- */
-function quantiteProduitTotalKg(t: TraitementCuivreInput): number {
-  const dose = t.doseAppliquee ?? 0
-  if (dose <= 0) return 0
+/** Hypothèses de calcul, à dire à l'écran. */
+export type HypotheseCuivre = 'composition_supposee' | 'densite_supposee'
 
-  const unite = (t.uniteDose ?? '').toLowerCase()
+export const LIBELLES_HYPOTHESES_CUIVRE: Record<HypotheseCuivre, string> = {
+  composition_supposee: `teneur en cuivre métal supposée à ${DEFAULT_CUIVRE_METAL_PCT} % pour un produit sans composition renseignée`,
+  densite_supposee: 'litres de produit comptés comme des kilos (densité 1 supposée)',
+}
+
+type QuantiteProduit = { valeur: number; nature: 'masse' | 'volume' } // kg ou L
+
+const positif = (v: number | null | undefined): v is number => v != null && Number.isFinite(v) && v > 0
+
+/**
+ * Quantité totale de PRODUIT appliquée sur la parcelle (kg pour une masse,
+ * L pour un volume), ou null si elle ne se calcule pas sans hypothèse :
+ * dose absente, unité absente ou inconnue, surface ou volume de bouillie
+ * manquant. Aucune unité n'est plus devinée.
+ */
+function quantiteProduit(t: TraitementCuivreInput): QuantiteProduit | null {
+  const dose = t.doseAppliquee
+  if (!positif(dose)) return null
+  const unite = (t.uniteDose ?? '').toLowerCase().replace(/\s+/g, '')
 
   // QA cmsogea5w — quantités ABSOLUES (saisies Verger > Opérations : « 3 kg »,
   // « 2 L » sur un arbre) : pas de surface requise, la quantité est le total.
-  if (unite === 'kg' || unite === 'l') return dose
-  if (unite === 'g') return dose / 1000
+  if (unite === 'kg') return { valeur: dose, nature: 'masse' }
+  if (unite === 'g') return { valeur: dose / 1000, nature: 'masse' }
+  if (unite === 'l') return { valeur: dose, nature: 'volume' }
+  if (unite === 'ml') return { valeur: dose / 1000, nature: 'volume' }
 
-  const surfaceHa = t.surfaceHa ?? 0
-  if (surfaceHa <= 0) return 0
+  const surfaceHa = t.surfaceHa
+  if (!positif(surfaceHa)) return null
+  if (unite === 'kg/ha') return { valeur: dose * surfaceHa, nature: 'masse' }
+  if (unite === 'g/ha') return { valeur: (dose * surfaceHa) / 1000, nature: 'masse' }
+  if (unite === 'l/ha') return { valeur: dose * surfaceHa, nature: 'volume' }
 
-  // kg/ha ou L/ha : dose × surface = kg total
-  if (unite === '' || unite === 'kg/ha' || unite === 'l/ha') {
-    return dose * surfaceHa
-  }
-  // g/ha → /1000 = kg
-  if (unite === 'g/ha') {
-    return (dose * surfaceHa) / 1000
-  }
-  // g/L : concentration dans la bouillie. Nécessite volume_bouillie_l_ha.
-  // (dose g/L × volumeBouillieLHa L/ha) / 1000 = kg produit / ha → × surface
-  if (unite === 'g/l') {
-    const vol = t.volumeBouillieLHa ?? 0
-    if (vol <= 0) return 0
-    return ((dose * vol) / 1000) * surfaceHa
-  }
-  // mL/L : ml de produit liquide par L de bouillie. Densité 1 supposée.
-  if (unite === 'ml/l') {
-    const vol = t.volumeBouillieLHa ?? 0
-    if (vol <= 0) return 0
-    // dose mL/L × volume L/ha = mL/ha de produit ; ÷1000 → L/ha ≈ kg/ha
-    return ((dose * vol) / 1000) * surfaceHa
-  }
-  // Inconnu : on suppose kg/ha pour ne pas perdre la donnée (sera surcouvert)
-  return dose * surfaceHa
+  // Concentrations dans la bouillie : il faut le volume de bouillie par hectare.
+  const vol = t.volumeBouillieLHa
+  if (!positif(vol)) return null
+  // g/L : g de produit par L de bouillie → kg de produit par ha → × surface.
+  if (unite === 'g/l') return { valeur: ((dose * vol) / 1000) * surfaceHa, nature: 'masse' }
+  // mL/L : mL de produit par L de bouillie → L de produit par ha → × surface.
+  if (unite === 'ml/l') return { valeur: ((dose * vol) / 1000) * surfaceHa, nature: 'volume' }
+  return null
+}
+
+export interface DoseCuivre {
+  /** kg de cuivre métal ; null quand l'apport ne se calcule pas. */
+  kg: number | null
+  hypotheses: HypotheseCuivre[]
 }
 
 /**
- * Calcule la dose de cuivre métal appliquée (en kg) sur la parcelle.
- * Retourne 0 si l'input n'est pas un cuivre, ou si la dose/surface manquent.
+ * Cuivre métal apporté par un traitement (kg), avec les hypothèses utilisées.
+ * Un produit non cuivré apporte 0 sans hypothèse.
  *
- * Audit Marc 2026-05-14 — gère désormais toutes les unités courantes
- * (kg/ha, L/ha, g/ha, g/L, mL/L) via `quantiteProduitTotalKg`.
+ * QA cmsogea5w — PAS d'arrondi ici : l'arrondi à 3 décimales PAR LIGNE
+ * avant sommation faisait tomber à 0 une intervention réellement dosée
+ * (1,5 L/ha × 9,6 m²). On arrondit uniquement à l'affichage.
  */
-export function doseCuivreMetalKg(t: TraitementCuivreInput): number {
-  if (!isProduitCuivre(t.produit)) return 0
-  const totalProduitKg = quantiteProduitTotalKg(t)
-  if (totalProduitKg <= 0) return 0
-
-  // Conversion en cuivre métal.
-  // QA cmsogea5w — PAS d'arrondi ici : l'arrondi à 3 décimales PAR LIGNE
-  // avant sommation faisait tomber à 0 une intervention réellement dosée
-  // (1,5 L/ha × 9,6 m² = 0,000288 kg Cu), classée à tort « sans dose ni
-  // surface ». On arrondit uniquement à l'affichage (cf. cumuleParParcelle).
-  if (t.produit?.cuivreMetalGParUnite != null && t.produit.cuivreMetalGParUnite > 0) {
-    return (totalProduitKg * t.produit.cuivreMetalGParUnite) / 1000
-  }
-  const pct = t.produit?.cuivreMetalPct ?? DEFAULT_CUIVRE_METAL_PCT
-  return (totalProduitKg * pct) / 100
+export function evaluerDoseCuivre(t: TraitementCuivreInput): DoseCuivre {
+  if (!isProduitCuivre(t.produit)) return { kg: 0, hypotheses: [] }
+  const quantite = quantiteProduit(t)
+  if (!quantite) return { kg: null, hypotheses: [] }
+  const gParUnite = t.produit?.cuivreMetalGParUnite
+  if (positif(gParUnite)) return { kg: (quantite.valeur * gParUnite) / 1000, hypotheses: [] }
+  const hypotheses: HypotheseCuivre[] = []
+  const pctSaisi = t.produit?.cuivreMetalPct
+  const pct = positif(pctSaisi) ? pctSaisi : DEFAULT_CUIVRE_METAL_PCT
+  if (!positif(pctSaisi)) hypotheses.push('composition_supposee')
+  // Un pourcentage massique ne s'applique à des litres qu'avec une densité.
+  if (quantite.nature === 'volume') hypotheses.push('densite_supposee')
+  return { kg: (quantite.valeur * pct) / 100, hypotheses }
 }
 
-export type StatutCuivre = 'ok' | 'warn' | 'alert' | 'inconnu'
+/**
+ * - ok : tout est calculé sans hypothèse et reste sous 75 % des repères ;
+ * - estime : sous 75 %, mais une hypothèse de calcul a servi ;
+ * - warn : ≥ 75 % d'un repère ; alert : ≥ 100 % (le cumul connu suffit) ;
+ * - indetermine : au moins un apport cuivré incalculable, pas de dépassement
+ *   déjà atteint ;
+ * - inconnu : du cuivre apporté sur une parcelle sans surface connue (le
+ *   kg/ha ne se calcule pas : jamais « OK » par défaut).
+ */
+export type StatutCuivre = 'ok' | 'estime' | 'warn' | 'alert' | 'indetermine' | 'inconnu'
 
 export interface CumulCuivreParcelle {
   parcelleId: string
@@ -135,28 +163,26 @@ export interface CumulCuivreParcelle {
   cumulAnnuelKg: number
   /** Cumul cuivre métal (kg) sur les 7 dernières années (glissantes). */
   cumul7ansKg: number
-  /** Cumul ramené au kg/ha (annuel) — comparable au plafond 4. */
+  /** Cumul ramené au kg/ha (annuel) — comparable au repère 4. */
   cuivreKgParHaAn: number
-  /** Cumul ramené au kg/ha (7 ans) — comparable au plafond 28. */
+  /** Cumul ramené au kg/ha (7 ans) — comparable au repère 28. */
   cuivreKgParHa7ans: number
-  /**
-   * Statut : 'ok' | 'warn' (>75%) | 'alert' (>100%) sur le plus tendu des deux ;
-   * 'inconnu' quand du cuivre a été apporté sur une parcelle sans surface
-   * connue (le kg/ha ne se calcule pas : jamais « OK » par défaut).
-   */
   statut: StatutCuivre
+  /** Au moins un apport cuivré incalculable : les cumuls sont des minimums. */
+  partiel: boolean
+  /** Hypothèses utilisées par les apports comptés (7 ans). */
+  hypotheses: HypotheseCuivre[]
   /** Pour debug : nb de traitements pris en compte. */
   nbTraitementsAn: number
   nbTraitements7ans: number
-  /** Bug #12 — Traitements cuivrés détectés mais sans dose/surface
-   *  (donc cumul calculé = 0). On les signale pour ne plus afficher
-   *  "Aucun traitement cuivré" alors qu'une Bouillie bordelaise existe. */
+  /** Bug #12 / revue du 2026-11-12 — traitements cuivrés détectés mais
+   *  incalculables (dose, unité, surface ou volume de bouillie manquant). */
   nbTraitementsCuivreSansDose7ans: number
 }
 
 /**
  * Agrège un lot de traitements cuivre par parcelle pour calculer les
- * cumuls et alertes.
+ * cumuls et alertes. Les traitements non cuivrés sont ignorés.
  */
 export function cumuleParParcelle(
   traitements: TraitementCuivreInput[],
@@ -167,33 +193,25 @@ export function cumuleParParcelle(
   const dateMin7ans = new Date(asOf)
   dateMin7ans.setFullYear(dateMin7ans.getFullYear() - 7)
 
-  const acc = new Map<string, { an: number; sept: number; nbAn: number; nb7: number; nbSansDose: number }>()
+  type Acc = { an: number; sept: number; nbAn: number; nb7: number; nbSansDose: number; hypotheses: Set<HypotheseCuivre> }
+  const acc = new Map<string, Acc>()
   for (const t of traitements) {
-    if (!t.parcelleId) continue
-    const cuivreProduit = isProduitCuivre(t.produit)
-    const cu = doseCuivreMetalKg(t)
-    const inWindow7 = t.date >= dateMin7ans
-    const cur = acc.get(t.parcelleId) ?? { an: 0, sept: 0, nbAn: 0, nb7: 0, nbSansDose: 0 }
-    if (cu <= 0) {
-      // Bug #12 — Traitement cuivre détecté mais dose/surface manquante :
-      // on ne peut pas le sommer mais on l'incrémente dans le compteur
-      // de saisies incomplètes pour le signaler à l'UI.
-      // QA cmsogea5w — doseCuivreMetalKg n'arrondissant plus par ligne,
-      // cu <= 0 signifie désormais réellement « donnée manquante » (dose,
-      // surface ou volume de bouillie), plus jamais un arrondi à zéro.
-      if (cuivreProduit && inWindow7) cur.nbSansDose += 1
-      acc.set(t.parcelleId, cur)
+    if (!t.parcelleId || !isProduitCuivre(t.produit)) continue
+    if (t.date < dateMin7ans) continue
+    const cur = acc.get(t.parcelleId) ?? { an: 0, sept: 0, nbAn: 0, nb7: 0, nbSansDose: 0, hypotheses: new Set<HypotheseCuivre>() }
+    acc.set(t.parcelleId, cur)
+    const { kg, hypotheses } = evaluerDoseCuivre(t)
+    if (kg == null) {
+      cur.nbSansDose += 1
       continue
     }
-    if (inWindow7) {
-      cur.sept += cu
-      cur.nb7 += 1
-    }
+    for (const h of hypotheses) cur.hypotheses.add(h)
+    cur.sept += kg
+    cur.nb7 += 1
     if (t.date.getFullYear() === anneeCourante) {
-      cur.an += cu
+      cur.an += kg
       cur.nbAn += 1
     }
-    acc.set(t.parcelleId, cur)
   }
 
   const result: CumulCuivreParcelle[] = []
@@ -201,16 +219,18 @@ export function cumuleParParcelle(
     const surfaceHa = parcelleSurfaces.get(parcelleId) ?? 0
     const cuivreKgParHaAn = surfaceHa > 0 ? sums.an / surfaceHa : 0
     const cuivreKgParHa7ans = surfaceHa > 0 ? sums.sept / surfaceHa : 0
-    const ratioAn = cuivreKgParHaAn / PLAFOND_CU_KG_HA_AN
-    const ratio7 = cuivreKgParHa7ans / PLAFOND_CU_KG_HA_7ANS
-    const ratioMax = Math.max(ratioAn, ratio7)
+    const ratioMax = Math.max(cuivreKgParHaAn / PLAFOND_CU_KG_HA_AN, cuivreKgParHa7ans / PLAFOND_CU_KG_HA_7ANS)
+    const partiel = sums.nbSansDose > 0
     // Revue du 2026-11-04 — sans surface (traitements non rattachés à une
     // parcelle, ou parcelle sans surface), le kg/ha valait 0 et la carte
     // affichait « OK » malgré des kilos de cuivre apportés.
     const surfaceInconnue = surfaceHa <= 0 && (sums.an > 0 || sums.sept > 0)
-    const statut: StatutCuivre = surfaceInconnue
-      ? 'inconnu'
-      : ratioMax >= 1 ? 'alert' : ratioMax >= 0.75 ? 'warn' : 'ok'
+    const statut: StatutCuivre = surfaceInconnue ? 'inconnu'
+      : ratioMax >= 1 ? 'alert'
+      : partiel ? 'indetermine'
+      : ratioMax >= 0.75 ? 'warn'
+      : sums.hypotheses.size > 0 ? 'estime'
+      : 'ok'
     result.push({
       parcelleId,
       surfaceHa,
@@ -219,6 +239,8 @@ export function cumuleParParcelle(
       cuivreKgParHaAn: Math.round(cuivreKgParHaAn * 1000) / 1000,
       cuivreKgParHa7ans: Math.round(cuivreKgParHa7ans * 1000) / 1000,
       statut,
+      partiel,
+      hypotheses: [...sums.hypotheses].sort(),
       nbTraitementsAn: sums.nbAn,
       nbTraitements7ans: sums.nb7,
       nbTraitementsCuivreSansDose7ans: sums.nbSansDose,

@@ -65,8 +65,17 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
 
       // Lots suivis par un bon, une facture ou la boutique : le verrou refuse
       // (ErreurCommerciale), et la transaction entière est annulée.
-      for (const r of recoltes) {
-        await verrouillerRecolteLibre(tx, userId, r.id)
+      // Revue Codex MAR-01 (2026-11-12) : le statut lu plus haut précède le
+      // verrou commun. Une vente directe qui le tenait a pu passer un lot en
+      // « vendu » (ou une sortie en consommé, perdu) et créer sa recette ; on
+      // effaçait ensuite la récolte vendue et sa recette. Le statut décisif est
+      // celui du lot relu sous verrou, et tous les lots sont contrôlés avant la
+      // première suppression.
+      const relues: Awaited<ReturnType<typeof verrouillerRecolteLibre>>[] = []
+      for (const r of recoltes) relues.push(await verrouillerRecolteLibre(tx, userId, r.id))
+      const devenuesRetenues = relues.filter((r) => r.statut != null && r.statut !== 'en_stock')
+      if (devenuesRetenues.length > 0) throw new Refus(messageRecoltesRetenues(devenuesRetenues.map((r) => r.statut!)), 409)
+      for (const r of relues) {
         await deleteAutoEntry('recolte', r.id, 'vente', userId, tx)
         await tx.recolte.delete({ where: { id: r.id } })
       }

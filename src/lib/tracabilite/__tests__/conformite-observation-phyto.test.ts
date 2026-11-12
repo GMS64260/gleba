@@ -60,3 +60,33 @@ describe("champsManquantsObservationPhyto", () => {
     expect(champObligatoireObservation("chimique_cuivre", "inconnu")).toBe(false)
   })
 })
+
+// Revue de conformité du 2026-11-12 (C1) : arrêté du 24 décembre 2025, annexe I.
+describe("champsManquantsRegistreObservation", () => {
+  it("biocontrôle sous AMM : produit, AMM, dose et surface exigés au registre", async () => {
+    const { champsManquantsRegistreObservation } = await import("../conformite-observation-phyto")
+    const cles = champsManquantsRegistreObservation({ methodeTraitement: "biocontrole" }).map((c) => c.cle)
+    expect(cles).toEqual(["produitPhyto", "numAMM", "doseAppliquee", "surfaceTraitee"])
+  })
+
+  it("dose sans unité : signalée", async () => {
+    const { champsManquantsRegistreObservation } = await import("../conformite-observation-phyto")
+    const cles = champsManquantsRegistreObservation({
+      methodeTraitement: "biocontrole", produit: "Bt", numAMM: "2000001", doseAppliquee: 1, surfaceTraiteeHa: 0.1,
+    }).map((c) => c.cle)
+    expect(cles).toEqual(["uniteDose"])
+  })
+
+  it("macro-organismes, purin, mécanique, prophylaxie : aucune mention produit exigée", async () => {
+    const { champsManquantsRegistreObservation } = await import("../conformite-observation-phyto")
+    for (const methode of ["macro_organismes", "biologique_purin", "mecanique_manuel", "prophylaxie"]) {
+      expect(champsManquantsRegistreObservation({ methodeTraitement: methode })).toEqual([])
+    }
+  })
+
+  it("la saisie d'un biocontrôle reste non bloquante (fait réel incomplet enregistrable)", async () => {
+    const { champsManquantsObservationPhyto } = await import("../conformite-observation-phyto")
+    expect(champsManquantsObservationPhyto({ methodeTraitement: "biocontrole" })).toEqual([])
+  })
+})
+

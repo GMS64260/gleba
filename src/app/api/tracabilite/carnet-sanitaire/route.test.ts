@@ -68,36 +68,41 @@ describe("GET /api/tracabilite/carnet-sanitaire", () => {
     expect(mocks.soinFindMany.mock.calls[0][0].where).toMatchObject({ userId: "user-1", fait: true })
   })
 
-  // Revue 2026-10-20 — « (N animaux) » derrière le lot d'un soin lisait le
-  // compteur stocké (5 pour le lot démo 71) au lieu de l'effectif reconstitué
-  // de l'écran Lots (4).
-  it("affiche l'effectif reconstitué du lot soigné, sans « (0 animaux) » pour un lot vidé", async () => {
-    const pintades = { id: 71, nom: "Pintades perle A3 1708", quantiteInitiale: 2, quantiteActuelle: 5, especeAnimale: { nom: "Pintade perle" } }
-    const lotVide = { id: 72, nom: null, quantiteInitiale: 3, quantiteActuelle: 1, especeAnimale: { nom: "Pintade perle" } }
-    const lapin = { id: 73, nom: "Lapins", quantiteInitiale: 1, quantiteActuelle: 1, especeAnimale: { nom: "Lapin" } }
-    const soinLot = (id: number, lot: typeof pintades | typeof lotVide | typeof lapin) => ({
+  // C10 (revue réglementaire du 2026-11-12) : « (N animaux) » derrière le lot
+  // d'un soin donnait l'effectif d'AUJOURD'HUI (reconstitué), présenté comme
+  // le groupe traité. Le test précédent (revue du 2026-10-20) entérinait cette
+  // règle : un lot de 100 poules traité en mars puis réduit à 60 affichait
+  // « (60 animaux) » pour le traitement de mars. Seul l'effectif figé au jour
+  // du soin (`effectifTraite`) est désormais affiché.
+  it("affiche l'effectif figé au jour du soin, jamais l'effectif actuel du lot", async () => {
+    const pondeuses = { id: 71, nom: "Pondeuses A", quantiteInitiale: 100, quantiteActuelle: 60, especeAnimale: { nom: "Poule" } }
+    const soinLot = (id: number, effectifTraite: number | null) => ({
       ...soin(id, "Vermifuge", "2026-03-15T00:00:00Z"),
       animalId: null,
       animal: null,
-      lotId: lot.id,
-      lot,
+      lotId: pondeuses.id,
+      lot: pondeuses,
+      effectifTraite,
     })
-    mocks.soinFindMany.mockResolvedValue([soinLot(1, pintades), soinLot(2, pintades), soinLot(3, lotVide), soinLot(4, lapin)])
-    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([
-      [71, { effectifCalcule: 4 }],
-      [72, { effectifCalcule: 0 }],
-      [73, { effectifCalcule: 1 }],
-    ]))
+    mocks.soinFindMany.mockResolvedValue([soinLot(1, 100), soinLot(2, null), soinLot(3, 1)])
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([[71, { effectifCalcule: 60 }]]))
 
     const json = await (await GET(new NextRequest("http://localhost/api/tracabilite/carnet-sanitaire?annee=2026"))).json()
 
-    // Un lot soigné deux fois n'est reconstitué qu'une fois.
-    expect(mocks.reconstituerEffectifsLots).toHaveBeenCalledWith("user-1", [pintades, lotVide, lapin])
     expect(json.carnet.map((e: { animalLot: string }) => e.animalLot)).toEqual([
-      "Pintades perle A3 1708 (4 animaux)",
-      "Pintades perle A3 1708 (4 animaux)",
-      "Lot #72",
-      "Lapins (1 animal)",
+      "Pondeuses A (100 animaux traités)",
+      "Pondeuses A",
+      "Pondeuses A (1 animal traité)",
     ])
+    expect(json.carnet.map((e: { effectifTraite: number | null }) => e.effectifTraite)).toEqual([100, null, 1])
+    expect(mocks.reconstituerEffectifsLots).not.toHaveBeenCalled()
+  })
+
+  it("se présente comme un résumé et renvoie au dossier complet", async () => {
+    mocks.soinFindMany.mockResolvedValue([])
+    const json = await (await GET(new NextRequest("http://localhost/api/tracabilite/carnet-sanitaire?annee=2026"))).json()
+    expect(json.meta.type).toBe("resume_sanitaire")
+    expect(json.meta.dossierComplet).toMatchObject({ url: "/elevage?tab=alimentation&sub=registre" })
+    expect(json.meta.avertissement).toMatch(/résumé/i)
   })
 })

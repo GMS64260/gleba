@@ -179,6 +179,8 @@ describe("PATCH /api/elevage/production-oeufs — même plafond que le POST", ()
       new Map([[71, { effectifCalcule: 4, nominatifsActifs: 0, naissancesVivantes: 3, abattagesTotal: 0, sortiesNominatives: 1 }]]),
     )
     mocks.productionFindFirst.mockResolvedValue(COLLECTE)
+    // ELEV-02 : le PATCH relit la collecte sous le verrou du stock.
+    mocks.productionFindFirstSousVerrou.mockImplementation((args) => mocks.productionFindFirst(args))
     mocks.productionUpdate.mockImplementation(async ({ data }: { data: object }) => ({
       ...COLLECTE, ...data, lot: { id: 71, nom: LOT_PINTADES.nom }, animal: null,
     }))
@@ -245,6 +247,7 @@ describe("collecte d'œufs entamée — correction et suppression", () => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
     mocks.productionFindFirst.mockResolvedValue({ ...COLLECTE, quantite: 300 })
+    mocks.productionFindFirstSousVerrou.mockImplementation((args) => mocks.productionFindFirst(args))
     mocks.productionUpdate.mockImplementation(async ({ data }: { data: object }) => ({ ...COLLECTE, ...data }))
     mocks.sortiesFindMany.mockResolvedValue([{ quantite: 24, date: new Date("2026-10-21T09:00:00.000Z") }])
     mocks.sortiesAggregate.mockResolvedValue({ _count: 1, _sum: { quantite: 24 } })
@@ -285,6 +288,7 @@ describe("création d'une collecte d'œufs — doublon sous verrou", () => {
     mocks.lotFindFirst.mockResolvedValue(LOT_PINTADES)
     mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([[71, { effectifCalcule: 4, nominatifsActifs: 0 }]]))
     mocks.productionCreate.mockImplementation(async ({ data }: { data: object }) => ({ id: 1, ...data }))
+    mocks.productionFindFirstSousVerrou.mockReset().mockResolvedValue(null)
   })
 
   const post = (body: object) => POST(new NextRequest("http://localhost/api/elevage/production-oeufs", {

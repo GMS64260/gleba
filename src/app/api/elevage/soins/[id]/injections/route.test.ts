@@ -72,6 +72,14 @@ describe('synchronisation comptable des injections', () => {
         dateRealisee: null,
         statut: 'a_faire',
       }])
+      // Relecture sous le verrou (CR-SOI-01) : inchangée.
+      .mockResolvedValueOnce([{
+        id: 'inj-1',
+        numero: 1,
+        datePrevue: new Date('2026-07-26T00:00:00Z'),
+        dateRealisee: null,
+        statut: 'a_faire',
+      }])
       .mockResolvedValueOnce([{
         id: 'inj-1',
         numero: 1,

@@ -42,7 +42,8 @@ const hasData = (r: unknown): boolean => {
   return Array.isArray(arr) ? arr.length > 0 : !!arr
 }
 
-const CONFIGS: Record<ModuleKey, ModuleConfig> = {
+/** Exporté pour les tests des liens (FRONT-04). */
+export const CONFIGS: Record<ModuleKey, ModuleConfig> = {
   home: {
     fetches: [
       { key: "expl", url: "/api/exploitation" },
@@ -201,7 +202,10 @@ const CONFIGS: Record<ModuleKey, ModuleConfig> = {
         key: "animal",
         label: "Enregistrer votre premier animal",
         done: hasData(r.anim),
-        href: "/elevage/animaux",
+        // FRONT-09 (recette du 2026-11-12) : /elevage/animaux est une page
+        // ancienne sans actions (ni modifier, ni vendre) ni avertissements
+        // d'identification ; l'onglet Animaux porte le parcours complet.
+        href: "/elevage?tab=animaux",
         hint: "Identifiant BDNI / IPG / SIRE validé automatiquement",
       },
       {
@@ -216,7 +220,10 @@ const CONFIGS: Record<ModuleKey, ModuleConfig> = {
         key: "soin",
         label: "Saisir un soin (vaccination, vermifuge…)",
         done: hasData(r.soin),
-        href: "/elevage?tab=alimentation",
+        // FRONT-04 (recette du 2026-11-12) : `tab=alimentation` seul ouvrait les
+        // stocks d'aliments. Même lien profond que le tableau de bord : onglet
+        // Soins, formulaire ouvert.
+        href: "/elevage?tab=alimentation&sub=soins&action=nouveau-soin",
         hint: "Temps d'attente lait / viande calculés automatiquement",
       },
       {

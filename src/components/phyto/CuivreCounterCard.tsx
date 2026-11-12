@@ -2,18 +2,23 @@
 
 /**
  * DEV3 #7 - Audit Marc 2026-05-14
- * Widget compteur cuivre Bio.
+ * Widget compteur cuivre Bio, indicatif.
  *
  * Affiche par parcelle :
- *   - kg Cu métal / ha / an (plafond 4)
- *   - kg Cu métal / ha sur 7 ans glissants (plafond 28)
+ *   - kg Cu métal / ha / an (repère 4, plafond seulement si l'AMM le fixe)
+ *   - kg Cu métal / ha sur 7 ans glissants (repère 28)
  *   - Barre de progression colorée (vert / orange / rouge)
+ *
+ * Revue réglementaire du 2026-11-12 (C6) : un cumul partiel ou estimé n'est
+ * plus présenté comme un total connu, et aucun « OK » n'est affiché quand un
+ * apport cuivré ne se calcule pas. Règles : `src/lib/phyto/cuivre.ts`.
  */
 
 import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Droplet, AlertTriangle, ShieldCheck } from "lucide-react"
+import { Droplet, AlertTriangle, ShieldCheck, HelpCircle } from "lucide-react"
+import { LIBELLES_HYPOTHESES_CUIVRE, type HypotheseCuivre, type StatutCuivre } from "@/lib/phyto/cuivre"
 
 interface CuivreParcelle {
   parcelleId: string
@@ -23,7 +28,9 @@ interface CuivreParcelle {
   cumul7ansKg: number
   cuivreKgParHaAn: number
   cuivreKgParHa7ans: number
-  statut: "ok" | "warn" | "alert" | "inconnu"
+  statut: StatutCuivre
+  partiel?: boolean
+  hypotheses?: HypotheseCuivre[]
   nbTraitementsCuivreSansDose7ans?: number
 }
 
@@ -34,12 +41,20 @@ interface CuivreData {
   parcelles: CuivreParcelle[]
 }
 
-function StatutBadge({ statut }: { statut: CuivreParcelle["statut"] }) {
+function StatutBadge({ statut, estime }: { statut: StatutCuivre; estime: boolean }) {
   if (statut === "alert") {
     return (
       <Badge variant="destructive" className="text-[10px] gap-1">
         <AlertTriangle className="h-3 w-3" />
-        Dépassement
+        {estime ? "Dépassement estimé" : "Dépassement"}
+      </Badge>
+    )
+  }
+  if (statut === "indetermine") {
+    return (
+      <Badge className="bg-amber-500 text-[10px] gap-1">
+        <HelpCircle className="h-3 w-3" />
+        Indéterminé
       </Badge>
     )
   }
@@ -55,19 +70,27 @@ function StatutBadge({ statut }: { statut: CuivreParcelle["statut"] }) {
     return (
       <Badge className="bg-amber-500 text-[10px] gap-1">
         <AlertTriangle className="h-3 w-3" />
-        Vigilance
+        {estime ? "Vigilance (estimation)" : "Vigilance"}
+      </Badge>
+    )
+  }
+  if (statut === "estime") {
+    return (
+      <Badge variant="outline" className="text-[10px] gap-1 text-amber-800 border-amber-300">
+        <HelpCircle className="h-3 w-3" />
+        Estimation
       </Badge>
     )
   }
   return (
     <Badge variant="outline" className="text-[10px] gap-1 text-emerald-700 border-emerald-200">
       <ShieldCheck className="h-3 w-3" />
-      OK
+      Sous les repères
     </Badge>
   )
 }
 
-function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
+function ProgressBar({ value, max, label, partiel }: { value: number; max: number; label: string; partiel: boolean }) {
   const pct = Math.min(100, (value / max) * 100)
   const color = pct >= 100 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-emerald-500"
   return (
@@ -75,7 +98,7 @@ function ProgressBar({ value, max, label }: { value: number; max: number; label:
       <div className="flex items-center justify-between text-[11px]">
         <span className="text-slate-600">{label}</span>
         <span className="font-medium">
-          {value.toFixed(2)} / {max} kg/ha
+          {partiel ? "au moins " : ""}{value.toFixed(2)} / {max} kg/ha
         </span>
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
@@ -139,7 +162,7 @@ export function CuivreCounterCard() {
         </CardHeader>
         <CardContent>
           <p className="text-xs text-emerald-700">
-            Aucun traitement cuivré sur les 7 dernières années. Conformité maximale.
+            Aucun traitement cuivré enregistré dans Gleba sur les 7 dernières années.
           </p>
         </CardContent>
       </Card>
@@ -153,11 +176,13 @@ export function CuivreCounterCard() {
           <Droplet className="h-4 w-4 text-orange-600" />
           Compteur cuivre Bio
           <Badge variant="outline" className="text-[10px] ml-auto">
-            Plafond {data.plafondAnnuel} kg/ha/an · {data.plafond7ans} kg/ha/7 ans
+            Repères {data.plafond7ans} kg/ha/7 ans · {data.plafondAnnuel} kg/ha/an
           </Badge>
         </CardTitle>
         <p className="text-[11px] text-slate-500 mt-1">
-          Règl. UE 2018/1981 — par parcelle, cuivre métal cumulé.
+          Calcul indicatif, par parcelle, en cuivre métal. La limite qui s&apos;applique est celle de l&apos;AMM de
+          chaque produit : le règl. UE 2018/1981 autorise au plus {data.plafond7ans} kg/ha sur 7 ans, et le plafond
+          annuel de {data.plafondAnnuel} kg/ha ne vaut que si l&apos;AMM le fixe.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -170,7 +195,7 @@ export function CuivreCounterCard() {
                   {p.surfaceHa.toFixed(2)} ha
                 </span>
               </div>
-              <StatutBadge statut={p.statut} />
+              <StatutBadge statut={p.statut} estime={(p.hypotheses?.length ?? 0) > 0} />
             </div>
             {p.statut === "inconnu" ? (
               <p className="text-[11px] text-amber-700 flex items-center gap-1">
@@ -180,15 +205,26 @@ export function CuivreCounterCard() {
                 pour vérifier le plafond.
               </p>
             ) : null}
-            <ProgressBar value={p.cuivreKgParHaAn} max={data.plafondAnnuel} label="Année courante" />
-            <ProgressBar value={p.cuivreKgParHa7ans} max={data.plafond7ans} label="7 ans glissants" />
+            <ProgressBar value={p.cuivreKgParHaAn} max={data.plafondAnnuel} label="Année courante" partiel={Boolean(p.partiel)} />
+            <ProgressBar value={p.cuivreKgParHa7ans} max={data.plafond7ans} label="7 ans glissants" partiel={Boolean(p.partiel)} />
+            {p.hypotheses && p.hypotheses.length > 0 ? (
+              <p className="text-[11px] text-amber-800 flex items-start gap-1">
+                <HelpCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                <span>
+                  Estimation : {p.hypotheses.map((h) => LIBELLES_HYPOTHESES_CUIVRE[h]).join(" ; ")}. Renseignez la
+                  teneur en cuivre du produit et une dose en kg pour un calcul exact.
+                </span>
+              </p>
+            ) : null}
             {/* Bug #12 — traitements cuivrés saisis mais incomplets
                 (dose ou surface manquante) : signaler pour ne pas faire
                 croire à une conformité maximale par défaut. */}
             {p.nbTraitementsCuivreSansDose7ans && p.nbTraitementsCuivreSansDose7ans > 0 ? (
               <p className="text-[11px] text-amber-700 flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" />
-                {p.nbTraitementsCuivreSansDose7ans} traitement{p.nbTraitementsCuivreSansDose7ans > 1 ? 's' : ''} cuivré{p.nbTraitementsCuivreSansDose7ans > 1 ? 's' : ''} sans dose ni surface — complétez pour le calcul de conformité.
+                {p.nbTraitementsCuivreSansDose7ans} traitement{p.nbTraitementsCuivreSansDose7ans > 1 ? 's' : ''} cuivré{p.nbTraitementsCuivreSansDose7ans > 1 ? 's' : ''} non
+                calculable{p.nbTraitementsCuivreSansDose7ans > 1 ? 's' : ''} (dose, unité, surface ou volume de bouillie manquant) : le
+                cumul affiché est partiel. Complétez la saisie pour le calculer.
               </p>
             ) : null}
           </div>

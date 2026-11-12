@@ -50,6 +50,26 @@ describe("POST /api/arbres/operations", () => {
     }))
   })
 
+  // Revue Codex CR-PHY-03 : un traitement réalisé fige son contexte du registre.
+  it("un traitement réalisé fige culture, localisation et conduite biologique", async () => {
+    mocks.arbreFindFirst.mockResolvedValue({
+      id: 42, userId: "user-1", nom: "Pommier du fond", espece: "Pommier", variete: null,
+      gpsLat: null, gpsLng: null, parcelleGeo: null, zone: { nom: "Zone A", statutBio: "C1", dateDebutConversion: null },
+    })
+    const response = await POST(request({ arbreId: 42, type: "traitement", fait: true, date: "2026-05-02", produit: "Soufre" }) as never)
+    expect(response.status).toBe(201)
+    expect(mocks.operationCreate.mock.calls[0][0].data).toMatchObject({
+      cultureRegistre: "Pommier — Pommier du fond",
+      localisationRegistre: "Arbre Pommier du fond",
+      conduiteBio: true,
+    })
+  })
+
+  it("une taille ne fige rien", async () => {
+    await POST(request({ arbreId: 42, type: "taille", fait: true, date: "2026-05-02" }) as never)
+    expect(mocks.operationCreate.mock.calls[0][0].data.cultureRegistre).toBeUndefined()
+  })
+
   it("refuse une opération à faire sans date prévue", async () => {
     const response = await POST(request({
       arbreId: 42,

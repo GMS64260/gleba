@@ -10,6 +10,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { contexteOperationTraitement } from "@/lib/tracabilite/contexte-registre"
 import { createDepenseFromOperationArbre } from "@/lib/auto-compta"
 import { lireAnnee } from "@/lib/api/annee"
 import { whereOperationsArbreAnnee } from "@/lib/verger/annee-operation"
@@ -161,6 +162,8 @@ export async function POST(request: NextRequest) {
 
     const operation = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, userId)
+    // Traitement réalisé : contexte du registre figé à la saisie (CR-PHY-03).
+    const contexte = await contexteOperationTraitement(tx, userId, { type: body.type, fait, arbreId: body.arbreId, date })
     const operation = await tx.operationArbre.create({
       data: {
         userId,
@@ -188,6 +191,7 @@ export async function POST(request: NextRequest) {
         pluie24h: body.pluie24h != null ? Boolean(body.pluie24h) : null,
         pluie24hMm: body.pluie24hMm != null ? parseFloat(body.pluie24hMm) : null,
         materiel: Array.isArray(body.materiel) ? body.materiel : [],
+        ...(contexte ?? {}),
       },
       include: {
         arbre: {

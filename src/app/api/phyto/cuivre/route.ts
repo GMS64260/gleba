@@ -2,10 +2,12 @@
  * DEV3 #7 - Audit Marc 2026-05-14
  * GET /api/phyto/cuivre
  *
- * Retourne le compteur cuivre par parcelle pour l'utilisateur :
- *   - cumul kg Cu métal de l'année courante (plafond 4 kg/ha/an)
- *   - cumul kg Cu métal sur 7 années glissantes (plafond 28 kg/ha/7ans)
- *   - statut ok / warn (>75%) / alert (>100%)
+ * Retourne le compteur cuivre indicatif par parcelle pour l'utilisateur :
+ *   - cumul kg Cu métal de l'année courante (repère 4 kg/ha/an, plafond
+ *     seulement quand l'AMM le fixe)
+ *   - cumul kg Cu métal sur 7 années glissantes (repère 28 kg/ha/7 ans)
+ *   - statut ok / estime / warn / alert / indetermine / inconnu, cumul
+ *     partiel et hypothèses de calcul : `src/lib/phyto/cuivre.ts`
  */
 
 import { NextResponse } from "next/server"

@@ -15,6 +15,7 @@ import { serviceAutorise } from '@/lib/abonnement/serveur'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
 import { adresseDeFiche, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
 import { factureSansTaxe } from '@/lib/territoires'
+import { mentionDeRegime } from '@/lib/comptabilite/fiscalite-emission'
 import { suiviReglementActif } from '@/lib/comptabilite/suivi-reglement-source'
 import { cleFacture } from '@/lib/comptabilite/cle-reglement'
 
@@ -171,9 +172,9 @@ function mentionsParDefaut(snapshot: EmetteurSnapshot | null, lignes: LigneFactu
   const out: string[] = []
   // Mention 293 B si franchise ; mention d'exonération générique si non-assujetti
   // (territoires hors champ TVA : Guyane, Mayotte, COM…).
-  if (snapshot?.regimeTva === 'franchise-293b') out.push('293b')
-  else if (snapshot?.regimeTva === 'rfa') out.push('rfa')
-  else if (snapshot?.regimeTva === 'non-assujetti') out.push('exoneration')
+  // Table partagée avec le contrôle d'émission d'un brouillon (COM-01).
+  const mentionRegime = mentionDeRegime(snapshot?.regimeTva)
+  if (mentionRegime) out.push(mentionRegime)
   // Mentions générales obligatoires (pro)
   out.push('escompte', 'penalites', 'indemnite-40')
   // Mention AB si au moins une ligne en AB
