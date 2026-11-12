@@ -55,6 +55,25 @@ export default auth((req) => {
     return new NextResponse(null, { status: 404 })
   }
 
+  // Photos envoyées (`/uploads/<exploitation>/<fichier>`) : une session ne
+  // suffit pas, le dossier d'une autre exploitation contient des photos privées
+  // (santé du verger). Le middleware ne connaît que la personne connectée, pas
+  // l'exploitation où elle travaille : si le dossier n'est pas le sien, la
+  // demande est confiée à une route qui lit l'adhésion en base et ne sert que
+  // le dossier de l'exploitation en cours (revue de sécurité du 2026-11-11).
+  const photoEnvoyee = /^\/uploads\/([^/]+)\/([^/]+)$/.exec(pathname)
+  if (photoEnvoyee && isLoggedIn && photoEnvoyee[1] !== req.auth?.user?.id) {
+    // La requête réécrite ne repasse pas par ce middleware : les en-têtes de
+    // contexte doivent déjà décrire la route de DESTINATION. Avec le chemin
+    // d'origine `/uploads/…`, inconnu de la garde d'abonnement, la route
+    // refusait tout le monde (FORMULE_INSUFFISANTE).
+    const destination = `/api/upload/photo/${encodeURIComponent(photoEnvoyee[1])}/${encodeURIComponent(photoEnvoyee[2])}`
+    const enTetesDestination = new Headers(enTetesTransmises)
+    enTetesDestination.set(ENTETE_CHEMIN, destination)
+    enTetesDestination.set(EN_TETE_MUTATION, valeurEnteteMutation(req.method, destination))
+    return NextResponse.rewrite(new URL(destination, req.nextUrl), { request: { headers: enTetesDestination } })
+  }
+
   // Routes publiques (DEV2 #2 : pages légales accessibles sans login)
   const publicRoutes = [
     "/login", "/register", "/mot-de-passe-oublie", "/reset-password",
