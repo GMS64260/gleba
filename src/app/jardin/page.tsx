@@ -62,6 +62,7 @@ import {
   entitesModifiees,
   indexerEtatSauve,
 } from "@/lib/jardin/sauvegarde-differentielle"
+import { parcelleDeCreation } from "@/lib/jardin/filtre-parcelle"
 import { nomsCopiesEnLot } from "@/lib/jardin/noms-copie"
 import { parcelleParDefautArbre } from "@/lib/verger/espece-arbre"
 import {
@@ -1734,7 +1735,7 @@ function JardinContent() {
           longueur: newObjet.longueur,
           posX: 0,
           posY: maxY + 0.5,
-          parcelleGeoId: selectedParcelleId || undefined,
+          parcelleGeoId: parcelleDeCreation(selectedParcelleId),
         })
       })
 
@@ -1823,7 +1824,7 @@ function JardinContent() {
             posY,
             rotation2D: source.rotation2D,
             couleur: source.couleur,
-            parcelleGeoId: selectedParcelleId || undefined,
+            parcelleGeoId: parcelleDeCreation(selectedParcelleId),
           })
         })
 
@@ -1909,7 +1910,7 @@ function JardinContent() {
           // datePlantation est requise par l'API ; la création rapide depuis
           // le plan ne la demande pas → date du jour par défaut (audit #22).
           datePlantation: todayLocalISO(),
-          parcelleGeoId: selectedParcelleId || undefined,
+          parcelleGeoId: parcelleDeCreation(selectedParcelleId),
         })
       })
 
