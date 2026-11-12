@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   animalFindFirst: vi.fn(),
   parcelleFindFirst: vi.fn(),
   mouvementCreate: vi.fn(),
+  mouvementFindFirst: vi.fn(),
   lotUpdateMany: vi.fn(),
   animalUpdateMany: vi.fn(),
   transaction: vi.fn(),
@@ -15,7 +16,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock('@/lib/prisma', () => {
   const tx = {
-    mouvementCheptel: { create: mocks.mouvementCreate },
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    mouvementCheptel: { create: mocks.mouvementCreate, findFirst: mocks.mouvementFindFirst },
     lotAnimaux: { updateMany: mocks.lotUpdateMany },
     animal: { updateMany: mocks.animalUpdateMany },
   }
@@ -43,6 +45,8 @@ describe('POST mouvements-cheptel', () => {
     mocks.animalFindFirst.mockResolvedValue({ id: 7 })
     mocks.parcelleFindFirst.mockResolvedValue({ id: 'parcelle-1' })
     mocks.mouvementCreate.mockResolvedValue({ id: 'mouvement-1' })
+    // Le mouvement saisi est le plus récent : la position suit sa destination.
+    mocks.mouvementFindFirst.mockResolvedValue({ parcelleApresId: 'parcelle-2' })
     mocks.lotUpdateMany.mockResolvedValue({ count: 1 })
   })
 
