@@ -18,7 +18,7 @@ export function reponseErreurEncyclopedie(error: unknown) {
   if (code === "P2002" || code === "P2034") {
     return NextResponse.json({ error: "Une autre contribution a modifié cette section. Actualisez la fiche avant de reprendre la proposition." }, { status: 409 })
   }
-  console.error("Encyclopédie : échec de l'opération", error instanceof Error ? error.name : "Erreur inconnue")
+  console.error("Encyclopédie error: échec de l'opération", error instanceof Error ? error.name : "Erreur inconnue")
   return NextResponse.json({ error: "L'opération n'a pas pu être enregistrée." }, { status: 500 })
 }
 export async function especePublique(especeId: string, db: Base = prisma) {
@@ -168,11 +168,6 @@ export async function deciderContribution(id: string, validateurId: string, deci
     }
     return { id, statut, decisionMotif: decision.motif, revision }
   })
-}
-export async function discussionPublique(id: string, db: Base = prisma) {
-  const discussion = await db.discussionEncyclopedie.findFirst({ where: { id, espece: visibiliteReferentielPublic } })
-  if (!discussion) throw new ErreurEncyclopedie(404, "Discussion publique introuvable.")
-  return discussion
 }
 
 /** Les membres peuvent lire le forum général ET les sujets de fiches publiques. */

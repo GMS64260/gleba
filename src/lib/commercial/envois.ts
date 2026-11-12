@@ -89,7 +89,9 @@ export async function envoyerCommercial(userId: string, entree: z.infer<typeof e
       return await prisma.envoiCommercial.update({ where: { id: preparation.envoi.id }, data: { statut: 'refuse' } })
     }
     return await prisma.envoiCommercial.update({ where: { id: preparation.envoi.id }, data: { statut: 'envoye', messageId: resultat.messageId, envoyeAt: new Date() } })
-  } catch {
+  } catch (e) {
+    // Nom et code seuls : un refus SMTP cite l'adresse du destinataire.
+    console.error('[commercial] envoi document error:', e instanceof Error ? e.name : 'inconnue', (e as { code?: unknown } | null)?.code ?? '')
     // Une coupure peut arriver après acceptation SMTP : ne jamais réessayer en silence.
     return prisma.envoiCommercial.update({ where: { id: preparation.envoi.id }, data: { statut: 'a_verifier' } })
   }

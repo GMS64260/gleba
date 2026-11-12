@@ -18,8 +18,6 @@ function periodeAnnee(annee: number) {
   }
 }
 
-export type ProductionsRucheLecture = Awaited<ReturnType<typeof computeProductionsRuche>>
-
 /**
  * `limit` borne la liste des récoltes (les plus récentes) ; `null` = toutes.
  * Les totaux et stocks portent toujours sur toute l'année. `meta.total` est

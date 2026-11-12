@@ -41,10 +41,8 @@
   "exclude": [
     "node_modules",
     "mcp-server",
-    "prisma/import-legacy-sqlite.ts",
     "scripts/qa/serie-assistant-*.ts",
     "scripts/banc-essai-assistant.ts",
-    "scripts/verif-briefing-20260814.ts",
     "src/**/__tests__/**",
     "vitest.config.ts"
   ]

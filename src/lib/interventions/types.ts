@@ -31,8 +31,6 @@ export const TYPES_INTERVENTION = [
   { value: "autre", label: "Autre" },
 ] as const
 
-export type TypeIntervention = (typeof TYPES_INTERVENTION)[number]["value"]
-
 const LIBELLES = new Map<string, string>(TYPES_INTERVENTION.map((t) => [t.value, t.label]))
 
 /** Libellé affiché d'un type d'intervention, accentué ; repli lisible sinon. */

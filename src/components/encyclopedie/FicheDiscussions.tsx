@@ -114,7 +114,7 @@ export function FicheDiscussions({ especeId, discussions, peutPublier, invitatio
         <div className="rounded-xl border border-dashed border-lin bg-papier/50 p-6 text-sm text-ardoise"><MessageSquare className="mb-3 h-6 w-6 text-sauge" /><p>Aucune discussion n’est encore ouverte pour cette fiche. Une question précise ou une source à examiner peut lancer l’échange.</p></div>
       )}
       {discussions.length >= 30 && !selected && <p className="text-xs text-ardoise">Les trente discussions les plus récentes de cette fiche sont affichées.</p>}
-      <p className="border-t border-lin pt-4 text-sm text-ardoise">Pour les échanges du quotidien, retrouvez aussi <Link href="/communaute?tab=salon" className="font-medium text-foret underline underline-offset-2">le salon de Gleba</Link>.</p>
+      <p className="border-t border-lin pt-4 text-sm text-ardoise">Pour les échanges du quotidien, retrouvez aussi <Link href="/communaute?tab=salon" className="font-medium text-foret underline underline-offset-2">le forum de Gleba</Link>.</p>
     </div>
   )
 }

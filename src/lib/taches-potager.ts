@@ -197,7 +197,7 @@ export async function getTachesPotager(
   const implantations = [...semisSemaine, ...semisRetard, ...plantationsSemaine, ...plantationsRetard]
   let zone: Awaited<ReturnType<typeof zoneEffectiveUser>> = null
   if (implantations.some((c) => fenetreImplantation(c.itp))) {
-    zone = await zoneEffectiveUser(prisma, userId).catch(() => null)
+    zone = await zoneEffectiveUser(prisma, userId).catch((e) => { console.error('[taches-potager] zone effective error:', e); return null })
   }
   // Message d'alerte de la culture si l'étape de la tâche est celle qui implante.
   function horsSaison(c: typeof semisSemaine[number], champ: 'dateSemis' | 'datePlantation'): string | null {
@@ -316,5 +316,3 @@ export async function getTachesPotager(
     },
   }
 }
-
-export type TachesPotager = Awaited<ReturnType<typeof getTachesPotager>>

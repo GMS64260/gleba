@@ -10,5 +10,3 @@ export const feedbackSchema = z.object({
   userAgent: z.string().max(500).optional(),
   viewport: z.string().max(20).optional(),
 })
-
-export type FeedbackInput = z.infer<typeof feedbackSchema>

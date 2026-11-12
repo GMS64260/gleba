@@ -95,5 +95,3 @@ export const createFactureSchema = z
     },
     { message: "Totaux facture incohérents avec la somme des lignes", path: ["totalTTC"] }
   )
-
-export type CreateFactureInput = z.infer<typeof createFactureSchema>

@@ -52,6 +52,8 @@ export async function POST(request: NextRequest) {
     if (d.action === "resilier") await resilier(userId)
     return NextResponse.json({ success: true }, { headers: NO_STORE })
   } catch (e) {
+    // Nom seul : ne jamais imprimer une donnée de paiement ; un corps JSON invalide n'est pas une panne.
+    if (!(e instanceof ErreurFacturation) && !(e instanceof SyntaxError)) console.error("POST /api/abonnement error:", e instanceof Error ? e.name : "inconnue")
     return NextResponse.json({ error: e instanceof ErreurFacturation ? e.message : "L’opération n’a pas été confirmée. Réessayez dans un instant." }, { status: e instanceof ErreurFacturation ? e.status : 503, headers: NO_STORE })
   }
 }
