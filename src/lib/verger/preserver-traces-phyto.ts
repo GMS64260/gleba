@@ -177,7 +177,7 @@ export async function preserverTracesPhytoArbre(
   })
 
   for (const op of operations) {
-    const contexte = await contexteAConserver(tx, userId, { date: op.date }, { arbreId: arbre.id })
+    const contexte = await contexteAConserver(tx, userId, op, { arbreId: arbre.id })
     await tx.intervention.create({
       data: {
         userId,

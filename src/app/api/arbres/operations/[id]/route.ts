@@ -11,6 +11,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { contexteOperationTraitement } from "@/lib/tracabilite/contexte-registre"
 import {
   journaliserRectificationPhyto,
   motifRectification,
@@ -95,9 +96,23 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const operation = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      // Traitement réalisé : contexte du registre figé quand il le devient, ou
+      // quand sa date ou son type change, ou s'il ne l'a jamais été (CR-PHY-03).
+      const jamaisFige =
+        existing.cultureRegistre == null && existing.localisationRegistre == null && existing.conduiteBio == null
+      const contexte =
+        jamaisFige || "fait" in body || "date" in body || "type" in body
+          ? await contexteOperationTraitement(tx, session!.user.id, {
+              type: body.type ?? existing.type,
+              fait: body.fait ?? existing.fait,
+              arbreId: existing.arbreId,
+              date: body.date ? new Date(body.date) : existing.date,
+            })
+          : null
       const operation = await tx.operationArbre.update({
       where: { id: operationId },
       data: {
+        ...(contexte ?? {}),
         date: body.date ? new Date(body.date) : undefined,
         type: body.type,
         description: body.description,

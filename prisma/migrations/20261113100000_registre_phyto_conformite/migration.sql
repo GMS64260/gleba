@@ -1,7 +1,13 @@
 -- Registre d'utilisation des produits phytopharmaceutiques : arrêté du
 -- 24 décembre 2025 (NOR AGRG2536515A), en vigueur depuis le 1er janvier 2026.
 -- Mentions conditionnelles de l'annexe I, contexte figé au jour de
--- l'enregistrement et historique des rectifications (article 3).
+-- l'enregistrement (interventions, observations santé, opérations d'arbre)
+-- et historique des rectifications (article 3).
+
+-- AlterTable
+ALTER TABLE "operations_arbres" ADD COLUMN     "conduite_bio" BOOLEAN,
+ADD COLUMN     "culture_registre" TEXT,
+ADD COLUMN     "localisation_registre" TEXT;
 
 -- AlterTable
 ALTER TABLE "observations_sante" ADD COLUMN     "conduite_bio" BOOLEAN,
@@ -42,7 +48,6 @@ CREATE INDEX "registre_phyto_historique_date_idx" ON "registre_phyto_historique"
 
 -- AddForeignKey
 ALTER TABLE "registre_phyto_historique" ADD CONSTRAINT "registre_phyto_historique_user_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
 
 -- Historique en ajout seul : une ligne déposée n'est jamais réécrite. La
 -- suppression reste possible (cascade de la suppression d'un compte).

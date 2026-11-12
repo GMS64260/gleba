@@ -1852,6 +1852,11 @@ model OperationArbre {
   pluie24hMm        Float?    @map("pluie_24h_mm")
   materiel          String[]  @default([]) @map("materiel")
   notes             String?   @map("notes")
+  // Contexte du registre phyto figé quand un traitement est réalisé (arrêté du
+  // 24 décembre 2025, art. 3 ; revue Codex CR-PHY-03).
+  cultureRegistre      String?   @map("culture_registre")
+  localisationRegistre String?   @map("localisation_registre")
+  conduiteBio          Boolean?  @map("conduite_bio")
   createdAt         DateTime  @default(now()) @map("created_at")
 
   @@index([userId])

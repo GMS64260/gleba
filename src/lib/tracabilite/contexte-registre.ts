@@ -119,6 +119,21 @@ const PLANCHE_SELECT = {
   parcelleGeo: { select: PARCELLE_SELECT },
 } as const
 
+/**
+ * Contexte à figer sur une opération d'arbre : seulement pour un traitement
+ * RÉALISÉ (revue Codex CR-PHY-03 : ces opérations relisaient toujours les
+ * fiches actuelles, un renommage ou un déplacement de l'arbre réécrivait le
+ * registre). `null` sinon : rien à figer.
+ */
+export async function contexteOperationTraitement(
+  db: Tx,
+  userId: string,
+  op: { type: string; fait: boolean; arbreId: number; date: Date },
+): Promise<ContexteRegistre | null> {
+  if (op.type !== 'traitement' || !op.fait) return null
+  return chargerContexteRegistre(db, userId, { arbreId: op.arbreId }, op.date)
+}
+
 export interface ReferencesLieu {
   cultureId?: number | null
   plancheId?: string | null

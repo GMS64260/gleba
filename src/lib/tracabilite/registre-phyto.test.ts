@@ -369,6 +369,25 @@ describe('genererRegistrePhyto — traitement du registre Verger (observation sa
     expect(mocks.cultureFindFirst).not.toHaveBeenCalled()
   })
 
+  // Revue Codex CR-PHY-03 : une opération d'arbre réalisée garde son contexte figé.
+  it("opération d'arbre : le contexte figé prime sur la fiche actuelle", async () => {
+    mocks.operationFindMany.mockResolvedValue([
+      fakeOperation({
+        arbreId: 5,
+        cultureRegistre: 'Pommier Reinette — ancien nom',
+        localisationRegistre: 'Arbre ancien nom · Parcelle Nord',
+        conduiteBio: false,
+      }),
+    ])
+    const { registre } = await genererRegistrePhyto('user-1', 2026)
+    expect(registre[0]).toMatchObject({
+      localisationReglementaire: 'Arbre ancien nom · Parcelle Nord',
+      conduiteBio: false,
+      contexteFige: true,
+    })
+    expect(mocks.arbreFindFirst).not.toHaveBeenCalled()
+  })
+
   it('une dose sans unité est signalée (annexe II : valeur et unité)', async () => {
     mocks.interventionFindMany.mockResolvedValue([fakeIntervention({ uniteDose: null })])
 

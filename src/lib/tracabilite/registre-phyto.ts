@@ -480,11 +480,12 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       localise: Boolean(op.arbre?.nom),
       ammExigee: ammExigee(classificationOp),
     })
-    const contexte = await contexteLigne({ date: op.date }, userId, { arbreId: op.arbreId })
+    // Contexte figé à la réalisation (CR-PHY-03), sinon relu des fiches actuelles.
+    const contexte = await contexteLigne(op, userId, { arbreId: op.arbreId })
     entries.push({
       id: 2_000_000_000 + op.id, // évite la collision d'id avec interventions et observations
       date: jourLigne(op.date),
-      culture: op.arbre?.nom || 'Non renseigné',
+      culture: op.cultureRegistre || op.arbre?.nom || 'Non renseigné',
       espece: op.arbre?.espece || '',
       parcelle: 'Non renseigné',
       localisation: '',

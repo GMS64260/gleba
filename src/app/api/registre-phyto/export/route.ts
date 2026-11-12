@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
     observations.map((o) => contexteDe(o, { arbreId: o.arbreId, parcelleId: o.parcelleId })),
   )
   const contextesOperation = await Promise.all(
-    operationsArbres.map((op) => contexteDe({ date: op.date }, { arbreId: op.arbreId })),
+    operationsArbres.map((op) => contexteDe(op, { arbreId: op.arbreId })),
   )
 
   const lignesIntervention = interventions.map((i, index) => {
