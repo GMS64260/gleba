@@ -31,7 +31,7 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
     db.recolte.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour }, produitsBoutique: { none: {} } }, include: { espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } }, culture: { select: { plancheId: true, planche: { select: { parcelleGeoId: true } }, variete: { select: { nom: true } } } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.recolteArbre.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, include: { arbre: { select: { nom: true, espece: true } } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
     db.productionBois.findMany({ where: { userId, statut: 'en_stock', date: { lte: finJour } }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
-    db.produitBoutique.findMany({ where: { userId }, include: { recolte: { select: { datePeremption: true } } }, orderBy: { nom: 'asc' } }),
+    db.produitBoutique.findMany({ where: { userId }, include: { recolte: { select: { id: true, cultureId: true, date: true, datePeremption: true, culture: { select: { plancheId: true, planche: { select: { parcelleGeoId: true } } } } } } }, orderBy: { nom: 'asc' } }),
     computeStockOeufsParLots(userId, maintenant, db),
     db.productionRuche.findMany({ where: { userId, date: { lte: finJour } }, include: { mouvementsStock: { select: { quantite: true } } } }),
     db.lotFromage.findMany({ where: { userId, etat: 'pret', dateFabrication: { lte: finJour } }, include: { mouvements: { select: { nbPieces: true, poidsKg: true } } }, orderBy: { dateFabrication: 'asc' } }),
@@ -42,7 +42,14 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
   const jour = dateIsoFacture(maintenant)
   const frais = (date: Date | null) => !date || dateIsoFacture(date) >= jour
   const articles: ArticleStockCommercial[] = []
-  const avertissementsLegumes = await chargerAvertissementsDarLegumes(db, userId, recoltes.map(r => ({ id: r.id, cultureId: r.cultureId, plancheId: r.culture.plancheId, parcelleId: r.culture.planche?.parcelleGeoId ?? null, date: r.date })))
+  // Revue réglementaire du 2026-11-12 (C5) : une récolte publiée en boutique
+  // sort de la liste des lots (`produitsBoutique: none`) ; son produit garde
+  // l'avertissement DAR du lot d'origine, sinon il disparaissait du BL.
+  const lotsLegumes = [
+    ...recoltes.map(r => ({ id: r.id, cultureId: r.cultureId, plancheId: r.culture.plancheId, parcelleId: r.culture.planche?.parcelleGeoId ?? null, date: r.date })),
+    ...produits.flatMap(p => p.recolte ? [{ id: p.recolte.id, cultureId: p.recolte.cultureId, plancheId: p.recolte.culture.plancheId, parcelleId: p.recolte.culture.planche?.parcelleGeoId ?? null, date: p.recolte.date }] : []),
+  ]
+  const avertissementsLegumes = await chargerAvertissementsDarLegumes(db, userId, lotsLegumes)
   for (const r of recoltes) {
     const dispo = disponibleCommercial(r)
     if (dispo <= 0 || !frais(r.datePeremption)) continue
@@ -67,7 +74,7 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
   for (const p of produits) {
     const disponible = stockCommandable(p.stockDispo, reservees.get(p.id))
     if ((disponible != null && disponible <= 0) || !frais(p.recolte?.datePeremption ?? null)) continue
-    articles.push({ type: 'boutique', id: String(p.id), nom: p.nom, categorie: p.actif ? 'Catalogue de la boutique' : 'Catalogue hors ligne', disponible, unite: p.unite, prixTTC: p.prix, tauxTVA: p.categorie === 'autre' ? 20 : 5.5, statutBio: p.statutBio, href: '/boutique?tab=produits' })
+    articles.push({ type: 'boutique', id: String(p.id), nom: p.nom, categorie: p.actif ? 'Catalogue de la boutique' : 'Catalogue hors ligne', disponible, unite: p.unite, prixTTC: p.prix, tauxTVA: p.categorie === 'autre' ? 20 : 5.5, statutBio: p.statutBio, href: '/boutique?tab=produits', avertissements: p.recolte ? avertissementsLegumes.get(p.recolte.id) : undefined })
   }
   const oeufsDisponibles = oeufs.data.filter((lot) => lot.statut === 'commercialisable' && lot.datePonte <= finJour).reduce((s, lot) => s + lot.restant, 0)
   if (oeufsDisponibles > 0) {
