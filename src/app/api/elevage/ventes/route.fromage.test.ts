@@ -62,10 +62,12 @@ const requete = (body: unknown) =>
 
 describe("POST /api/elevage/ventes — fromage", () => {
   let mouvements: Array<{ nbPieces: number; poidsKg: number }>
+  let lotSurcharge: Record<string, unknown>
 
   beforeEach(() => {
     vi.clearAllMocks()
     mouvements = []
+    lotSurcharge = {}
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
     mocks.lotFindFirst.mockImplementation(async () => ({
       id: "lot-1",
@@ -73,6 +75,9 @@ describe("POST /api/elevage/ventes — fromage", () => {
       nbPieces: 4,
       poidsTotalKg: 0.3,
       etat: "pret",
+      dateFabrication: new Date("2026-10-01"),
+      dlc: null,
+      ...lotSurcharge,
       mouvements: [...mouvements],
     }))
     mocks.venteCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 7, ...data }))
@@ -80,6 +85,25 @@ describe("POST /api/elevage/ventes — fromage", () => {
       mouvements.push({ nbPieces: data.nbPieces, poidsKg: data.poidsKg })
       return data
     })
+  })
+
+  it.each([
+    ["datée avant la fabrication du lot", { dateFabrication: new Date("2026-10-25") }, "fabriqué le 25/10/2026"],
+    ["datée après la date limite de consommation", { dlc: new Date("2026-10-18") }, "date limite de consommation"],
+  ])("refuse une vente %s, sans sortie de cave ni recette (revue du 2026-11-11)", async (_cas, surcharge, extrait) => {
+    lotSurcharge = surcharge
+    const reponse = await POST(requete(corpsCave()))
+    expect(reponse.status).toBe(409)
+    expect((await reponse.json()).error).toContain(extrait)
+    expect(mocks.venteCreate).not.toHaveBeenCalled()
+    expect(mocks.mouvementCreate).not.toHaveBeenCalled()
+  })
+
+  it("vend encore le jour même de la date limite de consommation, et un lot à DLUO dépassée", async () => {
+    lotSurcharge = { dlc: new Date("2026-10-19"), dluo: new Date("2026-10-01") }
+    const reponse = await POST(requete(corpsCave()))
+    expect(reponse.status).toBeLessThan(300)
+    expect(mocks.venteCreate).toHaveBeenCalledTimes(1)
   })
 
   it("une vente à la pièce sort des pièces, pas des kilos, et facture 2 × 2 €", async () => {
