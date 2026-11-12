@@ -34,6 +34,8 @@ export interface ParcelleGeoData {
   couleur?: string | null
   notes?: string | null
   typeSol?: string | null
+  /** Activités de la parcelle (`COUCHES_ACTIVITE`), renvoyées par GET /api/carte. */
+  couches?: string[] | null
   centroidLat?: number | null
   centroidLng?: number | null
   betail?: BetailParcelle | null
