@@ -63,7 +63,7 @@
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "lucide-react": "^0.563.0",
-    "next": "^16.2.10",
+    "next": "^16.4.6",
     "next-auth": "^5.0.0-beta.31",
     "node-cron": "^4.6.0",
     "nodemailer": "^9.0.3",
