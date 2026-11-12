@@ -1,9 +1,10 @@
 import { z } from 'zod'
+import { refusVentilationFournie } from '@/lib/comptabilite/ventilation-ttc'
 
 const JOURNAUX = ['VE', 'AC', 'BQ', 'CA', 'OD'] as const
 const MODES_REGLEMENT = ['Espèces', 'Chèque', 'Virement', 'CB', 'Prélèvement', 'À crédit'] as const
 
-export const createDepenseManuelleSchema = z.object({
+const depenseManuelleBase = z.object({
   date: z.coerce.date().optional(),
   categorie: z.string().min(1, 'Catégorie requise'),
   description: z.string().min(1, 'Description requise').max(500),
@@ -25,6 +26,17 @@ export const createDepenseManuelleSchema = z.object({
   pjUrl: z.string().url().nullable().optional().or(z.literal('')),
 })
 
-export const updateDepenseManuelleSchema = createDepenseManuelleSchema.partial().extend({
+/**
+ * COM-02 (revue Codex du 2026-11-12) : HT et TVA fournis doivent être
+ * cohérents avec le TTC et le taux (somme exacte au centime) ; absents, la
+ * route les calcule. Une modification partielle se contrôle dans la route,
+ * contre l'écriture relue sous verrou.
+ */
+export const createDepenseManuelleSchema = depenseManuelleBase.superRefine((v, ctx) => {
+  const refus = refusVentilationFournie(v.montant, v.tauxTVA, v.montantHT, v.montantTVA)
+  if (refus) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['montantTVA'], message: refus })
+})
+
+export const updateDepenseManuelleSchema = depenseManuelleBase.partial().extend({
   id: z.number().int().min(1, 'ID requis'),
 })

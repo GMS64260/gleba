@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   hashPassword: vi.fn(),
   userFindUnique: vi.fn(),
   userUpdate: vi.fn(),
+  userUpdateMany: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({
@@ -22,7 +23,7 @@ vi.mock("@/lib/auth-utils", () => ({
   hashPassword: mocks.hashPassword,
 }))
 vi.mock("@/lib/prisma", () => ({
-  default: { user: { findUnique: mocks.userFindUnique, update: mocks.userUpdate } },
+  default: { user: { findUnique: mocks.userFindUnique, update: mocks.userUpdate, updateMany: mocks.userUpdateMany } },
 }))
 vi.mock("@/lib/rate-limit", () => ({
   checkRateLimit: () => null,
@@ -60,14 +61,21 @@ describe("POST /api/auth/change-password", () => {
     expect(json.code).toBe("COMPTE_DEMO")
     expect(json.error).toContain("mot de passe ne peut pas être changé")
     expect(mocks.userUpdate).not.toHaveBeenCalled()
+    expect(mocks.userUpdateMany).not.toHaveBeenCalled()
   })
 
   it("change le mot de passe d'un compte réel comme avant", async () => {
     mocks.userFindUnique.mockResolvedValue({ id: "u1", email: "maraicher@example.com", password: "hash" })
+    mocks.userUpdateMany.mockResolvedValue({ count: 1 })
 
     const res = await POST(requete())
 
     expect(res.status).toBe(200)
-    expect(mocks.userUpdate).toHaveBeenCalledWith({ where: { id: "u1" }, data: { password: "nouveau-hash", apiToken: null } })
+    // Écriture conditionnelle sur le hash vérifié, et révocation du jeton
+    // d'API et du lien de réinitialisation en cours (SEC-01).
+    expect(mocks.userUpdateMany).toHaveBeenCalledWith({
+      where: { id: "u1", password: "hash" },
+      data: { password: "nouveau-hash", apiToken: null, resetPasswordToken: null, resetPasswordExpires: null },
+    })
   })
 })
