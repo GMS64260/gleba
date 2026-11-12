@@ -37,9 +37,6 @@ export interface SujetForumVue {
 }
 export interface FilForumVue extends SujetForumVue { contenu: string; reponses: ReponseEncyclopedieVue[]; pageReponses: number; pagesReponses: number }
 
-export interface PageForumVue { sujets: SujetForumVue[]; total: number; page: number; pages: number }
-
-
 export const TYPES_CIBLE_CORRECTION = ["ESPECE", "VARIETE", "ITP"] as const
 export type TypeCibleCorrection = typeof TYPES_CIBLE_CORRECTION[number]
 export type ValeurCorrection = string | number | boolean | null

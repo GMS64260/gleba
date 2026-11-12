@@ -82,5 +82,3 @@ export const FOURNISSEUR_TYPES = [
   'Service',
   'Mixte',
 ] as const
-
-export type FournisseurType = (typeof FOURNISSEUR_TYPES)[number]

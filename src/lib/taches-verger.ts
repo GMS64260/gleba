@@ -12,8 +12,6 @@
 
 import prisma from '@/lib/prisma'
 
-export type TachesVerger = Awaited<ReturnType<typeof getTachesVerger>>
-
 export async function getTachesVerger(
   userId: string,
   { start, end }: { start: Date; end: Date },

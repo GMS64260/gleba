@@ -159,10 +159,3 @@ export function placerPlants(
  * @/lib/jardin/objets-plan : un type ajouté ne peut plus manquer d'un côté.
  */
 export { OBJET_COLORS_3D as OBJET_COLORS } from "@/lib/jardin/objets-plan"
-
-export const ARBRE_COLORS: Record<string, string> = {
-  fruitier: "#3f9440",
-  petit_fruit: "#c0413b",
-  ornement: "#9a56c9",
-  haie: "#6f9e2e",
-}

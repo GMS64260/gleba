@@ -6,14 +6,6 @@
  * recalculer la somme localement.
  */
 
-export type {
-  KPIBase,
-  KPIMaraichage,
-  KPICompta,
-  KPIVerger,
-  KPIElevage,
-} from './types'
-export { isMidYear, shiftToPrevYear } from './types'
 export { getKpiMaraichage } from './maraichage'
 export { getKpiCompta } from './compta'
-export { invalidateKpi, clearKpiCache } from './cache'
+export { invalidateKpi } from './cache'

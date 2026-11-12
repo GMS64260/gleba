@@ -34,7 +34,3 @@ export const updateVarieteSchema = varieteSchema
   .partial()
   .omit({ id: true })
   .extend({ nom: z.string().min(1, 'Le nom de la variété est requis').max(100).optional() })
-
-export type VarieteInput = z.infer<typeof varieteSchema>
-export type CreateVarieteInput = z.infer<typeof createVarieteSchema>
-export type UpdateVarieteInput = z.infer<typeof updateVarieteSchema>

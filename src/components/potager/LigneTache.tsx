@@ -7,8 +7,8 @@
  * « N sem. de retard » de la page Tâches et de l'onglet Calendrier
  * (P4 « une liste est un registre », 2026-10-09).
  *
- * Import direct des deux composants (pas l'index `@/components/accueil`,
- * qui entraînerait tout l'accueil dans le bundle des modules).
+ * Les deux composants de l'accueil s'importent par leur fichier : un index
+ * du dossier entraînerait tout l'accueil dans le bundle des modules.
  */
 import * as React from "react"
 import { CalendarClock } from "lucide-react"

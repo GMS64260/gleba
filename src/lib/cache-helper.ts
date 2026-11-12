@@ -148,12 +148,6 @@ async function chargerEtPersister<T>(
   return value
 }
 
-/** Invalide manuellement une clé (rarement nécessaire). */
-export async function invalidate(key: string): Promise<void> {
-  reculs.delete(key)
-  await prisma.genericCache.deleteMany({ where: { key } })
-}
-
 /**
  * Purge automatique des entrées expirées (cron léger, branché sur le scheduler
  * depuis le 2026-09-09).

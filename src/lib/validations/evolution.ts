@@ -36,6 +36,3 @@ export const evolutionUpdateSchema = z.object({
   statut: z.enum(EVOLUTION_STATUTS).optional(),
   adminNote: z.string().trim().max(2000).nullable().optional(),
 })
-
-export type EvolutionInput = z.infer<typeof evolutionSchema>
-export type EvolutionUpdateInput = z.infer<typeof evolutionUpdateSchema>

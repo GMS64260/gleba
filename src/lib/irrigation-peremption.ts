@@ -27,8 +27,6 @@
  * ait déjà tourné ou non (invariant « 11 = 11 », cf. [[Technique]]).
  */
 
-import prisma from '@/lib/prisma'
-
 /**
  * Cadence d'arrosage en jours, dérivée du besoin en eau de l'espèce.
  * Seule définition de la cadence : `irrigation-scheduler.ts` la partage pour
@@ -114,38 +112,4 @@ export function idsAExpirer(
     .filter((irr) => !irr.fait && !irr.perimee)
     .filter((irr) => estPerimee(irr.datePrevue, irr.culture?.espece?.besoinEau, reference))
     .map((irr) => irr.id)
-}
-
-/**
- * Marque en base les passages manqués depuis plus d'un cycle.
- * Idempotent : réservé aux chemins écran, les chemins de lecture pure
- * (assistant, rejeu de questions) appliquent la même règle en mémoire.
- */
-export async function expirerIrrigationsPerimees(
-  userId: string,
-  reference: Date = new Date()
-): Promise<number> {
-  const borne = new Date(reference)
-  borne.setHours(0, 0, 0, 0)
-  borne.setDate(borne.getDate() - CYCLE_MAX_JOURS)
-
-  const candidates = await prisma.irrigationPlanifiee.findMany({
-    where: { userId, fait: false, perimee: false, datePrevue: { lt: borne } },
-    select: {
-      id: true,
-      datePrevue: true,
-      fait: true,
-      perimee: true,
-      culture: { select: { espece: { select: { besoinEau: true } } } },
-    },
-  })
-
-  const ids = idsAExpirer(candidates, reference)
-  if (ids.length === 0) return 0
-
-  const { count } = await prisma.irrigationPlanifiee.updateMany({
-    where: { id: { in: ids } },
-    data: { perimee: true },
-  })
-  return count
 }

@@ -7,8 +7,8 @@
 import prisma from "@/lib/prisma"
 import type { Cible, OptionCible } from "./rattachement-types"
 
-export { TYPES_CIBLE, schemaCible, colonnesRattachement, cibleDuCapteur } from "./rattachement-types"
-export type { Cible, OptionCible, TypeCible } from "./rattachement-types"
+export { schemaCible, colonnesRattachement, cibleDuCapteur } from "./rattachement-types"
+export type { Cible, OptionCible } from "./rattachement-types"
 
 export async function cibleAppartient(userId: string, cible: Cible): Promise<boolean> {
   const select = { id: true } as const

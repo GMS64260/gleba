@@ -279,10 +279,7 @@ cd /var/www/gleba
 # 2. Récupérer les nouveautés
 sudo git pull
 
-# 3. Purger le cache Next.js (sinon l'ancien build est servi)
-sudo rm -rf .next
-
-# 4. Rebuild + restart
+# 3. Rebuild + restart
 sudo docker compose up -d --build app
 ```
 

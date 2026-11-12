@@ -10,7 +10,7 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 
 | Couche | Technologie | Version |
 |--------|-------------|---------|
-| Framework | Next.js (App Router) | 16.1.6 |
+| Framework | Next.js (App Router) | 16.2.10 |
 | Langage | TypeScript (strict) | 5.9.3 |
 | UI | React + Radix UI + TailwindCSS | 18 / Multiple / 3.4.1 |
 | Design System | Shadcn/UI (composants headless) | — |
@@ -20,10 +20,10 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 | Formulaires | React Hook Form + Zod | 7.71.1 / 4.3.6 |
 | ORM | Prisma | 5.22.0 |
 | BDD | PostgreSQL (PostGIS) | 16 |
-| Auth | NextAuth v5 (Auth.js) | 5.0.0-beta.30 |
+| Auth | NextAuth v5 (Auth.js) | 5.0.0-beta.31 |
 | IA | Agents Paperclip (Normal/Support/Extra) via API | — |
-| Email | Nodemailer | 8.0.1 |
-| Build | Docker multi-stage | Node 20 Alpine |
+| Email | Nodemailer | 9.0.3 |
+| Build | Docker multi-stage | Node sur Alpine (version fixée par le `Dockerfile`) |
 | Reverse Proxy | Caddy | — |
 
 ## Pattern architectural
@@ -40,14 +40,14 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 │              NEXT.JS APP (Port 3000)                 │
 │                                                       │
 │  ┌──────────────────┐  ┌──────────────────────────┐  │
-│  │   PAGES (SSR)     │  │    API ROUTES (70+)      │  │
+│  │   PAGES (SSR)     │  │    API ROUTES            │  │
 │  │   App Router      │  │    /api/*                 │  │
 │  │   src/app/        │  │    src/app/api/           │  │
 │  └────────┬─────────┘  └───────────┬──────────────┘  │
 │           │                         │                  │
 │  ┌────────▼─────────┐  ┌──────────▼──────────────┐  │
 │  │   COMPONENTS      │  │    MIDDLEWARE             │  │
-│  │   95 composants   │  │    Auth + Route guard     │  │
+│  │   React           │  │    Auth + Route guard     │  │
 │  │   src/components/ │  │    src/middleware.ts       │  │
 │  └──────────────────┘  └──────────────────────────┘  │
 │           │                         │                  │
@@ -60,13 +60,13 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 │                            │                          │
 │  ┌─────────────────────────▼─────────────────────┐   │
 │  │              PRISMA ORM                        │   │
-│  │  51 modèles │ Multi-tenancy par userId         │   │
+│  │  schema.prisma │ Multi-tenancy par userId      │   │
 │  └─────────────────────────┬─────────────────────┘   │
 └────────────────────────────┼─────────────────────────┘
                              │
 ┌────────────────────────────▼─────────────────────────┐
 │         POSTGRESQL 16 (PostGIS 3.4)                   │
-│         51 tables │ 180+ indexes │ GeoJSON support     │
+│         GeoJSON support                                │
 └──────────────────────────────────────────────────────┘
 ```
 

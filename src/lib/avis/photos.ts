@@ -4,7 +4,6 @@ export const MAX_OCTETS_PHOTO_AVIS = 700 * 1024
 export const MAX_CORPS_AVIS = 3 * 1024 * 1024
 export const COTE_MAX_PHOTO_AVIS = 1600
 export interface PhotoAvisVue { id: string; url: string; width: number; height: number; legende: string | null }
-export type PhotoAvisEnvoi = { id: string; legende?: string } | { dataUrl: string; legende?: string }
 export interface TemoignageRecolteVue {
   id: string; dateRecolte: string; quantite: number | null; unite: string | null; commentaire: string | null
   photos: PhotoAvisVue[]; isMine: boolean; createdAt: string

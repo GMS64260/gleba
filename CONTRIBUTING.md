@@ -37,4 +37,4 @@ Le rapport est généré dans `audit/encoding-report.md`.
 
 ## Workflow de modification frontend
 
-Voir [CLAUDE.md](./CLAUDE.md) pour la procédure standard (suppression du cache `.next/`, gestion des process orphelins sur le port 3000, rebuild Docker).
+Voir le [guide de développement](./docs/development-guide.md) pour l'installation locale (`npm run dev`) et les tests, et la section « Mise à jour » du [README](./README.md) pour reconstruire l'image Docker.

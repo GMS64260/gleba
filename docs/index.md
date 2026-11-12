@@ -17,20 +17,20 @@
 
 - **Entry point** : `src/app/layout.tsx` → `src/app/page.tsx`
 - **Auth** : `src/lib/auth.ts` + `src/middleware.ts`
-- **BDD** : `prisma/schema.prisma` (51 modèles)
-- **API** : `src/app/api/` (70+ endpoints)
-- **Composants** : `src/components/` (95 fichiers)
+- **BDD** : `prisma/schema.prisma` (nombre de modèles : `grep -c '^model ' prisma/schema.prisma`)
+- **API** : `src/app/api/`
+- **Composants** : `src/components/`
 - **Design system** : Shadcn/UI + Radix UI + TailwindCSS
 
 ## Documentation générée
 
 - [Project Overview](./project-overview.md) — Résumé du projet et fonctionnalités
 - [Architecture](./architecture.md) — Pattern architectural, stack technique, flux de requête
-- [API Contracts](./api-contracts.md) — 70+ endpoints documentés par module
-- [Data Models](./data-models.md) — 51 modèles Prisma, enums, relations
-- [Component Inventory](./component-inventory.md) — 95 composants React par domaine
+- [API Contracts](./api-contracts.md) — Endpoints documentés par module
+- [Data Models](./data-models.md) — Modèles Prisma, enums, relations
+- [Component Inventory](./component-inventory.md) — Composants React par domaine
 - [Development Guide](./development-guide.md) — Installation, scripts, conventions
-- [Deployment Guide](./deployment-guide.md) — Docker, Caddy, CI/CD, Raspberry Pi
+- [Deployment Guide](./deployment-guide.md) — Docker, Caddy, CI/CD
 
 ## Documentation existante
 
@@ -50,15 +50,13 @@ plutôt que laissés morts.
 npm ci --legacy-peer-deps
 cp .env.example .env
 docker compose up -d db
-npx prisma db push && npx prisma generate
+npx prisma generate && npx prisma migrate deploy
 npx tsx prisma/seed.ts
 npm run dev
 ```
 
 ### Production (Docker)
 ```bash
-rm -rf .next
-fuser -k 3000/tcp 2>/dev/null
 docker compose up -d --build app
 ```
 

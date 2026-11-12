@@ -15,7 +15,6 @@
 import { sendMail, SmtpNonConfigureError } from '@/lib/mail'
 import {
   PHRASE_ECHEC_ENVOI,
-  relanceUtile,
   type CauseEchecEnvoi,
   type ResultatEnvoiVerification,
 } from '@/lib/mail-verification-messages'
@@ -23,7 +22,7 @@ import {
 // Le vocabulaire et ses phrases vivent dans un module PUR : ce fichier-ci
 // importe `nodemailer` par `mail.ts`, et un composant client qui aurait besoin
 // des phrases tirerait tout le transport SMTP dans son bundle.
-export { PHRASE_ECHEC_ENVOI, relanceUtile }
+export { PHRASE_ECHEC_ENVOI }
 export type { CauseEchecEnvoi, ResultatEnvoiVerification }
 
 /** Délai au-delà duquel on n'attend plus le serveur SMTP (l'inscrit patiente). */

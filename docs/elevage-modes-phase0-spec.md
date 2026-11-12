@@ -54,7 +54,7 @@ Aucune nouvelle API : `/api/user/preferences` accepte déjà des clés arbitrair
 
 ## 3. Schéma Prisma (migration additive)
 
-Migration `prisma/migrations/20260725xxxxxx_elevage_filieres/` (additive, cf. convention `Technique`).
+Migration `prisma/migrations/20260724191500_elevage_filiere/` (additive, cf. convention `Technique`).
 
 ```prisma
 model EspeceAnimale {

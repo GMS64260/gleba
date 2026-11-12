@@ -32,8 +32,6 @@ import { AssistantStepSuccess } from "./AssistantStepSuccess"
 
 // ---- Types pour l'état de l'assistant ----
 
-export type AssistantMode = 'new-planche' | 'existing-planche' | 'add-culture' | null
-
 export interface PlancheData {
   id?: string
   nom?: string

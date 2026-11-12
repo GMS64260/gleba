@@ -47,12 +47,6 @@ export const METHODES_TRAITEMENT = [
   },
 ] as const
 
-export type MethodeTraitementSlug = (typeof METHODES_TRAITEMENT)[number]['slug']
-
-export const METHODE_SLUGS: readonly MethodeTraitementSlug[] = METHODES_TRAITEMENT.map(
-  (m) => m.slug
-) as readonly MethodeTraitementSlug[]
-
 export function labelMethode(slug: string | null | undefined): string {
   if (!slug) return '—'
   const m = METHODES_TRAITEMENT.find((x) => x.slug === slug)
@@ -70,11 +64,6 @@ export function methodeExigeCertiphyto(slug: string | null | undefined): boolean
   return slug === 'chimique_conventionnel' || slug === 'chimique_cuivre'
 }
 
-/** Une méthode contient-elle du cuivre métal (alimente le compteur Bio). */
-export function methodeContientCuivre(slug: string | null | undefined): boolean {
-  return slug === 'chimique_cuivre'
-}
-
 // Classifications côté ProduitPhyto.classification (CHECK constraint)
 export const PRODUIT_CLASSIFICATIONS = [
   'Chimique conventionnel',
@@ -86,5 +75,3 @@ export const PRODUIT_CLASSIFICATIONS = [
   'Mécanique/Manuel',
   'Prophylaxie',
 ] as const
-
-export type ProduitClassification = (typeof PRODUIT_CLASSIFICATIONS)[number]

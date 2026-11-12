@@ -80,12 +80,6 @@ export const CHEPTEL_ONBOARDING = [
   { libelle: 'Ruches', especeAnimaleId: 'abeille_ruche' },
 ] as const
 
-export type CheptelOnboarding = (typeof CHEPTEL_ONBOARDING)[number]
-
-export function especeCheptelValide(especeAnimaleId: string): boolean {
-  return CHEPTEL_ONBOARDING.some((c) => c.especeAnimaleId === especeAnimaleId)
-}
-
 export function libelleCheptel(especeAnimaleId: string): string {
   return (
     CHEPTEL_ONBOARDING.find((c) => c.especeAnimaleId === especeAnimaleId)?.libelle ??

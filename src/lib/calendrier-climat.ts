@@ -34,9 +34,6 @@ export const ZONES_HORS_REFERENCE_METROPOLE: readonly ZoneClimat[] = [
   'tropical_austral',
 ] as const
 
-/** Zones de l'hémisphère SUD : saisons inversées vs métropole. */
-export const ZONES_HEMISPHERE_SUD: readonly ZoneClimat[] = ['tropical_austral'] as const
-
 /**
  * Vrai si le référentiel ITP métropolitain (et donc le décalage en semaines)
  * n'a pas de sens pour cette zone : il faut un ITP calé sur la zone.
@@ -53,11 +50,6 @@ export function zoneHorsReferenceMetropole(zone: ZoneClimat | null | undefined):
 export const ZONES_METROPOLE: readonly ZoneClimat[] = ZONES_CLIMAT.filter(
   (z) => !ZONES_HORS_REFERENCE_METROPOLE.includes(z)
 )
-
-/** Vrai si la zone est dans l'hémisphère sud (saisons inversées). */
-export function zoneHemisphereSud(zone: ZoneClimat | null | undefined): boolean {
-  return zone != null && ZONES_HEMISPHERE_SUD.includes(zone)
-}
 
 /**
  * Un ITP est-il applicable à la zone de l'utilisateur ?

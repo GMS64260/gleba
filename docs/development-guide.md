@@ -50,8 +50,6 @@ npm run dev
 | `AUTH_TRUST_HOST` | Trust proxy | `true` |
 | `ADMIN_EMAIL` | Email admin initial | `admin@gleba.local` |
 | `ADMIN_PASSWORD` | Mot de passe admin | `changeme` |
-| `OLLAMA_API_KEY` | Clé API Ollama (chat IA) | (optionnel) |
-| `OLLAMA_MODEL` | Modèle Ollama | `nemotron-3-nano:30b` |
 | `SMTP_HOST/PORT/USER/PASS/FROM` | Configuration email | (optionnel) |
 
 Les comptes admin et démo créés par les seeds sont marqués vérifiés afin que
@@ -66,19 +64,20 @@ utilisateur conservent le parcours normal de vérification par email.
 | `npm run build` | Build production (`prisma generate && next build`) |
 | `npm run start` | Démarrer le serveur production |
 | `npm run lint` | Linter ESLint |
+| `npm test` | Tests Vitest (`vitest run`) |
+| `npm run test:watch` | Vitest en mode watch |
 | `npm run db:generate` | Générer client Prisma |
 | `npm run db:migrate` | Lancer migrations Prisma |
-| `npm run db:push` | Synchronisation locale ponctuelle, à ne pas utiliser pour installer ou mettre à jour une instance |
+| `npm run db:push` | Synchronisation locale ponctuelle, à ne pas utiliser pour installer ou mettre à jour une instance, ni sur une base qui contient des données |
 | `npm run db:seed` | Seed base de données |
 | `npm run db:studio` | Prisma Studio (GUI BDD) |
-| `npm run db:reset` | Reset complet BDD |
-| `npm run db:seed-admin` | Créer compte admin |
+| `npm run db:reset` | Reset complet BDD (DESTRUCTIF : jamais sur une base qui contient des données) |
 
 ## Base de données
 
 ### Accès direct PostgreSQL
 ```bash
-docker compose exec postgres psql -U gleba -d gleba
+docker compose exec db psql -U gleba -d gleba
 ```
 
 ### Migrations
@@ -89,7 +88,7 @@ npx prisma migrate dev --name ma_migration
 # Appliquer en production
 npx prisma migrate deploy
 
-# Réinitialiser (DESTRUCTIF)
+# Réinitialiser (DESTRUCTIF : jamais sur une base qui contient des données)
 npx prisma migrate reset --force
 ```
 
@@ -133,12 +132,9 @@ Le seed principal (`prisma/seed.ts`) charge :
 
 ## Tests
 
-> **Note** : Pas de tests automatisés dans le projet actuellement. Pas de framework de test configuré.
-
-Scripts de vérification manuels disponibles dans `scripts/` :
-- `check-enriched-data.ts` — Vérifie la cohérence des données enrichies
-- `check-irrigations.ts` — Vérifie le planning irrigation
-- `test-calendrier-api.ts` — Test manuel de l'API calendrier
+- `npm test` lance Vitest sur `src/**/*.test.ts` (configuration : `vitest.config.ts`).
+- La CI (`.github/workflows/test.yml`) exécute quatre jobs sur chaque push et pull request vers `main` : `lint`, `tests`, `typage` (`npx tsc --noEmit`) et `base-neuve` (migrations et seed sur une base PostGIS vierge).
+- Les tests d'intégration PostgreSQL se lancent avec les configurations dédiées `scripts/qa/vitest-*.config.mjs`, par exemple `npx vitest run --config scripts/qa/vitest-maraichage.config.mjs`. Chaque test lit l'URL de sa base jetable dans une variable `GLEBA_*_QA_DATABASE_URL` : jamais une base qui contient des données.
 
 ## Workflow de développement local
 
@@ -147,7 +143,7 @@ Scripts de vérification manuels disponibles dans `scripts/` :
 3. Pour les changements de schéma BDD :
    ```bash
    # Modifier prisma/schema.prisma
-   npx prisma db push    # Dev rapide (pas de migration)
+   npx prisma migrate dev --name ma_migration   # Crée et applique la migration
    npx prisma generate   # Regénérer le client
    ```
 4. Pour ajouter un composant UI (Shadcn) :

@@ -88,7 +88,5 @@ export const updateRotationSchema = baseRotationSchema
   .superRefine(coherenceActive)
 
 // Types inférés
-export type RotationInput = z.infer<typeof baseRotationSchema>
-export type RotationDetailInput = z.infer<typeof rotationDetailSchema>
 export type CreateRotationInput = z.infer<typeof createRotationSchema>
 export type UpdateRotationInput = z.infer<typeof updateRotationSchema>

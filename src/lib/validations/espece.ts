@@ -454,6 +454,5 @@ export const updateEspeceSchema = baseEspeceSchema
   .superRefine(bornerRendement)
 
 // Types inférés
-export type EspeceInput = z.infer<typeof baseEspeceSchema>
 export type CreateEspeceInput = z.infer<typeof createEspeceSchema>
 export type UpdateEspeceInput = z.infer<typeof updateEspeceSchema>

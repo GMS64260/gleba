@@ -97,7 +97,8 @@ function parseInt(value: string | null): number | null {
  * Ce script passe d'un lancement manuel à un lancement au démarrage (issue #29).
  * Le dépôt a déjà payé une fois le prix d'un import rejoué à chaque boot :
  * `doseSemis_AI` du CSV écrasait à chaque redémarrage les doses agronomiques
- * corrigées par migration (feedback Marc, 2026-05-16, cf. migrate-data-v1.ts).
+ * corrigées par migration (feedback Marc, 2026-05-16 ; l'ancien script
+ * `migrate-data-v1.ts`, retiré depuis, remplaçait tout le référentiel).
  * La règle est donc : le CSV COMPLÈTE un référentiel, il ne le corrige jamais.
  * Une valeur déjà posée — par une migration, par l'admin, par un membre — reste.
  */
