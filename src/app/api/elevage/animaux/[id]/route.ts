@@ -13,7 +13,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal, deleteAutoEntry } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
-import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle, redaterAffectationInitiale } from '@/lib/elevage/animal-lot'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
 import { effacementSortieSiActif, erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
 import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
@@ -480,6 +480,14 @@ export async function PUT(
           lot: true,
         },
       })
+      // L'entrée dans le premier lot suit la date d'arrivée corrigée, comme dans
+      // la route de la liste : sinon l'historique commence au jour de la saisie
+      // et la garde d'abattage ignore un soin de lot antérieur (délai d'attente
+      // viande contourné, revue du 2026-11-11). Avant le changement de lot de
+      // cette même requête, qui clôt cette ligne.
+      if (updated.dateArrivee && dateArrivee && updated.dateArrivee.getTime() !== existing.dateArrivee?.getTime()) {
+        await redaterAffectationInitiale(tx, session.user.id, existing.id, updated.dateArrivee)
+      }
       if (lotId !== undefined) {
         await enregistrerChangementLot(tx, session.user.id, existing.id, existing.lotId, updated.lotId)
       }

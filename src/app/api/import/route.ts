@@ -14,6 +14,8 @@ import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
 import { enregistrerStockVariete } from '@/lib/stocks/stock-variete'
 import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from '@/lib/demo-garde'
+import { refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
+import { whereReferentielCible } from '@/lib/referentiel-communaute'
 
 interface ImportData {
   version?: string
@@ -246,6 +248,10 @@ interface ImportData {
 export async function POST(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
+  // Un import réécrit les données de l'exploitation : geste de propriétaire,
+  // comme l'import de compte.
+  const refusProprietaire = refusSiPasProprietaire(session)
+  if (refusProprietaire) return refusProprietaire
 
   // L'import réécrit les planches du même nom : jamais sur la ferme de
   // démonstration, partagée par tous les visiteurs.
@@ -829,9 +835,16 @@ export async function POST(request: NextRequest) {
     }
 
     // 12. Cultures (ID auto-généré - toujours créer de nouvelles)
+    //
+    // Revue de sécurité du 2026-11-11 : une référence du fichier (espèce,
+    // itinéraire, variété) ne rattache une ligne du compte qu'à une entrée qu'il
+    // VOIT (officielle, partagée ou la sienne). Par identifiant seul, un fichier
+    // forgé liait une culture à l'entrée privée d'un autre compte, dont le
+    // contenu sortait ensuite embarqué dans les lectures. L'entrée privée
+    // d'autrui est traitée comme absente. Un administrateur atteint tout.
     if (data.cultures?.length) {
       for (const item of data.cultures) {
-        const especeExists = await tx.espece.findUnique({ where: { id: item.especeId } })
+        const especeExists = await tx.espece.findFirst({ where: whereReferentielCible(item.especeId, userId, isAdmin), select: { id: true } })
         if (!especeExists) continue
 
         // Resolve planche name → cuid (support old exports with name-based plancheId)
@@ -870,15 +883,15 @@ export async function POST(request: NextRequest) {
         // ni récoltes, aucune ligne écrite. Le traitement appliqué à `plancheId`
         // juste au-dessus manquait ici.
         if (item.itpId) {
-          const itpExists = await tx.iTP.findUnique({ where: { id: item.itpId }, select: { id: true } })
+          const itpExists = await tx.iTP.findFirst({ where: whereReferentielCible(item.itpId, userId, isAdmin), select: { id: true } })
           if (!itpExists) {
             item.itpId = null
             stats.culturesItpIgnore += 1
           }
         }
         if (item.varieteId) {
-          const varieteExists = await tx.variete.findUnique({
-            where: { id: item.varieteId },
+          const varieteExists = await tx.variete.findFirst({
+            where: whereReferentielCible(item.varieteId, userId, isAdmin),
             select: { id: true },
           })
           if (!varieteExists) {
@@ -941,8 +954,8 @@ export async function POST(request: NextRequest) {
         const newCultureId = cultureIdMap.get(item.cultureId)
         if (!newCultureId) continue // Skip si la culture n'a pas été importée
 
-        const especeExists = await tx.espece.findUnique({
-          where: { id: item.especeId },
+        const especeExists = await tx.espece.findFirst({
+          where: whereReferentielCible(item.especeId, userId, isAdmin),
           select: { id: true, rendement: true, uniteRendement: true },
         })
         if (!especeExists) continue
@@ -1039,12 +1052,17 @@ export async function POST(request: NextRequest) {
     // 16. Arbres
     if (data.arbres?.length) {
       for (const item of data.arbres) {
+        // Même règle que les cultures : l'espèce de référence doit être visible
+        // par le compte, sinon l'arbre est créé sans elle (le nom saisi reste).
+        const especeArbreVisible = item.especeId
+          ? await tx.espece.findFirst({ where: whereReferentielCible(item.especeId, userId, isAdmin), select: { id: true } })
+          : null
         await tx.arbre.create({
           data: {
             userId,
             nom: item.nom,
             type: item.type,
-            especeId: item.especeId,
+            especeId: especeArbreVisible?.id ?? null,
             espece: item.espece,
             variete: item.variete,
             portGreffe: item.portGreffe,

@@ -18,6 +18,8 @@ import path from "node:path"
 import { z } from "zod"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
+import { extensionReelle, refusEnvoiFichier } from "@/lib/upload-garde"
 import {
   FOND_ALLOWED_MIME,
   FOND_MAX_BYTES,
@@ -88,6 +90,13 @@ export async function POST(request: NextRequest) {
   if (error) return error
   const userId = session!.user.id
 
+  // Revue de sécurité du 2026-11-11 : cette route écrivait un fichier et une
+  // ligne durables par clé de parcelle, sans refus de la démo publique, sans
+  // quota et sans vérifier que la parcelle existe. La démo est refusée avant
+  // même la lecture du corps.
+  const refusDemo = await refusSiCompteDemo(userId, MESSAGES_REFUS_DEMO.envoiFichier)
+  if (refusDemo) return refusDemo
+
   let formData: FormData
   try {
     formData = await request.formData()
@@ -99,6 +108,11 @@ export async function POST(request: NextRequest) {
     typeof formData.get("parcelle") === "string" ? (formData.get("parcelle") as string) : null
   )
   if (!key) return NextResponse.json({ error: "Parcelle invalide" }, { status: 400 })
+  // Une clé n'est acceptée que pour le fond commun ou une parcelle de l'exploitation.
+  if (key !== "global") {
+    const parcelle = await prisma.parcelleGeo.findFirst({ where: { id: key, userId }, select: { id: true } })
+    if (!parcelle) return NextResponse.json({ error: "Parcelle introuvable" }, { status: 404 })
+  }
 
   const file = formData.get("file")
   if (!file || !(file instanceof Blob)) {
@@ -132,10 +146,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Réglages invalides", details: parsed.error.flatten() }, { status: 400 })
   }
 
+  // Débit et volume total du dossier du compte, avant toute écriture.
+  const refus = await refusEnvoiFichier("fondPlan", userId, (file as Blob).size)
+  if (refus) return refus
+
   const dir = fondStorageDir(userId)
-  await mkdir(dir, { recursive: true })
   const fichier = `${key}.${ext}`
   const buffer = Buffer.from(await (file as Blob).arrayBuffer())
+  // Le type annoncé ne prouve rien : le contenu doit être l'image annoncée.
+  if (extensionReelle(buffer) !== ext) {
+    return NextResponse.json({ error: "Le fichier n'est pas une image JPEG, PNG ou WebP valide." }, { status: 400 })
+  }
+  await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, fichier), buffer)
 
   const existing = await prisma.fondPlan.findUnique({
