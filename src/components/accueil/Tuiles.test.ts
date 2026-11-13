@@ -166,7 +166,7 @@ describe("TuileAgent", () => {
     ]
     expect(alerteMeteoPrioritaire(alertes)?.type).toBe("gel")
     const html = renderToStaticMarkup(
-      createElement(TuileAgent, { alerteMeteo: alertes[1], elementCritique: null, chargement: false }),
+      createElement(TuileAgent, { alerteMeteo: alertes[1], elements: [], chargement: false }),
     )
     expect(html).toContain("Gel probable mardi nuit")
     expect(html).toContain("Ouvrir la météo")
@@ -177,13 +177,13 @@ describe("TuileAgent", () => {
     const critique = renderToStaticMarkup(
       createElement(TuileAgent, {
         alerteMeteo: null,
-        elementCritique: element({ id: "i", etat: "critique", titre: "Arroser C1, C2", meta: ["6 cultures"], action: { libelle: "Noter", href: "/x" } }),
+        elements: [element({ id: "i", etat: "critique", titre: "Arroser C1, C2", meta: ["6 cultures"], action: { libelle: "Noter", href: "/x" } })],
         chargement: false,
       }),
     )
     expect(critique).toContain("Arroser C1, C2")
     expect(critique).toContain("Noter")
-    const calme = renderToStaticMarkup(createElement(TuileAgent, { alerteMeteo: null, elementCritique: null, chargement: false }))
+    const calme = renderToStaticMarkup(createElement(TuileAgent, { alerteMeteo: null, elements: [], chargement: false }))
     expect(calme).toContain("Rien d&#x27;urgent signalé")
   })
 })

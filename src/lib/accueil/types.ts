@@ -58,6 +58,8 @@ export interface ElementAujourdhui {
   source: SourceAujourdhui
   module: ModuleId
   etat: EtatRegistre
+  /** Urgence métier, indépendante de l'état visuel (ex. délai d'attente œufs). */
+  urgent?: boolean
   titre: string
   /** Métadonnées courtes, séparées par un point médian à l'affichage. */
   meta: string[]

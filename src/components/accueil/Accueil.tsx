@@ -235,7 +235,6 @@ export function Accueil() {
           : <span>comme en {annee - 1}</span>
     : undefined
 
-  const elementCritique = elementsOuverts.find((e) => e.etat === "critique") ?? null
   const chargementRepere = accueil.chargement ? "…" : undefined
 
   // ── Mode Personnaliser ──
@@ -342,7 +341,7 @@ export function Accueil() {
       case "semaine":
         return acces?.meteo ? <TuileSemaine meteo={meteo.donnees} chargement={meteo.chargement} erreur={meteo.erreur} rang={rang} /> : null
       case "agent":
-        return acces?.ia ? <TuileAgent alerteMeteo={alerteMeteoPrioritaire(meteo.donnees?.alertes)} elementCritique={elementCritique} chargement={accueil.chargement || meteo.chargement} rang={rang} /> : null
+        return acces?.ia ? <TuileAgent alerteMeteo={alerteMeteoPrioritaire(meteo.donnees?.alertes)} elements={elementsOuverts} erreur={accueil.erreur} sourcesEnErreur={donnees?.sourcesEnErreur} chargement={accueil.chargement || meteo.chargement} rang={rang} /> : null
       case "elevage":
         return <TuileElevage elevage={donnees?.elevage ?? null} chargement={accueil.chargement} rang={rang} />
       case "recoltes-semaine":

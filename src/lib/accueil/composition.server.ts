@@ -348,6 +348,7 @@ export async function composerAujourdhui(
         source: "elevage",
         module: "elevage",
         etat: etatEcheance(e),
+        urgent: e.gravite === "urgent",
         titre: e.titre,
         meta: [e.detail ?? ""].filter(Boolean),
         action: { libelle: "Ouvrir", href: hrefEcheance(e) },
