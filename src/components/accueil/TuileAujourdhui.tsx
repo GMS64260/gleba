@@ -5,6 +5,7 @@ import Link from "next/link"
 
 import { annulerMutation, annulerRecolte, executerMutation, noterRecolte, rouvrirCulture, terminerCulture } from "@/lib/accueil/client"
 import { sousTitreAujourdhui } from "@/lib/accueil/classement"
+import { urgencesAccueil } from "@/lib/accueil/urgences"
 import type { ElementAujourdhui } from "@/lib/accueil/types"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { toast } from "@/hooks/use-toast"
@@ -199,6 +200,7 @@ export function TuileAujourdhui({
   }
 
   const ouverts = elements.filter((e) => !retires.has(e.id))
+  const urgences = urgencesAccueil(ouverts)
   const visibles = toutVoir ? ouverts : ouverts.slice(0, LIGNES_VISIBLES)
   const reste = ouverts.length - visibles.length
 
@@ -317,7 +319,7 @@ export function TuileAujourdhui({
     <Tuile
       idTuile="aujourdhui"
       titre="Aujourd'hui"
-      sousTitre={chargement ? "lecture en cours" : erreur ? "indisponible" : sousTitreAujourdhui(ouverts.length)}
+      sousTitre={chargement ? "lecture en cours" : erreur ? "indisponible" : [sousTitreAujourdhui(ouverts.length), urgences.nombre > 0 ? urgences.libelle : null].filter(Boolean).join(" · ")}
       largeur={7}
       hauteur={2}
       rang={rang}

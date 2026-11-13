@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Sparkles } from "lucide-react"
 
 import { ouvrirAssistant } from "@/lib/accueil/evenements"
+import { urgencesAccueil } from "@/lib/accueil/urgences"
 import type { ElementAujourdhui } from "@/lib/accueil/types"
 import { cn } from "@/lib/utils"
 
@@ -13,13 +14,15 @@ import type { MeteoSemaine } from "./TuileSemaine"
 /**
  * Tuile « agent » de l'accueil v2, livraison L2 : elle montre l'alerte la
  * plus importante déjà calculée (météo de la parcelle, sinon première ligne
- * critique du jour) avec ses actions, et « Demander à Gleba » ouvre le
+ * urgente du jour) avec ses actions, et « Demander à Gleba » ouvre le
  * panneau d'assistant existant. Aucun appel au modèle depuis l'accueil :
  * son coût n'est pas mesuré (point ouvert du vault).
  */
 export interface TuileAgentProps {
   alerteMeteo: MeteoSemaine["alertes"][number] | null
-  elementCritique: ElementAujourdhui | null
+  elements: ElementAujourdhui[]
+  erreur?: string | null
+  sourcesEnErreur?: string[]
   chargement: boolean
   rang?: number
 }
@@ -35,7 +38,8 @@ export function alerteMeteoPrioritaire(alertes: MeteoSemaine["alertes"] | undefi
   return alertes.find((a) => a.niveau === "danger") ?? alertes.find((a) => a.niveau === "attention") ?? null
 }
 
-export function TuileAgent({ alerteMeteo, elementCritique, chargement, rang }: TuileAgentProps) {
+export function TuileAgent({ alerteMeteo, elements, erreur, sourcesEnErreur = [], chargement, rang }: TuileAgentProps) {
+  const { premiere: elementCritique, nombre, libelle } = urgencesAccueil(elements)
   let message: React.ReactNode
   let actions: React.ReactNode
 
@@ -76,6 +80,9 @@ export function TuileAgent({ alerteMeteo, elementCritique, chargement, rang }: T
         </button>
       </>
     )
+  } else if (erreur || sourcesEnErreur.length > 0) {
+    message = "La liste du jour est incomplète. Les urgences ne peuvent pas toutes être vérifiées."
+    actions = null
   } else {
     message = "Rien d'urgent signalé pour aujourd'hui. Je peux préparer la journée, retrouver une culture ou noter une saisie."
     actions = (
@@ -100,6 +107,7 @@ export function TuileAgent({ alerteMeteo, elementCritique, chargement, rang }: T
         Gleba
       </h3>
       <p>{message}</p>
+      {!chargement && nombre > 0 && <p className="mt-1 font-semibold">{libelle} dans la liste du jour.</p>}
       {actions && <div className="mt-2.5 flex flex-wrap gap-1.5">{actions}</div>}
     </section>
   )
