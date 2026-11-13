@@ -11,6 +11,7 @@ import { FeedbackWidget } from "@/components/feedback/FeedbackWidget";
 import { GlobalSearch } from "@/components/global-search";
 import { OnboardingRedirect } from "@/components/onboarding-redirect";
 import { CookieBanner } from "@/components/CookieBanner";
+import { MesureAudience } from "@/components/mesure-audience/MesureAudience";
 import { GlobalDialogHost } from "@/components/ui/global-dialog-host";
 import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { BandeauExploitation } from "@/components/exploitation/BandeauExploitation";
@@ -206,6 +207,8 @@ export default function RootLayout({
           <FeedbackWidget />
           {/* DEV2 #2 — Bandeau cookies RGPD/CNIL */}
           <CookieBanner />
+          {/* Mesure d'audience sans cookie, pages publiques hors session uniquement */}
+          <MesureAudience />
           <PushRegister />
           </GuidageNavigationProvider>
         </SessionProvider>

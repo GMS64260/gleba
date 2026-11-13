@@ -15,7 +15,10 @@ import * as React from "react"
 import { Cookie, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-const STORAGE_KEY = "gleba-cookie-consent"
+import {
+  CLE_CHOIX_COOKIES as STORAGE_KEY,
+  enregistrerChoixCookies,
+} from "@/lib/consentement-cookies"
 const SESSION_KEY = "gleba-session-id"
 
 interface ConsentChoice {
@@ -37,22 +40,22 @@ function getOrCreateSessionId(): string {
 }
 
 async function persistConsent(choice: Omit<ConsentChoice, "date" | "essentiel">) {
-  const sessionId = getOrCreateSessionId()
+  // Enregistrer immédiatement : un serveur lent ne doit pas retarder le refus.
+  enregistrerChoixCookies({
+    essentiel: true,
+    ...choice,
+    date: new Date().toISOString(),
+  })
   try {
+    const sessionId = getOrCreateSessionId()
     await fetch("/api/cookie-consent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId, ...choice }),
     })
   } catch {
-    // Silencieux : on conserve le choix local même si le serveur échoue
+    // On conserve le choix local même si le serveur échoue.
   }
-  const stored: ConsentChoice = {
-    essentiel: true,
-    ...choice,
-    date: new Date().toISOString(),
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
 }
 
 export function CookieBanner() {
@@ -136,7 +139,7 @@ export function CookieBanner() {
                     className="h-4 w-4"
                   />
                   <span className="text-xs">
-                    <strong>Mesure d&apos;audience</strong> — statistiques de fréquentation anonymes.
+                    <strong>Mesure d&apos;audience</strong> — statistiques de fréquentation anonymes, sans cookie. Décochez pour vous y opposer.
                   </span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
