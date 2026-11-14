@@ -1084,7 +1084,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const totalImported = Object.values(stats).reduce((a, b) => a + b, 0)
+    // Une référence retirée n'est pas un enregistrement importé. Garder ces
+    // compteurs dans stats pour les clients existants, mais les sortir du bilan.
+    const { culturesItpIgnore, culturesVarieteIgnore, ...enregistrements } = stats
+    const totalImported = Object.values(enregistrements).reduce((a, b) => a + b, 0)
+    const totalPropose = (Object.keys(enregistrements) as Array<keyof typeof enregistrements>)
+      .reduce((total, cle) => total + (data[cle]?.length ?? 0), 0)
+      + (data.associations ?? []).reduce((total, association) => total + (association.details?.length ?? 0), 0)
+    const ignores = totalPropose - totalImported
+    const referencesRetirees = culturesItpIgnore + culturesVarieteIgnore
 
     // Plus de plan d'arrosage généré à l'import (refonte du 2026-10-10) : le
     // besoin du jour se calcule depuis le bilan hydrique (src/lib/irrigation/a-arroser.ts).
@@ -1092,6 +1100,8 @@ export async function POST(request: NextRequest) {
 
     return {
       totalImported,
+      ignores,
+      referencesRetirees,
       irrigationsCreated,
       stats,
     }
@@ -1129,7 +1139,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `${result.totalImported} enregistrements importés`,
+      message: `${result.totalImported} enregistrement${result.totalImported > 1 ? 's' : ''} importé${result.totalImported > 1 ? 's' : ''}`
+        + (result.ignores > 0 ? `, ${result.ignores} ignoré${result.ignores > 1 ? 's' : ''}` : ''),
+      crees: result.totalImported,
+      ignores: result.ignores,
+      referencesRetirees: result.referencesRetirees,
       stats: {
         ...result.stats,
         irrigations: result.irrigationsCreated,

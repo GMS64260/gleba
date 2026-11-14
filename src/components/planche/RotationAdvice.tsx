@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react'
 import { RotationAdvice as RotationAdviceType } from '@/lib/rotation'
+import type { EspeceAdvice } from '@/lib/rotation/types'
 import { RotationBadge, FamilyBadge } from './RotationBadge'
 
 interface RotationAdviceProps {
@@ -212,6 +213,13 @@ interface RotationAdviceCompactProps {
   onAdviceLoaded?: (advice: RotationAdviceType) => void
 }
 
+const ESPECE_ADVICE_COLORS: Record<EspeceAdvice['status'], string> = {
+  safe: 'border-green-300 bg-green-50',
+  warning: 'border-yellow-300 bg-yellow-50',
+  blocked: 'border-red-300 bg-red-50',
+  unknown: 'border-slate-300 bg-slate-50',
+}
+
 export function RotationAdviceCompact({
   plancheId,
   especeId,
@@ -277,11 +285,7 @@ export function RotationAdviceCompact({
         {blocPlan}
         <div
           className={`rounded-lg border p-3 ${
-            advice.especeAdvice.status === 'blocked'
-              ? 'border-red-300 bg-red-50'
-              : advice.especeAdvice.status === 'warning'
-                ? 'border-yellow-300 bg-yellow-50'
-                : 'border-green-300 bg-green-50'
+            ESPECE_ADVICE_COLORS[advice.especeAdvice.status]
           }`}
         >
           <div className="flex items-center gap-2">

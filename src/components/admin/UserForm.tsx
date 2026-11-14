@@ -139,7 +139,7 @@ export function UserForm({ user }: UserFormProps) {
           onChange={(e) => setFormData({ ...formData, password: e.target.value })}
           required={!isEdit}
           disabled={loading}
-          minLength={6}
+          minLength={12}
         />
       </div>
 

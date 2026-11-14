@@ -1,5 +1,3 @@
-"use client"
-
 /**
  * QA Camille 2026-05-15 — Bonus : sélecteur d'année factorisé.
  *
@@ -10,21 +8,22 @@
  *   * Compta    : 2022–2026
  *   * Aucun module ne proposait 2027 (planification anticipée bloquée)
  *
- * Source unique : `getAvailableYears()` retourne
- *   [currentYear + 1, currentYear, …, currentYear - 4]
- * → 6 années dont la suivante, ordre décroissant pour le Select.
+ * Source unique : `getAvailableYears()` propose l'année suivante et tout
+ * l'historique depuis 2000, borne admise par les routes (`lireAnnee`).
+ * Une fenêtre glissante à N-4 masquait les saisies anciennes (ex. 2019),
+ * et aucun appelant ne disposait d'une borne issue des données complètes.
  *
- * Si tu dois élargir la plage (utilisateur historique avant 5 ans), passe
- * `earliest` : `getAvailableYears(2018)`.
+ * Si tu dois élargir la plage (historique avant 2000), passe
+ * `earliest` : `getAvailableYears(1995)`. `latest` permet aux rotations
+ * de conserver leur horizon de planification à cinq ans.
  */
 
-const CURRENT_YEAR = new Date().getFullYear()
-const DEFAULT_LOOKBACK = 4 // 4 ans en arrière → plage de 6 années (N-4 .. N+1)
+const FIRST_AVAILABLE_YEAR = 2000
 
-export function getAvailableYears(earliest?: number): number[] {
-  const oldest = earliest ?? CURRENT_YEAR - DEFAULT_LOOKBACK
+export function getAvailableYears(earliest?: number, latest = new Date().getFullYear() + 1): number[] {
+  const oldest = earliest ?? FIRST_AVAILABLE_YEAR
   const years: number[] = []
-  for (let y = CURRENT_YEAR + 1; y >= oldest; y--) {
+  for (let y = latest; y >= oldest; y--) {
     years.push(y)
   }
   return years

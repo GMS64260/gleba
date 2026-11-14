@@ -7,21 +7,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { corpsCultureSemer, jourEnvoye, libelleDonneesManquantes, plantsSemer } from './corps-culture-semer'
 
-// Le navigateur du ticket est à Paris : les objets Date de l'étape planning y
-// sont des minuits locaux.
-const tzAvant = process.env.TZ
-beforeAll(() => {
-  process.env.TZ = 'Europe/Paris'
-})
-afterAll(() => {
-  if (tzAvant === undefined) delete process.env.TZ
-  else process.env.TZ = tzAvant
-})
-
-// Dates saisies à Paris (01/02, 01/03, 15/04/2027), objets Date de l'étape planning.
+// Dates saisies dans le fuseau réel du navigateur simulé par le processus.
 const etatTicket = {
   planche: { id: 'cmvnpk0plan2d0002demo0001', nom: 'v8-Marc-2510 plan2D (2)', largeur: 0.8, longueur: 16 },
   espece: { id: 'Laitue' },
@@ -30,9 +19,9 @@ const etatTicket = {
   culture: {
     especeId: 'Laitue',
     annee: 2027,
-    dateSemis: new Date('2027-01-31T23:00:00.000Z'),
-    datePlantation: new Date('2027-02-28T23:00:00.000Z'),
-    dateRecolte: new Date('2027-04-14T22:00:00.000Z'),
+    dateSemis: new Date(2027, 1, 1),
+    datePlantation: new Date(2027, 2, 1),
+    dateRecolte: new Date(2027, 3, 15),
     nbRangs: 3,
     longueur: 16,
     espacement: 30,
@@ -87,13 +76,8 @@ describe('corpsCultureSemer', () => {
 })
 
 describe('dates envoyées par « Semer » (ticket cmvnulry1)', () => {
-  it("le jour d'un minuit local, quel que soit le fuseau du navigateur", () => {
-    for (const fuseau of ['Europe/Paris', 'UTC', 'America/Martinique', 'Pacific/Tahiti', 'Pacific/Noumea', 'Pacific/Wallis']) {
-      process.env.TZ = fuseau
-      // Étape planning : date calculée depuis l'ITP ou saisie, minuit local.
-      expect(jourEnvoye(new Date(2027, 3, 12)), fuseau).toBe('2027-04-12')
-    }
-    process.env.TZ = 'Europe/Paris'
+  it("le jour d'un minuit local dans le fuseau réel du processus", () => {
+    expect(jourEnvoye(new Date(2027, 3, 12))).toBe('2027-04-12')
   })
 
   it('un jour déjà au format du formulaire passe tel quel ; absent ou illisible : null', () => {

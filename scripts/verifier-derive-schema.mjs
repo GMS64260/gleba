@@ -7,6 +7,13 @@
 // garde, un `prisma migrate dev` génère des DROP CONSTRAINT / DROP INDEX / DROP
 // DEFAULT sur des objets posés en SQL que le schéma ne déclare pas.
 //
+// Limites (O4) : Prisma 5 ne compare pas les contraintes CHECK, les index
+// partiels ni les triggers. Un résultat conforme ne prouve donc pas leur
+// présence ni leur définition : ils exigent des contrôles PostgreSQL dédiés.
+// Limites (O5) : la CI publique ne rejoue que les migrations présentes dans
+// son dépôt ; elle ne voit pas les migrations privées. Rejouer aussi cette
+// garde avec le schéma et toutes les migrations privées sur une base jetable.
+//
 // Usage : DATABASE_URL=… node scripts/verifier-derive-schema.mjs
 // Codes de sortie : 0 conforme, 1 dérive, 2 erreur d'exécution.
 import { readFileSync } from "node:fs";
@@ -23,16 +30,63 @@ const FICHIER_ACCEPTE = "prisma/derive-acceptee.sql";
  * termine par `;`.
  */
 export function instructions(sql) {
-  const corps = sql
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("--"))
-    .join("\n");
-  return corps
-    .split(/;\s*(?:\n|$)/)
-    .map((s) => s.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .map((s) => `${s};`);
+  const resultat = [];
+  let instruction = "";
+  const terminer = () => {
+    if (instruction.trim()) resultat.push(`${instruction.trim()};`);
+    instruction = "";
+  };
+  const espace = () => {
+    if (instruction && !instruction.endsWith(" ")) instruction += " ";
+  };
+
+  for (let i = 0; i < sql.length;) {
+    if (sql.startsWith("--", i)) {
+      const fin = sql.indexOf("\n", i + 2);
+      i = fin === -1 ? sql.length : fin + 1;
+      espace();
+    } else if (sql.startsWith("/*", i)) {
+      // PostgreSQL accepte les commentaires de bloc imbriqués.
+      let profondeur = 1;
+      i += 2;
+      while (i < sql.length && profondeur) {
+        if (sql.startsWith("/*", i)) { profondeur++; i += 2; }
+        else if (sql.startsWith("*/", i)) { profondeur--; i += 2; }
+        else i++;
+      }
+      espace();
+    } else if (sql[i] === "'" || sql[i] === '"') {
+      // Ne jamais retirer un marqueur de commentaire dans une valeur ou un
+      // identifiant SQL ; conserver aussi ses espaces et ses points-virgules.
+      const debut = i;
+      const guillemet = sql[i++];
+      const echappe = guillemet === "'" && /(?:^|[^a-zA-Z0-9_$])[eE]$/.test(sql.slice(0, debut));
+      while (i < sql.length) {
+        if (echappe && sql[i] === "\\") { i += 2; }
+        else if (sql[i++] === guillemet) {
+          if (sql[i] === guillemet) i++;
+          else break;
+        }
+      }
+      instruction += sql.slice(debut, i);
+    } else if (sql[i] === "$" && /^(?:\$[a-zA-Z_][a-zA-Z0-9_]*\$|\$\$)/.test(sql.slice(i))) {
+      const balise = sql.slice(i).match(/^\$(?:[a-zA-Z_][a-zA-Z0-9_]*)?\$/)[0];
+      const fin = sql.indexOf(balise, i + balise.length);
+      const suivant = fin === -1 ? sql.length : fin + balise.length;
+      instruction += sql.slice(i, suivant);
+      i = suivant;
+    } else if (sql[i] === ";") {
+      terminer();
+      i++;
+    } else if (/\s/.test(sql[i])) {
+      espace();
+      i++;
+    } else {
+      instruction += sql[i++];
+    }
+  }
+  terminer();
+  return resultat;
 }
 
 /** Écart entre deux listes d'instructions (comparées comme multiensembles). */

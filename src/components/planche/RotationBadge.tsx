@@ -4,25 +4,28 @@
 
 'use client'
 
+import type { EspeceAdvice } from '@/lib/rotation/types'
 import { cn } from '@/lib/utils'
 
 interface RotationBadgeProps {
-  status: 'safe' | 'warning' | 'blocked'
+  status: EspeceAdvice['status']
   size?: 'sm' | 'md'
   className?: string
 }
 
 export function RotationBadge({ status, size = 'md', className }: RotationBadgeProps) {
-  const labels = {
+  const labels: Record<EspeceAdvice['status'], string> = {
     safe: 'OK',
     warning: 'Attention',
     blocked: 'Bloqué',
+    unknown: 'Non évaluée',
   }
 
-  const colors = {
+  const colors: Record<EspeceAdvice['status'], string> = {
     safe: 'bg-green-100 text-green-800 border-green-300',
     warning: 'bg-yellow-100 text-yellow-800 border-yellow-300',
     blocked: 'bg-red-100 text-red-800 border-red-300',
+    unknown: 'bg-slate-100 text-slate-700 border-slate-300',
   }
 
   const sizes = {

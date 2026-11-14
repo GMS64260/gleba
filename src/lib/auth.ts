@@ -17,6 +17,8 @@ import { googleAuthDisponible, motifRefusConnexionGoogle, neutralisationComptePr
 import { estEmailDemo } from "./demo"
 import { REFUS_CONNEXION, type CodeRefusConnexion } from "./auth-refus"
 import { redirectionApresConnexion } from "./auth-retour"
+import { autoriserEssaiConnexion, solderEssaisConnexion } from "./auth-plafond"
+import { getClientIP } from "./ip-client"
 
 /**
  * Refus de connexion porteur d'un motif lisible par le formulaire.
@@ -39,9 +41,7 @@ class RefusConnexion extends CredentialsSignin {
 function clientInfo(request?: Request): { ip: string | null; userAgent: string | null } {
   if (!request) return { ip: null, userAgent: null }
   const h = request.headers
-  // Caddy place l'IP réelle dans X-Forwarded-For (liste séparée par des virgules : le 1er = client)
-  const xff = h.get("x-forwarded-for")
-  const ip = (xff?.split(",")[0].trim() || h.get("x-real-ip") || "").trim() || null
+  const ip = getClientIP(request)
   const userAgent = h.get("user-agent")?.slice(0, 512) ?? null
   return { ip, userAgent }
 }
@@ -175,6 +175,19 @@ export async function authorizeCredentials(
   const email = String(credentials.email).toLowerCase().trim()
   const info = clientInfo(request)
 
+  // Plafond des essais (MC4) : AVANT la recherche du compte et avant bcrypt.
+  // Le plafond et le journal utilisent la même IP fiable via getClientIP.
+  // Le refus ne dépend ni de l'existence du compte
+  // ni du mot de passe, et il porte le MÊME motif qu'un mot de passe erroné :
+  // la réponse ne dit ni que le plafond est atteint (un script ne sait pas
+  // qu'il doit changer d'adresse), ni si le mot de passe essayé était le bon.
+  // Seul le journal des connexions distingue le motif (`rate_limited`).
+  const ipPlafond = request ? getClientIP(request) : "unknown"
+  if (!autoriserEssaiConnexion(ipPlafond, email)) {
+    logLogin(email, false, "rate_limited", undefined, info)
+    throw new RefusConnexion(REFUS_CONNEXION.IDENTIFIANTS)
+  }
+
   const user = await prisma.user.findUnique({
     where: { email },
   })
@@ -208,6 +221,7 @@ export async function authorizeCredentials(
     throw new RefusConnexion(REFUS_CONNEXION.IDENTIFIANTS)
   }
 
+  solderEssaisConnexion(ipPlafond, email)
   logLogin(email, true, "ok", user.id, info)
 
   return {

@@ -54,6 +54,9 @@ import {
 import { libellePeriodeSemaines, libellePeriodeSemainesCourt } from "@/lib/semaines-lisibles"
 import { arbreSupprimeDansNotes } from "@/lib/verger/preserver-traces-phyto"
 import { champObligatoireObservation } from "@/lib/tracabilite/conformite-observation-phyto"
+import { observationAuRegistre } from "@/lib/tracabilite/historique-phyto"
+import { DarField } from "@/components/phyto/DarField"
+import { MotifRectificationField } from "@/components/phyto/MotifRectificationField"
 
 interface Arbre {
   id: number
@@ -230,6 +233,7 @@ function ObservationsSubTab() {
     doseAppliquee: "",
     uniteDose: "",
     dar: "",
+    motif: "",
     numAMM: "",
     notes: "",
     // PROMPT 11 LOT D — Enrichissement PBI
@@ -238,6 +242,7 @@ function ObservationsSubTab() {
     photoUrl: "",
   }
   const [formData, setFormData] = React.useState(defaultFormData)
+  const rectificationPhyto = editingObs !== null && observationAuRegistre(editingObs)
 
   const fetchData = React.useCallback(async () => {
     setLoading(true)
@@ -280,6 +285,7 @@ function ObservationsSubTab() {
       doseAppliquee: obs.doseAppliquee?.toString() || "",
       uniteDose: obs.uniteDose || "",
       dar: obs.dar?.toString() || "",
+      motif: "",
       numAMM: obs.numAMM || "",
       notes: obs.notes || "",
       stadeBBCH: (obs as Observation & { stadeBBCH?: string | null }).stadeBBCH || "",
@@ -306,6 +312,10 @@ function ObservationsSubTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
+    if (rectificationPhyto && !formData.motif.trim()) {
+      toast({ title: "Renseignez le motif de la rectification", variant: "destructive" })
+      return
+    }
     // Famille C — au lieu d'un bouton grisé muet (perçu comme « ça bloque »),
     // on valide explicitement les champs requis avec un message clair.
     if (!formData.arbreId) {
@@ -328,7 +338,8 @@ function ObservationsSubTab() {
         body: JSON.stringify({
           ...formData,
           doseAppliquee: formData.doseAppliquee || null,
-          dar: formData.dar || null,
+          dar: formData.dar.trim() === "" ? null : Number(formData.dar),
+          motif: rectificationPhyto ? formData.motif.trim() : undefined,
           stadeBBCH: formData.stadeBBCH || null,
           pctOrganesTouches: formData.pctOrganesTouches ? parseInt(formData.pctOrganesTouches) : null,
           photoUrl: formData.photoUrl || null,
@@ -768,10 +779,7 @@ function ObservationsSubTab() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div>
-                          <Label>DAR (jours)</Label>
-                          <Input type="number" value={formData.dar} onChange={(e) => setFormData({ ...formData, dar: e.target.value })} placeholder="Délai avant récolte" />
-                        </div>
+                        <DarField value={formData.dar} onChange={(dar) => setFormData({ ...formData, dar })} />
                       </div>
                     </>
                   )}
@@ -783,6 +791,9 @@ function ObservationsSubTab() {
               <Label>Notes</Label>
               <Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} rows={2} />
             </div>
+            {rectificationPhyto && (
+              <MotifRectificationField value={formData.motif} onChange={(motif) => setFormData({ ...formData, motif })} />
+            )}
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Enregistrement..." : (editingObs ? "Enregistrer les modifications" : "Enregistrer l'observation")}
             </Button>
@@ -814,6 +825,7 @@ function RegistrePhytoSubTab() {
     doseAppliquee: "",
     uniteDose: "",
     dar: "",
+    motif: "",
     // Revue cmvgeltj1 — une ligne « Non conforme » faute de surface doit
     // pouvoir être corrigée ici (le PUT l'accepte).
     surfaceTraiteeHa: "",
@@ -1059,6 +1071,7 @@ function RegistrePhytoSubTab() {
       uniteDose: obs.uniteDose || "",
       dar: obs.dar?.toString() || "",
       surfaceTraiteeHa: obs.surfaceTraiteeHa?.toString() || "",
+      motif: "",
       traitement: obs.traitement || "",
       methodeTraitement: obs.methodeTraitement || (obs.produit ? "chimique_conventionnel" : "mecanique_manuel"),
     })
@@ -1069,6 +1082,10 @@ function RegistrePhytoSubTab() {
     e.preventDefault()
     if (isSubmitting) return
     if (!editingObs) return
+    if (!editForm.motif.trim()) {
+      toast({ title: "Renseignez le motif de la rectification", variant: "destructive" })
+      return
+    }
     setIsSubmitting(true)
     try {
       const res = await fetch(`/api/arbres/observations/${editingObs.id}`, {
@@ -1079,7 +1096,8 @@ function RegistrePhytoSubTab() {
           numAMM: editForm.numAMM || null,
           doseAppliquee: editForm.doseAppliquee || null,
           uniteDose: editForm.uniteDose || null,
-          dar: editForm.dar || null,
+          dar: editForm.dar.trim() === "" ? null : Number(editForm.dar),
+          motif: editForm.motif.trim(),
           surfaceTraiteeHa: editForm.surfaceTraiteeHa || null,
           traitement: editForm.traitement || null,
           methodeTraitement: editForm.methodeTraitement || null,
@@ -1124,7 +1142,7 @@ function RegistrePhytoSubTab() {
         body: JSON.stringify({
           ...addForm,
           doseAppliquee: addForm.doseAppliquee || null,
-          dar: addForm.dar || null,
+          dar: addForm.dar.trim() === "" ? null : Number(addForm.dar),
           // DEV3 #1 — champs réglementaires
           surfaceTraiteeHa: addForm.surfaceTraiteeHa || null,
           volumeBouillieLHa: addForm.volumeBouillieLHa || null,
@@ -1485,10 +1503,8 @@ function RegistrePhytoSubTab() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label>DAR (jours){champObligatoireObservation(editForm.methodeTraitement, "dar") && <span className="text-red-600"> *</span>}</Label>
-                    <Input type="number" value={editForm.dar} onChange={(e) => setEditForm({ ...editForm, dar: e.target.value })} placeholder="Délai avant récolte" />
-                  </div>
+                  <DarField value={editForm.dar} onChange={(dar) => setEditForm({ ...editForm, dar })}
+                    required={champObligatoireObservation(editForm.methodeTraitement, "dar")} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -1509,6 +1525,7 @@ function RegistrePhytoSubTab() {
                 </div>
               </>
             )}
+            <MotifRectificationField value={editForm.motif} onChange={(motif) => setEditForm({ ...editForm, motif })} />
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Enregistrement..." : "Enregistrer les modifications"}
             </Button>
@@ -1626,10 +1643,8 @@ function RegistrePhytoSubTab() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
-                        <Label>DAR (jours){champObligatoireObservation(addForm.methodeTraitement, "dar") && <span className="text-red-600"> *</span>}</Label>
-                        <Input type="number" value={addForm.dar} onChange={(e) => setAddForm({ ...addForm, dar: e.target.value })} placeholder="Délai avant récolte" />
-                      </div>
+                      <DarField value={addForm.dar} onChange={(dar) => setAddForm({ ...addForm, dar })}
+                        required={champObligatoireObservation(addForm.methodeTraitement, "dar")} />
                     </div>
                   </>
                 )}

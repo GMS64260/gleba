@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   soinFindFirst: vi.fn(), soinUpdate: vi.fn(), queryRaw: vi.fn(), executeRaw: vi.fn(),
@@ -89,12 +89,6 @@ describe('injections : calendrier et dates réelles (tickets vigie2cc83585 / cmu
   // Ticket cmvnp6s3z (2026-10-25), côté assistant (`update_soin` passe la
   // chaîne brute) : 1re injection datée 24/09 08:00 Paris (06:00 UTC).
   describe('update_soin et jour seul (ticket cmvnp6s3z)', () => {
-    const tzAvant = process.env.TZ
-    beforeAll(() => { process.env.TZ = 'Europe/Paris' })
-    afterAll(() => {
-      if (tzAvant === undefined) delete process.env.TZ
-      else process.env.TZ = tzAvant
-    })
     const soinDate08h = { ...soinUbrolexin, date: J('2026-09-24T06:00:00Z'), nbInjections: 2, intervalleInjectionsHeures: 48 }
     const injections08h = [
       { id: 'i1', numero: 1, statut: 'realisee', datePrevue: J('2026-09-24T06:00:00Z'), dateRealisee: J('2026-09-24T06:00:00Z') },

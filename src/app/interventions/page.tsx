@@ -32,6 +32,9 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { libelleCulture } from "@/lib/cultures/label"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
+import { DarField } from "@/components/phyto/DarField"
+import { MotifRectificationField } from "@/components/phyto/MotifRectificationField"
+import { interventionAuRegistre } from "@/lib/tracabilite/historique-phyto"
 import { todayLocalISO } from '@/lib/format-utils'
 import { TYPES_INTERVENTION, libelleTypeIntervention } from "@/lib/interventions/types"
 import {
@@ -307,6 +310,7 @@ export default function InterventionsPage() {
     uniteDose: "L/ha",
     surfaceTraitee: "",
     dar: "",
+    motif: "",
     conditionsMeteo: "",
     zntDistanceM: null as number | null,
     zntRespectee: null as boolean | null,
@@ -328,6 +332,7 @@ export default function InterventionsPage() {
     justification: "",
   }
   const [form, setForm] = React.useState(emptyForm)
+  const rectificationPhyto = editingIntervention !== null && interventionAuRegistre(editingIntervention)
 
   // PROMPT 11 LOT D — Si un param `?prefill=` est présent (depuis le bouton
   // "Déclencher un traitement" sur la fiche Observation Santé), ouvrir le
@@ -469,6 +474,10 @@ export default function InterventionsPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
+    if (rectificationPhyto && !form.motif.trim()) {
+      toast({ title: "Renseignez le motif de la rectification", variant: "destructive" })
+      return
+    }
     // Ticket QA cmv3jatw8 : une intervention réalisée datée d'après aujourd'hui
     // (arrosage du 12/10 coché « réalisé » le 11/10) brouillait le dernier
     // arrosage du conseil d'irrigation.
@@ -511,7 +520,8 @@ export default function InterventionsPage() {
       doseAppliquee: form.doseAppliquee,
       uniteDose: form.uniteDose,
       surfaceTraitee: form.surfaceTraitee,
-      dar: form.dar,
+      dar: form.dar.trim() === "" ? null : Number(form.dar),
+      ...(rectificationPhyto ? { motif: form.motif.trim() } : {}),
       conditionsMeteo: form.conditionsMeteo,
       zntDistanceM: form.zntDistanceM,
       zntRespectee: form.zntRespectee,
@@ -695,6 +705,7 @@ export default function InterventionsPage() {
       uniteDose: intervention.uniteDose || "L/ha",
       surfaceTraitee: intervention.surfaceTraitee?.toString() || "",
       dar: intervention.dar?.toString() || "",
+      motif: "",
       conditionsMeteo: intervention.conditionsMeteo || "",
       zntDistanceM: intervention.zntDistanceM ?? null,
       zntRespectee: intervention.zntRespectee ?? null,
@@ -1071,16 +1082,7 @@ export default function InterventionsPage() {
                             placeholder="0"
                           />
                         </div>
-                        <div>
-                          <Label>DAR (jours)</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            value={form.dar}
-                            onChange={(e) => setForm({ ...form, dar: e.target.value })}
-                            placeholder="Délai Avant Récolte"
-                          />
-                        </div>
+                        <DarField value={form.dar} onChange={(dar) => setForm({ ...form, dar })} />
                         <div>
                           <Label>Conditions météo</Label>
                           <Input
@@ -1249,6 +1251,9 @@ export default function InterventionsPage() {
                   </div>
 
                   {/* Submit */}
+                  {rectificationPhyto && (
+                    <MotifRectificationField value={form.motif} onChange={(motif) => setForm({ ...form, motif })} />
+                  )}
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"

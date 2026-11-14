@@ -7,6 +7,7 @@
 import prisma from '@/lib/prisma'
 import { getOrFetch } from '@/lib/cache-helper'
 import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
+import { previsionDuJour } from '@/lib/meteo-jour'
 
 // ============================================================
 // TYPES
@@ -611,7 +612,7 @@ export async function getMeteoForParcelle(
       stationData = await fetchWundergroundData(station.apiKey, station.stationId)
     } else if (station.provider === 'open-meteo-reference' && station.lat && station.lng) {
       const stationForecast = await fetchOpenMeteoForecast(station.lat, station.lng)
-      stationData = stationForecast.daily[0] ?? null
+      stationData = previsionDuJour(stationForecast.daily, today) ?? null
     }
 
     if (stationData) {

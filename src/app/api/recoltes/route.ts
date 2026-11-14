@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
       // Espèces distinctes présentes dans les recoltes de l'utilisateur
       prisma.recolte.findMany({
         where: { userId: session!.user.id },
-        select: { especeId: true },
+        select: { especeId: true, espece: { select: { nom: true } } },
         distinct: ['especeId'],
         orderBy: { especeId: 'asc' },
       }),
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest) {
         totalParUnite: statsParUnite,
         count: stats.reduce((somme, ligne) => somme + ligne._count._all, 0),
       },
-      especes: especesDistinctes.map(e => ({ id: e.especeId })),
+      especes: especesDistinctes.map(e => ({ id: e.especeId, nom: e.espece.nom })),
     })
   } catch (error) {
     console.error('GET /api/recoltes error:', error)

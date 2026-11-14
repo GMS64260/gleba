@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { normaliserRecherche, scoreEspece } from "@/lib/especes/recherche"
+import { origineBadge, nomEspece as nomOf } from "@/lib/especes/affichage"
 import { libelleTypeEspece } from "@/lib/validations/espece"
 
 /**
@@ -60,16 +61,6 @@ export type EspeceOption = {
   userId?: string | null
   partageCommunaute?: boolean
 }
-
-/** Badge d'origine d'une entrée catalogue (null = Gleba officiel, pas de badge). */
-function origineBadge(o: EspeceOption, currentUserId?: string | null) {
-  if (o.userId == null) return null
-  if (currentUserId && o.userId === currentUserId) return { label: "Perso", cls: "bg-amber-100 text-amber-700" }
-  return { label: "Communauté", cls: "bg-sky-100 text-sky-700" }
-}
-
-/** Nom affiché/recherché d'une option (perso → `nom`, officiel → id lisible). */
-const nomOf = (o: EspeceOption) => o.nom ?? o.id
 
 type TabKey = "all" | EspeceType
 

@@ -6,11 +6,9 @@ import { unzipSync } from "fflate"
 import { construireArchiveRegistre } from "./archive-registre.server"
 
 const dossiersTemporaires: string[] = []
-const cwdInitial = process.cwd()
 
 afterEach(async () => {
   vi.restoreAllMocks()
-  process.chdir(cwdInitial)
   await Promise.all(dossiersTemporaires.splice(0).map((dossier) =>
     rm(dossier, { recursive: true, force: true })
   ))
@@ -24,7 +22,7 @@ async function environnementFichier(contenu: string) {
   await mkdir(dossier, { recursive: true })
   const stockageNom = "123e4567-e89b-42d3-a456-426614174000.pdf"
   await writeFile(path.join(dossier, stockageNom), contenu)
-  process.chdir(racine)
+  vi.spyOn(process, "cwd").mockReturnValue(racine)
   return { userId, url: `/api/upload/justificatif/${stockageNom}` }
 }
 
@@ -75,7 +73,7 @@ describe("archive réglementaire du registre d’élevage", () => {
   it("signale sans accès réseau les références non privées et les fichiers absents", async () => {
     const racine = await mkdtemp(path.join(os.tmpdir(), "gleba-registre-"))
     dossiersTemporaires.push(racine)
-    process.chdir(racine)
+    vi.spyOn(process, "cwd").mockReturnValue(racine)
     const resultat = await construireArchiveRegistre({
       userId: "user-1",
       annee: 2026,

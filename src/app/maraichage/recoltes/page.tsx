@@ -40,9 +40,11 @@ import {
 } from "@/components/ui/table"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
+import { nomEspece } from "@/lib/especes/affichage"
 import { confirmDialog } from "@/lib/global-dialog"
 import { BoutonPartagerRecolte } from "@/components/avis/PartagerRecolte"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
+import { getAvailableYears } from "@/components/year-selector"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 import { formatMontantDevise } from "@/lib/format-utils"
 import { formatPrixUnitaire } from "@/lib/comptabilite/prix-unitaire"
@@ -104,6 +106,7 @@ interface RecolteWithRelations {
    */
   valorisation?: ValorisationLot | null
   espece: {
+    nom: string | null
     id: string
     prixKg: number | null
     famille: { id: string; couleur: string | null } | null
@@ -143,7 +146,7 @@ export default function RecoltesPage() {
   // Nombre total de sorties quand l'historique chargé est tronqué (sinon null).
   const [historiqueTronque, setHistoriqueTronque] = React.useState<number | null>(null)
   const [selectedEspece, setSelectedEspece] = React.useState<string>('all')
-  const [especes, setEspeces] = React.useState<{ id: string }[]>([])
+  const [especes, setEspeces] = React.useState<{ id: string; nom: string | null }[]>([])
   // null = comparaison non chargée : l'écran n'affiche que ses lots.
   const [stocksEspeces, setStocksEspeces] = React.useState<StockEspece[] | null>(null)
 
@@ -159,9 +162,7 @@ export default function RecoltesPage() {
   })
   const [venteSubmitting, setVenteSubmitting] = React.useState(false)
 
-  // Générer les annees disponibles (5 dernières annees)
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  const years = getAvailableYears()
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
@@ -543,7 +544,7 @@ export default function RecoltesPage() {
               <SelectContent>
                 <SelectItem value="all">Toutes</SelectItem>
                 {especes.map((e) => (
-                  <SelectItem key={e.id} value={e.id}>{e.id}</SelectItem>
+                  <SelectItem key={e.id} value={e.id}>{nomEspece(e)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -715,7 +716,7 @@ export default function RecoltesPage() {
                                   className="w-3 h-3 rounded-full"
                                   style={{ backgroundColor: r.espece?.famille?.couleur || '#888' }}
                                 />
-                                <span className="font-medium">{r.especeId}</span>
+                                <span className="font-medium">{nomEspece({ id: r.especeId, nom: r.espece?.nom })}</span>
                               </div>
                             </TableCell>
                             <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
@@ -832,7 +833,7 @@ export default function RecoltesPage() {
                                 className="w-3 h-3 rounded-full"
                                 style={{ backgroundColor: r.espece?.famille?.couleur || '#888' }}
                               />
-                              <span>{r.especeId}</span>
+                              <span>{nomEspece({ id: r.especeId, nom: r.espece?.nom })}</span>
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
@@ -897,7 +898,7 @@ export default function RecoltesPage() {
                               <Badge variant="outline" className="border-sky-300 text-sky-700">Conso perso</Badge>
                             )}
                           </TableCell>
-                          <TableCell>{r.especeId}</TableCell>
+                          <TableCell>{nomEspece({ id: r.especeId, nom: r.espece?.nom })}</TableCell>
                           <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
                           <TableCell className={`text-right ${r.statut === "perte" ? "text-orange-600" : "text-sky-700"}`}>
                             {formatQuantite(r.quantite, uniteRecolte(r.unite))}
@@ -924,7 +925,7 @@ export default function RecoltesPage() {
               <div className="space-y-4">
                 <div className="p-3 bg-green-50 rounded-lg">
                   <p className="text-sm text-green-700">
-                    {selectedRecolte.especeId} - {formatQuantite(selectedRecolte.quantite, uniteRecolte(selectedRecolte.unite))}
+                    {nomEspece({ id: selectedRecolte.especeId, nom: selectedRecolte.espece?.nom })} - {formatQuantite(selectedRecolte.quantite, uniteRecolte(selectedRecolte.unite))}
                     {selectedRecolte.culture?.variete && ` (${selectedRecolte.culture.variete.nom ?? selectedRecolte.culture.variete.id})`}
                   </p>
                 </div>

@@ -1,3 +1,5 @@
+import { getAvailableYears } from "@/components/year-selector"
+
 export const DASHBOARD_YEAR_STORAGE_KEY = "gleba_dashboard_year"
 
 /**
@@ -9,17 +11,14 @@ export const DASHBOARD_YEAR_STORAGE_KEY = "gleba_dashboard_year"
  * des cultures plusieurs saisons à l'avance. Une culture créée pour 2028 depuis
  * une rotation était donc PERSISTÉE mais INACCESSIBLE depuis la liste Cultures :
  * l'année n'existait dans aucun sélecteur du dashboard. La plage couvre
- * désormais l'horizon réel des rotations, à l'identique partout dans le module.
+ * désormais l'horizon réel des rotations et tout l'historique accessible,
+ * à l'identique partout dans le module.
  */
 export const HORIZON_MARAICHAGE_ANNEES = 5
 
 /** Années sélectionnables dans le module Maraîchage, de la plus récente à la plus ancienne. */
 export function anneesMaraichage(anneeCourante: number = new Date().getFullYear()): number[] {
-  const annees: number[] = []
-  for (let a = anneeCourante + HORIZON_MARAICHAGE_ANNEES; a >= anneeCourante - HORIZON_MARAICHAGE_ANNEES; a--) {
-    annees.push(a)
-  }
-  return annees
+  return getAvailableYears(undefined, anneeCourante + HORIZON_MARAICHAGE_ANNEES)
 }
 
 interface ResolveDashboardYearOptions {

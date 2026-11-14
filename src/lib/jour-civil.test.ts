@@ -1,15 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { describe, expect, it } from "vitest"
 import { dateJourSeul, estMinuitUtc, jourCivilStocke } from "./jour-civil"
 
-/** Le conteneur et le navigateur de la QA tournent en Europe/Paris. */
-const tzAvant = process.env.TZ
-beforeAll(() => {
-  process.env.TZ = "Europe/Paris"
-})
-afterAll(() => {
-  if (tzAvant === undefined) delete process.env.TZ
-  else process.env.TZ = tzAvant
-})
+// Les instants locaux suivent le fuseau réel du processus, fixé au lancement.
 
 describe("jourCivilStocke", () => {
   it("minuit UTC pile : le jour saisi", () => {
@@ -17,15 +9,15 @@ describe("jourCivilStocke", () => {
     expect(jourCivilStocke("2027-06-01T00:00:00.000Z")).toBe("2027-06-01")
   })
 
-  it("minuit LOCAL stocké la veille en UTC : le jour local (cmvnulry1)", () => {
-    // Été (UTC+2) et hiver (UTC+1).
-    expect(jourCivilStocke(new Date("2027-04-11T22:00:00.000Z"))).toBe("2027-04-12")
-    expect(jourCivilStocke(new Date("2027-01-03T23:00:00.000Z"))).toBe("2027-01-04")
+  it("minuit local : le jour local en été et en hiver (cmvnulry1)", () => {
+    // Deux saisons : le décalage dépend du fuseau réel du processus.
+    expect(jourCivilStocke(new Date(2027, 3, 12))).toBe("2027-04-12")
+    expect(jourCivilStocke(new Date(2027, 0, 4))).toBe("2027-01-04")
   })
 
-  it("instant d'une étape faite après minuit à Paris : le jour local", () => {
-    expect(jourCivilStocke(new Date("2026-09-23T22:30:00.000Z"))).toBe("2026-09-24")
-    expect(jourCivilStocke(new Date("2026-09-24T15:00:00.000Z"))).toBe("2026-09-24")
+  it("instant d'une étape faite après minuit local : le jour local", () => {
+    expect(jourCivilStocke(new Date(2026, 8, 24, 0, 30))).toBe("2026-09-24")
+    expect(jourCivilStocke(new Date(2026, 8, 24, 17))).toBe("2026-09-24")
   })
 
   it("jour seul inchangé ; absent ou illisible : null", () => {
@@ -47,18 +39,14 @@ describe("dateJourSeul", () => {
     expect(dateJourSeul(null)).toBeNull()
   })
 
-  it("instant reçu (minuit à Paris) → minuit UTC de son jour", () => {
-    expect(dateJourSeul(new Date("2027-04-11T22:00:00.000Z")).toISOString()).toBe("2027-04-12T00:00:00.000Z")
+  it("instant reçu (minuit local) → minuit UTC de son jour", () => {
+    expect(dateJourSeul(new Date(2027, 3, 12)).toISOString()).toBe("2027-04-12T00:00:00.000Z")
   })
 
-  it("idempotent : un minuit UTC déjà écrit ne recule pas, même à l'ouest d'UTC", () => {
-    for (const fuseau of ["Europe/Paris", "UTC", "Pacific/Tahiti", "America/Martinique", "Pacific/Noumea"]) {
-      process.env.TZ = fuseau
-      const ecrite = new Date("2027-04-12T00:00:00.000Z")
-      expect(dateJourSeul(ecrite).toISOString(), fuseau).toBe("2027-04-12T00:00:00.000Z")
-      expect(dateJourSeul(dateJourSeul(new Date(2027, 3, 12))).toISOString(), fuseau).toBe("2027-04-12T00:00:00.000Z")
-    }
-    process.env.TZ = "Europe/Paris"
+  it("idempotent : un minuit UTC déjà écrit ne recule pas dans le fuseau du processus", () => {
+    const ecrite = new Date("2027-04-12T00:00:00.000Z")
+    expect(dateJourSeul(ecrite).toISOString()).toBe("2027-04-12T00:00:00.000Z")
+    expect(dateJourSeul(dateJourSeul(new Date(2027, 3, 12))).toISOString()).toBe("2027-04-12T00:00:00.000Z")
   })
 
   it("date illisible : date invalide", () => {
