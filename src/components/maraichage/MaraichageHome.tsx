@@ -50,7 +50,7 @@ type TabId = (typeof TABS)[number]["id"]
 
 // QA Camille 2026-05-15 — bonus : plage factorisée.
 // QA cmswwx0nj — le module Maraîchage couvre l'horizon des rotations
-// (N−5 … N+5), pas seulement N+1 : une culture 2028 matérialisée depuis une
+// (jusqu’à N+5), pas seulement N+1 : une culture 2028 matérialisée depuis une
 // rotation restait inaccessible faute d'année dans le sélecteur. Même plage
 // que les écrans de planification (voir anneesMaraichage).
 const currentYearNow = new Date().getFullYear()

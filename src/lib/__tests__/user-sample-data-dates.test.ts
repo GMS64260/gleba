@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 /**
  * Ticket QA cmvnulry1 (2026-10-25), même famille : les données d'exemple d'un
@@ -28,14 +28,6 @@ vi.mock("@/lib/prisma", () => ({
 
 import { createSampleDataForUser } from "../user-sample-data"
 
-const tzAvant = process.env.TZ
-beforeAll(() => {
-  process.env.TZ = "Europe/Paris"
-})
-afterAll(() => {
-  if (tzAvant === undefined) delete process.env.TZ
-  else process.env.TZ = tzAvant
-})
 
 /** Toutes les dates passées à `create` par ce mock. */
 function datesEcrites(mock: ReturnType<typeof vi.fn>): [string, Date][] {

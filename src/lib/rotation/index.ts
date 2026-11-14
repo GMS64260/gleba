@@ -266,6 +266,16 @@ function calculateEspeceAdvice(
   blockedFamilies: BlockedFamily[],
   soilStatus: SoilAnalysis
 ): EspeceAdvice {
+  if (!espece.familleId) {
+    return {
+      especeId: espece.id,
+      familleId: espece.familleId,
+      status: 'unknown',
+      message: 'Rotation non évaluée',
+      details: ['Famille botanique non renseignée : la rotation ne peut pas être vérifiée'],
+    }
+  }
+
   const details: string[] = []
 
   // Vérifier si la famille est bloquée

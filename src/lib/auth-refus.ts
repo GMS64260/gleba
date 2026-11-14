@@ -23,7 +23,11 @@
  */
 
 export const REFUS_CONNEXION = {
-  /** Adresse inconnue OU mot de passe erroné. Jamais distingués. */
+  /**
+   * Adresse inconnue OU mot de passe erroné. Jamais distingués. Le plafond
+   * d'essais (`auth-plafond.ts`, MC4) rend ce même code : un refus pour trop
+   * d'essais est indiscernable d'un mot de passe faux.
+   */
   IDENTIFIANTS: "identifiants",
   CHAMPS_MANQUANTS: "champs_manquants",
   EMAIL_NON_VERIFIE: "email_non_verifie",
