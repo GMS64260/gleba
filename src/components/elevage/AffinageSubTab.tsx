@@ -68,7 +68,16 @@ export function AffinageSubTab() {
   React.useEffect(() => { reload() }, [reload])
 
   const changerEtat = async (l: LotCave, etat: string) => {
-    await fetch("/api/elevage/affinage", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: l.id, etat }) })
+    try {
+      const r = await fetch("/api/elevage/affinage", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: l.id, etat }) })
+      if (!r.ok) {
+        // Refus expliqué par le serveur (lot emporté au marché, par exemple).
+        const corps = await r.json().catch(() => null)
+        toast({ variant: "destructive", title: "État non modifié", description: corps?.error || "L'état du lot n'a pas pu être modifié." })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "L'état du lot n'a pas pu être modifié. Vérifiez la connexion." })
+    }
     reload()
   }
 

@@ -76,7 +76,7 @@ export interface SoilAnalysis {
 export interface EspeceAdvice {
   especeId: string
   familleId: string | null
-  status: 'safe' | 'warning' | 'blocked'
+  status: 'safe' | 'warning' | 'blocked' | 'unknown'
   message: string
   details: string[]
 }

@@ -87,11 +87,12 @@ describe("aller-retour semaine ↔ date", () => {
  * rotations, à l'identique sur le dashboard et les écrans de planification.
  */
 describe("plage d'années du module Maraîchage", () => {
-  it("couvre N−5 … N+5, de la plus récente à la plus ancienne", () => {
+  it("couvre l’historique depuis 2000 et N+5, de la plus récente à la plus ancienne", () => {
     const annees = anneesMaraichage(2026)
     expect(annees[0]).toBe(2031)
-    expect(annees[annees.length - 1]).toBe(2021)
-    expect(annees).toHaveLength(11)
+    expect(annees[annees.length - 1]).toBe(2000)
+    expect(annees).toHaveLength(32)
+    expect(annees).toContain(2019)
     expect(annees).toContain(2028)
   })
 

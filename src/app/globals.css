@@ -342,18 +342,17 @@ html.coquille-v2 [data-marketing-navigation] {
   html.coquille-v2 body {
     padding-bottom: calc(var(--navigation-basse-h) + 1rem);
   }
-  /* Les boutons privés gardent leur code et leurs règles de saisie. Seuls
-     ces déclencheurs flottants identifiés remontent au-dessus du menu. */
-  html.coquille-v2 button.fixed[aria-label="Fermer l'assistant"],
-  html.coquille-v2 button.fixed[aria-label="Envoyer un feedback"] {
+  /* Les boutons privés gardent leur code et leurs règles de saisie. Sur
+     mobile, la bulle de l'assistant est le seul déclencheur flottant : elle
+     remonte au-dessus du menu, ouverte comme fermée. */
+  html.coquille-v2 button.fixed[aria-label="Assistant IA"],
+  html.coquille-v2 button.fixed[aria-label="Fermer l'assistant"] {
     bottom: calc(var(--navigation-basse-h) + 1rem);
   }
-  /* Le panneau du plan garde ses commandes dégagées ; le feedback revient
-     dès sa fermeture et reste disponible sur ordinateur. */
-  html.coquille-v2:has(#details-selection-plan.fixed) button.fixed[aria-label="Envoyer un feedback"] {
-    display: none;
-  }
-  html.coquille-v2 button.fixed[aria-label="Assistant IA"] {
+  /* Le panneau du plan et la notice de guidage occupent le bas de l'écran :
+     la bulle fermée s'efface et revient dès leur fermeture. */
+  html.coquille-v2:has(#details-selection-plan.fixed) button.fixed[aria-label="Assistant IA"],
+  html.coquille-v2:has([data-navigation-basse] [data-guide-notice]) button.fixed[aria-label="Assistant IA"] {
     display: none;
   }
   html.coquille-v2 [data-assistant-panel="compact"] {

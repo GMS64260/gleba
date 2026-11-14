@@ -69,3 +69,33 @@ describe("calculateRotationAdvice — cultures d'années futures", () => {
     expect(advice.recentCultures.map((c) => c.annee)).toEqual([2025])
   })
 })
+
+describe("calculateEspeceAdvice — famille botanique manquante", () => {
+  it("ne recommande pas une espèce dont la rotation ne peut pas être évaluée", () => {
+    const advice = calculateRotationAdvice({
+      plancheId: "planche-neuve",
+      targetYear: 2026,
+      cultures: [],
+      allFamilies: FAMILLES,
+      especeToCheck: { id: "espece-privee", familleId: null, besoinN: 2 },
+    }).especeAdvice
+
+    expect(advice?.status).toBe("unknown")
+    expect(advice?.message).toBe("Rotation non évaluée")
+    expect(advice?.details).toContain("Famille botanique non renseignée : la rotation ne peut pas être vérifiée")
+    expect([advice?.message, ...advice!.details].join(" ")).not.toMatch(/Culture recommandée|Rotation respectée/)
+  })
+
+  it("conserve le conseil favorable pour une espèce avec famille sans précédent", () => {
+    const advice = calculateRotationAdvice({
+      plancheId: "planche-neuve",
+      targetYear: 2026,
+      cultures: [],
+      allFamilies: FAMILLES,
+      especeToCheck: { id: "haricot", familleId: "Fabaceae", besoinN: 2 },
+    }).especeAdvice
+    expect(advice?.status).toBe("safe")
+    expect(advice?.message).toBe("Culture recommandée")
+    expect(advice?.details).toContain("Rotation respectée")
+  })
+})

@@ -10,6 +10,7 @@ import { serviceAutorise } from "@/lib/abonnement/serveur"
 
 import prisma from "@/lib/prisma"
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from "@/lib/meteo"
+import { jourMeteoISO, previsionDuJour } from "@/lib/meteo-jour"
 import { chargerArrosagesDuJour } from "@/lib/irrigation/a-arroser"
 import { alertesAssociations } from "@/lib/associations-alertes"
 import { zoneEffectiveUser } from "@/lib/terroir"
@@ -208,6 +209,12 @@ export async function fetchMeteoParCoord(
 ): Promise<MeteoParCoord> {
   const precipParCoordEtJour = new Map<string, Map<string, number>>()
   const pluieRecente3jParCoord = new Map<string, number>()
+  const today = new Date()
+  // Calcul sur les jours civils de Paris : indépendant du fuseau du serveur
+  // et de l'heure d'été, avec la même référence pour toutes les coordonnées.
+  const jourParis = new Date(`${jourMeteoISO(today)}T12:00:00Z`)
+  const j3 = new Date(jourParis.getTime() - 3 * 86_400_000)
+  const yesterday = new Date(jourParis.getTime() - 86_400_000)
 
   await Promise.all(
     coords.map(async ({ lat, lng }) => {
@@ -218,11 +225,6 @@ export async function fetchMeteoParCoord(
         for (const jour of forecast.daily) parJour.set(jour.date, jour.precipitation)
         precipParCoordEtJour.set(cle, parJour)
 
-        const today = new Date()
-        const j3 = new Date(today)
-        j3.setDate(j3.getDate() - 3)
-        const yesterday = new Date(today)
-        yesterday.setDate(yesterday.getDate() - 1)
         const historique = await fetchOpenMeteoHistory(
           lat,
           lng,
@@ -230,7 +232,7 @@ export async function fetchMeteoParCoord(
           yesterday.toISOString().split("T")[0]
         )
         const pluieHisto = historique.reduce((somme, jour) => somme + jour.precipitation, 0)
-        const pluieAujourdhui = forecast.daily[0]?.precipitation ?? 0
+        const pluieAujourdhui = previsionDuJour(forecast.daily, today)?.precipitation ?? 0
         pluieRecente3jParCoord.set(cle, pluieHisto + pluieAujourdhui)
       } catch (error) {
         // Une coordonnée en erreur ne doit pas faire échouer le scan entier
@@ -249,10 +251,12 @@ export async function recupererAlertesMeteoJour(userId: string): Promise<AlerteM
   if (coords.length === 0) return []
 
   const alertes: AlerteMeteoNotification[] = []
+  const today = new Date()
   for (const { lat, lng } of coords) {
     try {
       const { current, daily } = await fetchOpenMeteoForecast(lat, lng)
-      alertes.push(...detecterAlertesMeteo(daily, current, { horizonJours: 1 }))
+      const jour = previsionDuJour(daily, today)
+      alertes.push(...detecterAlertesMeteo(jour ? [jour] : [], current, { horizonJours: 1 }))
     } catch (error) {
       console.warn(`[notifications] Prévisions indisponibles pour ${coordKey(lat, lng)}:`, error)
     }

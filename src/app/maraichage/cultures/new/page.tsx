@@ -63,6 +63,7 @@ import { badgeOrigine } from "@/lib/referentiel-communaute"
 import { datesDepuisItp, recolteApresDebut, semaineSemisEffective } from "@/lib/cultures/dates-itp"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cocherApresSaisieManuelle, etapeDejaRealisable } from "@/lib/cultures/deja-fait"
+import { ecartJoursCivils } from "@/lib/dates/jours-civils"
 import { alerteSaisonCulture } from "@/lib/cultures/saison-culture"
 
 // Bug #1 — payload de violation renvoyé par POST /api/cultures (status 409).
@@ -159,7 +160,7 @@ function cycleItpPropose(itp: ITPData, year: number, today: Date) {
       // millisecondes. L'ajout d'un offset ms qui traverse le passage à
       // l'heure d'été (mars) décalait les dates d'1h → un jour de trop près
       // de minuit. setDate préserve l'heure locale et gère le DST.
-      const decalageJours = Math.ceil((today.getTime() - firstAnchor.getTime()) / 86400000)
+      const decalageJours = ecartJoursCivils(firstAnchor, today)
       const addJours = (d: Date | null) => {
         if (!d) return d
         const r = new Date(d)
@@ -812,6 +813,7 @@ export default function NewCulturePage() {
                             potager (le verger reste accessible via l'onglet). */}
                         <EspeceCombobox
                           options={especes}
+                          currentUserId={currentUserId}
                           value={field.value || null}
                           onChange={(id) => field.onChange(id || "")}
                           defaultTypes={["legume", "aromatique", "fleur", "engrais_vert"]}
