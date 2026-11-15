@@ -5,6 +5,8 @@
  */
 
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
+import { formatMontantDevise } from "@/lib/format-utils"
 import Link from "next/link"
 import { ArrowLeft, Package, RefreshCw, AlertTriangle, Sprout, TreeDeciduous, Bird, Filter } from "lucide-react"
 
@@ -56,6 +58,8 @@ interface Reconciliation {
 }
 
 export default function StocksPage() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [stocks, setStocks] = React.useState<StockItem[]>([])
@@ -94,10 +98,6 @@ export default function StocksPage() {
   }, [toast])
 
   React.useEffect(() => { fetchData() }, [fetchData])
-
-  const formatEuro = (value: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
-  }
 
   const filteredStocks = stocks.filter(s =>
     (selectedModule === 'all' || s.module === selectedModule) && (!alertesSeulement || s.alerteBas))
@@ -193,14 +193,14 @@ export default function StocksPage() {
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Valeur estimée</CardTitle></CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-violet-600">{formatEuro(filteredStats.valeurTotale)}</p>
+                <p className="text-2xl font-bold text-violet-600">{formatMontant(filteredStats.valeurTotale)}</p>
                 {/* BUG #7 : breakdown par module en sous-titre (toujours visible
                     plutôt qu'un tooltip qui demande un hover). */}
                 {stats.valeurParModule && (
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    M {formatEuro(stats.valeurParModule.potager || 0)} ·
-                    V {formatEuro(stats.valeurParModule.verger || 0)} ·
-                    E {formatEuro(stats.valeurParModule.elevage || 0)}{stats.valeurParModule.autre != null && <> · Autres {formatEuro(stats.valeurParModule.autre)}</>}
+                    M {formatMontant(stats.valeurParModule.potager || 0)} ·
+                    V {formatMontant(stats.valeurParModule.verger || 0)} ·
+                    E {formatMontant(stats.valeurParModule.elevage || 0)}{stats.valeurParModule.autre != null && <> · Autres {formatMontant(stats.valeurParModule.autre)}</>}
                   </p>
                 )}
               </CardContent>
@@ -321,7 +321,7 @@ export default function StocksPage() {
                             {item.stockMin !== null ? `${item.stockMin} ${item.unite}` : '-'}
                           </TableCell>
                           <TableCell className="text-right">
-                            {item.valeur !== null ? formatEuro(item.valeur) : '-'}
+                            {item.valeur !== null ? formatMontant(item.valeur) : '-'}
                             {/* Ticket cmvnvaal2 — la méthode est dite, comme sur
                                 Récoltes > Stock qui applique la même règle. */}
                             {item.valeurMethode && (

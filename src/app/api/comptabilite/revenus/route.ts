@@ -29,6 +29,7 @@ interface Revenu {
   montant: number; client: string | null; paye: boolean | null; categorie: string;
   modeReglement?: string | null; numeroPiece?: string | null; tauxTVA?: number | null;
   factureId?: number | null; reglementsDisponibles?: boolean;
+  emetteurSnapshot?: unknown;
 }
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -72,6 +73,7 @@ export async function GET(request: NextRequest) {
       quantite: null, unite: null, prixUnitaire: null, montant: (f.type === 'avoir' ? -1 : 1) * f.totalTTC,
       client: f.clientNom, paye: f.type === 'avoir' ? null : f.statut === 'payee',
       categorie: f.type === 'avoir' ? 'Avoirs' : 'Factures', reglementsDisponibles: f.type !== 'avoir',
+      emetteurSnapshot: f.emetteurSnapshot,
     })
     const ventilation = ventilerRevenus(ventes, factures)
     const moduleDemande = params.get('module')

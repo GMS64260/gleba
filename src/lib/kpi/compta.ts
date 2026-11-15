@@ -248,7 +248,7 @@ export async function chargerFacturesRevenus(userId: string, debut: Date, fin: D
   const factures = await prisma.facture.findMany({
     where: whereFacturesRevenus(userId, debut, fin),
     select: { id: true, numero: true, type: true, statut: true, date: true, clientNom: true, objet: true,
-      totalTTC: true, factureOrigineId: true, modePaiement: true,
+      totalTTC: true, factureOrigineId: true, modePaiement: true, emetteurSnapshot: true,
       lignes: { select: { articleStockType: true } }, _count: { select: VENTES_PORTEES } },
   })
   // Un avoir suit sa facture d'origine, qui peut dater d'un exercice antérieur.

@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
 import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
@@ -35,7 +36,7 @@ import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { DarField } from "@/components/phyto/DarField"
 import { MotifRectificationField } from "@/components/phyto/MotifRectificationField"
 import { interventionAuRegistre } from "@/lib/tracabilite/historique-phyto"
-import { todayLocalISO } from '@/lib/format-utils'
+import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { TYPES_INTERVENTION, libelleTypeIntervention } from "@/lib/interventions/types"
 import {
   libellesEmplacement,
@@ -218,10 +219,6 @@ function urlSansOuverture(): string {
 // Helper functions
 // ============================================================
 
-function formatEuro(value: number) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(value)
-}
-
 /**
  * Jour AAAA-MM-JJ d'une date d'intervention : une date de calendrier (minuit
  * UTC, formulaire) garde son jour ; un horodatage (assistant, ancien « Noter »)
@@ -251,6 +248,8 @@ function formatDuration(minutes: number | null) {
 // ============================================================
 
 export default function InterventionsPage() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { data: session } = useSession()
   const { toast } = useToast()
   // Data state
@@ -999,7 +998,7 @@ export default function InterventionsPage() {
                       />
                     </div>
                     <div>
-                      <Label>Coût main d&apos;œuvre (€)</Label>
+                      <Label>Coût main d&apos;œuvre ({devise ?? "…"})</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -1218,7 +1217,7 @@ export default function InterventionsPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label>Coût (€)</Label>
+                          <Label>Coût ({devise ?? "…"})</Label>
                           <Input
                             type="number"
                             step="0.01"
@@ -1332,7 +1331,7 @@ export default function InterventionsPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-2xl font-bold text-orange-700">{formatEuro(stats.coutTotal)}</p>
+                  <p className="text-2xl font-bold text-orange-700">{formatMontant(stats.coutTotal)}</p>
                 </CardContent>
               </Card>
               <Card>
@@ -1525,7 +1524,7 @@ export default function InterventionsPage() {
                             </TableCell>
                             <TableCell className="text-right whitespace-nowrap">
                               {intervention.coutTotal
-                                ? formatEuro(intervention.coutTotal)
+                                ? formatMontant(intervention.coutTotal)
                                 : "-"}
                             </TableCell>
                             <TableCell>
@@ -1623,7 +1622,7 @@ export default function InterventionsPage() {
                                     {intervention.coutMainOeuvre !== null && (
                                       <p>
                                         <span className="text-muted-foreground">Coût main d&apos;œuvre :</span>{" "}
-                                        {formatEuro(intervention.coutMainOeuvre)}
+                                        {formatMontant(intervention.coutMainOeuvre)}
                                       </p>
                                     )}
                                     {intervention.datePrevue && (
@@ -1657,7 +1656,7 @@ export default function InterventionsPage() {
                                       {intervention.intrantCout !== null && (
                                         <p>
                                           <span className="text-muted-foreground">Coût :</span>{" "}
-                                          {formatEuro(intervention.intrantCout)}
+                                          {formatMontant(intervention.intrantCout)}
                                         </p>
                                       )}
                                       {intervention.intrantNumLot && (

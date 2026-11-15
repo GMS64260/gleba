@@ -6,6 +6,8 @@
  */
 
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
+import { formatMontantDevise } from "@/lib/format-utils"
 import Link from "next/link"
 import { getAvailableYears } from "@/components/year-selector"
 import { useSession } from "next-auth/react"
@@ -175,9 +177,6 @@ interface CoutsData {
 // Helpers
 // ============================================================
 
-const formatEuro = (value: number) =>
-  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(value)
-
 const formatNumber = (value: number, decimals = 1) =>
   new Intl.NumberFormat("fr-FR", { maximumFractionDigits: decimals }).format(value)
 
@@ -202,6 +201,8 @@ type SortDir = "asc" | "desc"
 // ============================================================
 
 export default function CoutsProductionPage() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { data: session } = useSession()
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [data, setData] = React.useState<CoutsData | null>(null)
@@ -399,7 +400,7 @@ export default function CoutsProductionPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(data.totaux.revenus)}</p>
+                  <p className="text-3xl font-bold">{formatMontant(data.totaux.revenus)}</p>
                   <p className="text-sm text-blue-100 mt-1">
                     {data.totaux.nbEspeces} espèce(s) — {data.totaux.nbCultures} culture(s)
                   </p>
@@ -414,7 +415,7 @@ export default function CoutsProductionPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(data.totaux.coutTotal)}</p>
+                  <p className="text-3xl font-bold">{formatMontant(data.totaux.coutTotal)}</p>
                   <p className="text-sm text-red-100 mt-1">
                     {formatNumber(data.totaux.surface)} m² —{" "}
                     {data.totaux.productionParUnite
@@ -432,7 +433,7 @@ export default function CoutsProductionPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(data.totaux.margeBrute)}</p>
+                  <p className="text-3xl font-bold">{formatMontant(data.totaux.margeBrute)}</p>
                   <p className="text-sm text-white/80 mt-1">
                     {formatNumber(data.totaux.heuresTravaillees)} heures travaillées
                   </p>
@@ -472,9 +473,9 @@ export default function CoutsProductionPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-1">
-                <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatEuro(data.parModule.potager.revenus)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.potager.couts)}</span></div>
-                <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.potager.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatEuro(data.parModule.potager.marge)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatMontant(data.parModule.potager.revenus)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatMontant(data.parModule.potager.couts)}</span></div>
+                <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.potager.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatMontant(data.parModule.potager.marge)}</span></div>
                 {data.parModule.potager.productionParUnite || data.parModule.potager.production ? <div className="flex justify-between text-muted-foreground"><span>Production</span><span>{data.parModule.potager.productionParUnite ? formatQuantiteParUnite(data.parModule.potager.productionParUnite) : `${formatNumber(data.parModule.potager.production ?? 0)} kg`}</span></div> : null}
               </CardContent>
             </Card>
@@ -485,9 +486,9 @@ export default function CoutsProductionPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-1">
-                <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatEuro(data.parModule.verger.revenus)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.verger.couts)}</span></div>
-                <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.verger.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatEuro(data.parModule.verger.marge)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatMontant(data.parModule.verger.revenus)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatMontant(data.parModule.verger.couts)}</span></div>
+                <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.verger.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatMontant(data.parModule.verger.marge)}</span></div>
                 {data.parModule.verger.production ? <div className="flex justify-between text-muted-foreground"><span>Production</span><span>{formatNumber(data.parModule.verger.production)} kg</span></div> : null}
               </CardContent>
             </Card>
@@ -498,14 +499,14 @@ export default function CoutsProductionPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm space-y-1">
-                <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatEuro(data.parModule.elevage.revenus)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.elevage.couts)}</span></div>
-                <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.elevage.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatEuro(data.parModule.elevage.marge)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatMontant(data.parModule.elevage.revenus)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatMontant(data.parModule.elevage.couts)}</span></div>
+                <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.elevage.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatMontant(data.parModule.elevage.marge)}</span></div>
                 {data.parModule.elevage.detailCouts && (
                   <div className="text-xs text-muted-foreground pt-1 border-t space-y-0.5">
-                    <div className="flex justify-between"><span>Alimentation</span><span>{formatEuro(data.parModule.elevage.detailCouts.alimentation)}</span></div>
-                    <div className="flex justify-between"><span>Soins</span><span>{formatEuro(data.parModule.elevage.detailCouts.soins)}</span></div>
-                    <div className="flex justify-between"><span>Autres</span><span>{formatEuro(data.parModule.elevage.detailCouts.autres)}</span></div>
+                    <div className="flex justify-between"><span>Alimentation</span><span>{formatMontant(data.parModule.elevage.detailCouts.alimentation)}</span></div>
+                    <div className="flex justify-between"><span>Soins</span><span>{formatMontant(data.parModule.elevage.detailCouts.soins)}</span></div>
+                    <div className="flex justify-between"><span>Autres</span><span>{formatMontant(data.parModule.elevage.detailCouts.autres)}</span></div>
                   </div>
                 )}
               </CardContent>
@@ -582,10 +583,10 @@ export default function CoutsProductionPage() {
                         <TableCell className="text-right">
                           {formatNumber(espece.rendement, 2)} {libelleUniteQuantite(espece.unite ?? "kg")}/m²
                         </TableCell>
-                        <TableCell className="text-right font-medium text-green-600">{formatEuro(espece.revenus)}</TableCell>
-                        <TableCell className="text-right text-red-600">{formatEuro(espece.coutTotal)}</TableCell>
+                        <TableCell className="text-right font-medium text-green-600">{formatMontant(espece.revenus)}</TableCell>
+                        <TableCell className="text-right text-red-600">{formatMontant(espece.coutTotal)}</TableCell>
                         <TableCell className={`text-right font-medium ${espece.margeBrute >= 0 ? "text-emerald-600" : "text-orange-600"}`}>
-                          {formatEuro(espece.margeBrute)}
+                          {formatMontant(espece.margeBrute)}
                         </TableCell>
                         <TableCell className="text-right">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getMargeColorBg(espece.margePercent)}`}>
@@ -593,10 +594,10 @@ export default function CoutsProductionPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatEuro(espece.coutUnitaire)}/{libelleUniteQuantite(espece.unite ?? "kg", 1)}
+                          {formatMontant(espece.coutUnitaire)}/{libelleUniteQuantite(espece.unite ?? "kg", 1)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatEuro(espece.prixMoyenUnitaire)}/{libelleUniteQuantite(espece.unite ?? "kg", 1)}
+                          {formatMontant(espece.prixMoyenUnitaire)}/{libelleUniteQuantite(espece.unite ?? "kg", 1)}
                         </TableCell>
                         <TableCell className="text-right">
                           <span className="flex items-center justify-end gap-1">
@@ -628,19 +629,19 @@ export default function CoutsProductionPage() {
                               <div className="grid gap-3 md:grid-cols-4 mb-4">
                                 <div className="bg-white rounded-lg p-3 border">
                                   <p className="text-xs text-muted-foreground">Semences</p>
-                                  <p className="text-sm font-semibold text-green-600">{formatEuro(espece.coutSemences)}</p>
+                                  <p className="text-sm font-semibold text-green-600">{formatMontant(espece.coutSemences)}</p>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border">
                                   <p className="text-xs text-muted-foreground">Intrants</p>
-                                  <p className="text-sm font-semibold text-blue-600">{formatEuro(espece.coutIntrants)}</p>
+                                  <p className="text-sm font-semibold text-blue-600">{formatMontant(espece.coutIntrants)}</p>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border">
                                   <p className="text-xs text-muted-foreground">Fertilisation</p>
-                                  <p className="text-sm font-semibold text-amber-600">{formatEuro(espece.coutFertilisation)}</p>
+                                  <p className="text-sm font-semibold text-amber-600">{formatMontant(espece.coutFertilisation)}</p>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border">
                                   <p className="text-xs text-muted-foreground">Main d&apos;oeuvre</p>
-                                  <p className="text-sm font-semibold text-violet-600">{formatEuro(espece.coutMainOeuvre)}</p>
+                                  <p className="text-sm font-semibold text-violet-600">{formatMontant(espece.coutMainOeuvre)}</p>
                                 </div>
                               </div>
 
@@ -669,10 +670,10 @@ export default function CoutsProductionPage() {
                                         <TableCell className="text-sm">{culture.plancheNom || "-"}</TableCell>
                                         <TableCell className="text-right text-sm">{formatNumber(culture.surface)} m²</TableCell>
                                         <TableCell className="text-right text-sm">{formatNumber(culture.production)}</TableCell>
-                                        <TableCell className="text-right text-sm text-green-600">{formatEuro(culture.revenus)}</TableCell>
-                                        <TableCell className="text-right text-sm text-red-600">{formatEuro(culture.coutTotal)}</TableCell>
+                                        <TableCell className="text-right text-sm text-green-600">{formatMontant(culture.revenus)}</TableCell>
+                                        <TableCell className="text-right text-sm text-red-600">{formatMontant(culture.coutTotal)}</TableCell>
                                         <TableCell className={`text-right text-sm font-medium ${culture.margeBrute >= 0 ? "text-emerald-600" : "text-orange-600"}`}>
-                                          {formatEuro(culture.margeBrute)}
+                                          {formatMontant(culture.margeBrute)}
                                         </TableCell>
                                         <TableCell className="text-right">
                                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getMargeColorBg(culture.margePercent)}`}>
@@ -717,10 +718,10 @@ export default function CoutsProductionPage() {
                       <TableCell className="text-right">
                         {data.totauxEspeces.surface > 0 ? formatNumber(data.totauxEspeces.production / data.totauxEspeces.surface, 2) : "-"}
                       </TableCell>
-                      <TableCell className="text-right text-green-600">{formatEuro(data.totauxEspeces.revenus)}</TableCell>
-                      <TableCell className="text-right text-red-600">{formatEuro(data.totauxEspeces.coutTotal)}</TableCell>
+                      <TableCell className="text-right text-green-600">{formatMontant(data.totauxEspeces.revenus)}</TableCell>
+                      <TableCell className="text-right text-red-600">{formatMontant(data.totauxEspeces.coutTotal)}</TableCell>
                       <TableCell className={`text-right ${data.totauxEspeces.margeBrute >= 0 ? "text-emerald-600" : "text-orange-600"}`}>
-                        {formatEuro(data.totauxEspeces.margeBrute)}
+                        {formatMontant(data.totauxEspeces.margeBrute)}
                       </TableCell>
                       <TableCell className="text-right">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getMargeColorBg(data.totauxEspeces.margePercent)}`}>
@@ -754,13 +755,13 @@ export default function CoutsProductionPage() {
                       </TableCell>
                       <TableCell className="text-right">-</TableCell>
                       <TableCell className="text-right">
-                        {formatEuro(Math.round((data.totaux.revenus - data.totauxEspeces.revenus) * 100) / 100)}
+                        {formatMontant(Math.round((data.totaux.revenus - data.totauxEspeces.revenus) * 100) / 100)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatEuro(Math.round((data.totaux.coutTotal - data.totauxEspeces.coutTotal) * 100) / 100)}
+                        {formatMontant(Math.round((data.totaux.coutTotal - data.totauxEspeces.coutTotal) * 100) / 100)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatEuro(Math.round((data.totaux.margeBrute - data.totauxEspeces.margeBrute) * 100) / 100)}
+                        {formatMontant(Math.round((data.totaux.margeBrute - data.totauxEspeces.margeBrute) * 100) / 100)}
                       </TableCell>
                       <TableCell className="text-right">-</TableCell>
                       <TableCell className="text-right">-</TableCell>
@@ -798,10 +799,10 @@ export default function CoutsProductionPage() {
                           : formatNumber(data.totaux.production)}
                       </TableCell>
                       <TableCell className="text-right">-</TableCell>
-                      <TableCell className="text-right text-green-600">{formatEuro(data.totaux.revenus)}</TableCell>
-                      <TableCell className="text-right text-red-600">{formatEuro(data.totaux.coutTotal)}</TableCell>
+                      <TableCell className="text-right text-green-600">{formatMontant(data.totaux.revenus)}</TableCell>
+                      <TableCell className="text-right text-red-600">{formatMontant(data.totaux.coutTotal)}</TableCell>
                       <TableCell className={`text-right ${data.totaux.margeBrute >= 0 ? "text-emerald-600" : "text-orange-600"}`}>
-                        {formatEuro(data.totaux.margeBrute)}
+                        {formatMontant(data.totaux.margeBrute)}
                       </TableCell>
                       <TableCell className="text-right">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getMargeColorBg(data.totaux.margePercent)}`}>
@@ -826,8 +827,8 @@ export default function CoutsProductionPage() {
                     <TableRow className="bg-slate-50">
                       <TableCell />
                       <TableCell colSpan={11} className="py-2 text-xs font-normal text-muted-foreground">
-                        Dépenses comptables du dashboard : {formatEuro(data.totaux.depensesComptables)}{" "}
-                        (écart {formatEuro(Math.round((data.totaux.depensesComptables - data.totaux.coutTotal) * 100) / 100)}{" "}
+                        Dépenses comptables du dashboard : {formatMontant(data.totaux.depensesComptables)}{" "}
+                        (écart {formatMontant(Math.round((data.totaux.depensesComptables - data.totaux.coutTotal) * 100) / 100)}{" "}
                         = dépenses générales non ventilées − valorisations analytiques)
                       </TableCell>
                     </TableRow>
@@ -866,10 +867,10 @@ export default function CoutsProductionPage() {
                   <ResponsiveContainer width="100%" height={350}>
                     <BarChart data={topMarginData} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}\u00A0\u20AC`} />
+                      <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => formatMontant(Number(v))} />
                       <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} />
                       <Tooltip
-                        formatter={(value) => [formatEuro(Number(value || 0)), ""]}
+                        formatter={(value) => [formatMontant(Number(value || 0)), ""]}
                         contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                       />
                       <Legend />
@@ -910,7 +911,7 @@ export default function CoutsProductionPage() {
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), ""]} />
+                      <Tooltip formatter={(value) => [formatMontant(Number(value || 0)), ""]} />
                       <Legend />
                     </PieChart>
                   </ResponsiveContainer>
@@ -939,10 +940,10 @@ export default function CoutsProductionPage() {
                     <BarChart data={profitabilityData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" height={60} />
-                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}\u00A0\u20AC`} />
+                      <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatMontant(Number(v))} />
                       <Tooltip
                         formatter={(value, name) => [
-                          formatEuro(Number(value || 0)),
+                          formatMontant(Number(value || 0)),
                           name === "coutKg" ? "Coût/unité" : name === "prixKg" ? "Prix/unité" : "Marge/unité",
                         ]}
                         contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}

@@ -104,6 +104,6 @@ describe("libelleComparatifRevenus", () => {
 
   it("nouveau-revenus cite les dépenses de N-1", () => {
     const diff = computeYearDiff({ revenus: 0, revenusAnneePrecedente: 0, depensesAnneePrecedente: 300 })
-    expect(libelleComparatifRevenus(diff, 2025, euro)).toBe("2024 : 0 € de revenus, 300.00 € de dépenses")
+    expect(libelleComparatifRevenus(diff, 2025, euro)).toBe("2024 : 0.00 € de revenus, 300.00 € de dépenses")
   })
 })
