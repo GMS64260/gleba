@@ -18,6 +18,7 @@ import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import { AppHeader } from "@/components/shell/AppHeader"
 import { MeteoWidget } from "@/components/meteo/MeteoWidget"
 import { IrrigationAdvisor } from "@/components/meteo/IrrigationAdvisor"
+import { GelParcelle } from "@/components/meteo/GelParcelle"
 import { CalendrierLunaire } from "@/components/lunaire/CalendrierLunaire"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -255,10 +256,15 @@ export default function MeteoPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2 items-start">
-            <MeteoWidget key={`meteo-${sourceVersion}-${parcelle.id}`} parcelleId={parcelle.id} defaultExpanded />
-            <IrrigationAdvisor key={`irrigation-${sourceVersion}-${parcelle.id}`} parcelleId={parcelle.id} lat={parcelle.centroidLat} lng={parcelle.centroidLng} scopeLabel={parcelle.nom} />
-          </div>
+          <>
+            <div className="grid gap-4 lg:grid-cols-2 items-start">
+              <MeteoWidget key={`meteo-${sourceVersion}-${parcelle.id}`} parcelleId={parcelle.id} defaultExpanded />
+              <IrrigationAdvisor key={`irrigation-${sourceVersion}-${parcelle.id}`} parcelleId={parcelle.id} lat={parcelle.centroidLat} lng={parcelle.centroidLng} scopeLabel={parcelle.nom} />
+            </div>
+            <div className="mt-4">
+              <GelParcelle key={`gel-${parcelle.id}`} parcelleId={parcelle.id} />
+            </div>
+          </>
         )}
         {/* Sans parcelle géolocalisée aussi : la Lune ne dépend pas du lieu. */}
         <CalendrierLunaire variante="page" className="mt-4" />

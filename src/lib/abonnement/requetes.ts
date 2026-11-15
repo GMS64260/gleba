@@ -13,7 +13,7 @@ export const PAGES_PROTEGEES = /^\/(maraichage|verger|elevage|comptabilite|meteo
 export function capaciteDuChemin(chemin: string): Capacite | "inconnu" {
   const p = chemin.replace(/^\/api\//, "").replace(/^\//, "")
   if (/^(chat|mcp)(\/|$)/.test(p)) return "ia"
-  if (/^(meteo|calendrier-climat)(\/|$)/.test(p)) return "meteo"
+  if (/^(meteo|calendrier-climat|agroclimat)(\/|$)/.test(p)) return "meteo"
   if (/^boutique(\/|$)/.test(p)) return "boutique"
   if (FACTURATION.test(p)) return "facturation"
   if (/^comptabilite(\/|$)/.test(p)) return "gestion"
