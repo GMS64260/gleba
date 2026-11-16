@@ -6,6 +6,8 @@
  * - Surveillance météo + urgences : vérifiée selon l'intervalle configuré en base,
  *   plus un premier scan ~30 s après le boot.
  * - Purge du cache persistant (`generic_cache`) : chaque nuit.
+ * - Historique climatique SAFRAN : import des mailles demandées, actualisation
+ *   chaque nuit (`GLEBA_AGROCLIMAT_IMPORT=false` pour le couper).
  *
  * Robustesse : l'init est enveloppé en try/catch (ne fait jamais crasher le
  * démarrage) ; chaque run est isolé et ne peut pas se chevaucher avec le
@@ -14,6 +16,7 @@
 
 import cron from "node-cron"
 import { reconcilierAbonnements } from "@/lib/abonnement/reconciliation"
+import { actualiserMailles, importerMaillesDemandees } from "@/lib/agroclimat/import-safran"
 import { agregerEtPurgerMesures } from "@/lib/capteurs/agregats"
 import { estHeureResume, getMeteoCronExpression, getMeteoIntervalMinutes, getResumeCronExpression } from "./config"
 import {
@@ -128,6 +131,28 @@ export async function initNotifScheduler(): Promise<void> {
           }
         })
         .catch((error) => console.error("[capteurs] Agrégation ou purge des mesures en échec:", error))
+    })
+
+    // Historique climatique SAFRAN (2026-11-15). Les mailles demandées par une
+    // parcelle sont importées dès la demande ; ce passage toutes les dix
+    // minutes rattrape une demande dont l'import a été interrompu (redémarrage,
+    // panne réseau). Sans maille en attente, il se réduit à une requête.
+    cron.schedule("4-59/10 * * * *", () => {
+      importerMaillesDemandees()
+        .then(({ mailles, annees }) => {
+          if (mailles > 0) console.log(`[agroclimat] ${mailles} maille(s) SAFRAN importée(s), ${annees} année(s) écrite(s)`)
+        })
+        .catch((error) => console.error("[agroclimat] Import de l'historique SAFRAN en échec:", error))
+    })
+
+    // Chaque nuit à 04:07, après la mise à jour quotidienne de Météo-France :
+    // les soixante derniers jours des mailles déjà importées.
+    cron.schedule("7 4 * * *", () => {
+      actualiserMailles()
+        .then((mailles) => {
+          if (mailles > 0) console.log(`[agroclimat] ${mailles} maille(s) SAFRAN actualisée(s)`)
+        })
+        .catch((error) => console.error("[agroclimat] Actualisation de l'historique SAFRAN en échec:", error))
     })
 
     // Vérification chaque minute pour appliquer immédiatement les réglages

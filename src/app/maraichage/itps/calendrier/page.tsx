@@ -31,6 +31,7 @@ import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
 import { SemisLunaireEncart } from "@/components/itps/SemisLunaireEncart"
 import { decalageItpPourLecteur, itpApplicableAZone } from "@/lib/calendrier-climat"
+import { libelleCase } from "@/lib/agroclimat/libelles"
 import type { ZoneClimat } from "@/lib/terroir"
 import { normalizeReferentielKey } from "@/lib/normalize"
 import type { ItpVue } from "@/components/itps/types"
@@ -54,6 +55,15 @@ interface ClimatPayload {
   horsReference: boolean
   dernieresGelees: number | null
   premieresGelees: number | null
+  /** Gel mesuré sur la parcelle de référence (cases du calendrier à 366 cases), s'il existe. */
+  geleesMesurees?: {
+    parcelle: string
+    annees: number
+    derniereMediane: number | null
+    dernierePrudence: number | null
+    premiereMediane: number | null
+    premierePrudence: number | null
+  } | null
   options: ZoneOption[]
 }
 
@@ -331,7 +341,26 @@ export default function ITCalendrierPage() {
                   {Math.abs(reglageFin)} semaine{Math.abs(reglageFin) > 1 ? "s" : ""}
                 </Badge>
               )}
-              {!zoneInconnue && climat && (climat.dernieresGelees || climat.premieresGelees) && (
+              {climat?.geleesMesurees && (climat.geleesMesurees.derniereMediane !== null || climat.geleesMesurees.premiereMediane !== null) && (
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 text-slate-600 bg-white rounded-2xl px-2.5 py-1 ring-1 ring-slate-200">
+                  <Snowflake className="h-3.5 w-3.5 text-sky-500" />
+                  Gel sur {climat.geleesMesurees.parcelle}, {climat.geleesMesurees.annees} ans :
+                  {climat.geleesMesurees.derniereMediane !== null && (
+                    <span>
+                      dernière gelée vers le <strong>{libelleCase(climat.geleesMesurees.derniereMediane)}</strong>
+                      {climat.geleesMesurees.dernierePrudence !== null && (
+                        <> (une année sur dix après le {libelleCase(climat.geleesMesurees.dernierePrudence)})</>
+                      )}
+                    </span>
+                  )}
+                  {climat.geleesMesurees.premiereMediane !== null && (
+                    <span>
+                      · première vers le <strong>{libelleCase(climat.geleesMesurees.premiereMediane)}</strong>
+                    </span>
+                  )}
+                </span>
+              )}
+              {!climat?.geleesMesurees && !zoneInconnue && climat && (climat.dernieresGelees || climat.premieresGelees) && (
                 <span className="inline-flex items-center gap-1.5 text-slate-600 bg-white rounded-full px-2.5 py-1 ring-1 ring-slate-200">
                   <Snowflake className="h-3.5 w-3.5 text-sky-500" />
                   Gelées moyennes : dernières{" "}
@@ -339,7 +368,7 @@ export default function ITCalendrierPage() {
                   <strong>{libelleSemaine(climat.premieresGelees)}</strong>
                 </span>
               )}
-              {!zoneInconnue && climat && !climat.dernieresGelees && (
+              {!climat?.geleesMesurees && !zoneInconnue && climat && !climat.dernieresGelees && (
                 <span className="inline-flex items-center gap-1.5 text-slate-600 bg-white rounded-full px-2.5 py-1 ring-1 ring-slate-200">
                   <Snowflake className="h-3.5 w-3.5 text-slate-300" />
                   Pas de risque de gelée (climat doux)

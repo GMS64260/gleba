@@ -60,7 +60,7 @@ describe("trois mois calendaires", () => {
 describe("contrôle serveur des chemins", () => {
   const gratuit = calculerAcces(nouveau, etat(), maintenant)
   it("ne donne pas accès par lien direct aux services de Complet", () => {
-    for (const p of ["/api/chat", "/api/mcp", "/api/meteo", "/api/boutique", "/meteo", "/comptabilite", "/api/comptabilite/stats", "/api/comptabilite/banque", "/api/comptabilite/tva", "/api/comptabilite/depenses-manuelles", "/comptabilite/banque"]) expect(operationPermise(gratuit, p, "GET")).toBe(false)
+    for (const p of ["/api/chat", "/api/mcp", "/api/meteo", "/api/agroclimat/gel", "/api/boutique", "/meteo", "/comptabilite", "/api/comptabilite/stats", "/api/comptabilite/banque", "/api/comptabilite/tva", "/api/comptabilite/depenses-manuelles", "/comptabilite/banque"]) expect(operationPermise(gratuit, p, "GET")).toBe(false)
     expect(operationPermise(gratuit, "/api/comptabilite/banque", "POST")).toBe(false)
   })
   it("garde tous les ateliers et la facturation dans le carnet gratuit", () => {

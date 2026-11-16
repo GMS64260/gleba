@@ -4237,6 +4237,45 @@ model MeteoCache {
   @@map("meteo_cache")
 }
 
+/// Maille de la grille SAFRAN de Météo-France (8 km) dont l'historique
+/// climatique a été demandé pour une parcelle. Table globale, sans
+/// propriétaire : deux exploitations voisines partagent la même maille.
+model ClimatMaille {
+  id           Int       @id @default(autoincrement())
+  // Centre de la maille en Lambert II étendu, hectomètres : la clé des fichiers SAFRAN.
+  lambx        Int       @map("lambx")
+  lamby        Int       @map("lamby")
+  etat         String    @default("demandee") @map("etat") // "demandee", "prete", "echec"
+  tentatives   Int       @default(0) @map("tentatives")
+  erreur       String?   @map("erreur")
+  // Bail de l'import en cours : un seul processus importe une maille à la fois.
+  verrouJeton  String?   @map("verrou_jeton")
+  verrouJusqua DateTime? @map("verrou_jusqua")
+  demandeeLe   DateTime  @default(now()) @map("demandee_le")
+  importeeLe   DateTime? @map("importee_le")
+  actualiseeLe DateTime? @map("actualisee_le")
+
+  annees ClimatMailleAnnee[]
+
+  @@unique([lambx, lamby])
+  @@index([etat])
+  @@map("climat_mailles")
+}
+
+/// Une année de minimums et de maximums quotidiens d'une maille.
+model ClimatMailleAnnee {
+  id       Int          @id @default(autoincrement())
+  mailleId Int          @map("maille_id")
+  maille   ClimatMaille @relation(fields: [mailleId], references: [id], onDelete: Cascade)
+  annee    Int          @map("annee")
+  // 366 cases (29 février compris), dixièmes de degré, -9999 = jour sans donnée.
+  tmin     Int[]        @map("tmin") @db.SmallInt
+  tmax     Int[]        @map("tmax") @db.SmallInt
+
+  @@unique([mailleId, annee])
+  @@map("climat_mailles_annees")
+}
+
 /// Stations météo personnelles des utilisateurs
 model StationMeteo {
   id        String   @id @default(cuid())
