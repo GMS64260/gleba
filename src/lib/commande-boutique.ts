@@ -28,6 +28,10 @@ import {
   verifierSuppressionSourceReglee,
 } from "@/lib/comptabilite/suivi-reglement-source"
 import { verrouillerStockCommercial } from "@/lib/stocks/verrou-commercial"
+import { chargerCatalogueStock } from '@/lib/commercial/catalogue-stock'
+import { retournerStockCommercial, sortirStockCommercial, verrouillerStocksDesLignes } from '@/lib/commercial/stock'
+import { ErreurCommerciale } from '@/lib/commercial/regles'
+import { cleStockLie, lireStockLie, quantiteStockLie } from '@/lib/boutique/stock-lie'
 
 type Tx = Prisma.TransactionClient | PrismaClient
 
@@ -84,10 +88,14 @@ async function verrouillerCommande(commandeId: number, tx: Tx) {
   return commande
 }
 
+/** Ligne reliée à un stock dont la sortie n'a pas pu avoir lieu, faute de stock. */
+export type SortieStockManquante = { ligneId: number; nom: string; demande: number; disponible: number; unite: string | null }
+
 export type ConfirmationResult = {
   commandeId: number
   venteManuelleId: number
   stockNegatifs: Array<{ produitId: number; nom: string; stockApres: number }>
+  sortiesStockManquantes?: SortieStockManquante[]
   alreadyConfirmed: boolean
 }
 
@@ -162,6 +170,95 @@ type CommandeMaterialisable = Prisma.CommandeBoutiqueGetPayload<{
 }>
 
 /**
+ * Sort du verger ou de l'élevage le stock des lignes reliées (lien figé sur la
+ * ligne), par le stock commercial : FIFO natif, mouvement tracé à la commande.
+ * Rejouable : une ligne déjà sortie ne sort pas deux fois.
+ *
+ * - `strict` (livraison) : la marchandise part ; sans le stock, la livraison
+ *   est refusée.
+ * - `tolerant` (paiement confirmé) : l'encaissement n'est jamais refusé pour
+ *   une question de stock ; la ligne reste à sortir et retient sa quantité.
+ */
+async function sortirStockLieCommande(
+  commande: CommandeMaterialisable,
+  mode: 'strict' | 'tolerant',
+  tx: Tx,
+): Promise<SortieStockManquante[]> {
+  const t = tx as Prisma.TransactionClient
+  const liees = commande.lignes.flatMap((l) => {
+    const lie = lireStockLie(l)
+    return lie ? [{ ligne: l, lie }] : []
+  })
+  if (!liees.length) return []
+  const sorties = await t.mouvementStockCommercial.findMany({
+    where: { userId: commande.userId, commandeBoutiqueId: commande.id, origineRetourId: null },
+    select: { ligneCommandeBoutiqueId: true },
+  })
+  const dejaSorties = new Set(sorties.map((m) => m.ligneCommandeBoutiqueId))
+  const restantes = liees.filter(({ ligne }) => !dejaSorties.has(ligne.id))
+  if (!restantes.length) return []
+
+  const date = new Date()
+  // Verrous des stocks natifs AVANT de lire le disponible : une vente directe
+  // concurrente ne peut plus le changer entre le contrôle et la sortie.
+  await verrouillerStocksDesLignes(t, commande.userId, restantes.map(({ ligne, lie }) => ({
+    articleStockType: lie.type, articleStockId: lie.ref, description: ligne.nom, quantite: 0, unite: '',
+  })))
+  const catalogue = new Map((await chargerCatalogueStock(commande.userId, t, date)).map((a) => [`${a.type}:${a.id}`, a]))
+  const consomme = new Map<string, number>()
+  const manquantes: SortieStockManquante[] = []
+  const aSortir: Parameters<typeof sortirStockCommercial>[2] = []
+  for (const { ligne, lie } of restantes) {
+    const cle = cleStockLie(lie)
+    const article = catalogue.get(cle)
+    const demande = quantiteStockLie(ligne.quantite, lie.conditionnement)
+    const disponible = Math.max(0, (article?.disponible ?? 0) - (consomme.get(cle) ?? 0))
+    if (!article || demande > disponible + 1e-6) {
+      manquantes.push({ ligneId: ligne.id, nom: ligne.nom, demande, disponible, unite: article?.unite ?? null })
+      continue
+    }
+    consomme.set(cle, (consomme.get(cle) ?? 0) + demande)
+    aSortir.push({ articleStockType: lie.type, articleStockId: lie.ref, id: ligne.id, description: ligne.nom, quantite: demande, unite: article.unite })
+  }
+  if (mode === 'strict' && manquantes.length) {
+    const detail = manquantes.map((m) => `${m.nom} : ${m.demande} ${m.unite ?? ''} à sortir, ${m.disponible} en stock`.replace('  ', ' ')).join(' ; ')
+    throw new ErreurCommandeBoutique(
+      `Stock insuffisant pour livrer cette commande (${detail}). Enregistrez la production manquante ou corrigez le stock, puis livrez à nouveau.`,
+    )
+  }
+  const origine = { commandeBoutiqueId: commande.id, numero: commande.numero, date }
+  // Les refus du stock (fraîcheur des œufs jugée en fin de journée, lot de
+  // ruche) sont des refus métier, jamais une erreur 500.
+  const refusStock = (e: unknown): e is Error => e instanceof ErreurCommerciale || (e instanceof Error && e.name === 'StockRucheError')
+  if (mode === 'strict') {
+    try {
+      if (aSortir.length) await sortirStockCommercial(t, commande.userId, aSortir, origine)
+    } catch (e) {
+      if (refusStock(e)) throw new ErreurCommandeBoutique(e.message)
+      throw e
+    }
+    return manquantes
+  }
+  // Paiement : aucun refus de stock ne remonte. Chaque ligne sort sous son
+  // point de reprise ; refusée en cours de FIFO, elle ne laisse aucune écriture
+  // et reste à sortir. (Exige une transaction, comme les verrous de la commande.)
+  for (const ligne of aSortir) {
+    await t.$executeRawUnsafe('SAVEPOINT sortie_stock_lie')
+    try {
+      await sortirStockCommercial(t, commande.userId, [ligne], origine)
+      await t.$executeRawUnsafe('RELEASE SAVEPOINT sortie_stock_lie')
+    } catch (e) {
+      if (!refusStock(e)) throw e
+      await t.$executeRawUnsafe('ROLLBACK TO SAVEPOINT sortie_stock_lie')
+      await t.$executeRawUnsafe('RELEASE SAVEPOINT sortie_stock_lie')
+      const cle = `${ligne.articleStockType}:${ligne.articleStockId}`
+      manquantes.push({ ligneId: Number(ligne.id), nom: ligne.description, demande: ligne.quantite, disponible: Math.max(0, catalogue.get(cle)?.disponible ?? 0), unite: ligne.unite })
+    }
+  }
+  return manquantes
+}
+
+/**
  * QA cmsw9bv3s (2026-08-16) — effets « la marchandise sort de la ferme »
  * partagés par la confirmation de paiement ET la livraison : décrément du
  * stock, création de la VenteManuelle (payée ou non selon le contexte),
@@ -172,7 +269,7 @@ async function materialiserVenteCommande(
   commande: CommandeMaterialisable,
   opts: { paye: boolean; provider?: string; modeReglement?: string | null; tauxTVA?: number },
   tx: Tx
-): Promise<{ venteManuelleId: number; stockNegatifs: ConfirmationResult["stockNegatifs"] }> {
+): Promise<{ venteManuelleId: number; stockNegatifs: ConfirmationResult["stockNegatifs"]; sortiesStockManquantes: SortieStockManquante[] }> {
   // 1) Décrément stock — non bloquant si négatif (cf rapport tech audit A4).
   const stockNegatifs: ConfirmationResult["stockNegatifs"] = []
   for (const ligne of commande.lignes) {
@@ -219,6 +316,10 @@ async function materialiserVenteCommande(
   const montantHT = montantTTC / (1 + tauxTVA / 100)
   const montantTVAEur = montantTTC - montantHT
 
+  // Stocks du verger et de l'élevage reliés aux produits. À la livraison, le
+  // contrôle strict a déjà eu lieu (cf. livrerCommandeBoutique) : rien ne reste.
+  const sortiesStockManquantes = await sortirStockLieCommande(commande, 'tolerant', tx)
+
   const categorie = categorieMajoritaire(commande.lignes)
   const statutBio = statutBioMajoritaire(commande.lignes)
   const description = `Commande boutique ${commande.numero} — ${commande.clientNom}` +
@@ -264,7 +365,7 @@ async function materialiserVenteCommande(
     },
   })
 
-  return { venteManuelleId: venteManuelle.id, stockNegatifs }
+  return { venteManuelleId: venteManuelle.id, stockNegatifs, sortiesStockManquantes }
 }
 
 /**
@@ -363,7 +464,7 @@ export async function confirmCommandeBoutique(
   }
 
   // 1-2) Stock + VenteManuelle payée + fiche client.
-  const { venteManuelleId, stockNegatifs } = await materialiserVenteCommande(
+  const { venteManuelleId, stockNegatifs, sortiesStockManquantes } = await materialiserVenteCommande(
     commande,
     { paye: true, provider: opts.provider, modeReglement: opts.modeReglement, tauxTVA: opts.tauxTVA },
     tx
@@ -385,6 +486,7 @@ export async function confirmCommandeBoutique(
     commandeId: commande.id,
     venteManuelleId,
     stockNegatifs,
+    sortiesStockManquantes,
     alreadyConfirmed: false,
   }
 }
@@ -419,6 +521,11 @@ export async function livrerCommandeBoutique(
       "Cette commande est annulée : elle ne peut plus être livrée. Enregistrez une nouvelle commande."
     )
   }
+
+  // La marchandise part : les lignes reliées à un stock du verger ou de
+  // l'élevage sortent maintenant, y compris celles qu'un paiement confirmé
+  // sans stock avait laissées en attente. Sans le stock, pas de livraison.
+  await sortirStockLieCommande(commande, 'strict', tx)
 
   if (commande.venteManuelleId) {
     return {
@@ -527,6 +634,10 @@ export async function annulerCommandeBoutique(
       await tx.venteManuelle.delete({ where: { id: commande.venteManuelleId } })
     }
   }
+
+  // Stocks du verger et de l'élevage sortis par cette commande : rendus lot
+  // par lot (rien à rendre si aucune ligne n'était sortie).
+  await retournerStockCommercial(tx as Prisma.TransactionClient, commande.userId, { commandeBoutiqueId: commande.id })
 
   await tx.commandeBoutique.update({
     where: { id: commande.id },

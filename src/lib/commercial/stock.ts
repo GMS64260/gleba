@@ -13,7 +13,7 @@ import { calculerStocksNet } from '@/lib/stocks-helpers'
 
 type Tx = Prisma.TransactionClient
 type Ligne = ReferenceArticleStock & { id?: string | number; description: string; quantite: number; unite: string; statutBio?: string | null }
-type Origine = { documentId?: string; factureId?: number; numero: string; date: Date }
+type Origine = { documentId?: string; factureId?: number; commandeBoutiqueId?: number; numero: string; date: Date }
 
 /** Le navigateur choisit une référence ; l'appartenance, l'unité et le bio viennent du serveur. */
 export async function verifierLignesStock<T extends Ligne>(tx: Tx, userId: string, lignes: T[], dateEffet = new Date()): Promise<T[]> {
@@ -43,17 +43,43 @@ export async function verrouillerStocksDesLignes(tx: Tx, userId: string, liees: 
   }
 }
 
+/**
+ * Filtre des mouvements d'une origine. Une origine sans identifiant est
+ * refusée : `{ factureId: undefined }` se lisait « tous les mouvements du
+ * compte », si bien qu'une sortie ne faisait rien en silence et qu'un retour
+ * aurait rendu tout le stock sorti par le compte.
+ */
+function filtreOrigineStock(origine: { documentId?: string; factureId?: number; commandeBoutiqueId?: number }) {
+  if (origine.documentId) return { documentId: origine.documentId }
+  if (origine.commandeBoutiqueId != null) return { commandeBoutiqueId: origine.commandeBoutiqueId }
+  if (origine.factureId != null) return { factureId: origine.factureId }
+  throw new ErreurCommerciale('Un mouvement de stock doit être relié à un document, une facture ou une commande.', 400)
+}
+
 /** Un BL livré OU une facture directe sort le stock ; facturer ce BL ne rappelle jamais cette fonction. */
 export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Ligne[], origine: Origine) {
   const liees = lignes.filter((l) => l.articleStockType || l.articleStockId)
   if (!liees.length) return
   if (livraisonFuture(origine.date)) throw new ErreurCommerciale('Une sortie de stock doit correspondre à une livraison réelle, aujourd’hui ou avant. Préparez un devis ou un BL pour une livraison future.', 400)
   await verrouillerStocksDesLignes(tx, userId, liees)
-  const deja = await tx.mouvementStockCommercial.count({ where: { userId, ...(origine.documentId ? { documentId: origine.documentId } : { factureId: origine.factureId }), origineRetourId: null } })
-  if (deja) return // reprise d'une même livraison / émission
+  const filtreOrigine = filtreOrigineStock(origine)
+  let aSortir = liees
+  if (origine.commandeBoutiqueId != null) {
+    // Une commande se rejoue ligne par ligne : la ligne restée sans stock au
+    // paiement sort à la livraison, sans redoubler celles déjà sorties.
+    const sorties = await tx.mouvementStockCommercial.findMany({ where: { userId, ...filtreOrigine, origineRetourId: null }, select: { ligneCommandeBoutiqueId: true } })
+    // Sans identifiant de ligne, rien ne distinguerait une ligne déjà sortie.
+    if (liees.some((l) => !Number.isSafeInteger(Number(l.id)))) throw new ErreurCommerciale('Une sortie de commande doit désigner sa ligne.', 400)
+    const lignesSorties = new Set(sorties.map((m) => m.ligneCommandeBoutiqueId))
+    aSortir = liees.filter((l) => !lignesSorties.has(Number(l.id)))
+    if (!aSortir.length) return
+  } else {
+    const deja = await tx.mouvementStockCommercial.count({ where: { userId, ...filtreOrigine, origineRetourId: null } })
+    if (deja) return // reprise d'une même livraison / émission
+  }
   const dateLimite = finJourLivraison(origine.date)
   const catalogue = new Map((await chargerCatalogueStock(userId, tx, origine.date)).map((a) => [cleArticle(a), a]))
-  for (const l of liees) {
+  for (const l of aSortir) {
     const a = catalogue.get(`${l.articleStockType}:${l.articleStockId}`)
     if (!a) throw new ErreurCommerciale(`Stock indisponible pour « ${l.description} ». Actualisez les produits du document.`)
     if (l.unite !== a.unite || !Number.isFinite(l.quantite) || l.quantite <= 0 || (stockEstDenombrable(a.unite) && !Number.isInteger(l.quantite))) throw new ErreurCommerciale(`Quantité ou unité invalide pour « ${a.nom} ».`, 400)
@@ -63,7 +89,9 @@ export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Lign
     const trace: Prisma.MouvementStockCommercialUncheckedCreateInput = {
       userId, documentId: origine.documentId, factureId: origine.factureId,
       ligneDocumentId: origine.documentId ? String(l.id) : undefined,
-      ligneFactureId: !origine.documentId && l.id != null ? Number(l.id) : undefined,
+      ligneFactureId: origine.factureId != null && !origine.documentId && l.id != null ? Number(l.id) : undefined,
+      commandeBoutiqueId: origine.commandeBoutiqueId,
+      ligneCommandeBoutiqueId: origine.commandeBoutiqueId != null && l.id != null ? Number(l.id) : undefined,
       articleStockType: a.type, articleStockId: a.id, sourceNom: a.nom, unite: a.unite,
       quantite: l.quantite, date: dateEffet, createdAt: instantSortie,
     }
@@ -126,10 +154,11 @@ export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Lign
 }
 
 /** Retour physique explicite, tracé et répétable sans ajouter deux fois les quantités. */
-export async function retournerStockCommercial(tx: Tx, userId: string, origine: { documentId?: string; factureId?: number }) {
+export async function retournerStockCommercial(tx: Tx, userId: string, origine: { documentId?: string; factureId?: number; commandeBoutiqueId?: number }) {
+  const filtreOrigine = filtreOrigineStock(origine)
   await verrouillerStockCommercial(tx, userId)
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${userId}`}))`
-  const mouvements = await tx.mouvementStockCommercial.findMany({ where: { userId, ...origine, origineRetourId: null, retour: null }, orderBy: { id: 'asc' } })
+  const mouvements = await tx.mouvementStockCommercial.findMany({ where: { userId, ...filtreOrigine, origineRetourId: null, retour: null }, orderBy: { id: 'asc' } })
   for (const m of mouvements) {
     if (m.stockSuivi && ![m.recolteId, m.fruitId, m.boisId, m.produitBoutiqueId, m.ponteId, m.rucheId, m.fromageId, m.lotTransformeId].some(Boolean)) throw new ErreurCommerciale('Le stock d’origine de ce document n’a pas été transféré dans ce compte. Rapprochez les stocks avant d’enregistrer ce retour.')
     if (m.recolteId) await tx.recolte.update({ where: { id: m.recolteId }, data: { stockDisponibleCommercial: { increment: m.quantite } } })
@@ -141,11 +170,12 @@ export async function retournerStockCommercial(tx: Tx, userId: string, origine: 
     const data: Prisma.MouvementStockCommercialUncheckedCreateInput = {
       date: instantRetour, createdAt: instantRetour,
       userId, documentId: m.documentId, factureId: m.factureId, ligneDocumentId: m.ligneDocumentId, ligneFactureId: m.ligneFactureId,
+      commandeBoutiqueId: m.commandeBoutiqueId, ligneCommandeBoutiqueId: m.ligneCommandeBoutiqueId,
       origineRetourId: m.id, articleStockType: m.articleStockType, articleStockId: m.articleStockId, sourceNom: m.sourceNom,
       quantite: -m.quantite, unite: m.unite, poidsKg: m.poidsKg == null ? null : -m.poidsKg, stockSuivi: m.stockSuivi,
       recolteId: m.recolteId, fruitId: m.fruitId, boisId: m.boisId, produitBoutiqueId: m.produitBoutiqueId, ponteId: m.ponteId, rucheId: m.rucheId, fromageId: m.fromageId, lotTransformeId: m.lotTransformeId,
     }
-    const notes = 'Retour en stock du document commercial'
+    const notes = m.commandeBoutiqueId != null ? 'Retour en stock de la commande annulée' : 'Retour en stock du document commercial'
     if (m.ponteId) data.mouvementOeufId = (await tx.mouvementStockOeuf.create({ data: { userId, productionId: m.ponteId, type: 'retour_commercial', quantite: -m.quantite, notes } })).id
     if (m.rucheId) {
       await verrouillerStockRuche(tx, userId, m.articleStockId as ProduitRuche)
