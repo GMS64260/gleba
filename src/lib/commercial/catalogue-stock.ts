@@ -72,6 +72,9 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
   // en ligne et n'a pas encore retiré (revue du 2026-11-11).
   const reservees = await quantitesReservees(db, userId, produits.filter((p) => p.stockDispo != null).map((p) => p.id))
   for (const p of produits) {
+    // Relié à un stock du verger ou de l'élevage : c'est ce stock qui se choisit
+    // sur un bon de livraison, sinon la vente ne sortirait rien.
+    if (p.stockLieType) continue
     const disponible = stockCommandable(p.stockDispo, reservees.get(p.id))
     if ((disponible != null && disponible <= 0) || !frais(p.recolte?.datePeremption ?? null)) continue
     articles.push({ type: 'boutique', id: String(p.id), nom: p.nom, categorie: p.actif ? 'Catalogue de la boutique' : 'Catalogue hors ligne', disponible, unite: p.unite, prixTTC: p.prix, tauxTVA: p.categorie === 'autre' ? 20 : 5.5, statutBio: p.statutBio, href: '/boutique?tab=produits', avertissements: p.recolte ? avertissementsLegumes.get(p.recolte.id) : undefined })
