@@ -188,6 +188,7 @@
 | GET | `/api/carte` | Données carte (parcelles géo) |
 | POST | `/api/carte` | Créer parcelle géo |
 | GET | `/api/meteo` | Données météo (cache Open-Meteo) |
+| GET | `/api/agroclimat/gel` | Gel de la parcelle sur trente ans (`?parcelleId=`, sinon la parcelle de référence) : dernière gelée de printemps, première d'automne, date de prudence, saison sans gel, tendance. États `pret`, `en_preparation`, `hors_couverture`, `indisponible`, `sans_localisation` |
 | GET | `/api/lunaire` | Calendrier lunaire |
 | GET | `/api/sol` | Données pédologiques (SoilGrids) |
 

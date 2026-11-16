@@ -129,6 +129,7 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 - Tâches à faire (agrégation tous modules)
 - Interventions terrain (traçabilité phytosanitaire)
 - Météo (Open-Meteo, stations personnelles)
+- Agroclimat (`src/lib/agroclimat/`) : gel de la parcelle sur trente ans d'archives SAFRAN, et moteur de froid hivernal et de chaleur des arbres fruitiers (portions de froid, growing degree hours)
 - Calendrier lunaire
 - Qualité du sol (SoilGrids, analyses labo)
 - Assistant IA : agents Paperclip asynchrones (Normal/Support/Extra) ; catalogue d'outils PAR RÔLE selon la section (`src/lib/chat/catalogues.ts`), lectures exécutées par Gleba (allowlist, `userId` de session), mutations confirmées par l'utilisateur ; second point d'entrée `/api/mcp` (bearer token)
@@ -179,6 +180,7 @@ Le module `auto-compta.ts` intercepte les ventes (récoltes, produits élevage, 
 | Service | Usage | Fichier |
 |---------|-------|---------|
 | Open-Meteo | Prévisions météo | `src/lib/meteo.ts` |
+| Météo-France (SAFRAN-ISBA, data.gouv.fr) | Historique climatique quotidien par maille de 8 km, métropole, Licence Ouverte 2.0. Fichiers publics téléchargés en entier : aucune coordonnée de parcelle n'est transmise | `src/lib/agroclimat/import-safran.ts` |
 | Hub'Eau | Données hydrologiques | `src/lib/hubeau.ts` |
 | SoilGrids | Données pédologiques | `src/lib/soilgrids.ts` |
 | IGN Géoportail | Couches carte (satellite, cadastre) | `src/components/carte/` |
@@ -190,5 +192,6 @@ Le module `auto-compta.ts` intercepte les ventes (récoltes, produits élevage, 
 - **Next.js standalone** : Build optimisé pour Docker (pas de node_modules en prod)
 - **Cache météo** : Table `MeteoCache` en BDD (évite les appels répétés à Open-Meteo)
 - **Cache irrigation** : Mémoire applicative (`irrigation-cache.ts`)
+- **Historique climatique** : tables `ClimatMaille` et `ClimatMailleAnnee`. Une maille est importée à la première demande (36 fichiers annuels lus en flux, cinq à six minutes, rien sur disque), puis complétée chaque nuit à 04:07 ; `GLEBA_AGROCLIMAT_IMPORT=false` coupe ces téléchargements
 - **Assets immutables** : `cache-control: s-maxage=31536000, immutable` sur les assets Next.js
 - **Rate limiting** : `rate-limit.ts` sur les API sensibles

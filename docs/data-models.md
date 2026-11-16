@@ -312,7 +312,7 @@ Opérations terrain avec traçabilité phytosanitaire.
 
 ---
 
-## Météo (2 modèles)
+## Météo (4 modèles)
 
 ### MeteoCache (`meteo_cache`)
 Cache de données météo Open-Meteo.
@@ -322,6 +322,16 @@ Cache de données météo Open-Meteo.
 ### StationMeteo (`stations_meteo`)
 Stations météo personnelles.
 - **Champs** : provider (ecowitt/wunderground/netatmo), stationId, apiKey, lat/lng, active
+
+### ClimatMaille (`climat_mailles`)
+Maille de 8 km de la grille SAFRAN (Météo-France) dont l'historique climatique a été demandé pour une parcelle. Table globale, sans propriétaire.
+- **Contrainte** : @unique([lambx, lamby])
+- **Champs** : lambx/lamby (Lambert II étendu, hectomètres), etat (demandee/prete/echec), tentatives, erreur, bail d'import (verrouJeton, verrouJusqua), dates de demande, d'import et d'actualisation
+
+### ClimatMailleAnnee (`climat_mailles_annees`)
+Une année de minimums et de maximums quotidiens d'une maille.
+- **Contrainte** : @unique([mailleId, annee])
+- **Champs** : tmin et tmax, tableaux de 366 cases (29 février compris) en dixièmes de degré, -9999 = jour sans donnée
 
 ---
 
