@@ -4493,6 +4493,11 @@ model ProduitBoutique {
   // Permet de relier le stock boutique au stock physique récolté.
   recolteId   Int?     @map("recolte_id")
   recolte     Recolte? @relation(fields: [recolteId], references: [id], onDelete: SetNull)
+  // Stock du verger ou de l'élevage que ce produit vend (migration 20261116230000).
+  // `stockLieConditionnement` = quantité de l'unité du stock par unité vendue (douzaine d'œufs = 12).
+  stockLieType String? @map("stock_lie_type")
+  stockLieRef String? @map("stock_lie_ref")
+  stockLieConditionnement Float? @map("stock_lie_conditionnement")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -4547,6 +4552,7 @@ model CommandeBoutique {
   createdAt            DateTime       @default(now()) @map("created_at")
   updatedAt            DateTime       @updatedAt @map("updated_at")
 
+  mouvementsStock MouvementStockCommercial[]
   lignes LigneCommandeBoutique[]
 
   @@unique([userId, numero])
@@ -4572,6 +4578,11 @@ model LigneCommandeBoutique {
   unite        String           @map("unite")
   quantite     Float            @map("quantite")
   total        Float            @map("total")
+  // Lien et conditionnement figés à la commande : un changement du produit ne requalifie pas la ligne.
+  stockLieType String? @map("stock_lie_type")
+  stockLieRef String? @map("stock_lie_ref")
+  stockLieConditionnement Float? @map("stock_lie_conditionnement")
+  mouvementsStock MouvementStockCommercial[]
 
   @@index([commandeId])
   @@index([produitId])
@@ -5096,6 +5107,13 @@ model MouvementStockCommercial {
   // Livraison ou retour d'un lot transformé.
   lotTransformeId Int? @map("lot_transforme_id")
   lotTransforme LotTransforme? @relation("MouvementsLotTransforme", fields: [lotTransformeId], references: [id], onDelete: NoAction)
+  // Sortie née d'une commande de la boutique en ligne (stock lié du produit).
+  commandeBoutiqueId Int? @map("commande_boutique_id")
+  commandeBoutique CommandeBoutique? @relation(fields: [commandeBoutiqueId], references: [id], onDelete: SetNull)
+  ligneCommandeBoutiqueId Int? @map("ligne_commande_boutique_id")
+  ligneCommandeBoutique LigneCommandeBoutique? @relation(fields: [ligneCommandeBoutiqueId], references: [id], onDelete: SetNull)
+  @@index([commandeBoutiqueId])
+  @@index([ligneCommandeBoutiqueId])
   @@unique([userId, cleIdempotence])
   @@index([userId, date])
   @@index([documentId])
