@@ -83,6 +83,10 @@ describe("pages protégées", () => {
   it.each(pages)("/%s a une capacité connue et reste ouverte au carnet gratuit si c’est un atelier ou une page commune", page => {
     expect(capaciteDuChemin("/" + page)).not.toBe("inconnu")
   })
+  it("la lecture d’une photo envoyée reste ouverte au carnet gratuit (route contrôlée par exploitation)", () => {
+    expect(capaciteDuChemin("/api/upload/photo/exploitation/0f8fad5b-d9cb-469f-a165-70867728950e-1200.jpg")).toBe("commun")
+    expect(operationPermise(calculerAcces(nouveau, etat(), maintenant), "/api/upload/photo/exploitation/0f8fad5b-d9cb-469f-a165-70867728950e-1200.jpg", "GET")).toBe(true)
+  })
   it("l’accueil Aujourd’hui est ouvert à tous les accès", () => {
     for (const acces of [calculerAcces(nouveau, null, maintenant, false), calculerAcces(nouveau, etat(), maintenant), calculerAcces(new Date(GRATUITE_EXISTANTS_JUSQUAU), null, maintenant)]) {
       expect(operationPermise(acces, "/aujourdhui", "GET")).toBe(true)
