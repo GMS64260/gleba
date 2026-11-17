@@ -13,7 +13,7 @@ import prisma from '@/lib/prisma'
 import { annulerCommandeBoutique as annuler, confirmCommandeBoutique as confirmer, ErreurCommandeBoutique, livrerCommandeBoutique as livrer } from '@/lib/commande-boutique'
 import { retournerStockCommercial, sortirStockCommercial } from '@/lib/commercial/stock'
 import { ErreurStockLie, stockLieRetenu } from '@/lib/boutique/stock-lie'
-import { chargerStocksLies, commandableProduitLie, lignesEnRuptureStockLie, listerStocksLiables, relierProduitAuStock } from '@/lib/boutique/stock-lie-disponible'
+import { besoinsAProduire, chargerStocksLies, commandableProduitLie, lignesEnRuptureStockLie, listerStocksLiables, relierProduitAuStock } from '@/lib/boutique/stock-lie-disponible'
 import { reprendreStockLieExploitation } from '@/lib/boutique/reprise-stock-lie'
 import { chargerCatalogueStock } from '@/lib/commercial/catalogue-stock'
 
@@ -40,7 +40,7 @@ describe.skipIf(!active)('boutique : produit relié à un stock de l\'élevage',
       data: {
         userId, boutiqueId: boutique.id, numero: `CMD-${++n}`, clientNom: 'Client synthétique', clientEmail: 'client@example.com',
         total: lignes.reduce((s, l) => s + l.produit.prix * l.quantite, 0),
-        lignes: { create: lignes.map((l) => ({ produitId: l.produit.id, nom: l.produit.nom, prixUnitaire: l.produit.prix, unite: l.produit.unite, quantite: l.quantite, total: l.produit.prix * l.quantite, stockLieType: l.produit.stockLieType, stockLieRef: l.produit.stockLieRef, stockLieConditionnement: l.produit.stockLieConditionnement })) },
+        lignes: { create: lignes.map((l) => ({ produitId: l.produit.id, nom: l.produit.nom, prixUnitaire: l.produit.prix, unite: l.produit.unite, quantite: l.quantite, total: l.produit.prix * l.quantite, stockLieType: l.produit.stockLieType, stockLieRef: l.produit.stockLieRef, stockLieConditionnement: l.produit.stockLieConditionnement, stockLieMode: l.produit.stockLieType ? l.produit.stockLieMode : null })) },
       },
     })
     const ponte = (quantite: number, date = hier()) => prisma.productionOeuf.create({ data: { userId, quantite, date } })
@@ -127,7 +127,7 @@ describe.skipIf(!active)('boutique : produit relié à un stock de l\'élevage',
     const compte = await prisma.produitBoutique.create({ data: { userId: f.userId, boutiqueId: f.boutique.id, nom: 'Compteur synthétique', prix: 1, unite: 'pièce', stockDispo: 3 } })
     await expect(relier(compte.id, { type: 'oeufs', conditionnement: 1 })).rejects.toBeInstanceOf(ErreurStockLie)
     expect((await relier(libre.id, { type: 'oeufs', conditionnement: '6' })).stockLieConditionnement).toBe(6)
-    expect((await prisma.$transaction((tx) => listerStocksLiables(tx, f.userId))).map((s) => [s.type, s.ref, s.unite, s.disponible])).toEqual([['oeufs', 'stock', 'pièce', 40]])
+    expect((await prisma.$transaction((tx) => listerStocksLiables(tx, f.userId))).map((s) => [s.type, s.ref, s.unite, s.disponible])).toEqual([['oeufs', 'stock', 'pièce', 40], ['ruche', 'miel', 'kg', 0]])
     const catalogue = await prisma.$transaction((tx) => chargerCatalogueStock(f.userId, tx))
     expect(catalogue.filter((a) => a.type === 'boutique').map((a) => a.nom)).toEqual(['Compteur synthétique'])
     // Douzaine et boîte vendent le même stock : la demande se cumule (2 × 12 + 3 × 6 = 42 > 40).
@@ -137,6 +137,39 @@ describe.skipIf(!active)('boutique : produit relié à un stock de l\'élevage',
     expect(lignesEnRuptureStockLie(etats, panier(2))).toEqual([])
     expect(commandableProduitLie(etats, { type: 'oeufs', ref: 'stock', conditionnement: 12 }, 'douzaine')).toBe(3)
     expect((await relier(libre.id, null)).stockLieType).toBeNull()
+  })
+
+  it('à produire : relié sans production, rien ne sort au paiement, le stock retenu par une autre commande est protégé', async () => {
+    const f = await ferme()
+    const relier = (id: number, stockLie: unknown) => prisma.$transaction((tx) => relierProduitAuStock(tx, f.userId, id, stockLie))
+    await prisma.produitBoutique.update({ where: { id: f.douzaine.id }, data: { stockLieType: null, stockLieRef: null, stockLieConditionnement: null } })
+    // Aucune ponte encore : le stock réel ne se relie pas, « à produire » si.
+    await expect(relier(f.douzaine.id, { type: 'oeufs', conditionnement: 12 })).rejects.toBeInstanceOf(ErreurStockLie)
+    await expect(relier(f.douzaine.id, { type: 'oeufs', conditionnement: 12, mode: 'illimite' })).rejects.toBeInstanceOf(ErreurStockLie)
+    const aProduire = await relier(f.douzaine.id, { type: 'oeufs', conditionnement: 12, mode: 'a_produire' })
+    expect(aProduire.stockLieMode).toBe('a_produire')
+    await f.ponte(12)
+    const boite = await prisma.produitBoutique.create({ data: { userId: f.userId, boutiqueId: f.boutique.id, nom: 'Boîte de six en stock', prix: 2.5, unite: 'boîte', categorie: 'oeufs' } })
+    const reel = await relier(boite.id, { type: 'oeufs', conditionnement: 6 })
+
+    const c = await f.commande([{ produit: aProduire, quantite: 5 }])
+    const besoins = () => prisma.$transaction((tx) => besoinsAProduire(tx, f.userId))
+    expect(await stockLieRetenu(prisma, f.userId)).toEqual(new Map())
+    expect((await besoins()).map((b) => [b.type, b.ref, b.quantite, b.commandes, b.disponible, b.manque])).toEqual([['oeufs', 'stock', 60, 1, 12, 48]])
+    const reelle = await f.commande([{ produit: reel, quantite: 2 }])
+    expect((await besoins())[0]).toMatchObject({ disponible: 0, manque: 60 })
+
+    const paiement = await confirmCommandeBoutique(c.id, { modeReglement: 'Espèces' })
+    expect(paiement.sortiesStockManquantes).toEqual([])
+    expect(await f.oeufsSortis()).toBe(0)
+    await f.ponte(48)
+    await expect(livrerCommandeBoutique(c.id)).rejects.toBeInstanceOf(ErreurCommandeBoutique)
+    await f.ponte(12)
+    await livrerCommandeBoutique(c.id)
+    expect(await f.oeufsSortis()).toBe(60)
+    expect(await besoins()).toEqual([])
+    await livrerCommandeBoutique(reelle.id)
+    expect(await f.oeufsSortis()).toBe(72)
   })
 
   it('reprise : relie par règle, sort à la date de la commande, à blanc par défaut, rejouable, sans rien forcer', async () => {
@@ -149,7 +182,7 @@ describe.skipIf(!active)('boutique : produit relié à un stock de l\'élevage',
     await f.ponte(12, jour(1))
     const ancienne = async (lignes: Array<{ produit: typeof f.douzaine; quantite: number }>, date: Date) => {
       const c = await f.commande(lignes)
-      await prisma.ligneCommandeBoutique.updateMany({ where: { commandeId: c.id }, data: { stockLieType: null, stockLieRef: null, stockLieConditionnement: null } })
+      await prisma.ligneCommandeBoutique.updateMany({ where: { commandeId: c.id }, data: { stockLieType: null, stockLieRef: null, stockLieConditionnement: null, stockLieMode: null } })
       const v = await prisma.venteManuelle.create({ data: { userId: f.userId, date, categorie: 'oeufs', description: 'Commande synthétique', montant: c.total, montantHT: c.total, montantTVA: 0, tauxTVA: 0, module: 'boutique', paye: true, auto: true, sourceType: 'commande_boutique', sourceId: c.id } })
       return prisma.commandeBoutique.update({ where: { id: c.id }, data: { statut: 'livree', paiementStatut: 'Confirmé', venteManuelleId: v.id, createdAt: date } })
     }

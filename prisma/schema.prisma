@@ -4498,6 +4498,8 @@ model ProduitBoutique {
   stockLieType String? @map("stock_lie_type")
   stockLieRef String? @map("stock_lie_ref")
   stockLieConditionnement Float? @map("stock_lie_conditionnement")
+  // `stock` : la vitrine ne propose que le stock réel ; `a_produire` : commandable sans limite, sorti à la livraison.
+  stockLieMode String @default("stock") @map("stock_lie_mode")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -4582,6 +4584,7 @@ model LigneCommandeBoutique {
   stockLieType String? @map("stock_lie_type")
   stockLieRef String? @map("stock_lie_ref")
   stockLieConditionnement Float? @map("stock_lie_conditionnement")
+  stockLieMode String? @map("stock_lie_mode")
   mouvementsStock MouvementStockCommercial[]
 
   @@index([commandeId])

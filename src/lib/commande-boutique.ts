@@ -31,7 +31,7 @@ import { verrouillerStockCommercial } from "@/lib/stocks/verrou-commercial"
 import { chargerCatalogueStock } from '@/lib/commercial/catalogue-stock'
 import { retournerStockCommercial, sortirStockCommercial, verrouillerStocksDesLignes } from '@/lib/commercial/stock'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
-import { cleStockLie, lireStockLie, quantiteStockLie } from '@/lib/boutique/stock-lie'
+import { cleStockLie, lireModeStockLie, lireStockLie, quantiteStockLie, stockLieRetenu } from '@/lib/boutique/stock-lie'
 
 type Tx = Prisma.TransactionClient | PrismaClient
 
@@ -195,7 +195,10 @@ async function sortirStockLieCommande(
     select: { ligneCommandeBoutiqueId: true },
   })
   const dejaSorties = new Set(sorties.map((m) => m.ligneCommandeBoutiqueId))
-  const restantes = liees.filter(({ ligne }) => !dejaSorties.has(ligne.id))
+  // Une ligne « à produire » ne sort qu'à la livraison : au paiement, la
+  // production n'est pas faite, et prendre le stock présent priverait les
+  // commandes qui l'ont retenu.
+  const restantes = liees.filter(({ ligne }) => !dejaSorties.has(ligne.id) && (mode === 'strict' || lireModeStockLie(ligne.stockLieMode) === 'stock'))
   if (!restantes.length) return []
 
   const date = new Date()
@@ -205,6 +208,16 @@ async function sortirStockLieCommande(
     articleStockType: lie.type, articleStockId: lie.ref, description: ligne.nom, quantite: 0, unite: '',
   })))
   const catalogue = new Map((await chargerCatalogueStock(commande.userId, t, date)).map((a) => [`${a.type}:${a.id}`, a]))
+  // Le stock retenu par les AUTRES commandes en cours n'est pas disponible :
+  // cette commande ne compte que sur sa propre retenue (lignes « stock réel »).
+  const retenu = await stockLieRetenu(t, commande.userId)
+  const propre = new Map<string, number>()
+  if (!['annulee', 'livree'].includes(commande.statut)) {
+    for (const { ligne, lie } of restantes) {
+      if (lireModeStockLie(ligne.stockLieMode) !== 'stock') continue
+      propre.set(cleStockLie(lie), (propre.get(cleStockLie(lie)) ?? 0) + quantiteStockLie(ligne.quantite, lie.conditionnement))
+    }
+  }
   const consomme = new Map<string, number>()
   const manquantes: SortieStockManquante[] = []
   const aSortir: Parameters<typeof sortirStockCommercial>[2] = []
@@ -212,7 +225,8 @@ async function sortirStockLieCommande(
     const cle = cleStockLie(lie)
     const article = catalogue.get(cle)
     const demande = quantiteStockLie(ligne.quantite, lie.conditionnement)
-    const disponible = Math.max(0, (article?.disponible ?? 0) - (consomme.get(cle) ?? 0))
+    const retenuAutres = Math.max(0, (retenu.get(cle) ?? 0) - (propre.get(cle) ?? 0))
+    const disponible = Math.max(0, Math.round(((article?.disponible ?? 0) - retenuAutres - (consomme.get(cle) ?? 0)) * 1000) / 1000)
     if (!article || demande > disponible + 1e-6) {
       manquantes.push({ ligneId: ligne.id, nom: ligne.nom, demande, disponible, unite: article?.unite ?? null })
       continue
