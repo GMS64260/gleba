@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   animalUpdate: vi.fn(),
   animalFindMany: vi.fn(),
   enregistrerChangementLot: vi.fn(),
+  redaterAffectationInitiale: vi.fn(),
   soinFindMany: vi.fn(),
   especeFindFirst: vi.fn(),
   refusRemiseActif: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('@/lib/elevage/sortie-animal.server', () => ({ refusRemiseActif: mocks.r
 vi.mock('@/lib/elevage/animal-lot', () => ({
   isAssignableAnimalLot: mocks.isAssignableAnimalLot,
   enregistrerChangementLot: mocks.enregistrerChangementLot,
+  redaterAffectationInitiale: mocks.redaterAffectationInitiale,
 }))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn(), deleteAutoEntry: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
@@ -133,6 +135,18 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
     mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin' })
     mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, lotId: data.lotId ?? 42, prixAchat: null }))
     mocks.especeFindFirst.mockResolvedValue({ id: 'caprin' })
+  })
+
+  it("une date d'arrivée corrigée redate l'entrée dans le premier lot, pas une date inchangée (revue du 2026-11-11)", async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin', dateArrivee: new Date('2026-11-10') })
+    mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, lotId: 42, prixAchat: null, dateArrivee: data.dateArrivee ?? new Date('2026-11-10') }))
+    expect((await callPut({ dateArrivee: '2026-11-01' })).status).toBe(200)
+    expect(mocks.redaterAffectationInitiale).toHaveBeenCalledWith(expect.anything(), 'user-1', 7, new Date('2026-11-01'))
+
+    mocks.redaterAffectationInitiale.mockClear()
+    expect((await callPut({ dateArrivee: '2026-11-10' })).status).toBe(200)
+    expect((await callPut({ nom: 'Blanchette' })).status).toBe(200)
+    expect(mocks.redaterAffectationInitiale).not.toHaveBeenCalled()
   })
 
   it('PUT normalise le sexe, refuse une valeur inconnue et ne passe plus un père sous silence', async () => {
