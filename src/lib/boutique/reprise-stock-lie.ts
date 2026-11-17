@@ -127,6 +127,8 @@ export async function reprendreStockLieExploitation(prisma: PrismaClient, userId
           const lie = lireStockLie(l)
           if (!lie) continue
           if (l.mouvementsStock.length) { evenements.push({ objet: 'ligne', commandeId: c.id, ligneId: l.id, issue: 'deja_sortie' }); continue }
+          // « À produire » ne sort qu'à la livraison : une commande payée non livrée attend sa production.
+          if (lireModeStockLie(l.stockLieMode) === 'a_produire' && c.statut !== 'livree') continue
           const r = await sortir(c, l, lie, date)
           if ('refus' in r) enAttente.push({ c, l, lie, date })
           else evenements.push({ objet: 'ligne', commandeId: c.id, ligneId: l.id, issue: 'sortie', ...r, date: jour(date) })

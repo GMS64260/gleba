@@ -196,6 +196,25 @@ describe.skipIf(!active)('boutique : produit relié à un stock de l\'élevage',
     expect((await prisma.produitBoutique.findUniqueOrThrow({ where: { id: f.douzaine.id } })).stockLieType).toBeNull()
   })
 
+  it('commande mixte : la ligne à produire ne prend pas le stock retenu par une autre commande', async () => {
+    const f = await ferme()
+    await f.ponte(24)
+    const aProduire = await prisma.produitBoutique.create({ data: { userId: f.userId, boutiqueId: f.boutique.id, nom: 'Douzaine à produire', prix: 4.8, unite: 'douzaine', categorie: 'oeufs', stockLieType: 'oeufs', stockLieRef: 'stock', stockLieConditionnement: 12, stockLieMode: 'a_produire' } })
+    const lignes = (c: { id: number }) => prisma.ligneCommandeBoutique.findMany({ where: { commandeId: c.id }, orderBy: { id: 'asc' } })
+    // X, la plus ancienne : la ligne à produire est saisie AVANT la ligne stock réel.
+    const x = await f.commande([{ produit: aProduire, quantite: 1 }, { produit: f.douzaine, quantite: 1 }])
+    const [l1] = await lignes(x)
+    await prisma.ligneCommandeBoutique.update({ where: { id: l1.id }, data: { stockLieMode: 'a_produire' } })
+    const c = await f.commande([{ produit: f.douzaine, quantite: 1 }])
+    // 24 œufs : 12 pour la ligne stock de X, 12 retenus par C ; rien pour la ligne à produire.
+    await expect(livrerCommandeBoutique(x.id)).rejects.toBeInstanceOf(ErreurCommandeBoutique)
+    expect(await f.oeufsSortis()).toBe(0)
+    await livrerCommandeBoutique(c.id)
+    await f.ponte(12)
+    await livrerCommandeBoutique(x.id)
+    expect(await f.oeufsSortis()).toBe(36)
+  })
+
   it('reprise : relie par règle, sort à la date de la commande, à blanc par défaut, rejouable, sans rien forcer', async () => {
     const f = await ferme()
     const jour = (n: number) => new Date(Date.now() - n * 24 * 3600 * 1000)

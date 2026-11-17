@@ -198,7 +198,13 @@ async function sortirStockLieCommande(
   // Une ligne « à produire » ne sort qu'à la livraison : au paiement, la
   // production n'est pas faite, et prendre le stock présent priverait les
   // commandes qui l'ont retenu.
-  const restantes = liees.filter(({ ligne }) => !dejaSorties.has(ligne.id) && (mode === 'strict' || lireModeStockLie(ligne.stockLieMode) === 'stock'))
+  // Les lignes « stock réel » passent avant les « à produire » : dans une commande
+  // mixte, la ligne à produire ne prend que ce qui reste une fois servie la
+  // retenue de la commande, jamais le stock qu'une autre commande a retenu.
+  const rang = (l: { stockLieMode: string | null }) => (lireModeStockLie(l.stockLieMode) === 'stock' ? 0 : 1)
+  const restantes = liees
+    .filter(({ ligne }) => !dejaSorties.has(ligne.id) && (mode === 'strict' || lireModeStockLie(ligne.stockLieMode) === 'stock'))
+    .sort((a, b) => rang(a.ligne) - rang(b.ligne) || a.ligne.id - b.ligne.id)
   if (!restantes.length) return []
 
   const date = new Date()
