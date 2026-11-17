@@ -22,7 +22,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { sortirStockCommercial, verrouillerStockCommercial } from '@/lib/commercial/stock'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
-import { champsStockLie, lireStockLie, quantiteStockLie, validerStockLie, type StockLie } from './stock-lie'
+import { champsStockLie, lireModeStockLie, lireStockLie, quantiteStockLie, validerStockLie, type StockLie } from './stock-lie'
 import { listerStocksLiables } from './stock-lie-disponible'
 
 export type EvenementReprise =
@@ -72,7 +72,8 @@ export async function reprendreStockLieExploitation(prisma: PrismaClient, userId
           continue
         }
         const stock = stocks.find((s) => s.type === regle.lie.type && s.ref === regle.lie.ref)
-        if (!stock) { evenements.push({ objet: 'produit', produitId: p.id, issue: 'non_relie', raison: 'aucune production enregistrée pour ce stock' }); continue }
+        // Sans production enregistrée (revente), le produit reste tel quel : le relier ferait passer sa vitrine d'illimité à rupture.
+        if (!stock?.produit) { evenements.push({ objet: 'produit', produitId: p.id, issue: 'non_relie', raison: 'aucune production enregistrée pour ce stock' }); continue }
         let lie: StockLie
         try { lie = validerStockLie(regle.lie, stock.unite)! } catch { evenements.push({ objet: 'produit', produitId: p.id, issue: 'non_relie', raison: 'conditionnement incompatible avec l’unité du stock' }); continue }
         await tx.produitBoutique.update({ where: { id: p.id }, data: champsStockLie(lie) })
@@ -88,7 +89,8 @@ export async function reprendreStockLieExploitation(prisma: PrismaClient, userId
         const lie = l.produit && lireStockLie(l.produit)
         // L'unité de la ligne est celle du produit à la commande : si elle a changé depuis, le conditionnement actuel ne la décrit plus.
         if (!lie || l.unite !== l.produit!.unite) continue
-        await tx.ligneCommandeBoutique.update({ where: { id: l.id }, data: champsStockLie(lie) })
+        // Le mode du produit suit le lien : une ligne ouverte d'un produit « à produire » ne doit pas devenir « stock réel ».
+        await tx.ligneCommandeBoutique.update({ where: { id: l.id }, data: { ...champsStockLie(lie), stockLieMode: lireModeStockLie(l.produit!.stockLieMode) } })
         evenements.push({ objet: 'ligne', commandeId: l.commandeId, ligneId: l.id, issue: 'lien_fige' })
       }
 
@@ -125,6 +127,8 @@ export async function reprendreStockLieExploitation(prisma: PrismaClient, userId
           const lie = lireStockLie(l)
           if (!lie) continue
           if (l.mouvementsStock.length) { evenements.push({ objet: 'ligne', commandeId: c.id, ligneId: l.id, issue: 'deja_sortie' }); continue }
+          // « À produire » ne sort qu'à la livraison : une commande payée non livrée attend sa production.
+          if (lireModeStockLie(l.stockLieMode) === 'a_produire' && c.statut !== 'livree') continue
           const r = await sortir(c, l, lie, date)
           if ('refus' in r) enAttente.push({ c, l, lie, date })
           else evenements.push({ objet: 'ligne', commandeId: c.id, ligneId: l.id, issue: 'sortie', ...r, date: jour(date) })

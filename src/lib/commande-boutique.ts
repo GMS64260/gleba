@@ -31,7 +31,7 @@ import { verrouillerStockCommercial } from "@/lib/stocks/verrou-commercial"
 import { chargerCatalogueStock } from '@/lib/commercial/catalogue-stock'
 import { retournerStockCommercial, sortirStockCommercial, verrouillerStocksDesLignes } from '@/lib/commercial/stock'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
-import { cleStockLie, lireStockLie, quantiteStockLie } from '@/lib/boutique/stock-lie'
+import { cleStockLie, lireModeStockLie, lireStockLie, quantiteStockLie, stockLieRetenu } from '@/lib/boutique/stock-lie'
 
 type Tx = Prisma.TransactionClient | PrismaClient
 
@@ -195,7 +195,16 @@ async function sortirStockLieCommande(
     select: { ligneCommandeBoutiqueId: true },
   })
   const dejaSorties = new Set(sorties.map((m) => m.ligneCommandeBoutiqueId))
-  const restantes = liees.filter(({ ligne }) => !dejaSorties.has(ligne.id))
+  // Une ligne « à produire » ne sort qu'à la livraison : au paiement, la
+  // production n'est pas faite, et prendre le stock présent priverait les
+  // commandes qui l'ont retenu.
+  // Les lignes « stock réel » passent avant les « à produire » : dans une commande
+  // mixte, la ligne à produire ne prend que ce qui reste une fois servie la
+  // retenue de la commande, jamais le stock qu'une autre commande a retenu.
+  const rang = (l: { stockLieMode: string | null }) => (lireModeStockLie(l.stockLieMode) === 'stock' ? 0 : 1)
+  const restantes = liees
+    .filter(({ ligne }) => !dejaSorties.has(ligne.id) && (mode === 'strict' || lireModeStockLie(ligne.stockLieMode) === 'stock'))
+    .sort((a, b) => rang(a.ligne) - rang(b.ligne) || a.ligne.id - b.ligne.id)
   if (!restantes.length) return []
 
   const date = new Date()
@@ -205,6 +214,23 @@ async function sortirStockLieCommande(
     articleStockType: lie.type, articleStockId: lie.ref, description: ligne.nom, quantite: 0, unite: '',
   })))
   const catalogue = new Map((await chargerCatalogueStock(commande.userId, t, date)).map((a) => [`${a.type}:${a.id}`, a]))
+  // Stock retenu que cette commande ne peut pas prendre :
+  //  - ligne « stock réel » : la retenue des commandes passées AVANT elle. La
+  //    retenue suit l'ordre des commandes ; si une vente directe ou un œuf
+  //    périmé a entamé le stock, la plus ancienne sort quand même ;
+  //  - ligne « à produire » : la retenue de toutes les autres commandes, elle
+  //    ne retient rien elle-même et attend sa production.
+  const [retenuAvant, retenuTotal] = await Promise.all([
+    stockLieRetenu(t, commande.userId, { id: commande.id, createdAt: commande.createdAt }),
+    stockLieRetenu(t, commande.userId),
+  ])
+  const propre = new Map<string, number>()
+  if (!['annulee', 'livree'].includes(commande.statut)) {
+    for (const { ligne, lie } of restantes) {
+      if (lireModeStockLie(ligne.stockLieMode) !== 'stock') continue
+      propre.set(cleStockLie(lie), (propre.get(cleStockLie(lie)) ?? 0) + quantiteStockLie(ligne.quantite, lie.conditionnement))
+    }
+  }
   const consomme = new Map<string, number>()
   const manquantes: SortieStockManquante[] = []
   const aSortir: Parameters<typeof sortirStockCommercial>[2] = []
@@ -212,7 +238,8 @@ async function sortirStockLieCommande(
     const cle = cleStockLie(lie)
     const article = catalogue.get(cle)
     const demande = quantiteStockLie(ligne.quantite, lie.conditionnement)
-    const disponible = Math.max(0, (article?.disponible ?? 0) - (consomme.get(cle) ?? 0))
+    const retenuAutres = lireModeStockLie(ligne.stockLieMode) === 'stock' ? retenuAvant.get(cle) ?? 0 : Math.max(0, (retenuTotal.get(cle) ?? 0) - (propre.get(cle) ?? 0))
+    const disponible = Math.max(0, Math.round(((article?.disponible ?? 0) - retenuAutres - (consomme.get(cle) ?? 0)) * 1000) / 1000)
     if (!article || demande > disponible + 1e-6) {
       manquantes.push({ ligneId: ligne.id, nom: ligne.nom, demande, disponible, unite: article?.unite ?? null })
       continue
@@ -221,7 +248,7 @@ async function sortirStockLieCommande(
     aSortir.push({ articleStockType: lie.type, articleStockId: lie.ref, id: ligne.id, description: ligne.nom, quantite: demande, unite: article.unite })
   }
   if (mode === 'strict' && manquantes.length) {
-    const detail = manquantes.map((m) => `${m.nom} : ${m.demande} ${m.unite ?? ''} à sortir, ${m.disponible} en stock`.replace('  ', ' ')).join(' ; ')
+    const detail = manquantes.map((m) => `${m.nom} : ${m.demande} ${m.unite ?? ''} à sortir, ${m.disponible} disponible(s) une fois servi ce que d'autres commandes ont retenu`.replace('  ', ' ')).join(' ; ')
     throw new ErreurCommandeBoutique(
       `Stock insuffisant pour livrer cette commande (${detail}). Enregistrez la production manquante ou corrigez le stock, puis livrez à nouveau.`,
     )
