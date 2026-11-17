@@ -15,6 +15,7 @@ import { Prisma, type VenteProduit } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import {
   StockFromageError,
+  refusVenteFromage,
   recalerEtatLotFromage,
   refusStockFromage,
   stockDuLotFromage,
@@ -231,7 +232,7 @@ export async function POST(request: NextRequest) {
       if (!lot) {
         return NextResponse.json({ error: 'Lot de fromage introuvable dans votre cave.' }, { status: 400 })
       }
-      const refus = refusStockFromage(stockDuLotFromage(lot), sortie.nbPieces, sortie.poidsKg)
+      const refus = refusVenteFromage(lot, date || new Date()) ?? refusStockFromage(stockDuLotFromage(lot), sortie.nbPieces, sortie.poidsKg)
       if (refus) {
         return NextResponse.json({ error: refus }, { status: 409 })
       }
@@ -306,13 +307,16 @@ export async function POST(request: NextRequest) {
       // Contrôle autoritatif sous verrou : le pré-contrôle ci-dessus améliore le
       // message, celui-ci empêche deux requêtes concurrentes de sur-vendre.
       if (fromageSortie) {
-        await verrouillerEtVerifierStockFromage(
+        const { lot: lotVerrouille } = await verrouillerEtVerifierStockFromage(
           tx,
           session.user.id,
           fromageSortie.lotFromageId,
           fromageSortie.nbPieces,
           fromageSortie.poidsKg
         )
+        // Même garde de date que le pré-contrôle, sur le lot relu sous verrou.
+        const refusDate = refusVenteFromage(lotVerrouille, date || new Date())
+        if (refusDate) throw new StockFromageError(refusDate)
       }
       const vente = await tx.venteProduit.create({
         data: {

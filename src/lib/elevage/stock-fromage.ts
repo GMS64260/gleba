@@ -50,6 +50,33 @@ export async function verrouillerEtVerifierStockFromage(
   return { lot, stock }
 }
 
+const jourParis = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })
+const jourLisible = (d: Date) => d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })
+
+/**
+ * Refus d'une VENTE de fromage que sa date interdit, null si elle passe : une
+ * vente datée avant la fabrication du lot, ou après sa date limite de
+ * consommation (DLC, limite sanitaire). Comparaison au jour, à Paris.
+ *
+ * Volontairement limité à ces deux cas (revue du 2026-11-11) : la DLUO
+ * dépassée et l'état « affinage » ne bloquent pas la vente directe tant que la
+ * règle métier n'est pas tranchée. Les sorties pour perte ou don ne passent
+ * pas par ici : un lot périmé doit pouvoir sortir de la cave.
+ */
+export function refusVenteFromage(
+  lot: { dateFabrication: Date; dlc: Date | null },
+  dateVente: Date,
+): string | null {
+  const jour = jourParis(dateVente)
+  if (jour < jourParis(lot.dateFabrication)) {
+    return `Ce lot a été fabriqué le ${jourLisible(lot.dateFabrication)} : la vente ne peut pas être datée avant sa fabrication.`
+  }
+  if (lot.dlc && jour > jourParis(lot.dlc)) {
+    return `La date limite de consommation de ce lot (${jourLisible(lot.dlc)}) est dépassée à la date de la vente : il ne peut plus être vendu. Sortez-le de la cave en perte.`
+  }
+  return null
+}
+
 /** Message de refus d'une sortie qui dépasse le stock, null si elle passe. */
 export function refusStockFromage(stock: StockLotFromage, nbPieces: number, poidsKg: number): string | null {
   if (nbPieces > stock.restantPieces) {
