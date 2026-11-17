@@ -100,7 +100,7 @@ export function computeYearDiff(stats: StatsCompta | null | undefined): YearDiff
 export function libelleComparatifRevenus(
   diff: YearDiff,
   annee: number,
-  formatEuro: (n: number) => string,
+  formatMontant: (n: number) => string,
 ): string {
   const precedente = annee - 1
   switch (diff.state) {
@@ -109,7 +109,7 @@ export function libelleComparatifRevenus(
     case "nouveau":
       return `Nouveau · pas d'activité en ${precedente}`
     case "nouveau-revenus":
-      return `${precedente} : 0 € de revenus, ${formatEuro(diff.depensesPrecedente)} de dépenses`
+      return `${precedente} : ${formatMontant(0)} de revenus, ${formatMontant(diff.depensesPrecedente)} de dépenses`
     case "depenses-seules":
       return `Pas de revenus en ${annee} · aucune activité en ${precedente}`
     case "vide":

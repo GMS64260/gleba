@@ -6,6 +6,8 @@
  */
 
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
+import { formatMontantDevise } from "@/lib/format-utils"
 import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
@@ -174,6 +176,7 @@ interface ComptaStats {
     comparisonMode?: string
     facturesImpayees: number
     facturesImpayeesTotal: number
+    facturesImpayeesParDevise?: { monnaie: string | null; montant: number }[]
     stocksBas: number
     // QA 2026-05-15 — Bug #5
     commandesEnAttente?: number
@@ -217,6 +220,8 @@ interface ComptaStats {
 }
 
 export default function DashboardComptabilite() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { data: session } = useSession()
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [data, setData] = React.useState<ComptaStats | null>(null)
@@ -284,10 +289,6 @@ export default function DashboardComptabilite() {
 
   const liensAlertes = liensAlertesCompta(selectedYear)
 
-  const formatEuro = (value: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
@@ -346,16 +347,16 @@ export default function DashboardComptabilite() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(data.stats.revenus)}</p>
+                  <p className="text-3xl font-bold">{formatMontant(data.stats.revenus)}</p>
                   {/* Libellés : libelleComparatifRevenus (src/lib/comptabilite/year-diff.ts),
                       chacun porte sur N-1 (ticket cmv290vir). */}
                   {yearDiff.state === "vide" ? (
                     <p className={`text-[10px] ${kpiSubtleClass("revenu")} italic mt-1`}>
-                      {libelleComparatifRevenus(yearDiff, selectedYear, formatEuro)}
+                      {libelleComparatifRevenus(yearDiff, selectedYear, formatMontant)}
                     </p>
                   ) : (
                     <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
-                      {libelleComparatifRevenus(yearDiff, selectedYear, formatEuro)}
+                      {libelleComparatifRevenus(yearDiff, selectedYear, formatMontant)}
                     </p>
                   )}
                   {yearDiff.state === "compare" && selectedYear === currentYear && (
@@ -376,13 +377,13 @@ export default function DashboardComptabilite() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(data.stats.depenses)}</p>
+                  <p className="text-3xl font-bold">{formatMontant(data.stats.depenses)}</p>
                   {/* BUG #2 (audit compta 2026-05-15) — Charges engagées non
                       encore payées : info au comptable sur la trésorerie qui
                       sortira encore, sans masquer la charge (compta engagement). */}
                   {(data.stats.depensesNonPayees ?? 0) > 0 && (
                     <p className={`text-[10px] ${kpiSubtleClass("depense")} mt-1`}>
-                      Dont {formatEuro(data.stats.depensesNonPayees ?? 0)} non encore payé(s)
+                      Dont {formatMontant(data.stats.depensesNonPayees ?? 0)} non encore payé(s)
                       {data.stats.nbDepensesNonPayees ? ` · ${data.stats.nbDepensesNonPayees} ligne(s)` : ''}
                     </p>
                   )}
@@ -398,7 +399,7 @@ export default function DashboardComptabilite() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(Math.abs(data.stats.benefice))}</p>
+                  <p className="text-3xl font-bold">{formatMontant(Math.abs(data.stats.benefice))}</p>
                 </CardContent>
               </Card>
 
@@ -434,8 +435,18 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-amber-800">
-                    {data.stats.facturesImpayees} créance(s) en attente ({formatEuro(data.stats.facturesImpayeesTotal)})
+                    {data.stats.facturesImpayees} créance(s) en attente
                   </p>
+                  <div className="mt-1 space-y-1 text-amber-800">
+                    {data.stats.facturesImpayeesParDevise?.length ? data.stats.facturesImpayeesParDevise.map(({ monnaie, montant }) => (
+                      <p key={monnaie ?? 'chargement'} className="break-words">
+                        {monnaie === 'EUR' || monnaie === 'XPF'
+                          ? formatMontantDevise(montant, monnaie)
+                          : monnaie === null ? '—'
+                            : 'Total indisponible : devise historique inconnue pour certaines créances.'}
+                      </p>
+                    )) : <p>Montant indisponible</p>}
+                  </div>
                 <p className="mt-2 flex items-center gap-1 text-sm font-medium text-amber-800 group-hover:underline">Voir les créances<ArrowRight className="h-4 w-4" /></p>
                 </CardContent>
               </Card>
@@ -456,7 +467,7 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-blue-800">
-                    {data.stats.commandesEnAttente} commande(s) ({formatEuro(data.stats.commandesEnAttenteTotal ?? 0)})
+                    {data.stats.commandesEnAttente} commande(s) ({formatMontant(data.stats.commandesEnAttenteTotal ?? 0)})
                   </p>
                   <p className="text-xs text-blue-700 mt-1">
                     Statut Nouveau / Confirmée / Prête — sera comptabilisé à la livraison.
@@ -534,9 +545,9 @@ export default function DashboardComptabilite() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}€`} />
+                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => formatMontant(Number(v))} />
                     <Tooltip
-                      formatter={(value) => [formatEuro(Number(value || 0)), '']}
+                      formatter={(value) => [formatMontant(Number(value || 0)), '']}
                       contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                     />
                     <Area type="monotone" dataKey="revenus" name="Revenus" stroke="#22c55e" fill="url(#colorRevenus)" />
@@ -569,7 +580,7 @@ export default function DashboardComptabilite() {
                           <Cell key={`cell-${index}`} fill={entry.couleur} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                      <Tooltip formatter={(value) => [formatMontant(Number(value || 0)), '']} />
                       <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
                     </PieChart>
                   </ResponsiveContainer>
@@ -604,7 +615,7 @@ export default function DashboardComptabilite() {
                           <Cell key={`cell-${index}`} fill={entry.couleur} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                      <Tooltip formatter={(value) => [formatMontant(Number(value || 0)), '']} />
                       <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
                     </PieChart>
                   </ResponsiveContainer>
@@ -625,9 +636,9 @@ export default function DashboardComptabilite() {
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={data.charts.parModule} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}€`} />
+                    <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => formatMontant(Number(v))} />
                     <YAxis dataKey="module" type="category" tick={{ fontSize: 12 }} width={70} />
-                    <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                    <Tooltip formatter={(value) => [formatMontant(Number(value || 0)), '']} />
                     <Bar dataKey="revenus" name="Revenus" fill="#22c55e" />
                     <Bar dataKey="depenses" name="Dépenses" fill="#ef4444" />
                   </BarChart>
