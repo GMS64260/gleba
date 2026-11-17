@@ -4,6 +4,7 @@
  * Onglet Production - Oeufs + Ventes + Abattages en sous-onglets
  */
 
+import { BesoinsBoutique } from "@/components/elevage/BesoinsBoutique"
 import * as React from "react"
 import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
 import Link from "next/link"
@@ -998,6 +999,8 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
           </DialogContent>
         </Dialog>
       </div>
+
+      <BesoinsBoutique type="oeufs" recharge={stockTrace} />
 
       {stockTrace && (
         <Card>

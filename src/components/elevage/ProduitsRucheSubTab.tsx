@@ -1,5 +1,6 @@
 "use client"
 
+import { BesoinsBoutique } from "@/components/elevage/BesoinsBoutique"
 import * as React from "react"
 import { ArrowDownToLine, Package, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react"
 
@@ -359,6 +360,8 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
           </CardDescription>
         </CardHeader>
       </Card>
+
+      <BesoinsBoutique type="ruche" recharge={isLoading} />
 
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

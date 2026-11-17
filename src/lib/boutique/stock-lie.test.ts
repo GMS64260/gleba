@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { commandableStockLie, ErreurStockLie, lireStockLie, quantiteStockLie, validerStockLie } from './stock-lie'
+import { commandableStockLie, ErreurStockLie, lireModeStockLie, lireStockLie, quantiteStockLie, validerModeStockLie, validerStockLie } from './stock-lie'
 import { regleDeRattachement } from './reprise-stock-lie'
-import { lignesEnRuptureStockLie, type EtatStockLie } from './stock-lie-disponible'
+import { commandableProduitLie, lignesEnRuptureStockLie, type EtatStockLie } from './stock-lie-disponible'
 
 describe('stock lié : validation du lien', () => {
   it('accepte un conditionnement entier pour les œufs, saisi en texte ou en nombre', () => {
@@ -45,6 +45,26 @@ describe('stock lié : quantités', () => {
     expect(lignesEnRuptureStockLie(new Map(), [ligne('Douzaine', 1, 12)]).map((l) => l.nom)).toEqual(['Douzaine'])
     // 1,1 demi-douzaine = 6,6 œufs : jamais sortable, donc refusée à la commande.
     expect(lignesEnRuptureStockLie(etats, [ligne('Demi-douzaine', 1.1, 6)]).map((l) => l.nom)).toEqual(['Demi-douzaine'])
+  })
+})
+
+describe('stock lié : vente à produire', () => {
+  const etats = new Map<string, EtatStockLie>([['oeufs:stock', { type: 'oeufs', ref: 'stock', nom: 'Œufs', unite: 'pièce', disponible: 12, retenu: 0, tauxTVA: 5.5 }]])
+  const ligne = (quantite: number, mode: string | null) => ({ nom: 'Douzaine', quantite, stockLieType: 'oeufs', stockLieRef: 'stock', stockLieConditionnement: 12, stockLieMode: mode })
+  it('ne limite pas la commande au stock présent, mais refuse toujours une fraction d’œuf', () => {
+    expect(lignesEnRuptureStockLie(etats, [ligne(5, 'a_produire')])).toEqual([])
+    expect(lignesEnRuptureStockLie(new Map(), [ligne(5, 'a_produire')])).toEqual([])
+    expect(lignesEnRuptureStockLie(etats, [ligne(1.5, 'a_produire')])).toEqual([])
+    expect(lignesEnRuptureStockLie(etats, [{ ...ligne(1.1, 'a_produire'), stockLieConditionnement: 6 }]).length).toBe(1)
+    expect(lignesEnRuptureStockLie(etats, [ligne(5, 'stock')]).length).toBe(1)
+    expect(lignesEnRuptureStockLie(etats, [ligne(5, null)]).length).toBe(1)
+  })
+  it('rend un commandable sans limite, et lit prudemment un mode inconnu', () => {
+    expect(commandableProduitLie(etats, { type: 'oeufs', ref: 'stock', conditionnement: 12 }, 'douzaine', 'a_produire')).toBeNull()
+    expect(commandableProduitLie(etats, { type: 'oeufs', ref: 'stock', conditionnement: 12 }, 'douzaine')).toBe(1)
+    expect(lireModeStockLie('n’importe quoi')).toBe('stock')
+    expect(() => validerModeStockLie('illimite')).toThrow(ErreurStockLie)
+    expect(validerModeStockLie(undefined)).toBe('stock')
   })
 })
 

@@ -17,6 +17,22 @@ export type TypeStockLie = (typeof TYPES_STOCK_LIE)[number]
 export interface StockLie { type: TypeStockLie; ref: string; conditionnement: number }
 export interface ChampsStockLie { stockLieType: string | null; stockLieRef: string | null; stockLieConditionnement: number | null }
 
+/**
+ * Façon de vendre un produit relié :
+ *  - `stock` : indexé sur le stock réel, la vitrine ne propose que ce qui reste ;
+ *  - `a_produire` : commandable sans limite ; le stock sort à la livraison, une
+ *    fois la production faite, et la commande ne retient rien d'ici là.
+ */
+export const MODES_STOCK_LIE = ['stock', 'a_produire'] as const
+export type ModeStockLie = (typeof MODES_STOCK_LIE)[number]
+/** Mode enregistré ; toute valeur absente ou inconnue vaut le stock réel, le plus prudent. */
+export function lireModeStockLie(mode: unknown): ModeStockLie { return mode === 'a_produire' ? 'a_produire' : 'stock' }
+export function validerModeStockLie(mode: unknown): ModeStockLie {
+  if (mode === undefined || mode === null) return 'stock'
+  if (typeof mode !== 'string' || !(MODES_STOCK_LIE as readonly string[]).includes(mode)) throw new ErreurStockLie('Choisissez de vendre le stock réel ou de vendre à produire.', 'stockLieMode')
+  return mode as ModeStockLie
+}
+
 export const CONDITIONNEMENT_MAX = 1_000_000
 const MILLI = 1000
 
@@ -89,10 +105,18 @@ type DbLignes = Pick<Prisma.TransactionClient, 'ligneCommandeBoutique'>
  * lignes reliées de commandes ni annulées ni livrées dont la sortie n'a pas
  * encore eu lieu. Une commande payée restée sans stock continue de retenir sa quantité.
  */
-export async function stockLieRetenu(db: DbLignes, userId: string): Promise<Map<string, number>> {
+export async function stockLieRetenu(db: DbLignes, userId: string, avant?: { id: number; createdAt: Date }): Promise<Map<string, number>> {
   const lignes = await db.ligneCommandeBoutique.findMany({
     where: {
+      // `avant` : seulement les commandes passées avant celle-ci. La retenue
+      // suit l'ordre des commandes : quand le stock ne couvre plus toutes les
+      // retenues, la plus ancienne sort quand même, au lieu que chacune bloque
+      // sur la retenue des autres.
+      ...(avant ? { OR: [{ commande: { createdAt: { lt: avant.createdAt } } }, { commande: { createdAt: avant.createdAt, id: { lt: avant.id } } }] } : {}),
+      AND: [{ OR: [{ stockLieMode: null }, { stockLieMode: 'stock' }] }],
       stockLieType: { not: null },
+      // (Une vente « à produire » promet une production à venir, pas le stock
+      // présent : seules les lignes « stock réel » retiennent.)
       // Une commande livrée ne retient plus rien : si sa sortie n'a pas pu se
       // faire (reprise sans stock), l'écart est au journal, pas dans la vitrine.
       commande: { userId, statut: { notIn: ['annulee', 'livree'] } },

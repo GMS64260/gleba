@@ -16,6 +16,7 @@
  *   `sourcesEnErreur` et l'écran le dit.
  */
 
+import { besoinsAProduire } from "@/lib/boutique/stock-lie-disponible"
 import prisma from "@/lib/prisma"
 import { chargerAccesService } from "@/lib/abonnement/serveur"
 import type { SessionExploitation } from "@/lib/auth-utils"
@@ -353,6 +354,26 @@ export async function composerAujourdhui(
         meta: [e.detail ?? ""].filter(Boolean),
         action: { libelle: "Ouvrir", href: hrefEcheance(e) },
         retardJours: -(e.joursRestants ?? 0),
+        plancheIds: [],
+      })
+    }
+  }
+
+  // ── Boutique : commandes « à produire » attendues de l'élevage ───────
+  if (elevageActif) {
+    const besoins = await lire("besoins de la boutique", () => besoinsAProduire(prisma, userId, maintenant), [])
+    for (const b of besoins) {
+      if ((b.type !== "oeufs" && b.type !== "ruche") || b.manque <= 0) continue
+      const retard = b.retraitLePlusProche ? Math.floor((maintenant.getTime() - new Date(b.retraitLePlusProche).getTime()) / 86_400_000) : 0
+      elements.push({
+        id: `boutique-a-produire:${b.type}:${b.ref}`,
+        source: "elevage",
+        module: "elevage",
+        etat: etatPourRetard(retard, { critiqueApres: 0 }),
+        titre: `À produire pour la boutique : ${b.nom} (${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(b.manque)} ${b.unite})`,
+        meta: [`${b.commandes} commande${b.commandes > 1 ? "s" : ""} à produire`, b.retraitLePlusProche ? `retrait le ${new Date(b.retraitLePlusProche).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}` : ""].filter(Boolean),
+        action: { libelle: "Ouvrir", href: b.type === "oeufs" ? "/elevage?tab=production&sub=oeufs" : "/elevage?tab=production&sub=ruche" },
+        retardJours: retard,
         plancheIds: [],
       })
     }
