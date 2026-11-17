@@ -172,6 +172,30 @@ describe.skipIf(!active)('boutique : produit relié à un stock de l\'élevage',
     expect(await f.oeufsSortis()).toBe(72)
   })
 
+  it('retenue : quand le stock ne couvre plus toutes les retenues, la commande la plus ancienne sort quand même', async () => {
+    const f = await ferme()
+    const p1 = await f.ponte(24)
+    const a = await f.commande([{ produit: f.douzaine, quantite: 1 }])
+    const b = await f.commande([{ produit: f.douzaine, quantite: 1 }])
+    // Une vente directe prend un œuf sans voir les retenues : 23 œufs pour 24 retenus.
+    await prisma.mouvementStockOeuf.create({ data: { userId: f.userId, productionId: p1.id, type: 'vente', quantite: 1 } })
+    await expect(livrerCommandeBoutique(b.id)).rejects.toBeInstanceOf(ErreurCommandeBoutique)
+    await livrerCommandeBoutique(a.id)
+    expect(await f.oeufsSortis()).toBe(13)
+    await expect(livrerCommandeBoutique(b.id)).rejects.toBeInstanceOf(ErreurCommandeBoutique)
+    await f.ponte(1)
+    await livrerCommandeBoutique(b.id)
+    expect(await f.oeufsSortis()).toBe(25)
+  })
+
+  it('reprise : ne relie pas un produit dont le stock n\'a jamais été produit (revente)', async () => {
+    const f = await ferme()
+    await prisma.produitBoutique.updateMany({ where: { userId: f.userId }, data: { stockLieType: null, stockLieRef: null, stockLieConditionnement: null } })
+    const journal = await reprendreStockLieExploitation(prisma, f.userId, true)
+    expect(journal.evenements.filter((e) => e.objet === 'produit' && e.produitId === f.douzaine.id).map((e) => [e.issue, 'raison' in e && e.raison])).toEqual([['non_relie', 'aucune production enregistrée pour ce stock']])
+    expect((await prisma.produitBoutique.findUniqueOrThrow({ where: { id: f.douzaine.id } })).stockLieType).toBeNull()
+  })
+
   it('reprise : relie par règle, sort à la date de la commande, à blanc par défaut, rejouable, sans rien forcer', async () => {
     const f = await ferme()
     const jour = (n: number) => new Date(Date.now() - n * 24 * 3600 * 1000)

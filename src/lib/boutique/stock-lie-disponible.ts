@@ -109,9 +109,12 @@ export async function relierProduitAuStock(tx: Prisma.TransactionClient, userId:
   const ref = type === 'oeufs' ? 'stock' : (brut as { ref?: unknown } | undefined)?.ref
   const stock = (await listerStocksLiables(tx, userId)).find((s) => s.type === type && s.ref === ref)
   // « À produire » se relie avant la première production ; le stock réel exige qu'il existe.
-  if ((!stock || !stock.produit) && (brut as { mode?: unknown }).mode !== 'a_produire') throw new ErreurStockLie('Ce stock n’existe pas encore dans votre exploitation. Enregistrez d’abord une production, ou vendez ce produit « à produire ».')
+  const aProduire = (brut as { mode?: unknown }).mode === 'a_produire' || ((brut as { mode?: unknown }).mode === undefined && produit.stockLieMode === 'a_produire' && !!produit.stockLieType)
+  if ((!stock || !stock.produit) && !aProduire) throw new ErreurStockLie('Ce stock n’existe pas encore dans votre exploitation. Enregistrez d’abord une production, ou vendez ce produit « à produire ».')
   const lie = validerStockLie(brut, stock?.unite ?? (type === 'oeufs' ? 'pièce' : undefined))!
-  const mode = validerModeStockLie((brut as { mode?: unknown }).mode)
+  // Sans mode dans la demande, un produit déjà relié garde le sien.
+  const modeDemande = (brut as { mode?: unknown }).mode
+  const mode = modeDemande === undefined && produit.stockLieType ? lireModeStockLie(produit.stockLieMode) : validerModeStockLie(modeDemande)
   return tx.produitBoutique.update({ where: { id: produitId }, data: { ...champsStockLie(lie), stockLieMode: mode } })
 }
 

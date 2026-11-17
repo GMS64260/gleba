@@ -208,9 +208,16 @@ async function sortirStockLieCommande(
     articleStockType: lie.type, articleStockId: lie.ref, description: ligne.nom, quantite: 0, unite: '',
   })))
   const catalogue = new Map((await chargerCatalogueStock(commande.userId, t, date)).map((a) => [`${a.type}:${a.id}`, a]))
-  // Le stock retenu par les AUTRES commandes en cours n'est pas disponible :
-  // cette commande ne compte que sur sa propre retenue (lignes « stock réel »).
-  const retenu = await stockLieRetenu(t, commande.userId)
+  // Stock retenu que cette commande ne peut pas prendre :
+  //  - ligne « stock réel » : la retenue des commandes passées AVANT elle. La
+  //    retenue suit l'ordre des commandes ; si une vente directe ou un œuf
+  //    périmé a entamé le stock, la plus ancienne sort quand même ;
+  //  - ligne « à produire » : la retenue de toutes les autres commandes, elle
+  //    ne retient rien elle-même et attend sa production.
+  const [retenuAvant, retenuTotal] = await Promise.all([
+    stockLieRetenu(t, commande.userId, { id: commande.id, createdAt: commande.createdAt }),
+    stockLieRetenu(t, commande.userId),
+  ])
   const propre = new Map<string, number>()
   if (!['annulee', 'livree'].includes(commande.statut)) {
     for (const { ligne, lie } of restantes) {
@@ -225,7 +232,7 @@ async function sortirStockLieCommande(
     const cle = cleStockLie(lie)
     const article = catalogue.get(cle)
     const demande = quantiteStockLie(ligne.quantite, lie.conditionnement)
-    const retenuAutres = Math.max(0, (retenu.get(cle) ?? 0) - (propre.get(cle) ?? 0))
+    const retenuAutres = lireModeStockLie(ligne.stockLieMode) === 'stock' ? retenuAvant.get(cle) ?? 0 : Math.max(0, (retenuTotal.get(cle) ?? 0) - (propre.get(cle) ?? 0))
     const disponible = Math.max(0, Math.round(((article?.disponible ?? 0) - retenuAutres - (consomme.get(cle) ?? 0)) * 1000) / 1000)
     if (!article || demande > disponible + 1e-6) {
       manquantes.push({ ligneId: ligne.id, nom: ligne.nom, demande, disponible, unite: article?.unite ?? null })
@@ -235,7 +242,7 @@ async function sortirStockLieCommande(
     aSortir.push({ articleStockType: lie.type, articleStockId: lie.ref, id: ligne.id, description: ligne.nom, quantite: demande, unite: article.unite })
   }
   if (mode === 'strict' && manquantes.length) {
-    const detail = manquantes.map((m) => `${m.nom} : ${m.demande} ${m.unite ?? ''} à sortir, ${m.disponible} en stock`.replace('  ', ' ')).join(' ; ')
+    const detail = manquantes.map((m) => `${m.nom} : ${m.demande} ${m.unite ?? ''} à sortir, ${m.disponible} disponible(s) une fois servi ce que d'autres commandes ont retenu`.replace('  ', ' ')).join(' ; ')
     throw new ErreurCommandeBoutique(
       `Stock insuffisant pour livrer cette commande (${detail}). Enregistrez la production manquante ou corrigez le stock, puis livrez à nouveau.`,
     )

@@ -105,12 +105,18 @@ type DbLignes = Pick<Prisma.TransactionClient, 'ligneCommandeBoutique'>
  * lignes reliées de commandes ni annulées ni livrées dont la sortie n'a pas
  * encore eu lieu. Une commande payée restée sans stock continue de retenir sa quantité.
  */
-export async function stockLieRetenu(db: DbLignes, userId: string): Promise<Map<string, number>> {
+export async function stockLieRetenu(db: DbLignes, userId: string, avant?: { id: number; createdAt: Date }): Promise<Map<string, number>> {
   const lignes = await db.ligneCommandeBoutique.findMany({
     where: {
+      // `avant` : seulement les commandes passées avant celle-ci. La retenue
+      // suit l'ordre des commandes : quand le stock ne couvre plus toutes les
+      // retenues, la plus ancienne sort quand même, au lieu que chacune bloque
+      // sur la retenue des autres.
+      ...(avant ? { OR: [{ commande: { createdAt: { lt: avant.createdAt } } }, { commande: { createdAt: avant.createdAt, id: { lt: avant.id } } }] } : {}),
+      AND: [{ OR: [{ stockLieMode: null }, { stockLieMode: 'stock' }] }],
       stockLieType: { not: null },
-      // Une vente « à produire » promet une production à venir, pas le stock présent.
-      OR: [{ stockLieMode: null }, { stockLieMode: 'stock' }],
+      // (Une vente « à produire » promet une production à venir, pas le stock
+      // présent : seules les lignes « stock réel » retiennent.)
       // Une commande livrée ne retient plus rien : si sa sortie n'a pas pu se
       // faire (reprise sans stock), l'écart est au journal, pas dans la vitrine.
       commande: { userId, statut: { notIn: ['annulee', 'livree'] } },
