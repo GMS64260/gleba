@@ -1,7 +1,8 @@
 import { date102Facture } from "@/lib/facture-regles"
 import { ventilerTvaParTaux } from "@/lib/facture-tva-par-taux"
 import type { DonneesFactureStructuree } from "@/lib/facture-structuree"
-import { UblValidationError, codePaysXml as codePays, codeUnite, echapperXml as xml, montantXml as montant, prixUnitaireXml, quantiteXml as quantite, validerFactureStructuree } from "@/lib/facture-ubl"
+import { UblValidationError, codePaysXml as codePays, echapperXml as xml, montantXml as montant, prixUnitaireXml, quantiteXml as quantite, validerFactureStructuree } from "@/lib/facture-ubl"
+import { codeUnite, descriptionUniteFacture } from "@/lib/comptabilite/unites-facture"
 
 /**
  * Factur-X, profil EN 16931 : le XML CII (UN/CEFACT Cross Industry Invoice
@@ -76,10 +77,13 @@ export function buildCiiInvoice(donnees: DonneesFactureStructuree): string {
   const lignes = donnees.lines
     .map((l) => {
       const cat = categorieTva(l.vatRate, donnees.exonerationTva)
+      const description = descriptionUniteFacture(l.unit)
       return (
         `<ram:IncludedSupplyChainTradeLineItem>` +
         `<ram:AssociatedDocumentLineDocument><ram:LineID>${xml(l.id)}</ram:LineID></ram:AssociatedDocumentLineDocument>` +
-        `<ram:SpecifiedTradeProduct><ram:Name>${xml(l.description)}</ram:Name></ram:SpecifiedTradeProduct>` +
+        `<ram:SpecifiedTradeProduct><ram:Name>${xml(l.description)}</ram:Name>` +
+        (description ? `<ram:Description>${xml(description)}</ram:Description>` : "") +
+        `</ram:SpecifiedTradeProduct>` +
         `<ram:SpecifiedLineTradeAgreement><ram:NetPriceProductTradePrice><ram:ChargeAmount>${prixUnitaireXml(l.unitPrice)}</ram:ChargeAmount></ram:NetPriceProductTradePrice></ram:SpecifiedLineTradeAgreement>` +
         `<ram:SpecifiedLineTradeDelivery><ram:BilledQuantity unitCode="${codeUnite(l.unit)}">${quantite(l.quantity)}</ram:BilledQuantity></ram:SpecifiedLineTradeDelivery>` +
         `<ram:SpecifiedLineTradeSettlement>` +

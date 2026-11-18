@@ -1,6 +1,7 @@
 import { CADRES_FACTURATION_GLEBA, dateIsoFacture } from '@/lib/facture-regles'
 import type { DonneesFactureStructuree } from '@/lib/facture-structuree'
 import { ventilerTvaParTaux } from '@/lib/facture-tva-par-taux'
+import { codeUnite, descriptionUniteFacture } from '@/lib/comptabilite/unites-facture'
 
 export interface UblAddress {
   street?: string | null
@@ -46,12 +47,6 @@ export interface UblInvoiceData {
   buyerReference?: string | null
 }
 
-const UNIT_CODES: Record<string, string> = {
-  unite: 'C62', unité: 'C62', piece: 'C62', pièce: 'C62',
-  kg: 'KGM', g: 'GRM', l: 'LTR', litre: 'LTR', litres: 'LTR',
-  h: 'HUR', heure: 'HUR', heures: 'HUR', lot: 'SET',
-}
-
 /** Taux de TVA admis par la norme XP Z12-012 (BR-FR-16), métropole, Corse et DROM compris. */
 const TAUX_TVA_ADMIS = [0, 0.9, 1.05, 1.75, 2.1, 5.5, 7, 8.5, 9.2, 9.6, 10, 13, 19.6, 20, 20.6]
 
@@ -81,10 +76,6 @@ function quantity(value: number): string {
 function unitPrice(value: number): string {
   const six = (Math.round(value * 1e6) / 1e6).toFixed(6)
   return six.replace(/0+$/, '').replace(/\.(\d)$/, '.$10').replace(/\.$/, '.00')
-}
-
-function unitCode(value?: string | null): string {
-  return UNIT_CODES[(value || '').trim().toLocaleLowerCase('fr-FR')] || 'C62'
 }
 
 function countryCode(value?: string | null): string {
@@ -155,7 +146,7 @@ export function validerFactureStructuree(d: DonneesFactureStructuree): string[] 
     if (!Number.isFinite(line.netAmount) || !Number.isFinite(line.unitPrice) || !Number.isFinite(line.vatRate)) issues.push(`Montant ou TVA invalide ligne ${n}`)
     else if (line.unitPrice < 0) issues.push(`Prix unitaire négatif ligne ${n} (BR-27 ; une ligne offerte se saisit à 0)`)
     if (!TAUX_TVA_ADMIS.includes(line.vatRate)) issues.push(`Taux de TVA non admis ligne ${n} (${line.vatRate} %)`)
-    if (!UNIT_CODES[(line.unit || '').trim().toLocaleLowerCase('fr-FR')]) issues.push(`Unité non reconnue ligne ${n}`)
+    if (!codeUnite(line.unit)) issues.push(`Unité non reconnue ligne ${n}`)
   }
   const round = (value: number) => Math.round(value * 100) / 100
   const net = round(d.lines.reduce((sum, line) => sum + line.netAmount, 0))
@@ -246,7 +237,11 @@ export function buildUblInvoice(d: DonneesFactureStructuree): string {
     .map(({ taux: rate, base, tva }) => `<cac:TaxSubtotal><cbc:TaxableAmount currencyID="${xml(currency)}">${amount(base)}</cbc:TaxableAmount><cbc:TaxAmount currencyID="${xml(currency)}">${amount(tva)}</cbc:TaxAmount><cac:TaxCategory>${taxCategoryXml(rate, d.exonerationTva, true)}</cac:TaxCategory></cac:TaxSubtotal>`)
     .join('')
   const lines = d.lines
-    .map((line) => `<cac:${ligne}><cbc:ID>${xml(line.id)}</cbc:ID><cbc:${quantite} unitCode="${unitCode(line.unit)}">${quantity(line.quantity)}</cbc:${quantite}><cbc:LineExtensionAmount currencyID="${xml(currency)}">${amount(line.netAmount)}</cbc:LineExtensionAmount><cac:Item><cbc:Name>${xml(line.description)}</cbc:Name><cac:ClassifiedTaxCategory>${taxCategoryXml(line.vatRate, d.exonerationTva, false)}</cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="${xml(currency)}">${unitPrice(line.unitPrice)}</cbc:PriceAmount></cac:Price></cac:${ligne}>`)
+    .map((line) => {
+      const description = descriptionUniteFacture(line.unit)
+      const unite = description ? `<cbc:Description>${xml(description)}</cbc:Description>` : ''
+      return `<cac:${ligne}><cbc:ID>${xml(line.id)}</cbc:ID><cbc:${quantite} unitCode="${codeUnite(line.unit)}">${quantity(line.quantity)}</cbc:${quantite}><cbc:LineExtensionAmount currencyID="${xml(currency)}">${amount(line.netAmount)}</cbc:LineExtensionAmount><cac:Item>${unite}<cbc:Name>${xml(line.description)}</cbc:Name><cac:ClassifiedTaxCategory>${taxCategoryXml(line.vatRate, d.exonerationTva, false)}</cac:ClassifiedTaxCategory></cac:Item><cac:Price><cbc:PriceAmount currencyID="${xml(currency)}">${unitPrice(line.unitPrice)}</cbc:PriceAmount></cac:Price></cac:${ligne}>`
+    })
     .join('')
 
   // Notes (BG-1) : objet libre, conditions et notes saisies (BT-22, ticket
@@ -302,7 +297,7 @@ export function buildUblInvoice(d: DonneesFactureStructuree): string {
 
 /** Partagés avec le générateur Factur-X (CII) : même échappement, mêmes formats. */
 export const echapperXml = xml
-export const codeUnite = unitCode
+export { codeUnite } from '@/lib/comptabilite/unites-facture'
 export const montantXml = amount
 export const quantiteXml = quantity
 export const prixUnitaireXml = unitPrice

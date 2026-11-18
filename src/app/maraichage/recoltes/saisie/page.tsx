@@ -53,8 +53,8 @@ interface Culture {
   totalRecolteParUnite?: Partial<Record<UniteQuantite, number>>
 }
 
-/** Cultures en cours demandées en une page ; au-delà, la liste le dit. */
-const TAILLE_LISTE_CULTURES = 500
+/** Une seule page à la fois ; les suivantes restent accessibles au formulaire. */
+const TAILLE_PAGE_CULTURES = 50
 /** Saisies de la session affichées ; le total, lui, les compte toutes. */
 const NB_SAISIES_AFFICHEES = 5
 
@@ -91,11 +91,15 @@ function libelleCulture(culture: Culture): string {
 export default function SaisieRecoltePage() {
   const { toast } = useToast()
   const [cultures, setCultures] = React.useState<Culture[]>([])
-  // Échec de chargement et liste incomplète sont dits : un sélecteur vide
-  // laissait croire qu'il n'y avait rien à récolter.
   const [etatCultures, setEtatCultures] = React.useState<"chargement" | "ok" | "erreur">("chargement")
-  const [culturesNonListees, setCulturesNonListees] = React.useState(0)
-  const [selectedCulture, setSelectedCulture] = React.useState<string>("")
+  const [rechercheCultures, setRechercheCultures] = React.useState("")
+  const [pageCultures, setPageCultures] = React.useState(1)
+  const [totalPagesCultures, setTotalPagesCultures] = React.useState(0)
+  const [essaiCultures, setEssaiCultures] = React.useState(0)
+  // Garder l'objet sélectionné indépendamment des résultats paginés : son id,
+  // son unité et ses données restent disponibles pour le POST de récolte.
+  const [selectedCultureData, setSelectedCultureData] = React.useState<Culture | null>(null)
+  const selectedCulture = selectedCultureData?.id.toString() ?? ""
   const [quantite, setQuantite] = React.useState<string>("")
   // Date par défaut = jour du navigateur, vide au prérendu du build et à
   // l'hydratation : une valeur initiale calculée au rendu y figeait le jour du
@@ -120,18 +124,31 @@ export default function SaisieRecoltePage() {
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [recentRecoltes, setRecentRecoltes] = React.useState<{id: number | null; especeId: string; especeNom?: string; cultureId: number; quantite: number; unite: UniteQuantite}[]>([])
 
-  // Charger les cultures actives (en cours de recolte ou plantées)
+  // Recherche et pagination côté serveur. La temporisation regroupe la frappe ;
+  // une nouvelle demande annule la précédente, y compris au démontage.
   React.useEffect(() => {
-    // `enCours=1` : les cultures terminées ne prennent pas la place de cultures
-    // plus anciennes encore en récolte (la page est triée par identifiant).
-    fetch(`/api/cultures?pageSize=${TAILLE_LISTE_CULTURES}&enCours=1`)
+    const controller = new AbortController()
+    setEtatCultures("chargement")
+    setCultures([])
+    setTotalPagesCultures(0)
+    const params = new URLSearchParams({
+      enCours: "1",
+      page: String(pageCultures),
+      pageSize: String(TAILLE_PAGE_CULTURES),
+      search: rechercheCultures.trim(),
+    })
+    const timer = setTimeout(() => {
+      fetch(`/api/cultures?${params}`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error("Chargement des cultures impossible")
         return r.json()
       })
       .then((data) => {
+        // Certains transports finissent malgré l'annulation : une réponse
+        // périmée ne doit remplacer ni les résultats ni l'état de chargement.
+        if (controller.signal.aborted) return
         // Filtrer pour garder les cultures actives (non terminées)
-        const actives = (data.data || []).filter(
+        const actives = [...new Map<number, Culture>((data.data || []).map((c: Culture) => [c.id, c])).values()].filter(
           (c: Culture) => !c.terminee
         )
         // Trier : prêtes à récolter en premier, puis par date de recolte
@@ -149,16 +166,20 @@ export default function SaisieRecoltePage() {
           return 0
         })
         setCultures(actives)
-        setCulturesNonListees(Math.max(0, (Number(data.total) || 0) - (data.data || []).length))
+        setTotalPagesCultures(data.totalPages || 0)
         setEtatCultures("ok")
       })
       .catch(() => {
+        if (controller.signal.aborted) return
         setCultures([])
         setEtatCultures("erreur")
       })
-  }, [])
-
-  const selectedCultureData = cultures.find((c) => c.id.toString() === selectedCulture)
+    }, rechercheCultures.trim() ? 300 : 0)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [pageCultures, rechercheCultures, essaiCultures])
 
   /**
    * Unité de la culture sélectionnée — celle du rendement effectif de l'espèce
@@ -274,7 +295,7 @@ export default function SaisieRecoltePage() {
       return
     }
 
-    const cultureData = cultures.find((c) => c.id.toString() === selectedCulture)
+    const cultureData = selectedCultureData
     if (!cultureData) return
 
     setIsSubmitting(true)
@@ -423,7 +444,25 @@ export default function SaisieRecoltePage() {
 
               {/* Culture */}
               <div>
-                <label className="text-sm font-medium">Culture *</label>
+                <label className="text-sm font-medium" htmlFor="saisie-recolte-culture">Culture *</label>
+                <div className="mt-2">
+                  <label className="text-sm" htmlFor="saisie-recolte-recherche">Rechercher une culture</label>
+                  <Input
+                    id="saisie-recolte-recherche"
+                    type="search"
+                    value={rechercheCultures}
+                    onChange={(event) => {
+                      setRechercheCultures(event.target.value)
+                      setPageCultures(1)
+                    }}
+                    onKeyDown={(event) => {
+                      // Entrée dans la recherche ne doit pas créer de récolte.
+                      if (event.key === "Enter") event.preventDefault()
+                    }}
+                    placeholder="Espèce, variété ou planche"
+                    className="mt-1"
+                  />
+                </div>
                 {(() => {
                   // Un select natif garde une sélection fiable, y compris
                   // avec une longue liste et les navigateurs mobiles. Le
@@ -436,11 +475,22 @@ export default function SaisieRecoltePage() {
                   const autres = cultures.filter((c) => !estPreteARecolter(c, reference))
                   return (
                     <select
+                      id="saisie-recolte-culture"
                       value={selectedCulture}
-                      onChange={(event) => setSelectedCulture(event.target.value)}
+                      onChange={(event) => {
+                        const id = event.target.value
+                        setSelectedCultureData(cultures.find((c) => c.id.toString() === id) ??
+                          (id === selectedCulture ? selectedCultureData : null))
+                      }}
+                      aria-busy={etatCultures === "chargement"}
                       className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                     >
                       <option value="">Sélectionner une culture</option>
+                      {selectedCultureData && !cultures.some((c) => c.id === selectedCultureData.id) && (
+                        <optgroup label="Sélection conservée">
+                          <option value={selectedCulture}>{libelleCulture(selectedCultureData)}</option>
+                        </optgroup>
+                      )}
                       {pretes.length > 0 && (
                         <optgroup label={`Prêtes à récolter (${pretes.length})`}>
                           {pretes.map((culture) => (
@@ -462,21 +512,41 @@ export default function SaisieRecoltePage() {
                     </select>
                   )
                 })()}
-                {etatCultures === "erreur" && (
-                  <p role="alert" className="mt-1 text-sm text-red-700">
-                    Les cultures n&apos;ont pas pu être chargées. Rechargez la page pour réessayer.
-                  </p>
-                )}
-                {etatCultures === "ok" && cultures.length === 0 && (
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Aucune culture en cours. Créez une culture avant de saisir sa récolte.
-                  </p>
-                )}
-                {culturesNonListees > 0 && (
-                  <p className="mt-1 text-sm text-amber-700">
-                    Liste limitée aux {TAILLE_LISTE_CULTURES} cultures en cours les plus récentes : {culturesNonListees} plus ancienne{culturesNonListees > 1 ? "s" : ""} n&apos;y figure{culturesNonListees > 1 ? "nt" : ""} pas.
-                  </p>
-                )}
+                <div aria-live="polite">
+                  {etatCultures === "chargement" && (
+                    <p role="status" className="mt-1 text-sm text-muted-foreground">Chargement des cultures…</p>
+                  )}
+                  {etatCultures === "erreur" && (
+                    <div className="mt-1 space-y-2">
+                      <p role="alert" className="text-sm text-red-700">
+                        Les cultures n&apos;ont pas pu être chargées.
+                      </p>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setEssaiCultures((essai) => essai + 1)}>
+                        Réessayer
+                      </Button>
+                    </div>
+                  )}
+                  {etatCultures === "ok" && cultures.length === 0 && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {rechercheCultures.trim()
+                        ? "Aucune culture en cours ne correspond à cette recherche. Modifiez ou effacez la recherche."
+                        : "Aucune culture en cours. Créez une culture avant de saisir sa récolte."}
+                    </p>
+                  )}
+                  {etatCultures === "ok" && totalPagesCultures > 1 && (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <Button type="button" variant="outline" size="sm" aria-label="Page précédente"
+                        disabled={pageCultures <= 1} onClick={() => setPageCultures((page) => page - 1)}>
+                        Précédente
+                      </Button>
+                      <p className="text-xs text-muted-foreground">Page {pageCultures} sur {totalPagesCultures}</p>
+                      <Button type="button" variant="outline" size="sm" aria-label="Page suivante"
+                        disabled={pageCultures >= totalPagesCultures} onClick={() => setPageCultures((page) => page + 1)}>
+                        Suivante
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 {selectedCultureData && (
                   <div className="mt-1 space-y-1">
                     <p className="text-sm text-muted-foreground">
