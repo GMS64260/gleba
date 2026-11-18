@@ -18,6 +18,7 @@ import { chargerAttentesConsolidees } from '@/lib/elevage/attentes-query'
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
 import { sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
+import { classerEcheanceSoin, jourCivil, joursAvantEcheance } from '@/lib/elevage/echeances-soins'
 
 export type GraviteEcheance = 'info' | 'attention' | 'urgent'
 export type EcheanceElevage = {
@@ -98,6 +99,7 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
     ? { OR: [{ animal: { especeAnimale: { filiere } } }, { lot: { especeAnimale: { filiere } } }] }
     : {}
   const now = options.maintenant ?? new Date()
+  const aujourdhui = jourCivil(now) ?? ''
   const horizon = new Date(now.getTime() + horizonJours * 86_400_000)
 
   const [gestantes, enAttente, attentesConsolidees, soinsPlanifies, stocksBas, medicaments, prophylaxies, tachesTerrain, echeancesAdmin, fenetresMiseBas] = await Promise.all([
@@ -353,9 +355,11 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
 
   for (const s of soinsPlanifies) {
     if (!s.datePrevue) continue
+    // Même jour civil que les comptes du dashboard et la grille du calendrier.
+    const jr = joursAvantEcheance(s.datePrevue, aujourdhui)
+    if (jr == null) continue
     const cible = s.animal ? nomAnimal(s.animal) : s.lot ? (s.lot.nom || `Lot #${s.lot.id}`) : '—'
-    const jr = jours(now, s.datePrevue)
-    const retard = jr < 0
+    const retard = classerEcheanceSoin(s.datePrevue, aujourdhui, horizonJours) === 'en_retard'
     echeances.push({
       id: `soin-${s.id}`,
       kind: retard ? 'soin_retard' : 'soin_planifie',
@@ -374,12 +378,14 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
   const soinsDejaListes = new Set(soinsPlanifies.filter((s) => s.datePrevue).map((s) => s.id))
   for (const injection of injectionsPlanifiees) {
     if (injection.nombreInjections <= 1 && soinsDejaListes.has(injection.soinId)) continue
+    const jr = joursAvantEcheance(injection.datePrevue, aujourdhui)
+    if (jr == null) continue
+    const retard = classerEcheanceSoin(injection.datePrevue, aujourdhui, horizonJours) === 'en_retard'
     const cible = injection.animalId
       ? (injection.animalNom && injection.animalIdentifiant
           ? `${injection.animalNom} · ${injection.animalIdentifiant}`
           : injection.animalIdentifiant || injection.animalNom || `#${injection.animalId}`)
       : injection.lotNom || (injection.lotId ? `Lot #${injection.lotId}` : 'Troupeau')
-    const jr = jours(now, injection.datePrevue)
     const details = [
       injection.produit || injection.type,
       injection.dose ? `dose ${injection.dose}` : null,
@@ -396,12 +402,12 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
     ].filter(Boolean)
     echeances.push({
       id: `injection-${injection.id}`,
-      kind: jr < 0 ? 'soin_retard' : 'soin_planifie',
+      kind: retard ? 'soin_retard' : 'soin_planifie',
       date: injection.datePrevue.toISOString(),
       joursRestants: jr,
       titre: `Injection ${injection.numero}/${injection.nombreInjections} — ${cible}`,
       detail: details.join(' · '),
-      gravite: jr < 0 ? 'urgent' : jr <= 1 ? 'attention' : 'info',
+      gravite: retard ? 'urgent' : jr <= 1 ? 'attention' : 'info',
       action: { soinId: injection.soinId, injectionId: injection.id },
     })
   }

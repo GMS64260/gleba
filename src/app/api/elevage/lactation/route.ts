@@ -3,14 +3,14 @@
  * GET /api/elevage/lactation?animalId=42
  *
  * Stratégie : dernière mise-bas connue = origine du DIM (Days In Milk).
- * Si pas de naissance enregistrée, on retombe sur la première collecte du
- * cycle en cours (heuristique de fallback).
+ * Sans mise-bas, la première collecte disponible dans les 305 derniers jours
+ * donne une origine estimée, sans suggestion de tarissement.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { courbeLactation, productionRecente, dim } from '@/lib/lait'
+import { projeterLactation } from '@/lib/elevage/lactation-origine'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -42,41 +42,12 @@ export async function GET(request: NextRequest) {
     select: { date: true, quantiteLitres: true },
   })
 
-  if (!derniereMiseBas && collectes.length === 0) {
-    return NextResponse.json({
-      animal: { id: animal.id, nom: animal.nom, identifiant: animal.identifiant },
-      courbe: [],
-      dim: null,
-      lactationLongue,
-      suggererTarissement: false,
-    })
-  }
-
-  const dateOrigine = derniereMiseBas ?? collectes[0].date
-  const courbe = courbeLactation(
-    collectes.map((c) => ({ date: c.date, quantiteLitres: Number(c.quantiteLitres) })),
-    dateOrigine
-  )
-  const dimAct = dim(dateOrigine)
-
-  // Suggestion de tarissement : plus de 270 jours de lactation, ou production
-  // récente MESURÉE sous 0,5 L/j. Sans assez de traites individuelles récentes
-  // (contrôle mensuel, traite saisie par lot), on ne conclut pas à une
-  // production basse.
-  const recente = productionRecente(collectes.map((c) => ({ date: c.date, quantiteLitres: Number(c.quantiteLitres) })))
-  const moy7 = recente.moyenne
-  // PROMPT 24 — pas de suggestion de tarissement si conduite en lactation longue
-  const suggererTarissement = !lactationLongue && (dimAct > 270 || (dimAct > 60 && moy7 !== null && moy7 < 0.5))
-
   return NextResponse.json({
     animal: { id: animal.id, nom: animal.nom, identifiant: animal.identifiant },
-    dateOrigine,
-    dim: dimAct,
-    courbe,
-    // null : trop peu de jours mesurés pour une moyenne.
-    moyenne7j: moy7,
-    joursMesures: recente.joursMesures,
-    lactationLongue,
-    suggererTarissement,
+    ...projeterLactation({
+      derniereMiseBas,
+      collectes: collectes.map((c) => ({ date: c.date, quantiteLitres: Number(c.quantiteLitres) })),
+      lactationLongue,
+    }),
   })
 }
