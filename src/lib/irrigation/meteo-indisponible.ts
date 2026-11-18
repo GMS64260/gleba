@@ -35,3 +35,23 @@ export function bandeauMeteoIndisponible(reponse: {
 export function afficheMesuresMeteo(reco: { sansMeteo?: CauseSansMeteo | null }): boolean {
   return !reco.sansMeteo
 }
+
+/** Pourquoi le bloc nappe du conseiller n'a rien à montrer. */
+export type NappeIndisponible = "aucune-station" | "panne"
+
+/**
+ * Lecture d'un échec de `/api/meteo/nappe` : 404 = aucune station exploitable
+ * autour de la parcelle ; tout le reste (panne Hub'Eau, erreur serveur,
+ * réseau : `statut` null) est une indisponibilité passagère. Sans cela, seuls
+ * 404 et 503 étaient dits, les autres échecs effaçaient le bloc sans un mot.
+ */
+export function etatNappeIndisponible(statut: number | null): NappeIndisponible {
+  return statut === 404 ? "aucune-station" : "panne"
+}
+
+/** Le rayon est celui de la recherche (`fetchNappeInfo`, `src/lib/hubeau.ts`) : 100 km. */
+export function phraseNappeIndisponible(etat: NappeIndisponible): string {
+  return etat === "aucune-station"
+    ? "Nappe : aucune station Hub'Eau avec des relevés récents dans un rayon de 100 km."
+    : "Nappe : niveau momentanément indisponible (service Hub'Eau)."
+}

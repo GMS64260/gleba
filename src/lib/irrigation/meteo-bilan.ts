@@ -9,7 +9,8 @@
  * `fetchOpenMeteoHistory` remplace alors les valeurs absentes par 0 ; un jour
  * d'archive à pluie ET ET0 nulles est donc tenu pour absent et comblé par la
  * prévision `past_days`, jamais compté comme un jour sans pluie ni
- * évaporation.
+ * évaporation. De même un jour dont la pluie seule n'est pas encore publiée
+ * (`precipitationInconnue`) : son 0 mm n'est pas une mesure.
  */
 import { getOrFetch } from '@/lib/cache-helper'
 import { fetchOpenMeteoHistory, type MeteoJournaliere } from '@/lib/meteo'
@@ -139,9 +140,16 @@ export async function chargerMeteoBilan(lat: number, lng: number, maintenant: Da
       .map((j) => [j.date, { date: j.date, pluie: j.precipitation, et0: j.et0 }]),
   )
 
+  // Pluie pas encore publiée par l'archive : la prévision du jour passe
+  // devant ; faute de prévision, l'archive reste (ET0 connue).
+  const pluieNonPubliee = new Set(archive.filter((j) => j.precipitationInconnue).map((j) => j.date))
+
   const historique: JourMeteoBilan[] = []
   for (let date = debut; date <= hier; date = ajouterJours(date, 1)) {
-    const jour = parArchive.get(date) ?? parPrevision.get(date)
+    const jour =
+      (pluieNonPubliee.has(date) ? parPrevision.get(date) : undefined) ??
+      parArchive.get(date) ??
+      parPrevision.get(date)
     if (jour) historique.push(jour)
   }
 
@@ -187,7 +195,13 @@ export async function aligner7DerniersJours(
     .slice(-7)
     .map((j) => {
       const archive = parDate.get(j.date)
-      return archive ? { ...archive, precipitation: j.pluie, et0: j.et0 } : null
+      if (!archive) return null
+      // La pluie est désormais celle du bilan (prévision des jours passés
+      // quand l'archive ne l'a pas publiée) : elle n'est plus inconnue, sinon
+      // `resumerPluie` l'écarte du cumul que l'écran affiche à côté.
+      const jour: MeteoJournaliere = { ...archive, precipitation: j.pluie, et0: j.et0 }
+      delete jour.precipitationInconnue
+      return jour
     })
     .filter((j): j is MeteoJournaliere => j !== null)
   return { historique7j, pluie7j: Math.round(pluieSeptDerniersJours(meteo) * 10) / 10 }

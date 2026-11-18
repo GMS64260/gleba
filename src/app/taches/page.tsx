@@ -482,13 +482,13 @@ function TachesContent() {
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between mb-2">
-            <Link href="/">
-              <Button variant="ghost" size="sm" className="h-8 px-2">
+            <Button asChild variant="ghost" size="sm" className="h-8 px-2">
+              <Link href="/" aria-label="Revenir à l'accueil" title="Revenir à l'accueil">
                 <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             <h1 className="text-lg font-bold">Tâches</h1>
-            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => fetchData()}>
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => fetchData()} aria-label="Actualiser" title="Actualiser">
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
@@ -500,6 +500,8 @@ function TachesContent() {
               size="sm"
               onClick={() => setWeekOffset(o => o - 1)}
               className="h-8 px-2"
+              aria-label="Semaine précédente"
+              title="Semaine précédente"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -524,6 +526,8 @@ function TachesContent() {
               size="sm"
               onClick={() => setWeekOffset(o => o + 1)}
               className="h-8 px-2"
+              aria-label="Semaine suivante"
+              title="Semaine suivante"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

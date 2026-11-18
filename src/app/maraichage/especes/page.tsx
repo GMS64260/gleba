@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { useExploitation } from "@/hooks/use-exploitation"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -267,6 +268,8 @@ function EspecesPageContent() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId ?? null
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
@@ -430,7 +433,8 @@ function EspecesPageContent() {
     (e) => e.nom ?? e.id,
     currentUserId,
     referentielActions,
-    "ESPECE"
+    "ESPECE",
+    proprietaireId
   )
 
   // Colonne « Avis » communautaires (décision #4) : note ★ + nb d'avis, clic → modale de notation.

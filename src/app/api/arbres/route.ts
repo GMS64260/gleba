@@ -1,3 +1,6 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
+import { verifierSuiviIndividuel } from '@/lib/verger/suivi-individuel'
+import { ErreurVerger } from '@/lib/verger/erreur'
 /**
  * API Routes pour les Arbres et arbustes
  * GET /api/arbres - Liste des arbres
@@ -22,6 +25,7 @@ import { normaliserLibelle } from "@/lib/libelle-libre"
 import { parcelleParDefautArbre, resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
 import { chargerPeriodesRecolteVarietes } from "@/lib/verger/saison-recolte-arbre"
 import { porteGreffeAccessible } from "@/lib/verger/porte-greffe-accessible"
+import { chargerPorteGreffesArbres } from "@/lib/verger/porte-greffe-lecture"
 import { normaliserDateApi } from "@/lib/validations/date-api"
 import { estTypeArbre, messageTypeArbreInvalide } from "@/lib/verger/types-arbre"
 
@@ -61,22 +65,19 @@ export async function GET(request: NextRequest) {
         where.zoneId = zoneId
       }
     }
-    if (etat && etat !== 'all') where.etat = etat
+    // L'inventaire complet reste accessible explicitement pour l'historique.
+    if (!etat || etat === 'vivant') where.AND = [filtreArbresVivants(session!.user.id)]
+    else if (etat !== 'all') where.etat = etat
     if (productif === 'true') where.productif = true
     if (productif === 'false') where.productif = false
 
-    const arbres = await prisma.arbre.findMany({
+    const arbres = await chargerPorteGreffesArbres(prisma, session!.user.id, await prisma.arbre.findMany({
       where,
       include: {
         zone: { select: { id: true, nom: true } },
         // Retour utilisateur 2026-07-27 — sans la parcelle dans la liste,
         // impossible de repérer les arbres orphelins à rattacher.
         parcelleGeo: { select: { id: true, nom: true } },
-        // QA 2026-07-30 — La liste affichait « - » en Porte-greffe pour 35
-        // arbres : depuis le passage au référentiel, la création n'écrit que
-        // `porteGreffeId` et la colonne texte historique reste vide. La
-        // relation était déclarée au schéma mais jointe nulle part.
-        porteGreffeRef: { select: { id: true, nom: true, vigueur: true } },
         _count: {
           select: {
             recoltesArbres: true,
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: { nom: "asc" },
-    })
+    }))
 
     // Étalement adulte de l'espèce (repli du cercle pointillé quand
     // envergureAdulte n'est pas saisie sur l'arbre). Le catalogue officiel a
@@ -254,26 +255,9 @@ export async function POST(request: NextRequest) {
       parcelleGeoId = parcelleParDefautArbre(parcelles)
       parcelleAttribueeAuto = parcelleGeoId != null
     }
-    if (
-      parcelleGeoId &&
-      body.espece &&
-      await prisma.lotArbres.findFirst({
-        where: {
-          userId: session!.user.id,
-          parcelleGeoId,
-          espece: { in: [String(body.espece).trim(), especeResolue.espece], mode: "insensitive" },
-        },
-        select: { id: true },
-      })
-    ) {
-      return NextResponse.json(
-        { error: "Cette espèce est déjà suivie en lot agrégé sur la parcelle ; choisissez un seul mode de suivi" },
-        { status: 409 }
-      )
-    }
-
     const { arbre, calendrierGenere } = await prisma.$transaction(async tx => {
       await verrouillerStockCommercial(tx, session!.user.id)
+      await verifierSuiviIndividuel(tx, session!.user.id, parcelleGeoId, [String(body.espece).trim(), especeResolue.espece])
       const arbre = await tx.arbre.create({
       data: {
         userId: session!.user.id,
@@ -396,7 +380,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (err) {
-    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
+    if (err instanceof ErreurVerger || err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("POST /api/arbres error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la création de l'arbre" },

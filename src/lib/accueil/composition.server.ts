@@ -1,3 +1,4 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
 /**
  * Composition serveur de l'accueil v2 (« La ferme d'abord », bento) : la
  * liste Aujourd'hui classée par urgence, l'état du jour des planches pour la
@@ -29,9 +30,12 @@ import { DEFAULT_MODULES_ACTIFS, sanitizeModulesActifs, type ModuleId } from "@/
 import { formatMontantDevise } from "@/lib/format-utils"
 import { chargerEncoursCompta } from "@/lib/comptabilite/encours"
 import { chargerFacturesRevenus, whereVentesRevenus } from "@/lib/kpi/compta"
-import { ventilerRevenus } from "@/lib/comptabilite/ventilation-revenus"
+import { ventilerRevenusParDevise } from "@/lib/comptabilite/ventilation-revenus"
 import { chargerCheptelEnStock } from "@/lib/elevage/stock-cheptel"
-import { deviseDuTerritoire } from "@/lib/territoires"
+import { deviseCouranteExploitation, monnaieFacture } from "@/lib/comptabilite/devise-reglement"
+import { monnaieVente, SELECT_CONTEXTE_FISCAL_VENTE } from "@/lib/comptabilite/devise-vente"
+import { monnaieImpayee } from "@/lib/comptabilite/ventilation-impayees"
+import { sommerParDevise, totalSiUneDevise, type TotalDevise } from "@/lib/comptabilite/totaux-devise"
 
 import {
   bornesSemaineISO,
@@ -136,7 +140,7 @@ export async function composerAujourdhui(
     lireModulesAffichables(acteurId, session.user.modulesExploitation ?? null),
     lire(
       "exploitation",
-      () => prisma.exploitation.findUnique({ where: { userId }, select: { raisonSociale: true, territoire: true } }),
+      () => prisma.exploitation.findUnique({ where: { userId }, select: { raisonSociale: true, territoire: true, devise: true } }),
       null,
     ),
   ])
@@ -146,7 +150,14 @@ export async function composerAujourdhui(
   // Factures à finir ou impayées : carnet gratuit ; repères financiers : gestion (Complet).
   const facturationActive = modules.includes("comptabilite") && accesService.facturation
   const comptaActif = modules.includes("comptabilite") && accesService.gestion
-  const devise = deviseDuTerritoire(exploitation?.territoire)
+  // Devise courante : la devise déclarée, sinon celle du territoire (même
+  // règle que la comptabilité ; lot devise-totaux-api).
+  const devise = deviseCouranteExploitation(exploitation)
+  /** Total historique arrondi à l'unité, `null` dès que deux devises coexistent. */
+  const totalArrondi = (parDevise: readonly TotalDevise[]) => {
+    const total = totalSiUneDevise(parDevise)
+    return total === null ? null : Math.round(total)
+  }
 
   const [taches, kpiMaraichage, agenda, animauxActifs, declarations, factures, kpiCompta, planches, arbres, objets, encours] =
     await Promise.all([
@@ -190,14 +201,14 @@ export async function composerAujourdhui(
                   type: { not: "avoir" },
                   OR: [{ statut: "brouillon" }, { statut: "emise", dateEcheance: { lt: debutJour } }],
                 },
-                select: { id: true, numero: true, statut: true, clientNom: true, totalTTC: true, dateEcheance: true, date: true },
+                select: { id: true, numero: true, statut: true, clientNom: true, totalTTC: true, dateEcheance: true, date: true, emetteurSnapshot: true },
                 orderBy: { date: "desc" },
                 take: 20,
               }),
             [],
           )
         : [],
-      comptaActif ? lire("repères comptabilité", () => getKpiCompta(userId, annee, maintenant), null) : null,
+      comptaActif ? lire("repères comptabilité", () => getKpiCompta(userId, annee, maintenant, { parDevise: true }), null) : null,
       lire(
         "plan",
         () =>
@@ -223,7 +234,7 @@ export async function composerAujourdhui(
       ),
       lire(
         "plan",
-        () => prisma.arbre.findMany({ where: { userId }, select: { id: true, posX: true, posY: true, envergure: true } }),
+        () => prisma.arbre.findMany({ where: filtreArbresVivants(userId), select: { id: true, posX: true, posY: true, envergure: true } }),
         [],
       ),
       lire(
@@ -240,11 +251,17 @@ export async function composerAujourdhui(
       // L'accueil relisait `totalTTC` des factures émises : une facture soldée
       // par un avoir restait « à relancer » pour toujours, et 300 € reçus sur
       // 500 € affichaient encore 500 € (revue du 2026-11-04).
-      comptaActif ? lire("factures", () => chargerEncoursCompta(userId, null, finJour), null) : null,
+      comptaActif ? lire("factures", () => chargerEncoursCompta(userId, null, finJour, devise), null) : null,
     ])
   const resteDuParFacture = new Map(
     (encours?.creances.items ?? []).filter((i) => i.source === "Facture").map((i) => [i.id, i.montant]),
   )
+  const monnaieParFacture = new Map(
+    (encours?.creances.items ?? []).filter((i) => i.source === "Facture").map((i) => [i.id, monnaieImpayee(i, devise)]),
+  )
+  /** Montant d'une pièce dans SA devise ; jamais réétiqueté dans la devise courante. */
+  const montantPiece = (montant: number, monnaie: "EUR" | "XPF" | null) =>
+    monnaie ? formatMontantDevise(montant, monnaie) : "montant indisponible : devise historique inconnue"
 
   const elements: ElementAujourdhui[] = []
   const planchesAArroser = new Set<string>()
@@ -401,7 +418,8 @@ export async function composerAujourdhui(
 
   // ── Comptabilité : brouillons prêts et créances échues ────────────────
   for (const f of factures) {
-    const montant = formatMontantDevise(f.totalTTC, devise)
+    // Un brouillon n'a pas encore de devise figée : devise courante.
+    const montant = montantPiece(f.totalTTC, monnaieFacture(f.emetteurSnapshot, f.date) ?? (f.statut === "brouillon" ? devise : null))
     if (f.statut === "brouillon") {
       elements.push({
         id: `facture:${f.id}`,
@@ -428,7 +446,7 @@ export async function composerAujourdhui(
       module: "comptabilite",
       etat: etatPourRetard(retard, { critiqueApres: 30 }),
       titre: `Relancer ${f.clientNom}`,
-      meta: [f.numero, `échue depuis ${retard} j`, formatMontantDevise(resteDu, devise)],
+      meta: [f.numero, `échue depuis ${retard} j`, montantPiece(resteDu, monnaieParFacture.get(f.id) ?? null)],
       action: { libelle: "Ouvrir", href: "/comptabilite/factures" },
       retardJours: retard,
       plancheIds: [],
@@ -486,8 +504,9 @@ export async function composerAujourdhui(
       : null,
     comptabilite: kpiCompta
       ? {
-          beneficeYtd: Math.round(kpiCompta.beneficeYtd),
-          margePercentYtd: Math.round(kpiCompta.margePercentYtd),
+          beneficeYtd: totalArrondi(kpiCompta.beneficeYtdParDevise),
+          beneficeYtdParDevise: kpiCompta.beneficeYtdParDevise,
+          margePercentYtd: kpiCompta.margePercentYtd === null ? null : Math.round(kpiCompta.margePercentYtd),
           nbRevenusNonPayes: kpiCompta.nbRevenusNonPayes,
           devise,
         }
@@ -533,12 +552,19 @@ export async function composerAujourdhui(
                   take: LIGNES_TUILE,
                 })
               : []
+            // Repères comptables en erreur : créances seules, totaux à zéro (comme avant).
+            const k = kpiCompta
+            const totalCreancesParDevise = sommerParDevise(
+              encours.creances.items, (i) => monnaieImpayee(i, devise), (i) => i.montant, devise)
             return {
               devise,
-              revenusYtd: Math.round(kpiCompta?.revenusYtd ?? 0),
-              depensesYtd: Math.round(kpiCompta?.depensesYtd ?? 0),
-              beneficeYtd: Math.round(kpiCompta?.beneficeYtd ?? 0),
-              margePercentYtd: Math.round(kpiCompta?.margePercentYtd ?? 0),
+              revenusYtd: totalArrondi(k?.revenusYtdParDevise ?? []),
+              revenusYtdParDevise: (k?.revenusYtdParDevise ?? []).map(({ monnaie, total, count }) => ({ monnaie, total, count })),
+              depensesYtd: totalArrondi(k?.depensesYtdParDevise ?? []),
+              depensesYtdParDevise: k?.depensesYtdParDevise ?? [],
+              beneficeYtd: totalArrondi(k?.beneficeYtdParDevise ?? []),
+              beneficeYtdParDevise: k?.beneficeYtdParDevise ?? [],
+              margePercentYtd: k?.margePercentYtd == null ? null : Math.round(k.margePercentYtd),
               creances: emises.map((f) => {
                 const echeance = f.dateEcheance ? new Date(f.dateEcheance) : null
                 return {
@@ -546,15 +572,18 @@ export async function composerAujourdhui(
                   numero: f.numero,
                   client: f.clientNom,
                   montant: resteDuParFacture.get(f.id) ?? 0,
+                  monnaie: monnaieParFacture.get(f.id) ?? null,
                   echeance: echeance ? echeance.toISOString() : null,
                   retardJours: echeance ? Math.max(0, Math.round((debutJour.getTime() - echeance.getTime()) / 86_400_000)) : 0,
                 }
               }),
               // Toutes les créances (factures, ventes d'atelier et ventes à
               // crédit non facturées), comme le Bilan.
-              totalCreances: Math.round(encours.creances.total),
-              nbDepensesNonPayees: kpiCompta?.nbDepensesNonPayees ?? 0,
-              depensesNonPayees: Math.round(kpiCompta?.depensesNonPayeesYtd ?? 0),
+              totalCreances: totalArrondi(totalCreancesParDevise),
+              totalCreancesParDevise,
+              nbDepensesNonPayees: k?.nbDepensesNonPayees ?? 0,
+              depensesNonPayees: totalArrondi(k?.depensesNonPayeesYtdParDevise ?? []),
+              depensesNonPayeesParDevise: k?.depensesNonPayeesYtdParDevise ?? [],
             }
           },
           null,
@@ -566,7 +595,7 @@ export async function composerAujourdhui(
           async () =>
             regrouperLotsVerger(
               await prisma.operationArbre.findMany({
-                where: { userId, fait: false, abandonneeLe: null },
+                where: { userId, arbre: filtreArbresVivants(userId), fait: false, abandonneeLe: null },
                 select: {
                   id: true,
                   type: true,
@@ -620,13 +649,13 @@ export async function composerAujourdhui(
             const [dernieres, dernieresFactures, ventesMois, facturesMois] = await Promise.all([
               prisma.venteManuelle.findMany({
                 where: { userId },
-                select: { id: true, date: true, description: true, montant: true, clientNom: true, paye: true, client: { select: { nom: true } } },
+                select: { id: true, date: true, description: true, montant: true, clientNom: true, paye: true, client: { select: { nom: true } }, ...SELECT_CONTEXTE_FISCAL_VENTE },
                 orderBy: { date: "desc" },
                 take: LIGNES_TUILE,
               }),
               prisma.facture.findMany({
                 where: { userId, statut: { in: ["emise", "payee"] } },
-                select: { id: true, date: true, numero: true, type: true, objet: true, totalTTC: true, clientNom: true, statut: true },
+                select: { id: true, date: true, numero: true, type: true, objet: true, totalTTC: true, clientNom: true, statut: true, emetteurSnapshot: true },
                 orderBy: { date: "desc" },
                 take: LIGNES_TUILE,
               }),
@@ -641,6 +670,7 @@ export async function composerAujourdhui(
                 montant: v.montant,
                 client: v.client?.nom ?? v.clientNom ?? null,
                 paye: v.paye,
+                monnaie: monnaieVente(v, devise),
               })),
               ...dernieresFactures.map((f) => ({
                 id: `facture-${f.id}`,
@@ -649,13 +679,23 @@ export async function composerAujourdhui(
                 montant: (f.type === "avoir" ? -1 : 1) * f.totalTTC,
                 client: f.clientNom,
                 paye: f.type === "avoir" || f.statut === "payee",
+                monnaie: monnaieFacture(f.emetteurSnapshot, f.date),
               })),
             ]
               .sort((a, b) => b.date.getTime() - a.date.getTime())
               .slice(0, LIGNES_TUILE)
+            // Total du mois devise par devise (pièce : devise figée ; vente sans
+            // contexte figé : devise courante), jamais additionnées.
+            const totalMoisParDevise = ventilerRevenusParDevise(
+              ventesMois, facturesMois,
+              (v) => monnaieVente(v, devise),
+              (f) => monnaieFacture(f.emetteurSnapshot, f.date),
+              devise,
+            ).map(({ monnaie, total, count }) => ({ monnaie, total, count }))
             return {
               devise,
-              totalMois: Math.round(ventilerRevenus(ventesMois, facturesMois).total),
+              totalMois: totalArrondi(totalMoisParDevise),
+              totalMoisParDevise,
               nbMois: ventesMois.length + facturesMois.length,
               dernieres: lignes.map((l) => ({ ...l, date: l.date.toISOString() })),
             }

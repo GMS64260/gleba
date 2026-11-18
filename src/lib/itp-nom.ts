@@ -135,10 +135,28 @@ export function estConflitPeriodeItp(erreur: unknown): boolean {
   const e = erreur as { code?: string; meta?: { target?: unknown } } | null
   if (!e) return false
   if (e.code === 'P2002') {
+    // L'index porte sur des EXPRESSIONS (`COALESCE(s_semis, -1)`…) : Prisma ne
+    // rend alors ni son nom ni des champs du modèle, mais des fragments de la
+    // clé relevés dans le message de PostgreSQL (`COALESCE(s_semis`, `espece`…).
+    // On reconnaît donc la cible à ses colonnes, sous leur nom SQL ou Prisma,
+    // et l'on garde le nom de l'index pour les versions qui le rendent.
     const cible = JSON.stringify(e.meta?.target ?? '')
-    return cible.includes('periode') || cible.includes('itps_periode_unique_idx')
+    if (cible.includes('periode')) return true
+    const semis = cible.includes('s_semis') || cible.includes('semaineSemis')
+    const recolte = cible.includes('s_recolte') || cible.includes('semaineRecolte')
+    return semis && recolte
   }
   return (e as { code?: string }).code === '23505'
+}
+
+/**
+ * Violation d'unicité, quelle que soit la cible. Sert aux routes à tenter de
+ * NOMMER un conflit de période quand `meta.target` est illisible (« (not
+ * available) ») : la recherche de l'itinéraire jumeau tranche alors.
+ */
+export function estViolationUnicite(erreur: unknown): boolean {
+  const code = (erreur as { code?: string } | null)?.code
+  return code === 'P2002' || code === '23505'
 }
 
 /** Itinéraire déjà présent sur la même période, pour nommer le conflit. */

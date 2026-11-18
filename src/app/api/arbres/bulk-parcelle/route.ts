@@ -24,6 +24,9 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import { z } from "zod"
 import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
+import { verifierSuiviIndividuel } from "@/lib/verger/suivi-individuel"
+import { ErreurVerger } from "@/lib/verger/erreur"
+import { verrouillerStockCommercial } from "@/lib/stocks/verrou-commercial"
 
 const schema = z.object({
   arbreIds: z.array(z.coerce.number().int().positive()).min(1).max(500),
@@ -60,53 +63,45 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Ne travaille que sur les arbres du tenant : un ID étranger est refusé,
-    // pas silencieusement appliqué.
-    const arbres = await prisma.arbre.findMany({
-      where: { id: { in: arbreIds }, userId },
-      select: { id: true, nom: true, espece: true, parcelleGeoId: true },
-    })
-    const foundIds = new Set(arbres.map((a) => a.id))
-    const refusedIds = arbreIds.filter((id) => !foundIds.has(id))
-
-    // Conflit « un seul mode de suivi » : espèces déjà suivies en lot agrégé
-    // sur la parcelle cible. Comme dans le PUT unitaire, seuls les arbres dont
-    // le rattachement CHANGE sont bloqués (l'historique incohérent reste modifiable).
-    let conflits: Array<{ id: number; nom: string | null; espece: string | null }> = []
-    let updatables = arbres
-    if (parcelleGeoId) {
-      const lots = await prisma.lotArbres.findMany({
-        where: { userId, parcelleGeoId },
-        select: { espece: true },
+    const resultat = await prisma.$transaction(async (tx) => {
+      await verrouillerStockCommercial(tx, userId)
+      // Relire sous le verrou, uniquement les arbres du tenant : un ID étranger
+      // est refusé, pas silencieusement appliqué.
+      const arbres = await tx.arbre.findMany({
+        where: { id: { in: arbreIds }, userId },
+        select: { id: true, nom: true, espece: true, parcelleGeoId: true },
       })
-      const especesEnLot = new Set(
-        lots.map((l) => l.espece.trim().toLocaleLowerCase("fr"))
-      )
-      if (especesEnLot.size > 0) {
-        conflits = arbres.filter(
-          (a) =>
-            a.parcelleGeoId !== parcelleGeoId &&
-            a.espece &&
-            especesEnLot.has(a.espece.trim().toLocaleLowerCase("fr"))
-        )
-        const conflitIds = new Set(conflits.map((c) => c.id))
-        updatables = arbres.filter((a) => !conflitIds.has(a.id))
+      const foundIds = new Set(arbres.map((a) => a.id))
+      const refusedIds = arbreIds.filter((id) => !foundIds.has(id))
+
+      const conflits: Array<{ id: number; nom: string | null; espece: string | null }> = []
+      const updatables = []
+      for (const arbre of arbres) {
+        try {
+          // Comme le PUT unitaire, laisser modifiables les anciens rattachements.
+          if (arbre.parcelleGeoId !== parcelleGeoId && arbre.espece) {
+            await verifierSuiviIndividuel(tx, userId, parcelleGeoId, [arbre.espece])
+          }
+          updatables.push(arbre.id)
+        } catch (err) {
+          if (!(err instanceof ErreurVerger) || err.status !== 409) throw err
+          conflits.push({ id: arbre.id, nom: arbre.nom, espece: arbre.espece })
+        }
       }
-    }
 
-    let updated = 0
-    if (updatables.length > 0) {
-      const result = await prisma.arbre.updateMany({
-        where: { id: { in: updatables.map((a) => a.id) }, userId },
-        data: { parcelleGeoId },
-      })
-      updated = result.count
-    }
+      let updated = 0
+      if (updatables.length > 0) {
+        const result = await tx.arbre.updateMany({
+          where: { id: { in: updatables }, userId },
+          data: { parcelleGeoId },
+        })
+        updated = result.count
+      }
+      return { updated, refusedIds, conflits }
+    })
 
     return NextResponse.json({
-      updated,
-      refusedIds,
-      conflits: conflits.map((c) => ({ id: c.id, nom: c.nom, espece: c.espece })),
+      ...resultat,
       avertissement,
     })
   } catch (err) {

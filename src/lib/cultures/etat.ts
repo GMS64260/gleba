@@ -36,6 +36,19 @@ export function etatCulture(culture: CultureAvancement): EtatCulture {
 }
 
 /**
+ * État d'une culture dans l'historique d'une planche : le motif de fin y est
+ * dit (« Vivace », « Non significative ») ; tout le reste suit `etatCulture`,
+ * pour qu'une culture close ne soit jamais montrée en cours.
+ */
+export function etatCultureHistorique(
+  culture: CultureAvancement
+): EtatCulture | 'Vivace' | 'Non significative' {
+  if (culture.terminee === 'v') return 'Vivace'
+  if (culture.terminee === 'NS') return 'Non significative'
+  return etatCulture(culture)
+}
+
+/**
  * Filtre Prisma sélectionnant exactement les cultures dont `etatCulture`
  * renvoie `etat` : chaque jalon plus avancé doit être explicitement exclu.
  */

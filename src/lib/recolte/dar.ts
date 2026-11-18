@@ -1,8 +1,9 @@
 import type { Prisma } from '@prisma/client'
 import { jourCivilStocke } from '@/lib/jour-civil'
-import { avertissementDar, HORIZON_DAR_INCONNU_JOURS, natureInterventionDar, resoudreDar, type CalendrierDar } from '@/lib/phyto/delai-avant-recolte'
+import { agregerVerdictsDar, darIntervention, HORIZON_DAR_INCONNU_JOURS, natureInterventionDar, verdictDar, VERDICT_DAR_LOT_RIEN, type CalendrierDar, type VerdictDarLot } from '@/lib/phyto/delai-avant-recolte'
 
 type Db = Pick<Prisma.TransactionClient, 'intervention'>
+type DbBoutique = Pick<Prisma.TransactionClient, 'intervention' | 'produitBoutique'>
 export type LotLegume = { id: number; cultureId: number; plancheId: string | null; parcelleId?: string | null; date: Date }
 export type TraitementDar = {
   cultureId: number | null
@@ -11,8 +12,12 @@ export type TraitementDar = {
   arbreId?: number | null
   date: Date
   dar: number | null
+  /** Délai ancien recopié du catalogue : indication, pas un délai saisi. */
+  darIndicatif?: boolean | null
   produitPhyto: string | null
   geste?: string | null
+  natureProduit?: string | null
+  numAMM?: string | null
   produitPhytoRef: { darJours: number | null; nomCommercial: string | null; classification?: string | null } | null
 }
 
@@ -26,42 +31,44 @@ const jourFr = (t: number): string => {
   return `${j}/${m}/${a}`
 }
 
-const calendrier: CalendrierDar = { ajouterJours: (jour, n) => jour + n * MS_JOUR, formater: jourFr }
+const calendrier: CalendrierDar = { ajouterJours: (jour, n) => jour + n * MS_JOUR, formater: jourFr, iso: (jour) => new Date(jour).toISOString().slice(0, 10) }
 
 /**
- * Avertissements de délai avant récolte (DAR) d'un lot de légumes, PUR.
+ * Verdict de délai avant récolte (DAR) d'un lot de légumes, PUR.
  * Un traitement compte s'il vise la culture récoltée, sa planche sans viser de
  * culture, ou la parcelle entière de sa planche (ni culture, ni planche, ni
  * arbre désignés). Même règle que les fruits (`src/lib/verger/dar.ts`) : la récolte
  * est libre le jour « traitement + DAR », et le délai saisi sur l'intervention
- * prime sur celui du référentiel. Un délai inconnu ou inférieur au défaut
- * légal de 3 jours est signalé, pas ignoré (règle et texte :
- * `src/lib/phyto/delai-avant-recolte.ts`).
+ * prime sur celui du référentiel. Niveaux bloquant / informatif et textes :
+ * `src/lib/phyto/delai-avant-recolte.ts`.
  */
-export function avertissementsDarLot(lot: LotLegume, traitements: TraitementDar[]): string[] {
+export function verdictDarLot(lot: LotLegume, traitements: TraitementDar[]): VerdictDarLot {
   const jourLot = minuitDuJour(lot.date)
-  const messages = traitements.flatMap((t) => {
+  return agregerVerdictsDar(traitements.flatMap((t) => {
     const vise = t.cultureId != null
       ? t.cultureId === lot.cultureId
       : t.plancheId != null
         ? t.plancheId === lot.plancheId
         : t.arbreId == null && t.parcelleId != null && t.parcelleId === lot.parcelleId
     if (!vise) return []
-    const dar = resoudreDar(t.dar, t.produitPhytoRef?.darJours)
-    const nature = natureInterventionDar(t)
-    if (nature === 'sans_produit' && dar.etat === 'inconnu') return []
-    const message = avertissementDar({
-      jourTraitement: minuitDuJour(t.date), jourRecolte: jourLot, dar,
-      produit: t.produitPhytoRef?.nomCommercial ?? t.produitPhyto, relevantDUneAmm: nature === 'amm',
-    }, calendrier)
-    return message ? [message] : []
-  })
-  return [...new Set(messages)]
+    return [verdictDar({
+      jourTraitement: minuitDuJour(t.date), jourRecolte: jourLot, dar: darIntervention(t),
+      produit: t.produitPhytoRef?.nomCommercial ?? t.produitPhyto, nature: natureInterventionDar(t),
+    }, calendrier)]
+  }))
 }
 
-/** Une lecture bornée au tenant pour toute une liste de lots. */
-export async function chargerAvertissementsDarLegumes(db: Db, userId: string, lots: LotLegume[]): Promise<Map<number, string[]>> {
-  const resultat = new Map<number, string[]>()
+/** Tous les messages du verdict : ce que montre la saisie d'une récolte. */
+export function avertissementsDarLot(lot: LotLegume, traitements: TraitementDar[]): string[] {
+  return verdictDarLot(lot, traitements).avertissements
+}
+
+/**
+ * Une lecture bornée au tenant (`userId` = exploitation) pour toute une liste
+ * de lots : le traitement d'une autre exploitation n'entre jamais au verdict.
+ */
+export async function chargerVerdictsDarLegumes(db: Db, userId: string, lots: LotLegume[]): Promise<Map<number, VerdictDarLot>> {
+  const resultat = new Map<number, VerdictDarLot>()
   if (!lots.length) return resultat
   const cultures = [...new Set(lots.map((l) => l.cultureId))]
   const planches = [...new Set(lots.flatMap((l) => (l.plancheId ? [l.plancheId] : [])))]
@@ -88,8 +95,42 @@ export async function chargerAvertissementsDarLegumes(db: Db, userId: string, lo
         ...(parcelles.length ? [{ cultureId: null, plancheId: null, arbreId: null, parcelleId: { in: parcelles } }] : []),
       ] }],
     },
-    select: { cultureId: true, plancheId: true, parcelleId: true, arbreId: true, date: true, dar: true, produitPhyto: true, geste: true, produitPhytoRef: { select: { darJours: true, nomCommercial: true, classification: true } } },
+    select: { cultureId: true, plancheId: true, parcelleId: true, arbreId: true, date: true, dar: true, darIndicatif: true, produitPhyto: true, geste: true, natureProduit: true, numAMM: true, produitPhytoRef: { select: { darJours: true, nomCommercial: true, classification: true } } },
   })
-  for (const lot of lots) resultat.set(lot.id, avertissementsDarLot(lot, traitements))
+  for (const lot of lots) resultat.set(lot.id, verdictDarLot(lot, traitements))
+  return resultat
+}
+
+/** Verdict d'une seule récolte de légumes (mise en vente, fiche). */
+export async function verdictDarLegume(db: Db, userId: string, lot: LotLegume): Promise<VerdictDarLot> {
+  return (await chargerVerdictsDarLegumes(db, userId, [lot])).get(lot.id) ?? VERDICT_DAR_LOT_RIEN
+}
+
+/** Les messages seuls, pour les surfaces de saisie. */
+export async function chargerAvertissementsDarLegumes(db: Db, userId: string, lots: LotLegume[]): Promise<Map<number, string[]>> {
+  const verdicts = await chargerVerdictsDarLegumes(db, userId, lots)
+  return new Map([...verdicts].map(([id, v]) => [id, v.avertissements]))
+}
+
+/**
+ * Verdict des produits de boutique issus d'une récolte, par identifiant de
+ * produit. Contre-revue du tour 2 : la publication était contrôlée, mais un
+ * traitement saisi ou corrigé APRÈS coup laissait le produit commandable,
+ * livrable et comptabilisé. La commande publique, la vitrine et la première
+ * sortie de stock d'une commande relisent donc ce verdict. Lecture bornée à
+ * l'exploitation (`userId`) ; un produit sans récolte source n'a pas de verdict.
+ */
+export async function chargerVerdictsDarProduitsBoutique(db: DbBoutique, userId: string, produitIds: number[]): Promise<Map<number, VerdictDarLot>> {
+  const resultat = new Map<number, VerdictDarLot>()
+  if (!produitIds.length) return resultat
+  const produits = await db.produitBoutique.findMany({
+    where: { id: { in: produitIds }, userId, recolteId: { not: null }, recolte: { userId } },
+    select: { id: true, recolte: { select: { id: true, cultureId: true, date: true, culture: { select: { plancheId: true, planche: { select: { parcelleGeoId: true } } } } } } },
+  })
+  const lots = produits.flatMap((p) => p.recolte
+    ? [{ id: p.recolte.id, cultureId: p.recolte.cultureId, plancheId: p.recolte.culture.plancheId, parcelleId: p.recolte.culture.planche?.parcelleGeoId ?? null, date: p.recolte.date }]
+    : [])
+  const verdicts = await chargerVerdictsDarLegumes(db, userId, lots)
+  for (const p of produits) if (p.recolte) resultat.set(p.id, verdicts.get(p.recolte.id) ?? VERDICT_DAR_LOT_RIEN)
   return resultat
 }

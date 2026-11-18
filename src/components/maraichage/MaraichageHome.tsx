@@ -103,13 +103,24 @@ function HomeContent() {
   const [showPluieBanner, setShowPluieBanner] = React.useState(false)
 
   React.useEffect(() => {
-    if (!localStorage.getItem("gleba-banner-pluie-v1")) {
-      setShowPluieBanner(true)
+    // Stockage indisponible (navigation privée, stockage bloqué) : l'accès
+    // lève une exception, qui faisait tomber toute la page. Sans mémoire du
+    // rejet, le bandeau reviendrait à chaque visite : il n'est pas montré.
+    try {
+      if (!localStorage.getItem("gleba-banner-pluie-v1")) {
+        setShowPluieBanner(true)
+      }
+    } catch {
+      // ignore
     }
   }, [])
 
   const dismissPluieBanner = React.useCallback(() => {
-    localStorage.setItem("gleba-banner-pluie-v1", "1")
+    try {
+      localStorage.setItem("gleba-banner-pluie-v1", "1")
+    } catch {
+      // Rejet non mémorisé : le bandeau se ferme quand même.
+    }
     setShowPluieBanner(false)
   }, [])
   // Lire l'onglet actif depuis l'URL (?tab=planification)

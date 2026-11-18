@@ -1,11 +1,14 @@
 import { Prisma, type RecolteArbre, type ProductionBois } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
+import { normaliserStock, plafonnerStock, quantiteCanonique, retirerDuStock, stockCouvre } from '@/lib/stocks/milliemes'
+import { restituerAuLot } from '@/lib/stocks/milliemes-sql'
 import { quantiteBois } from '@/lib/commercial/stock-types'
 import { dateIsoFacture } from '@/lib/facture-regles'
 import { invalidateKpi } from '@/lib/kpi/cache'
 import { dateRecolteApi } from './creation-recolte'
 import { ErreurVerger } from './erreur'
+import { ErreurCommerciale } from '@/lib/commercial/regles'
 
 type Lot = RecolteArbre | ProductionBois
 type TypeLot = 'fruit' | 'bois'
@@ -20,7 +23,8 @@ export const NATURE_TRANSFORMATION = 'transforme'
 const NATURES_PHYSIQUES: Record<TypeLot, readonly string[]> = { fruit: [...NATURES_SORTIE_VERGER.fruit, NATURE_TRANSFORMATION], bois: NATURES_SORTIE_VERGER.bois }
 const EPSILON = 1e-6
 // Le reliquat reste entre zéro et la production (contraintes CHECK de la base).
-const borner = (reliquat: number, production: number) => Math.min(production, Math.max(0, Math.round(reliquat * 1e6) / 1e6))
+// L'arithmétique vient du helper partagé du stock commercial (`milliemes.ts`).
+const borner = (reliquat: number, production: number) => plafonnerStock(Math.max(0, normaliserStock(reliquat)), production)
 const filtreLot = (type: TypeLot, id: number) => (type === 'fruit' ? { fruitId: id } : { boisId: id })
 
 /** Quantité et unité dans lesquelles les sorties d'un lot sont comptées. */
@@ -77,7 +81,7 @@ export function reliquatApresCorrection(etat: Awaited<ReturnType<typeof etatSort
   if (premiere && dateIsoFacture(nouvelle.date) > dateIsoFacture(premiere)) {
     throw new ErreurVerger('Une sortie de ce lot est antérieure à cette date. Annulez-la d’abord ou choisissez une date plus ancienne.', 409, 'date')
   }
-  return borner(nouvelle.quantite - etat.total, nouvelle.quantite)
+  return borner(retirerDuStock(nouvelle.quantite, etat.total), nouvelle.quantite)
 }
 
 /** Appelé sous les verrous ferme puis lot. La clé protège les reprises réseau. */
@@ -92,7 +96,7 @@ export async function sortirReliquatVerger(tx: Prisma.TransactionClient, userId:
   const precedente = await tx.mouvementStockCommercial.findUnique({ where: { userId_cleIdempotence: { userId, cleIdempotence } } })
   if (precedente) {
     if (precedente.articleStockType !== type || precedente.articleStockId !== String(lot.id) || precedente.nature !== nature
-      || (saisie.quantite !== undefined && saisie.quantite !== precedente.quantite)
+      || (saisie.quantite !== undefined && (typeof saisie.quantite !== 'number' || quantiteCanonique(saisie.quantite) !== quantiteCanonique(precedente.quantite)))
       || ((saisie.notes !== undefined || saisie.destination !== undefined) && (saisie.notes ?? saisie.destination ?? null) !== precedente.notes)
       || (saisie.date !== undefined && dateRecolteApi(saisie.date, 'date')?.getTime() !== precedente.date.getTime())) throw new ErreurVerger('Cette référence désigne une autre sortie.', 409)
     return { ...lot, sortieStock: precedente }
@@ -100,8 +104,10 @@ export async function sortirReliquatVerger(tx: Prisma.TransactionClient, userId:
   if (lot.statut !== 'en_stock' || lot.factureId) throw new ErreurVerger('Seul un reliquat en stock peut sortir pour perte ou usage interne.', 409)
   const q = quantiteLotVerger(type, lot)
   const disponible = lot.stockDisponibleCommercial ?? q.quantite
-  const quantite = saisie.quantite === undefined ? disponible : saisie.quantite
-  if (typeof quantite !== 'number' || !Number.isFinite(quantite) || quantite <= 0 || quantite > disponible) {
+  // Une seule quantité pour la garde, le débit et la trace : celle que l'annulation rendra.
+  const quantite = typeof saisie.quantite === 'number' && Number.isFinite(saisie.quantite) && saisie.quantite > 0 ? quantiteCanonique(saisie.quantite)
+    : saisie.quantite === undefined ? quantiteCanonique(disponible) : 0
+  if (quantite <= 0 || !stockCouvre(disponible, quantite)) {
     throw new ErreurVerger('Indiquez une quantité positive inférieure ou égale au reliquat disponible.', 409, 'quantite')
   }
   const date = dateRecolteApi(saisie.date, 'date', new Date())!
@@ -111,8 +117,8 @@ export async function sortirReliquatVerger(tx: Prisma.TransactionClient, userId:
   const notes = saisie.notes ?? saisie.destination ?? null
   if (notes !== null && (typeof notes !== 'string' || notes.length > 2000)) throw new ErreurVerger('Notes invalides.', 400, 'notes')
   const updated = type === 'fruit'
-    ? await tx.recolteArbre.update({ where: { id: lot.id, userId }, data: { stockDisponibleCommercial: disponible - quantite } })
-    : await tx.productionBois.update({ where: { id: lot.id, userId }, data: { stockDisponibleCommercial: disponible - quantite } })
+    ? await tx.recolteArbre.update({ where: { id: lot.id, userId }, data: { stockDisponibleCommercial: retirerDuStock(disponible, quantite) } })
+    : await tx.productionBois.update({ where: { id: lot.id, userId }, data: { stockDisponibleCommercial: retirerDuStock(disponible, quantite) } })
   const sortieStock = await tx.mouvementStockCommercial.create({ data: {
     userId, nature, cleIdempotence, notes, articleStockType: type, articleStockId: String(lot.id),
     sourceNom: lot.numLot ?? `${type === 'fruit' ? 'Récolte' : 'Bois'} #${lot.id}`, unite: q.unite, quantite, date,
@@ -133,16 +139,21 @@ export async function verrouillerLotVerger(tx: Tx, userId: string, type: TypeLot
 /**
  * Supprime une sortie physique et rend sa quantité au lot verrouillé : un lot
  * sans plus aucun mouvement redevient libre comme avant sa première sortie.
+ * La restitution passe par le helper SQL partagé `restituerAuLot`.
  */
 export async function restituerSortieVerger(tx: Tx, userId: string, type: TypeLot, lot: Lot, sortie: { id: string; quantite: number }) {
   await tx.mouvementStockCommercial.delete({ where: { id: sortie.id } })
-  const production = quantiteLotVerger(type, lot)
-  const reliquat = borner((lot.stockDisponibleCommercial ?? production.quantite) + sortie.quantite, production.quantite)
   const restants = await tx.mouvementStockCommercial.count({ where: { userId, ...filtreLot(type, lot.id) } })
-  const stockDisponibleCommercial = restants === 0 && Math.abs(reliquat - production.quantite) <= EPSILON ? null : reliquat
+  // Plafond lu en SQL sur la production brute (ADV45) : jamais `lot.quantite`
+  // relu par le modèle, arrondi à 15 chiffres au-dessus d'une production héritée.
+  // Un retour au-delà de la production est refusé (STOCK_RETOUR_EXCEDENT) : même
+  // message, statut 409, sous la forme d'erreur que gèrent les routes du verger.
+  const modifies = await restituerAuLot(tx, userId, type, lot.id, sortie.quantite, { jamaisEntameVautProduction: true, liberer: restants === 0 })
+    .catch((erreur: unknown) => { throw erreur instanceof ErreurCommerciale ? new ErreurVerger(erreur.message, erreur.status) : erreur })
+  if (!modifies) throw new ErreurVerger('Lot introuvable.', 404)
   return type === 'fruit'
-    ? tx.recolteArbre.update({ where: { id: lot.id, userId }, data: { stockDisponibleCommercial } })
-    : tx.productionBois.update({ where: { id: lot.id, userId }, data: { stockDisponibleCommercial } })
+    ? tx.recolteArbre.findUniqueOrThrow({ where: { id: lot.id, userId } })
+    : tx.productionBois.findUniqueOrThrow({ where: { id: lot.id, userId } })
 }
 
 /**

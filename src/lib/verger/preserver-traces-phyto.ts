@@ -19,7 +19,7 @@
  */
 
 import type { Prisma } from '@prisma/client'
-import { chargerContexteRegistre, type ContexteRegistre } from '@/lib/tracabilite/contexte-registre'
+import { chargerContexteRegistre, contexteEstFige, type ContexteRegistre } from '@/lib/tracabilite/contexte-registre'
 
 export interface ArbreSupprime {
   id: number
@@ -71,27 +71,96 @@ const METHODES_TRAITEMENT = [
 ]
 
 /**
+ * Ligne `Intervention` détachée de l'arbre supprimé. Le marqueur
+ * `contexteFige` et les provenances sont des clés OBLIGATOIRES : une
+ * projection qui les oublie ne compile pas. Sans le marqueur, un contexte
+ * délibérément vidé (trois mentions nulles) passait pour « jamais figé » et
+ * était relu sur les fiches, réécrivant la dénomination effacée par
+ * l'exploitant (contre-revue ADV158-1).
+ */
+export interface LigneInterventionADetacher {
+  source: 'intervention'
+  date: Date
+  contexteFige: boolean | null
+  cultureRegistre: string | null
+  localisationRegistre: string | null
+  conduiteBio: boolean | null
+  origineCultureRegistre: string | null
+  origineConduiteBio: string | null
+}
+
+/**
+ * Observation de santé ou opération d'arbre matérialisée en intervention.
+ * Ces modèles n'ont pas de colonne `contexteFige` : leur contexte est
+ * toujours DÉDUIT des fiches par le serveur (création, réalisation, bulk,
+ * assistant) et jamais saisi ni effacé par l'utilisateur, si bien que
+ * « trois mentions nulles » y signifie bien « jamais figé ».
+ */
+export interface LigneTraceArbre {
+  source: 'observation' | 'operation'
+  date: Date
+  cultureRegistre?: string | null
+  localisationRegistre?: string | null
+  conduiteBio?: boolean | null
+}
+
+/** Contexte écrit sur une intervention détachée : figé, avec ses provenances. */
+export interface ContexteInterventionConserve extends ContexteRegistre {
+  contexteFige: true
+  origineCultureRegistre: string | null
+  origineConduiteBio: string | null
+}
+
+/**
  * Contexte du registre (culture, localisation, conduite biologique) à porter
  * par la trace détachée. Revue Codex CR-PHY-01 (2026-11-12) : la trace perdait
  * le contexte figé et le stade BBCH, alors que l'arbre, sa parcelle et sa zone
  * disparaissent avec lui (arrêté du 24 décembre 2025, art. 3 et annexe I). Le
- * contexte figé est recopié ; à défaut, il est relu MAINTENANT, tant que
- * l'arbre existe encore, sans rien inventer.
+ * contexte figé (même entièrement vidé, règle partagée `contexteEstFige`) est
+ * recopié tel quel, provenances comprises ; à défaut, il est relu MAINTENANT,
+ * tant que l'arbre existe encore, sans rien inventer : une mention relue est
+ * « déduite », jamais « saisie ».
  */
 export async function contexteAConserver(
   tx: Prisma.TransactionClient,
   userId: string,
-  ligne: { date: Date; cultureRegistre?: string | null; localisationRegistre?: string | null; conduiteBio?: boolean | null },
+  ligne: LigneInterventionADetacher,
   refs: Parameters<typeof chargerContexteRegistre>[2],
-): Promise<ContexteRegistre> {
-  if (ligne.cultureRegistre != null || ligne.localisationRegistre != null || ligne.conduiteBio != null) {
-    return {
+): Promise<ContexteInterventionConserve>
+export async function contexteAConserver(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  ligne: LigneTraceArbre,
+  refs: Parameters<typeof chargerContexteRegistre>[2],
+): Promise<ContexteRegistre>
+export async function contexteAConserver(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  ligne: LigneInterventionADetacher | LigneTraceArbre,
+  refs: Parameters<typeof chargerContexteRegistre>[2],
+): Promise<ContexteRegistre | ContexteInterventionConserve> {
+  if (contexteEstFige(ligne)) {
+    const contexte: ContexteRegistre = {
       cultureRegistre: ligne.cultureRegistre ?? null,
       localisationRegistre: ligne.localisationRegistre ?? null,
       conduiteBio: ligne.conduiteBio ?? null,
     }
+    if (ligne.source !== 'intervention') return contexte
+    return {
+      ...contexte,
+      contexteFige: true,
+      origineCultureRegistre: ligne.origineCultureRegistre,
+      origineConduiteBio: ligne.origineConduiteBio,
+    }
   }
-  return chargerContexteRegistre(tx, userId, refs, ligne.date)
+  const relu = await chargerContexteRegistre(tx, userId, refs, ligne.date)
+  if (ligne.source !== 'intervention') return relu
+  return {
+    ...relu,
+    contexteFige: true,
+    origineCultureRegistre: relu.cultureRegistre != null ? 'deduite' : null,
+    origineConduiteBio: relu.conduiteBio != null ? 'deduite' : null,
+  }
 }
 
 export interface TracesPhytoPreservees {
@@ -120,7 +189,7 @@ export async function preserverTracesPhytoArbre(
   })
 
   for (const o of observations) {
-    const contexte = await contexteAConserver(tx, userId, o, { arbreId: arbre.id, parcelleId: o.parcelleId })
+    const contexte = await contexteAConserver(tx, userId, { ...o, source: 'observation' }, { arbreId: arbre.id, parcelleId: o.parcelleId })
     await tx.intervention.create({
       data: {
         userId,
@@ -164,8 +233,10 @@ export async function preserverTracesPhytoArbre(
   }
 
   // 2. Opérations d'arbre de type « traitement » réellement effectuées. Ce
-  // modèle ne porte ni AMM ni DAR : le registre les signalait déjà comme
-  // champs manquants, on ne fabrique donc aucune donnée.
+  // modèle ne porte pas d'AMM : le registre la signalait déjà comme champ
+  // manquant, on n'en fabrique pas. Le DAR de l'étiquette et la nature du
+  // produit, saisis depuis la migration 20261113210000, suivent la trace
+  // (contre-revue B11 : le registre les perdait avec l'arbre).
   const operations = await tx.operationArbre.findMany({
     where: {
       userId,
@@ -177,7 +248,7 @@ export async function preserverTracesPhytoArbre(
   })
 
   for (const op of operations) {
-    const contexte = await contexteAConserver(tx, userId, op, { arbreId: arbre.id })
+    const contexte = await contexteAConserver(tx, userId, { ...op, source: 'operation' }, { arbreId: arbre.id })
     await tx.intervention.create({
       data: {
         userId,
@@ -189,6 +260,8 @@ export async function preserverTracesPhytoArbre(
         produitPhyto: op.produit,
         doseAppliquee: op.quantite,
         uniteDose: op.unite,
+        dar: op.dar,
+        natureProduit: op.natureProduit,
         dureeMinutes: op.dureeMinutes,
         nbPersonnes: op.nbPersonnes,
         coutTotal: op.cout,

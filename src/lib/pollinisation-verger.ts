@@ -1,3 +1,4 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
 /**
  * Matrice de pollinisation du verger — source unique de vérité de l'écran
  * Verger > Pollinisation (groupes effectifs, autofertilité effective,
@@ -56,7 +57,7 @@ export async function computePollinisationVerger(userId: string) {
   // Récupérer tous les arbres fruitiers avec infos pollinisation
   const arbres = await prisma.arbre.findMany({
     where: {
-      userId,
+      ...filtreArbresVivants(userId),
       // Types qui produisent des fruits, lianes comprises (kiwi dioïque :
       // un pied mâle est indispensable) — liste unique, QA 2026-10-19.
       type: { in: [...TYPES_ARBRE_FRUITIERS] },
@@ -71,6 +72,7 @@ export async function computePollinisationVerger(userId: string) {
       groupePollinisation: true,
       autofertile: true,
       pollinisateursCompat: {
+        where: { arbrePollinisateur: filtreArbresVivants(userId) },
         include: {
           arbrePollinisateur: {
             select: { id: true, nom: true, espece: true, variete: true, floraison: true, groupePollinisation: true },
@@ -78,6 +80,7 @@ export async function computePollinisationVerger(userId: string) {
         },
       },
       pollinisateurDe: {
+        where: { arbrePollinise: filtreArbresVivants(userId) },
         include: {
           arbrePollinise: {
             select: { id: true, nom: true, espece: true, variete: true },

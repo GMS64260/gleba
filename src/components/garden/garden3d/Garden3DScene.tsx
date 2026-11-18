@@ -19,6 +19,7 @@ import { computeLayout } from "./layout"
 import { OBJET_COLORS, rnd, shade, placerPlants, shapePourFamille, specPourShape, vertFeuillage, type GeoKind } from "./procedural"
 import { modelPourArbre, modelPourCulture } from "./gltf-map"
 import { typeObjet } from "@/lib/jardin/objets-plan"
+import { empreintePlantMetres } from "@/lib/plan/unites-plants"
 import { InstancedGltf, type GltfInstance } from "./GltfModels"
 
 const BED_H = 0.28 // hauteur d'une planche surélevée (m)
@@ -132,7 +133,7 @@ function Bed({ p, showLabels, hovered, selected, onHover, onSelect }: { p: Planc
   const bandLen = P / n
 
   const fields: BedField[] = cultures.map((c, k) => {
-    const footprint = c.espece?.etalement || c.espacement || c.itp?.espacement || 0.3
+    const footprint = empreintePlantMetres(c)
     const bandCenterZ = -P / 2 + bandLen * (k + 0.5)
     const placed = placerPlants(L, bandLen, footprint, c.croissance, seed + k * 101)
     const url = modelPourCulture(c.espece?.nom, c.espece?.famille?.id, c.croissance)

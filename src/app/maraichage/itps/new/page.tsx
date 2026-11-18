@@ -116,8 +116,9 @@ export default function NewITPPage() {
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la création")
+        // Une erreur de proxy n'est pas du JSON : pas de « Unexpected token < ».
+        const error = await response.json().catch(() => null)
+        throw new Error(error?.error || "Erreur lors de la création")
       }
 
       const cree = await response.json().catch(() => null)
@@ -135,11 +136,17 @@ export default function NewITPPage() {
       const mentionDoublon = doublon
         ? ` Attention : « ${doublon.nom} » existe déjà dans le catalogue visible — vérifiez que vous ne le dupliquez pas.`
         : ""
+      // L'espèce est nommée par son libellé : l'identifiant d'une espèce
+      // personnelle est un cuid.
+      const nomEspece =
+        (cree?.espece?.nom as string | null | undefined) ??
+        especes.find((e) => e.id === payload.especeId)?.nom ??
+        payload.especeId
       toast({
         title: "ITP créé",
         description:
           (payload.especeId
-            ? `« ${data.id} » — espèce : ${payload.especeId}.`
+            ? `« ${data.id} » — espèce : ${nomEspece}.`
             : `« ${data.id} » — aucune espèce rattachée. Ouvrez la fiche pour en choisir une : sans espèce, l'ITP ne sera pas proposé à la création d'une culture.`) +
           mentionDoublon,
       })

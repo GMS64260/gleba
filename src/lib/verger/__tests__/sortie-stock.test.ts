@@ -16,6 +16,23 @@ const etat = vi.hoisted(() => ({ lots: [] as Lot[], mouvements: [] as Mouvement[
 
 vi.mock('@/lib/stocks/verrou-commercial', () => ({ verrouillerStockCommercial: vi.fn(async () => { etat.verrous.push('ferme') }) }))
 vi.mock('@/lib/kpi/cache', () => ({ invalidateKpi: vi.fn() }))
+// La restitution est une instruction SQL (plafond lu sur la colonne brute, couvert
+// en PostgreSQL par stock-milliemes.integration.test.ts) : ici, sa règle en mémoire.
+const restituerAuLot = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/stocks/milliemes-sql', async () => {
+  const { ajouterAuStock, plafonnerStock } = await vi.importActual<typeof import('@/lib/stocks/milliemes')>('@/lib/stocks/milliemes')
+  restituerAuLot.mockImplementation(async (_tx: unknown, userId: string, _type: string, id: number, quantite: number,
+    options: { jamaisEntameVautProduction?: boolean; liberer?: boolean } = {}) => {
+    const lot = etat.lots.find(l => l.id === id && l.userId === userId)
+    if (!lot) return 0
+    const depart = lot.stockDisponibleCommercial ?? (options.jamaisEntameVautProduction ? lot.quantite : null)
+    if (depart == null) return 1
+    const apres = plafonnerStock(ajouterAuStock(depart, quantite), lot.quantite)
+    lot.stockDisponibleCommercial = options.liberer && Math.abs(apres - lot.quantite) <= 1e-6 ? null : apres
+    return 1
+  })
+  return { restituerAuLot }
+})
 vi.mock('@/lib/prisma', () => {
   const duLot = (where: { userId?: string; fruitId?: number }) => etat.mouvements.filter(m => m.userId === where.userId && m.fruitId === where.fruitId)
   const tx = {
@@ -23,11 +40,8 @@ vi.mock('@/lib/prisma', () => {
     recolteArbre: {
       findUnique: vi.fn(async ({ where }: { where: { id: number; userId: string } }) =>
         etat.lots.find(l => l.id === where.id && l.userId === where.userId) ?? null),
-      update: vi.fn(async ({ where, data }: { where: { id: number }; data: Partial<Lot> }) => {
-        const lot = etat.lots.find(l => l.id === where.id)!
-        Object.assign(lot, data)
-        return { ...lot }
-      }),
+      findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: number; userId: string } }) =>
+        ({ ...etat.lots.find(l => l.id === where.id && l.userId === where.userId)! })),
     },
     mouvementStockCommercial: {
       findFirst: vi.fn(async ({ where }: { where: { id: string; userId: string } }) =>
@@ -52,6 +66,7 @@ const mouvement = (data: Partial<Mouvement> = {}): Mouvement => ({ id: 'perte-1'
   date: new Date('2026-10-22T12:00:00Z'), fruitId: 1, boisId: null, documentId: null, factureId: null, ...data })
 
 beforeEach(() => {
+  restituerAuLot.mockClear()
   etat.lots = []
   etat.mouvements = []
   etat.verrous = []
@@ -103,7 +118,9 @@ describe('annulation d’une sortie physique', () => {
     expect(etat.verrous).toEqual(['ferme', 'lot'])
     expect(etat.mouvements).toHaveLength(0)
     expect(etat.lots[0].stockDisponibleCommercial).toBeNull()
-    expect(resultat).toMatchObject({ dejaAnnulee: false, sortieAnnulee: { id: 'perte-1', nature: 'perte', quantite: 2 } })
+    expect(resultat).toMatchObject({ dejaAnnulee: false, sortieAnnulee: { id: 'perte-1', nature: 'perte', quantite: 2 }, stockDisponibleCommercial: null })
+    // Le plafond se lit en SQL : jamais la production relue par le modèle.
+    expect(restituerAuLot).toHaveBeenCalledWith(expect.anything(), 'u1', 'fruit', 1, 2, { jamaisEntameVautProduction: true, liberer: true })
   })
 
   it('après un BL, la quantité revient au reliquat sans libérer le lot', async () => {
@@ -114,6 +131,7 @@ describe('annulation d’une sortie physique', () => {
 
     expect(etat.lots[0].stockDisponibleCommercial).toBe(6)
     expect(etat.mouvements.map(m => m.id)).toEqual(['bl-1'])
+    expect(restituerAuLot).toHaveBeenLastCalledWith(expect.anything(), 'u1', 'fruit', 1, 2, { jamaisEntameVautProduction: true, liberer: false })
   })
 
   it('une reprise réseau ne restitue rien une seconde fois', async () => {

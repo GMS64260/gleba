@@ -17,6 +17,7 @@
 
 import type { Prisma } from "@prisma/client"
 import { METHODES_OBSERVATION_REGISTRE } from "@/lib/tracabilite/conformite-observation-phyto"
+import { interventionFigureAuRegistre } from "@/lib/tracabilite/utilisation-semences"
 
 type Tx = Prisma.TransactionClient
 
@@ -29,9 +30,12 @@ export const LIBELLES_SOURCE: Record<SourceRegistre, string> = {
   operation_arbre: "Verger · opération",
 }
 
-/** Traitement réalisé d'une intervention : il figure au registre. */
-export function interventionAuRegistre(i: { type: string; fait: boolean }): boolean {
-  return i.type === "traitement_phyto" && i.fait
+/**
+ * Intervention qui figure au registre : traitement réalisé, ou semis réalisé
+ * de semences traitées (annexe II, tableau D).
+ */
+export function interventionAuRegistre(i: { type: string; fait: boolean; utilisationPhyto?: string | null }): boolean {
+  return interventionFigureAuRegistre(i)
 }
 
 /** Observation santé qui figure au registre (même filtre que le registre et son export). */

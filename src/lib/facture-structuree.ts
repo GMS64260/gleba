@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client"
 
 import prisma from "@/lib/prisma"
+import { monnaieFacture } from "@/lib/comptabilite/devise-reglement"
+import { acheteurDeFacture, AVERTISSEMENT_ACHETEUR_NON_FIGE } from "@/lib/comptabilite/rattachement-client"
 import { cadreFacturation, dateIsoFacture, mentionsCodifiees, traitementFacture, type CategorieOperation, type MentionCodifiee } from "@/lib/facture-regles"
 import { snapshotDepuisExploitation, type EmetteurSnapshot } from "@/lib/facture-utils"
 import type { UblAddress, UblInvoiceData } from "@/lib/facture-ubl"
@@ -49,14 +51,35 @@ export interface DonneesFactureStructuree extends UblInvoiceData {
   paiement: { date: Date; montant: number } | null
 }
 
-/**
- * Émetteur figé sur la facture (`emetteurSnapshot`), sinon l'exploitation
- * courante (factures antérieures au snapshot).
- */
-export async function emetteurDeFacture(facture: { emetteurSnapshot: unknown }, userId: string): Promise<EmetteurSnapshot | null> {
-  if (facture.emetteurSnapshot) return facture.emetteurSnapshot as EmetteurSnapshot
-  const exploitation = await prisma.exploitation.findUnique({ where: { userId } })
-  return exploitation ? snapshotDepuisExploitation(exploitation) : null
+export class ErreurDeviseFacture extends Error {
+  constructor() {
+    super("La devise historique de cette facture est inconnue. Faites vérifier la facture avant de l’exporter ou de l’envoyer.")
+    this.name = "ErreurDeviseFacture"
+  }
+}
+
+/** Les brouillons prennent l'identité en cours ; une pièce émise garde sa monnaie datée. */
+export function deviseEditionFacture(
+  facture: Pick<FacturePourExport, "emetteurSnapshot" | "date" | "statut">,
+  emetteur: EmetteurSnapshot | null,
+) {
+  const devise = monnaieFacture(facture.statut === "brouillon" ? emetteur : facture.emetteurSnapshot, facture.date)
+  if (!devise) throw new ErreurDeviseFacture()
+  return devise
+}
+
+/** Complément légal courant pour les pièces sans instantané, monnaie historique indépendante. */
+export async function emetteurDeFacture(
+  facture: Pick<FacturePourExport, "emetteurSnapshot" | "date" | "statut">,
+  userId: string,
+): Promise<EmetteurSnapshot | null> {
+  let emetteur = facture.emetteurSnapshot as EmetteurSnapshot | null
+  if (!emetteur) {
+    const exploitation = await prisma.exploitation.findUnique({ where: { userId } })
+    emetteur = exploitation ? snapshotDepuisExploitation(exploitation) : null
+  }
+  const devise = deviseEditionFacture(facture, emetteur)
+  return emetteur ? { ...emetteur, devise } : null
 }
 
 /** La facture a été émise en franchise en base : mention portée, ou régime de l'émetteur sans aucune TVA. */
@@ -78,10 +101,6 @@ export function exonerationDeFacture(
   return null
 }
 
-function chiffres(value?: string | null): string {
-  return (value || "").replace(/\D/g, "")
-}
-
 /** Note libre de la facture pour l'export structuré (même texte que le bloc « Conditions et notes » du PDF). */
 export function noteLibreDeFacture(facture: Pick<FacturePourExport, "notes" | "objet">): string | null {
   const note = (facture.notes ?? "").replace(/\r\n?/g, "\n").trim()
@@ -95,13 +114,12 @@ export function donneesFactureStructuree(
   factureOrigine: { numero: string; date: Date } | null = null,
 ): DonneesFactureStructuree {
   const typeCode = TYPE_CODES_FACTURE[facture.type as keyof typeof TYPE_CODES_FACTURE] ?? TYPE_CODES_FACTURE.facture
-  const devise = emetteur.devise || "EUR"
+  const devise = deviseEditionFacture(facture, emetteur)
   const categorieOperation = (facture.categorieOperation as CategorieOperation) || "biens"
 
-  // Identité de l'acheteur : figée sur la facture (lot 1), sinon la fiche client.
-  const clientSiret = facture.clientSiret || facture.client?.siret || null
-  const clientSiren = facture.clientSiren || facture.client?.siren || (clientSiret && chiffres(clientSiret).length === 14 ? sirenFromSiret(clientSiret) : null)
-  const clientTvaIntra = facture.clientTvaIntra || facture.client?.tvaIntra || null
+  // Identité archivée seule ; l'absence d'instantané complet est signalée.
+  // Aucune donnée de la fiche actuelle ne reconstitue l'acheteur historique.
+  const acheteur = acheteurDeFacture(facture)
 
   // Facture déjà payée au dépôt (cadre x2, BR-FR-CO-09, cas d'usage AFNOR n° 2) :
   // seulement si le paiement date du jour de l'émission ou d'avant (vente
@@ -125,16 +143,16 @@ export function donneesFactureStructuree(
       address: { street: emetteur.adresseSiege, city: emetteur.ville, postalCode: emetteur.codePostal, country: emetteur.pays },
     },
     customer: {
-      name: facture.clientNom,
-      siret: clientSiret,
-      siren: clientSiren,
-      vatId: clientTvaIntra,
-      email: facture.client?.email,
+      name: acheteur.nom,
+      siret: acheteur.siret,
+      siren: acheteur.siren,
+      vatId: acheteur.tvaIntra,
+      email: acheteur.email,
       address: {
-        street: facture.clientAdresse || facture.client?.adresse,
-        city: facture.client?.ville,
-        postalCode: facture.client?.codePostal,
-        country: facture.client?.pays,
+        street: acheteur.adresse,
+        city: acheteur.ville,
+        postalCode: acheteur.codePostal,
+        country: acheteur.pays,
       },
     },
     lines: facture.lignes.map((line) => ({
@@ -156,7 +174,7 @@ export function donneesFactureStructuree(
     typeCode,
     categorieOperation,
     cadreFacturation: cadreFacturation(categorieOperation, paiement !== null),
-    traitement: traitementFacture(clientSiren, facture.client?.type),
+    traitement: traitementFacture(acheteur.siren, acheteur.type),
     mentions: mentionsCodifiees(emetteur, devise),
     exonerationTva: exonerationDeFacture(facture, emetteur),
     factureOrigine,
@@ -169,14 +187,30 @@ export function donneesFactureStructuree(
           street: facture.adresseLivraison,
           postalCode: facture.codePostalLivraison,
           city: facture.villeLivraison,
-          country: facture.paysLivraison || facture.client?.pays || "FR",
+          country: facture.paysLivraison || acheteur.pays || "FR",
         }
       : null,
     paiement,
   }
 }
 
-export type PreparationExport = { ok: true; donnees: DonneesFactureStructuree; emetteur: EmetteurSnapshot } | { ok: false; status: number; error: string }
+export type PreparationExport =
+  | {
+      ok: true
+      donnees: DonneesFactureStructuree
+      emetteur: EmetteurSnapshot
+      /** Rapport d'export : ce que l'utilisateur doit savoir de la pièce (ex. acheteur non figé). */
+      avertissements: string[]
+    }
+  | { ok: false; status: number; error: string }
+
+/** En-tête HTTP (ASCII) qui signale, sur un export, un acheteur non figé. */
+export const ENTETE_ACHETEUR_FIGE = "X-Gleba-Acheteur-Fige"
+
+/** En-têtes du rapport d'export à joindre à la réponse d'un PDF, UBL ou Factur-X. */
+export function entetesRapportExport(facture: Parameters<typeof acheteurDeFacture>[0]): Record<string, string> {
+  return { [ENTETE_ACHETEUR_FIGE]: acheteurDeFacture(facture).fige ? "oui" : "non" }
+}
 
 /**
  * Prépare l'export structuré d'une facture : refuse un brouillon (pas de numéro
@@ -187,12 +221,19 @@ export async function preparerExportFacture(facture: FacturePourExport, userId: 
   if (facture.statut === "brouillon") {
     return { ok: false, status: 400, error: `Un brouillon n'a pas de numéro définitif : émettez la facture avant l'export ${format}` }
   }
-  const emetteur = await emetteurDeFacture(facture, userId)
+  let emetteur: EmetteurSnapshot | null
+  try {
+    emetteur = await emetteurDeFacture(facture, userId)
+  } catch (error) {
+    if (error instanceof ErreurDeviseFacture) return { ok: false, status: 422, error: error.message }
+    throw error
+  }
   if (!emetteur) return { ok: false, status: 422, error: `Configurez l'identité de l'exploitation avant l'export ${format}` }
 
   let origine: { numero: string; date: Date } | null = null
   if (facture.type === "avoir" && facture.factureOrigineId) {
     origine = await prisma.facture.findFirst({ where: { id: facture.factureOrigineId, userId }, select: { numero: true, date: true } })
   }
-  return { ok: true, donnees: donneesFactureStructuree(facture, emetteur, origine), emetteur }
+  const avertissements = acheteurDeFacture(facture).fige ? [] : [AVERTISSEMENT_ACHETEUR_NON_FIGE]
+  return { ok: true, donnees: donneesFactureStructuree(facture, emetteur, origine), emetteur, avertissements }
 }

@@ -1,5 +1,7 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Sous-onglet Livraisons laiterie & paie du lait — PROMPT 26.
  * Pour les exploitations qui livrent au collecteur (vs transformation ferme).
@@ -14,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { envoyerAvecConfirmationLait } from "@/lib/elevage/confirmation-lait"
-import { formatMontantDevise, todayLocalISO } from "@/lib/format-utils"
+import { symboleDevise, formatMontantDevise, todayLocalISO } from "@/lib/format-utils"
 import { estimePrimeQualite, montantPaie } from "@/lib/elevage/paie-lait"
 
 const MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
@@ -42,6 +44,9 @@ type Paie = {
 }
 
 export function LivraisonLaitSubTab() {
+  const devise = useDevise()
+  const symbole = devise === null ? "—" : symboleDevise(devise)
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { toast } = useToast()
   const [annee, setAnnee] = React.useState(new Date().getFullYear())
   const [livraisons, setLivraisons] = React.useState<Livraison[]>([])
@@ -166,8 +171,8 @@ export function LivraisonLaitSubTab() {
           {paieStats && (
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Litres livrés</div><div className="text-xl font-semibold">{paieStats.litresTotal.toLocaleString("fr-FR")} L</div></div>
-              <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Recette lait</div><div className="text-xl font-semibold">{paieStats.montantTotal.toLocaleString("fr-FR")} €</div></div>
-              <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Prix moyen /1000 L</div><div className="text-xl font-semibold">{paieStats.prixMoyenMille ?? "—"} €</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Recette lait</div><div className="text-xl font-semibold">{formatMontant(paieStats.montantTotal)}</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Prix moyen /1000 L</div><div className="text-xl font-semibold">{paieStats.prixMoyenMille === null ? "—" : formatMontant(paieStats.prixMoyenMille)}</div></div>
             </div>
           )}
           {/* Formulaire paie */}
@@ -175,11 +180,11 @@ export function LivraisonLaitSubTab() {
             <div><Label className="text-xs">Mois</Label><select className="block h-9 w-full rounded-md border border-slate-300 px-1 bg-white text-sm" value={paieForm.mois} onChange={(e) => setPaieForm((f) => ({ ...f, mois: parseInt(e.target.value, 10) }))}>{MOIS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select></div>
             <div><Label className="text-xs">Litres</Label><Input type="number" value={paieForm.litres} onChange={(e) => setPaieForm((f) => ({ ...f, litres: e.target.value }))} /></div>
             <div><Label className="text-xs">Prix /1000L</Label><Input type="number" value={paieForm.prixBaseMille} onChange={(e) => setPaieForm((f) => ({ ...f, prixBaseMille: e.target.value }))} /></div>
-            <div><Label className="text-xs">Prime €</Label><Input type="number" value={paieForm.primeQualite} onChange={(e) => setPaieForm((f) => ({ ...f, primeQualite: e.target.value }))} /></div>
-            <div><Label className="text-xs">Pénalité €</Label><Input type="number" value={paieForm.penalite} onChange={(e) => setPaieForm((f) => ({ ...f, penalite: e.target.value }))} /></div>
+            <div><Label className="text-xs">Prime {symbole}</Label><Input type="number" value={paieForm.primeQualite} onChange={(e) => setPaieForm((f) => ({ ...f, primeQualite: e.target.value }))} /></div>
+            <div><Label className="text-xs">Pénalité {symbole}</Label><Input type="number" value={paieForm.penalite} onChange={(e) => setPaieForm((f) => ({ ...f, penalite: e.target.value }))} /></div>
             <div className="flex gap-1">
               <Button size="sm" variant="outline" onClick={estimerPaie} title="Estimer d'après les livraisons du mois"><Calculator className="h-4 w-4" /></Button>
-              <Button size="sm" onClick={submitPaie} disabled={envoi !== null}>{montantEstime.toFixed(0)} €</Button>
+              <Button size="sm" onClick={submitPaie} disabled={envoi !== null}>{formatMontant(montantEstime)}</Button>
             </div>
           </div>
           {paies.length > 0 && (
@@ -191,10 +196,10 @@ export function LivraisonLaitSubTab() {
                     <tr key={p.id} className="border-b hover:bg-slate-50">
                       <td className="p-2 font-medium">{MOIS[p.mois - 1]}</td>
                       <td className="p-2 text-right">{Number(p.litres).toLocaleString("fr-FR")}</td>
-                      <td className="p-2 text-right">{Number(p.prixBaseMille).toFixed(0)} €</td>
+                      <td className="p-2 text-right">{formatMontant(Number(p.prixBaseMille))}</td>
                       <td className="p-2 text-right text-emerald-700">{Number(p.primeQualite) > 0 ? `+${Number(p.primeQualite).toFixed(0)}` : Number(p.primeQualite).toFixed(0)}</td>
                       <td className="p-2 text-right text-red-700">{Number(p.penalite) > 0 ? `−${Number(p.penalite).toFixed(0)}` : "0"}</td>
-                      <td className="p-2 text-right font-semibold">{formatMontantDevise(Number(p.montantHT))}</td>
+                      <td className="p-2 text-right font-semibold">{formatMontant(Number(p.montantHT))}</td>
                       <td className="p-2 text-right"><Button variant="ghost" size="sm" onClick={() => delPaie(p)}><Trash2 className="h-4 w-4" /></Button></td>
                     </tr>
                   ))}

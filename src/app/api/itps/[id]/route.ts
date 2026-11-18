@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateITPSchema } from '@/lib/validations'
+import { messageIncoherenceSemainesItp, messageRefusTriggerDatesItp } from '@/lib/validations/itp'
 import { requireAuthApi } from '@/lib/auth-utils'
 import {
   masquerEntree,
@@ -19,6 +20,7 @@ import {
   conflitNomItp,
   doublonVisibleItp,
   estConflitPeriodeItp,
+  estViolationUnicite,
   itpMemePeriode,
   messageConflitNomItp,
   messageConflitPeriodeItp,
@@ -27,6 +29,21 @@ import {
 import { messageRefusSuppressionItp } from '@/lib/itp-suppression'
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+/** Clé de l'index de période telle qu'elle sera écrite (saisie, sinon existant). */
+interface PeriodeEffective {
+  proprietaireId: string | null
+  especeId: string | null
+  semaineSemis: number | null
+  semainePlantation: number | null
+  semaineRecolte: number | null
+  typePlanche: string | null
+}
+
+/** Valeur transmise (y compris `null`, qui vide le champ), sinon valeur en base. */
+function effectif<T>(saisi: T | null | undefined, existant: T | null | undefined): T | null {
+  return saisi !== undefined ? saisi : existant ?? null
+}
 
 // GET /api/itps/[id]
 export async function GET(
@@ -75,7 +92,9 @@ export async function GET(
             },
           },
         },
-        orderBy: { dureeCulture: 'desc' },
+        // NULL en dernier (PostgreSQL les range en tête d'un tri décroissant),
+        // puis l'identifiant pour un résultat stable.
+        orderBy: [{ dureeCulture: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
       })
     }
 
@@ -108,9 +127,12 @@ export async function PUT(
   const { session, error } = await requireAuthApi()
   if (error) return error
   const isAdmin = session!.user.role === 'ADMIN'
+  const { id } = await params
+  // Gardée hors du `try` : le `catch` en a besoin pour nommer un conflit de
+  // période, et le corps d'une requête ne se lit qu'une fois.
+  let periode: PeriodeEffective | null = null
 
   try {
-    const { id } = await params
     const body = await request.json()
 
     // Validation
@@ -175,20 +197,52 @@ export async function PUT(
     // semis directs) sur l'espèce EFFECTIVE (nouvelle ou existante). Lecture
     // interne du seul typeCultureSemis — aucune donnée d'espèce n'est renvoyée ici.
     const especeIdEffectif = data.especeId ?? existing.especeId
-    if (especeIdEffectif && data.semainePlantation != null) {
+    periode = {
+      proprietaireId: existing.userId,
+      especeId: effectif(data.especeId, existing.especeId),
+      semaineSemis: effectif(data.semaineSemis, existing.semaineSemis),
+      semainePlantation: effectif(data.semainePlantation, existing.semainePlantation),
+      semaineRecolte: effectif(data.semaineRecolte, existing.semaineRecolte),
+      typePlanche: effectif(data.typePlanche, existing.typePlanche),
+    }
+    // Le type de l'espèce n'est lu que s'il peut changer la réponse : une
+    // plantation saisie (semis direct) ou posée la semaine du semis (pépinière).
+    const plantationSurSemis =
+      periode.semaineSemis != null && periode.semainePlantation === periode.semaineSemis
+    let typeCultureSemis: string | null = null
+    if (especeIdEffectif && (data.semainePlantation != null || plantationSurSemis)) {
       // Espèce visible seulement : l'espèce d'origine de l'ITP a pu redevenir
       // privée chez son auteur depuis le rattachement.
       const espece = await prisma.espece.findFirst({
         where: { AND: [{ id: especeIdEffectif }, visibiliteReferentiel(session!.user.id)] },
-        select: { typeCultureSemis: true },
+        select: { id: true, nom: true, typeCultureSemis: true },
       })
-      if (espece?.typeCultureSemis === 'semis_direct') {
+      typeCultureSemis = espece?.typeCultureSemis ?? null
+      if (typeCultureSemis === 'semis_direct' && data.semainePlantation != null) {
         return NextResponse.json(
           {
-            error: `L'espèce "${especeIdEffectif}" est en semis direct. Le champ Plantation doit être vide.`,
+            // Le libellé, pas l'identifiant : une espèce personnelle a un cuid.
+            error: `L'espèce "${espece?.nom ?? especeIdEffectif}" est en semis direct. Le champ Plantation doit être vide.`,
           },
           { status: 400 }
         )
+      }
+    }
+
+    // Règles du trigger `enforce_itp_dates`, annoncées avant l'écriture sur les
+    // semaines telles qu'elles seront en base. Le trigger rejoue à CHAQUE
+    // écriture : un ITP déjà incohérent est refusé quel que soit le champ
+    // modifié, autant le dire.
+    if (periode.especeId) {
+      const incoherence = messageIncoherenceSemainesItp({
+        typeCultureSemis,
+        semaineSemis: periode.semaineSemis,
+        // Le trigger vide la plantation d'un semis direct avant de contrôler.
+        semainePlantation: typeCultureSemis === 'semis_direct' ? null : periode.semainePlantation,
+        semaineRecolte: periode.semaineRecolte,
+      })
+      if (incoherence) {
+        return NextResponse.json({ error: incoherence }, { status: 400 })
       }
     }
 
@@ -261,26 +315,21 @@ export async function PUT(
     })
   } catch (error) {
     // Même traduction qu'à la création : conflit de période → 409 nommé.
-    if (estConflitPeriodeItp(error)) {
-      const { id } = await params
-      const body = await request.clone().json().catch(() => ({}))
-      const existant = await prisma.iTP.findUnique({
-        where: { id },
-        select: { userId: true, especeId: true },
-      })
-      const conflit = await itpMemePeriode(prisma, {
-        proprietaireId: existant?.userId ?? null,
-        especeId: body?.especeId ?? existant?.especeId,
-        semaineSemis: body?.semaineSemis,
-        semainePlantation: body?.semainePlantation,
-        semaineRecolte: body?.semaineRecolte,
-        typePlanche: body?.typePlanche,
-        exclureId: id,
-      })
-      return NextResponse.json(
-        { error: messageConflitPeriodeItp(conflit), conflit: conflit?.id },
-        { status: 409 }
-      )
+    // Les semaines absentes de la requête gardent leur valeur en base : la
+    // recherche du jumeau porte sur la ligne telle qu'elle aurait été écrite.
+    if (periode && estViolationUnicite(error)) {
+      const conflit = await itpMemePeriode(prisma, { ...periode, exclureId: id }).catch(() => null)
+      if (conflit || estConflitPeriodeItp(error)) {
+        return NextResponse.json(
+          { error: messageConflitPeriodeItp(conflit), conflit: conflit?.id },
+          { status: 409 }
+        )
+      }
+    }
+    // Refus du trigger de dates qui aurait échappé au contrôle applicatif.
+    const refusDates = messageRefusTriggerDatesItp(error)
+    if (refusDates) {
+      return NextResponse.json({ error: refusDates }, { status: 400 })
     }
     console.error('PUT /api/itps/[id] error:', error)
     return NextResponse.json(

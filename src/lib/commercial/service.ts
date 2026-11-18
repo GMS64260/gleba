@@ -32,6 +32,9 @@ async function lire(tx: Tx, userId: string, id: string) {
 }
 
 async function preparer(tx: Tx, userId: string, contenu: ContenuDocument) {
+  // Le rattachement ne doit pas retirer une référence entre sa vérification
+  // et l'enregistrement du bon/devis qui l'engage.
+  await verrouillerStocksDesLignes(tx, userId, contenu.lignes)
   const client = await tx.client.findFirst({ where: { id: contenu.clientId, userId, actif: true } })
   if (!client) throw new ErreurCommerciale('Choisissez une fiche client active de votre exploitation', 400)
   const emetteur = await snapshotEmetteurForEmission(tx, userId)
@@ -195,9 +198,12 @@ export async function facturerDocuments(userId: string, ids: string[], echeance:
     } else {
       await tx.mouvementStockCommercial.updateMany({ where: { userId, documentId: { in: ids } }, data: { factureId: facture.id } })
     }
-    // Le changement d'une fiche client ne réécrit pas l'identité contractuelle.
+    // Le changement d'une fiche client ne réécrit pas l'identité contractuelle :
+    // celle des documents fait foi ; code postal, ville, pays et type de
+    // client, que le document ne porte pas, sont figés par `creerFacture`
+    // depuis la fiche lue à la facturation (BX03).
     const resultat = await tx.facture.update({ where: { id: facture.id }, data: {
-      clientNom: premier.clientNom, clientAdresse: premier.clientAdresse,
+      clientNom: premier.clientNom, clientAdresse: premier.clientAdresse, clientEmail: premier.clientEmail?.trim() || null,
       clientSiret: premier.clientSiret, clientSiren: premier.clientSiren, clientTvaIntra: premier.clientTvaIntra,
     }, include: { lignes: true, client: true } })
     await tx.documentCommercial.updateMany({ where: { userId, id: { in: [...ids, ...docs.flatMap((d) => d.devisOrigineId ? [d.devisOrigineId] : [])] } }, data: { factureId: facture.id } })

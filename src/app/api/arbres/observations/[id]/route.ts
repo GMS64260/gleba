@@ -13,7 +13,7 @@ import {
   champsManquantsObservationPhyto,
   type ObservationPhyto,
 } from "@/lib/tracabilite/conformite-observation-phyto"
-import { chargerContexteRegistre } from "@/lib/tracabilite/contexte-registre"
+import { chargerContexteRegistre, contexteEstFige } from "@/lib/tracabilite/contexte-registre"
 import {
   journaliserRectificationPhyto,
   motifRectification,
@@ -147,7 +147,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       // change, ou s'il ne l'a jamais été (revue de conformité du 2026-11-12, C4).
       const apresFusion = { ...existing, ...data } as typeof existing
       const jamaisFige =
-        existing.cultureRegistre == null && existing.localisationRegistre == null && existing.conduiteBio == null
+        !contexteEstFige(existing)
       if (observationAuRegistre(apresFusion) && (jamaisFige || "arbreId" in data || "parcelleId" in data || "date" in data)) {
         Object.assign(
           data,

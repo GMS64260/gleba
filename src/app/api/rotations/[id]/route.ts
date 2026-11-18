@@ -10,6 +10,7 @@ import prisma from '@/lib/prisma'
 import { updateRotationSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { etapesRotationInvalides, messageEtapesInvalides } from '@/lib/rotations/itp-etapes'
+import { anneesEnDouble, messageAnneesEnDouble } from '@/lib/rotations/numerotation'
 import { messageRefusSuppressionRotation } from '@/lib/rotations/suppression'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
@@ -117,6 +118,13 @@ export async function PUT(
     }
 
     const { details, ...rotationData } = validationResult.data
+
+    // Une étape par année du cycle : deux étapes sur la même année laissaient
+    // un plan dont la vérification de rotation ne lisait que la dernière.
+    const doubles = anneesEnDouble(details)
+    if (doubles.length > 0) {
+      return NextResponse.json({ error: messageAnneesEnDouble(doubles) }, { status: 400 })
+    }
 
     // Même contrôle qu'à la création : une étape ne peut pointer qu'un
     // itinéraire exploitable (cf. src/lib/rotations/itp-etapes.ts).

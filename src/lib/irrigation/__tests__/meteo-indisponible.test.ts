@@ -3,7 +3,7 @@
  * panne, et une ligne sans bilan n'affiche ni « Bilan 7 j » ni « j sans pluie ».
  */
 import { describe, expect, it } from "vitest"
-import { afficheMesuresMeteo, bandeauMeteoIndisponible } from "../meteo-indisponible"
+import { afficheMesuresMeteo, bandeauMeteoIndisponible, etatNappeIndisponible, phraseNappeIndisponible } from "../meteo-indisponible"
 
 describe("conseiller d'irrigation sans météo", () => {
   it("pas de bandeau quand toutes les zones ont leur météo", () => {
@@ -32,5 +32,26 @@ describe("conseiller d'irrigation sans météo", () => {
     expect(afficheMesuresMeteo({})).toBe(true)
     expect(afficheMesuresMeteo({ sansMeteo: "meteo-indisponible" })).toBe(false)
     expect(afficheMesuresMeteo({ sansMeteo: "sans-coordonnees" })).toBe(false)
+  })
+})
+
+/**
+ * Revue du 2026-11-11 : le bloc nappe ne traitait que 404 et 503 ; tout autre
+ * échec le faisait disparaître sans un mot, et le message annonçait 50 km
+ * pour une recherche à 100 km.
+ */
+describe("nappe indisponible", () => {
+  it("404 : aucune station récente dans le rayon réellement cherché", () => {
+    expect(etatNappeIndisponible(404)).toBe("aucune-station")
+    expect(phraseNappeIndisponible("aucune-station")).toBe(
+      "Nappe : aucune station Hub'Eau avec des relevés récents dans un rayon de 100 km.",
+    )
+  })
+
+  it("tout autre échec, réseau compris, est une panne dite comme telle", () => {
+    for (const statut of [500, 502, 503, 400, 429, null]) {
+      expect(etatNappeIndisponible(statut), String(statut)).toBe("panne")
+    }
+    expect(phraseNappeIndisponible("panne")).toMatch(/momentanément indisponible/)
   })
 })

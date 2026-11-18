@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useExploitation } from "@/hooks/use-exploitation"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
@@ -177,6 +178,8 @@ export function ReferentielTab({ year }: ReferentielTabProps) {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId ?? null
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [filteredData, setFilteredData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -220,11 +223,12 @@ export function ReferentielTab({ year }: ReferentielTabProps) {
     (e) => e.nom ?? e.id,
     currentUserId,
     referentielActions,
-    "ESPECE"
+    "ESPECE",
+    proprietaireId
   )
 
   // Filtre client par origine (combiné au filtre de type).
-  const displayedData = filtrerParOrigine(filteredData, filtreOrigine, currentUserId)
+  const displayedData = filtrerParOrigine(filteredData, filtreOrigine, proprietaireId)
 
   return (
     <div className="space-y-4">

@@ -10,7 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
+import { fetchOpenMeteoForecast, fetchOpenMeteoHistory, resumerPluie } from '@/lib/meteo'
+import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
 import { estSousAbri } from '@/lib/irrigation/abri'
 
 export interface PluviometriePlancheResponse {
@@ -21,11 +22,13 @@ export interface PluviometriePlancheResponse {
   typePlanche: string | null
   sousAbri: boolean
   pluviometrie: {
-    historique: { date: string; mm: number }[]    // 30 derniers jours
     previsions: { date: string; mm: number; proba: number }[]  // 7 prochains jours
-    total7j: number
-    total30j: number
-    joursSansPluie: number    // jours consécutifs sans pluie (< 1mm) jusqu'à aujourd'hui
+    historique: { date: string; mm: number }[]    // jours mesurés des 30 derniers jours
+    total7j: number | null    // null : archive en panne ou pas encore publiée
+    total30j: number | null
+    /** Aucun jour mesuré : les cumuls sont inconnus, pas nuls. */
+    historiqueIndisponible?: boolean
+    joursSansPluie: number    // jours mesurés consécutifs sans pluie (< 1 mm) jusqu'à hier
     prochainePluie: string | null  // date ISO de la prochaine pluie prévue >= 5mm
     prochaineQuantite: number
   } | null
@@ -99,28 +102,29 @@ export async function GET(request: NextRequest) {
       } satisfies PluviometriePlancheResponse)
     }
 
-    // Historique 30 jours
+    // Bornes en jours civils du serveur : en jours UTC, la fenêtre glissait
+    // d'un jour entre minuit et 1 h ou 2 h du matin.
     const today = new Date()
     const thirtyDaysAgo = new Date(today)
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
 
-    let historiqueRaw: Awaited<ReturnType<typeof fetchOpenMeteoHistory>> = []
-    try {
-      historiqueRaw = await fetchOpenMeteoHistory(
-        lat, lng,
-        thirtyDaysAgo.toISOString().split('T')[0],
-        yesterday.toISOString().split('T')[0]
-      )
-    } catch { /* ignore */ }
-
-    // Prévisions 7 jours
-    const forecast = await fetchOpenMeteoForecast(lat, lng)
+    // Archive et prévisions ensemble. Une panne d'archive ne coupe pas les
+    // prévisions, mais elle est dite : `null` et non une liste vide, qui se
+    // lisait « 0 mm sur 30 jours ».
+    const [historiqueRaw, forecast] = await Promise.all([
+      fetchOpenMeteoHistory(lat, lng, jourCivilLocalISO(thirtyDaysAgo), jourCivilLocalISO(yesterday))
+        .catch(() => null),
+      fetchOpenMeteoForecast(lat, lng),
+    ])
     const previsions = forecast.daily
 
-    // Formater l'historique
-    const historique = historiqueRaw.map(d => ({
+    // Seuls les jours publiés par l'archive comptent : rangés à 0 mm, les
+    // jours en attente passaient pour des jours secs.
+    const mesures = (historiqueRaw ?? []).filter(d => !d.precipitationInconnue)
+    const historiqueIndisponible = mesures.length === 0
+    const historique = mesures.map(d => ({
       date: d.date,
       mm: Math.round(d.precipitation * 10) / 10,
     }))
@@ -132,19 +136,14 @@ export async function GET(request: NextRequest) {
       proba: (d as typeof d & { precipitationProba?: number }).precipitationProba ?? 0,
     }))
 
-    // Calculs
-    const total7j = historique.slice(-7).reduce((sum, d) => sum + d.mm, 0)
+    // Cumuls sur les jours civils demandés, pas sur les « 7 derniers éléments »
+    // (qui remontaient plus loin dès qu'un jour récent manquait).
+    const debut7j = new Date(today)
+    debut7j.setDate(debut7j.getDate() - 7)
+    const borne7j = jourCivilLocalISO(debut7j)
+    const total7j = historique.filter(d => d.date >= borne7j).reduce((sum, d) => sum + d.mm, 0)
     const total30j = historique.reduce((sum, d) => sum + d.mm, 0)
-
-    // Jours consécutifs sans pluie (depuis aujourd'hui en remontant)
-    let joursSansPluie = 0
-    for (let i = historique.length - 1; i >= 0; i--) {
-      if (historique[i].mm < 1) {
-        joursSansPluie++
-      } else {
-        break
-      }
-    }
+    const { joursSansPluie } = resumerPluie(mesures)
 
     // Prochaine pluie >= 5mm
     let prochainePluie: string | null = null
@@ -167,9 +166,10 @@ export async function GET(request: NextRequest) {
       pluviometrie: {
         historique,
         previsions: previsionsFmt,
-        total7j: Math.round(total7j * 10) / 10,
-        total30j: Math.round(total30j * 10) / 10,
+        total7j: historiqueIndisponible ? null : Math.round(total7j * 10) / 10,
+        total30j: historiqueIndisponible ? null : Math.round(total30j * 10) / 10,
         joursSansPluie,
+        ...(historiqueIndisponible ? { historiqueIndisponible: true } : {}),
         prochainePluie,
         prochaineQuantite,
       },

@@ -1,11 +1,16 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+import { formatMontantDevise } from "@/lib/format-utils"
+
 /**
  * Page Traçabilité reglementaire
  * Registre phytosanitaire, Registre de culture, Résumé sanitaire
  */
 
+import { LieuTraitementRegistre } from "@/components/tracabilite/LieuTraitementRegistre"
 import * as React from "react"
+import { messageErreurReponse } from "@/lib/api-erreur"
 import { flushSync } from "react-dom"
 import { getAvailableYears } from "@/components/year-selector"
 import { useSession } from "next-auth/react"
@@ -47,6 +52,10 @@ interface PhytoEntry {
   espece: string
   parcelle: string
   localisation: string
+  // Contexte figé au jour du traitement (CR-PHY-03), restitué comme à l'export.
+  localisationReglementaire?: string | null
+  conduiteBio?: boolean | null
+  contexteFige?: boolean
   nuisibleCible: string | null
   produit: string | null
   numAMM: string | null
@@ -311,6 +320,7 @@ export default function TraçabilitéPage() {
 function TraçabilitéContent() {
   const { data: session } = useSession()
   const [activeTab, setActiveTab] = React.useState<TabId>(REGISTRE_PAR_DEFAUT)
+  const [refusRegistre, setRefusRegistre] = React.useState<string | null>(null)
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
   // Ticket QA cmvntzwng — registre et année vivent dans l'URL
   // (`?registre=culture&annee=2027`) pour survivre à un rechargement ou à un
@@ -384,21 +394,31 @@ function TraçabilitéContent() {
   React.useEffect(() => {
     if (!session?.user || !etatRestaure) return
 
+    // Registre d'un module fermé au membre connecté (élevage, culture) : la
+    // route répond 403 ; son message s'affiche à la place du registre.
+    const refusDe = async (res: Response) => {
+      if (res.status === 403) setRefusRegistre(await messageErreurReponse(res))
+    }
     const fetchData = async () => {
       setLoading(true)
+      setRefusRegistre(null)
       try {
         if (activeTab === "phyto") {
           const res = await fetch(`/api/tracabilite/registre-phyto?annee=${selectedYear}`)
           if (res.ok) setPhytoData(await res.json())
+          else await refusDe(res)
         } else if (activeTab === "culture") {
           const res = await fetch(`/api/tracabilite/registre-culture?annee=${selectedYear}`)
           if (res.ok) setCultureData(await res.json())
+          else await refusDe(res)
         } else if (activeTab === "sanitaire") {
           const res = await fetch(`/api/tracabilite/carnet-sanitaire?annee=${selectedYear}`)
           if (res.ok) setSanitaireData(await res.json())
+          else await refusDe(res)
         } else if (activeTab === "elevage") {
           const res = await fetch(`/api/tracabilite/registre-elevage?annee=${selectedYear}`)
           if (res.ok) setElevageData(await res.json())
+          else await refusDe(res)
         }
       } catch (err) {
         console.error("Erreur chargement tracabilite:", err)
@@ -526,6 +546,11 @@ function TraçabilitéContent() {
       {/* CONTENT */}
       {/* ============================================================ */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px] print-content">
+        {refusRegistre ? (
+          <p role="alert" className="max-w-prose rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-base leading-7 text-amber-900">
+            {refusRegistre}
+          </p>
+        ) : (<>
         {activeTab === "phyto" && (
           <PhytoTab data={phytoData} loading={loading} year={selectedYear} />
         )}
@@ -550,6 +575,7 @@ function TraçabilitéContent() {
         {activeTab === "elevage" && (
           <ElevageRegistreTab data={elevageData} loading={loading} year={selectedYear} />
         )}
+        </>)}
       </main>
 
       {/* Garde-fou export registre phyto incomplet (cmpm732hg). */}
@@ -692,7 +718,7 @@ function PhytoTab({
               <tr className="border-b bg-indigo-50">
                 <th className="text-left p-2 font-semibold">Date</th>
                 <th className="text-left p-2 font-semibold">Culture</th>
-                <th className="text-left p-2 font-semibold">Parcelle</th>
+                <th className="text-left p-2 font-semibold">Localisation</th>
                 <th className="text-left p-2 font-semibold">Nuisible cible</th>
                 <th className="text-left p-2 font-semibold">Produit</th>
                 <th className="text-left p-2 font-semibold">N. AMM</th>
@@ -731,10 +757,7 @@ function PhytoTab({
                     {entry.champsManquants.includes("culture/parcelle") ? <MissingField /> : null}
                   </td>
                   <td className="p-2">
-                    {entry.parcelle}
-                    {entry.localisation && (
-                      <span className="text-xs text-slate-500 block">{entry.localisation}</span>
-                    )}
+                    <LieuTraitementRegistre entry={entry} />
                   </td>
                   <td className="p-2">
                     {entry.nuisibleCible || <MissingFieldOptional />}
@@ -1091,6 +1114,7 @@ function SanitaireTab({
   filter: string
   setFilter: (v: string) => void
 }) {
+  const devise = useDevise()
   if (loading) {
     return (
       <div className="space-y-4">
@@ -1155,9 +1179,7 @@ function SanitaireTab({
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">
-              {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(
-                data.stats.coutTotal
-              )}
+              {devise === null ? "—" : formatMontantDevise(data.stats.coutTotal, devise)}
             </p>
           </CardContent>
         </Card>

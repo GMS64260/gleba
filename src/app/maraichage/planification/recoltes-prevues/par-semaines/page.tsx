@@ -7,8 +7,11 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useAnneePlanification } from "@/hooks/use-annee-planification"
-import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
+import { useAnneePlanification, useChargementPlanification } from "@/hooks/use-annee-planification"
+import {
+  ErreurChargementPlanification,
+  SelecteurAnneePlanification,
+} from "@/components/maraichage/SelecteurAnneePlanification"
 import { ArrowLeft, CalendarRange } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -23,7 +26,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "@/hooks/use-toast"
 import {
   formatQuantiteParUnite,
   fusionnerQuantites,
@@ -47,51 +49,29 @@ interface RecoltePrevue {
   totalSurface: number
 }
 
-function RecoltesPrevuesParSemainesContent() {
-  const { toast } = useToast()
+const AUCUNE_PERIODE: RecoltePrevue[] = []
 
-  const [data, setData] = React.useState<RecoltePrevue[]>([])
-  // Bug #3 (testeur) — Le « restant » du bandeau divergeait du KPI « à venir »
-  // (1216.8 vs 1135.8 kg) car il sommait la projection détaillée par semaine
-  // (incluant des cultures dérivées de rotation) alors que le KPI utilise
-  // l'agrégat unifié `getRecoltesAnneeAggregat`. On affiche désormais la MÊME
-  // valeur (`stats.projectionKg`) que la cartouche « Récoltes attendues ».
-  const [, setProjectionKg] = React.useState<number | null>(null)
-  // Même valeur, toutes unités : une projection en tiges laissait le bandeau à
-  // « 0,0 kg restants » alors que le tableau était plein (2026-08-20).
-  const [projectionParUnite, setProjectionParUnite] = React.useState<QuantiteParUnite | null>(null)
-  const [isLoading, setIsLoading] = React.useState(true)
+function RecoltesPrevuesParSemainesContent() {
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
-
-
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/planification/recoltes-prevues?annee=${annee}&groupBy=semaine`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const result = await response.json()
-      setData(result.data)
-      setProjectionKg(typeof result.stats?.projectionKg === "number" ? result.stats.projectionKg : null)
-      setProjectionParUnite(result.stats?.projectionParUnite ?? null)
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les récoltes prévues",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [annee, toast])
-
-  React.useEffect(() => {
-    // Ne pas charger la saison courante avant d'avoir restauré la saison
-    // mémorisée : la réponse tardive écraserait les données de la bonne année.
-    if (!anneePrete) return
-    fetchData()
-  }, [anneePrete, fetchData])
+  // Rien n'est demandé avant la restauration de la saison mémorisée ; une
+  // réponse ne vaut que pour la saison qui l'a demandée.
+  const { resultat, chargement: isLoading, erreur, recharger } = useChargementPlanification<{
+    data: RecoltePrevue[]
+    stats?: { projectionParUnite?: QuantiteParUnite }
+  }>(
+    anneePrete ? `/api/planification/recoltes-prevues?annee=${annee}&groupBy=semaine` : null,
+    "Impossible de charger les récoltes prévues",
+  )
+  const data = resultat?.data ?? AUCUNE_PERIODE
+  // Bug #3 (testeur) — Le « restant » du bandeau divergeait du KPI « à venir »
+  // (1216.8 vs 1135.8 kg) car il sommait la projection détaillée par semaine
+  // alors que le KPI utilise la projection unifiée. On affiche la MÊME valeur
+  // (`stats.projectionParUnite`) que la cartouche « Récoltes attendues »,
+  // toutes unités : une projection en tiges laissait le bandeau à « 0,0 kg
+  // restants » alors que le tableau était plein (2026-08-20).
+  const projectionParUnite = resultat?.stats?.projectionParUnite ?? null
 
   // Filtrer les semaines avec des recoltes
   // « Semaine remplie » ne se lit plus sur les kilos : une semaine de 400 tiges
@@ -119,13 +99,16 @@ function RecoltesPrevuesParSemainesContent() {
         <div className="flex items-center gap-4">
           {/* Bug cmp8sc1c6 (Marc 2026-05-16) — "kg/an" prêtait à confusion :
               il s'agit en réalité du restant à récolter sur l'année. */}
-          <Badge variant="outline" className="text-lg" title="Total prévu sur les semaines à venir (hors récoltes déjà réalisées)">
-            {formatQuantiteParUnite(
-              projectionParUnite ??
-                fusionnerQuantites(...data.map((r) => r.totalParUnite ?? {})),
-            )}{" "}
-            restants
-          </Badge>
+          {/* Pas de « 0 kg restants » tant que rien n'est chargé, ni après un échec. */}
+          {resultat && (
+            <Badge variant="outline" className="text-lg" title="Total prévu sur les semaines à venir (hors récoltes déjà réalisées)">
+              {formatQuantiteParUnite(
+                projectionParUnite ??
+                  fusionnerQuantites(...data.map((r) => r.totalParUnite ?? {})),
+              )}{" "}
+              restants
+            </Badge>
+          )}
           <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
         </div>
       </div>
@@ -145,10 +128,19 @@ function RecoltesPrevuesParSemainesContent() {
           </Link>
         </div>
 
+        {erreur && (
+          <ErreurChargementPlanification
+            message={`Les récoltes prévues de ${annee} n’ont pas pu être chargées.`}
+            onReessayer={recharger}
+          />
+        )}
+
         {/* Stats */}
-        <div className="mb-4 text-sm text-muted-foreground">
-          {semainesAvecRecoltes.length} semaines avec des récoltes prévues
-        </div>
+        {resultat && (
+          <div className="mb-4 text-sm text-muted-foreground">
+            {semainesAvecRecoltes.length} semaine{semainesAvecRecoltes.length > 1 ? "s" : ""} avec des récoltes prévues
+          </div>
+        )}
 
         {/* Tableau */}
         <Card>
@@ -158,6 +150,8 @@ function RecoltesPrevuesParSemainesContent() {
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-[600px] w-full" />
+            ) : erreur ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">Chargement impossible.</p>
             ) : (
               <div className="max-h-[600px] overflow-y-auto">
                 <Table>

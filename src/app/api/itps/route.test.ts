@@ -188,4 +188,88 @@ describe('GET /api/itps', () => {
       decalageClimatiqueApplique: 3,
     })
   })
+
+  // Revue 2026-11-11, point 6 — les deux calendriers chargent jusqu'à 1 000
+  // itinéraires pour n'en lire qu'une vingtaine de champs.
+  describe('projection allégée (champs=calendrier)', () => {
+    it('reste inchangée par défaut : ligne complète, espèce et famille incluses', async () => {
+      await GET(new NextRequest('http://localhost/api/itps'))
+
+      const args = mocks.findMany.mock.calls[0][0]
+      expect(args.select).toBeUndefined()
+      expect(args.include.espece).toEqual({ include: { famille: true } })
+      expect(args.include._count).toBeDefined()
+    })
+
+    it('ne lit que les champs des calendriers quand elle est demandée', async () => {
+      const response = await GET(
+        new NextRequest('http://localhost/api/itps?pageSize=1000&applicable=1&champs=calendrier')
+      )
+
+      expect(response.status).toBe(200)
+      const args = mocks.findMany.mock.calls[0][0]
+      expect(args.include).toBeUndefined()
+      // Ce que lisent GanttRow, le dialog d'édition, l'encart lunaire et le calage.
+      expect(args.select).toMatchObject({
+        id: true,
+        nom: true,
+        userId: true,
+        especeId: true,
+        zoneClimat: true,
+        semaineSemis: true,
+        semainePlantation: true,
+        semaineRecolte: true,
+        semaineImplantationDebut: true,
+        semaineImplantationFin: true,
+        semaineRecolteFin: true,
+        dureeRecolte: true,
+        dureePepiniere: true,
+        typePlanche: true,
+        implantation: true,
+        statutValidation: true,
+        sourceRecordId: true,
+      })
+      // Ni textes longs, ni compteurs, ni provenance détaillée.
+      expect(args.select.notes).toBeUndefined()
+      expect(args.select.sourceReference).toBeUndefined()
+      expect(args.select._count).toBeUndefined()
+      expect(Object.keys(args.select.espece.select).sort()).toEqual(
+        ['couleur', 'famille', 'id', 'modeSemis', 'nom', 'typeCultureSemis', 'userId'].sort()
+      )
+      // Mêmes filtres de visibilité et de zone que la réponse complète.
+      expect(contientClause(args.where, { actif: true })).toBe(true)
+    })
+
+    it('garde le calage climatique et le masquage du propriétaire', async () => {
+      mocks.zoneEffectiveUser.mockResolvedValue('semi_continental')
+      mocks.findMany.mockResolvedValue([
+        {
+          id: 'cmautre',
+          nom: 'Tomate du voisin',
+          userId: 'user-2',
+          especeId: 'Tomate',
+          zoneClimat: 'oceanique',
+          semaineSemis: 16,
+          semainePlantation: null,
+          semaineRecolte: 36,
+          espece: { id: 'cmesp', nom: 'Tomate ancienne', userId: 'user-3', couleur: null, famille: null },
+        },
+      ])
+
+      const response = await GET(
+        new NextRequest('http://localhost/api/itps?calibre=1&champs=calendrier')
+      )
+      const body = await response.json()
+
+      expect(body.data[0].semaineSemis).toBe(18)
+      expect(body.data[0].userId).not.toBe('user-2')
+      expect(body.data[0].espece.userId).not.toBe('user-3')
+    })
+
+    it('ignore une valeur inconnue du paramètre', async () => {
+      await GET(new NextRequest('http://localhost/api/itps?champs=tout'))
+
+      expect(mocks.findMany.mock.calls[0][0].include).toBeDefined()
+    })
+  })
 })

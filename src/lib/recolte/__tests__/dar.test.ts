@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { avertissementsDarLot, chargerAvertissementsDarLegumes, type TraitementDar } from '../dar'
+import { avertissementsDarLot, chargerAvertissementsDarLegumes, verdictDarLot, type TraitementDar } from '../dar'
 
 const j = (jour: string) => new Date(`${jour}T00:00:00Z`)
 const lot = { id: 1, cultureId: 10, plancheId: 'p1', parcelleId: 'parc1', date: j('2026-06-10') }
@@ -36,12 +36,21 @@ describe('délai avant récolte des légumes', () => {
     expect(avertissementsDarLot({ ...lot, parcelleId: null }, [traitement({ ...surParcelle, parcelleId: null })])).toEqual([])
   })
 
-  it('le délai saisi prime sur celui du référentiel, qui sert à défaut', () => {
+  it('seul le délai saisi est opposable ; celui du catalogue reste une indication (revue QA du tour 2)', () => {
     const ref = { darJours: 21, nomCommercial: 'Produit X' }
     expect(avertissementsDarLot(lot, [traitement({ dar: 3, produitPhytoRef: ref })])).toEqual([])
-    const messages = avertissementsDarLot(lot, [traitement({ dar: null, produitPhytoRef: ref })])
-    expect(messages[0]).toContain('Produit X')
-    expect(messages[0]).toContain('21 jours')
+    // Récolte 5 jours après, 21 jours au catalogue, rien de saisi : rappel, vente possible.
+    const generique = verdictDarLot(lot, [traitement({ dar: null, produitPhytoRef: ref })])
+    expect(generique.niveau).toBe('informatif')
+    expect(generique.rappels[0]).toContain('Produit X')
+    expect(generique.rappels[0]).toContain('le catalogue Gleba indique 21 jours à titre indicatif')
+    // Ligne ancienne : 21 recopié du catalogue par l'API, marqué indicatif.
+    const ancien = verdictDarLot(lot, [traitement({ dar: 21, darIndicatif: true, produitPhytoRef: ref })])
+    expect(ancien.niveau).toBe('informatif')
+    // Le même délai saisi par l'exploitant bloque la vente.
+    expect(verdictDarLot(lot, [traitement({ dar: 21, darIndicatif: false, produitPhytoRef: ref })]).niveau).toBe('bloquant')
+    // Dans les 3 jours, le défaut légal bloque quelle que soit l'indication.
+    expect(verdictDarLot({ ...lot, date: j('2026-06-07') }, [traitement({ dar: null, produitPhytoRef: ref })]).traitements[0]).toMatchObject({ origineDelai: 'defaut_legal', finDelai: '2026-06-08' })
   })
 
   it('un traitement horodaté se lit au jour civil', () => {
@@ -96,19 +105,43 @@ describe('délai avant récolte des légumes', () => {
       expect(messages[0]).toContain('Le délai saisi de 0 jour est inférieur au délai par défaut de 3 jours')
     })
 
-    it('zéro du référentiel : même avertissement, le référentiel n’est pas l’AMM', () => {
-      const messages = avertissementsDarLot(lot, [veille({ dar: null, produitPhytoRef: { darJours: 0, nomCommercial: 'Bt', classification: 'Biocontrôle' } })])
-      expect(messages[0]).toContain('Le délai du référentiel de 0 jour')
+    it('zéro du catalogue : ce n’est pas l’AMM, le défaut légal de 3 jours s’applique', () => {
+      const v = verdictDarLot(lot, [veille({ dar: null, produitPhytoRef: { darJours: 0, nomCommercial: 'Bt', classification: 'Biocontrôle' } })])
+      expect(v.niveau).toBe('bloquant')
+      expect(v.blocages[0]).toContain('DAR non renseigné pour Bt')
+      expect(v.traitements[0].origineDelai).toBe('defaut_legal')
     })
 
     it('zéro saisi, trois jours passés : rien à signaler', () => {
       expect(avertissementsDarLot(lot, [traitement({ dar: 0, date: j('2026-06-07') })])).toEqual([])
     })
 
-    it('un geste sans produit, une substance de base ou un moyen mécanique sans délai : rien', () => {
+    it('un geste sans produit ou un moyen mécanique sans délai : rien', () => {
       expect(avertissementsDarLot(lot, [veille({ dar: null, produitPhyto: null, geste: 'taille sanitaire' })])).toEqual([])
-      expect(avertissementsDarLot(lot, [veille({ dar: null, produitPhytoRef: { darJours: null, nomCommercial: 'Purin d’ortie', classification: 'Substance de base / PNPP' } })])).toEqual([])
       expect(avertissementsDarLot(lot, [veille({ dar: null, produitPhytoRef: { darJours: null, nomCommercial: 'Filet', classification: 'Mécanique' } })])).toEqual([])
+    })
+
+    it('CR-DAR-01 : une substance de base sans délai n’est plus muette, sans se voir opposer les 3 jours', () => {
+      const messages = avertissementsDarLot(lot, [veille({ dar: null, produitPhytoRef: { darJours: null, nomCommercial: 'Purin d’ortie', classification: 'Substance de base / PNPP' } })])
+      expect(messages).toHaveLength(1)
+      expect(messages[0]).toContain('délai inconnu, vérifiez les conditions d’approbation de Purin d’ortie')
+      expect(messages[0]).not.toMatch(/3 jours|AMM/)
+    })
+
+    it('CR-DAR-01, tour 2 : prêle saisie librement et déclarée substance de base, sans délai → conditions d’approbation', () => {
+      const prele = { dar: null, produitPhyto: 'Décoction de prêle', produitPhytoRef: null }
+      const messages = avertissementsDarLot(lot, [veille({ ...prele, natureProduit: 'substance_base' })])
+      expect(messages).toHaveLength(1)
+      expect(messages[0]).toContain('délai inconnu, vérifiez les conditions d’approbation de Décoction de prêle')
+      expect(messages[0]).not.toMatch(/3 jours|AMM/)
+      // Sans nature déclarée, le même nom reste un produit inconnu : défaut légal de l'AMM.
+      expect(avertissementsDarLot(lot, [veille(prele)])[0]).toMatch(/3 jours/)
+      // Délai connu : appliqué, quelle que soit la nature.
+      expect(avertissementsDarLot(lot, [veille({ ...prele, dar: 2, natureProduit: 'substance_base' })])[0]).toMatch(/2 jours/)
+      expect(avertissementsDarLot(lot, [veille({ ...prele, dar: 0, natureProduit: 'substance_base' })])).toEqual([])
+      // Biostimulant déclaré sans délai : rien ; avec un délai saisi : appliqué.
+      expect(avertissementsDarLot(lot, [veille({ ...prele, natureProduit: 'biostimulant' })])).toEqual([])
+      expect(avertissementsDarLot(lot, [veille({ ...prele, dar: 2, natureProduit: 'biostimulant' })])).toHaveLength(1)
     })
 
     it('un délai saisi pour une substance de base reste appliqué', () => {

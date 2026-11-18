@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 /**
@@ -34,21 +34,13 @@ vi.mock("@/lib/prisma", () => ({
     espece: { findFirst: mocks.especeFindFirst },
     iTP: { findFirst: mocks.itpFindFirst },
     planche: { findFirst: mocks.plancheFindFirst, findUnique: mocks.plancheFindUnique },
-    $transaction: (fn: (tx: unknown) => unknown) => fn({ culture: { create: mocks.cultureCreate } }),
+    $transaction: (fn: (tx: unknown) => unknown) => fn({ $executeRaw: async () => 1, culture: { create: mocks.cultureCreate, findMany: async () => [] } }),
   },
 }))
 
 import { POST } from "./route"
 
-// Le conteneur tourne en Europe/Paris.
-const tzAvant = process.env.TZ
-beforeAll(() => {
-  process.env.TZ = "Europe/Paris"
-})
-afterAll(() => {
-  if (tzAvant === undefined) delete process.env.TZ
-  else process.env.TZ = tzAvant
-})
+// Le fuseau est fixé au démarrage de Vitest (Paris et UTC dans les contrôles).
 
 const PLANCHE = "cmvnulpl0000planche0002"
 
@@ -98,9 +90,9 @@ describe("POST /api/cultures — dates écrites au jour seul (cmvnulry1)", () =>
     mocks.cultureCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 1237, ...data }))
   })
 
-  it("un instant minuit-Paris est stocké à minuit UTC de son jour", async () => {
+  it("un instant minuit-local est stocké à minuit UTC de son jour", async () => {
     const res = await creer(
-      corps({ dateSemis: "2027-04-11T22:00:00.000Z", datePlantation: "2027-05-09T22:00:00.000Z" })
+      corps({ dateSemis: new Date(2027, 3, 12).toISOString(), datePlantation: new Date(2027, 4, 10).toISOString() })
     )
 
     expect(res.status).toBe(201)
@@ -116,7 +108,7 @@ describe("POST /api/cultures — dates écrites au jour seul (cmvnulry1)", () =>
   })
 
   it("heure d'hiver, et un jour « AAAA-MM-JJ » du formulaire inchangé", async () => {
-    const res = await creer(corps({ dateSemis: "2027-01-31T23:00:00.000Z", dateRecolte: "2027-06-01" }))
+    const res = await creer(corps({ dateSemis: new Date(2027, 1, 1).toISOString(), dateRecolte: "2027-06-01" }))
 
     expect(res.status).toBe(201)
     expect(ecrit().dateSemis?.toISOString()).toBe("2027-02-01T00:00:00.000Z")

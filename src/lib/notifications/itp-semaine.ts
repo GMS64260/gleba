@@ -25,7 +25,7 @@
  */
 
 import { addDays, getISOWeek, getISOWeekYear, startOfWeek } from "date-fns"
-import { calculerDateDepuisSemaine, semaineAbsolue } from "@/lib/assistant-helpers"
+import { datesDepuisItp } from "@/lib/cultures/dates-itp"
 import {
   appliquerDecalageItp,
   decalageItpPourLecteur,
@@ -88,6 +88,12 @@ export interface ItpSemaineInput {
   zoneClimat: ZoneClimat | null
   semaineSemis?: number | null
   semainePlantation?: number | null
+  /** Début de la fenêtre d'implantation : vaut semis quand l'ITP n'a ni semis ni plantation. */
+  semaineImplantationDebut?: number | null
+  /** Durée de culture en jours ; au-delà d'un an, la récolte attend d'autant. */
+  dureeCulture?: number | null
+  /** Années entre la plantation et la première récolte (pérennes). */
+  delaiPremiereRecolteAnnees?: number | null
   /** Début de la fenêtre de récolte (semaine ISO). */
   semaineRecolte?: number | null
   /** Fin de la fenêtre de récolte (semaine ISO) — prioritaire sur dureeRecolte. */
@@ -121,28 +127,29 @@ export function operationsItp(
   const decale = options.decalageZone ? appliquerDecalageItp(itp, options.decalageZone) : itp
   const ops: FenetreOperationItp[] = []
 
-  if (decale.semaineSemis != null) {
-    const debut = calculerDateDepuisSemaine(annee, decale.semaineSemis)
-    ops.push({ type: "semis", debut, fin: new Date(debut.getTime() + 6 * JOUR_MS) })
+  // Une seule cascade pour toute l'application : celle qui date les cultures à
+  // leur création (`datesDepuisItp`). Le calcul propre à ce module s'en écartait
+  // sur trois points : il ignorait la fenêtre d'implantation (mesclun : récolte
+  // posée huit mois avant le semis), le délai de première récolte des pérennes
+  // (asperge « à récolter » la semaine suivant la plantation), et reportait une
+  // étape d'un an en ajoutant 52 semaines, soit une semaine trop tôt après une
+  // année à 53 semaines.
+  const { dateSemis, datePlantation, dateRecolte } = datesDepuisItp(annee, decale)
+
+  if (dateSemis) {
+    ops.push({ type: "semis", debut: dateSemis, fin: new Date(dateSemis.getTime() + 6 * JOUR_MS) })
   }
 
-  // Cascade en semaines ABSOLUES : chaque jalon sert de référence au suivant sous
-  // sa forme reportée (> 52 si l'étape est passée à l'année suivante). Passer la
-  // semaine bornée 1–52 perdait le report et ramenait la récolte avant la
-  // plantation.
-  const semisAbsolu = decale.semaineSemis != null ? semaineAbsolue(decale.semaineSemis) : null
-  let plantationAbsolue: number | null = null
-  if (decale.semainePlantation != null) {
-    plantationAbsolue = semaineAbsolue(decale.semainePlantation, semisAbsolu)
-    const debut = calculerDateDepuisSemaine(annee, plantationAbsolue)
-    ops.push({ type: "plantation", debut, fin: new Date(debut.getTime() + 6 * JOUR_MS) })
+  if (datePlantation) {
+    ops.push({
+      type: "plantation",
+      debut: datePlantation,
+      fin: new Date(datePlantation.getTime() + 6 * JOUR_MS),
+    })
   }
 
-  if (decale.semaineRecolte != null) {
-    const debut = calculerDateDepuisSemaine(
-      annee,
-      semaineAbsolue(decale.semaineRecolte, plantationAbsolue ?? semisAbsolu)
-    )
+  if (dateRecolte && decale.semaineRecolte != null) {
+    const debut = dateRecolte
     // Fenêtre de récolte à cheval sur le 31 décembre : « S50 → S3 » vaut 6
     // semaines, pas une. La soustraction nue rendait un nombre négatif ramené à 1
     // par le Math.max, alors que le calendrier ITP, lui, dessine bien les deux
@@ -182,6 +189,44 @@ export function operationsItpDansSemaine(
 // ─────────────────────────────────────────────────────────────────────────────
 // Croisement avec les cultures actives
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Verbe d'action par type d'opération, pour le message de l'alerte dédiée. */
+const VERBE_PAR_TYPE: Record<TypeOperationItp, string> = {
+  semis: "Semer",
+  plantation: "Planter",
+  recolte: "Récolter",
+}
+
+/** Nombre de libellés cités par type avant de résumer (garde-fou anti-spam). */
+const LIBELLES_MAX_PAR_TYPE = 12
+
+/**
+ * Corps du message « tâches ITP de la semaine » : « Semer A, B ; Planter C ».
+ *
+ * Une tâche existe par CULTURE : trois séries de radis sur la même planche
+ * donnaient « Radis (planche A1), Radis (planche A1), Radis (planche A1) ». Le
+ * message cite chaque couple espèce / planche une seule fois ; le détail par
+ * culture vit dans le résumé quotidien.
+ */
+export function resumeTachesItpSemaine(taches: TacheItpSemaine[]): string {
+  const types: TypeOperationItp[] = ["semis", "plantation", "recolte"]
+  return types
+    .map((type) => {
+      const libelles = new Set<string>()
+      for (const tache of taches) {
+        if (tache.type !== type) continue
+        libelles.add(
+          tache.plancheName ? `${tache.especeNom} (planche ${tache.plancheName})` : tache.especeNom
+        )
+      }
+      if (libelles.size === 0) return null
+      const cites = [...libelles].slice(0, LIBELLES_MAX_PAR_TYPE)
+      const reste = libelles.size - cites.length
+      return `${VERBE_PAR_TYPE[type]} ${cites.join(", ")}${reste > 0 ? `… et ${reste} autre${reste > 1 ? "s" : ""}` : ""}`
+    })
+    .filter((segment): segment is string => segment !== null)
+    .join(" ; ")
+}
 
 /** Culture active telle que fournie par queries.ts (déjà jointe). */
 export interface CultureItpInput {

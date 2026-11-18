@@ -62,3 +62,12 @@ describe("isEspeceEquivalent", () => {
     expect(isEspeceEquivalent("Carotte", "Radis")).toBe(false)
   })
 })
+
+describe("getEspeceAliases — casse", () => {
+  it("retrouve les alias d'un identifiant en minuscules", async () => {
+    const { getEspeceAliases } = await import("../aliases")
+    expect(getEspeceAliases("haricot vert")).toEqual(expect.arrayContaining(["haricot vert", "Haricot", "Haricot sec"]))
+    expect(getEspeceAliases("pois")).toEqual(["pois", "Petit pois", "Pois gourmand", "Pois mange-tout"])
+    expect(getEspeceAliases("carotte")).toEqual(["carotte"])
+  })
+})

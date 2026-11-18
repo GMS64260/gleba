@@ -135,3 +135,43 @@ export function ventilerRevenus(ventes: readonly VenteAVentiler[], factures: rea
     composition: arrondirEnConservantLeTotal(composition, RUBRIQUES, total),
   }
 }
+
+/** Devise d'un groupe de revenus ; `null` : devise historique non déterminable. */
+export type MonnaieRevenu = 'EUR' | 'XPF' | null
+
+/** Revenus d'une seule devise, ventilés par module comme `ventilerRevenus`. */
+export interface VentilationRevenusDevise extends VentilationRevenus {
+  monnaie: MonnaieRevenu
+  /** Nombre d'écritures (ventes et pièces) de ce groupe. */
+  count: number
+}
+
+/**
+ * Ventile les revenus par devise PUIS par module, sans jamais additionner
+ * deux devises ni réétiqueter une pièce avec la devise courante de la ferme
+ * (ADV dev-170 : une facture et son avoir en EUR sur une ferme passée en XPF
+ * s'affichaient « Total 53 F »). Chaque devise garde l'invariant de
+ * `ventilerRevenus` : Σ parModule = total. Ordre stable : EUR, XPF, inconnue.
+ * Sans aucune écriture, un seul groupe à zéro dans `deviseVide`.
+ */
+export function ventilerRevenusParDevise<V extends VenteAVentiler, F extends FactureAVentiler>(
+  ventes: readonly V[],
+  factures: readonly F[],
+  monnaieVente: (v: V) => MonnaieRevenu,
+  monnaieFacture: (f: F) => MonnaieRevenu,
+  deviseVide: MonnaieRevenu,
+): VentilationRevenusDevise[] {
+  const groupes = new Map<MonnaieRevenu, { ventes: V[]; factures: F[] }>()
+  const groupe = (m: MonnaieRevenu) => {
+    let g = groupes.get(m)
+    if (!g) groupes.set(m, (g = { ventes: [], factures: [] }))
+    return g
+  }
+  for (const v of ventes) groupe(monnaieVente(v)).ventes.push(v)
+  for (const f of factures) groupe(monnaieFacture(f)).factures.push(f)
+  if (groupes.size === 0) groupe(deviseVide)
+  const rang = (m: MonnaieRevenu) => (m === 'EUR' ? 0 : m === 'XPF' ? 1 : 2)
+  return [...groupes]
+    .sort(([a], [b]) => rang(a) - rang(b))
+    .map(([monnaie, g]) => ({ monnaie, count: g.ventes.length + g.factures.length, ...ventilerRevenus(g.ventes, g.factures) }))
+}

@@ -18,7 +18,8 @@ import { ErreurVerger } from './erreur'
 import { prixFruitApi, dateRecolteApi } from './creation-recolte'
 import { montantVenteFruit } from './montant-vente'
 import { libellesVenteBois } from './production-bois'
-import { avertissementsDarFruit } from './dar'
+import { verdictDarFruit } from './dar'
+import { exigerVenteHorsDar } from '@/lib/phyto/refus-dar'
 import { TAUX_TVA_BOIS_PAR_DEFAUT } from './tva-bois'
 
 /** Lecture et décision sous le même verrou que les BL et les règlements. */
@@ -65,6 +66,10 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
     if (courant.statut === 'vendu' && saisie.paye !== undefined) throw new ErreurVerger('Corrigez les versements depuis Règlements pour conserver leur historique.', 409)
     if (courant.factureId && saisie.creerFacture) throw new ErreurVerger('Ce lot est déjà facturé.', 409)
     if (courant.factureId && statut === 'vendu' && ['prixKg', 'prixTotal', 'prixVente', 'dateVente', 'clientId', 'clientNom'].some(c => saisie[c] !== undefined)) throw new ErreurVerger('Cette vente est facturée. Corrigez-la avec un avoir depuis Comptabilité > Factures.', 409)
+    // Mise en vente d'une récolte de fruits : refusée (ErreurDarEnCours, 409)
+    // tant qu'un délai avant récolte légal court ; un rappel n'empêche rien.
+    const dar = fruit ? await verdictDarFruit(tx, userId, fruit.arbreId, fruit.parcelleId, fruit.date) : null
+    if (nouvelleVente) exigerVenteHorsDar(dar)
     if (saisie.clientId) {
       const client = await tx.client.findFirst({ where: { id: Number(saisie.clientId), userId }, select: { id: true } })
       if (!client) throw new ErreurVerger('Client introuvable.', 400, 'clientId')
@@ -134,10 +139,10 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
       if (!paiement.success) throw new ErreurVerger('Règlement invalide. Vérifiez sa date et son mode.', 400, 'datePaiement')
       await ajouterReglementTx(tx, userId, acteurId, paiement.data)
     }
-    const warnings = fruit ? await avertissementsDarFruit(tx, userId, fruit.arbreId, fruit.parcelleId, fruit.date) : []
+    const warnings = dar?.avertissements ?? []
     const facture = bois && factureId ? await tx.facture.findFirst({ where: { id: factureId, userId },
       select: { id: true, numero: true, type: true, clientNom: true, totalTTC: true, statut: true } }) : null
-    return { ...updated, ...(bois ? { facture } : {}), ...(warnings.length ? { warnings } : {}) }
+    return { ...updated, ...(bois ? { facture } : {}), ...(warnings.length ? { warnings } : {}), ...(nouvelleVente && dar ? { avertissementsDar: dar.rappels } : {}) }
   })
   invalidateKpi(userId)
   return resultat

@@ -1,5 +1,7 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Onglet Opérations - Liste des opérations avec filtres et dialog d'ajout
  */
@@ -27,6 +29,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DataTable } from "@/components/tables/DataTable"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { LIBELLES_NATURE_PRODUIT, NATURES_PRODUIT_DECLAREES } from "@/lib/phyto/delai-avant-recolte"
 import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/phyto/WeatherFieldset"
 import { MaterielFieldset } from "@/components/phyto/MaterielFieldset"
 import { libelleOperationArbre } from "@/lib/verger/operation-label"
@@ -37,7 +40,7 @@ import {
   operationArbreDansAnnee,
   resumeCoutOperations,
 } from "@/lib/verger/annee-operation"
-import { formatMontantDevise } from "@/lib/format-utils"
+import { symboleDevise, formatMontantDevise } from "@/lib/format-utils"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { lireArbreOuverture, operationsDeLArbre } from "@/lib/verger/lien-operations-arbre"
 
@@ -83,7 +86,8 @@ interface OperationArbre {
 }
 
 function createColumns(
-  onToggleFait: (op: OperationArbre) => void
+  onToggleFait: (op: OperationArbre) => void,
+  devise: import("@/lib/territoires").Devise | null
 ): ColumnDef<OperationArbre>[] {
   return [
     {
@@ -198,7 +202,7 @@ function createColumns(
       header: "Coût",
       cell: ({ getValue }) => {
         const val = getValue() as number | null
-        return val ? `${val} €` : "-"
+        return val ? (devise === null ? "—" : formatMontantDevise(val, devise)) : "-"
       },
     },
   ]
@@ -210,6 +214,9 @@ interface OperationsTabProps {
 }
 
 export function OperationsTab({ annee }: OperationsTabProps) {
+  const devise = useDevise()
+  const symbole = devise === null ? "—" : symboleDevise(devise)
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { toast } = useToast()
   const [data, setData] = React.useState<OperationArbre[]>([])
   const [arbres, setArbres] = React.useState<Arbre[]>([])
@@ -229,6 +236,8 @@ export function OperationsTab({ annee }: OperationsTabProps) {
     type: "taille",
     description: "",
     produit: "",
+    natureProduit: "",
+    dar: "",
     quantite: "",
     unite: "",
     cout: "",
@@ -356,7 +365,7 @@ export function OperationsTab({ annee }: OperationsTabProps) {
     [toast, annee]
   )
 
-  const columns = React.useMemo(() => createColumns(handleToggleFait), [handleToggleFait])
+  const columns = React.useMemo(() => createColumns(handleToggleFait, devise), [handleToggleFait, devise])
 
   const resetForm = () => {
     setNewOperation({
@@ -365,6 +374,8 @@ export function OperationsTab({ annee }: OperationsTabProps) {
       type: "taille",
       description: "",
       produit: "",
+      natureProduit: "",
+      dar: "",
       quantite: "",
       unite: "",
       cout: "",
@@ -433,6 +444,9 @@ export function OperationsTab({ annee }: OperationsTabProps) {
           type: typeOperation,
           description: newOperation.description || null,
           produit: newOperation.produit || null,
+          // Délai avant récolte et nature : seulement pour un traitement.
+          natureProduit: typeOperation === "traitement" ? newOperation.natureProduit || null : null,
+          dar: typeOperation === "traitement" && newOperation.dar.trim() !== "" ? parseInt(newOperation.dar, 10) : null,
           quantite: newOperation.quantite ? parseFloat(newOperation.quantite) : null,
           unite: newOperation.unite || null,
           cout: newOperation.cout ? parseFloat(newOperation.cout) : null,
@@ -499,11 +513,11 @@ export function OperationsTab({ annee }: OperationsTabProps) {
               Coût des opérations {annee}
               {nomArbreFiltre !== null ? ` pour ${nomArbreFiltre}` : ""}
             </p>
-            <p className="text-xl font-bold" data-testid="cout-operations-annee">{formatMontantDevise(coutAnnee.total)}</p>
+            <p className="text-xl font-bold" data-testid="cout-operations-annee">{formatMontant(coutAnnee.total)}</p>
           </div>
           {coutAnnee.prevu > 0 && (
             <p className="text-xs text-muted-foreground text-right">
-              dont {formatMontantDevise(coutAnnee.realise)} réalisés et {formatMontantDevise(coutAnnee.prevu)} prévus
+              dont {formatMontant(coutAnnee.realise)} réalisés et {formatMontant(coutAnnee.prevu)} prévus
             </p>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
@@ -752,7 +766,7 @@ export function OperationsTab({ annee }: OperationsTabProps) {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Coût (€)</Label>
+                <Label>Coût ({symbole})</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -801,6 +815,46 @@ export function OperationsTab({ annee }: OperationsTabProps) {
 
             {/* DEV3 #6 — Matériel utilisé (multi-select libre) */}
             <MaterielFieldset value={opMateriel} onChange={setOpMateriel} />
+
+            {/* Lot dar-cadre-legal-blocage : un traitement saisi ici entre au
+                contrôle du délai avant récolte. Sans délai ni nature, le
+                produit est présumé sous AMM (3 jours, arrêté du 4 mai 2017). */}
+            {newOperation.type === "traitement" && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="operation-nature-produit">Nature du produit</Label>
+                  <SelectNatif
+                    id="operation-nature-produit"
+                    value={newOperation.natureProduit}
+                    onChange={(e) => setNewOperation((prev) => ({ ...prev, natureProduit: e.target.value }))}
+                  >
+                    <option value="">Non précisée</option>
+                    {NATURES_PRODUIT_DECLAREES.map((nature) => (
+                      <option key={nature} value={nature}>
+                        {LIBELLES_NATURE_PRODUIT[nature]}
+                      </option>
+                    ))}
+                  </SelectNatif>
+                </div>
+                <div>
+                  <Label htmlFor="operation-dar">Délai avant récolte (jours)</Label>
+                  <Input
+                    id="operation-dar"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={newOperation.dar}
+                    onChange={(e) => setNewOperation((prev) => ({ ...prev, dar: e.target.value }))}
+                    placeholder="Lu sur l’étiquette"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  Sans délai renseigné, un produit avec AMM bloque la mise en vente des fruits récoltés
+                  dans les 3 jours suivant le traitement (arrêté du 4 mai 2017, art. 3). Pour une substance
+                  de base, le délai dépend de ses conditions d’approbation.
+                </p>
+              </div>
+            )}
 
             {/* DEV3 #6 — Si type = Traitement, redirige vers le formulaire phyto complet */}
             {newOperation.type === "traitement" && (

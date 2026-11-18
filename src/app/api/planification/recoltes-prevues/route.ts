@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { lireAnnee } from '@/lib/api/annee'
 import { getRecoltesPrevuesDetail } from '@/lib/planification'
 import { getRecoltesAnneeAggregat } from '@/lib/kpi/recoltes-annee'
 import { arrondirQuantites, fusionnerQuantites, type QuantiteParUnite } from '@/lib/recolte/quantites'
@@ -18,8 +19,11 @@ export async function GET(request: NextRequest) {
     const userId = getUserId(session)
     const { searchParams } = new URL(request.url)
 
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
-    const groupBy = (searchParams.get('groupBy') || 'mois') as 'mois' | 'semaine'
+    // Année illisible (« abc », vide) : année courante, jamais NaN en base.
+    const { annee } = lireAnnee(searchParams)
+    // Toute valeur autre que « semaine » vaut « mois » : une valeur inconnue
+    // rendait un tableau par semaines sous un `groupBy` de fantaisie.
+    const groupBy: 'mois' | 'semaine' = searchParams.get('groupBy') === 'semaine' ? 'semaine' : 'mois'
 
     // BUG-03 : projection détaillée (utilisée pour le tableau par mois/sem
     // avec breakdown par espèce) + agrégat unifié (réalisé + projection)

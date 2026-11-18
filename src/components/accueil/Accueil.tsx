@@ -48,6 +48,7 @@ import { calculerFenetreTravail, phraseFenetreTravail, type PhraseFenetre } from
 import { appliquerElementsAuPlan } from "@/lib/accueil/plan-vignette"
 import type { AccueilAujourdhui, ElementAujourdhui } from "@/lib/accueil/types"
 import { symboleDevise } from "@/lib/format-utils"
+import { libellesTotauxParDevise } from "@/lib/comptabilite/totaux-devise"
 import { toast } from "@/hooks/use-toast"
 import { useAccueilDisposition } from "@/hooks/use-accueil-disposition"
 import { useJourNavigateur } from "@/hooks/use-jour-navigateur"
@@ -215,6 +216,14 @@ export function Accueil() {
 
   const rm = donnees?.reperes.maraichage ?? null
   const rc = donnees?.reperes.comptabilite ?? null
+  // Résultat de l'exercice : un nombre animé seulement s'il tient dans UNE
+  // devise connue ; sinon un libellé par devise (lot devise-totaux-api).
+  const beneficeUnique = rc && rc.beneficeYtd !== null && rc.beneficeYtdParDevise.length === 1 && rc.beneficeYtdParDevise[0].monnaie
+    ? { total: rc.beneficeYtd, monnaie: rc.beneficeYtdParDevise[0].monnaie }
+    : null
+  const beneficeLibelles = rc
+    ? libellesTotauxParDevise(rc.beneficeYtdParDevise.map((t) => ({ monnaie: t.monnaie, montant: t.total })), rc.devise).join(" · ")
+    : null
   const rs = donnees?.reperes.semaine ? { ...donnees.reperes.semaine, aFaire: Math.max(0, donnees.reperes.semaine.aFaire - tachesSoldees) } : null
   // Les cultures terminées ne sont ni « en place » ni « non démarrées ».
   const terminees = rm?.culturesTerminees ?? 0
@@ -317,7 +326,7 @@ export function Accueil() {
         )
       case "repere:tresorerie":
         return (
-          <Repere libelle="Trésorerie" valeur={rc ? <NombreAnime valeur={rc.beneficeYtd} /> : null} unite={rc ? symboleDevise(rc.devise) : undefined} detail={rc ? `marge ${rc.margePercentYtd} %` : undefined} alerte={rc && rc.nbRevenusNonPayes > 0 ? `${rc.nbRevenusNonPayes} créance${rc.nbRevenusNonPayes > 1 ? "s" : ""}` : undefined} vide={chargementRepere} href="/comptabilite" />
+          <Repere libelle="Résultat" valeur={rc ? (beneficeUnique ? <NombreAnime valeur={beneficeUnique.total} /> : <span className="text-base">{beneficeLibelles}</span>) : null} unite={beneficeUnique ? symboleDevise(beneficeUnique.monnaie) : undefined} detail={rc ? (rc.margePercentYtd === null ? "plusieurs devises" : `marge ${rc.margePercentYtd} %`) : undefined} alerte={rc && rc.nbRevenusNonPayes > 0 ? `${rc.nbRevenusNonPayes} créance${rc.nbRevenusNonPayes > 1 ? "s" : ""}` : undefined} vide={chargementRepere} href="/comptabilite" />
         )
       case "repere:semaine":
         return (

@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import type { VenteCommercialeVerger } from './suivi-commercial-types'
-import { deviseFactureReglement } from '@/lib/comptabilite/devise-reglement'
+import { monnaieFacture } from '@/lib/comptabilite/devise-reglement'
 import { arrondir } from '@/lib/commercial/regles'
 
 type Nature = 'fruit' | 'bois'
@@ -54,17 +54,18 @@ export async function chargerSuiviCommercialVerger(
     let groupe = groupes.get(cle)
     if (!groupe) {
       groupe = { lotId, vente: { cle, date: (facture?.date ?? m.date).toISOString(), quantiteLivree: 0, quantiteRetournee: 0,
-        quantiteNette: 0, unite: m.unite, devise: deviseFactureReglement(facture?.emetteurSnapshot ?? document?.emetteurSnapshot, 'EUR'), montantLivre: 0, revenuTTC: 0, montantAvoirs: 0, documents: [],
+        quantiteNette: 0, unite: m.unite, devise: monnaieFacture(facture ? facture.emetteurSnapshot : document?.emetteurSnapshot, facture?.date ?? m.date) ?? (facture ? '' : 'EUR'), montantLivre: 0, revenuTTC: 0, montantAvoirs: 0, documents: [],
         facture: facture ? { id: facture.id, numero: facture.numero, statut: facture.statut } : null,
         clientNom: facture?.clientNom ?? document!.clientNom } }
-      if (facture && active(facture)) {
+      if (facture && active(facture) && groupe.vente.devise === '') groupe.vente.revenuTTC = null
+      if (facture && active(facture) && groupe.vente.devise !== '') {
         const duLot = (l: Ligne) => l.articleStockType === nature && l.articleStockId === String(lotId)
         const lignes = facture.lignes.filter(duLot)
         // Une facture commerciale sans lien de ligne ne permet pas d'inventer
         // une ventilation entre plusieurs lots.
         groupe.vente.revenuTTC = lignes.length ? lignes.reduce((s, l) => s + l.montantTTC, 0) : null
         for (const avoir of factures.filter(f => f.type === 'avoir' && f.factureOrigineId === facture.id && active(f))) {
-          if (deviseFactureReglement(avoir.emetteurSnapshot, groupe.vente.devise) !== groupe.vente.devise) {
+          if (monnaieFacture(avoir.emetteurSnapshot, avoir.date) !== groupe.vente.devise) {
             groupe.vente.revenuTTC = null
             continue
           }

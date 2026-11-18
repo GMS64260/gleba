@@ -32,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { normaliserRecherche, scoreEspece } from "@/lib/especes/recherche"
 import { origineBadge, nomEspece as nomOf } from "@/lib/especes/affichage"
 import { libelleTypeEspece } from "@/lib/validations/espece"
+import type { OrigineBadgeReferentiel } from "@/lib/referentiel-communaute"
 
 /**
  * Valeur cmdk de l'entrée « Créer l'espèce … ». Préfixe sentinelle : le filtre
@@ -57,9 +58,8 @@ export type EspeceOption = {
   type?: EspeceType | string | null
   categorie?: string | null
   couleur?: string | null
-  // Origine catalogue : userId null = Gleba officiel ; sinon = créée par un membre.
-  userId?: string | null
-  partageCommunaute?: boolean
+  /** Origine calculée par l'API relativement au propriétaire de l'exploitation. */
+  origine: OrigineBadgeReferentiel
 }
 
 type TabKey = "all" | EspeceType
@@ -114,8 +114,6 @@ type Props = {
   recentStorageKey?: string
   disabled?: boolean
   className?: string
-  /** Id de l'utilisateur courant, pour distinguer ses espèces perso. */
-  currentUserId?: string | null
   /**
    * Si fourni, propose « Créer l'espèce … ». `typeSuggere` reprend l'onglet
    * actif quand il en désigne un : créer depuis l'onglet « Aromatiques » ne
@@ -134,7 +132,6 @@ export function EspeceCombobox({
   recentStorageKey = "espece-recents-default",
   disabled,
   className,
-  currentUserId,
   onCreate,
 }: Props) {
   const [open, setOpen] = React.useState(false)
@@ -326,7 +323,7 @@ export function EspeceCombobox({
                   {nomOf(o)}
                   <span className="ml-auto flex items-center gap-1">
                     {(() => {
-                      const b = origineBadge(o, currentUserId)
+                      const b = origineBadge(o)
                       return b ? (
                         <span className={cn("text-[10px] px-1.5 py-0.5 rounded", b.cls)}>{b.label}</span>
                       ) : null
@@ -359,7 +356,7 @@ export function EspeceCombobox({
                       {nomOf(o)}
                       <span className="ml-auto flex items-center gap-1">
                         {(() => {
-                          const b = origineBadge(o, currentUserId)
+                          const b = origineBadge(o)
                           return b ? (
                             <span className={cn("text-[10px] px-1.5 py-0.5 rounded", b.cls)}>{b.label}</span>
                           ) : null

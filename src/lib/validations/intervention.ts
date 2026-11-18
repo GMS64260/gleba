@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { MESSAGE_AMM_INVALIDE, numAMMValide } from '@/lib/tracabilite/amm'
 import { isValidSiret } from '@/lib/siret'
+import { UTILISATIONS_SEMENCES } from '@/lib/tracabilite/utilisation-semences'
+import { NATURES_PRODUIT_DECLAREES } from '@/lib/phyto/delai-avant-recolte'
 
 /**
  * Les formulaires HTML envoient TOUJOURS des chaînes (`<input type="number">`
@@ -28,6 +30,8 @@ const texteFacultatif = (max: number) =>
     (v) => (typeof v === 'string' && v.trim() === '' ? null : typeof v === 'string' ? v.trim() : v),
     z.string().max(max).nullable(),
   ).optional()
+const texteVideNul = (v: unknown): unknown =>
+  typeof v === 'string' ? v.trim() || null : v
 /** Heure « HH:MM » sur 24 h (arrêté du 24 décembre 2025, annexe II). */
 const heureInput = () =>
   z.preprocess(
@@ -78,6 +82,8 @@ export const createInterventionSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
   // PROMPT 11 LOT B/D — Réglementaire phyto + traçabilité PBI
   produitPhytoId: z.string().nullable().optional(),
+  // Contre-revue CR-DAR-01 : nature déclarée d'un produit saisi librement.
+  natureProduit: z.preprocess((v) => (v === '' ? null : v), z.enum(NATURES_PRODUIT_DECLAREES, { message: 'Nature du produit inconnue.' }).nullable()).optional(),
   volumeBouillieLHa: numInput(),
   temperatureC: z.preprocess(coerceNum, z.number().nullable()).optional(),
   ventKmh: numInput(),
@@ -100,8 +106,33 @@ export const createInterventionSchema = z.object({
     (v) => (typeof v === 'string' ? v.replace(/\s/g, '') || null : v),
     z.string().refine((v) => isValidSiret(v), { message: 'SIRET du bénéficiaire invalide (14 chiffres)' }).nullable(),
   ).optional(),
+  // Annexe II, tableaux C (traitement de semences ou de plants) et D (semis
+  // de semences traitées). Aucun de ces champs n'est exigé à la saisie : une
+  // mention manquante est signalée « à compléter » au registre.
+  utilisationPhyto: z.preprocess(
+    (v) => (v === '' ? null : v),
+    z.enum(UTILISATIONS_SEMENCES, { message: "Type d'utilisation phytosanitaire inconnu." }).nullable(),
+  ).optional(),
+  substancesActives: texteFacultatif(500),
+  quantiteSemences: numInput(),
+  uniteQuantiteSemences: texteFacultatif(50),
+  densiteSemis: numInput(),
+  uniteDensiteSemis: texteFacultatif(50),
+  gpsLat: z.preprocess(coerceNum, z.number().min(-90, 'Latitude entre -90 et 90').max(90, 'Latitude entre -90 et 90').nullable()).optional(),
+  gpsLng: z.preprocess(coerceNum, z.number().min(-180, 'Longitude entre -180 et 180').max(180, 'Longitude entre -180 et 180').nullable()).optional(),
+  // RPG : numéro d'îlot, numéro de parcelle dans l'îlot, code commune Insee (5 caractères).
+  rpgIlot: z.preprocess(texteVideNul, z.string().regex(/^\d{1,4}$/, "Numéro d'îlot RPG : 1 à 4 chiffres").nullable()).optional(),
+  rpgParcelle: z.preprocess(texteVideNul, z.string().regex(/^\d{1,3}$/, 'Numéro de parcelle RPG : 1 à 3 chiffres').nullable()).optional(),
+  rpgCommuneInsee: z.preprocess(texteVideNul, z.string().regex(/^(\d{5}|2[AB]\d{3})$/i, 'Code commune Insee : 5 caractères').nullable()).optional(),
+  // Dénomination de la culture (code OEPP ou texte) et conduite biologique,
+  // saisies quand les fiches de l'exploitation ne les donnent pas.
+  cultureRegistre: texteFacultatif(200),
+  conduiteBio: z.boolean().nullable().optional(),
 })
 
 export const updateInterventionSchema = createInterventionSchema.partial().extend({
   id: z.coerce.number().int().min(1, 'ID requis'),
+  // Contre-revue ADV221 : l'exploitant confirme que le délai affiché (ancienne
+  // indication du catalogue) est celui de l'étiquette, même s'il est inchangé.
+  darConfirme: z.boolean().optional(),
 })

@@ -12,7 +12,43 @@ export const dateCivileSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date at
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === s && s >= '2000-01-01' && s <= '2200-12-31'
 }, 'Date invalide')
 export const dateCivile = (s: string) => new Date(`${s}T12:00:00Z`)
-export const arrondir = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
+
+// Convertir les opérandes avant leur multiplication évite de perdre un
+// demi-centime dans un produit binaire (225 × 2,1 / 100, par exemple).
+function fractionDecimale(n: number): [bigint, bigint] {
+  const [mantisse, exposant = '0'] = String(n).split('e')
+  const decimales = mantisse.split('.')[1]?.length ?? 0
+  const echelle = decimales - Number(exposant)
+  const entier = BigInt(mantisse.replace('.', ''))
+  const puissance = BigInt(10) ** BigInt(Math.abs(echelle))
+  return echelle >= 0 ? [entier, puissance] : [entier * puissance, BigInt(1)]
+}
+
+function arrondirFraction(numerateur: bigint, denominateur: bigint): number {
+  const centimes = numerateur * BigInt(100)
+  let entier = centimes / denominateur
+  const doubleReste = centimes % denominateur * BigInt(2)
+  // Comme Math.round : le demi-centime va vers +∞, y compris en négatif.
+  if (doubleReste >= denominateur) entier += BigInt(1)
+  else if (doubleReste < -denominateur) entier -= BigInt(1)
+  return entier === BigInt(0) && numerateur < BigInt(0) ? -0 : Number(entier) / 100
+}
+
+export function arrondir(n: number): number {
+  // Le formulaire appelle le calcul avant validation de la saisie.
+  if (!Number.isFinite(n)) return n
+  // Conserver la compensation historique des agrégats/proratas flottants
+  // reçus des autres appelants. Les produits de ligne passent directement
+  // par arrondirFraction, sur leurs opérandes décimaux exacts.
+  return arrondirFraction(...fractionDecimale(n + Number.EPSILON))
+}
+
+function arrondirProduit(a: number, b: number, diviseur = 1): number {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return arrondir(a * b / diviseur)
+  const [na, da] = fractionDecimale(a)
+  const [nb, db] = fractionDecimale(b)
+  return arrondirFraction(na * nb, da * db * BigInt(diviseur))
+}
 
 const ligneSchema = z.object({
   ...champsArticleStock,
@@ -59,8 +95,8 @@ export type ContenuDocument = z.infer<typeof contenuDocumentSchema>
 export function calculerDocument(lignes: ContenuDocument['lignes'], sansTaxe = false) {
   const calculees = lignes.map((l, ordre) => {
     const tauxTVA = sansTaxe ? 0 : l.tauxTVA
-    const montantHT = arrondir(l.quantite * l.prixUnitaire)
-    const montantTVA = arrondir(montantHT * tauxTVA / 100)
+    const montantHT = arrondirProduit(l.quantite, l.prixUnitaire)
+    const montantTVA = arrondirProduit(montantHT, tauxTVA, 100)
     return { ...l, ordre, tauxTVA, montantHT, montantTVA, montantTTC: arrondir(montantHT + montantTVA) }
   })
   return {

@@ -4,6 +4,7 @@
  * Importe les données pour l'utilisateur connecté
  */
 
+import { typeAssociationImporte, desactivationAssociationImportee } from "@/lib/validations/association"
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { nomItpDepuisSaisie } from '@/lib/itp-nom'
@@ -222,8 +223,11 @@ interface ImportData {
   associations?: Array<{
     id: string
     nom: string
+    type?: string | null
     description?: string | null
     notes?: string | null
+    desactiveeLe?: string | null
+    motifDesactivation?: string | null
     details?: Array<{
       id: number
       associationId: string
@@ -685,6 +689,9 @@ export async function POST(request: NextRequest) {
               nom: item.nom,
               description: item.description,
               notes: item.notes,
+              // Sans lui, une incompatibilité importée devenait favorable.
+              type: typeAssociationImporte(item.type),
+              ...desactivationAssociationImportee(item),
             },
           })
           associationId = existingByNom.id
@@ -696,6 +703,9 @@ export async function POST(request: NextRequest) {
               nom: item.nom,
               description: item.description,
               notes: item.notes,
+              // Sans lui, une incompatibilité importée devenait favorable.
+              type: typeAssociationImporte(item.type),
+              ...desactivationAssociationImportee(item),
             },
           })
         }

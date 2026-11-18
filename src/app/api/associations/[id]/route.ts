@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client"
 import { ZodError } from "zod"
 import { requireAuthApi, requireAdminApi } from "@/lib/auth-utils"
 import { updateAssociationSchema } from "@/lib/validations/association"
+import { INCLUDE_DETAILS, MESSAGE_TROP_PEU_DE_MEMBRES, MESSAGE_REFERENCE_INCONNUE, detailsAEcrire, estReferenceInconnue } from "../details"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -31,6 +32,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             espece: { select: { id: true, couleur: true, familleId: true } },
             famille: { select: { id: true, couleur: true } },
           },
+          // Ordre stable : le formulaire renvoie les lignes dans l'ordre reçu.
+          orderBy: { id: "asc" },
         },
       },
     })
@@ -61,7 +64,13 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const body = await request.json()
     const validated = updateAssociationSchema.parse(body)
 
-    const { details, ...associationData } = validated
+    const { details, active, motifDesactivation, ...associationData } = validated
+
+    // Détails renvoyés : au moins deux membres. Sans `details`, la
+    // modification ne touche pas aux lignes existantes (données anciennes).
+    if (details !== undefined && detailsAEcrire(details).length < 2) {
+      return NextResponse.json({ error: MESSAGE_TROP_PEU_DE_MEMBRES }, { status: 400 })
+    }
 
     // Vérifier que l'association existe
     const existing = await prisma.association.findUnique({ where: { id } })
@@ -75,9 +84,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     // Mettre à jour l'association et ses details
     const association = await prisma.$transaction(async (tx) => {
       // Mettre à jour les données de base
+      // Désactivation / réactivation : la règle et ses détails sont conservés.
+      // Une règle déjà désactivée garde sa date d'origine.
+      const etat =
+        active === true
+          ? { desactiveeLe: null, motifDesactivation: null }
+          : active === false
+            ? {
+                desactiveeLe: existing.desactiveeLe ?? new Date(),
+                ...(motifDesactivation !== undefined ? { motifDesactivation } : {}),
+              }
+            : {}
       await tx.association.update({
         where: { id },
-        data: associationData,
+        data: { ...associationData, ...etat },
       })
 
       // Si des details sont fournis, les remplacer
@@ -88,16 +108,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         })
 
         // Créer les nouveaux details
-        if (details.length > 0) {
+        const lignes = detailsAEcrire(details)
+        if (lignes.length > 0) {
           await tx.associationDetail.createMany({
-            data: details.map((d) => ({
-              associationId: id,
-              especeId: d.especeId || null,
-              familleId: d.familleId || null,
-              groupe: d.groupe || null,
-              requise: d.requise || false,
-              notes: d.notes || null,
-            })),
+            data: lignes.map((d) => ({ associationId: id, ...d })),
           })
         }
       }
@@ -105,14 +119,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       // Retourner l'association mise à jour
       return tx.association.findUnique({
         where: { id },
-        include: {
-          details: {
-            include: {
-              espece: { select: { id: true, couleur: true } },
-              famille: { select: { id: true, couleur: true } },
-            },
-          },
-        },
+        include: INCLUDE_DETAILS,
       })
     })
 
@@ -132,6 +139,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         { error: "Une association avec ce nom existe déjà" },
         { status: 409 }
       )
+    }
+
+    if (estReferenceInconnue(err)) {
+      return NextResponse.json({ error: MESSAGE_REFERENCE_INCONNUE }, { status: 400 })
     }
 
     return NextResponse.json(

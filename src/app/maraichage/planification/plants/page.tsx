@@ -7,8 +7,12 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useAnneePlanification } from "@/hooks/use-annee-planification"
-import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
+import { useAnneePlanification, useChargementPlanification } from "@/hooks/use-annee-planification"
+import {
+  ErreurChargementPlanification,
+  SelecteurAnneePlanification,
+} from "@/components/maraichage/SelecteurAnneePlanification"
+import { telechargerCsv } from "../export-csv"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Package, AlertTriangle, Leaf } from "lucide-react"
 
@@ -17,7 +21,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "@/hooks/use-toast"
 
 interface BesoinPlant {
   especeId: string
@@ -43,7 +46,10 @@ interface Stats {
 
 const columns: ColumnDef<BesoinPlant>[] = [
   {
-    accessorKey: "especeId",
+    // Tri et recherche sur le NOM affiché : l'identifiant d'une espèce ou
+    // d'une variété personnelle est un cuid, introuvable par son nom.
+    id: "especeId",
+    accessorFn: (b) => b.especeNom ?? b.especeId,
     header: "Espèce",
     cell: ({ row }) => {
       const b = row.original
@@ -61,7 +67,8 @@ const columns: ColumnDef<BesoinPlant>[] = [
     },
   },
   {
-    accessorKey: "varieteId",
+    id: "varieteId",
+    accessorFn: (b) => b.varieteNom ?? b.varieteId ?? "",
     header: "Variété",
     cell: ({ row }) => row.original.varieteNom ?? row.original.varieteId ?? "-",
   },
@@ -113,13 +120,22 @@ const columns: ColumnDef<BesoinPlant>[] = [
       const cultures = row.original.cultures
       return (
         <div className="flex flex-wrap gap-1">
-          {cultures.slice(0, 4).map((c) => (
-            <Link key={c.plancheId} href={`/maraichage/planches/${encodeURIComponent(c.plancheId)}`}>
-              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-slate-200">
-                {c.plancheId} ({c.nbPlants})
+          {/* Deux cultures d'une même ligne peuvent partager une planche, ou
+              n'en avoir aucune : la clé porte le rang, et une culture sans
+              planche n'a ni badge vide ni lien vers une fiche inexistante. */}
+          {cultures.slice(0, 4).map((c, i) =>
+            c.plancheId ? (
+              <Link key={`${c.plancheId}-${i}`} href={`/maraichage/planches/${encodeURIComponent(c.plancheId)}`}>
+                <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-slate-200">
+                  {c.plancheId} ({c.nbPlants})
+                </Badge>
+              </Link>
+            ) : (
+              <Badge key={`sans-planche-${i}`} variant="secondary" className="text-xs">
+                sans planche ({c.nbPlants})
               </Badge>
-            </Link>
-          ))}
+            ),
+          )}
           {cultures.length > 4 && (
             <Badge variant="outline" className="text-xs">
               +{cultures.length - 4}
@@ -131,63 +147,37 @@ const columns: ColumnDef<BesoinPlant>[] = [
   },
 ]
 
-function PlantsContent() {
-  const { toast } = useToast()
+const AUCUN_BESOIN: BesoinPlant[] = []
 
-  const [data, setData] = React.useState<BesoinPlant[]>([])
-  const [stats, setStats] = React.useState<Stats | null>(null)
-  const [isLoading, setIsLoading] = React.useState(true)
+function PlantsContent() {
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
-
-
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/planification/plants?annee=${annee}`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const result = await response.json()
-      setData(result.data)
-      setStats(result.stats)
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les besoins en plants",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [annee, toast])
-
-  React.useEffect(() => {
-    // Ne pas charger la saison courante avant d'avoir restauré la saison
-    // mémorisée : la réponse tardive écraserait les données de la bonne année.
-    if (!anneePrete) return
-    fetchData()
-  }, [anneePrete, fetchData])
+  // Rien n'est demandé avant la restauration de la saison mémorisée ; une
+  // réponse ne vaut que pour la saison qui l'a demandée.
+  const { resultat, chargement: isLoading, erreur, recharger } = useChargementPlanification<{
+    data: BesoinPlant[]
+    stats: Stats
+  }>(
+    anneePrete ? `/api/planification/plants?annee=${annee}` : null,
+    "Impossible de charger les besoins en plants",
+  )
+  const data = resultat?.data ?? AUCUN_BESOIN
+  const stats = resultat?.stats ?? null
 
   const handleExport = () => {
-    const headers = ["Espèce", "Variété", "Semaine plantation", "Nb plants", "Stock", "À commander", "Planches"]
-    const rows = data.map(b => [
-      b.especeNom ?? b.especeId,
-      b.varieteNom ?? b.varieteId ?? "",
-      b.semainePlantation?.toString() || "",
-      b.nbPlants.toString(),
-      b.stockActuel.toString(),
-      b.aCommander.toString(),
-      b.cultures.map(c => c.plancheId).join(", "),
+    telechargerCsv(`plants-necessaires-${annee}.csv`, [
+      ["Espèce", "Variété", "Semaine plantation", "Nb plants", "Stock", "À commander", "Planches"],
+      ...data.map((b) => [
+        b.especeNom ?? b.especeId,
+        b.varieteNom ?? b.varieteId ?? "",
+        b.semainePlantation?.toString() || "",
+        b.nbPlants,
+        b.stockActuel,
+        b.aCommander,
+        b.cultures.map((c) => c.plancheId || "sans planche").join(", "),
+      ]),
     ])
-
-    const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `plants-necessaires-${annee}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
   }
 
   return (
@@ -263,10 +253,19 @@ function PlantsContent() {
         {/* Info */}
         <div className="mb-4 p-4 bg-cyan-50 rounded-lg border border-cyan-200">
           <p className="text-sm text-cyan-800">
-            Cette page liste les plants nécessaires pour les cultures avec plantation (pas semis direct).
-            Le nombre de plants est calculé à partir de l&apos;espacement et du nombre de rangs définis dans l&apos;ITP.
+            Cette page liste les plants à produire ou à acheter pour les cultures repiquées (hors semis
+            direct, bulbes et caïeux). Le nombre de plants est celui enregistré sur la fiche de la culture ;
+            à défaut, il est calculé à partir de la longueur, du nombre de rangs et de l&apos;espacement.
+            «&nbsp;À commander&nbsp;» ajoute 10&nbsp;% de marge pour les pertes, puis déduit le stock de plants.
           </p>
         </div>
+
+        {erreur && (
+          <ErreurChargementPlanification
+            message={`Les besoins en plants de ${annee} n’ont pas pu être chargés.`}
+            onReessayer={recharger}
+          />
+        )}
 
         <DataTable
           columns={columns}
@@ -276,10 +275,10 @@ function PlantsContent() {
           pageIndex={0}
           pageSize={data.length || 50}
           onPaginationChange={() => {}}
-          onRefresh={fetchData}
+          onRefresh={recharger}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucun besoin en plants calculé."
+          emptyMessage={erreur ? "Chargement impossible." : "Aucun besoin en plants calculé."}
         />
       </main>
     </div>

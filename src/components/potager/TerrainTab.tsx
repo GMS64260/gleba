@@ -6,6 +6,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
 import {
   LayoutGrid,
@@ -502,6 +503,11 @@ const associationColumns: ColumnDef<AssociationWithRelations>[] = [
 function AssociationsSubTab() {
   const router = useRouter()
   const { toast } = useToast()
+  // Référentiel commun : écriture réservée à l'administration (routes en
+  // `requireAdminApi`). Proposer Ajouter, Modifier, Supprimer à tous menait à
+  // un « Accès interdit ».
+  const { data: session } = useSession()
+  const estAdmin = session?.user?.role === "ADMIN"
   const [data, setData] = React.useState<AssociationWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
 
@@ -566,11 +572,11 @@ function AssociationsSubTab() {
         isLoading={isLoading}
         showPagination={true}
         pageSize={20}
-        onAdd={() => router.push("/maraichage/associations/new")}
+        onAdd={estAdmin ? () => router.push("/maraichage/associations/new") : undefined}
         onRefresh={fetchData}
         onRowClick={(row) => router.push(`/maraichage/associations/${row.id}`)}
-        onRowEdit={(row) => router.push(`/maraichage/associations/${row.id}`)}
-        onRowDelete={async (row) => {
+        onRowEdit={estAdmin ? (row) => router.push(`/maraichage/associations/${row.id}`) : undefined}
+        onRowDelete={!estAdmin ? undefined : async (row) => {
           if (!(await confirmDialog(`Supprimer "${row.nom}" ?`))) return
           try {
             const res = await fetch(`/api/associations/${row.id}`, { method: "DELETE" })

@@ -24,7 +24,7 @@ vi.mock('@/lib/comptabilite/suivi-reglement-source', () => ({
   suiviReglementParCle: vi.fn(async () => mocks.dossier),
   suiviReglementActif: vi.fn(async () => (mocks.dossier?.actifs ? mocks.dossier : null)),
 }))
-vi.mock('@/lib/verger/dar', () => ({ avertissementsDarFruit: vi.fn(async () => []) }))
+vi.mock('@/lib/verger/dar', () => ({ verdictDarFruit: vi.fn(async () => ({ niveau: 'rien', avertissements: [], blocages: [], rappels: [], traitements: [] })) }))
 vi.mock('@/lib/prisma', () => {
   const tx = {
     $queryRaw: vi.fn(async () => []),

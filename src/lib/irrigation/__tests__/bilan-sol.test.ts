@@ -273,6 +273,15 @@ describe("bilanReserveSol", () => {
     expect(racinesAuStade(tomate, 0.45)).toBeCloseTo(0.7)
   })
 
+  // Revue du 2026-11-11 : la borne portait sur l'écart au lieu du rapport,
+  // un stade au-delà de la fin de cycle donnait un Kc négatif (haricot : -1,65).
+  it("Kc borné au Kc de fin au-delà de la fin de cycle", () => {
+    const haricot = profilEspece("Haricot", 3)
+    expect(kcAuStade(haricot, 1.5)).toBeCloseTo(haricot.kc.fin)
+    expect(kcAuStade(haricot, 5)).toBeCloseTo(kcAuStade(haricot, 1))
+    expect(kcAuStade(haricot, 0.9)).toBeCloseTo((haricot.kc.mi + haricot.kc.fin) / 2)
+  })
+
   it("durée du cycle : la date de récolte seule est un début de récolte", () => {
     expect(dureeCycleJours("2026-05-01", "2026-07-01", "2026-09-01")).toBe(123)
     expect(dureeCycleJours("2026-05-01", "2026-07-01", null)).toBe(91)

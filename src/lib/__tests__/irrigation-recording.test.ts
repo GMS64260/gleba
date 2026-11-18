@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/prisma", () => ({
   default: {
@@ -45,10 +45,10 @@ const mockedPrisma = prisma as unknown as {
 }
 
 const DATE_EFFECTIVE = new Date("2026-07-29T10:00:00.000Z")
-// Fin du 29 juillet en Europe/Paris (UTC+2), comme le conteneur applicatif.
-const FIN_JOURNEE = new Date("2026-07-29T21:59:59.999Z")
-beforeAll(() => { vi.stubEnv("TZ", "Europe/Paris") })
-afterAll(() => { vi.unstubAllEnvs() })
+// Fin du jour local, convention du moteur : 21:59:59.999Z en juillet
+// sous Europe/Paris, 23:59:59.999Z sous UTC. Fixer TZ au lancement de Vitest :
+// vi.stubEnv dans un worker threads ne change pas le fuseau de Date.
+const FIN_JOURNEE = new Date(2026, 6, 29, 23, 59, 59, 999)
 
 /** Espèce gourmande : cycle d'arrosage de 2 jours. */
 const GOURMANDE = { espece: { besoinEau: 4 } }

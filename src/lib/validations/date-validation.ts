@@ -211,3 +211,53 @@ export function validateCultureDates(data: {
     alerteSaison,
   }
 }
+
+/** Dates du cycle d'une culture, telles que stockées ou soumises. */
+export type DatesCycleCulture = {
+  dateSemis?: Date | string | null
+  datePlantation?: Date | string | null
+  dateRecolte?: Date | string | null
+}
+
+/**
+ * Une modification de culture fixe-t-elle une date de son cycle ? Effacer une
+ * date (`null`) seule ne crée aucune incohérence de chronologie.
+ */
+export function datesCultureTouchees(data: DatesCycleCulture): boolean {
+  return Boolean(data.dateSemis || data.datePlantation || data.dateRecolte)
+}
+
+/**
+ * Dates du cycle APRÈS modification : `undefined` = champ non envoyé (valeur
+ * stockée gardée) ; `null` = date effacée, qui ne revient pas par la valeur
+ * stockée.
+ */
+export function datesCultureFusionnees(existante: DatesCycleCulture, data: DatesCycleCulture): DatesCycleCulture {
+  return {
+    dateSemis: data.dateSemis !== undefined ? data.dateSemis : existante.dateSemis,
+    datePlantation: data.datePlantation !== undefined ? data.datePlantation : existante.datePlantation,
+    dateRecolte: data.dateRecolte !== undefined ? data.dateRecolte : existante.dateRecolte,
+  }
+}
+
+/**
+ * Validation des dates d'une culture MODIFIÉE, seule règle de
+ * `PUT /api/cultures/[id]` et de l'outil `update_culture` de l'assistant
+ * (ASS-07, revue Codex 2026-11-12 : l'outil écrivait une récolte antérieure à
+ * la plantation que le formulaire refuse). `existante` doit être relue dans la
+ * transaction, sous les verrous de la culture. Renvoie `null` quand aucune
+ * date n'est fixée (rien à juger).
+ */
+export function validerDatesCultureModifiee(
+  existante: DatesCycleCulture,
+  data: DatesCycleCulture,
+  contexte: Pick<Parameters<typeof validateCultureDates>[0], 'itp' | 'annee'>,
+): ValidationResult | null {
+  if (!datesCultureTouchees(data)) return null
+  return validateCultureDates({ ...datesCultureFusionnees(existante, data), ...contexte })
+}
+
+/** Corps du refus quand la chronologie est impossible (route et assistant). */
+export function refusDatesCulture(v: ValidationResult): { error: string; errors: string[] } {
+  return { error: v.errors.join(' '), errors: v.errors }
+}

@@ -9,6 +9,7 @@ import { ouvrirAssistant } from "@/lib/accueil/evenements"
 import type { CarteAccueil, JournalAccueil, StocksAccueil, TresorerieAccueil, VentesAccueil } from "@/lib/accueil/types"
 import type { VergerAccueil } from "@/lib/accueil/verger"
 import { formatMontantDevise } from "@/lib/format-utils"
+import { libellesTotauxParDevise, type TotalDevise } from "@/lib/comptabilite/totaux-devise"
 import type { ModuleId } from "@/lib/modules"
 import { cn } from "@/lib/utils"
 
@@ -19,7 +20,7 @@ import { Tuile } from "./Tuile"
 
 /**
  * Tuiles du catalogue (2026-10-10, « chacun construit sa page en fonction de
- * son activité ») : trésorerie et créances, verger à faire, stocks et
+ * son activité ») : résultat et créances, verger à faire, stocks et
  * péremptions, ventes récentes, journal de bord, raccourcis, carte. Chacune
  * reçoit les données composées côté serveur seulement si elle est affichée.
  */
@@ -45,7 +46,21 @@ function Squelette({ lignes = 2, libelle }: { lignes?: number; libelle: string }
 const DATE_COURTE = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" })
 const DATE_JOUR = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short" })
 
-// ── Trésorerie et créances ───────────────────────────────────────────────
+// ── Résultat et créances ────────────────────────────────────────────────
+
+/**
+ * Un total de l'API accueil, chacun dans SA devise (lot devise-totaux-api) :
+ * jamais une somme de deux devises, jamais réétiqueté dans la devise courante.
+ */
+function totalEnDevises(parDevise: readonly TotalDevise[], deviseCourante: "EUR" | "XPF"): string {
+  return libellesTotauxParDevise(parDevise.map((t) => ({ monnaie: t.monnaie, montant: t.total })), deviseCourante).join(" · ")
+}
+
+/** Montant d'une pièce dans sa devise figée. */
+function montantPiece(montant: number, monnaie: "EUR" | "XPF" | null | undefined, deviseCourante: "EUR" | "XPF"): string {
+  if (monnaie === undefined) return formatMontantDevise(montant, deviseCourante)
+  return monnaie ? formatMontantDevise(montant, monnaie) : "montant indisponible : devise inconnue"
+}
 
 export function TuileTresorerie({ tresorerie, chargement, rang }: PropsCommunes & { tresorerie: TresorerieAccueil | null | undefined }) {
   const t = tresorerie ?? null
@@ -53,10 +68,10 @@ export function TuileTresorerie({ tresorerie, chargement, rang }: PropsCommunes 
   return (
     <Tuile
       idTuile="tresorerie"
-      titre="Trésorerie et créances"
+      titre="Résultat et créances"
       sousTitre={
         t
-          ? `résultat ${formatMontantDevise(t.beneficeYtd, t.devise)} · marge ${t.margePercentYtd} %`
+          ? `résultat ${totalEnDevises(t.beneficeYtdParDevise, t.devise)}${t.margePercentYtd === null ? "" : ` · marge ${t.margePercentYtd} %`}`
           : chargement
             ? "lecture en cours"
             : undefined
@@ -72,13 +87,13 @@ export function TuileTresorerie({ tresorerie, chargement, rang }: PropsCommunes 
       actionVide={
         t && t.nbDepensesNonPayees > 0 ? (
           <Link href="/comptabilite/transactions" className={CLASSES_LIEN_DISCRET}>
-            {t.nbDepensesNonPayees} dépense{t.nbDepensesNonPayees > 1 ? "s" : ""} à régler · {formatMontantDevise(t.depensesNonPayees, t.devise)}
+            {t.nbDepensesNonPayees} dépense{t.nbDepensesNonPayees > 1 ? "s" : ""} à régler · {totalEnDevises(t.depensesNonPayeesParDevise, t.devise)}
           </Link>
         ) : undefined
       }
     >
       {chargement || !t ? (
-        <Squelette libelle="Chargement de la trésorerie" />
+        <Squelette libelle="Chargement du résultat et des créances" />
       ) : (
         <>
           <div role="list">
@@ -88,7 +103,7 @@ export function TuileTresorerie({ tresorerie, chargement, rang }: PropsCommunes 
                 role="listitem"
                 etat={etatCreance(c.retardJours)}
                 titre={c.client}
-                meta={[c.numero, c.retardJours > 0 ? `échue depuis ${c.retardJours} j` : c.echeance ? `échéance le ${DATE_COURTE.format(new Date(c.echeance))}` : "", formatMontantDevise(c.montant, t.devise)]}
+                meta={[c.numero, c.retardJours > 0 ? `échue depuis ${c.retardJours} j` : c.echeance ? `échéance le ${DATE_COURTE.format(new Date(c.echeance))}` : "", montantPiece(c.montant, c.monnaie, t.devise)]}
                 pastille={<PastilleEtat etat={etatCreance(c.retardJours)} libelle={c.retardJours > 0 ? "À relancer" : "À encaisser"} className="hidden sm:inline-flex" />}
                 action={{ libelle: "Ouvrir", href: "/comptabilite/factures" }}
               />
@@ -96,11 +111,11 @@ export function TuileTresorerie({ tresorerie, chargement, rang }: PropsCommunes 
           </div>
           <p className="flex flex-wrap justify-between gap-2 border-t border-lin-doux px-4 py-2 text-xs text-ardoise">
             <span>
-              À encaisser : <b className="font-semibold text-encre">{formatMontantDevise(t.totalCreances, t.devise)}</b>
+              À encaisser : <b className="font-semibold text-encre">{totalEnDevises(t.totalCreancesParDevise, t.devise)}</b>
             </span>
             {t.nbDepensesNonPayees > 0 && (
               <Link href="/comptabilite/transactions" className="hover:underline">
-                {t.nbDepensesNonPayees} dépense{t.nbDepensesNonPayees > 1 ? "s" : ""} à régler · {formatMontantDevise(t.depensesNonPayees, t.devise)}
+                {t.nbDepensesNonPayees} dépense{t.nbDepensesNonPayees > 1 ? "s" : ""} à régler · {totalEnDevises(t.depensesNonPayeesParDevise, t.devise)}
               </Link>
             )}
           </p>
@@ -224,7 +239,7 @@ export function TuileVentes({ ventes, chargement, rang }: PropsCommunes & { vent
     <Tuile
       idTuile="ventes"
       titre="Ventes récentes"
-      sousTitre={v ? `${formatMontantDevise(v.totalMois, v.devise)} ce mois · ${v.nbMois} vente${v.nbMois > 1 ? "s" : ""}` : chargement ? "lecture en cours" : undefined}
+      sousTitre={v ? `${totalEnDevises(v.totalMoisParDevise, v.devise)} ce mois · ${v.nbMois} vente${v.nbMois > 1 ? "s" : ""}` : chargement ? "lecture en cours" : undefined}
       rang={rang}
       actions={
         <Link href="/comptabilite/transactions" className={CLASSES_LIEN_DISCRET}>
@@ -249,7 +264,7 @@ export function TuileVentes({ ventes, chargement, rang }: PropsCommunes & { vent
               role="listitem"
               etat={x.paye ? "ok" : "attention"}
               titre={x.description}
-              meta={[DATE_COURTE.format(new Date(x.date)), x.client ?? "", formatMontantDevise(x.montant, v.devise)]}
+              meta={[DATE_COURTE.format(new Date(x.date)), x.client ?? "", montantPiece(x.montant, x.monnaie, v.devise)]}
               pastille={x.paye ? undefined : <PastilleEtat etat="attention" libelle="À encaisser" className="hidden sm:inline-flex" />}
             />
           ))}

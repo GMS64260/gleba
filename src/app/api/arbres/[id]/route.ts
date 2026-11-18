@@ -1,3 +1,5 @@
+import { verifierSuiviIndividuel } from '@/lib/verger/suivi-individuel'
+import { ErreurVerger } from '@/lib/verger/erreur'
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 import { suiviReglementActif, verifierSuppressionSourceReglee } from '@/lib/comptabilite/suivi-reglement-source'
 import { cleSourceReglement } from '@/lib/comptabilite/cle-reglement'
@@ -11,6 +13,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 
 import { NextRequest, NextResponse } from "next/server"
 import { porteGreffeAccessible } from "@/lib/verger/porte-greffe-accessible"
+import { chargerPorteGreffesArbres } from "@/lib/verger/porte-greffe-lecture"
 import prisma from "@/lib/prisma"
 import { createDepenseFromAchatArbre } from "@/lib/auto-compta"
 import { invalidateKpi } from "@/lib/kpi/cache"
@@ -64,9 +67,6 @@ export async function GET(request: NextRequest, { params }: Params) {
         userId: session!.user.id,
       },
       include: {
-        // QA cmvkp3kqc (2026-10-23) — libellé du porte-greffe du référentiel,
-        // comme la liste : la création par le catalogue n'écrit que l'id.
-        porteGreffeRef: { select: { id: true, nom: true, vigueur: true } },
         _count: {
           select: {
             recoltesArbres: true,
@@ -81,7 +81,8 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
     }
 
-    return NextResponse.json(arbre)
+    const [visible] = await chargerPorteGreffesArbres(prisma, session!.user.id, [arbre])
+    return NextResponse.json(visible)
   } catch (err) {
     console.error("GET /api/arbres/[id] error:", err)
     return NextResponse.json(
@@ -165,52 +166,6 @@ export async function PUT(request: NextRequest, { params }: Params) {
       }
     }
 
-    const gpsLat =
-      body.gpsLat !== undefined
-        ? body.gpsLat == null || body.gpsLat === ""
-          ? null
-          : Number(body.gpsLat)
-        : existing.gpsLat
-    const gpsLng =
-      body.gpsLng !== undefined
-        ? body.gpsLng == null || body.gpsLng === ""
-          ? null
-          : Number(body.gpsLng)
-        : existing.gpsLng
-    // Message circonstancié (2026-08-03) : deux fiches de production étaient
-    // devenues insauvegardables parce que le formulaire renvoyait une longitude
-    // héritée hors bornes (point décimal perdu à la saisie, avant l'ajout du
-    // garde-fou). L'utilisateur recevait « coordonnées invalides » en modifiant
-    // un tout autre champ, sans moyen de comprendre ni de corriger.
-    const erreurGps = messageErreurCoordonnees(gpsLat, gpsLng)
-    if (erreurGps) {
-      return NextResponse.json({ error: erreurGps }, { status: 400 })
-    }
-
-    let parcelleGeoId =
-      body.parcelleGeoId !== undefined ? (body.parcelleGeoId || null) : existing.parcelleGeoId
-
-    // Rattachement GPS → parcelle : règle et justification dans
-    // `doitInfererParcelle` (`src/lib/parcelle-gps-utils.ts`).
-    if (
-      doitInfererParcelle({
-        parcelleChoisie: parcelleGeoId,
-        parcelleExistante: existing.parcelleGeoId,
-        coordonneesFournies: body.gpsLat !== undefined || body.gpsLng !== undefined,
-        lat: gpsLat,
-        lng: gpsLng,
-        latExistante: existing.gpsLat,
-        lngExistante: existing.gpsLng,
-      }) &&
-      gpsLat != null &&
-      gpsLng != null
-    ) {
-      const parcelles = await prisma.parcelleGeo.findMany({
-        where: { userId: session!.user.id },
-        select: { id: true, geometry: true },
-      })
-      parcelleGeoId = trouverParcelleGpsProche(parcelles, gpsLat, gpsLng)?.id ?? null
-    }
     // Espèce rattachée au catalogue à chaque écriture du champ (cf.
     // espece-arbre.ts) : la sauvegarde du plan renvoie l'espèce de chaque
     // arbre, ce qui recale aussi les saisies historiques (« kiwi » → « Kiwi »).
@@ -219,44 +174,65 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const especeResolue = saisieEspece
       ? await resoudreEspeceArbre(prisma, session!.user.id, saisieEspece)
       : null
-    const espece =
-      body.espece !== undefined ? (especeResolue?.espece ?? null) : existing.espece
-    const rattachementChange =
-      parcelleGeoId !== existing.parcelleGeoId ||
-      (espece ?? "").toLocaleLowerCase("fr") !==
-        (existing.espece ?? "").trim().toLocaleLowerCase("fr")
-
-    // Un même couple parcelle + espèce ne doit pas être suivi à la fois
-    // individuellement et dans un lot agrégé. On ne bloque que lorsqu'une
-    // réaffectation ou un changement d'espèce introduit le conflit, afin de
-    // laisser modifiables les éventuelles données historiques déjà incohérentes.
-    if (
-      rattachementChange &&
-      parcelleGeoId &&
-      espece &&
-      await prisma.lotArbres.findFirst({
-        where: {
-          userId: session!.user.id,
-          parcelleGeoId,
-          espece: { equals: espece, mode: "insensitive" },
-        },
-        select: { id: true },
-      })
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Cette espèce est déjà suivie en lot agrégé sur la parcelle ; choisissez un seul mode de suivi",
-        },
-        { status: 409 }
-      )
-    }
-
     const arbre = await prisma.$transaction(async tx => {
       await verrouillerStockCommercial(tx, session!.user.id)
-      // Relu sous le verrou : une modification concurrente du prix ne peut pas
-      // faire croire que rien n'a changé.
-      const avant = await tx.arbre.findUnique({ where: { id: arbreId, userId: session!.user.id } }) ?? existing
+      // Toute décision sur le couple parcelle / espèce part de l’état relu
+      // sous le verrou partagé avec les lots agrégés et bulk-parcelle.
+      const avant = await tx.arbre.findUnique({ where: { id: arbreId, userId: session!.user.id } })
+      if (!avant) throw new ErreurVerger("Arbre non trouvé", 404)
+      const gpsLat =
+        body.gpsLat !== undefined
+          ? body.gpsLat == null || body.gpsLat === ""
+            ? null
+            : Number(body.gpsLat)
+          : avant.gpsLat
+      const gpsLng =
+        body.gpsLng !== undefined
+          ? body.gpsLng == null || body.gpsLng === ""
+            ? null
+            : Number(body.gpsLng)
+          : avant.gpsLng
+      // Message circonstancié (2026-08-03) : deux fiches de production étaient
+      // devenues insauvegardables parce que le formulaire renvoyait une longitude
+      // héritée hors bornes (point décimal perdu à la saisie, avant l'ajout du
+      // garde-fou). L'utilisateur recevait « coordonnées invalides » en modifiant
+      // un tout autre champ, sans moyen de comprendre ni de corriger.
+      const erreurGps = messageErreurCoordonnees(gpsLat, gpsLng)
+      if (erreurGps) {
+        throw new ErreurVerger(erreurGps, 400)
+      }
+
+      let parcelleGeoId =
+        body.parcelleGeoId !== undefined ? (body.parcelleGeoId || null) : avant.parcelleGeoId
+
+      // Rattachement GPS → parcelle : règle et justification dans
+      // `doitInfererParcelle` (`src/lib/parcelle-gps-utils.ts`).
+      if (
+        doitInfererParcelle({
+          parcelleChoisie: parcelleGeoId,
+          parcelleExistante: avant.parcelleGeoId,
+          coordonneesFournies: body.gpsLat !== undefined || body.gpsLng !== undefined,
+          lat: gpsLat,
+          lng: gpsLng,
+          latExistante: avant.gpsLat,
+          lngExistante: avant.gpsLng,
+        }) &&
+        gpsLat != null &&
+        gpsLng != null
+      ) {
+        const parcelles = await tx.parcelleGeo.findMany({
+          where: { userId: session!.user.id },
+          select: { id: true, geometry: true },
+        })
+        parcelleGeoId = trouverParcelleGpsProche(parcelles, gpsLat, gpsLng)?.id ?? null
+      }
+      const espece =
+        body.espece !== undefined ? (especeResolue?.espece ?? null) : avant.espece
+      const rattachementChange =
+        parcelleGeoId !== avant.parcelleGeoId ||
+        (espece ?? "").toLocaleLowerCase("fr") !==
+          (avant.espece ?? "").trim().toLocaleLowerCase("fr")
+      if (rattachementChange && espece) await verifierSuiviIndividuel(tx, session!.user.id, parcelleGeoId, [espece])
       const arbre = await tx.arbre.update({
       where: { id: arbreId },
       data: {
@@ -321,7 +297,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         surfaceCanopee: body.surfaceCanopee !== undefined ? (body.surfaceCanopee ? parseFloat(body.surfaceCanopee) : null) : undefined,
         zoneId: body.zoneId !== undefined ? (body.zoneId ? parseInt(body.zoneId) : null) : undefined,
         parcelleGeoId:
-          body.parcelleGeoId !== undefined || parcelleGeoId !== existing.parcelleGeoId
+          body.parcelleGeoId !== undefined || parcelleGeoId !== avant.parcelleGeoId
             ? parcelleGeoId
             : undefined,
         dateSuppression: dateSuppression.value,
@@ -338,7 +314,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     invalidateKpi(session!.user.id)
     return NextResponse.json(arbre)
   } catch (err) {
-    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
+    if (err instanceof ErreurVerger || err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error("PUT /api/arbres/[id] error:", err)
     return NextResponse.json(
       { error: "Erreur lors de la mise à jour" },
@@ -422,6 +398,8 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         select: {
           id: true, notes: true, type: true, date: true, cultureId: true, plancheId: true, parcelleId: true,
           cultureRegistre: true, localisationRegistre: true, conduiteBio: true,
+          // Marqueur et provenances : un contexte vidé reste figé (ADV158-1).
+          contexteFige: true, origineCultureRegistre: true, origineConduiteBio: true,
         },
       })
       const snapshotArbre = noteArbreSupprime({
@@ -445,7 +423,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         // CR-PHY-01 : un traitement détaché garde son contexte du registre,
         // relu tant que l'arbre existe s'il n'avait jamais été figé.
         const contexte = intervention.type === 'traitement_phyto'
-          ? await contexteAConserver(tx, session!.user.id, intervention, {
+          ? await contexteAConserver(tx, session!.user.id, { ...intervention, source: 'intervention' }, {
               cultureId: intervention.cultureId,
               plancheId: intervention.plancheId,
               arbreId,

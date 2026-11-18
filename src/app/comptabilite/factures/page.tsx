@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
 import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
 import { ouvrirApercu } from "@/lib/apercu-document"
 import Link from "next/link"
@@ -30,6 +31,8 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { factureSansTaxe } from '@/lib/territoires'
 import { construireImpayees, type FactureImpayee, type Impayee } from '@/lib/comptabilite/impayees'
+import { projeterDevisesImpayees, ventilerImpayeesParDevise, type ImpayeeEnDevise } from '@/lib/comptabilite/ventilation-impayees'
+import { monnaieFacture } from '@/lib/comptabilite/devise-reglement'
 import { adresseDeFiche, clientDesigneParNom } from '@/lib/comptabilite/rattachement-client'
 import { formatSiren, formatSiret } from '@/lib/siret'
 import { ChoisirStock, prixHTDuStock } from '@/components/commercial/ChoisirStock'
@@ -104,6 +107,7 @@ interface FactureEmise {
   totalHT: number
   totalTTC: number
   montantRegle?: number | null
+  emetteurSnapshot?: unknown
   statut: string
   factureOrigineId?: number | null
   /** Résolue côté API depuis `factureOrigineId` (cf. ticket cmsx5zhke). */
@@ -128,6 +132,13 @@ function objetAffiche(f: FactureEmise): string {
 }
 
 export default function FacturesPage() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
+  const formatPiece = (value: number, snapshot: unknown, date?: string) => {
+    // Sans devise historique connue, ne jamais réétiqueter une pièce émise.
+    const monnaie = monnaieFacture(snapshot, date)
+    return monnaie === "EUR" || monnaie === "XPF" ? formatMontantDevise(value, monnaie) : "—"
+  }
   const { peutEcrire } = useExploitation()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = React.useState("impayees")
@@ -145,9 +156,15 @@ export default function FacturesPage() {
     updateDashboardSearchParams(q, 'push')
   }
   const [isLoading, setIsLoading] = React.useState(true)
-  const [impayees, setImpayees] = React.useState<Impayee[]>([])
-  const [total, setTotal] = React.useState(0)
+  const [impayees, setImpayees] = React.useState<Array<Impayee & ImpayeeEnDevise>>([])
   const [facturesEmises, setFacturesEmises] = React.useState<FactureEmise[]>([])
+
+  // Les factures conservent leur devise d'émission ; seules les ventes sans
+  // facture utilisent celle de l'exploitation. Aucun taux de conversion implicite.
+  const totauxImpayees = React.useMemo(
+    () => ventilerImpayeesParDevise(impayees, devise),
+    [impayees, devise],
+  )
 
   // État formulaire facture
   const [factureData, setFactureData] = React.useState({
@@ -244,6 +261,21 @@ export default function FacturesPage() {
     tauxTVA: "5.5",
   })
   const [savingAvoir, setSavingAvoir] = React.useState(false)
+  const origineAvoir = facturesEmises.find((f) => String(f.id) === avoirData.factureOrigineId)
+  // Une note de crédit suit la devise figée de la pièce qu'elle corrige,
+  // même si l'exploitation a changé de territoire depuis son émission.
+  const monnaieAvoir = monnaieFacture(origineAvoir?.emetteurSnapshot, origineAvoir?.date)
+  const deviseAvoir = monnaieAvoir === "EUR" || monnaieAvoir === "XPF" ? monnaieAvoir : null
+  // Le serveur fige sur l'avoir l'instantané (devise comprise) de la facture
+  // d'origine : la devise courante de l'exploitation ne limite plus la création.
+  // Seule une origine sans devise figée connue est refusée, ici comme au serveur.
+  const erreurDeviseAvoir = origineAvoir && deviseAvoir === null
+    ? "La devise historique de cette facture est inconnue. Faites vérifier la facture avant de créer un avoir."
+    : null
+  const montantAvoirTTC = parseFloat(avoirData.montant)
+  const tauxAvoirTVA = parseFloat(avoirData.tauxTVA)
+  const montantAvoirHT = Math.round((montantAvoirTTC / (1 + tauxAvoirTVA / 100)) * 100) / 100
+  const montantAvoirTVA = Math.round((montantAvoirTTC - montantAvoirHT) * 100) / 100
 
   const fetchImpayees = React.useCallback(async () => {
     setIsLoading(true)
@@ -277,9 +309,9 @@ export default function FacturesPage() {
       // QA cmsqlqcuq / cmsqmbfxs — l'agrégation vit dans une fonction partagée :
       // elle impute les avoirs sur leur facture d'origine (comme le Bilan) et
       // écarte les ventes déjà portées par une facture (double comptage).
-      const { items, total: totalImpayees } = construireImpayees({ factures, ventes, ventesManuelles })
-      setImpayees(items)
-      setTotal(totalImpayees)
+      const { items } = construireImpayees({ factures, ventes, ventesManuelles })
+      // Devise figée de chaque créance, lue dans ses pièces sources.
+      setImpayees(projeterDevisesImpayees(items, { factures, ventesManuelles }))
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
@@ -353,10 +385,6 @@ export default function FacturesPage() {
     } catch {
       toast({ variant: "destructive", title: `Export ${libelle} impossible`, description: "Erreur réseau" })
     }
-  }
-
-  const formatEuro = (value: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
   }
 
   const daysSince = (dateStr: string) => {
@@ -557,13 +585,17 @@ export default function FacturesPage() {
       toast({ variant: "destructive", title: "Facture d'origine introuvable" })
       return
     }
+    if (erreurDeviseAvoir) {
+      toast({ variant: "destructive", title: "Avoir non créé", description: erreurDeviseAvoir })
+      return
+    }
 
     setSavingAvoir(true)
     try {
-      const montantTTC = parseFloat(avoirData.montant)
-      const tauxTVA = parseFloat(avoirData.tauxTVA)
-      const montantHT = Math.round((montantTTC / (1 + tauxTVA / 100)) * 100) / 100
-      const montantTVA = Math.round((montantTTC - montantHT) * 100) / 100
+      const montantTTC = montantAvoirTTC
+      const tauxTVA = tauxAvoirTVA
+      const montantHT = montantAvoirHT
+      const montantTVA = montantAvoirTVA
 
       const res = await fetch("/api/comptabilite/factures", {
         method: "POST",
@@ -605,7 +637,7 @@ export default function FacturesPage() {
       const created = json.data ?? json
       toast({
         title: "Avoir créé",
-        description: `${created.numero} — ${formatMontantDevise(montantTTC)}`,
+        description: `${created.numero} — ${formatPiece(montantTTC, created.emetteurSnapshot, created.date)}`,
       })
       // Reset form
       setAvoirData({
@@ -696,14 +728,24 @@ export default function FacturesPage() {
                   </p>
                 </CardContent>
               </Card>
-              <Card className={total > 0 ? "border-amber-200 bg-amber-50" : ""}>
+              <Card className={impayees.length > 0 ? "border-amber-200 bg-amber-50" : ""}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-muted-foreground">Montant total dû</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className={`text-3xl font-bold ${total > 0 ? 'text-amber-600' : 'text-green-600'}`}>
-                    {formatEuro(total)}
-                  </p>
+                  <div className="space-y-1">
+                    {totauxImpayees.map(({ monnaie, montant }) => (
+                      monnaie === 'EUR' || monnaie === 'XPF' || monnaie === null ? (
+                        <p key={monnaie ?? 'chargement'} className={`break-words text-3xl font-bold ${impayees.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+                          {monnaie === null ? '—' : formatMontantDevise(montant, monnaie)}
+                        </p>
+                      ) : (
+                        <p key={monnaie} className="text-sm text-amber-800">
+                          Total indisponible : devise historique inconnue pour certaines créances.
+                        </p>
+                      )
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -757,7 +799,9 @@ export default function FacturesPage() {
                             </TableCell>
                             <TableCell className="max-w-[200px] truncate">{item.description}</TableCell>
                             <TableCell>{item.client || '-'}</TableCell>
-                            <TableCell className="text-right font-bold text-amber-600">{formatEuro(item.montant)}</TableCell>
+                            <TableCell className="text-right font-bold text-amber-600">
+                              {item.monnaie !== undefined ? (item.monnaie === null ? "—" : formatMontantDevise(item.montant, item.monnaie)) : item.source === 'Facture' ? formatPiece(item.montant, item.emetteurSnapshot, item.date) : formatMontant(item.montant)}
+                            </TableCell>
                             <TableCell>
                               <ReglementsDialog type={item.source} id={item.id} onChange={() => { fetchImpayees(); fetchFacturesEmises() }} />
                             </TableCell>
@@ -826,7 +870,7 @@ export default function FacturesPage() {
                             {objetAffiche(f)}
                             {f.documentsCommerciaux?.map((d) => <a key={d.id} className="mt-1 block text-xs text-primary underline" href={`/comptabilite/factures?tab=${d.type === 'devis' ? 'devis' : 'livraisons'}&document=${d.id}`}>{d.numero}</a>)}
                           </TableCell>
-                          <TableCell className="text-right font-medium">{formatEuro(f.totalTTC)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatPiece(f.totalTTC, f.emetteurSnapshot, f.date)}</TableCell>
                           <TableCell>
                             <Badge
                               className={
@@ -854,7 +898,7 @@ export default function FacturesPage() {
                                           : f.statut}
                             </Badge>
                             {f.type !== 'avoir' && f.statut === 'payee' && f.montantRegle == null && <p className="mt-1 text-xs text-muted-foreground">Paiement déclaré sans détail. À vérifier dans Règlements.</p>}
-                            {f.type !== 'avoir' && f.montantRegle != null && <p className="mt-1 text-xs text-muted-foreground">Versements : {formatEuro(f.montantRegle)}</p>}
+                            {f.type !== 'avoir' && f.montantRegle != null && <p className="mt-1 text-xs text-muted-foreground">Versements : {formatPiece(f.montantRegle, f.emetteurSnapshot, f.date)}</p>}
                           </TableCell>
                           <TableCell className="text-right">
                             {peutEcrire && !!f.mouvementsStock?.length && (f.mouvementsStock.filter((m) => m.quantite < 0).length === f.mouvementsStock.filter((m) => m.quantite > 0).length ? <span className="block text-xs text-muted-foreground">Stock retourné</span> : <Button size="sm" variant="outline" onClick={async () => {
@@ -1215,8 +1259,8 @@ export default function FacturesPage() {
                               <option value="20">20%</option>
                             </select>
                           </TableCell>
-                          <TableCell className="text-sm">{formatEuro(ligne.montantHT)}</TableCell>
-                          <TableCell className="font-bold text-sm">{formatEuro(ligne.montantTTC)}</TableCell>
+                          <TableCell className="text-sm">{formatMontant(ligne.montantHT)}</TableCell>
+                          <TableCell className="font-bold text-sm">{formatMontant(ligne.montantTTC)}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="sm" onClick={() => removeLigne(ligne.id)} disabled={lignes.length === 1}>
                               ×
@@ -1234,14 +1278,14 @@ export default function FacturesPage() {
                       {Object.entries(totauxParTaux).sort((a,b) => Number(a[0]) - Number(b[0])).map(([taux, t]) => (
                         <div key={taux} className="flex justify-between text-slate-600 max-w-xs">
                           <span>Base {taux}%</span>
-                          <span>{formatEuro(t.ht)} → TVA {formatEuro(t.tva)}</span>
+                          <span>{formatMontant(t.ht)} → TVA {formatMontant(t.tva)}</span>
                         </div>
                       ))}
                     </div>
                     <div className="text-right space-y-1">
-                      <p className="text-sm text-slate-600">Total HT : <span className="font-semibold">{formatEuro(totalHT)}</span></p>
-                      <p className="text-sm text-slate-600">Total TVA : <span className="font-semibold">{formatEuro(totalTVA)}</span></p>
-                      <p className="text-2xl font-bold text-teal-700">Net à payer TTC : {formatEuro(totalFacture)}</p>
+                      <p className="text-sm text-slate-600">Total HT : <span className="font-semibold">{formatMontant(totalHT)}</span></p>
+                      <p className="text-sm text-slate-600">Total TVA : <span className="font-semibold">{formatMontant(totalTVA)}</span></p>
+                      <p className="text-2xl font-bold text-teal-700">Net à payer TTC : {formatMontant(totalFacture)}</p>
                     </div>
                   </div>
                 </div>
@@ -1308,9 +1352,9 @@ export default function FacturesPage() {
                     <SelectContent>
                       {facturesEmises
                         .filter((f: { type?: string }) => f.type !== "avoir")
-                        .map((f: { id: number; numero: string; clientNom?: string; totalTTC?: number; date?: string }) => (
+                        .map((f) => (
                           <SelectItem key={f.id} value={String(f.id)}>
-                            {f.numero} · {f.clientNom || "—"} · {formatMontantDevise(f.totalTTC ?? 0)}
+                            {f.numero} · {f.clientNom || "—"} · {formatPiece(f.totalTTC ?? 0, f.emetteurSnapshot, f.date)}
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -1318,12 +1362,12 @@ export default function FacturesPage() {
                   {avoirData.factureOrigineId && (() => {
                     const origine = facturesEmises.find(
                       (f: { id: number | string }) => String(f.id) === avoirData.factureOrigineId
-                    ) as Record<string, unknown> | undefined
+                    )
                     if (!origine) return null
                     return (
                       <p className="text-[11px] text-muted-foreground mt-1">
                         Client recopié : <span className="font-medium">{String(origine.clientNom ?? "—")}</span> ·
-                        Montant origine TTC : <span className="font-medium">{formatMontantDevise(Number(origine.totalTTC ?? 0))}</span>
+                        Montant origine TTC : <span className="font-medium">{formatPiece(Number(origine.totalTTC ?? 0), origine.emetteurSnapshot, origine.date)}</span>
                       </p>
                     )
                   })()}
@@ -1339,13 +1383,13 @@ export default function FacturesPage() {
                     />
                   </div>
                   <div>
-                    <Label>Montant TTC (€) *</Label>
+                    <Label>Montant TTC ({deviseAvoir ?? "…"}) *</Label>
                     <Input
                       type="number"
-                      step="0.01"
+                      step={deviseAvoir === "XPF" ? "1" : "0.01"}
                       value={avoirData.montant}
                       onChange={(e) => setAvoirData({ ...avoirData, montant: e.target.value })}
-                      placeholder="0.00"
+                      placeholder={deviseAvoir === "XPF" ? "0" : "0.00"}
                       required
                     />
                   </div>
@@ -1365,6 +1409,14 @@ export default function FacturesPage() {
                   </div>
                 </div>
 
+                {Number.isFinite(montantAvoirTTC) && Number.isFinite(montantAvoirHT) && (
+                  <div aria-label="Aperçu de l'avoir" className="rounded-lg border p-3 text-sm space-y-1">
+                    <p>Total HT : <span className="font-medium">{formatPiece(montantAvoirHT, origineAvoir?.emetteurSnapshot, origineAvoir?.date)}</span></p>
+                    <p>TVA : <span className="font-medium">{formatPiece(montantAvoirTVA, origineAvoir?.emetteurSnapshot, origineAvoir?.date)}</span></p>
+                    <p>Total TTC de l&apos;avoir : <span className="font-semibold">{formatPiece(montantAvoirTTC, origineAvoir?.emetteurSnapshot, origineAvoir?.date)}</span></p>
+                  </div>
+                )}
+
                 <div>
                   <Label>Motif de l&apos;avoir *</Label>
                   <Textarea
@@ -1383,12 +1435,13 @@ export default function FacturesPage() {
 
                 <Button
                   onClick={createAvoir}
-                  disabled={savingAvoir || !avoirData.factureOrigineId || !avoirData.motif || !avoirData.montant}
+                  disabled={savingAvoir || !!erreurDeviseAvoir || !avoirData.factureOrigineId || !avoirData.motif || !avoirData.montant}
                   className="bg-red-600 hover:bg-red-700"
                 >
                   <Printer className="h-4 w-4 mr-2" />
                   {savingAvoir ? "Création…" : "Créer l'avoir"}
                 </Button>
+                {erreurDeviseAvoir && <p role="alert" className="text-sm text-destructive">{erreurDeviseAvoir}</p>}
               </CardContent>
             </Card>
           </TabsContent>

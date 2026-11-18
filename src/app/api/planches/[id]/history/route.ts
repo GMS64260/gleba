@@ -8,27 +8,12 @@ import prisma from '@/lib/prisma'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
 import { PlancheHistory, CultureHistory, FertilisationHistory } from '@/lib/rotation'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { etatCultureHistorique } from '@/lib/cultures/etat'
 import type { UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, formatQuantiteParUnite, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
 
 interface Params {
   params: Promise<{ id: string }>
-}
-
-// Calculer l'état d'une culture
-function getCultureEtat(culture: {
-  semisFait: boolean
-  plantationFaite: boolean
-  recolteFaite: boolean
-  terminee: string | null
-}): string {
-  if (culture.terminee === 'x') return 'Terminée'
-  if (culture.terminee === 'v') return 'Vivace'
-  if (culture.terminee === 'NS') return 'Non significative'
-  if (culture.recolteFaite) return 'En récolte'
-  if (culture.plantationFaite) return 'Plantée'
-  if (culture.semisFait) return 'Semée'
-  return 'Planifiée'
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -97,7 +82,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         datePlantation: c.datePlantation,
         dateRecolte: c.dateRecolte,
         terminee: c.terminee,
-        etat: getCultureEtat(c),
+        etat: etatCultureHistorique(c),
         recoltes: c.recoltes.map((r) => ({
           date: r.date,
           quantite: r.quantite,

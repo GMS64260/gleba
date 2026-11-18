@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useExploitation } from "@/hooks/use-exploitation"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
 import { ArrowLeft, Route, Save, Trash2, ExternalLink, ShieldCheck, AlertTriangle } from "lucide-react"
@@ -97,6 +98,8 @@ export default function EditITPPage() {
   const id = decodeURIComponent(params.id as string)
   const { toast } = useToast()
   const { data: session } = useSession()
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId
 
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -105,6 +108,10 @@ export default function EditITPPage() {
   // que la planification appliquera réellement (une seule vérité, énoncée).
   const [zoneUser, setZoneUser] = React.useState<ZoneClimat | null>(null)
   const [itpData, setItpData] = React.useState<ITPData | null>(null)
+  // Identifiant RÉEL de l'itinéraire affiché. L'URL peut porter une espèce
+  // (`/maraichage/itps/Tomate`) que le GET résout vers un ITP : écrire ou
+  // supprimer sur l'identifiant de l'URL répondait alors 404.
+  const idItp = itpData?.id ?? id
 
   const form = useForm<UpdateITPInput>({
     resolver: zodResolver(updateITPSchema),
@@ -192,22 +199,23 @@ export default function EditITPPage() {
         especeId:
           data.especeId ?? (especeSoumise && especeSoumise !== "_none" ? especeSoumise : null),
       }
-      const response = await fetch(`/api/itps/${encodeURIComponent(id)}`, {
+      const response = await fetch(`/api/itps/${encodeURIComponent(idItp)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la mise à jour")
+        // Une erreur de proxy n'est pas du JSON : pas de « Unexpected token < ».
+        const error = await response.json().catch(() => null)
+        throw new Error(error?.error || "Erreur lors de la mise à jour")
       }
 
       const maj = await response.json().catch(() => null)
       const doublon = maj?.doublonPotentiel as { id: string; nom: string } | undefined
       // On nomme l'itinéraire, pas son identifiant technique : pour un ITP
       // personnel, `id` est un cuid opaque qui ne dit rien à personne.
-      const libelle = payload.nom ?? itpData?.nom ?? id
+      const libelle = payload.nom ?? itpData?.nom ?? idItp
       toast({
         title: "Itinéraire mis à jour",
         description:
@@ -240,7 +248,7 @@ export default function EditITPPage() {
     if (!(await confirmDialog(`Supprimer l'ITP "${libelle}" ?`))) return
 
     try {
-      const response = await fetch(`/api/itps/${encodeURIComponent(id)}`, {
+      const response = await fetch(`/api/itps/${encodeURIComponent(idItp)}`, {
         method: "DELETE",
       })
 
@@ -310,7 +318,7 @@ export default function EditITPPage() {
             <h1 className="text-xl font-bold">{itpData ? nomAffichableItp(itpData) : id}</h1>
             {itpData &&
               (() => {
-                const badge = badgeOrigine(itpData, currentUserId)
+                const badge = proprietaireId ? badgeOrigine(itpData, proprietaireId) : null
                 return badge ? (
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
                     {badge.label}
@@ -412,9 +420,11 @@ export default function EditITPPage() {
                     itinéraire non modifiable — donc aussi pour la contribution
                     d'un autre membre, présentée au lecteur comme une référence
                     du catalogue. */}
-                {origineReferentiel(itpData, currentUserId) === 'communaute'
+                {origineReferentiel(itpData, proprietaireId) === 'communaute'
                   ? "Itinéraire proposé par un membre de la communauté : consultable, non vérifié par Gleba et non modifiable ici. Créez votre propre itinéraire pour l'adapter à votre ferme."
-                  : "Référence du catalogue Gleba : consultable mais non modifiable. Créez un ITP personnel pour l'adapter à votre ferme."}
+                  : itpData.userId != null
+                    ? "Itinéraire personnel de l’exploitation : consultable mais non modifiable ici."
+                    : "Référence du catalogue Gleba : consultable mais non modifiable. Créez un ITP personnel pour l'adapter à votre ferme."}
               </div>
             )}
 
@@ -428,7 +438,7 @@ export default function EditITPPage() {
               <CardContent className="space-y-4">
                 <div className="p-3 bg-slate-100 rounded-md">
                   <span className="text-sm text-slate-500">Identifiant technique : </span>
-                  <span className="font-medium">{id}</span>
+                  <span className="font-medium">{idItp}</span>
                 </div>
 
                 {/* Le nom est un affichage, pas une clé : il reste corrigeable
@@ -750,7 +760,9 @@ export default function EditITPPage() {
                     const sP = form.watch("semainePlantation")
                     const sR = form.watch("semaineRecolte")
                     let diffJours: number | null = null
-                    if (sP && sR) {
+                    // Même semaine : aucun écart à annoncer (le calcul rendait
+                    // 52 semaines, « ≈ 364 j », et l'alerte qui va avec).
+                    if (sP && sR && sP !== sR) {
                       const semaines = sR > sP ? sR - sP : (52 - sP) + sR
                       diffJours = semaines * 7
                     }

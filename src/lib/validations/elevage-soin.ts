@@ -15,8 +15,8 @@ export const annulationSoinSchema = z.object({
 })
 
 export const soinFieldsSchema = z.object({
-    animalId: z.number().int().nullable().optional(),
-    lotId: z.number().int().nullable().optional(),
+    animalId: z.number().int().positive().nullable().optional(),
+    lotId: z.number().int().positive().nullable().optional(),
     date: z.coerce.date().optional(),
     type: z.string().min(1, 'Type requis'),
     description: z.string().max(500).nullable().optional(),

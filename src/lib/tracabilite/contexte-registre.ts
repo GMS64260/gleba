@@ -30,6 +30,106 @@ export interface ContexteRegistre {
   conduiteBio: boolean | null
 }
 
+export type LigneAvecContexte = Partial<ContexteRegistre> & {
+  date?: Date
+  contexteFige?: boolean | null
+}
+
+/**
+ * Une ligne a-t-elle un contexte FIGÉ ? Règle unique du PATCH, de l'écran du
+ * registre, de son export et des traces conservées.
+ *
+ * Le marqueur `contexteFige` (posé à chaque écriture du contexte, y compris
+ * quand les trois mentions sont vides) distingue durablement un contexte
+ * délibérément vidé d'une ligne ancienne jamais figée : sans lui, effacer la
+ * seule mention connue faisait relire les fiches vivantes, la dénomination
+ * effacée revenait au registre et à l'export (contre-revue ADV89-1). Les
+ * lignes sans marqueur (antérieures, ou modèles qui ne le portent pas)
+ * restent figées dès qu'une mention est enregistrée.
+ */
+export function contexteEstFige(ligne: LigneAvecContexte): boolean {
+  return (
+    ligne.contexteFige === true ||
+    ligne.cultureRegistre != null ||
+    ligne.localisationRegistre != null ||
+    ligne.conduiteBio != null
+  )
+}
+
+/**
+ * Lecture commune au registre et à ses exports. Dès qu'un contexte est
+ * figé, ses mentions inconnues ou vides restent telles quelles. Seules les
+ * lignes anciennes jamais figées relisent les fiches de l'exploitation.
+ */
+export async function lireContexteRegistre(
+  db: Tx,
+  userId: string,
+  ligne: LigneAvecContexte,
+  refs: ReferencesLieu,
+): Promise<ContexteRegistre & { contexteFige: boolean }> {
+  if (contexteEstFige(ligne)) {
+    return {
+      cultureRegistre: ligne.cultureRegistre ?? null,
+      localisationRegistre: ligne.localisationRegistre ?? null,
+      conduiteBio: ligne.conduiteBio ?? null,
+      contexteFige: true,
+    }
+  }
+  return {
+    ...(await chargerContexteRegistre(db, userId, refs, ligne.date ?? new Date())),
+    contexteFige: false,
+  }
+}
+
+/**
+ * Provenance d'une mention du contexte d'un semis ou d'un traitement de
+ * semences (tableaux C et D) : SAISIE par l'utilisateur (y compris vidée
+ * délibérément) ou DÉDUITE des fiches référencées. `null` : inconnue (ligne
+ * enregistrée avant le suivi de provenance) ou mention vide non saisie.
+ */
+export type OrigineMention = "saisie" | "deduite"
+
+export function estOrigineMention(v: unknown): v is OrigineMention {
+  return v === "saisie" || v === "deduite"
+}
+
+/** Mention écrite à la création : la saisie prime sur la déduction. */
+export function mentionALaCreation<T>(
+  saisie: T | null | undefined,
+  deduite: T | null | undefined,
+): { valeur: T | null; origine: OrigineMention | null } {
+  if (saisie != null) return { valeur: saisie, origine: "saisie" }
+  if (deduite != null) return { valeur: deduite, origine: "deduite" }
+  return { valeur: null, origine: null }
+}
+
+/**
+ * Mention après relecture des fiches (lieu, culture, jour ou utilisation
+ * modifiés). Fonction pure.
+ * - Une SAISIE renseignée est conservée : la saisie prime, comme à la création.
+ * - Une saisie VIDÉE (« à compléter ») le reste tant que les références ne
+ *   changent pas ; une nouvelle référence peut à nouveau la renseigner.
+ * - Une DÉDUCTION ne survit pas à sa source : elle est remplacée par la
+ *   valeur relue, `null` (à compléter) si la nouvelle source ne la donne pas
+ *   (contre-revue ADV89-2 : la comparaison avec une fiche modifiée depuis la
+ *   saisie prenait l'ancienne déduction pour une saisie).
+ * - Provenance INCONNUE (ligne enregistrée avant ce suivi) : traitée
+ *   prudemment comme une déduction ; mieux vaut une mention « à compléter »
+ *   qu'une mention héritée d'une source retirée. La valeur d'avant reste au
+ *   journal des rectifications.
+ */
+export function mentionApresRelecture<T>(m: {
+  stockee: T | null
+  origine: string | null | undefined
+  relue: T | null
+  referencesChangees: boolean
+}): { valeur: T | null; origine: OrigineMention | null } {
+  if (m.origine === "saisie" && (m.stockee != null || !m.referencesChangees)) {
+    return { valeur: m.stockee, origine: "saisie" }
+  }
+  return { valeur: m.relue, origine: m.relue != null ? "deduite" : null }
+}
+
 interface LieuBio {
   nom: string
   statutBio?: string | null
@@ -118,6 +218,39 @@ const PLANCHE_SELECT = {
   dateDebutConversion: true,
   parcelleGeo: { select: PARCELLE_SELECT },
 } as const
+
+/**
+ * Pourquoi `ObservationSante` et `OperationArbre` ne portent PAS de marqueur
+ * `contexte_fige` (lot registre-phyto-marqueur-contexte-fige-po, 2026-11-15).
+ *
+ * Le marqueur d'`Intervention` (contre-revue ADV89-1) distingue un contexte
+ * délibérément VIDÉ par l'utilisateur d'une ligne ancienne jamais figée. Sur
+ * ces deux tables, ce cas ne peut pas se produire :
+ *
+ * 1. Le contexte n'est pas modifiable par l'utilisateur. Aucune route ne lit
+ *    `cultureRegistre`, `localisationRegistre` ni `conduiteBio` dans le corps
+ *    de la requête : POST et PUT `/api/arbres/observations[/:id]`, POST et PUT
+ *    `/api/arbres/operations[/:id]`, POST `/api/arbres/operations/bulk` et
+ *    l'assistant (`executor-verger.ts`) écrivent seulement le résultat de
+ *    `chargerContexteRegistre` / `contexteOperationTraitement`. Les autres
+ *    écritures (`generer-calendrier`, `creation-arbre`, script de reprise des
+ *    fenêtres) ne touchent pas au contexte. La restauration d'une sauvegarde
+ *    (`account-transfer.ts`) recopie les colonnes du fichier, puis recalcule
+ *    sur les fiches importées le contexte d'un traitement arrivé entièrement
+ *    vide (`contexte-registre-import.ts`, décision du 2026-11-16) : elle ne
+ *    laisse donc pas non plus un contexte vide à réinterpréter.
+ * 2. Le contexte écrit n'est jamais entièrement vide. Ces lignes ont un
+ *    `arbre_id` obligatoire (clé étrangère en cascade) et l'arbre est relu
+ *    borné au compte : avec un arbre, `composerContexteRegistre` renvoie
+ *    toujours une dénomination (au moins `Arbre.nom`, colonne NOT NULL) et une
+ *    localisation (« Arbre <nom> »). Figé une fois, le contexte garde donc au
+ *    moins une mention non nulle, et la règle « figé dès qu'une mention est
+ *    enregistrée » suffit (PUT, registre, export et `preserverTracesPhytoArbre`).
+ *
+ * Ajouter un jour une saisie ou un effacement du contexte sur ces tables
+ * exige d'y ajouter le marqueur, comme pour `Intervention`. Garanties
+ * couvertes par `__tests__/contexte-registre-arbre-non-vide.test.ts`.
+ */
 
 /**
  * Contexte à figer sur une opération d'arbre : seulement pour un traitement

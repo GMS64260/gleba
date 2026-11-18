@@ -15,6 +15,7 @@ import { calculateRotationAdvice } from '@/lib/rotation'
 import { checkRotationViolation } from '@/lib/rotation-check'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
 import type { RotationAdvice } from '@/lib/rotation/types'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 export interface ConseilRotationPlanche {
   planche: { id: string; nom: string }
@@ -82,7 +83,13 @@ export async function conseilRotationPlanche(
 
   let especeToCheck = undefined
   if (especeId) {
-    const espece = await prisma.espece.findUnique({ where: { id: especeId } })
+    // Sous la règle de visibilité du référentiel, comme à la création d'une
+    // culture : l'identifiant de l'espèce privée d'un autre compte ne donne ni
+    // sa famille ni son besoin en azote.
+    const espece = await prisma.espece.findFirst({
+      where: { AND: [{ id: especeId }, visibiliteReferentiel(userId)] },
+      select: { id: true, familleId: true, besoinN: true },
+    })
     if (espece) {
       especeToCheck = {
         id: espece.id,

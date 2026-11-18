@@ -157,16 +157,24 @@ import { debutJourCivilSoin } from './stock-medicament'
 import { invalidateKpi } from '@/lib/kpi'
 import { controlerAnnulation, journaliserAnnulationSoin, RefusSousVerrou } from './annulation-soin'
 import { effectifTraiteAuJour } from './effectif-traite'
+import type { DelaiAttente, RefusDelaisAttente } from './delais-saisie-libre'
+import { delaisFinaux, refusDelaisInvalides, refusDelaisValidationSoin, RefusDelaisSousVerrou } from './delais-validation-soin'
 
 export type ResultatEcriture<T> =
   | { ok: true; soin: T }
-  | { ok: false; status: number; error: string; code?: string }
+  | { ok: false; status: number; error: string; code?: string; delaisManquants?: DelaiAttente[] }
 
 export interface DatationInjection {
   injectionId?: string
   numero?: number
   statut?: 'a_faire' | 'realisee' | 'annulee'
   dateRealisee?: Date | null
+  /**
+   * Délais d'attente prescrits fournis avec la validation (ADV88) : valeur
+   * fournie (null compris) prioritaire sur la valeur stockée, enregistrée sur
+   * le soin. Absent = délais du soin.
+   */
+  delais?: Partial<DelaisAttente>
 }
 
 /**
@@ -205,6 +213,8 @@ export async function daterInjection(
     acteurId?: string
   } = {},
 ): Promise<ResultatEcriture<Prisma.SoinAnimalGetPayload<Record<string, never>> & { injections: InjectionLigne[] }>> {
+  const delaisInvalides = refusDelaisInvalides(datation.delais)
+  if (delaisInvalides) return delaisInvalides
   const soin = await prisma.soinAnimal.findFirst({ where: { id: soinId, userId } })
   if (!soin) return { ok: false, status: 404, error: 'Soin introuvable' }
   const injections = await lireInjections(prisma, userId, soinId)
@@ -233,7 +243,19 @@ export async function daterInjection(
   const demande = defaitRealisation ? controlerAnnulation(options.annulation) : null
   if (demande && !demande.ok) return demande
 
-  const beforeMax = soin.finAttenteLait
+  // ADV88 (contre-revue 2026-11-15) — réaliser une injection d'un soin encore
+  // à faire le fait passer à « fait » : même règle des délais d'attente qu'à
+  // la création et qu'au PATCH du soin (soin médicamenteux sans médicament de
+  // la pharmacie). Ce refus anticipé (sur le soin lu avant le verrou) n'est
+  // qu'une économie : la règle fait foi sous le verrou, sur le soin relu.
+  const refusDelais = (r: RefusDelaisAttente): ResultatEcriture<never> =>
+    ({ ok: false, status: r.status, error: r.error, code: r.code, delaisManquants: r.delaisManquants })
+  if (statut === 'realisee' && !soin.fait) {
+    const refus = await refusDelaisValidationSoin(prisma, userId, soin, delaisFinaux(soin, datation.delais))
+    if (refus) return refusDelais(refus)
+  }
+  const delaisFournis = datation.delais !== undefined && Object.values(datation.delais).some((v) => v !== undefined)
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, userId)
@@ -246,6 +268,25 @@ export async function daterInjection(
       const demandeCourante =
         cibleCourante.statut === 'realisee' && statut !== 'realisee' ? demande ?? controlerAnnulation(options.annulation) : null
       if (demandeCourante && !demandeCourante.ok) throw new RefusSousVerrou(demandeCourante)
+      // ADV88 (revues QA115 / ADV116) : le soin entier (type, produit, cible,
+      // délais, état « fait », prélèvement) se relit sous le mutex — une
+      // correction concurrente a pu aboutir depuis la lecture ci-dessus — et
+      // la règle des délais se rejoue, avant toute écriture, à toute
+      // transition effective vers « fait ». Les fenêtres se calculent avec
+      // ces mêmes délais.
+      const courant = await tx.soinAnimal.findFirst({ where: { id: soinId, userId } })
+      if (!courant) throw new RefusSousVerrou({ ok: false, status: 404, error: 'Soin introuvable' })
+      const delais = delaisFinaux(courant, datation.delais)
+      const deviendraFait = injectionsCourantes.some((i) => (i.id === cible.id ? statut : i.statut) === 'realisee')
+      if (deviendraFait && !courant.fait) {
+        const refus = await refusDelaisValidationSoin(tx, userId, courant, delais)
+        if (refus) throw new RefusDelaisSousVerrou(refus)
+      }
+      const delaisChanges = delaisFournis && (
+        delais.tempsAttenteLaitJ !== courant.tempsAttenteLaitJ ||
+        delais.tempsAttenteViandeJ !== courant.tempsAttenteViandeJ ||
+        delais.tempsAttenteOeufsJ !== courant.tempsAttenteOeufsJ
+      )
       if (demandeCourante?.ok) {
         await journaliserAnnulationSoin(tx, {
           userId,
@@ -263,44 +304,42 @@ export async function daterInjection(
         WHERE id = ${cible.id} AND soin_id = ${soinId} AND user_id = ${userId}
       `
       const apres = await lireInjections(tx, userId, soinId)
-      const fenetres = fenetresAttenteDepuisInjections(apres, soin)
+      const fenetres = fenetresAttenteDepuisInjections(apres, delais)
       const data: Prisma.SoinAnimalUncheckedUpdateInput = { ...fenetres }
+      if (delaisChanges) Object.assign(data, delais, { delaiAttenteSource: 'prescription' })
 
       // Première injection réalisée et datée : la date du soin la suit.
-      if (cible.numero === 1 && statut === 'realisee' && dateRealisee && dateRealisee.getTime() !== soin.date.getTime()) {
+      if (cible.numero === 1 && statut === 'realisee' && dateRealisee && dateRealisee.getTime() !== courant.date.getTime()) {
         data.date = dateRealisee
-        if (soin.datePrevue == null) data.datePrevue = soin.date
+        if (courant.datePrevue == null) data.datePrevue = courant.date
       }
 
-      // Prélèvement relu sous le mutex : sur `soin` (lu avant la transaction),
-      // deux « Faite » envoyés ensemble décomptaient la pharmacie deux fois.
-      const courant = await tx.soinAnimal.findFirst({
-        where: { id: soinId, userId },
-        select: { fait: true, quantitePreleveeStock: true },
-      }) ?? soin
+      // Prélèvement relu sous le mutex (`courant`) : sur `soin` (lu avant la
+      // transaction), deux « Faite » envoyés ensemble décomptaient la
+      // pharmacie deux fois.
       let quantitePreleveeStock = courant.quantitePreleveeStock
       if (options.gererStock) {
         const commence = fenetres.fait
-        if (commence && !courant.fait && soin.stockMedicamentId && quantitePreleveeStock <= 0) {
-          const quantite = soin.quantite ?? 0
+        if (commence && !courant.fait && courant.stockMedicamentId && quantitePreleveeStock <= 0) {
+          const quantite = courant.quantite ?? 0
           if (quantite <= 0) throw new Error('QUANTITE_MEDICAMENT_REQUISE')
           const decremente = await tx.stockMedicamentElevage.updateMany({
             where: {
-              id: soin.stockMedicamentId,
+              id: courant.stockMedicamentId,
               userId,
               quantite: { gte: quantite },
               OR: [
                 { datePeremption: null },
                 // Jour civil : un lot qui périme aujourd'hui reste utilisable aujourd'hui.
-                { datePeremption: { gte: debutJourCivilSoin(dateRealisee ?? soin.date) } },
+                { datePeremption: { gte: debutJourCivilSoin(dateRealisee ?? courant.date) } },
               ],
             },
             data: { quantite: { decrement: quantite } },
           })
           if (decremente.count !== 1) throw new Error('STOCK_MEDICAMENT_INDISPONIBLE')
           quantitePreleveeStock = quantite
-        } else if (!commence && courant.fait && soin.stockMedicamentId && quantitePreleveeStock > 0) {
-          await restituerPrelevement(tx, userId, soin.stockMedicamentId, quantitePreleveeStock)
+        } else if (!commence && courant.fait && courant.stockMedicamentId && quantitePreleveeStock > 0) {
+          await restituerPrelevement(tx, userId, courant.stockMedicamentId, quantitePreleveeStock)
           quantitePreleveeStock = 0
         }
         data.quantitePreleveeStock = quantitePreleveeStock
@@ -309,13 +348,13 @@ export async function daterInjection(
       // jour même ; effacé s'il redevient « à faire ».
       if (fenetres.fait !== courant.fait) {
         data.effectifTraite = fenetres.fait
-          ? await effectifTraiteAuJour(tx, userId, soin.lotId, dateRealisee ?? soin.date)
+          ? await effectifTraiteAuJour(tx, userId, courant.lotId, dateRealisee ?? courant.date)
           : null
       }
 
       const updated = await tx.soinAnimal.update({ where: { id: soinId }, data })
-      const cibles = await ciblesLaitAffectees(tx, userId, soin.animalId, soin.lotId)
-      const f = fenetreSoin(soin.date, updated.date, beforeMax, updated.finAttenteLait)
+      const cibles = await ciblesLaitAffectees(tx, userId, courant.animalId, courant.lotId)
+      const f = fenetreSoin(courant.date, updated.date, courant.finAttenteLait, updated.finAttenteLait)
       if (f) await resyncEcartementLait(tx, userId, cibles, f.min, f.max)
       if (options.dansTransaction) await options.dansTransaction(tx, updated)
       return { ...updated, injections: apres }
@@ -324,6 +363,7 @@ export async function daterInjection(
     return { ok: true, soin: result }
   } catch (error) {
     if (error instanceof RefusSousVerrou) return error.resultat
+    if (error instanceof RefusDelaisSousVerrou) return refusDelais(error.refus)
     if (error instanceof Error && error.message === 'QUANTITE_MEDICAMENT_REQUISE') {
       return { ok: false, status: 422, error: "Renseignez la quantité de médicament avant de réaliser l'injection." }
     }
@@ -361,6 +401,8 @@ export async function mettreAJourProtocoleSoin(
   soinId: number,
   protocole: ProtocoleSoin,
 ): Promise<ResultatEcriture<Prisma.SoinAnimalGetPayload<Record<string, never>> & { injections: InjectionLigne[] }>> {
+  const delaisInvalides = refusDelaisInvalides(protocole)
+  if (delaisInvalides) return delaisInvalides
   const existing = await prisma.soinAnimal.findFirst({ where: { id: soinId, userId } })
   if (!existing) return { ok: false, status: 404, error: 'Soin introuvable' }
 
@@ -388,17 +430,19 @@ export async function mettreAJourProtocoleSoin(
   for (const champ of ['produit', 'description', 'notes', 'veterinaire'] as const) {
     if (protocole[champ] !== undefined) data[champ] = protocole[champ]
   }
-  const delais = {
-    tempsAttenteLaitJ: protocole.tempsAttenteLaitJ !== undefined ? protocole.tempsAttenteLaitJ : existing.tempsAttenteLaitJ,
-    tempsAttenteOeufsJ: protocole.tempsAttenteOeufsJ !== undefined ? protocole.tempsAttenteOeufsJ : existing.tempsAttenteOeufsJ,
-    tempsAttenteViandeJ: protocole.tempsAttenteViandeJ !== undefined ? protocole.tempsAttenteViandeJ : existing.tempsAttenteViandeJ,
-  }
-  if (protocole.tempsAttenteLaitJ !== undefined || protocole.tempsAttenteOeufsJ !== undefined || protocole.tempsAttenteViandeJ !== undefined) {
-    Object.assign(data, delais, { delaiAttenteSource: 'prescription' })
-  }
+  const delaisFournis = protocole.tempsAttenteLaitJ !== undefined || protocole.tempsAttenteOeufsJ !== undefined || protocole.tempsAttenteViandeJ !== undefined
 
   const result = await prisma.$transaction(async (tx) => {
     await verrouillerReglements(tx, userId)
+    // Délais non fournis relus sous le mutex : une correction concurrente des
+    // délais n'est ni écrasée par une valeur périmée, ni ignorée par le calcul
+    // des fenêtres.
+    const stockes = await tx.soinAnimal.findFirst({
+      where: { id: soinId, userId },
+      select: { tempsAttenteLaitJ: true, tempsAttenteOeufsJ: true, tempsAttenteViandeJ: true },
+    }) ?? existing
+    const delais = delaisFinaux(stockes, protocole)
+    if (delaisFournis) Object.assign(data, delais, { delaiAttenteSource: 'prescription' })
     await tx.soinAnimal.update({ where: { id: soinId }, data })
     const avant = await lireInjections(tx, userId, soinId)
     const premiereRealisee = avant.some((i) => i.numero === 1 && i.statut === 'realisee')

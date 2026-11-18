@@ -188,6 +188,8 @@
       "nom": "Ail !",
       "description": "Pomme de terre: Aide contre le mildiou.",
       "notes": "Éviter la proximité des légumineuses (haricots, pois, fèves) car il inhibe leur croissance. (Source: ITAB, Guide Bio)",
+      "desactiveeLe": "2026-11-15T00:00:00.000Z",
+      "motifDesactivation": "Incompatibilité héritée de l'import d'origine, sans fondement agronomique (revue du 2026-11-12) : désactivée, détails conservés (décision du 2026-11-15).",
       "details": [
         {
           "id": 10,
@@ -2540,13 +2542,13 @@
     {
       "id": "cml1gbccs001p2vbmmm3in7ji",
       "nom": "Chou-rave !",
-      "description": "Association expérimentale ou structurelle avec Chou-fleur.",
+      "description": "Association expérimentale ou structurelle avec Chou-rave.",
       "notes": " (Source: Jardinage Bio Standard)",
       "details": [
         {
           "id": 220,
           "associationId": "cml1gbccs001p2vbmmm3in7ji",
-          "especeId": "Chou-fleur",
+          "especeId": "Chou-rave",
           "familleId": "Brassicaceae",
           "groupe": null,
           "requise": true,
@@ -5063,6 +5065,8 @@
       "nom": "Poivron piment !",
       "description": "Association expérimentale ou structurelle avec Poivron piment.",
       "notes": " (Source: Jardinage Bio Standard)",
+      "desactiveeLe": "2026-11-15T00:00:00.000Z",
+      "motifDesactivation": "Incompatibilité héritée de l'import d'origine, sans fondement agronomique (revue du 2026-11-12) : désactivée, détails conservés (décision du 2026-11-15).",
       "details": [
         {
           "id": 437,
@@ -5715,6 +5719,8 @@
       "nom": "Romarin !",
       "description": "Association expérimentale ou structurelle avec Romarin.",
       "notes": " (Source: Jardinage Bio Standard)",
+      "desactiveeLe": "2026-11-15T00:00:00.000Z",
+      "motifDesactivation": "Incompatibilité héritée de l'import d'origine, sans fondement agronomique (revue du 2026-11-12) : désactivée, détails conservés (décision du 2026-11-15).",
       "details": [
         {
           "id": 497,
@@ -6003,15 +6009,6 @@
           "associationId": "cml1gbd4k00482vbmvmkh22l3",
           "especeId": "Absinthe",
           "familleId": "Asteraceae",
-          "groupe": null,
-          "requise": false,
-          "notes": null
-        },
-        {
-          "id": 524,
-          "associationId": "cml1gbd4k00482vbmvmkh22l3",
-          "especeId": null,
-          "familleId": "Alliaceae",
           "groupe": null,
           "requise": false,
           "notes": null

@@ -4,7 +4,7 @@
  * Recherche globale Cmd+K (PROMPT 20c).
  *
  * - Touche Cmd/Ctrl + K ouvre la palette
- * - Tape > 2 caractères pour interroger /api/search
+ * - Tape au moins 2 caractères pour interroger /api/search
  * - Touches ↑↓ et Enter pour naviguer (gérées par cmdk)
  * - Esc ferme
  *
@@ -45,12 +45,31 @@ export function GlobalSearch() {
   const [query, setQuery] = React.useState("")
   const [items, setItems] = React.useState<SearchItem[]>([])
   const [loading, setLoading] = React.useState(false)
-  const lastQueryRef = React.useRef("")
   const gPressedAtRef = React.useRef(0)
+  const focusAvantOuvertureRef = React.useRef<HTMLElement | null>(null)
+
+  const ouvrirPalette = React.useCallback(() => {
+    if (open) return
+    focusAvantOuvertureRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setOpen(true)
+  }, [open])
+
+  const fermerPalette = React.useCallback(() => {
+    setOpen(false)
+    focusAvantOuvertureRef.current?.focus()
+    focusAvantOuvertureRef.current = null
+  }, [])
 
   // Ouverture via Cmd+K / Ctrl+K + raccourcis g+x, n, ?
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Échap doit aussi fonctionner quand le champ de recherche a le focus.
+      if (open && e.key === "Escape") {
+        e.preventDefault()
+        fermerPalette()
+        return
+      }
+
       // Ne pas intercepter quand on est dans un input
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
       const isEditable =
@@ -59,7 +78,8 @@ export function GlobalSearch() {
 
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault()
-        setOpen((o) => !o)
+        if (open) fermerPalette()
+        else ouvrirPalette()
         return
       }
 
@@ -99,40 +119,45 @@ export function GlobalSearch() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, router])
+  }, [open, router, ouvrirPalette, fermerPalette])
 
   // Ferme la palette à chaque changement de route
   React.useEffect(() => {
-    setOpen(false)
-  }, [pathname])
+    fermerPalette()
+  }, [pathname, fermerPalette])
 
   // Accueil v2 (2026-10-09) : la barre de commande ouvre cette palette.
   React.useEffect(() => {
-    const ouvrir = () => setOpen(true)
-    window.addEventListener(EVENEMENT_OUVRIR_RECHERCHE, ouvrir)
-    return () => window.removeEventListener(EVENEMENT_OUVRIR_RECHERCHE, ouvrir)
-  }, [])
+    window.addEventListener(EVENEMENT_OUVRIR_RECHERCHE, ouvrirPalette)
+    return () => window.removeEventListener(EVENEMENT_OUVRIR_RECHERCHE, ouvrirPalette)
+  }, [ouvrirPalette])
 
   // Debounce search
   React.useEffect(() => {
+    setLoading(false)
     if (!open) return
     const q = query.trim()
     if (q.length < 2) {
       setItems([])
       return
     }
+    // Invalider dès la prochaine frappe (avant son debounce), même si le
+    // même texte est recherché à nouveau après une autre requête.
+    let active = true
     const handle = setTimeout(async () => {
-      lastQueryRef.current = q
       setLoading(true)
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
         const json = await res.json()
-        if (lastQueryRef.current === q) setItems(json.items || [])
+        if (active) setItems(json.items || [])
       } finally {
-        setLoading(false)
+        if (active) setLoading(false)
       }
     }, 200)
-    return () => clearTimeout(handle)
+    return () => {
+      active = false
+      clearTimeout(handle)
+    }
   }, [query, open])
 
   // Groupage par type pour cmdk
@@ -150,11 +175,13 @@ export function GlobalSearch() {
   return (
     <div
       className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center pt-24 px-4"
-      onClick={() => setOpen(false)}
+      onClick={fermerPalette}
     >
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-xl">
+        {/* L'API recherche et autorise les résultats ; cmdk ne filtre que les actions rapides. */}
         <Command
           label="Recherche globale"
+          shouldFilter={query.trim().length < 2}
           className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-200"
         >
           <div className="flex items-center gap-2 px-3 border-b border-slate-200">
@@ -189,7 +216,7 @@ export function GlobalSearch() {
                       key={a.id}
                       value={`action ${a.label} ${a.sub}`}
                       onSelect={() => {
-                        setOpen(false)
+                        fermerPalette()
                         if (a.href) router.push(a.href)
                         else a.action?.()
                       }}
@@ -222,7 +249,7 @@ export function GlobalSearch() {
                         value={`${it.type} ${it.label} ${it.sub || ""}`}
                         onSelect={() => {
                           router.push(it.href)
-                          setOpen(false)
+                          fermerPalette()
                         }}
                         className="flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer aria-selected:bg-slate-100 text-sm"
                       >

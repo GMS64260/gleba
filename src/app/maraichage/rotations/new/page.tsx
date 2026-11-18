@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast"
 import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { createRotationSchema, type CreateRotationInput } from "@/lib/validations"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
+import { renumeroterEtapes } from "@/lib/rotations/numerotation"
 
 interface ITP {
   id: string
@@ -105,7 +106,9 @@ export default function NewRotationPage() {
       const response = await fetch("/api/rotations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        // Étapes numérotées par leur rang, comme l'écran les affiche : après un
+        // retrait, la ligne gardait son ancienne année ([2, 3, 3]).
+        body: JSON.stringify({ ...data, details: renumeroterEtapes(data.details ?? []) }),
       })
 
       if (!response.ok) {
@@ -298,6 +301,7 @@ export default function NewRotationPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => remove(index)}
+                        aria-label={`Retirer l'année ${index + 1}`}
                         className="shrink-0 text-red-500 hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />

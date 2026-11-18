@@ -1,3 +1,4 @@
+import { filtreArbresVivants, filtreOperationsArbresVisibles } from "@/lib/verger/arbres-vivants"
 import { invalidateKpi } from '@/lib/kpi/cache'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
@@ -15,6 +16,7 @@ import { createDepenseFromOperationArbre } from "@/lib/auto-compta"
 import { lireAnnee } from "@/lib/api/annee"
 import { whereOperationsArbreAnnee } from "@/lib/verger/annee-operation"
 import { resoudreOperateurExploitation } from "@/lib/tracabilite/operateur-exploitation"
+import { lireDelaiEtNatureDeclares } from "@/lib/phyto/delai-avant-recolte"
 
 // Types d'opérations
 export const TYPES_OPERATIONS = [
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest) {
     const fait = searchParams.get("fait")
     const parametreAnnee = searchParams.has("annee") ? "annee" : searchParams.has("year") ? "year" : null
 
-    const where: Record<string, unknown> = { userId }
+    const where: Record<string, unknown> = { userId, AND: [filtreOperationsArbresVisibles(userId)] }
 
     if (arbreId) {
       where.arbreId = parseInt(arbreId)
@@ -54,6 +56,7 @@ export async function GET(request: NextRequest) {
 
     if (fait !== null && fait !== undefined) {
       where.fait = fait === "true"
+      if (fait !== "true") where.arbre = filtreArbresVivants(userId)
     }
 
     if (parametreAnnee) {
@@ -63,7 +66,7 @@ export async function GET(request: NextRequest) {
       // src/lib/verger/annee-operation.ts. L'ancien filtre (date OU date
       // prévue dans l'année) rangeait une même opération sous deux années.
       const { annee, toutesAnnees } = lireAnnee(searchParams, parametreAnnee)
-      if (!toutesAnnees) where.AND = [whereOperationsArbreAnnee(annee)]
+      if (!toutesAnnees) (where.AND as unknown[]).push(whereOperationsArbreAnnee(annee))
     }
 
     const operations = await prisma.operationArbre.findMany({
@@ -140,6 +143,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: operateur.refus }, { status: 400 })
     }
 
+    // Lot dar-cadre-legal-blocage : délai de l'étiquette et nature du produit
+    // d'un traitement, lus par le contrôle du délai avant récolte.
+    const delai = lireDelaiEtNatureDeclares(body)
+    if ("refus" in delai) {
+      return NextResponse.json({ error: delai.refus, champ: delai.champ }, { status: 400 })
+    }
+
     const fait = body.fait !== undefined ? Boolean(body.fait) : true
     const datePrevue = body.datePrevue ? new Date(body.datePrevue) : null
     if (datePrevue && Number.isNaN(datePrevue.getTime())) {
@@ -172,6 +182,8 @@ export async function POST(request: NextRequest) {
         type: body.type,
         description: body.description || null,
         produit: body.produit || null,
+        dar: body.type === "traitement" ? delai.dar ?? null : null,
+        natureProduit: body.type === "traitement" ? delai.natureProduit ?? null : null,
         quantite: body.quantite || null,
         unite: body.unite || null,
         cout: body.cout != null ? parseFloat(body.cout) : null,

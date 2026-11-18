@@ -55,6 +55,8 @@ function StationMeteoConfigInterne({ onStationsChanged }: { onStationsChanged?: 
   const [lat, setLat] = React.useState("")
   const [lng, setLng] = React.useState("")
 
+  const [chargementEchoue, setChargementEchoue] = React.useState(false)
+
   // Charger les stations
   React.useEffect(() => {
     fetchStations()
@@ -64,12 +66,13 @@ function StationMeteoConfigInterne({ onStationsChanged }: { onStationsChanged?: 
     try {
       setLoading(true)
       const res = await fetch("/api/meteo/station")
-      if (res.ok) {
-        const data = await res.json()
-        setStations(data.data || [])
-      }
+      if (!res.ok) throw new Error("chargement")
+      const data = await res.json()
+      setStations(data.data || [])
+      setChargementEchoue(false)
     } catch {
-      // ignore
+      // Un échec n'est pas « aucune station » : on le dit, sans vider la liste.
+      setChargementEchoue(true)
     } finally {
       setLoading(false)
     }
@@ -88,8 +91,8 @@ function StationMeteoConfigInterne({ onStationsChanged }: { onStationsChanged?: 
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Erreur")
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || "Enregistrement impossible, réessayez dans un instant")
       }
 
       // Reset
@@ -228,7 +231,14 @@ function StationMeteoConfigInterne({ onStationsChanged }: { onStationsChanged?: 
           ))}
         </div>
       ) : (
-        <p className="text-sm text-slate-400 py-2">Aucune station configurée.</p>
+        chargementEchoue ? (
+          <p className="text-sm text-red-600 py-2" role="alert">
+            Impossible de charger vos stations.{" "}
+            <button type="button" className="underline" onClick={() => fetchStations()}>Réessayer</button>
+          </p>
+        ) : (
+          <p className="text-sm text-slate-400 py-2">Aucune station configurée.</p>
+        )
       )}
 
       {/* Formulaire d'ajout */}

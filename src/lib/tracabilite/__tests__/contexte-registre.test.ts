@@ -4,7 +4,14 @@
  * degrés décimaux WGS84).
  */
 import { describe, expect, it } from "vitest"
-import { composerContexteRegistre, coordonneesGps, estConduiteBio } from "../contexte-registre"
+import {
+  composerContexteRegistre,
+  contexteEstFige,
+  coordonneesGps,
+  estConduiteBio,
+  mentionALaCreation,
+  mentionApresRelecture,
+} from "../contexte-registre"
 
 const jour = new Date("2026-05-04T08:00:00Z")
 
@@ -76,5 +83,44 @@ describe("coordonneesGps", () => {
   it("sept décimales, WGS84 ; null si une coordonnée manque", () => {
     expect(coordonneesGps(43.2951234, -0.370789)).toBe("GPS 43.2951234, -0.3707890 (WGS84)")
     expect(coordonneesGps(null, 1)).toBeNull()
+  })
+})
+
+describe("contexteEstFige (contre-revue ADV89-1)", () => {
+  it("un contexte marqué figé l'est même si ses trois mentions sont vides", () => {
+    expect(contexteEstFige({ contexteFige: true, cultureRegistre: null, localisationRegistre: null, conduiteBio: null })).toBe(true)
+  })
+  it("sans marqueur, une ligne ancienne est figée dès qu'une mention est enregistrée", () => {
+    expect(contexteEstFige({ contexteFige: false, cultureRegistre: null, localisationRegistre: null, conduiteBio: false })).toBe(true)
+    expect(contexteEstFige({ cultureRegistre: "Blé" })).toBe(true)
+    expect(contexteEstFige({ contexteFige: false, cultureRegistre: null, localisationRegistre: null, conduiteBio: null })).toBe(false)
+    expect(contexteEstFige({})).toBe(false)
+  })
+})
+
+describe("provenance des mentions (contre-revue ADV89-2)", () => {
+  it("à la création, la saisie prime sur la déduction", () => {
+    expect(mentionALaCreation("Seigle", "Orge")).toEqual({ valeur: "Seigle", origine: "saisie" })
+    expect(mentionALaCreation(false, true)).toEqual({ valeur: false, origine: "saisie" })
+    expect(mentionALaCreation(undefined, "Orge")).toEqual({ valeur: "Orge", origine: "deduite" })
+    expect(mentionALaCreation(null, null)).toEqual({ valeur: null, origine: null })
+  })
+  it("une déduction ne survit pas à sa source, même si la fiche a changé depuis", () => {
+    expect(mentionApresRelecture({ stockee: "Ancienne", origine: "deduite", relue: null, referencesChangees: true }))
+      .toEqual({ valeur: null, origine: null })
+    expect(mentionApresRelecture({ stockee: true, origine: "deduite", relue: false, referencesChangees: false }))
+      .toEqual({ valeur: false, origine: "deduite" })
+  })
+  it("une saisie renseignée est gardée ; vidée, elle le reste tant que les références ne changent pas", () => {
+    expect(mentionApresRelecture({ stockee: "Avoine", origine: "saisie", relue: "Orge", referencesChangees: true }))
+      .toEqual({ valeur: "Avoine", origine: "saisie" })
+    expect(mentionApresRelecture({ stockee: null, origine: "saisie", relue: "Orge", referencesChangees: false }))
+      .toEqual({ valeur: null, origine: "saisie" })
+    expect(mentionApresRelecture({ stockee: null, origine: "saisie", relue: "Orge", referencesChangees: true }))
+      .toEqual({ valeur: "Orge", origine: "deduite" })
+  })
+  it("provenance inconnue (ligne antérieure) : traitée prudemment comme une déduction", () => {
+    expect(mentionApresRelecture({ stockee: "Héritée", origine: null, relue: null, referencesChangees: true }))
+      .toEqual({ valeur: null, origine: null })
   })
 })

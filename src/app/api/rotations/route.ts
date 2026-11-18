@@ -10,6 +10,11 @@ import { createRotationSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { etapesRotationInvalides, messageEtapesInvalides } from '@/lib/rotations/itp-etapes'
+import { lireParametresListe } from '@/lib/cultures/pagination-liste'
+import { anneesEnDouble, messageAnneesEnDouble } from '@/lib/rotations/numerotation'
+
+/** Colonnes de `Rotation` sur lesquelles la liste peut être triée. */
+const TRIS_ROTATION = Object.values(Prisma.RotationScalarFieldEnum)
 
 // GET /api/rotations
 export async function GET(request: NextRequest) {
@@ -20,14 +25,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
 
-    // Pagination
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
-    const skip = (page - 1) * pageSize
-
-    // Tri
-    const sortBy = searchParams.get('sortBy') || 'id'
-    const sortOrder = searchParams.get('sortOrder') || 'asc'
+    // Pagination et tri, bornés (une valeur inexploitable retombe sur le défaut)
+    const { page, pageSize, skip, sortBy, sortOrder } = lireParametresListe(searchParams, {
+      taillePageDefaut: 50,
+      trisPermis: TRIS_ROTATION,
+      triDefaut: 'id',
+      ordreDefaut: 'asc',
+    })
 
     // Filtres
     const search = searchParams.get('search') || ''
@@ -127,6 +131,13 @@ export async function POST(request: NextRequest) {
     }
 
     const { details, ...rotationData } = validationResult.data
+
+    // Une étape par année du cycle : deux étapes sur la même année laissaient
+    // un plan dont la vérification de rotation ne lisait que la dernière.
+    const doubles = anneesEnDouble(details)
+    if (doubles.length > 0) {
+      return NextResponse.json({ error: messageAnneesEnDouble(doubles) }, { status: 400 })
+    }
 
     // Chaque étape doit pointer un itinéraire réellement exploitable : sans ce
     // contrôle, un identifiant inexistant tombait en 500 (violation de clé

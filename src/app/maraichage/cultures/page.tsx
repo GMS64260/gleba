@@ -8,8 +8,6 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { format } from "date-fns"
-import { fr } from "date-fns/locale"
 import { ArrowLeft, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle, Droplets } from "lucide-react"
 import { AssistantDialog, AssistantButton } from "@/components/assistant"
 
@@ -24,6 +22,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { masquerActionPlantation } from "@/components/potager/CulturesTab"
 import { etatCulture } from "@/lib/cultures/etat"
+import { jourMoisCourt } from "@/lib/cultures/champ-date"
 
 // Types d'états pour le filtre
 const CULTURE_ETATS = [
@@ -35,6 +34,14 @@ const CULTURE_ETATS = [
   { value: 'Terminée', label: 'Terminées', icon: CheckCircle },
 ] as const
 
+// Audit Marc 2026-05-14 — Bug 08 : chaque changement d'état est confirmé
+// avec un libellé contextualisé selon le sens (marquer/annuler).
+const FIELD_LABELS: Record<string, string> = {
+  semisFait: 'le semis',
+  plantationFaite: 'la plantation',
+  recolteFaite: 'la récolte',
+}
+
 // Type pour les cultures avec relations
 interface CultureWithRelations {
   id: number
@@ -45,6 +52,7 @@ interface CultureWithRelations {
   dateSemis: string | null
   datePlantation: string | null
   dateRecolte: string | null
+  finRecolte: string | null
   semisFait: boolean
   plantationFaite: boolean
   recolteFaite: boolean
@@ -76,7 +84,8 @@ const etatColors: Record<string, string> = {
 
 // Fonction pour creer les colonnes avec les callbacks
 function createColumns(
-  onQuickUpdate: (id: number, field: string, value: boolean) => void
+  onQuickUpdate: (id: number, field: string, value: boolean) => void,
+  updatingIds: ReadonlySet<number>
 ): ColumnDef<CultureWithRelations>[] {
   return [
     {
@@ -139,6 +148,7 @@ function createColumns(
                 <TooltipTrigger asChild>
                   <button
                     type="button"
+                    disabled={updatingIds.has(culture.id)}
                     aria-label={`${culture.semisFait ? 'Annuler' : 'Marquer'} le semis fait — confirmation requise`}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -164,6 +174,7 @@ function createColumns(
                   <TooltipTrigger asChild>
                     <button
                       type="button"
+                      disabled={updatingIds.has(culture.id)}
                       aria-label={`${culture.plantationFaite ? 'Annuler' : 'Marquer'} la plantation faite — confirmation requise`}
                       onClick={(e) => {
                         e.stopPropagation()
@@ -189,6 +200,7 @@ function createColumns(
                 <TooltipTrigger asChild>
                   <button
                     type="button"
+                    disabled={updatingIds.has(culture.id)}
                     aria-label={`${culture.recolteFaite ? 'Annuler' : 'Marquer'} la récolte faite — confirmation requise`}
                     onClick={(e) => {
                       e.stopPropagation()
@@ -216,24 +228,24 @@ function createColumns(
       accessorKey: "dateSemis",
       header: "Semis",
       cell: ({ getValue }) => {
-        const date = getValue() as string | null
-        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+        // Jour civil stocké, pas le jour local du navigateur (outre-mer).
+        return jourMoisCourt(getValue() as string | null) ?? "-"
       },
     },
     {
       accessorKey: "datePlantation",
       header: "Plantation",
       cell: ({ getValue }) => {
-        const date = getValue() as string | null
-        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+        // Jour civil stocké, pas le jour local du navigateur (outre-mer).
+        return jourMoisCourt(getValue() as string | null) ?? "-"
       },
     },
     {
       accessorKey: "dateRecolte",
       header: "Récolte",
       cell: ({ getValue }) => {
-        const date = getValue() as string | null
-        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+        // Jour civil stocké, pas le jour local du navigateur (outre-mer).
+        return jourMoisCourt(getValue() as string | null) ?? "-"
       },
     },
     {
@@ -295,20 +307,21 @@ function CulturesPageInner() {
   const { toast } = useToast()
   const [data, setData] = React.useState<CultureWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const updatesInFlight = React.useRef(new Set<number>())
+  const [updatingIds, setUpdatingIds] = React.useState<ReadonlySet<number>>(new Set())
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [selectedEtat, setSelectedEtat] = React.useState('all')
+  // Recherche envoyée au serveur : filtrer les 50 lignes de la page chargée
+  // laissait croire qu'une culture d'une autre page n'existait pas.
+  const [searchInput, setSearchInput] = React.useState('')
+  const [debouncedSearch, setDebouncedSearch] = React.useState('')
+  const [erreurChargement, setErreurChargement] = React.useState(false)
+  // Seule la dernière demande écrit dans la liste (onglet ou recherche changés
+  // pendant qu'une réponse plus ancienne arrive).
+  const demandeRef = React.useRef(0)
   const [showAssistant, setShowAssistant] = React.useState(false)
   const pageSize = 50
-
-  // Audit Marc 2026-05-14 — Bug 08 : un clic accidentel sur l'icône Sprout
-  // changeait l'état de la culture sans confirmation. On confirme désormais
-  // chaque changement (libellé contextualisé selon le sens : marquer/annuler).
-  const FIELD_LABELS: Record<string, string> = {
-    semisFait: 'le semis',
-    plantationFaite: 'la plantation',
-    recolteFaite: 'la récolte',
-  }
 
   // Confirmation in-app (remplace window.confirm() invisible des agents
   // de test — feedback testeur 2026-05-26 : « alerte de semence à la
@@ -319,12 +332,16 @@ function CulturesPageInner() {
   } | null>(null)
 
   const handleQuickUpdate = React.useCallback((id: number, field: string, value: boolean) => {
+    if (updatesInFlight.current.has(id)) return
     const action = value ? 'Marquer' : 'Annuler'
     const sujet = FIELD_LABELS[field] ?? field
     setPendingUpdate({ id, field, value, message: `${action} ${sujet} de la culture #${id} ?` })
   }, [])
 
   const executeQuickUpdate = React.useCallback(async (id: number, field: string, value: boolean) => {
+    if (updatesInFlight.current.has(id)) return
+    updatesInFlight.current.add(id)
+    setUpdatingIds(new Set(updatesInFlight.current))
     try {
       const response = await fetch(`/api/cultures/${id}`, {
         method: 'PATCH',
@@ -339,18 +356,19 @@ function CulturesPageInner() {
         throw new Error(detail?.error || 'Erreur')
       }
 
-      // Mettre a jour localement
+      const culture: Partial<CultureWithRelations> = await response.json()
+      // Garder les relations du GET et reprendre les dates confirmées par le PATCH.
       setData(prev => prev.map(c => {
         if (c.id !== id) return c
-        const updated = { ...c, [field]: value }
+        const updated = { ...c, ...culture }
         // Recalculer l'etat (même cascade que l'API : cf. lib/cultures/etat)
         updated.etat = etatCulture(updated)
         return updated
       }))
 
       toast({
-        title: value ? 'Fait !' : 'Annule',
-        description: `${field.replace(/Fait.*/, '').replace(/Faite.*/, '')} mis a jour`,
+        title: value ? 'Fait !' : 'Annulé',
+        description: `${field.replace(/Fait.*/, '').replace(/Faite.*/, '')} mis à jour`,
       })
     } catch (error) {
       toast({
@@ -358,17 +376,21 @@ function CulturesPageInner() {
         title: 'Changement refusé',
         description: error instanceof Error ? error.message : 'Impossible de mettre à jour',
       })
+    } finally {
+      updatesInFlight.current.delete(id)
+      setUpdatingIds(new Set(updatesInFlight.current))
     }
   }, [toast])
 
   // Colonnes avec callbacks
   const columns = React.useMemo(
-    () => createColumns(handleQuickUpdate),
-    [handleQuickUpdate]
+    () => createColumns(handleQuickUpdate, updatingIds),
+    [handleQuickUpdate, updatingIds]
   )
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
+    const demande = ++demandeRef.current
     setIsLoading(true)
     try {
       let url = `/api/cultures?page=${pageIndex + 1}&pageSize=${pageSize}`
@@ -384,21 +406,41 @@ function CulturesPageInner() {
       if (anneeFiltre !== null) {
         url += `&annee=${anneeFiltre}`
       }
+      if (debouncedSearch) {
+        url += `&search=${encodeURIComponent(debouncedSearch)}`
+      }
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
-      setData(result.data)
-      setPageCount(result.totalPages)
+      if (demande !== demandeRef.current) return
+      setData(Array.isArray(result.data) ? result.data : [])
+      setPageCount(result.totalPages ?? 0)
+      setErreurChargement(false)
     } catch {
+      if (demande !== demandeRef.current) return
+      // Les lignes d'un autre filtre ne restent pas sous le nouvel onglet, et
+      // l'état vide dit l'échec au lieu d'annoncer « aucune culture ».
+      setData([])
+      setPageCount(0)
+      setErreurChargement(true)
       toast({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de charger les cultures",
       })
     } finally {
-      setIsLoading(false)
+      if (demande === demandeRef.current) setIsLoading(false)
     }
-  }, [pageIndex, selectedEtat, toast, varieteId, plancheFiltre, anneeFiltre])
+  }, [pageIndex, selectedEtat, toast, varieteId, plancheFiltre, anneeFiltre, debouncedSearch])
+
+  // Anti-rebond de la recherche (300 ms), comme la liste des espèces.
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput.trim())
+      setPageIndex(0)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
   React.useEffect(() => {
     fetchData()
@@ -581,8 +623,16 @@ function CulturesPageInner() {
           onRowClick={handleRowClick}
           onRowEdit={handleEdit}
           onRowDelete={handleDelete}
+          onSearch={setSearchInput}
+          searchValue={searchInput}
           searchPlaceholder="Rechercher une culture..."
-          emptyMessage="Aucune culture trouvée. Cliquez sur Ajouter pour créer la première."
+          emptyMessage={
+            erreurChargement
+              ? "Les cultures n'ont pas pu être chargées. Utilisez Actualiser pour réessayer."
+              : debouncedSearch || selectedEtat !== 'all' || varieteId || plancheFiltre || anneeFiltre !== null
+                ? "Aucune culture ne correspond à cette recherche ou à ces filtres."
+                : "Aucune culture trouvée. Cliquez sur Ajouter pour créer la première."
+          }
         />
       </main>
 

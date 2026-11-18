@@ -27,7 +27,7 @@
  * un flag `previousYearAvailable`.
  */
 
-export type YearDiffState = "compare" | "nouveau" | "nouveau-revenus" | "depenses-seules" | "vide"
+export type YearDiffState = "compare" | "nouveau" | "nouveau-revenus" | "depenses-seules" | "vide" | "devises-differentes"
 
 export interface YearDiff {
   state: YearDiffState
@@ -47,11 +47,33 @@ export interface StatsCompta {
   // courantes, une année à 0 € de revenus mais 4 700 € d'achats était
   // annoncée « Aucune activité ».
   depenses?: number | null
+  /**
+   * Lot devise-totaux-api (16/11/2026) : ventilations par devise de GET
+   * /api/comptabilite/stats. Deux exercices (ou un exercice) en devises
+   * différentes ne se comparent pas : état "devises-differentes".
+   */
+  revenusParDevise?: ReadonlyArray<{ monnaie: string | null; total: number; count?: number }>
+  revenusAnneePrecedenteParDevise?: ReadonlyArray<{ monnaie: string | null; total: number; count?: number }>
+  depensesParDevise?: ReadonlyArray<{ monnaie: string | null; total: number; count?: number }>
+  depensesAnneePrecedenteParDevise?: ReadonlyArray<{ monnaie: string | null; total: number; count?: number }>
+}
+
+/** Devises réellement présentes (un groupe vide à zéro n'en est pas une). */
+function devisesPresentes(stats: StatsCompta): Set<string | null> {
+  const groupes = [
+    ...(stats.revenusParDevise ?? []), ...(stats.revenusAnneePrecedenteParDevise ?? []),
+    ...(stats.depensesParDevise ?? []), ...(stats.depensesAnneePrecedenteParDevise ?? []),
+  ]
+  return new Set(groupes.filter((g) => g.total !== 0 || (g.count ?? 0) > 0).map((g) => g.monnaie))
 }
 
 export function computeYearDiff(stats: StatsCompta | null | undefined): YearDiff {
   if (!stats) {
     return { state: "vide", diff: 0, percent: 0, depensesPrecedente: 0, depensesCourante: 0 }
+  }
+  const devises = devisesPresentes(stats)
+  if (stats.revenus === null || stats.revenusAnneePrecedente === null || stats.depenses === null || stats.depensesAnneePrecedente === null || devises.size > 1 || devises.has(null)) {
+    return { state: "devises-differentes", diff: 0, percent: 0, depensesPrecedente: 0, depensesCourante: 0 }
   }
   const current = stats.revenus ?? 0
   const previous = stats.revenusAnneePrecedente ?? 0
@@ -100,7 +122,7 @@ export function computeYearDiff(stats: StatsCompta | null | undefined): YearDiff
 export function libelleComparatifRevenus(
   diff: YearDiff,
   annee: number,
-  formatEuro: (n: number) => string,
+  formatMontant: (n: number) => string,
 ): string {
   const precedente = annee - 1
   switch (diff.state) {
@@ -109,10 +131,12 @@ export function libelleComparatifRevenus(
     case "nouveau":
       return `Nouveau · pas d'activité en ${precedente}`
     case "nouveau-revenus":
-      return `${precedente} : 0 € de revenus, ${formatEuro(diff.depensesPrecedente)} de dépenses`
+      return `${precedente} : ${formatMontant(0)} de revenus, ${formatMontant(diff.depensesPrecedente)} de dépenses`
     case "depenses-seules":
       return `Pas de revenus en ${annee} · aucune activité en ${precedente}`
     case "vide":
       return `Aucune activité en ${annee} ni en ${precedente}`
+    case "devises-differentes":
+      return `Comparaison avec ${precedente} indisponible : montants en devises différentes`
   }
 }

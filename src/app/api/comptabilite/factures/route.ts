@@ -15,7 +15,7 @@ import { Prisma } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import { creerFacture, montantAvoirsEmis } from '@/lib/facture-utils'
 import { invalidateKpi } from '@/lib/kpi'
-import { clientDesigneParNom, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
+import { clientDesigneParNom } from '@/lib/comptabilite/rattachement-client'
 import { noteLibreDeFacture } from '@/lib/facture-structuree'
 import { cleFacture } from '@/lib/comptabilite/cle-reglement'
 import { suiviReglementActif, suiviReglementParCle } from '@/lib/comptabilite/suivi-reglement-source'
@@ -256,6 +256,9 @@ export async function POST(request: NextRequest) {
         const existante = await tx.facture.findUnique({ where: { userId_cleCreationStock: { userId, cleCreationStock: d.cleCreationStock } }, include: { lignes: true, client: true } })
         if (existante) return existante
       }
+      // Sérialise aussi le brouillon avec un rattachement de produit : sa
+      // référence ne doit pas disparaître entre validation et enregistrement.
+      await verrouillerStocksDesLignes(tx, userId, d.lignes)
       const lignesValidees = await verifierLignesStock(tx, userId, d.lignes, d.dateLivraison ?? d.date ?? new Date())
 
       if (d.type === 'avoir' && d.factureOrigineId) {
@@ -268,7 +271,6 @@ export async function POST(request: NextRequest) {
           throw new Error('AVOIR_INVALIDE:Le total des avoirs dépasserait le montant de la facture d’origine')
         }
       }
-      await verrouillerStocksDesLignes(tx, userId, lignesValidees)
       const creee = await creerFacture(tx, {
         cleCreationStock: d.cleCreationStock,
         userId,
@@ -468,16 +470,21 @@ export async function PATCH(request: NextRequest) {
       if (isEmission) {
         if (courante.type === 'avoir' && courante.factureOrigineId) await verrouillerOrigineAvoir(tx, session.user.id, courante.factureOrigineId)
         // Import dynamique pour rester compatible avec les autres branches PATCH
-        const { reserverProchainNumeroForEmission, snapshotEmetteurForEmission } = await import('@/lib/facture-utils')
+        const { reserverProchainNumeroForEmission, snapshotEmetteurPiece } = await import('@/lib/facture-utils')
         // Instantanés de l'émetteur et de l'acheteur pris AVANT de réserver un
         // numéro : une fiscalité changée depuis le brouillon arrête l'émission
         // (COM-01, revue Codex du 2026-11-12), lignes, totaux et mentions ayant
         // été calculés pour l'ancienne.
-        const emetteur = await snapshotEmetteurForEmission(tx, session.user.id)
-        const client = existing.clientId
-          ? await tx.client.findFirst({ where: { id: existing.clientId, userId: session.user.id } })
-          : null
-        const refusFiscal = refusFiscaliteChangee(courante, emetteur, client?.exonererTVA === true)
+        // Un avoir garde l'instantané (devise comprise) de sa facture d'origine.
+        const emetteur = await snapshotEmetteurPiece(tx, session.user.id, courante)
+        // L'identité complète de l'acheteur est figée au même moment que celle
+        // de l'émetteur (BX03) : fiche lue à l'émission, ou instantané de la
+        // facture d'origine pour un avoir. Son exonération est celle de la
+        // création directe (`acheteurPiece`) : un avoir suit la TVA de son
+        // origine, jamais l'exonération actuelle de la fiche.
+        const { acheteurPiece } = await import('@/lib/comptabilite/acheteur-piece')
+        const acheteur = await acheteurPiece(tx, session.user.id, courante)
+        const refusFiscal = refusFiscaliteChangee(courante, emetteur, acheteur.exonere)
         if (refusFiscal) throw new ErreurCommerciale(refusFiscal)
         await verrouillerStocksDesLignes(tx, session.user.id, courante.lignes)
         const dateEmission = new Date()
@@ -489,8 +496,7 @@ export async function PATCH(request: NextRequest) {
         data.date = dateEmission
         // Json? : `null` (pas d'exploitation) est passé tel quel, comme avant.
         data.emetteurSnapshot = emetteur as unknown as Prisma.InputJsonValue
-        // L'identité de l'acheteur est figée au même moment que celle de l'émetteur.
-        if (client) Object.assign(data, identiteAcheteur(client))
+        Object.assign(data, acheteur.instantane, { clientId: acheteur.clientId, acheteurFigeLe: acheteur.fige ? dateEmission : null })
       }
 
       // TICKET cmsogchrf — le pointage « payée » se propage aux ventes sources

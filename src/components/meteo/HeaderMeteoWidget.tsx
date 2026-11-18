@@ -65,9 +65,15 @@ function HeaderMeteoWidgetInterne({ showLune = false }: { showLune?: boolean }) 
   // ce choix pilote alertes et conseils d'irrigation. Le bandeau lit désormais
   // la même clé que la page Météo, et se recale sans rechargement quand elle
   // change (événement `gleba:parcelle-meteo`).
-  const [parcelleDemandee, setParcelleDemandee] = React.useState<string | null>(null)
+  // `undefined` tant que le choix mémorisé n'est pas lu : sans cet état
+  // d'attente, le bandeau chargeait une première fois sans parcelle, puis une
+  // seconde avec (deux fois `/api/carte` et `/api/meteo` à chaque page).
+  const [parcelleDemandee, setParcelleDemandee] = React.useState<string | null | undefined>(undefined)
   React.useEffect(() => {
-    setParcelleDemandee(window.localStorage.getItem("gleba_meteo_parcelle"))
+    let memorisee: string | null = null
+    // Stockage refusé (navigation privée) : on retombe sur la première parcelle.
+    try { memorisee = window.localStorage.getItem("gleba_meteo_parcelle") } catch { /* sans mémoire */ }
+    setParcelleDemandee(memorisee)
     const onChange = (e: Event) => {
       const id = (e as CustomEvent<string>).detail
       if (id) setParcelleDemandee(id)
@@ -77,9 +83,14 @@ function HeaderMeteoWidgetInterne({ showLune = false }: { showLune?: boolean }) 
   }, [])
 
   React.useEffect(() => {
+    if (parcelleDemandee === undefined) return
+    // Un changement de parcelle pendant le chargement annule la réponse en
+    // cours, qui pouvait sinon arriver après la suivante et l'écraser.
+    const controller = new AbortController()
+    const { signal } = controller
     async function load() {
       try {
-        const carteRes = await fetch("/api/carte")
+        const carteRes = await fetch("/api/carte", { signal })
         if (!carteRes.ok) return
         const parcelles = await carteRes.json()
         const geolocalisees = parcelles.filter(
@@ -90,7 +101,7 @@ function HeaderMeteoWidgetInterne({ showLune = false }: { showLune?: boolean }) 
         if (!p) return
         setParcelle({ id: p.id, nom: p.nom, centroidLat: p.centroidLat, centroidLng: p.centroidLng })
 
-        const meteoRes = await fetch(`/api/meteo?parcelleId=${p.id}`)
+        const meteoRes = await fetch(`/api/meteo?parcelleId=${encodeURIComponent(p.id)}`, { signal })
         if (!meteoRes.ok) return
         const data = await meteoRes.json()
         if (data.actuelle) {
@@ -109,10 +120,11 @@ function HeaderMeteoWidgetInterne({ showLune = false }: { showLune?: boolean }) 
       } catch {
         // silencieux — pas de météo disponible
       } finally {
-        setLoading(false)
+        if (!signal.aborted) setLoading(false)
       }
     }
     load()
+    return () => controller.abort()
   }, [parcelleDemandee])
 
   if (loading) {

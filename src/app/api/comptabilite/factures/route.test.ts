@@ -25,7 +25,7 @@ vi.mock('@/lib/facture-utils', () => ({
   creerFacture: mocks.creerFacture,
   montantAvoirsEmis: vi.fn().mockResolvedValue(0),
   reserverProchainNumeroForEmission: vi.fn(),
-  snapshotEmetteurForEmission: vi.fn(),
+  snapshotEmetteurPiece: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({
   default: {

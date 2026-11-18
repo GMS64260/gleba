@@ -44,6 +44,7 @@ interface CultureWithRelations {
   dateSemis: string | null
   datePlantation: string | null
   dateRecolte: string | null
+  finRecolte: string | null
   semisFait: boolean
   plantationFaite: boolean
   recolteFaite: boolean
@@ -134,7 +135,8 @@ const etatColors: Record<string, string> = {
 // l'info une seule fois en bandeau au-dessus.
 function createColumns(
   onQuickUpdate: (id: number, field: string, value: boolean) => void,
-  onReport: (culture: CultureWithRelations, etape: EtapeReportable) => void
+  onReport: (culture: CultureWithRelations, etape: EtapeReportable) => void,
+  updatingIds: ReadonlySet<number>
 ): ColumnDef<CultureWithRelations>[] {
   return [
     {
@@ -231,11 +233,12 @@ function createColumns(
                     <TooltipTrigger asChild>
                       <button
                         aria-label={action}
+                        disabled={updatingIds.has(culture.id)}
                         onClick={(e) => {
                           e.stopPropagation()
                           onQuickUpdate(culture.id, champ, !faite)
                         }}
-                        className={`p-1.5 rounded-md transition-colors ${
+                        className={`p-1.5 rounded-md transition-colors disabled:cursor-wait disabled:opacity-50 ${
                           faite ? actif : "bg-slate-100 text-slate-400 hover:bg-slate-200"
                         }`}
                       >
@@ -255,11 +258,12 @@ function createColumns(
                     <TooltipTrigger asChild>
                       <button
                         aria-label={libelle}
+                        disabled={updatingIds.has(culture.id)}
                         onClick={(e) => {
                           e.stopPropagation()
                           onReport(culture, reportable.etape)
                         }}
-                        className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-slate-200"
+                        className="p-1.5 rounded-md transition-colors disabled:cursor-wait disabled:opacity-50 bg-slate-100 text-slate-400 hover:bg-slate-200"
                       >
                         <CalendarClock className="h-4 w-4" />
                       </button>
@@ -331,6 +335,8 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
   const { toast } = useToast()
   const [data, setData] = React.useState<CultureWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const updatesInFlight = React.useRef(new Set<number>())
+  const [updatingIds, setUpdatingIds] = React.useState<ReadonlySet<number>>(new Set())
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [selectedEtat, setSelectedEtat] = React.useState("all")
@@ -354,6 +360,11 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
 
   const executeQuickUpdate = React.useCallback(
     async (id: number, field: string, value: boolean) => {
+      // La ref bloque aussi deux clics avant le prochain rendu React. Un seul
+      // PATCH par culture empêche une réponse ancienne d'écraser la suivante.
+      if (updatesInFlight.current.has(id)) return
+      updatesInFlight.current.add(id)
+      setUpdatingIds(new Set(updatesInFlight.current))
       try {
         const response = await fetch(`/api/cultures/${id}`, {
           method: "PATCH",
@@ -366,10 +377,13 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
           const detail = await response.json().catch(() => null)
           throw new Error(detail?.error || "Erreur")
         }
+        const culture: Partial<CultureWithRelations> = await response.json()
         setData((prev) =>
           prev.map((c) => {
             if (c.id !== id) return c
-            const updated = { ...c, [field]: value }
+            // Le PATCH recale les dates ; ses champs scalaires complètent la
+            // ligne sans perdre les relations et compteurs chargés par le GET.
+            const updated = { ...c, ...culture }
             updated.etat = etatCulture(updated)
             return updated
           })
@@ -381,6 +395,9 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
           title: "Changement refusé",
           description: e instanceof Error ? e.message : "Erreur",
         })
+      } finally {
+        updatesInFlight.current.delete(id)
+        setUpdatingIds(new Set(updatesInFlight.current))
       }
     },
     [toast]
@@ -391,6 +408,7 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
   // c'est ce que l'utilisateur risque de contredire sans le voir.
   const handleQuickUpdate = React.useCallback(
     (id: number, field: string, value: boolean) => {
+      if (updatesInFlight.current.has(id)) return
       if (value) {
         void executeQuickUpdate(id, field, value)
         return
@@ -413,13 +431,14 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
   )
 
   const handleReport = React.useCallback((culture: CultureWithRelations, etape: EtapeReportable) => {
+    if (updatesInFlight.current.has(culture.id)) return
     setReportDate(format(new Date(), "yyyy-MM-dd"))
     setReportCible({ culture, etape })
   }, [])
 
   const columns = React.useMemo(
-    () => createColumns(handleQuickUpdate, handleReport),
-    [handleQuickUpdate, handleReport]
+    () => createColumns(handleQuickUpdate, handleReport, updatingIds),
+    [handleQuickUpdate, handleReport, updatingIds]
   )
 
   // Bug 32 — Résumé pluie global (au lieu de la colonne dupliquée 19×).
