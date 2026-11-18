@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { sendMail, smtpConfigure } from '@/lib/mail'
 import { genererPdfFacture } from '@/lib/facture-pdf'
-import { emetteurDeFacture } from '@/lib/facture-structuree'
+import { emetteurDeFacture, ErreurDeviseFacture } from '@/lib/facture-structuree'
 import type { EmetteurSnapshot } from '@/lib/facture-utils'
 import { estEmailDemo } from '@/lib/demo'
 import { genererPdfCommercial } from './pdf'
@@ -39,7 +39,13 @@ export async function chargerCible(userId: string, cible: Cible) {
   const f = await prisma.facture.findFirst({ where: { id: idFacture(cible.id), userId }, include: { client: true, lignes: { orderBy: { ordre: 'asc' } } } })
   if (!f) throw new ErreurCommerciale('Facture introuvable', 404)
   if (!['emise', 'payee'].includes(f.statut)) throw new ErreurCommerciale('Seules les factures émises ou payées peuvent être envoyées')
-  const emetteur = await emetteurDeFacture(f, userId)
+  let emetteur
+  try {
+    emetteur = await emetteurDeFacture(f, userId)
+  } catch (error) {
+    if (error instanceof ErreurDeviseFacture) throw new ErreurCommerciale(error.message, 422)
+    throw error
+  }
   return { documentId: null, factureId: f.id, email: f.client?.email, numero: f.numero, nom: f.clientNom,
     titre: f.type === 'avoir' ? 'Avoir' : f.type === 'acompte' ? 'Facture d’acompte' : 'Facture',
     emetteur, pdf: () => genererPdfFacture(f, emetteur) }

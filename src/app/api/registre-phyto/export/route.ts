@@ -18,8 +18,14 @@ import { jourCivilStocke, jourLocalISO } from "@/lib/jour-civil"
 import { classifierProduitHeuristique } from "@/lib/tracabilite/registre-phyto"
 import { celluleCsv } from "@/lib/csv-cellule"
 import { METHODES_OBSERVATION_REGISTRE } from "@/lib/tracabilite/conformite-observation-phyto"
-import { chargerContexteRegistre, type ContexteRegistre } from "@/lib/tracabilite/contexte-registre"
+import { lireContexteRegistre, type ContexteRegistre, type LigneAvecContexte, type ReferencesLieu } from "@/lib/tracabilite/contexte-registre"
 import { LIBELLES_SOURCE, type SourceRegistre } from "@/lib/tracabilite/historique-phyto"
+import {
+  FILTRE_INTERVENTIONS_REGISTRE,
+  UTILISATION_SEMIS_TRAITE,
+  mentionsSemences,
+  typeUtilisation,
+} from "@/lib/tracabilite/utilisation-semences"
 
 type Format = "pdf" | "csv"
 
@@ -81,11 +87,18 @@ export async function GET(request: NextRequest) {
     prisma.intervention.findMany({
       where: {
         userId,
-        type: "traitement_phyto",
         // Un traitement planifié n'a pas été appliqué (même règle que l'écran).
         fait: true,
         date: { gte: from, lte: to },
-        ...(parcelleId ? { OR: [{ parcelleId }, { plancheId: parcelleId }] } : {}),
+        // Traitements (tableaux A et C) et semis de semences traitées
+        // (tableau D) : même filtre que l'écran du registre, COMBINÉ au lieu
+        // demandé. Les deux portent un OR : étalés dans le même objet, le
+        // second écrasait le premier et tout arrosage ou semis ordinaire du
+        // lieu entrait au registre exporté (contre-revue ADV34-1).
+        AND: [
+          FILTRE_INTERVENTIONS_REGISTRE,
+          ...(parcelleId ? [{ OR: [{ parcelleId }, { plancheId: parcelleId }] }] : []),
+        ],
       },
       include: {
         produitPhytoRef: true,
@@ -170,16 +183,10 @@ export async function GET(request: NextRequest) {
   // biologique) : celui figé à l'enregistrement, sinon relu des fiches
   // actuelles pour les lignes antérieures (revue de conformité, C4).
   const contexteDe = async (
-    ligne: { date: Date; cultureRegistre?: string | null; localisationRegistre?: string | null; conduiteBio?: boolean | null },
-    refs: Parameters<typeof chargerContexteRegistre>[2],
-  ): Promise<ContexteRegistre> =>
-    ligne.cultureRegistre != null || ligne.localisationRegistre != null || ligne.conduiteBio != null
-      ? {
-          cultureRegistre: ligne.cultureRegistre ?? null,
-          localisationRegistre: ligne.localisationRegistre ?? null,
-          conduiteBio: ligne.conduiteBio ?? null,
-        }
-      : chargerContexteRegistre(prisma, userId, refs, ligne.date)
+    ligne: LigneAvecContexte,
+    refs: ReferencesLieu,
+  ): Promise<ContexteRegistre & { contexteFige: boolean }> =>
+    lireContexteRegistre(prisma, userId, ligne, refs)
   const contextesIntervention = await Promise.all(
     interventions.map((i) =>
       contexteDe(i, { cultureId: i.cultureId, plancheId: i.plancheId, arbreId: i.arbreId, parcelleId: i.parcelleId }),
@@ -200,6 +207,9 @@ export async function GET(request: NextRequest) {
     const arbre = i.arbreId ? arbreById.get(i.arbreId) : null
     const espece = culture?.espece.nom ?? culture?.espece.id ?? arbre?.espece ?? null
     const variete = culture?.variete?.nom ?? culture?.variete?.id ?? arbre?.variete ?? null
+    // surfaceTraitee est saisie en m² : conversion en ha (audit #37, facteur 10 000).
+    const surfaceHa = i.surfaceTraiteeHa ?? (i.surfaceTraitee != null ? i.surfaceTraitee / 10000 : null)
+    const semis = typeUtilisation(i) === UTILISATION_SEMIS_TRAITE
     return {
       source: "intervention",
       // Jour civil, comme l'écran du registre (cmvnulry1) : `slice(0, 10)` de
@@ -208,18 +218,17 @@ export async function GET(request: NextRequest) {
       parcelle: i.parcelle?.nom ?? planche?.nom ?? null,
       espece,
       variete,
-      // surfaceTraitee est saisie en m² : conversion en ha pour la colonne
-      // "Surface traitée (ha)" du registre officiel (audit #37, facteur 10 000).
-      surfaceHa:
-        i.surfaceTraiteeHa ??
-        (i.surfaceTraitee != null ? i.surfaceTraitee / 10000 : null),
+      // Une surface semée (tableau D) n'est pas une surface traitée.
+      surfaceHa: semis ? null : surfaceHa,
+      surfaceSemeeHa: semis ? surfaceHa : null,
       cible: i.cibleTraitement ?? null,
       methode: ref?.classification ?? null,
       // Ce qui a été enregistré sur le traitement prime sur le référentiel
       // actuel (revue de conformité du 2026-11-12, C4).
       produit: i.produitPhyto ?? ref?.nomCommercial ?? null,
       amm: i.numAMM ?? ref?.amm ?? null,
-      substance: ref?.substanceActive ?? null,
+      // Substances enregistrées sur la ligne (semences) avant le référentiel actuel.
+      substance: i.substancesActives ?? ref?.substanceActive ?? null,
       classification: ref?.classification ?? null,
       autoriseAB: ref?.autoriseAB ?? null,
       dose: i.doseAppliquee != null ? `${i.doseAppliquee} ${i.uniteDose ?? ""}`.trim() : null,
@@ -249,6 +258,7 @@ export async function GET(request: NextRequest) {
         siretBeneficiaire: i.siretBeneficiaire,
         numLot: i.intrantNumLot,
       }),
+      ...mentionsSemences({ ...i, localisationRegistre: contexte.localisationRegistre }),
     }
   })
 
@@ -259,6 +269,7 @@ export async function GET(request: NextRequest) {
     espece: o.arbre?.espece ?? null,
     variete: o.arbre?.variete ?? null,
     surfaceHa: o.surfaceTraiteeHa ?? null,
+    surfaceSemeeHa: null as number | null,
     cible: o.diagnostic ?? o.symptome ?? null,
     methode: o.methodeTraitement ?? null,
     produit: o.produit ?? null,
@@ -285,6 +296,7 @@ export async function GET(request: NextRequest) {
     certiphytoValidite: null as string | null,
     justification: o.traitement ?? null,
     ...mentionsAnnexeI(contextesObservation[index], { stadeBBCH: o.stadeBBCH }),
+    ...mentionsSemences({}),
   }))
 
   const lignesOperation = operationsArbres.map((op, index) => {
@@ -297,6 +309,7 @@ export async function GET(request: NextRequest) {
       variete: op.arbre?.variete ?? null,
       // Quantité absolue (kg, L) : pas de surface saisie sur une opération.
       surfaceHa: null as number | null,
+      surfaceSemeeHa: null as number | null,
       cible: null as string | null,
       methode: classification,
       produit: op.produit ?? null,
@@ -309,7 +322,8 @@ export async function GET(request: NextRequest) {
       doseUnite: op.unite ?? null,
       volumeBouillie: null as number | null,
       volumeBouillieTotal: null as number | null,
-      dar: null as number | null,
+      // Contre-revue B11 : DAR de l'étiquette saisi sur l'opération (migration 20261113210000).
+      dar: op.dar ?? null,
       temperatureC: op.temperatureC ?? null,
       ventKmh: op.ventKmh ?? null,
       hygrometriePct: op.hygrometriePct ?? null,
@@ -323,6 +337,7 @@ export async function GET(request: NextRequest) {
       certiphytoValidite: null as string | null,
       justification: op.description ?? null,
       ...mentionsAnnexeI(contextesOperation[index], {}),
+      ...mentionsSemences({}),
     }
   })
 
@@ -393,6 +408,7 @@ const NON_CONSERVE = "non conservé"
 function etatOriginal(r: Pick<Rectification, "avant">) {
   const a = (r.avant ?? {}) as Record<string, unknown>
   const texte = (v: unknown) => (v == null || v === "" ? null : String(v))
+  const nombre = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null)
   const date = dateUtilisationOriginale(a)
   const surfaceHa =
     typeof a.surfaceTraiteeHa === "number"
@@ -401,6 +417,25 @@ function etatOriginal(r: Pick<Rectification, "avant">) {
         ? a.surfaceTraitee / 10000
         : null
   const bio = a.conduiteBio === true ? "Oui" : a.conduiteBio === false ? "Non" : NON_CONSERVE
+  // Tableaux C et D : mêmes mentions que la ligne active, lues dans l'état
+  // conservé par le helper partagé (revues QA108 et ADV109 : après une
+  // suppression, type d'utilisation, substances, lot, quantité traitée,
+  // densité et localisation ne sortaient plus nulle part).
+  const semences = mentionsSemences({
+    utilisationPhyto: texte(a.utilisationPhyto),
+    substancesActives: texte(a.substancesActives),
+    quantiteSemences: nombre(a.quantiteSemences),
+    uniteQuantiteSemences: texte(a.uniteQuantiteSemences),
+    densiteSemis: nombre(a.densiteSemis),
+    uniteDensiteSemis: texte(a.uniteDensiteSemis),
+    gpsLat: nombre(a.gpsLat),
+    gpsLng: nombre(a.gpsLng),
+    rpgIlot: texte(a.rpgIlot),
+    rpgParcelle: texte(a.rpgParcelle),
+    rpgCommuneInsee: texte(a.rpgCommuneInsee),
+    localisationRegistre: texte(a.localisationRegistre),
+  })
+  const semis = semences.typeUtilisation === UTILISATION_SEMIS_TRAITE
   return {
     dateUtilisation: date ? dateFr(jourCivilStocke(date) ?? "") : NON_CONSERVE,
     horaires: [texte(a.heureDebut), texte(a.heureFin)].filter(Boolean).join("-") || null,
@@ -408,32 +443,66 @@ function etatOriginal(r: Pick<Rectification, "avant">) {
     amm: texte(a.numAMM),
     dose: typeof a.doseAppliquee === "number" ? a.doseAppliquee : typeof a.quantite === "number" ? a.quantite : null,
     unite: texte(a.uniteDose ?? a.unite),
-    surfaceHa,
+    // Une surface semée (tableau D) n'est pas une surface traitée.
+    surfaceHa: semis ? null : surfaceHa,
+    surfaceSemeeHa: semis ? surfaceHa : null,
     culture: texte(a.cultureRegistre) ?? NON_CONSERVE,
     localisation: texte(a.localisationRegistre) ?? NON_CONSERVE,
     conduiteBio: bio,
     stadeBBCH: texte(a.stadeBBCH),
+    // Annexe I, « le cas échéant » : SIRET du bénéficiaire d'une prestation,
+    // conservé dans l'état d'avant (contre-revue ADV251).
+    siretBeneficiaire: texte(a.siretBeneficiaire),
+    // L'état conservé ne porte que les sources d'intervention ; « Traitement
+    // de surface » pour toute ligne sans type d'utilisation semences.
+    typeUtilisation: semences.typeUtilisation,
+    typeUtilisationLibelle: semences.typeUtilisationLibelle,
+    substancesActives: semences.substancesActives,
+    numLot: texte(a.intrantNumLot),
+    quantiteSemences: semences.quantiteSemences,
+    uniteQuantiteSemences: semences.uniteQuantiteSemences,
+    quantiteSemencesTexte: semences.quantiteSemencesTexte,
+    localisationInstallation: semences.localisationInstallation,
+    densiteSemis: semences.densiteSemis,
+    uniteDensiteSemis: semences.uniteDensiteSemis,
+    densiteSemisTexte: semences.densiteSemisTexte,
+    rpgIlot: semences.rpgIlot,
+    rpgParcelle: semences.rpgParcelle,
+    rpgCommuneInsee: semences.rpgCommuneInsee,
+    localisationRpg: semences.localisationRpg,
+    localisationGpsSemis: semences.localisationGpsSemis,
   }
 }
 
 /** Ligne lisible de l'état d'origine (PDF). */
 function texteEtatOriginal(r: Rectification): string {
   const e = etatOriginal(r)
+  const semences = e.typeUtilisation !== "surface"
   return [
+    semences ? e.typeUtilisationLibelle : null,
     `utilisé le ${e.dateUtilisation}${e.horaires ? ` (${e.horaires})` : ""}`,
     `${e.produit ?? "—"}${e.amm ? ` (AMM ${e.amm})` : ""}`,
+    semences && e.substancesActives ? `substance(s) : ${e.substancesActives}` : null,
     e.dose != null ? `${e.dose} ${e.unite ?? ""}`.trim() : null,
     e.surfaceHa != null ? `${e.surfaceHa} ha` : null,
+    e.surfaceSemeeHa != null ? `surface semée : ${e.surfaceSemeeHa} ha` : null,
+    e.quantiteSemencesTexte ? `quantité traitée : ${e.quantiteSemencesTexte}` : null,
+    e.densiteSemisTexte ? `densité : ${e.densiteSemisTexte}` : null,
+    semences && e.numLot ? `lot ${e.numLot}` : null,
     `culture : ${e.culture}`,
     `lieu : ${e.localisation}`,
+    e.localisationInstallation ? `installation : GPS ${e.localisationInstallation}` : null,
+    e.localisationRpg ? `RPG ${e.localisationRpg}` : null,
+    e.localisationGpsSemis ? `surface semée : GPS ${e.localisationGpsSemis}` : null,
     `bio : ${e.conduiteBio}`,
     e.stadeBBCH ? `BBCH ${e.stadeBBCH}` : null,
+    e.siretBeneficiaire ? `prestation pour SIRET ${e.siretBeneficiaire}` : null,
   ].filter(Boolean).join(" · ")
 }
 
 /** Mentions de l'annexe I de l'arrêté du 24 décembre 2025, communes aux trois sources. */
 function mentionsAnnexeI(
-  contexte: ContexteRegistre,
+  contexte: ContexteRegistre & { contexteFige?: boolean },
   m: {
     stadeBBCH?: string | null
     heureDebut?: string | null
@@ -445,6 +514,7 @@ function mentionsAnnexeI(
 ) {
   return {
     cultureRegistre: contexte.cultureRegistre,
+    contexteFige: contexte.contexteFige ?? false,
     localisation: contexte.localisationRegistre,
     conduiteBio: contexte.conduiteBio,
     stadeBBCH: m.stadeBBCH ?? null,
@@ -498,6 +568,8 @@ function buildCsv(
   const siretDetenteur = exploitation?.siret ?? null
   const headers = [
     "Date",
+    // Annexe II : tableau A (surface), C (semences ou plants) ou D (semis de semences traitées).
+    "Type d'utilisation",
     "SIRET détenteur",
     "SIRET bénéficiaire (prestation)",
     "Horaire début",
@@ -508,9 +580,12 @@ function buildCsv(
     "Stade BBCH",
     "N° lot",
     "Rentrée anticipée",
-    "Parcelle",
-    "Espèce",
-    "Variété",
+    // Colonnes de repérage relues des fiches ACTUELLES (elles servent aux
+    // filtres) : la mention réglementaire du jour du traitement est dans
+    // « Culture » et « Localisation », figées (CR-PHY-03).
+    "Parcelle (fiche actuelle)",
+    "Espèce (fiche actuelle)",
+    "Variété (fiche actuelle)",
     "Surface traitée (ha)",
     "Cible",
     "Produit",
@@ -538,6 +613,18 @@ function buildCsv(
     "N° Certiphyto",
     "Validité Certiphyto",
     "Justification / Action",
+    // Tableau C : traitement de semences ou de plants.
+    "Quantité de semences ou plants traitée (valeur)",
+    "Quantité de semences ou plants traitée (unité)",
+    "Localisation de l'installation de traitement (GPS WGS84)",
+    // Tableau D : semis de semences traitées.
+    "Surface semée (ha)",
+    "Densité de semis (valeur)",
+    "Densité de semis (unité)",
+    "RPG : numéro d'îlot",
+    "RPG : numéro de parcelle",
+    "RPG : code commune Insee",
+    "Localisation de la surface semée (GPS WGS84)",
   ]
 
   const rows: string[] = []
@@ -546,6 +633,7 @@ function buildCsv(
     rows.push(
       [
         dateFr(String(l.date ?? "")),
+        l.typeUtilisationLibelle,
         siretDetenteur,
         l.siretBeneficiaire,
         l.heureDebut,
@@ -584,6 +672,16 @@ function buildCsv(
         l.certiphytoNum,
         l.certiphytoValidite,
         l.justification,
+        l.quantiteSemences,
+        l.uniteQuantiteSemences,
+        l.localisationInstallation,
+        l.surfaceSemeeHa,
+        l.densiteSemis,
+        l.uniteDensiteSemis,
+        l.rpgIlot,
+        l.rpgParcelle,
+        l.rpgCommuneInsee,
+        l.localisationGpsSemis,
       ]
         .map(celluleCsv)
         .join(";")
@@ -601,6 +699,14 @@ function buildCsv(
         "Rectifié le", "Action", "Auteur", "Motif", "Source",
         "Date d'utilisation d'origine", "Horaires", "Produit", "N° AMM", "Dose (valeur)", "Unité de dose",
         "Surface traitée (ha)", "Culture", "Localisation", "Conduite biologique", "Stade BBCH",
+        // Tableaux C et D : mêmes mentions que les lignes en vigueur.
+        "Type d'utilisation", "Substance active", "N° lot",
+        "Quantité de semences ou plants traitée (valeur)", "Quantité de semences ou plants traitée (unité)",
+        "Localisation de l'installation de traitement (GPS WGS84)",
+        "Surface semée (ha)", "Densité de semis (valeur)", "Densité de semis (unité)",
+        "RPG : numéro d'îlot", "RPG : numéro de parcelle", "RPG : code commune Insee",
+        "Localisation de la surface semée (GPS WGS84)",
+        "SIRET bénéficiaire (prestation)",
       ].map(celluleCsv).join(";"),
     )
     for (const r of rectifications) {
@@ -614,6 +720,11 @@ function buildCsv(
           `${LIBELLES_SOURCE[r.source as SourceRegistre] ?? r.source} n° ${r.sourceId}`,
           e.dateUtilisation, e.horaires, e.produit, e.amm, e.dose, e.unite,
           e.surfaceHa, e.culture, e.localisation, e.conduiteBio, e.stadeBBCH,
+          e.typeUtilisationLibelle, e.substancesActives, e.numLot,
+          e.quantiteSemences, e.uniteQuantiteSemences, e.localisationInstallation,
+          e.surfaceSemeeHa, e.densiteSemis, e.uniteDensiteSemis,
+          e.rpgIlot, e.rpgParcelle, e.rpgCommuneInsee, e.localisationGpsSemis,
+          e.siretBeneficiaire,
         ]
           .map(celluleCsv)
           .join(";"),
@@ -790,20 +901,56 @@ async function buildPdf(
       const meteo = [l.temperatureC, l.ventKmh, l.hygrometriePct]
         .map((v, idx) => (v == null ? "—" : `${v}${idx === 0 ? "°C" : idx === 1 ? "km/h" : "%"}`))
         .join(" / ")
-      const operateurCol = `${l.operateur ?? ""}${l.certiphytoNum ? ` (${l.certiphytoNum})` : ""}`
+      // Annexe I, « le cas échéant » : SIRET du bénéficiaire d'une
+      // prestation, à côté de l'opérateur qui l'a réalisée (il ne sortait
+      // qu'au CSV : contre-revue ADV251).
+      const operateurCol = [
+        `${l.operateur ?? ""}${l.certiphytoNum ? ` (${l.certiphytoNum})` : ""}`,
+        l.siretBeneficiaire ? `Prestation pour SIRET ${l.siretBeneficiaire}` : null,
+      ].filter(Boolean).join(" · ")
       const especeVar = [l.espece, l.variete].filter(Boolean).join(" — ") || "—"
       const produitAmm = `${l.produit ?? "—"}${l.amm ? ` (AMM ${l.amm})` : ""}`
       const horaire = [l.heureDebut, l.heureFin].filter(Boolean).join("-")
-      const culture = String(l.cultureRegistre ?? especeVar)
-      const justification = [l.justification, l.rentreeAnticipee ? `Rentrée anticipée : ${l.rentreeAnticipee}` : null]
+      // Contexte figé : sa dénomination prime, y compris effacée (« à
+      // compléter »), comme à l'écran et au CSV ; le nom relu des fiches
+      // actuelles ne vaut que pour les lignes anciennes (contre-revue ADV34-2).
+      const culture = l.contexteFige
+        ? String(l.cultureRegistre ?? "—")
+        : String(l.cultureRegistre ?? especeVar)
+      // Semences et plants traités (tableaux C et D) : type d'utilisation,
+      // quantité traitée ou densité de semis, lot et localisation propres.
+      const semences = l.typeUtilisation !== "surface"
+      const justification = [
+        semences ? l.typeUtilisationLibelle : null,
+        l.quantiteSemencesTexte ? `Quantité traitée : ${l.quantiteSemencesTexte}` : null,
+        l.densiteSemisTexte ? `Densité : ${l.densiteSemisTexte}` : null,
+        semences && l.substance ? `Substance(s) : ${l.substance}` : null,
+        semences && l.numLot ? `Lot ${l.numLot}` : null,
+        l.justification,
+        l.rentreeAnticipee ? `Rentrée anticipée : ${l.rentreeAnticipee}` : null,
+      ]
         .filter(Boolean)
         .join(" · ")
+      const localisation = [
+        l.localisationInstallation ? `Installation : ${l.localisationInstallation}` : null,
+        l.localisationRpg ? `RPG ${l.localisationRpg}` : null,
+        // Tableau D : point représentatif retenu par le helper commun (GPS
+        // saisi, sinon celui figé avec la planche). Sans cette cellule, un
+        // semis localisé par ses seules coordonnées sortait « — » (revues
+        // QA108 et ADV109).
+        l.localisationGpsSemis ? `Surface semée : GPS ${l.localisationGpsSemis}` : null,
+        // Le point retenu est déjà écrit : celui de la planche, figé dans le
+        // texte du contexte, n'est pas répété (ni opposé à un point saisi).
+        l.localisationGpsSemis && typeof l.localisation === "string"
+          ? l.localisation.replace(/(?:\s*·\s*)?GPS -?\d+(?:\.\d+)?, -?\d+(?:\.\d+)? \(WGS84\)/, "").trim() || null
+          : l.localisation ?? l.parcelle ?? null,
+      ].filter(Boolean).join(" · ")
       return {
         date: `${dateFr(String(l.date ?? ""))}${horaire ? ` (${horaire})` : ""}`,
         culture: `${culture}${l.stadeBBCH ? ` (BBCH ${l.stadeBBCH})` : ""}`,
-        localisation: String(l.localisation ?? l.parcelle ?? "—"),
+        localisation: localisation || "—",
         bio: ouiNon(l.conduiteBio) ?? "—",
-        surfaceHa: l.surfaceHa != null ? String(l.surfaceHa) : "—",
+        surfaceHa: l.surfaceHa != null ? String(l.surfaceHa) : l.surfaceSemeeHa != null ? `${l.surfaceSemeeHa} (semée)` : "—",
         cible: String(l.cible ?? "—"),
         produit: produitAmm,
         substance: String(l.substance ?? "—"),

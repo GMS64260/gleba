@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getAssociations } from '@/lib/planification'
+import { lireAnnee } from '@/lib/api/annee'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -15,7 +16,9 @@ export async function GET(request: NextRequest) {
     const userId = getUserId(session)
     const { searchParams } = new URL(request.url)
 
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
+    // `?annee=abc` donnait NaN, puis une erreur Prisma et un 500 : repli sur
+    // l'année courante, comme les autres listes de la planification.
+    const { annee } = lireAnnee(searchParams)
 
     const associations = await getAssociations(userId, annee)
 

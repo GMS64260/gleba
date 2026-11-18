@@ -1,5 +1,7 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Page detail animal - Fiche complete avec timeline chronologique
  */
@@ -165,6 +167,8 @@ interface TimelineEvent {
 }
 
 export default function AnimalDetailPage() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { data: session } = useSession()
   const { id } = useParams()
   const router = useRouter()
@@ -234,7 +238,7 @@ export default function AnimalDetailPage() {
           s.dose,
           s.motif,
           s.description,
-          s.cout ? formatMontantDevise(s.cout) : null,
+          s.cout ? formatMontant(s.cout) : null,
           s.fait ? null : `prévu le ${new Date(s.datePrevue ?? s.date).toLocaleDateString("fr-FR")}`,
           s.viaLot ? "soin de lot" : null,
         ].filter(Boolean).join(" - "),

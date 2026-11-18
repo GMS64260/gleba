@@ -19,6 +19,8 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { associationDetailTitle } from "@/lib/association-display"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
+import { telechargerCsv } from "@/app/maraichage/planification/export-csv"
+import { libelleType, lignesCsvAssociations, texteDescription, texteDetails } from "./texte-association"
 
 // Type pour les associations avec relations
 interface AssociationWithRelations {
@@ -54,7 +56,20 @@ const columns: ColumnDef<AssociationWithRelations>[] = [
     },
   },
   {
-    accessorKey: "details",
+    id: "type",
+    // Valeur texte : permet de chercher et de trier « Incompatible ».
+    accessorFn: (a) => libelleType(a.type),
+    header: "Type",
+    cell: ({ row }) => (
+      <Badge variant={row.original.type === "incompatible" ? "destructive" : "outline"} className="text-xs">
+        {libelleType(row.original.type)}
+      </Badge>
+    ),
+  },
+  {
+    id: "details",
+    // Valeur texte (et non le tableau) : sans elle la recherche ignore la colonne.
+    accessorFn: (a) => texteDetails(a),
     header: "Espèces/Familles",
     cell: ({ row }) => {
       const details = row.original.details
@@ -91,10 +106,11 @@ const columns: ColumnDef<AssociationWithRelations>[] = [
     },
   },
   {
-    accessorKey: "description",
+    id: "description",
+    accessorFn: (a) => texteDescription(a),
     header: "Description",
     cell: ({ getValue }) => {
-      const desc = getValue() as string | null
+      const desc = getValue() as string
       if (!desc) return <span className="text-muted-foreground">-</span>
       return (
         <span className="text-sm text-muted-foreground line-clamp-2">
@@ -105,7 +121,7 @@ const columns: ColumnDef<AssociationWithRelations>[] = [
   },
   {
     id: "nbRequises",
-    header: "Requises",
+    header: "Pivots (★)",
     cell: ({ row }) => {
       const count = row.original.details.filter((d) => d.requise).length
       return count > 0 ? (
@@ -131,16 +147,20 @@ export default function AssociationsPage() {
   const { toast } = useToast()
   const [data, setData] = React.useState<AssociationWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [erreur, setErreur] = React.useState(false)
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
+    setErreur(false)
     try {
       const response = await fetch("/api/associations")
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result)
     } catch {
+      // Un échec ne doit pas se lire comme « aucune association ».
+      setErreur(true)
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -175,41 +195,27 @@ export default function AssociationsPage() {
       const response = await fetch(`/api/associations/${row.id}`, {
         method: "DELETE",
       })
-      if (!response.ok) throw new Error("Erreur lors de la suppression")
+      if (!response.ok) {
+        const corps = await response.json().catch(() => null)
+        throw new Error(corps?.error || "Impossible de supprimer l'association")
+      }
       toast({
         title: "Association supprimée",
         description: `L'association "${row.nom}" a été supprimée`,
       })
       fetchData()
-    } catch {
+    } catch (err) {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de supprimer l'association",
+        description: err instanceof Error ? err.message : "Impossible de supprimer l'association",
       })
     }
   }
 
   // Export CSV
   const handleExport = () => {
-    const headers = ["Nom", "Description", "Espèces", "Familles", "Nb Requises", "Nb Total"]
-    const rows = data.map((a) => [
-      a.nom,
-      a.description || "",
-      a.details.filter((d) => d.especeId).map((d) => d.especeId).join(", "),
-      a.details.filter((d) => d.familleId).map((d) => d.familleId).join(", "),
-      a.details.filter((d) => d.requise).length.toString(),
-      a.details.length.toString(),
-    ])
-
-    const csv = [headers, ...rows].map((r) => r.join(";")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = "associations.csv"
-    link.click()
-    URL.revokeObjectURL(url)
+    telechargerCsv("associations.csv", lignesCsvAssociations(data))
   }
 
   return (
@@ -243,12 +249,26 @@ export default function AssociationsPage() {
               <p className="mt-1 text-pink-700">
                 Les associations de plantes (compagnonnage) définissent quelles espèces ou familles
                 se bénéficient mutuellement lorsqu&apos;elles sont cultivées à proximité.
-                Une association <strong>requise</strong> (★) indique une dépendance forte ;
+                L&apos;étoile (★) marque l&apos;espèce <strong>pivot</strong> : la règle la relie à chacune
+                des autres, sans rien dire des autres entre elles ;
                 un badge <strong>rouge</strong> signale une association incompatible à éviter.
+                {!estAdmin && " Ce référentiel est commun à toutes les exploitations : il est géré par l'administration."}
               </p>
             </div>
           </div>
         </div>
+
+        {erreur && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+          >
+            <span>Les associations n&apos;ont pas pu être chargées.</span>
+            <Button variant="outline" size="sm" onClick={fetchData}>
+              Réessayer
+            </Button>
+          </div>
+        )}
 
         <DataTable
           columns={columns}
@@ -265,7 +285,13 @@ export default function AssociationsPage() {
           onRowEdit={estAdmin ? handleEdit : undefined}
           onRowDelete={estAdmin ? handleDelete : undefined}
           searchPlaceholder="Rechercher une association..."
-          emptyMessage="Aucune association trouvée. Cliquez sur + pour en créer une."
+          emptyMessage={
+            erreur
+              ? "Chargement impossible."
+              : estAdmin
+                ? "Aucune association trouvée. Cliquez sur + pour en créer une."
+                : "Aucune association trouvée."
+          }
         />
       </main>
     </div>

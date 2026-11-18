@@ -57,3 +57,23 @@ describe('GET /api/export?format=json', () => {
     expect(brut).not.toContain('secrète')
   })
 })
+
+describe('GET /api/export?format=json — modules fermés à un membre', () => {
+  it.each([[['elevage']], [['maraichage']], [['verger', 'comptabilite']]])(
+    'adhésion limitée à %j : 403 avec le message des routes de module, aucune lecture',
+    async (modules) => {
+      const session = sessionDe(MOI)
+      mocks.requireAuthApi.mockResolvedValue({ ...session, session: { ...session.session, user: { ...session.session.user, modulesExploitation: modules } } })
+      const res = await GET(new NextRequest('http://localhost/api/export?format=json'))
+      expect(res.status).toBe(403)
+      expect(await res.json()).toEqual({ error: 'Accès refusé : ce module ne vous est pas ouvert dans cette exploitation.' })
+      expect((mocks.db.planche as { findMany: ReturnType<typeof vi.fn> }).findMany).not.toHaveBeenCalled()
+    },
+  )
+
+  it('maraîchage et verger ouverts : export servi', async () => {
+    const session = sessionDe(MOI)
+    mocks.requireAuthApi.mockResolvedValue({ ...session, session: { ...session.session, user: { ...session.session.user, modulesExploitation: ['maraichage', 'verger'] } } })
+    expect((await GET(new NextRequest('http://localhost/api/export?format=json'))).status).toBe(200)
+  })
+})

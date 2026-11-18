@@ -19,6 +19,7 @@ import { REFUS_CONNEXION, type CodeRefusConnexion } from "./auth-refus"
 import { redirectionApresConnexion } from "./auth-retour"
 import { autoriserEssaiConnexion, solderEssaisConnexion } from "./auth-plafond"
 import { getClientIP } from "./ip-client"
+import { DUREE_SESSION_SECONDES, rappelJwt, rappelSession, versionSession } from "./session-version"
 
 /**
  * Refus de connexion porteur d'un motif lisible par le formulaire.
@@ -79,18 +80,23 @@ export function glebaAdapter(): Adapter {
   return {
     ...base,
     // Pendant un callback OAuth en stratégie JWT, Auth.js résout l'utilisateur
-    // de la session courante via getUser(sub) : s'il existe, l'identité Google
-    // entrante lui est LIÉE au lieu de créer/retrouver le compte du visiteur.
-    // La session démo étant partagée par tous les visiteurs du site public,
-    // y répondre rattacherait leur identité Google au compte démo (incident
-    // du 2026-07-31 : 28 connexions d'un utilisateur réel ont atterri sur la
-    // démo). Répondre null = « personne n'est connecté » : le visiteur en
-    // session démo qui clique « Continuer avec Google » obtient son propre
-    // compte, et la démo ne peut capturer aucune identité.
-    async getUser(id: string) {
-      const user = await prisma.user.findUnique({ where: { id } })
-      if (!user || estEmailDemo(user.email)) return null
-      return { ...user, emailVerified: user.emailVerified ? new Date() : null }
+    // de la session courante via getUser(sub) (seul appelant en stratégie JWT) :
+    // s'il existe, l'identité Google entrante lui est LIÉE au lieu de
+    // créer/retrouver le compte du visiteur. Deux incidents interdisent ce
+    // rattachement à la session en cours :
+    //  - 2026-07-31 : la session démo, partagée par tous les visiteurs du site
+    //    public, a capturé l'identité Google d'un utilisateur réel ;
+    //  - MC3 (revue adverse du 2026-11-15) : le cookie décodé ici n'est PAS
+    //    revalidé (version de session, consultation administrateur) ; un
+    //    détenteur de cookie révoqué y liait sa propre identité Google au
+    //    compte, puis s'y reconnectait durablement après le changement de mot
+    //    de passe.
+    // Répondre null = « personne n'est connecté » : l'identité Google est
+    // résolue par sa liaison existante ou par son adresse vérifiée, jamais par
+    // le cookie. Gleba n'offre aucun écran « lier mon compte Google » à une
+    // session ouverte.
+    async getUser() {
+      return null
     },
     // Création d'un compte à la volée lors d'une première connexion Google.
     // L'adresse est déjà contrôlée `email_verified` par le callback signIn :
@@ -229,6 +235,64 @@ export async function authorizeCredentials(
     email: user.email,
     name: user.name,
     role: user.role,
+    // Version lue avec le hash vérifié : une réinitialisation survenue
+    // pendant bcrypt rend ce jeton caduc dès la requête suivante (MC3).
+    sessionVersion: user.sessionVersion,
+  }
+}
+
+/**
+ * Consultation admin lecture seule : consomme le jeton à usage unique et rend
+ * l'utilisateur consulté. Extraite du provider pour être testable.
+ *
+ * MC3 : le jeton porte la version de session de l'administrateur à
+ * l'émission. Un mot de passe posé depuis sur son compte le rend inutilisable,
+ * et la consultation ouverte inscrit les deux versions (compte consulté,
+ * administrateur) que `compte-actif.ts` compare à chaque requête.
+ */
+export async function authorizeImpersonation(
+  credentials: Partial<Record<"token", unknown>> | undefined,
+  request?: Request,
+) {
+  const raw = typeof credentials?.token === "string" ? credentials.token : ""
+  if (!raw) return null
+  const info = clientInfo(request)
+
+  const grant = await prisma.impersonationGrant.findUnique({
+    where: { tokenHash: await hashJeton(raw) },
+  })
+  // Jeton inconnu, déjà consommé (usage unique) ou expiré → refus.
+  if (!grant || grant.consumedAt || grant.expiresAt.getTime() < Date.now()) return null
+
+  const [admin, target] = await Promise.all([
+    prisma.user.findUnique({ where: { id: grant.adminId }, select: { role: true, active: true, sessionVersion: true } }),
+    prisma.user.findUnique({
+      where: { id: grant.targetId },
+      select: { id: true, email: true, name: true, role: true, active: true, sessionVersion: true },
+    }),
+  ])
+  // L'émetteur doit toujours être un admin actif, dont le mot de passe n'a pas
+  // changé depuis l'émission ; la cible doit exister et être active.
+  if (admin?.role !== "ADMIN" || !admin.active) return null
+  if (versionSession(admin.sessionVersion) !== versionSession(grant.adminSessionVersion)) return null
+  if (!target || !target.active) return null
+
+  // Usage unique atomique : une seule requête concurrente peut obtenir
+  // la transition consumedAt NULL → date courante.
+  const consomme = await consommerJetonImpersonation(prisma, grant.id)
+  if (!consomme) return null
+  logLogin(target.email, true, "impersonation", target.id, info)
+
+  return {
+    id: target.id,
+    email: target.email,
+    name: target.name,
+    role: target.role,
+    impersonatedBy: grant.adminId,
+    // Les deux versions font foi : un mot de passe posé sur le compte
+    // consulté OU sur celui de l'administrateur coupe la consultation (MC3).
+    sessionVersion: target.sessionVersion,
+    adminSessionVersion: admin.sessionVersion,
   }
 }
 
@@ -236,6 +300,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: glebaAdapter(),
   session: {
     strategy: "jwt",
+    // Même valeur que la réémission après changement de mot de passe.
+    maxAge: DUREE_SESSION_SECONDES,
   },
   pages: {
     signIn: "/login",
@@ -264,42 +330,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       id: "impersonation",
       name: "impersonation",
       credentials: { token: { label: "Token", type: "text" } },
-      async authorize(credentials, request) {
-        const raw = credentials?.token as string | undefined
-        if (!raw) return null
-        const info = clientInfo(request as Request | undefined)
-
-        const grant = await prisma.impersonationGrant.findUnique({
-          where: { tokenHash: await hashJeton(raw) },
-        })
-        // Jeton inconnu, déjà consommé (usage unique) ou expiré → refus.
-        if (!grant || grant.consumedAt || grant.expiresAt.getTime() < Date.now()) return null
-
-        const [admin, target] = await Promise.all([
-          prisma.user.findUnique({ where: { id: grant.adminId }, select: { role: true } }),
-          prisma.user.findUnique({
-            where: { id: grant.targetId },
-            select: { id: true, email: true, name: true, role: true, active: true },
-          }),
-        ])
-        // L'émetteur doit toujours être admin, la cible doit exister et être active.
-        if (admin?.role !== "ADMIN") return null
-        if (!target || !target.active) return null
-
-        // Usage unique atomique : une seule requête concurrente peut obtenir
-        // la transition consumedAt NULL → date courante.
-        const consomme = await consommerJetonImpersonation(prisma, grant.id)
-        if (!consomme) return null
-        logLogin(target.email, true, "impersonation", target.id, info)
-
-        return {
-          id: target.id,
-          email: target.email,
-          name: target.name,
-          role: target.role,
-          impersonatedBy: grant.adminId,
-        }
-      },
+      authorize: (credentials, request) =>
+        authorizeImpersonation(credentials, request as Request | undefined),
     }),
     // Connexion Google : activée seulement si le client OAuth est configuré
     // (AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET, lus automatiquement par Auth.js).
@@ -349,23 +381,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     // Même règle que le formulaire de connexion (QA cmvnout4y) : la requête
     // du lien profond est gardée, toute cible hors du site renvoie à l'accueil.
     redirect: redirectionApresConnexion,
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-        token.role = user.role
-        // null (pas undefined) pour bien RÉINITIALISER sur une connexion normale.
-        token.impersonatedBy = (user as { impersonatedBy?: string | null }).impersonatedBy ?? null
+    // Version de session (MC3) : inscrite à la connexion seulement, jamais
+    // sur `update` (cf. `session-version.ts`).
+    async jwt({ token, user, trigger, session }) {
+      if (user && user.id && typeof user.sessionVersion !== "number") {
+        // Filet : tous les chemins de connexion fournissent la version
+        // (identifiants, consultation, ligne de l'adapter pour Google). Un
+        // chemin oublié la lirait ici plutôt que d'émettre une session
+        // aussitôt refusée.
+        const ligne = await prisma.user.findUnique({ where: { id: user.id }, select: { sessionVersion: true } })
+        return rappelJwt({ token, user: { ...user, sessionVersion: ligne?.sessionVersion }, trigger, session })
       }
-      return token
+      return rappelJwt({ token, user, trigger, session })
     },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string
-        session.user.role = token.role as string
-        session.user.impersonatedBy = (token.impersonatedBy as string | null) ?? null
-      }
-      return session
-    },
+    session: rappelSession,
   },
   events: {
     // Succès Google journalisé ici (et non dans le callback signIn) : pour un
@@ -388,6 +417,10 @@ declare module "next-auth" {
     role?: string
     /** Id de l'admin qui consulte, si session d'impersonation (lecture seule). */
     impersonatedBy?: string | null
+    /** Version de session du compte à la connexion (MC3). */
+    sessionVersion?: number
+    /** Consultation : version de session de l'administrateur à l'ouverture (MC3). */
+    adminSessionVersion?: number | null
   }
   interface Session {
     user: {
@@ -403,6 +436,10 @@ declare module "next-auth" {
       name?: string | null
       role: string
       impersonatedBy?: string | null
+      /** Version de session inscrite à la connexion (MC3, `session-version.ts`). */
+      sessionVersion?: number
+      /** Consultation : version de session de l'administrateur (MC3). */
+      adminSessionVersion?: number | null
       /** ACTEUR : personne réellement connectée. Identité et attribution. */
       acteurId?: string
       /** Rôle de l'acteur dans l'exploitation courante. */
@@ -420,5 +457,7 @@ declare module "@auth/core/jwt" {
     id?: string
     role?: string
     impersonatedBy?: string | null
+    sessionVersion?: number
+    adminSessionVersion?: number | null
   }
 }

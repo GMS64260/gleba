@@ -9,6 +9,7 @@ import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
  */
 
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Receipt, RefreshCw, Filter, Plus, Sprout, TreeDeciduous, Bird, TrendingUp, TrendingDown, Store, Info, ChevronDown, ChevronUp, Pencil, Trash2, Loader2, FileText } from "lucide-react"
@@ -34,8 +35,10 @@ import {
   compteAchat,
   JOURNAUX,
 } from "@/lib/comptabilite/plan-comptable-agricole"
-import { todayLocalISO } from '@/lib/format-utils'
+import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { getAvailableYears } from "@/components/year-selector"
+import { libellesTotauxParDevise, type SousTotalDevise } from "@/lib/comptabilite/totaux-devise"
+import type { Devise } from "@/lib/territoires"
 
 // DEV1 #3 — Modes de règlement (lus par compteTresorerie pour générer
 // la contrepartie 512 banque / 530 caisse / 411 client / 401 fournisseur).
@@ -54,21 +57,36 @@ interface SourceBreakdown {
   module: string
   source: string
   label: string
+  /** Devise figée du groupe ; `null` : devise historique inconnue. */
+  monnaie?: Devise | null
   count: number
   montant: number
 }
 
+/** Revenus d'une devise, ventilés par module (GET /api/comptabilite/revenus). */
+interface RevenusDevise {
+  monnaie: Devise | null
+  count: number
+  total: number
+  parModule: Record<string, number>
+}
+
 /** Agrégats renvoyés par GET /api/comptabilite/revenus et /depenses. */
 interface StatsTransactions {
-  total: number
+  /** `null` dès que deux devises coexistent (voir `parDevise`). */
+  total: number | null
   count: number
-  totalComptable?: number
-  totalAnalytique?: number
-  parModule: Record<string, number>
+  totalComptable?: number | null
+  totalAnalytique?: number | null
+  parModule: Record<string, number> | null
+  /** Totaux par devise, jamais additionnés entre eux (dépenses : `totalAnalytique` en plus). */
+  parDevise?: Array<RevenusDevise & { totalAnalytique?: number }>
   parCategorie: { categorie: string; montant: number }[]
 }
 
 interface Transaction {
+  /** Revenus : devise figée de la pièce (GET revenus) ; `null` : inconnue. */
+  monnaie?: Devise | null
   reglementsDisponibles?: boolean
   montantRegle?: number | null
   resteAPayer?: number | null
@@ -229,6 +247,54 @@ function isTransactionModule(value: string | null): value is TransactionModule {
 }
 
 function TransactionsPageInner() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
+  // La devise figée projetée par l'API (`monnaie`) fait foi ; l'instantané
+  // émetteur ne quitte plus le serveur (lot devise-totaux-api).
+  // undefined = réponse sans `monnaie` (dépenses : pas de devise figée), devise
+  // courante ; null/'' = devise historique inconnue.
+  const monnaieTransaction = (transaction: Transaction): string | null | undefined => "monnaie" in transaction
+    ? transaction.monnaie
+    : undefined
+  // Toutes les surfaces d'une transaction (ligne, correction, suivi, notifications)
+  // passent par ici : jamais la devise courante pour une pièce figée ailleurs.
+  const formatTransaction = (value: number, transaction: Transaction) => {
+    const monnaie = monnaieTransaction(transaction)
+    if (monnaie === undefined) return formatMontant(value)
+    return monnaie === "EUR" || monnaie === "XPF"
+      ? formatMontantDevise(value, monnaie)
+      : "Montant indisponible : devise historique inconnue"
+  }
+  // Un total de revenus mêle des pièces figées dans des devises différentes :
+  // un sous-total par devise, jamais réétiqueté dans la devise courante.
+  const totauxRevenus = (valeur: (g: RevenusDevise) => number) => {
+    if (!statsRevenus) return null
+    const groupes: RevenusDevise[] = statsRevenus.parDevise
+      ?? [{ monnaie: devise, count: statsRevenus.count, total: statsRevenus.total ?? 0, parModule: statsRevenus.parModule ?? {} }]
+    const sousTotaux: SousTotalDevise[] = groupes.map(g => ({ monnaie: g.monnaie, montant: valeur(g) }))
+    return libellesTotauxParDevise(sousTotaux, devise).map((l, i) => <span key={i} className="block">{l}</span>)
+  }
+  // Dépenses : même règle, une dépense réglée garde la devise de son dossier
+  // de règlement (GET dépenses, lot devise-totaux-api tour 2).
+  const totauxDepenses = (valeur: (g: RevenusDevise & { totalAnalytique?: number }) => number) => {
+    if (!statsDepenses) return null
+    const groupes = statsDepenses.parDevise
+      ?? [{ monnaie: devise, count: statsDepenses.count, total: statsDepenses.total ?? 0, totalAnalytique: statsDepenses.totalAnalytique ?? 0, parModule: statsDepenses.parModule ?? {} }]
+    return libellesTotauxParDevise(groupes.map(g => ({ monnaie: g.monnaie, montant: valeur(g) })), devise)
+      .map((l, i) => <span key={i} className="block">{l}</span>)
+  }
+  const formatSource = (s: SourceBreakdown) => s.monnaie === undefined
+    ? formatMontant(s.montant)
+    : libellesTotauxParDevise([{ monnaie: s.monnaie, montant: s.montant }], devise)[0]
+  const totauxSources = () => {
+    const parMonnaie = new Map<Devise | null, number>()
+    for (const s of sourcesBreakdown) {
+      const m = s.monnaie === undefined ? devise : s.monnaie
+      parMonnaie.set(m, (parMonnaie.get(m) ?? 0) + s.montant)
+    }
+    return libellesTotauxParDevise([...parMonnaie].map(([monnaie, montant]) => ({ monnaie, montant })), devise)
+      .map((l, i) => <span key={i} className="block">{l}</span>)
+  }
   const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -308,6 +374,10 @@ function TransactionsPageInner() {
   // à 3 433 € » — l'écran listait les écritures sans jamais permettre de les
   // corriger, et l'assistant n'avait aucun outil pour le faire non plus.
   const [editing, setEditing] = React.useState<Transaction | null>(null)
+  const monnaieEdition = editing ? monnaieTransaction(editing) : undefined
+  const libelleDeviseEdition = monnaieEdition === undefined
+    ? devise ?? "…"
+    : monnaieEdition === "EUR" || monnaieEdition === "XPF" ? monnaieEdition : "devise historique inconnue"
   // Ticket cmsx5xjhn — la correction ne portait que sur cinq champs : une
   // erreur de taux de TVA ou d'imputation obligeait à supprimer puis ressaisir
   // l'écriture. Les champs ajoutés ici sont ceux que le PATCH accepte
@@ -373,7 +443,7 @@ function TransactionsPageInner() {
     if (!editing || isSavingEdit) return
     const montant = parseFloat(editForm.montant.replace(",", "."))
     if (!Number.isFinite(montant) || montant < 0) {
-      toast({ variant: "destructive", title: "Montant invalide", description: "Saisissez un montant en euros." })
+      toast({ variant: "destructive", title: "Montant invalide", description: "Saisissez un montant valide." })
       return
     }
     setIsSavingEdit(true)
@@ -412,7 +482,7 @@ function TransactionsPageInner() {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Correction refusée")
       }
-      toast({ title: "Écriture corrigée", description: formatEuro(montant) })
+      toast({ title: "Écriture corrigée", description: formatTransaction(montant, editing) })
       setEditing(null)
       fetchData()
     } catch (err) {
@@ -430,7 +500,7 @@ function TransactionsPageInner() {
       toast({ variant: "destructive", title: "Suppression refusée", description: data.error || "Erreur" })
       return
     }
-    toast({ title: "Écriture supprimée", description: formatEuro(deleting.montant) })
+    toast({ title: "Écriture supprimée", description: formatTransaction(deleting.montant, deleting) })
     setDeleting(null)
     fetchData()
   }
@@ -643,10 +713,6 @@ function TransactionsPageInner() {
   React.useEffect(() => {
     if (yearHydrated) fetchData()
   }, [yearHydrated, fetchData])
-
-  const formatEuro = (value: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
-  }
 
   // DEV1 #3 — Upload PJ (PDF / JPG / PNG, max 10 Mo, Art. L102 B LPF).
   const handlePjUpload = async (file: File) => {
@@ -929,7 +995,7 @@ function TransactionsPageInner() {
                               <TableCell className="text-xs">{s.label}</TableCell>
                               <TableCell className="text-right text-xs">{s.count}</TableCell>
                               <TableCell className="text-right font-semibold">
-                                {formatEuro(s.montant)}
+                                {formatSource(s)}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -947,7 +1013,7 @@ function TransactionsPageInner() {
                                 {sourcesBreakdown.reduce((s, x) => s + x.count, 0)}
                               </TableCell>
                               <TableCell className="text-right text-blue-700">
-                                {formatEuro(sourcesBreakdown.reduce((s, x) => s + x.montant, 0))}
+                                {totauxSources()}
                               </TableCell>
                             </TableRow>
                           )}
@@ -963,26 +1029,26 @@ function TransactionsPageInner() {
               <div className="grid gap-4 md:grid-cols-5 mb-6">
                 <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-blue-100">Total</CardTitle></CardHeader>
-                  <CardContent><p className="text-2xl font-bold">{formatEuro(statsRevenus.total)}</p></CardContent>
+                  <CardContent><p className="text-2xl font-bold">{totauxRevenus(g => g.total)}</p></CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Maraîchage</CardTitle></CardHeader>
-                  <CardContent><p className="text-xl font-bold text-green-600">{formatEuro(statsRevenus.parModule?.potager || 0)}</p></CardContent>
+                  <CardContent><p className="text-xl font-bold text-green-600">{totauxRevenus(g => g.parModule?.potager || 0)}</p></CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Verger</CardTitle></CardHeader>
-                  <CardContent><p className="text-xl font-bold text-lime-600">{formatEuro(statsRevenus.parModule?.verger || 0)}</p></CardContent>
+                  <CardContent><p className="text-xl font-bold text-lime-600">{totauxRevenus(g => g.parModule?.verger || 0)}</p></CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Élevage</CardTitle></CardHeader>
-                  <CardContent><p className="text-xl font-bold text-amber-600">{formatEuro(statsRevenus.parModule?.elevage || 0)}</p></CardContent>
+                  <CardContent><p className="text-xl font-bold text-amber-600">{totauxRevenus(g => g.parModule?.elevage || 0)}</p></CardContent>
                 </Card>
                 {/* Bug feedback cmpkyeynq — Card Boutique manquait : Total ≠ somme
                     des modules visibles. Pour la démo Marie Dubois/Jean Bertin…,
                     389 € de revenus boutique n'apparaissaient nulle part. */}
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Boutique</CardTitle></CardHeader>
-                  <CardContent><p className="text-xl font-bold text-teal-600">{formatEuro(statsRevenus.parModule?.boutique || 0)}</p></CardContent>
+                  <CardContent><p className="text-xl font-bold text-teal-600">{totauxRevenus(g => g.parModule?.boutique || 0)}</p></CardContent>
                 </Card>
               </div>
             )}
@@ -1018,14 +1084,14 @@ function TransactionsPageInner() {
                             </TableCell>
                             <TableCell className="max-w-[250px] truncate">{r.description}</TableCell>
                             <TableCell className="text-right font-bold text-green-600">
-                              {formatEuro(r.montant)}
+                              {formatTransaction(r.montant, r)}
                               {/* Bug cmp8skoaa (Marc 2026-05-16) — badge sur les
                                   transactions à 0 € marquées Payé : héritées de
                                   l'ancienne saisie permissive (bug 13). */}
                               {r.montant === 0 && r.paye === true && (
                                 <span
                                   className="ml-1 inline-block text-amber-600"
-                                  title="Transaction à 0 € marquée Payé — à vérifier (saisie probablement incomplète)"
+                                  title={`Transaction à ${formatTransaction(0, r)} marquée Payé — à vérifier (saisie probablement incomplète)`}
                                 >
                                   ⚠
                                 </span>
@@ -1034,7 +1100,7 @@ function TransactionsPageInner() {
                             <TableCell>{r.client || '-'}</TableCell>
                             <TableCell className="whitespace-nowrap">{r.modeReglement || r.ecriture?.suivi.modeReglement || 'Non renseigné'}</TableCell>
                             <TableCell>
-                              {r.facture ? <Badge variant="outline">Facturée</Badge> : r.montantRegle != null && r.montantRegle > 0 && (r.resteAPayer ?? 0) > 0 ? <Badge className="bg-amber-100 text-amber-800">Partiel · reste {formatEuro(r.resteAPayer!)}</Badge> : r.paye === null ? (
+                              {r.facture ? <Badge variant="outline">Facturée</Badge> : r.montantRegle != null && r.montantRegle > 0 && (r.resteAPayer ?? 0) > 0 ? <Badge className="bg-amber-100 text-amber-800">Partiel · reste {formatTransaction(r.resteAPayer!, r)}</Badge> : r.paye === null ? (
                                 <Badge variant="outline">Non suivi</Badge>
                               ) : r.paye ? (
                                 <><Badge className="bg-green-100 text-green-800">{r.montantRegle == null ? 'Déclaré encaissé' : 'Encaissé'}</Badge>{r.montantRegle == null && <p className="mt-1 text-xs text-muted-foreground">Pointage sans détail. À vérifier dans Règlements.</p>}</>
@@ -1062,26 +1128,26 @@ function TransactionsPageInner() {
               <div className="grid gap-4 md:grid-cols-5 mb-6">
                 <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-red-100">Total comptable</CardTitle></CardHeader>
-                  <CardContent><p className="text-2xl font-bold">{formatEuro(statsDepenses.total)}</p></CardContent>
+                  <CardContent><p className="text-2xl font-bold">{totauxDepenses(g => g.total)}</p></CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Coûts analytiques</CardTitle></CardHeader>
                   <CardContent>
-                    <p className="text-xl font-bold text-amber-600">{formatEuro(statsDepenses.totalAnalytique || 0)}</p>
+                    <p className="text-xl font-bold text-amber-600">{totauxDepenses(g => g.totalAnalytique || 0)}</p>
                     <p className="text-xs text-muted-foreground">Non cumulés au total comptable</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Maraîchage</CardTitle></CardHeader>
-                  <CardContent><p className="text-xl font-bold text-red-600">{formatEuro(statsDepenses.parModule?.potager || 0)}</p></CardContent>
+                  <CardContent><p className="text-xl font-bold text-red-600">{totauxDepenses(g => g.parModule?.potager || 0)}</p></CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Verger</CardTitle></CardHeader>
-                  <CardContent><p className="text-xl font-bold text-red-600">{formatEuro(statsDepenses.parModule?.verger || 0)}</p></CardContent>
+                  <CardContent><p className="text-xl font-bold text-red-600">{totauxDepenses(g => g.parModule?.verger || 0)}</p></CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Élevage</CardTitle></CardHeader>
-                  <CardContent><p className="text-xl font-bold text-red-600">{formatEuro(statsDepenses.parModule?.elevage || 0)}</p></CardContent>
+                  <CardContent><p className="text-xl font-bold text-red-600">{totauxDepenses(g => g.parModule?.elevage || 0)}</p></CardContent>
                 </Card>
               </div>
             )}
@@ -1116,14 +1182,14 @@ function TransactionsPageInner() {
                               </div>
                             </TableCell>
                             <TableCell className="max-w-[250px] truncate">{d.description}</TableCell>
-                            <TableCell className="text-right font-bold text-red-600">{formatEuro(d.montant)}</TableCell>
+                            <TableCell className="text-right font-bold text-red-600">{formatTransaction(d.montant, d)}</TableCell>
                             <TableCell>{d.fournisseur || '-'}</TableCell>
                             <TableCell className="whitespace-nowrap">{d.comptable === false ? 'Coût interne' : d.modeReglement || d.ecriture?.suivi.modeReglement || 'Non renseigné'}</TableCell>
                             <TableCell>
                               {d.comptable === false ? (
                                 <Badge className="bg-amber-100 text-amber-800">Analytique</Badge>
                               ) : d.montantRegle != null && d.montantRegle > 0 && (d.resteAPayer ?? 0) > 0 ? (
-                                <Badge className="bg-amber-100 text-amber-800">Partiel · reste {formatEuro(d.resteAPayer!)}</Badge>
+                                <Badge className="bg-amber-100 text-amber-800">Partiel · reste {formatTransaction(d.resteAPayer!, d)}</Badge>
                               ) : d.paye === null ? (
                                 <Badge variant="outline">N/A</Badge>
                               ) : d.paye ? (
@@ -1348,7 +1414,7 @@ function TransactionsPageInner() {
 
                   <div className="grid gap-4 md:grid-cols-4">
                     <div>
-                      <Label>Montant (EUR)</Label>
+                      <Label>Montant ({devise ?? "…"})</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -1446,7 +1512,7 @@ function TransactionsPageInner() {
               <Input id="edit-description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
             </div>
             <div>
-              <Label htmlFor="edit-montant">Montant TTC (€)</Label>
+              <Label htmlFor="edit-montant">Montant TTC ({libelleDeviseEdition})</Label>
               <Input id="edit-montant" inputMode="decimal" value={editForm.montant} onChange={(e) => setEditForm({ ...editForm, montant: e.target.value })} />
             </div>
             <div>
@@ -1562,7 +1628,7 @@ function TransactionsPageInner() {
                 <dt className="text-muted-foreground">Libellé</dt>
                 <dd className="break-words">{suivant.description}</dd>
                 <dt className="text-muted-foreground">Montant</dt>
-                <dd className="font-semibold">{formatEuro(suivant.montant)}</dd>
+                <dd className="font-semibold">{formatTransaction(suivant.montant, suivant)}</dd>
                 <dt className="text-muted-foreground">Client</dt>
                 <dd className="break-words">{suivant.client || "—"}</dd>
               </dl>

@@ -4,12 +4,14 @@
  * GET /api/upload/photo/<exploitation>/<uuid>-<taille>.jpg
  *
  * Les photos vivent sous `public/uploads/<exploitation>/`. Le middleware
- * laisse passer le propriétaire du dossier ; pour toute autre personne
- * connectée, il réécrit `/uploads/…` vers cette route, qui connaît
- * l'exploitation en cours (adhésion lue en base par `requireAuthApi`) : un
- * membre voit les photos de l'exploitation où il travaille, personne ne voit
- * celles d'une autre, même en connaissant l'adresse. Le refus est un 404, qui
- * ne confirme pas l'existence du fichier.
+ * réécrit TOUTE demande `/uploads/<dossier>/<fichier>` d'une session vers
+ * cette route : `requireAuthApi` revalide la session (compte actif, version de
+ * session — MC3 : un cookie révoqué ne lit plus rien, même son propre
+ * dossier) et connaît l'exploitation en cours (adhésion lue en base). Sont
+ * servies les photos de l'exploitation où la personne travaille et celles de
+ * son propre dossier ; personne ne voit celles d'une autre exploitation, même
+ * en connaissant l'adresse. Le refus est un 404, qui ne confirme pas
+ * l'existence du fichier.
  *
  * La vitrine publique de la boutique a sa propre route de médias.
  */
@@ -27,7 +29,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pro
   const { error, session } = await requireAuthApi()
   if (error) return error
   const { proprietaire, fichier } = await params
-  if (proprietaire !== session!.user.id || !FICHIER_IMAGE_ENVOYEE.test(fichier)) return introuvable()
+  const autorise = proprietaire === session!.user.id || proprietaire === session!.user.acteurId
+  if (!autorise || !FICHIER_IMAGE_ENVOYEE.test(fichier)) return introuvable()
   try {
     const contenu = await readFile(path.join(dossierEnvoi("image", proprietaire), fichier))
     return new NextResponse(new Uint8Array(contenu), {

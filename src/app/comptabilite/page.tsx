@@ -6,6 +6,11 @@
  */
 
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
+import { formatMontantDevise } from "@/lib/format-utils"
+import { deviseCommuneDesSeries, libellesTotauxParDevise } from "@/lib/comptabilite/totaux-devise"
+import { chargerStatsComptables } from "@/lib/comptabilite/stats-client"
+import type { Devise } from "@/lib/territoires"
 import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
@@ -145,18 +150,27 @@ const groupesCompta = [
   { title: "Suivi terrain", description: "Relier les opérations aux coûts et aux registres", hrefs: ["/interventions", "/tracabilite"] },
 ]
 
+/** Un total d'une devise (GET /api/comptabilite/stats, lot devise-totaux-api). */
+type TotalDeviseApi = { monnaie: Devise | null; total: number; count?: number }
+
 interface ComptaStats {
   stats: {
-    revenus: number
-    depenses: number
-    benefice: number
-    margePercent: number
-    revenusParModule: { potager: number; verger: number; elevage: number; autre: number }
-    depensesParModule: { potager: number; verger: number; elevage: number; autre: number }
+    // Totaux historiques : `null` dès que deux devises coexistent ; le voisin
+    // `…ParDevise` porte alors un total par devise, jamais additionnés.
+    revenus: number | null
+    revenusParDevise?: TotalDeviseApi[]
+    depenses: number | null
+    depensesParDevise?: TotalDeviseApi[]
+    benefice: number | null
+    beneficeParDevise?: TotalDeviseApi[]
+    margePercent: number | null
+    revenusParModule: { potager: number | null; verger: number | null; elevage: number | null; autre: number | null }
+    depensesParModule: { potager: number | null; verger: number | null; elevage: number | null; autre: number | null }
     // BUG #2 — sous-totaux non payés (info, pas exclusion)
-    depensesNonPayees?: number
+    depensesNonPayees?: number | null
+    depensesNonPayeesParDevise?: TotalDeviseApi[]
     nbDepensesNonPayees?: number
-    revenusNonPayes?: number
+    revenusNonPayes?: number | null
     nbRevenusNonPayes?: number
     coherenceCheck?: {
       revenusSsot: number
@@ -167,23 +181,30 @@ interface ComptaStats {
       depensesEcart: number
     }
     // YTD vs YTD année dernière (cf. src/lib/kpi/compta.ts).
-    revenusAnneePrecedente: number
-    revenusAnneePrecedenteTotal?: number
-    depensesAnneePrecedente?: number
-    depensesAnneePrecedenteTotal?: number
+    revenusAnneePrecedente: number | null
+    revenusAnneePrecedenteParDevise?: TotalDeviseApi[]
+    revenusAnneePrecedenteTotal?: number | null
+    depensesAnneePrecedente?: number | null
+    depensesAnneePrecedenteParDevise?: TotalDeviseApi[]
+    depensesAnneePrecedenteTotal?: number | null
     comparisonMode?: string
     facturesImpayees: number
-    facturesImpayeesTotal: number
+    facturesImpayeesTotal: number | null
+    facturesImpayeesDevise?: string | null
+    facturesImpayeesParDevise?: { monnaie: string | null; montant: number }[]
     stocksBas: number
     // QA 2026-05-15 — Bug #5
     commandesEnAttente?: number
-    commandesEnAttenteTotal?: number
+    commandesEnAttenteTotal?: number | null
+    commandesEnAttenteTotalParDevise?: TotalDeviseApi[]
   }
   charts: {
-    mensuel: { mois: string; revenus: number; depenses: number; benefice: number }[]
-    revenusParCategorie: { categorie: string; montant: number; couleur: string }[]
-    depensesParCategorie: { categorie: string; montant: number; couleur: string }[]
-    parModule: { module: string; revenus: number; depenses: number; benefice: number }[]
+    // `null` : l'exercice compte deux devises (voisins `…ParDevise`).
+    mensuel: { mois: string; revenus: number | null; depenses: number | null; benefice: number | null }[]
+    // `montant: null` : le graphique compte deux devises (lot devise-totaux-api).
+    revenusParCategorie: { categorie: string; montant: number | null; montantParDevise?: TotalDeviseApi[]; couleur: string }[]
+    depensesParCategorie: { categorie: string; montant: number | null; montantParDevise?: TotalDeviseApi[]; couleur: string }[]
+    parModule: { module: string; revenus: number | null; revenusParDevise?: TotalDeviseApi[]; depenses: number | null; depensesParDevise?: TotalDeviseApi[]; benefice: number | null }[]
   }
   activity: {
     dernieresTransactions: {
@@ -217,9 +238,48 @@ interface ComptaStats {
 }
 
 export default function DashboardComptabilite() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
+  // Un total par devise, jamais additionnés ni réétiquetés (lot devise-totaux-api).
+  const totauxParDevise = (parDevise: TotalDeviseApi[] | undefined, total: number | null | undefined) =>
+    (parDevise?.length
+      ? libellesTotauxParDevise(parDevise.map(t => ({ monnaie: t.monnaie, montant: t.total })), devise)
+      : [total == null ? "—" : formatMontant(total)]
+    ).map((l, i) => <span key={i} className="block">{l}</span>)
+  // Montant d'un total mono-devise : dans SA devise (une ferme passée en XPF
+  // garde des totaux EUR), jamais réétiqueté dans la devise courante.
+  const formatUnique = (parDevise: TotalDeviseApi[] | undefined, valeur: number) => {
+    const seule = parDevise?.length === 1 ? parDevise[0].monnaie : undefined
+    return seule === null ? "Devise historique inconnue" : seule ? formatMontantDevise(valeur, seule) : formatMontant(valeur)
+  }
   const { data: session } = useSession()
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [data, setData] = React.useState<ComptaStats | null>(null)
+  // Graphiques mono-devise : dans la devise des écritures de l'exercice (une
+  // ferme passée en XPF peut n'avoir que des montants EUR cette année-là).
+  const formatGraphique = (valeur: number) => {
+    const monnaies = new Set([...(data?.stats.revenusParDevise ?? []), ...(data?.stats.depensesParDevise ?? [])]
+      .filter(t => (t.count ?? 1) !== 0 || t.total !== 0).map(t => t.monnaie))
+    const seule = monnaies.size === 1 ? [...monnaies][0] : null
+    return monnaies.size === 1 ? (seule ? formatMontantDevise(valeur, seule) : "Devise historique inconnue") : formatMontant(valeur)
+  }
+  // Un camembert mono-devise s'affiche dans la devise de ses parts.
+  const formatCamembert = (parts: { montantParDevise?: TotalDeviseApi[] }[]) => (valeur: number) => {
+    const monnaies = new Set(parts.flatMap(p => (p.montantParDevise ?? []).map(t => t.monnaie)))
+    const seule = monnaies.size === 1 ? [...monnaies][0] : null
+    return monnaies.size === 1 ? (seule ? formatMontantDevise(valeur, seule) : "Devise historique inconnue") : formatGraphique(valeur)
+  }
+  // Résultat par module : barres de recettes et de charges tracées ensemble
+  // seulement si TOUTES les séries partagent une devise (recettes XPF seules
+  // et charges EUR seules ne se comparent pas) ; `null` : indisponible.
+  const deviseParModule = data?.charts
+    ? deviseCommuneDesSeries(data.charts.parModule.flatMap(m => [
+        { valeur: m.revenus, parDevise: m.revenusParDevise },
+        { valeur: m.depenses, parDevise: m.depensesParDevise },
+      ]), devise)
+    : null
+  const formatParModule = (valeur: number) =>
+    deviseParModule?.monnaie ? formatMontantDevise(valeur, deviseParModule.monnaie) : formatMontant(valeur)
   const [loading, setLoading] = React.useState(true)
 
   // QA cmsjiqtd1 / cmsjitp3x — l'année revenait à 2026 après reload : la page
@@ -253,24 +313,25 @@ export default function DashboardComptabilite() {
 
   // Charger les données
   React.useEffect(() => {
+    let actif = true
     const fetchData = async () => {
       setLoading(true)
+      setData(null)
       try {
-        const res = await fetch(`/api/comptabilite/stats?year=${selectedYear}`)
-        if (res.ok) {
-          const json = await res.json()
-          setData(json)
-        }
+        // Contrat devise garanti, y compris dans le dépôt public (stats-client.ts).
+        const json = await chargerStatsComptables<ComptaStats>(selectedYear)
+        if (actif) setData(json)
       } catch (err) {
         console.error("Erreur chargement stats compta:", err)
       } finally {
-        setLoading(false)
+        if (actif) setLoading(false)
       }
     }
 
     if (session?.user && yearHydrated) {
       fetchData()
     }
+    return () => { actif = false }
   }, [selectedYear, session?.user, yearHydrated])
 
   // QA Camille 2026-05-15 — Bug #6 : le seuil "N-1 ≥ 100 €" cachait les
@@ -283,10 +344,6 @@ export default function DashboardComptabilite() {
   const yearDiff = React.useMemo(() => computeYearDiff(data?.stats), [data?.stats])
 
   const liensAlertes = liensAlertesCompta(selectedYear)
-
-  const formatEuro = (value: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
@@ -346,16 +403,22 @@ export default function DashboardComptabilite() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(data.stats.revenus)}</p>
+                  <p className="text-3xl font-bold">{totauxParDevise(data.stats.revenusParDevise, data.stats.revenus)}</p>
                   {/* Libellés : libelleComparatifRevenus (src/lib/comptabilite/year-diff.ts),
                       chacun porte sur N-1 (ticket cmv290vir). */}
                   {yearDiff.state === "vide" ? (
                     <p className={`text-[10px] ${kpiSubtleClass("revenu")} italic mt-1`}>
-                      {libelleComparatifRevenus(yearDiff, selectedYear, formatEuro)}
+                      {libelleComparatifRevenus(yearDiff, selectedYear, n => {
+                        const monnaie = data.stats.depensesAnneePrecedenteParDevise?.find(t => t.total !== 0)?.monnaie
+                        return monnaie ? formatMontantDevise(n, monnaie) : formatMontant(n)
+                      })}
                     </p>
                   ) : (
                     <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
-                      {libelleComparatifRevenus(yearDiff, selectedYear, formatEuro)}
+                      {libelleComparatifRevenus(yearDiff, selectedYear, n => {
+                        const monnaie = data.stats.depensesAnneePrecedenteParDevise?.find(t => t.total !== 0)?.monnaie
+                        return monnaie ? formatMontantDevise(n, monnaie) : formatMontant(n)
+                      })}
                     </p>
                   )}
                   {yearDiff.state === "compare" && selectedYear === currentYear && (
@@ -376,41 +439,45 @@ export default function DashboardComptabilite() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(data.stats.depenses)}</p>
+                  <p className="text-3xl font-bold">{totauxParDevise(data.stats.depensesParDevise, data.stats.depenses)}</p>
                   {/* BUG #2 (audit compta 2026-05-15) — Charges engagées non
                       encore payées : info au comptable sur la trésorerie qui
                       sortira encore, sans masquer la charge (compta engagement). */}
-                  {(data.stats.depensesNonPayees ?? 0) > 0 && (
+                  {(data.stats.depensesNonPayeesParDevise ?? []).some(t => t.total > 0) || (data.stats.depensesNonPayees ?? 0) > 0 ? (
                     <p className={`text-[10px] ${kpiSubtleClass("depense")} mt-1`}>
-                      Dont {formatEuro(data.stats.depensesNonPayees ?? 0)} non encore payé(s)
+                      Dont {totauxParDevise(data.stats.depensesNonPayeesParDevise?.filter(t => t.total > 0), data.stats.depensesNonPayees)} non encore payé(s)
                       {data.stats.nbDepensesNonPayees ? ` · ${data.stats.nbDepensesNonPayees} ligne(s)` : ''}
                     </p>
-                  )}
+                  ) : null}
                 </CardContent>
               </Card>
 
-              <Card className={kpiCardClass(data.stats.benefice >= 0 ? "revenu" : "depense")}>
+              <Card className={kpiCardClass((data.stats.benefice ?? 0) >= 0 ? "revenu" : "depense")}>
                 <CardHeader className="pb-2">
                   {/* Ancien texte blanc sur carte saturée : invisible depuis les cartes à plat (kpi-theme). */}
-                  <CardTitle className={`text-sm font-medium ${kpiSubtleClass(data.stats.benefice >= 0 ? "revenu" : "depense")} flex items-center gap-2`}>
+                  <CardTitle className={`text-sm font-medium ${kpiSubtleClass((data.stats.benefice ?? 0) >= 0 ? "revenu" : "depense")} flex items-center gap-2`}>
                     <Wallet className="h-4 w-4" />
-                    {data.stats.benefice >= 0 ? 'Bénéfice' : 'Perte'}
+                    {data.stats.benefice === null ? 'Résultat par devise' : data.stats.benefice >= 0 ? 'Bénéfice' : 'Perte'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{formatEuro(Math.abs(data.stats.benefice))}</p>
+                  <p className="text-3xl font-bold">
+                    {data.stats.benefice === null
+                      ? totauxParDevise(data.stats.beneficeParDevise, null)
+                      : formatUnique(data.stats.beneficeParDevise, Math.abs(data.stats.benefice))}
+                  </p>
                 </CardContent>
               </Card>
 
-              <Card className={kpiCardClass(data.stats.margePercent >= 0 ? "revenu" : "depense")}>
+              <Card className={kpiCardClass((data.stats.margePercent ?? 0) >= 0 ? "revenu" : "depense")}>
                 <CardHeader className="pb-2">
-                  <CardTitle className={`text-sm font-medium ${kpiSubtleClass(data.stats.margePercent >= 0 ? "revenu" : "depense")} flex items-center gap-2`}>
+                  <CardTitle className={`text-sm font-medium ${kpiSubtleClass((data.stats.margePercent ?? 0) >= 0 ? "revenu" : "depense")} flex items-center gap-2`}>
                     Marge
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold" title="Marge nette en %">
-                    {data.stats.margePercent}%
+                  <p className="text-3xl font-bold" title={data.stats.margePercent === null ? "Marge indisponible : montants en devises différentes" : "Marge nette en %"}>
+                    {data.stats.margePercent === null ? '—' : `${data.stats.margePercent}%`}
                   </p>
                 </CardContent>
               </Card>
@@ -434,8 +501,20 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-amber-800">
-                    {data.stats.facturesImpayees} créance(s) en attente ({formatEuro(data.stats.facturesImpayeesTotal)})
+                    {data.stats.facturesImpayees} créance(s) en attente
                   </p>
+                  <div className="mt-1 space-y-1 text-amber-800">
+                    {data.stats.facturesImpayeesParDevise?.length ? data.stats.facturesImpayeesParDevise.map(({ monnaie, montant }) => (
+                      <p key={monnaie ?? 'chargement'} className="break-words">
+                        {monnaie === 'EUR' || monnaie === 'XPF'
+                          ? formatMontantDevise(montant, monnaie)
+                          : monnaie === null ? '—'
+                            : 'Total indisponible : devise historique inconnue pour certaines créances.'}
+                      </p>
+                    )) : <p>{data.stats.facturesImpayeesDevise === 'EUR' || data.stats.facturesImpayeesDevise === 'XPF'
+                      ? formatMontantDevise(data.stats.facturesImpayeesTotal ?? 0, data.stats.facturesImpayeesDevise)
+                      : 'Total indisponible : devise historique inconnue pour certaines créances.'}</p>}
+                  </div>
                 <p className="mt-2 flex items-center gap-1 text-sm font-medium text-amber-800 group-hover:underline">Voir les créances<ArrowRight className="h-4 w-4" /></p>
                 </CardContent>
               </Card>
@@ -456,7 +535,7 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-blue-800">
-                    {data.stats.commandesEnAttente} commande(s) ({formatEuro(data.stats.commandesEnAttenteTotal ?? 0)})
+                    {data.stats.commandesEnAttente} commande(s) ({totauxParDevise(data.stats.commandesEnAttenteTotalParDevise, data.stats.commandesEnAttenteTotal)})
                   </p>
                   <p className="text-xs text-blue-700 mt-1">
                     Statut Nouveau / Confirmée / Prête — sera comptabilisé à la livraison.
@@ -520,6 +599,11 @@ export default function DashboardComptabilite() {
                 <CardTitle className="text-base">Résultat mensuel</CardTitle>
               </CardHeader>
               <CardContent>
+                {data.charts.mensuel.some(m => m.revenus === null || m.depenses === null) ? (
+                  <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                    Graphique indisponible : montants en devises différentes (voir les totaux par devise)
+                  </div>
+                ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={data.charts.mensuel}>
                     <defs>
@@ -534,15 +618,16 @@ export default function DashboardComptabilite() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}€`} />
+                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => formatGraphique(Number(v))} />
                     <Tooltip
-                      formatter={(value) => [formatEuro(Number(value || 0)), '']}
+                      formatter={(value) => [formatGraphique(Number(value || 0)), '']}
                       contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                     />
                     <Area type="monotone" dataKey="revenus" name="Revenus" stroke="#22c55e" fill="url(#colorRevenus)" />
                     <Area type="monotone" dataKey="depenses" name="Dépenses" stroke="#ef4444" fill="url(#colorDepenses)" />
                   </AreaChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -552,7 +637,11 @@ export default function DashboardComptabilite() {
                 <CardTitle className="text-base">Revenus par catégorie</CardTitle>
               </CardHeader>
               <CardContent>
-                {data.charts.revenusParCategorie.length > 0 ? (
+                {data.charts.revenusParCategorie.some(c => c.montant === null) ? (
+                  <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                    Répartition indisponible : revenus en devises différentes (voir les totaux par devise)
+                  </div>
+                ) : data.charts.revenusParCategorie.length > 0 ? (
                   <ResponsiveContainer width="100%" height={320}>
                     <PieChart>
                       <Pie
@@ -569,7 +658,7 @@ export default function DashboardComptabilite() {
                           <Cell key={`cell-${index}`} fill={entry.couleur} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                      <Tooltip formatter={(value) => [formatCamembert(data.charts.revenusParCategorie)(Number(value || 0)), '']} />
                       <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
                     </PieChart>
                   </ResponsiveContainer>
@@ -587,7 +676,11 @@ export default function DashboardComptabilite() {
                 <CardTitle className="text-base">Dépenses par catégorie</CardTitle>
               </CardHeader>
               <CardContent>
-                {data.charts.depensesParCategorie.length > 0 ? (
+                {data.charts.depensesParCategorie.some(c => c.montant === null) ? (
+                  <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                    Répartition indisponible : dépenses en devises différentes (voir les totaux par devise)
+                  </div>
+                ) : data.charts.depensesParCategorie.length > 0 ? (
                   <ResponsiveContainer width="100%" height={320}>
                     <PieChart>
                       <Pie
@@ -604,7 +697,7 @@ export default function DashboardComptabilite() {
                           <Cell key={`cell-${index}`} fill={entry.couleur} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                      <Tooltip formatter={(value) => [formatCamembert(data.charts.depensesParCategorie)(Number(value || 0)), '']} />
                       <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
                     </PieChart>
                   </ResponsiveContainer>
@@ -622,16 +715,22 @@ export default function DashboardComptabilite() {
                 <CardTitle className="text-base">Résultat par module</CardTitle>
               </CardHeader>
               <CardContent>
+                {deviseParModule === null || data.charts.parModule.some(m => m.revenus === null || m.depenses === null) ? (
+                  <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                    Graphique indisponible : montants en devises différentes (voir les totaux par devise)
+                  </div>
+                ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={data.charts.parModule} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `${v}€`} />
+                    <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => formatParModule(Number(v))} />
                     <YAxis dataKey="module" type="category" tick={{ fontSize: 12 }} width={70} />
-                    <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                    <Tooltip formatter={(value) => [formatParModule(Number(value || 0)), '']} />
                     <Bar dataKey="revenus" name="Revenus" fill="#22c55e" />
                     <Bar dataKey="depenses" name="Dépenses" fill="#ef4444" />
                   </BarChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </div>

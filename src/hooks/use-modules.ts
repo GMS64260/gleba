@@ -25,9 +25,11 @@ import * as React from "react"
 import { useAccesService } from "./use-acces-service"
 import {
   DEFAULT_MODULES_ACTIFS,
+  isModuleId,
   sanitizeModulesActifs,
   type ModuleId,
 } from "@/lib/modules"
+import { moduleOuvert } from "@/lib/exploitation/modules-chemins"
 
 const CACHE_KEY = "gleba_modules_actifs"
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -39,6 +41,8 @@ const MODULES_CHANGED_EVENT = "gleba:modules-changed"
 interface Cached {
   ts: number
   modules: ModuleId[]
+  /** Modules ouverts par l'adhésion du membre ; `null`/absent = aucune restriction. */
+  restriction?: ModuleId[] | null
 }
 
 function readCache(): Cached | null {
@@ -54,10 +58,10 @@ function readCache(): Cached | null {
   }
 }
 
-function writeCache(modules: ModuleId[]) {
+function writeCache(modules: ModuleId[], restriction: ModuleId[] | null) {
   if (typeof window === "undefined") return
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), modules } satisfies Cached))
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), modules, restriction } satisfies Cached))
   } catch {
     // localStorage may fail (private mode, quota, etc.)
   }
@@ -78,6 +82,16 @@ export function useModules(): UseModulesResult {
   // l'effect de mount, avant le refresh réseau.
   const [modules, setModules] = React.useState<ModuleId[]>(DEFAULT_MODULES_ACTIFS)
   const [loading, setLoading] = React.useState(true)
+  // Restriction de l'adhésion (membre limité à certains modules) : le menu ne
+  // propose pas un module fermé. L'autorisation reste portée par les routes.
+  const [restriction, setRestriction] = React.useState<ModuleId[] | null>(null)
+  const restrictionRef = React.useRef<ModuleId[] | null>(null)
+  const appliquerRestriction = React.useCallback((valeur: unknown) => {
+    const r = Array.isArray(valeur) ? valeur.filter(isModuleId) : null
+    restrictionRef.current = r
+    setRestriction(r)
+    return r
+  }, [])
 
   const refresh = React.useCallback(async () => {
     setLoading(true)
@@ -89,15 +103,16 @@ export function useModules(): UseModulesResult {
       if (res.ok) {
         const prefs = await res.json()
         const m = sanitizeModulesActifs(prefs.modulesActifs)
+        const r = appliquerRestriction(prefs.restrictionModules)
         setModules(m)
-        writeCache(m)
+        writeCache(m, r)
       }
     } catch {
       // Silent: keep default
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [appliquerRestriction])
 
   React.useEffect(() => {
     // Le cache local s'applique au mount seulement (jamais au rendu initial,
@@ -105,6 +120,7 @@ export function useModules(): UseModulesResult {
     // attendre le réseau.
     const cached = readCache()
     if (cached) {
+      appliquerRestriction(cached.restriction ?? null)
       setModules([...cached.modules])
       setLoading(false)
     }
@@ -113,8 +129,7 @@ export function useModules(): UseModulesResult {
     // garantit que le toggle reflète la valeur serveur en cas de modif
     // depuis un autre onglet/appareil.
     refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [appliquerRestriction, refresh])
 
   // DEV2 #5 — Écoute les changements émis par `save()` d'un autre useModules
   // ou d'un autre onglet (storage event natif).
@@ -129,6 +144,7 @@ export function useModules(): UseModulesResult {
       try {
         const parsed = JSON.parse(e.newValue) as Cached
         if (Array.isArray(parsed.modules)) setModules([...parsed.modules])
+        if (parsed.restriction !== undefined) appliquerRestriction(parsed.restriction)
       } catch {
         // ignore
       }
@@ -139,7 +155,7 @@ export function useModules(): UseModulesResult {
       window.removeEventListener(MODULES_CHANGED_EVENT, onCustom)
       window.removeEventListener("storage", onStorage)
     }
-  }, [])
+  }, [appliquerRestriction])
 
   const save = React.useCallback(async (next: ModuleId[]): Promise<{ ok: boolean; error?: string }> => {
     const sanitized = sanitizeModulesActifs(next)
@@ -149,7 +165,7 @@ export function useModules(): UseModulesResult {
     // out si la référence est identique à l'ancienne).
     const previous = modules
     setModules([...sanitized])
-    writeCache(sanitized)
+    writeCache(sanitized, restrictionRef.current)
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent(MODULES_CHANGED_EVENT, { detail: { modules: sanitized } }))
     }
@@ -162,7 +178,7 @@ export function useModules(): UseModulesResult {
       if (!res.ok) {
         // Rollback : on remet l'ancienne valeur côté state + cache + broadcast.
         setModules([...previous])
-        writeCache(previous)
+        writeCache(previous, restrictionRef.current)
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent(MODULES_CHANGED_EVENT, { detail: { modules: previous } }))
         }
@@ -171,7 +187,7 @@ export function useModules(): UseModulesResult {
       return { ok: true }
     } catch (err) {
       setModules([...previous])
-      writeCache(previous)
+      writeCache(previous, restrictionRef.current)
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent(MODULES_CHANGED_EVENT, { detail: { modules: previous } }))
       }
@@ -179,7 +195,7 @@ export function useModules(): UseModulesResult {
     }
   }, [modules])
 
-  const affichables = React.useMemo(() => modules.filter(m => acces && (m === "comptabilite" ? acces.facturation : acces.ateliers.includes(m))), [modules, acces])
+  const affichables = React.useMemo(() => modules.filter(m => acces && (m === "comptabilite" ? acces.facturation : acces.ateliers.includes(m)) && moduleOuvert(restriction, m)), [modules, acces, restriction])
   const isActif = React.useCallback((id: ModuleId) => affichables.includes(id), [affichables])
 
   return { modules: affichables, loading, refresh, save, isActif }

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { lireNombreObservation, NombreObservationInvalide } from "@/lib/verger/nombre-observation"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -68,12 +69,26 @@ export async function POST(request: NextRequest, { params }: Params) {
   const body = await request.json()
   const date = body.date ? new Date(body.date) : new Date()
 
-  // Calcul du taux de reprise si possible
-  let tauxReprise: number | null = body.tauxReprise ? parseFloat(body.tauxReprise) : null
-  const nbVivants = body.nbVivants ? parseInt(body.nbVivants) : null
-  const nbMorts = body.nbMorts ? parseInt(body.nbMorts) : null
-  const nbManquants = body.nbManquants ? parseInt(body.nbManquants) : null
+  // Valider toutes les saisies avant d'enregistrer ; zéro est une valeur présente.
+  let tauxReprise: number | null
+  let nbVivants: number | null
+  let nbMorts: number | null
+  let nbManquants: number | null
+  let hauteurMoyenneCm: number | null
+  try {
+    tauxReprise = lireNombreObservation(body.tauxReprise, "tauxReprise")
+    nbVivants = lireNombreObservation(body.nbVivants, "nbVivants")
+    nbMorts = lireNombreObservation(body.nbMorts, "nbMorts")
+    nbManquants = lireNombreObservation(body.nbManquants, "nbManquants")
+    hauteurMoyenneCm = lireNombreObservation(body.hauteurMoyenneCm, "hauteurMoyenneCm")
+  } catch (error) {
+    if (error instanceof NombreObservationInvalide) {
+      return NextResponse.json({ error: error.message, champ: error.champ }, { status: 400 })
+    }
+    throw error
+  }
 
+  // Calcul du taux de reprise si possible
   if (tauxReprise === null && nbVivants !== null) {
     // Audit #12 : le dénominateur du taux de reprise est le nombre de plants
     // PLANTÉS de la campagne (source de vérité). L'ancienne branche
@@ -99,7 +114,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       nbMorts,
       nbManquants,
       tauxReprise,
-      hauteurMoyenneCm: body.hauteurMoyenneCm ? parseFloat(body.hauteurMoyenneCm) : null,
+      hauteurMoyenneCm,
       vigueur: body.vigueur || null,
       problemes: body.problemes || null,
       notes: body.notes || null,

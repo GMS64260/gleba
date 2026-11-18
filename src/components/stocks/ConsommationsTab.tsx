@@ -1,5 +1,7 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Onglet Consommations - Sorties de stock
  * Ventes, dons, autoconsommation
@@ -39,7 +41,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 import { formatQuantite } from "@/lib/recolte/quantites"
 import { uniteSortieAffichee } from "@/lib/stocks/unite-sortie"
-import { formatMontantDevise } from "@/lib/format-utils"
+import { symboleDevise, formatMontantDevise } from "@/lib/format-utils"
 
 interface Consommation {
   id: number
@@ -75,6 +77,9 @@ interface StockNetData {
 }
 
 export function ConsommationsTab() {
+  const devise = useDevise()
+  const symbole = devise === null ? "—" : symboleDevise(devise)
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { toast } = useToast()
   const [consommations, setConsommations] = React.useState<Consommation[]>([])
   const [stocksNet, setStocksNet] = React.useState<Record<string, StockNetData>>({})
@@ -311,7 +316,7 @@ export function ConsommationsTab() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="prix">Prix total (€)</Label>
+                    <Label htmlFor="prix">Prix total ({symbole})</Label>
                     <Input
                       id="prix"
                       type="number"
@@ -395,7 +400,7 @@ export function ConsommationsTab() {
                   <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                     <span className="font-medium text-red-600">- {formatQuantite(conso.quantite, conso.unite ?? "kg")}</span>
                     {conso.prix && (
-                      <span className="text-green-600">{formatMontantDevise(conso.prix)}</span>
+                      <span className="text-green-600">{formatMontant(conso.prix)}</span>
                     )}
                     {conso.destination && (
                       <span>{conso.destination.id}</span>

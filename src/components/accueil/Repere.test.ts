@@ -7,9 +7,9 @@ import { Repere } from "./Repere"
 describe("Repere", () => {
   it("affiche la valeur en chiffres tabulaires, l'unité secondaire, le détail et l'alerte", () => {
     const html = renderToStaticMarkup(
-      createElement(Repere, { libelle: "Trésorerie", valeur: "24 297", unite: "€", detail: "marge 73 %", alerte: "2 créances" }),
+      createElement(Repere, { libelle: "Résultat", valeur: "24 297", unite: "€", detail: "marge 73 %", alerte: "2 créances" }),
     )
-    expect(html).toContain("Trésorerie")
+    expect(html).toContain("Résultat")
     expect(html).toContain("tabular-nums")
     expect(html).toContain("24 297")
     expect(html).toContain("€")

@@ -10,6 +10,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { enregistrerArrosageCultures } from '@/lib/irrigation-recording'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
+import { corpsObjet, dateLisible, entierPositif } from '@/lib/irrigation/validation-requete'
 import type { Prisma } from '@prisma/client'
 
 // GET /api/irrigations/[id]
@@ -23,7 +24,8 @@ export async function GET(
   try {
     const userId = getUserId(session)
     const { id: idStr } = await params
-    const id = parseInt(idStr)
+    const id = entierPositif(idStr)
+    if (id === null) return NextResponse.json({ error: 'Identifiant invalide' }, { status: 400 })
 
     const irrigation = await prisma.irrigationPlanifiee.findFirst({
       where: { id, userId },
@@ -66,8 +68,28 @@ export async function PATCH(
   try {
     const userId = getUserId(session)
     const { id: idStr } = await params
-    const id = parseInt(idStr)
-    const body = await request.json()
+    const id = entierPositif(idStr)
+    if (id === null) return NextResponse.json({ error: 'Identifiant invalide' }, { status: 400 })
+    const body = await corpsObjet(request)
+    if (!body) return NextResponse.json({ error: 'Corps de requête invalide' }, { status: 400 })
+
+    // Entrées lues avant toute écriture : une date illisible donnait une
+    // « Invalid Date » que Prisma refuse (500). La date effective s'efface
+    // (valeur vide), la date prévue non.
+    const { fait } = body
+    const dateEffective = body.dateEffective ? dateLisible(body.dateEffective) : null
+    const datePrevue = body.datePrevue === undefined ? null : dateLisible(body.datePrevue)
+    if (body.dateEffective && !dateEffective) {
+      return NextResponse.json({ error: 'dateEffective invalide' }, { status: 400 })
+    }
+    if (body.datePrevue !== undefined && !datePrevue) {
+      return NextResponse.json({ error: 'datePrevue invalide' }, { status: 400 })
+    }
+    if (body.notes != null && typeof body.notes !== 'string') {
+      return NextResponse.json({ error: 'notes invalides' }, { status: 400 })
+    }
+    // `undefined` : champ absent, notes inchangées ; `null` : notes effacées.
+    const notes = typeof body.notes === 'string' ? body.notes : body.notes === null ? null : undefined
 
     // Vérifier que l'irrigation appartient à l'utilisateur
     const existing = await prisma.irrigationPlanifiee.findFirst({
@@ -86,8 +108,6 @@ export async function PATCH(
       )
     }
 
-    const { fait, dateEffective, datePrevue, notes } = body
-
     const updateData: Prisma.IrrigationPlanifieeUpdateManyMutationInput = {}
 
     if (typeof fait === 'boolean') {
@@ -104,12 +124,12 @@ export async function PATCH(
       }
     }
 
-    if (dateEffective !== undefined) {
-      updateData.dateEffective = dateEffective ? new Date(dateEffective) : null
+    if (body.dateEffective !== undefined) {
+      updateData.dateEffective = dateEffective
     }
 
-    if (datePrevue !== undefined) {
-      updateData.datePrevue = new Date(datePrevue)
+    if (datePrevue) {
+      updateData.datePrevue = datePrevue
     }
 
     if (notes !== undefined) {
@@ -194,7 +214,8 @@ export async function DELETE(
   try {
     const userId = getUserId(session)
     const { id: idStr } = await params
-    const id = parseInt(idStr)
+    const id = entierPositif(idStr)
+    if (id === null) return NextResponse.json({ error: 'Identifiant invalide' }, { status: 400 })
 
     // Vérifier que l'irrigation appartient à l'utilisateur
     const existing = await prisma.irrigationPlanifiee.findFirst({

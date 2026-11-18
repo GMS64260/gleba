@@ -62,9 +62,10 @@ import { formatQuantiteParUnite } from '@/lib/recolte/quantites'
 const YEAR = 2026
 const arbre = { nom: 'Cerisier A', espece: 'Cerisier', especeId: 'cerisier' }
 
-describe('computeCoutsProduction — revenus Verger', () => {
+describe('computeCoutsProduction — coûts et revenus', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.getKpiCompta.mockReset()
     mocks.cultureFindMany.mockResolvedValue([])
     mocks.recolteFindMany.mockResolvedValue([])
     mocks.factureFindMany.mockResolvedValue([])
@@ -82,6 +83,81 @@ describe('computeCoutsProduction — revenus Verger', () => {
     mocks.soinAnimalFindMany.mockResolvedValue([])
     mocks.userStockEspeceFindMany.mockResolvedValue([])
     mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 1234.56, depensesYtd: 999.99, revenusParModuleYtd: { parModule: { potager: 0, verger: 450 } } })
+  })
+
+  it.each(['EUR', null] as const)('refuse une écriture %s sur une ferme XPF avant les sommes analytiques', async monnaie => {
+    mocks.getKpiCompta.mockResolvedValue({ deviseCourante: 'XPF', revenusYtd: 100,
+      revenusYtdParDevise: [{ monnaie, total: 100, count: 1 }], depensesYtdParDevise: [],
+      revenusParModuleYtd: { parModule: { potager: 100, verger: 0 } } })
+    await expect(computeCoutsProduction('user-1', YEAR)).rejects.toMatchObject({ status: 422 })
+    expect(mocks.cultureFindMany).not.toHaveBeenCalled()
+  })
+
+  it('contrôle aussi une charge figée future sans changer les revenus YTD', async () => {
+    const ytd = { deviseCourante: 'XPF', revenusYtd: 1000, depensesYtd: 0,
+      revenusYtdParDevise: [{ monnaie: 'XPF', total: 1000, count: 1 }], depensesYtdParDevise: [],
+      revenusParModuleYtd: { parModule: { potager: 0, verger: 0 } } }
+    mocks.getKpiCompta.mockResolvedValueOnce(ytd).mockResolvedValueOnce({ ...ytd,
+      depensesYtdParDevise: [{ monnaie: 'EUR', total: 100, count: 1 }] })
+    await expect(computeCoutsProduction('user-1', YEAR)).rejects.toMatchObject({ status: 422 })
+    expect(mocks.getKpiCompta).toHaveBeenLastCalledWith('user-1', YEAR, new Date(YEAR, 11, 31, 23, 59, 59, 999), { parDevise: true })
+    expect(mocks.cultureFindMany).not.toHaveBeenCalled()
+  })
+
+  describe('interventions réalisées du potager', () => {
+    beforeEach(() => {
+      mocks.cultureFindMany.mockResolvedValue([{
+        id: 1,
+        especeId: 'Tomate',
+        plancheId: 'p1',
+        longueur: null,
+        espece: { id: 'Tomate', nom: 'Tomate', rendement: 4, uniteRendement: 'kg_m2' },
+        variete: null,
+        planche: { id: 'p1', nom: 'P1', surface: 10, largeur: null, longueur: null },
+        recoltes: [],
+      }])
+    })
+
+    it('filtre les interventions réalisées par exploitation et période sans changer leurs liens', async () => {
+      await computeCoutsProduction('user-1', YEAR)
+
+      expect(mocks.interventionFindMany).toHaveBeenCalledTimes(1)
+      expect(mocks.interventionFindMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          fait: true,
+          date: { gte: new Date(YEAR, 0, 1), lte: new Date(YEAR, 11, 31, 23, 59, 59, 999) },
+          OR: [
+            { cultureId: { in: [1] } },
+            { plancheId: { in: ['p1'] } },
+            { cultureId: null, plancheId: null, arbreId: null },
+          ],
+        },
+      })
+    })
+
+    it('compte seulement les coûts et minutes-personnes réalisés, hors intervention planifiée', async () => {
+      const interventions = [
+        { cultureId: 1, fait: true, dureeMinutes: 60, nbPersonnes: 2, coutMainOeuvre: 20, intrantCout: 5, coutTotal: 25 },
+        { cultureId: 1, fait: false, dureeMinutes: 120, nbPersonnes: 1, coutMainOeuvre: 30, intrantCout: 0, coutTotal: 30 },
+      ]
+      // Les deux lignes ont les mêmes exploitation, période et culture.
+      // La base simulée applique le filtre fait uniquement s'il est demandé.
+      mocks.interventionFindMany.mockImplementation(async ({ where }: { where: { fait?: boolean } }) =>
+        interventions.filter(intervention => where.fait === undefined || intervention.fait === where.fait),
+      )
+
+      const res = await computeCoutsProduction('user-1', YEAR)
+
+      expect(res.parCulture).toHaveLength(1)
+      expect(res.parCulture[0]).toMatchObject({
+        coutMainOeuvre: 20,
+        coutIntrants: 5,
+        coutTotal: 25,
+        minutesTravaillees: 120,
+        heuresTravaillees: 2,
+      })
+    })
   })
 
   it('additionne les VenteManuelle module=verger saisies à la main aux récoltes et au bois', async () => {
@@ -129,6 +205,7 @@ describe('computeCoutsProduction — unité des quantités et des ratios', () =>
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.getKpiCompta.mockReset()
     for (const mock of [
       mocks.cultureFindMany,
       mocks.recolteFindMany,

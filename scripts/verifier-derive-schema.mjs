@@ -1,6 +1,10 @@
 // Garde contre la dérive entre `prisma/schema.prisma` et la base réellement
 // produite par `prisma migrate deploy`.
 //
+// Rejeu : base jetable neuve au nom unique (CREATE DATABASE), DATABASE_URL dédié ;
+// `lourd npx prisma migrate deploy`, `lourd node scripts/verifier-derive-schema.mjs`, puis DROP DATABASE.
+// Jamais sur gleba_tests : cette base est partagée et remigrée par les autres suites.
+//
 // Sur une base migrée de zéro (DATABASE_URL), demande à Prisma le SQL qui
 // ferait passer la base au schéma, puis le compare à `prisma/derive-acceptee.sql`.
 // Toute instruction nouvelle (ou disparue) fait échouer le contrôle : sans cette

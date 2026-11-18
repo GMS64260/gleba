@@ -13,11 +13,12 @@
 import type { Exploitation, Prisma, PrismaClient } from '@prisma/client'
 import { serviceAutorise } from '@/lib/abonnement/serveur'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
-import { adresseDeFiche, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
-import { factureSansTaxe } from '@/lib/territoires'
+import { acheteurPiece } from '@/lib/comptabilite/acheteur-piece'
+import { factureSansTaxe, REGIMES_TVA_TOUS } from '@/lib/territoires'
 import { mentionDeRegime } from '@/lib/comptabilite/fiscalite-emission'
 import { suiviReglementActif } from '@/lib/comptabilite/suivi-reglement-source'
 import { cleFacture } from '@/lib/comptabilite/cle-reglement'
+import { monnaieFacture } from '@/lib/comptabilite/devise-reglement'
 
 type PrismaTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
@@ -130,6 +131,60 @@ async function snapshotEmetteur(tx: PrismaTx, userId: string): Promise<EmetteurS
   const e = await tx.exploitation.findUnique({ where: { userId } })
   if (!e) return null
   return snapshotDepuisExploitation(e)
+}
+
+/**
+ * Instantané émetteur d'une pièce à créer ou à émettre, et sa fiscalité.
+ *
+ * Une facture fige l'identité courante de l'exploitation. Un avoir corrige une
+ * facture déjà émise : il reprend l'instantané de sa facture d'origine (devise,
+ * territoire, régime de TVA, identité), même si l'exploitation a changé de
+ * devise depuis. Sinon un avoir de 100 XPF viendrait en déduction d'une
+ * facture de 100 € (revues QA84 / ADV85 du 2026-11-13).
+ *
+ * `sansTaxe` dit si la pièce s'émet sans TVA (hors exonération du client).
+ * Un avoir suit la fiscalité de la facture qu'il corrige : son régime figé, ou,
+ * si l'instantané d'origine n'en porte pas de reconnu, la TVA effectivement
+ * facturée (totaux et lignes). Un régime absent n'est jamais une exonération :
+ * sinon l'avoir d'une facture à 5,5 % était réécrit à TVA 0 (revue ADV du
+ * 2026-11-15), et jamais le régime courant de la ferme non plus.
+ *
+ * L'origine est lue dans le tenant, sous verrou de ligne : la transaction
+ * appelante reste seule à la corriger jusqu'à son terme.
+ */
+export async function emetteurEtFiscalitePiece(
+  tx: PrismaTx,
+  userId: string,
+  piece: { type: string; factureOrigineId?: number | null },
+): Promise<{ emetteur: EmetteurSnapshot | null; sansTaxe: boolean }> {
+  if (piece.type !== 'avoir' || !piece.factureOrigineId) {
+    const emetteur = await snapshotEmetteur(tx, userId)
+    return { emetteur, sansTaxe: factureSansTaxe(emetteur?.regimeTva) }
+  }
+  const origines = await tx.$queryRaw<Array<{ numero: string; emetteur_snapshot: unknown; date: Date; taxee: boolean }>>`
+    SELECT f.numero, f.emetteur_snapshot, f.date,
+      (COALESCE(f.total_tva, 0) <> 0 OR EXISTS (
+        SELECT 1 FROM lignes_factures l WHERE l.facture_id = f.id AND (l.taux_tva <> 0 OR l.montant_tva <> 0)
+      )) AS taxee
+    FROM factures f WHERE f.id = ${piece.factureOrigineId} AND f.user_id = ${userId} FOR UPDATE OF f`
+  const origine = origines[0]
+  if (!origine) throw new ErreurCommerciale('Facture d’origine introuvable : aucun avoir n’a été créé.', 404)
+  const devise = monnaieFacture(origine.emetteur_snapshot, origine.date)
+  if (devise !== 'EUR' && devise !== 'XPF') {
+    throw new ErreurCommerciale(`Devise de la facture d’origine inconnue : la facture ${origine.numero} n’a pas de devise figée à son émission, aucun avoir n’a été créé. Faites vérifier cette facture avant de la corriger.`)
+  }
+  const emetteur = { ...(origine.emetteur_snapshot as EmetteurSnapshot), devise }
+  const regime = (REGIMES_TVA_TOUS as readonly unknown[]).includes(emetteur.regimeTva) ? emetteur.regimeTva : null
+  return { emetteur, sansTaxe: regime ? factureSansTaxe(regime) : !origine.taxee }
+}
+
+/** Instantané émetteur seul (émission d'un brouillon) : voir `emetteurEtFiscalitePiece`. */
+export async function snapshotEmetteurPiece(
+  tx: PrismaTx,
+  userId: string,
+  piece: { type: string; factureOrigineId?: number | null },
+): Promise<EmetteurSnapshot | null> {
+  return (await emetteurEtFiscalitePiece(tx, userId, piece)).emetteur
 }
 
 /** Une seule lecture de l'identité légale pour le snapshot à l'émission et pour les factures sans snapshot (exports). */
@@ -385,41 +440,20 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
     numero = reserved.numero
   }
 
-  let clientNom = params.clientNom || 'Client anonyme'
-  let clientAdresse = params.clientAdresse || null
-  // Sécurité multi-tenant (audit compta 2026-06) : clientId n'est lié à la
-  // facture que si la fiche appartient à l'utilisateur. Sinon GET /factures
-  // et le PDF exposeraient le nom/SIRET/TVA intra du client d'un autre compte.
-  let clientId: number | null = null
-  let clientExonere = false
-  // Facturation électronique : l'identité de l'acheteur (SIRET, SIREN BT-47,
-  // TVA intracommunautaire BT-48) est figée sur la facture, comme l'émetteur.
-  let clientSiret: string | null = null
-  let clientSiren: string | null = null
-  let clientTvaIntra: string | null = null
+  // Identité complète de l'acheteur figée sur la pièce (BX03), comme l'émetteur.
+  const { clientId, exonere: clientExonere, fige: acheteurComplet, instantane: acheteur } = await acheteurPiece(tx, params.userId, {
+    type: params.type, factureOrigineId: params.factureOrigineId, clientId: params.clientId,
+    clientNom: params.clientNom, clientAdresse: params.clientAdresse,
+  })
 
-  if (params.clientId) {
-    const client = await tx.client.findFirst({
-      where: { id: params.clientId, userId: params.userId },
-    })
-    if (client) {
-      clientId = client.id
-      clientNom = client.nom
-      // La fiche fait foi ; sans adresse sur la fiche, celle saisie sur la
-      // facture est gardée plutôt que remplacée par une chaîne vide.
-      clientAdresse = adresseDeFiche(client) || clientAdresse
-      clientExonere = client.exonererTVA
-      ;({ clientSiret, clientSiren, clientTvaIntra } = identiteAcheteur(client))
-    }
-  }
-
-  const emetteur = await snapshotEmetteur(tx, params.userId)
+  // Un avoir reprend l'instantané de sa facture d'origine, pas l'identité courante.
+  const { emetteur, sansTaxe: emetteurSansTaxe } = await emetteurEtFiscalitePiece(tx, params.userId, params)
 
   // Audit compta 2026-06 : un émetteur en franchise en base (art. 293 B) ne
   // facture PAS de TVA (TVA facturée à tort = TVA due, art. 283-3 CGI) ;
   // idem pour un client exonéré. Les lignes sont réécrites à TVA 0 (le TTC
   // saisi devient le HT), quelle que soit la route appelante.
-  const sansTva = factureSansTaxe(emetteur?.regimeTva) || clientExonere
+  const sansTva = emetteurSansTaxe || clientExonere
   let lignes = params.lignes
   let totalHT = params.totalHT
   let totalTVA = params.totalTVA
@@ -445,8 +479,9 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       numero,
       type: params.type,
       clientId,
-      clientNom,
-      clientAdresse,
+      ...acheteur,
+      // Un brouillon reprend l'acheteur à son émission (PATCH /factures).
+      acheteurFigeLe: statut === 'brouillon' || !acheteurComplet ? null : new Date(),
       date,
       dateEcheance: params.dateEcheance || null,
       objet: params.objet,
@@ -463,9 +498,6 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       mentionsSpecifiques: mentions,
       // Json? : `null` (pas d'exploitation) est passé tel quel, comme avant.
       emetteurSnapshot: emetteur as unknown as Prisma.InputJsonValue,
-      clientSiret,
-      clientSiren,
-      clientTvaIntra,
       categorieOperation: params.categorieOperation || 'biens',
       dateLivraison: params.dateLivraison || null,
       adresseLivraison: params.adresseLivraison || null,

@@ -51,9 +51,29 @@ export async function POST(request: NextRequest) {
 
   try {
     const userId = getUserId(session)
-    const body = await request.json()
+    const body: unknown = await request.json().catch(() => null)
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Corps de requête invalide' }, { status: 400 })
+    }
 
-    const { nom, provider, stationId, apiKey, appKey, lat, lng } = body
+    const { provider, lat, lng } = body as Record<string, unknown>
+    // Textes attendus : un objet ou un nombre partait tel quel vers Prisma
+    // (500) ou dans l'URL du fournisseur.
+    const texte = (valeur: unknown): string | null | undefined =>
+      valeur === undefined || valeur === null || valeur === ''
+        ? null
+        : typeof valeur === 'string' && valeur.trim().length <= 200 ? valeur.trim() || null : undefined
+    const champs = body as Record<string, unknown>
+    const nom = texte(champs.nom)
+    const stationId = texte(champs.stationId)
+    const apiKey = texte(champs.apiKey)
+    const appKey = texte(champs.appKey)
+    if (nom === undefined || stationId === undefined || apiKey === undefined || appKey === undefined) {
+      return NextResponse.json(
+        { error: 'Les champs nom, stationId, apiKey et appKey doivent être des textes de 200 caractères au plus' },
+        { status: 400 }
+      )
+    }
 
     if (!nom || !provider || !stationId) {
       return NextResponse.json(
@@ -62,8 +82,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Coordonnées facultatives, mais lisibles en entier et dans les bornes :
+    // `parseFloat` rangeait NaN ou « 43.6abc » lu 43.6.
+    const coordonnee = (valeur: unknown, borne: number): number | null | undefined => {
+      if (valeur === undefined || valeur === null || valeur === '') return null
+      if (typeof valeur !== 'number' && typeof valeur !== 'string') return undefined
+      const n = Number(valeur)
+      return Number.isFinite(n) && Math.abs(n) <= borne ? n : undefined
+    }
+    const latitude = coordonnee(lat, 90)
+    const longitude = coordonnee(lng, 180)
+    if (latitude === undefined || longitude === undefined) {
+      return NextResponse.json({ error: 'Coordonnées de la station invalides' }, { status: 400 })
+    }
+
     const providersValides = ['ecowitt', 'wunderground']
-    if (!providersValides.includes(provider)) {
+    if (typeof provider !== 'string' || !providersValides.includes(provider)) {
       return NextResponse.json(
         { error: `Provider invalide. Valeurs acceptées : ${providersValides.join(', ')}` },
         { status: 400 }
@@ -78,14 +112,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (provider === 'wunderground' && !apiKey) {
+    if (!apiKey) {
       return NextResponse.json(
         { error: 'Weather Underground nécessite un apiKey' },
         { status: 400 }
       )
     }
 
-    const test = provider === 'ecowitt'
+    const test = provider === 'ecowitt' && appKey
       ? await fetchEcowittData(appKey, apiKey, stationId)
       : await fetchWundergroundData(apiKey, stationId)
     if (!test) {
@@ -102,10 +136,10 @@ export async function POST(request: NextRequest) {
         nom,
         provider,
         stationId,
-        apiKey: apiKey || null,
-        appKey: appKey || null,
-        lat: lat ? parseFloat(lat) : null,
-        lng: lng ? parseFloat(lng) : null,
+        apiKey,
+        appKey,
+        lat: latitude,
+        lng: longitude,
       }, select: {
         id: true,
         nom: true,

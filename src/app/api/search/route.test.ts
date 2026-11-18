@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AUTRE,
@@ -47,6 +47,22 @@ beforeEach(() => {
 })
 
 describe('GET /api/search?q=', () => {
+  it('conserve le cloisonnement propriétaire et les modules fermés à un membre', async () => {
+    mocks.requireAuthApi.mockResolvedValue({
+      error: null,
+      session: { user: { id: MOI, role: 'USER', modulesExploitation: ['maraichage'] } },
+    })
+    mocks.db.culture = delegueMemoire([
+      { id: 'culture-moi', userId: MOI, especeId: 'Epinard fictif', annee: 2026 },
+      { id: 'culture-autre', userId: AUTRE, especeId: 'Epinard fictif', annee: 2026 },
+    ] as Ligne[])
+    mocks.db.animal = delegueMemoire([
+      { id: 'animal-moi', userId: MOI, nom: 'Epinard fictif', especeAnimale: { nom: 'Ovin' } },
+    ] as Ligne[])
+    const { items } = await (await GET(new NextRequest('http://localhost/api/search?q=epinard'))).json()
+    expect(items.map((item: { id: string }) => item.id)).toEqual(['culture-culture-moi'])
+  })
+
   // FRONT-06 (recette du 2026-11-12) : surface stockée en hectares, affichée en « m² » sans conversion.
   it('affiche la surface d’une parcelle dans la bonne unité', async () => {
     mocks.db.parcelleGeo = delegueMemoire([
@@ -78,5 +94,44 @@ describe('GET /api/search?q=', () => {
     expect(ids).toEqual(['variete-v-gleba-1', 'variete-v-cm-moi', 'variete-v-cm-partagee'])
     expect(JSON.stringify(items)).not.toContain('secrète')
     expect(JSON.stringify(items)).not.toContain('caché')
+  })
+})
+
+
+describe('B4/B5 — noms de cultures et récoltes', () => {
+  beforeEach(() => {
+    const espece = { id: 'cm-esp-42', nom: 'Épinard de printemps', nomNormalise: 'epinard de printemps', userId: MOI, partageCommunaute: false }
+    const variete = { id: 'cm-var-42', nom: 'Épinard — Géant', nomNormalise: 'epinard geant', userId: MOI, partageCommunaute: false, especeId: espece.id, espece }
+    mocks.db.variete = delegueMemoire([variete])
+    mocks.db.culture = delegueMemoire([{ id: 42, userId: MOI, especeId: espece.id, varieteId: variete.id, espece, variete, annee: 2026 }])
+    mocks.db.recolte = delegueMemoire([{ id: 43, userId: MOI, especeId: espece.id, espece, quantite: 3, date: new Date('2026-11-01') }])
+  })
+
+  async function chercher(q: string) {
+    const res = await GET(new NextRequest(`http://localhost/api/search?q=${encodeURIComponent(q)}`))
+    expect(res.status).toBe(200)
+    return (await res.json()).items as { id: string; label: string }[]
+  }
+
+  it.each(['épinard', 'epinard', 'ÉPINARD'])('retrouve les trois catégories par %s malgré des ids techniques', async q => {
+    expect((await chercher(q)).map(i => i.id)).toEqual(['culture-42', 'variete-cm-var-42', 'recolte-43'])
+  })
+
+  it('retrouve la culture par variété et normalise la ponctuation', async () => {
+    for (const q of ['Géant', 'epinard-geant', 'ÉPINARD_GÉANT']) {
+      expect((await chercher(q)).map(i => i.id)).toEqual(['culture-42', 'variete-cm-var-42'])
+    }
+  })
+
+  it('conserve les identifiants historiques et ignore une clé normalisée vide', async () => {
+    expect((await chercher('cm-esp-42')).map(i => i.id)).toEqual(['culture-42', 'recolte-43'])
+    expect((await chercher('cm-var-42')).map(i => i.id)).toEqual(['culture-42', 'variete-cm-var-42'])
+    expect(await chercher('— —')).toEqual([])
+    expect(await chercher(' é ')).toEqual([])
+  })
+
+  it('conserve le refus sans session', async () => {
+    mocks.requireAuthApi.mockResolvedValue({ session: null, error: NextResponse.json({ error: 'Non authentifié' }, { status: 401 }) })
+    expect((await GET(new NextRequest('http://localhost/api/search?q=epinard'))).status).toBe(401)
   })
 })

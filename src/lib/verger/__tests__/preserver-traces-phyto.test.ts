@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import type { Prisma } from "@prisma/client"
 
-import { preserverTracesPhytoArbre } from "../preserver-traces-phyto"
+import { contexteAConserver, preserverTracesPhytoArbre } from "../preserver-traces-phyto"
 
 /**
  * QA cmswxinhf — un traitement complet (AMM, dose, DAR, ZNT) saisi depuis
@@ -170,3 +170,47 @@ describe("contexte du registre conservé à la suppression de l'arbre", () => {
   })
 })
 
+describe("ADV158-1 : intervention détachée de l'arbre supprimé", () => {
+  const ligne = {
+    source: "intervention" as const,
+    date: new Date("2026-10-16T08:00:00Z"),
+    contexteFige: true,
+    cultureRegistre: null,
+    localisationRegistre: null,
+    conduiteBio: null,
+    origineCultureRegistre: "saisie",
+    origineConduiteBio: "saisie",
+  }
+
+  it("contexte figé entièrement vidé : recopié tel quel avec ses provenances, sans relire l'arbre", async () => {
+    const { tx } = faireTx([], [])
+    const contexte = await contexteAConserver(tx, "u1", ligne, { arbreId: 9 })
+    expect(contexte).toEqual({
+      cultureRegistre: null, localisationRegistre: null, conduiteBio: null,
+      contexteFige: true, origineCultureRegistre: "saisie", origineConduiteBio: "saisie",
+    })
+    expect((tx as unknown as { arbre: { findFirst: ReturnType<typeof vi.fn> } }).arbre.findFirst).not.toHaveBeenCalled()
+  })
+
+  it("jamais figé : relu, marqué figé, chaque mention relue non nulle est « déduite », jamais « saisie »", async () => {
+    const { tx } = faireTx([], [])
+    const contexte = await contexteAConserver(
+      tx, "u1", { ...ligne, contexteFige: false, origineCultureRegistre: null, origineConduiteBio: null }, { arbreId: 9 },
+    )
+    expect(contexte).toMatchObject({
+      cultureRegistre: "Pommier Reinette — Pommier du fond",
+      conduiteBio: true,
+      contexteFige: true,
+      origineCultureRegistre: "deduite",
+      origineConduiteBio: "deduite",
+    })
+  })
+
+  it("une projection d'intervention sans le marqueur ne compile pas", () => {
+    const { tx } = faireTx([], [])
+    const { contexteFige: _oublie, ...sansMarqueur } = ligne
+    // @ts-expect-error contexteFige est obligatoire pour une ligne Intervention
+    void (() => contexteAConserver(tx, "u1", sansMarqueur, { arbreId: 9 }))
+    expect(_oublie).toBe(true)
+  })
+})

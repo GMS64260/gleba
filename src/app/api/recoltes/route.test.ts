@@ -19,20 +19,18 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 // Règle réelle du rendement effectif ; seule la lecture des surcharges de la
-// ferme est simulée.
-vi.mock("@/lib/recolte/rendement-effectif", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/recolte/rendement-effectif")>()),
-  chargerSurchargesRendement: mocks.chargerSurcharges,
-}))
+// ferme (`userStockEspece`) est simulée, sans remplacer le module (test du dépôt public).
 vi.mock("@/lib/prisma", () => {
   const tx = {
+    $queryRaw: async () => [], // verrou commun des étapes (`verrouillerCultures`)
     recolte: { create: mocks.recolteCreate },
-    culture: { update: mocks.cultureUpdate },
+    culture: { update: mocks.cultureUpdate, findMany: async () => [] },
     intervention: { findMany: vi.fn(async () => []) },
   }
   return {
     default: {
       culture: { findMany: mocks.cultureFindMany },
+      userStockEspece: { findMany: mocks.chargerSurcharges },
       $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx),
     },
   }
@@ -87,7 +85,7 @@ describe("POST /api/recoltes — date de récolte et cycle de la culture", () =>
     mocks.cultureFindMany.mockResolvedValue([ZINNIA])
     mocks.recolteCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
     mocks.cultureUpdate.mockResolvedValue({})
-    mocks.chargerSurcharges.mockResolvedValue(new Map())
+    mocks.chargerSurcharges.mockResolvedValue([])
   })
 
   it("refuse une récolte avant la plantation prévue, sans rien écrire", async () => {
@@ -168,18 +166,16 @@ describe("POST /api/recoltes — unité de la récolte", () => {
   })
 
   it("compte en bottes une espèce que la ferme compte en bottes", async () => {
-    mocks.chargerSurcharges.mockResolvedValue(
-      new Map([["Basilic", { rendement: null, uniteRendement: "bottes_m2" }]]),
-    )
+    mocks.chargerSurcharges.mockResolvedValue([{ especeId: "Basilic", rendement: null, uniteRendement: "bottes_m2" }])
     const res = await enregistrerBasilic()
     expect(res.status).toBe(201)
-    expect(mocks.chargerSurcharges).toHaveBeenCalledWith("u1", ["Basilic"])
+    expect(mocks.chargerSurcharges.mock.calls[0][0].where).toMatchObject({ userId: "u1", especeId: { in: ["Basilic"] } })
     expect(mocks.recolteCreate.mock.calls[0][0].data).toMatchObject({ quantite: 10, unite: "botte" })
     expect((await res.json()).unite).toBe("botte")
   })
 
   it("sans unité déclarée par la ferme, l'unité du catalogue", async () => {
-    mocks.chargerSurcharges.mockResolvedValue(new Map())
+    mocks.chargerSurcharges.mockResolvedValue([])
     const res = await enregistrerBasilic()
     expect(res.status).toBe(201)
     expect(mocks.recolteCreate.mock.calls[0][0].data.unite).toBe("kg")

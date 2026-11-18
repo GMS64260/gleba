@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { chargerFacturesRevenus, whereVentesRevenus } from '@/lib/kpi/compta'
-import { moduleDeVente, ventilerRevenus } from '@/lib/comptabilite/ventilation-revenus'
+import { moduleDeVente, ventilerRevenusParDevise } from '@/lib/comptabilite/ventilation-revenus'
+import { deviseCouranteExploitation, monnaieFacture } from '@/lib/comptabilite/devise-reglement'
+import { monnaieVente } from '@/lib/comptabilite/devise-vente'
+import type { Devise } from '@/lib/territoires'
+import { sommerParDevise, totalSiUneDevise } from '@/lib/comptabilite/totaux-devise'
 import { chargerSuiviDesLignes } from '@/lib/comptabilite/suivi-ecriture'
 import { enrichirLignesReglements } from '@/lib/comptabilite/projection-reglements'
 import { MODELES_STOCK_COMMERCIAL } from '@/lib/commercial/stock-types'
@@ -29,6 +33,8 @@ interface Revenu {
   montant: number; client: string | null; paye: boolean | null; categorie: string;
   modeReglement?: string | null; numeroPiece?: string | null; tauxTVA?: number | null;
   factureId?: number | null; reglementsDisponibles?: boolean;
+  /** Devise figée de la pièce ; `null` : devise historique inconnue. */
+  monnaie: Devise | null;
 }
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -43,17 +49,31 @@ export async function GET(request: NextRequest) {
     // Exercice entier, comme Transactions > Dépenses : borner l'année en cours à
     // « maintenant » faisait disparaître une vente datée de demain (revue du 2026-10-29).
     const fin = new Date(year, 11, 31, 23, 59, 59, 999)
-    const [ventes, factures] = await Promise.all([
+    const [ventes, factures, exploitation] = await Promise.all([
       prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debut, fin), orderBy: { date: 'desc' } }),
       chargerFacturesRevenus(userId, debut, fin),
+      prisma.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } }),
     ])
+    const moduleDemande = params.get('module')
+    const filtreBoutique = moduleDemande?.trim().toLowerCase() === 'boutique'
+    const moduleFiltre = moduleDemande && !filtreBoutique ? bucketModuleCompta(moduleDemande) : null
+    // Boutique désigne le canal de vente, indépendamment de l'atelier
+    // d'imputation. Garder les mêmes sources pour les lignes et les totaux.
+    const ventesRetenues = filtreBoutique ? ventes.filter(v =>
+      v.auto ? v.sourceType === 'commande_boutique' : v.module?.trim().toLowerCase() === 'boutique',
+    ) : ventes
+    const facturesRetenues = filtreBoutique ? [] : factures
+    const deviseCourante = deviseCouranteExploitation(exploitation)
     // Certains anciens miroirs boutique n'ont pas le nom de leur commande.
-    const commandesSansNom = ventes.filter(v => v.auto && v.sourceType === 'commande_boutique' && v.sourceId != null && !v.clientNom)
+    const commandesSansNom = ventesRetenues.filter(v => v.auto && v.sourceType === 'commande_boutique' && v.sourceId != null && !v.clientNom)
     const commandes = commandesSansNom.length ? await prisma.commandeBoutique.findMany({
       where: { userId, id: { in: commandesSansNom.map(v => v.sourceId!) } }, select: { id: true, clientNom: true },
     }) : []
     const clientsCommandes = new Map(commandes.map(c => [c.id, c.clientNom]))
-    const lignes: Revenu[] = ventes.map(v => {
+    // Seul point de résolution de la devise d'une vente : sa ligne et les
+    // totaux par devise lisent la même valeur (QA180 / ADV181).
+    const deviseVente = (v: (typeof ventes)[number]) => monnaieVente(v, deviseCourante)
+    const lignes: Revenu[] = ventesRetenues.map(v => {
       const origine = v.auto && v.sourceId != null && v.sourceType ? SOURCES[v.sourceType] : null
       return {
         id: origine ? `${origine.prefixe}-${v.sourceId}` : `manuel-${v.id}`,
@@ -62,30 +82,58 @@ export async function GET(request: NextRequest) {
         description: v.description, quantite: v.quantite, unite: v.unite, prixUnitaire: v.prixUnitaire,
         montant: v.montant, client: v.clientNom || (v.sourceType === 'commande_boutique' && v.sourceId != null ? clientsCommandes.get(v.sourceId) ?? null : null), paye: v.paye,
         categorie: CATEGORIES[v.categorie] ?? origine?.categorie ?? v.categorie, modeReglement: v.modeReglement,
-        numeroPiece: v.numeroPiece, tauxTVA: v.tauxTVA,
+        numeroPiece: v.numeroPiece, tauxTVA: v.tauxTVA, monnaie: deviseVente(v),
       }
     })
-    for (const f of factures) lignes.push({
+    for (const f of facturesRetenues) lignes.push({
       id: `facture-${f.id}`, source: 'Facture', sourceId: f.id, factureId: f.id,
       corrigeable: false, module: f.moduleSource ?? 'autre', date: f.date.toISOString(),
       description: `${f.type === 'avoir' ? 'Avoir' : 'Facture'} ${f.numero}${f.objet ? ` · ${f.objet}` : ''}`,
       quantite: null, unite: null, prixUnitaire: null, montant: (f.type === 'avoir' ? -1 : 1) * f.totalTTC,
       client: f.clientNom, paye: f.type === 'avoir' ? null : f.statut === 'payee',
       categorie: f.type === 'avoir' ? 'Avoirs' : 'Factures', reglementsDisponibles: f.type !== 'avoir',
+      // Seule la devise figée sort : l'instantané émetteur (RIB, adresse) reste
+      // côté serveur (lot devise-totaux-api).
+      monnaie: monnaieFacture(f.emetteurSnapshot, f.date),
     })
-    const ventilation = ventilerRevenus(ventes, factures)
-    const moduleDemande = params.get('module')
-    const filtrees = (moduleDemande ? lignes.filter(l => l.module === bucketModuleCompta(moduleDemande)) : lignes)
+    const filtrees = (moduleFiltre ? lignes.filter(l => l.module === moduleFiltre) : lignes)
       .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id))
     const limite = Math.min(1000, Math.max(1, Number(params.get('limit')) || 200))
     const page = filtrees.slice(0, limite)
     const suivi = await chargerSuiviDesLignes(userId, page)
     const data = await enrichirLignesReglements(userId, 'vente', page.map(l => ({ ...l, ...suivi.get(l.id) })), ventes)
-    const somme = (ls: Revenu[]) => Math.round(ls.reduce((s, l) => s + l.montant, 0) * 100) / 100
+    // Totaux par devise sur tout le périmètre (avant pagination) : une pièce
+    // garde sa devise figée, jamais celle, courante, de la ferme.
+    const parDevise = ventilerRevenusParDevise(
+      moduleFiltre ? ventesRetenues.filter(v => moduleDeVente(v) === moduleFiltre) : ventesRetenues,
+      moduleFiltre ? facturesRetenues.filter(f => (f.moduleSource ?? 'autre') === moduleFiltre) : facturesRetenues,
+      deviseVente,
+      f => monnaieFacture(f.emetteurSnapshot, f.date),
+      deviseCourante,
+    ).map(({ monnaie, count, total, parModule }) => ({ monnaie, count, total, parModule }))
+    // Contrat (lot devise-totaux-api) : chaque total a un voisin `…ParDevise`
+    // et vaut `null` dès que deux devises coexistent.
+    const multiDevise = parDevise.length > 1
+    const parModuleVisible = (pm: Record<string, number>) =>
+      Object.fromEntries(Object.entries(pm).map(([m, montant]) => [m, !moduleFiltre || m === moduleFiltre ? montant : 0]))
+    const categories = [...new Set(filtrees.map(l => l.categorie))].map(categorie => ({
+      categorie,
+      parDevise: sommerParDevise(filtrees.filter(l => l.categorie === categorie), l => l.monnaie, l => l.montant, deviseCourante),
+    }))
+    const categoriesMultiDevise = new Set(categories.flatMap(c => c.parDevise.map(t => t.monnaie))).size > 1
     return NextResponse.json({ data, stats: {
-      total: moduleDemande ? ventilation.parModule[bucketModuleCompta(moduleDemande)] : ventilation.total, count: filtrees.length,
-      parModule: Object.fromEntries(Object.entries(ventilation.parModule).map(([m, montant]) => [m, !moduleDemande || m === bucketModuleCompta(moduleDemande) ? montant : 0])),
-      parCategorie: [...new Set(filtrees.map(l => l.categorie))].map(categorie => ({ categorie, montant: somme(filtrees.filter(l => l.categorie === categorie)) })),
+      total: totalSiUneDevise(parDevise), count: filtrees.length,
+      totalParDevise: parDevise.map(({ monnaie, total, count }) => ({ monnaie, total, count })),
+      parModule: multiDevise
+        ? { potager: null, verger: null, elevage: null, autre: null }
+        : parModuleVisible(parDevise[0].parModule),
+      parModuleParDevise: parDevise.map(({ monnaie, total, count, parModule }) => ({ monnaie, total, count, parModule: parModuleVisible(parModule) })),
+      parDevise,
+      parCategorie: categories.map(({ categorie, parDevise: pd }) => ({
+        categorie,
+        montant: categoriesMultiDevise ? null : totalSiUneDevise(pd),
+        montantParDevise: pd,
+      })),
     }, meta: { year, module: moduleDemande, total: filtrees.length } })
   } catch (err) {
     console.error('GET /api/comptabilite/revenus error:', err)

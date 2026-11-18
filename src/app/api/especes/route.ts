@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ESPECE_TYPES_VERGER } from '@/lib/validations/espece'
 import prisma from '@/lib/prisma'
 import { createEspeceSchema } from '@/lib/validations'
-import { visibiliteReferentiel, attributionCreation, masquerEntree } from '@/lib/referentiel-communaute'
+import { visibiliteReferentiel, attributionCreation, masquerEntree, originePourBadge } from '@/lib/referentiel-communaute'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { displayReferentielName, normalizeReferentielKey } from '@/lib/normalize'
@@ -125,6 +125,8 @@ export async function GET(request: NextRequest) {
     // par un membre) + mes propres espèces perso. Jamais le perso privé d'un autre.
     // Filtre optionnel par origine (badge) : perso / gleba / communauté — appliqué
     // CÔTÉ SERVEUR pour rester cohérent avec la pagination.
+    // requireAuthApi résout le propriétaire de l'exploitation dans user.id ;
+    // l'acteur (éventuellement membre) est conservé séparément dans acteurId.
     const me = session!.user.id
     const origineFilter: Prisma.EspeceWhereInput =
       origine === 'perso'
@@ -200,7 +202,7 @@ export async function GET(request: NextRequest) {
     const data = appliquerSurcharges(
       avecAvis,
       await chargerSurchargesRendement(me, avecAvis.map((e) => e.id)),
-    ).map((e) => masquerEntree(e, me))
+    ).map((e) => ({ ...masquerEntree(e, me), origine: originePourBadge(e, me) }))
 
     return NextResponse.json({
       data,

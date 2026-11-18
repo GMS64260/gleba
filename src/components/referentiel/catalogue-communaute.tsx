@@ -12,6 +12,7 @@
  */
 
 import * as React from "react"
+import { useExploitation } from "@/hooks/use-exploitation"
 import { ColumnDef } from "@tanstack/react-table"
 import { Share2, Lock, Trash2, Flag } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -177,27 +178,44 @@ function SignalerButton({ refType, refId, nom }: { refType: AvisRefType; refId: 
  * Badge d'origine + actions (proposer/rendre privé/supprimer) sur ses perso.
  * Rendu partagé, utilisable dans une cellule DataTable comme dans un tableau simple.
  */
-export function OrigineControls({
-  entree,
-  nom,
-  currentUserId,
-  actions,
-  showRemove = true,
-  signalerRefType,
-}: {
+type OrigineControlsProps = {
   entree: EntreeCommunaute
   nom: string
   currentUserId: string | null | undefined
+  /** Propriétaire de l’exploitation résolu par le contexte, distinct de l’acteur. */
+  proprietaireId?: string | null
   actions: OrigineActions
   /** Afficher le bouton supprimer (désactivé quand la suppression est gérée ailleurs). */
   showRemove?: boolean
   /** Si fourni, affiche le bouton « signaler » sur les entrées communautaires d'autres membres. */
   signalerRefType?: AvisRefType
-}) {
+}
+
+/** Les anciens appelants peuvent omettre le tenant ; il vient alors du contexte. */
+export function OrigineControls(props: OrigineControlsProps) {
+  return "proprietaireId" in props
+    ? <OrigineControlsResolus {...props} />
+    : <OrigineControlsAvecContexte {...props} />
+}
+
+function OrigineControlsAvecContexte(props: OrigineControlsProps) {
+  const { contexte } = useExploitation()
+  return <OrigineControlsResolus {...props} proprietaireId={contexte?.tenantId} />
+}
+
+function OrigineControlsResolus({
+  entree,
+  nom,
+  currentUserId,
+  proprietaireId,
+  actions,
+  showRemove = true,
+  signalerRefType,
+}: OrigineControlsProps) {
   const mine = !!currentUserId && entree.userId === currentUserId
-  const badge = badgeOrigine(entree, currentUserId)
+  const badge = proprietaireId ? badgeOrigine(entree, proprietaireId) : null
   // Signalable : entrée d'un AUTRE membre, proposée à la communauté (pas l'officiel Gleba, pas la mienne).
-  const signalable = !!signalerRefType && !mine && entree.userId != null && entree.partageCommunaute
+  const signalable = !!signalerRefType && !!proprietaireId && origineReferentiel(entree, proprietaireId) === "communaute" && entree.partageCommunaute
   return (
     <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
       {entree.userId == null ? (
@@ -239,7 +257,8 @@ export function makeOrigineColumn<T extends EntreeCommunaute>(
   nomOf: (row: T) => string,
   currentUserId: string | undefined | null,
   actions: OrigineActions,
-  signalerRefType?: AvisRefType
+  signalerRefType?: AvisRefType,
+  proprietaireId?: string | null
 ): ColumnDef<T> {
   return {
     id: "origine",
@@ -250,6 +269,7 @@ export function makeOrigineColumn<T extends EntreeCommunaute>(
         entree={row.original}
         nom={nomOf(row.original)}
         currentUserId={currentUserId}
+        {...(proprietaireId === undefined ? {} : { proprietaireId })}
         actions={actions}
         signalerRefType={signalerRefType}
       />
@@ -272,10 +292,10 @@ const FILTRES: { key: FiltreOrigineValue; label: string }[] = [
 export function filtrerParOrigine<T extends EntreeReferentiel>(
   liste: T[],
   filtre: FiltreOrigineValue,
-  currentUserId: string | null | undefined
+  proprietaireId: string | null | undefined
 ): T[] {
   if (filtre === "tout") return liste
-  return liste.filter((e) => origineReferentiel(e, currentUserId) === filtre)
+  return liste.filter((e) => origineReferentiel(e, proprietaireId) === filtre)
 }
 
 /** Barre de filtre par origine, style cohérent avec les onglets de type. */

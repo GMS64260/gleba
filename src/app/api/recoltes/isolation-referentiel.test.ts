@@ -1,34 +1,33 @@
-import { NextRequest } from 'next/server'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AUTRE, MOI, delegueMemoire } from '@/lib/__tests__/fixtures/referentiel-memoire'
 import {
-  AUTRE,
-  MOI,
-  delegueMemoire,
-  jeuReferentiel,
-  sessionDe,
-  type Ligne,
-} from '@/lib/__tests__/fixtures/referentiel-memoire'
+  attendreEspeceMasquee,
+  especes,
+  mocks,
+  preparerBase,
+  recolte,
+  requete,
+} from '@/lib/__tests__/fixtures/recoltes-referentiel-memoire'
 
 /**
  * Revue 2026-10-20 — les récoltes embarquent la ligne complète de l'espèce et
  * (via la culture) de la variété et de l'ITP : l'id de l'auteur d'une entrée
  * partagée par un autre compte sortait dans la liste, la fiche et les
  * réponses d'écriture. La base simulée rend ce que `include` demande.
+ *
+ * Liste, filtre et création ici ; fiche, PUT et PATCH (route `[id]`, zone
+ * privée) dans `./[id]/isolation-referentiel.test.ts`, sur le même jeu
+ * d'essai : séparés pour que ce fichier reste dans le dépôt public
+ * (livraison du 2026-11-16).
  */
 
-const mocks = vi.hoisted(() => ({
-  requireAuthApi: vi.fn(),
-  db: {} as Record<string, unknown>,
-}))
-
-vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock('@/lib/prisma', () => ({ default: mocks.db }))
+vi.mock('@/lib/auth-utils', async () => ({ requireAuthApi: (await import('@/lib/__tests__/fixtures/recoltes-referentiel-memoire')).mocks.requireAuthApi }))
+vi.mock('@/lib/prisma', async () => ({ default: (await import('@/lib/__tests__/fixtures/recoltes-referentiel-memoire')).mocks.db }))
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: vi.fn() }))
 vi.mock('@/lib/auto-compta', () => ({ createVenteFromRecolte: vi.fn(), deleteAutoEntry: vi.fn() }))
 vi.mock('@/lib/facture-utils', () => ({ creerFacture: vi.fn(), annulerFactureLiee: vi.fn() }))
 
 import { GET as LISTE, POST } from './route'
-import { GET, PATCH, PUT } from './[id]/route'
 
 // Horloge figée après les dates du jeu d'essai : une récolte ne se date pas
 // dans le futur, et ces scénarios datent leurs récoltes jusqu'en janvier 2027.
@@ -38,88 +37,7 @@ afterAll(() => { vi.useRealTimers() })
 beforeAll(() => { vi.stubEnv('TZ', 'Europe/Paris') })
 afterAll(() => { vi.unstubAllEnvs() })
 
-const especes = jeuReferentiel((id, nom) => ({
-  id, nom, type: 'legume', vivace: false, rendement: 2, uniteRendement: 'kg_m2', famille: null,
-}))
-const varietes = jeuReferentiel((id, nom) => ({ id: `v-${id}`, nom: `Variété ${nom}`, especeId: id }))
-const itps = jeuReferentiel((id, nom) => ({ id: `i-${id}`, nom: `Itinéraire ${nom}`, especeId: id }))
-
-/** Culture du compte conduite sur l'espèce partagée par un autre membre. */
-const culture = (): Ligne => ({
-  id: 1174,
-  userId: MOI,
-  especeId: 'cm-partagee',
-  varieteId: 'v-cm-partagee',
-  itpId: 'i-cm-partagee',
-  plancheId: null,
-  dateSemis: new Date('2026-10-09T22:00:00.000Z'),
-  datePlantation: new Date('2026-11-20T23:00:00.000Z'),
-  dateRecolte: new Date('2027-01-15T23:00:00.000Z'),
-  semisFait: false,
-  plantationFaite: false,
-  recolteFaite: false,
-  espece: especes.partagee,
-  variete: varietes.partagee,
-  itp: itps.partagee,
-  planche: null,
-})
-
-const recolte = (): Ligne => ({
-  id: 1150,
-  userId: MOI,
-  cultureId: 1174,
-  especeId: 'cm-partagee',
-  date: new Date('2027-01-20T12:00:00.000Z'),
-  quantite: 25,
-  unite: 'kg',
-  statut: 'en_stock',
-  prixKg: null,
-  prixTotal: null,
-  dateVente: null,
-  clientId: null,
-  clientNom: null,
-  datePeremption: null,
-  notes: null,
-  factureId: null,
-  statutBioSnapshot: null,
-  espece: especes.partagee,
-  culture: culture(),
-})
-
-const params = (id: string) => ({ params: Promise.resolve({ id }) })
-const requete = (method: string, url: string, body?: object) =>
-  new NextRequest(`http://localhost${url}`, {
-    method,
-    body: body ? JSON.stringify(body) : undefined,
-    headers: { 'content-type': 'application/json' },
-  })
-
-/** Les champs que les écrans lisent sur l'espèce embarquée sortent, l'id tiers jamais. */
-function attendreEspeceMasquee(espece: Ligne) {
-  expect(espece.userId).toBe('communaute')
-  expect(espece.nom).toBe('Entrée partagée')
-  expect(espece.uniteRendement).toBe('kg_m2')
-}
-
-let recoltes: ReturnType<typeof delegueMemoire>
-let cultures: ReturnType<typeof delegueMemoire>
-const tx = { recolte: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() }, culture: { update: vi.fn() }, intervention: { findMany: vi.fn(async () => []) }, produitBoutique: { count: vi.fn(async () => 0) }, $queryRaw: vi.fn(async () => []), $executeRaw: vi.fn(async () => 1) }
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  mocks.requireAuthApi.mockResolvedValue(sessionDe(MOI))
-  recoltes = delegueMemoire([recolte()])
-  cultures = delegueMemoire([culture()])
-  mocks.db.recolte = { ...recoltes, groupBy: vi.fn(async () => []) }
-  mocks.db.culture = cultures
-  mocks.db.userStockEspece = { findMany: vi.fn(async () => []) }
-  mocks.db.produitBoutique = { findFirst: vi.fn(async () => null), count: vi.fn(async () => 0) }
-  tx.recolte.findFirst.mockImplementation(recoltes.findFirst)
-  mocks.db.$transaction = async (fn: (t: typeof tx) => unknown) => fn(tx)
-  // Comme Prisma : la ligne écrite revient avec ses relations incluses.
-  tx.recolte.create.mockImplementation(async ({ data }: { data: Ligne }) => ({ ...recolte(), ...data, id: 1151 }))
-  tx.recolte.update.mockImplementation(async ({ data }: { data: Ligne }) => ({ ...recolte(), ...data }))
-})
+beforeEach(preparerBase)
 
 describe('GET /api/recoltes — liste', () => {
   it("l'espèce et la variété d'un autre compte sortent masquées, avec leurs libellés", async () => {
@@ -134,15 +52,27 @@ describe('GET /api/recoltes — liste', () => {
   })
 })
 
-describe('GET /api/recoltes/[id] — fiche', () => {
-  it("espèce, variété et ITP embarqués sans l'id d'un autre compte", async () => {
-    const res = await GET(requete('GET', '/api/recoltes/1150'), params('1150'))
+describe('GET /api/recoltes — filtre des espèces', () => {
+  it("joint les noms et exclut les espèces récoltées seulement par un autre compte", async () => {
+    const officielles = { ...especes.gleba, nom: null }
+    const recoltes = delegueMemoire([
+      { ...recolte(), userId: MOI, especeId: 'cm-moi', espece: especes.moi },
+      { ...recolte(), id: 1151, userId: MOI, especeId: 'gleba-1', espece: officielles },
+      { ...recolte(), id: 1152, userId: AUTRE, especeId: 'cm-privee', espece: especes.privee },
+    ])
+    mocks.db.recolte = { ...recoltes, groupBy: vi.fn(async () => []) }
+    const res = await LISTE(requete('GET', '/api/recoltes'))
     expect(res.status).toBe(200)
-    const corps = await res.json()
-    attendreEspeceMasquee(corps.espece)
-    expect(corps.culture.variete.userId).toBe('communaute')
-    expect(corps.culture.itp).toMatchObject({ nom: 'Itinéraire Entrée partagée', userId: 'communaute' })
-    expect(JSON.stringify(corps)).not.toContain(AUTRE)
+    expect((await res.json()).especes).toEqual([
+      { id: 'cm-moi', nom: 'Entrée du compte' },
+      { id: 'gleba-1', nom: null },
+    ])
+    expect(recoltes.findMany).toHaveBeenCalledWith({
+      where: { userId: MOI },
+      select: { especeId: true, espece: { select: { nom: true } } },
+      distinct: ['especeId'],
+      orderBy: { especeId: 'asc' },
+    })
   })
 })
 
@@ -160,30 +90,6 @@ describe('POST /api/recoltes — corps de /maraichage/recoltes/saisie', () => {
     const corps = await res.json()
     expect(corps.id).toBe(1151)
     attendreEspeceMasquee(corps.espece)
-    expect(JSON.stringify(corps)).not.toContain(AUTRE)
-  })
-})
-
-describe('PUT / PATCH /api/recoltes/[id] — corps de la fiche récolte', () => {
-  it('PUT (date, quantité, notes) : réponse sans id tiers', async () => {
-    const res = await PUT(
-      requete('PUT', '/api/recoltes/1150', { date: '2027-01-20T12:00:00.000Z', quantite: 30, notes: null }),
-      params('1150'),
-    )
-    expect(res.status).toBe(200)
-    const corps = await res.json()
-    expect(corps.quantite).toBe(30)
-    attendreEspeceMasquee(corps.espece)
-    expect(JSON.stringify(corps)).not.toContain(AUTRE)
-  })
-
-  it('PATCH (notes) : espèce et variété de la culture masquées', async () => {
-    const res = await PATCH(requete('PATCH', '/api/recoltes/1150', { notes: 'lavée' }), params('1150'))
-    expect(res.status).toBe(200)
-    const corps = await res.json()
-    expect(corps.notes).toBe('lavée')
-    attendreEspeceMasquee(corps.espece)
-    expect(corps.culture.variete.userId).toBe('communaute')
     expect(JSON.stringify(corps)).not.toContain(AUTRE)
   })
 })

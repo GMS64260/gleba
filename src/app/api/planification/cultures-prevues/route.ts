@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { lireAnnee } from '@/lib/api/annee'
 import { getCulturesPrevuesEtEtapesNonSuivies } from '@/lib/planification'
 import prisma from '@/lib/prisma'
 
@@ -16,8 +17,10 @@ export async function GET(request: NextRequest) {
     const userId = getUserId(session)
     const { searchParams } = new URL(request.url)
 
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
-    const groupBy = searchParams.get('groupBy') || 'espece'
+    // Année illisible (« abc », vide) : année courante, jamais NaN en base.
+    const { annee } = lireAnnee(searchParams)
+    const groupByDemande = searchParams.get('groupBy')
+    const groupBy = groupByDemande === 'ilot' || groupByDemande === 'planche' ? groupByDemande : 'espece'
     const especeId = searchParams.get('especeId') || undefined
     const ilot = searchParams.get('ilot') || undefined
     const plancheId = searchParams.get('plancheId') || undefined

@@ -104,6 +104,32 @@ describe("libelleComparatifRevenus", () => {
 
   it("nouveau-revenus cite les dépenses de N-1", () => {
     const diff = computeYearDiff({ revenus: 0, revenusAnneePrecedente: 0, depensesAnneePrecedente: 300 })
-    expect(libelleComparatifRevenus(diff, 2025, euro)).toBe("2024 : 0 € de revenus, 300.00 € de dépenses")
+    expect(libelleComparatifRevenus(diff, 2025, euro)).toBe("2024 : 0.00 € de revenus, 300.00 € de dépenses")
+  })
+})
+
+describe("computeYearDiff — devises (lot devise-totaux-api)", () => {
+  it("total null (deux devises) : pas de comparaison", () => {
+    const r = computeYearDiff({ revenus: null, revenusAnneePrecedente: 1000 })
+    expect(r.state).toBe("devises-differentes")
+    expect(libelleComparatifRevenus(r, 2026, String)).toBe("Comparaison avec 2025 indisponible : montants en devises différentes")
+  })
+  it("N en XPF, N-1 en EUR : chaque total est mono-devise mais ils ne se comparent pas", () => {
+    const r = computeYearDiff({
+      revenus: 1000, revenusAnneePrecedente: 500,
+      revenusParDevise: [{ monnaie: "XPF", total: 1000, count: 1 }],
+      revenusAnneePrecedenteParDevise: [{ monnaie: "EUR", total: 500, count: 3 }],
+    })
+    expect(r.state).toBe("devises-differentes")
+  })
+  it("même devise des deux côtés (groupes vides ignorés) : comparaison classique", () => {
+    const r = computeYearDiff({
+      revenus: 1500, revenusAnneePrecedente: 1000, depenses: 0,
+      revenusParDevise: [{ monnaie: "EUR", total: 1500, count: 2 }],
+      revenusAnneePrecedenteParDevise: [{ monnaie: "EUR", total: 1000, count: 1 }],
+      depensesParDevise: [{ monnaie: "XPF", total: 0 }],
+    })
+    expect(r.state).toBe("compare")
+    expect(r.percent).toBe(50)
   })
 })

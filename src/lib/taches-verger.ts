@@ -1,3 +1,4 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
 /**
  * Tâches du verger sur une période — source unique de vérité de l'écran
  * Verger (dashboard) et de GET /api/arbres/taches.
@@ -20,6 +21,10 @@ export async function getTachesVerger(
   const operations = await prisma.operationArbre.findMany({
     where: {
       userId,
+      // Les réalisations restent visibles dans la période historique. Les
+      // abandons d'un arbre mort se consultent dans l'historique Opérations,
+      // sans redevenir des tâches prévues si leur échéance est encore future.
+      OR: [{ fait: true }, { arbre: filtreArbresVivants(userId) }],
       datePrevue: { gte: start, lte: end },
     },
     include: {
@@ -37,6 +42,7 @@ export async function getTachesVerger(
   const operationsRetard = await prisma.operationArbre.findMany({
     where: {
       userId,
+      arbre: filtreArbresVivants(userId),
       fait: false,
       abandonneeLe: null,
       datePrevue: { lt: start },

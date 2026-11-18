@@ -318,6 +318,7 @@ export function ArbresTab() {
   const [data, setData] = React.useState<Arbre[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedType, setSelectedType] = React.useState("all")
+  const [selectedEtat, setSelectedEtat] = React.useState("vivant")
   const [showDialog, setShowDialog] = React.useState(false)
   const [arbreToDelete, setArbreToDelete] = React.useState<Arbre | null>(null)
   const [especesRef, setEspecesRef] = React.useState<EspeceRef[]>([])
@@ -419,7 +420,7 @@ export function ArbresTab() {
       // La liste individuelle est la donnée principale. Une erreur du module
       // optionnel « lots » ne doit jamais vider les arbres déjà chargés.
       const [arbresResult, lotsResult] = await Promise.allSettled([
-        fetch("/api/arbres").then(async (response) => {
+        fetch(`/api/arbres?etat=${selectedEtat}`).then(async (response) => {
           if (!response.ok) throw new Error(`arbres:${response.status}`)
           return response.json()
         }),
@@ -451,7 +452,7 @@ export function ArbresTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, selectedEtat])
 
   // Retour utilisateur 2026-07-27 — rattacher N arbres sélectionnés à une
   // parcelle en un appel, au lieu de N passages par la fiche arbre.
@@ -873,6 +874,20 @@ export function ArbresTab() {
           ))}
         </TabsList>
       </Tabs>
+
+      <div className="flex items-center gap-2">
+        <Label htmlFor="inventaire-arbres">Inventaire</Label>
+        <Select value={selectedEtat} onValueChange={setSelectedEtat}>
+          <SelectTrigger id="inventaire-arbres" className="w-[210px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="vivant">Arbres vivants</SelectItem>
+            <SelectItem value="mort">Arbres morts (historique)</SelectItem>
+            <SelectItem value="all">Tous les arbres</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* PROMPT 10 — Filtres complétude */}
       <div className="flex items-center gap-2 flex-wrap">

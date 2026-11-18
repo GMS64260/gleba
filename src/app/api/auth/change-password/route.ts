@@ -6,6 +6,10 @@
  * Exige une session active. Vérifie le mot de passe actuel avant
  * d'appliquer le nouveau (anti hijack de session). Rate-limit pour
  * limiter la force brute sur le currentPassword.
+ *
+ * MC3 : le nouveau mot de passe coupe toutes les autres sessions du compte
+ * (version de session incrémentée) ; celle qui a fait le changement reçoit
+ * un cookie réémis avec la nouvelle version et reste connectée.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -15,6 +19,7 @@ import { getActeurId } from "@/lib/exploitation/garde-session"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
 import { REVOCATION_CHANGEMENT_MOT_DE_PASSE } from "@/lib/mot-de-passe-revocation"
+import { reemettreSession } from "@/lib/session-reemission"
 
 const MIN_PASSWORD_LENGTH = 12
 
@@ -98,20 +103,45 @@ export async function POST(request: NextRequest) {
     // Écriture conditionnelle sur le hash vérifié : si une réinitialisation
     // par lien a posé un autre mot de passe depuis la lecture, ce changement
     // ne l'écrase pas (SEC-01, revue Codex du 2026-11-12). Le nouveau mot de
-    // passe révoque le jeton d'API (revue du 2026-11-04) et tout lien de
-    // réinitialisation en cours.
-    const { count } = await prisma.user.updateMany({
-      where: { id: user.id, password: user.password },
-      data: { password: hashed, ...REVOCATION_CHANGEMENT_MOT_DE_PASSE },
-    })
-    if (count !== 1) {
+    // passe révoque le jeton d'API (revue du 2026-11-04), tout lien de
+    // réinitialisation en cours et les autres sessions (MC3). La version
+    // rendue est celle de CETTE écriture, lue dans la même instruction.
+    const modifie = await prisma.user
+      .update({
+        where: { id: user.id, password: user.password },
+        data: { password: hashed, ...REVOCATION_CHANGEMENT_MOT_DE_PASSE },
+        select: { sessionVersion: true },
+      })
+      .catch((err: unknown) => {
+        if ((err as { code?: string })?.code === "P2025") return null
+        throw err
+      })
+    if (!modifie) {
       return NextResponse.json(
         { error: "Le mot de passe a été modifié entre-temps. Reconnectez-vous puis réessayez." },
         { status: 409 }
       )
     }
 
-    return NextResponse.json({ success: true, message: "Mot de passe modifié" })
+    const reponse = NextResponse.json({
+      success: true,
+      message: "Mot de passe modifié. Vos autres sessions ont été déconnectées.",
+      reconnexion: false,
+    })
+    const reemise = await reemettreSession(request, reponse, {
+      acteurId: user.id,
+      sessionVersion: modifie.sessionVersion,
+    })
+    if (!reemise) {
+      // Cookie illisible ou hors format : la session courante tombe aussi.
+      // On le dit plutôt que de la laisser se fermer sans explication.
+      return NextResponse.json({
+        success: true,
+        message: "Mot de passe modifié. Reconnectez-vous avec le nouveau mot de passe.",
+        reconnexion: true,
+      })
+    }
+    return reponse
   } catch (err) {
     console.error("POST /api/auth/change-password error:", err)
     return NextResponse.json(

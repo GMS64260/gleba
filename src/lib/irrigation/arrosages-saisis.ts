@@ -55,7 +55,10 @@ export function litresSaisis(quantite: number | null, unite: string | null): num
 }
 
 function ajouter(map: Map<number, ArrosageSaisi[]>, cultureId: number, a: ArrosageSaisi) {
-  map.set(cultureId, [...(map.get(cultureId) ?? []), a])
+  // Ajout en place : la liste n'est partagée avec personne avant le retour.
+  const liste = map.get(cultureId)
+  if (liste) liste.push(a)
+  else map.set(cultureId, [a])
 }
 
 export async function chargerArrosagesSaisis(

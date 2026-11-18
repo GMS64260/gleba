@@ -15,14 +15,19 @@ vi.mock("@/lib/auth-utils", () => ({
   requireAuthApi: mocks.requireAuthApi,
   getUserId: () => "user-1",
 }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  // Transaction simulée : verrou d'exploitation ($executeRaw) puis verrou
+  // commun des étapes (`verrouillerCultures`, $queryRaw).
+  const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(0),
+    $queryRaw: async () => [],
     culture: { findUnique: mocks.cultureFindUnique, update: mocks.cultureUpdate },
     espece: { findFirst: mocks.especeFindFirst },
     variete: { findFirst: mocks.varieteFindFirst },
     iTP: { findFirst: mocks.itpFindFirst, findUnique: mocks.itpFindUnique },
-  },
-}))
+  }
+  return { default: { $transaction: async (callback: (client: typeof tx) => unknown) => callback(tx) } }
+})
 vi.mock("@/lib/irrigation-cache", () => ({ irrigationCache: { invalidateUser: vi.fn() } }))
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 

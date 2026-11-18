@@ -1,4 +1,4 @@
-import { deviseFactureReglement } from './devise-reglement'
+import { monnaieFacture } from './devise-reglement'
 import { verrouillerReglements } from './verrou-reglements'
 /** Adaptateur utilisé par les générateurs de miroirs, dans leur transaction. */
 import type { Prisma } from '@prisma/client'
@@ -89,7 +89,7 @@ export async function rattacherReglementsFacture(
   })
   if (
     !dossier ||
-    deviseFactureReglement(f.emetteurSnapshot, dossier.devise) !== dossier.devise
+    monnaieFacture(f.emetteurSnapshot, f.date) !== dossier.devise
   )
     throw new ErreurReglement(
       'La devise de la facture ne correspond pas aux règlements déjà saisis. Conservez leurs montants dans leur devise d’origine.',

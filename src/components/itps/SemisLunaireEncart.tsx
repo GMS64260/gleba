@@ -11,6 +11,7 @@
  */
 
 import * as React from "react"
+import { getISOWeek, getISOWeekYear, getISOWeeksInYear } from "date-fns"
 import { Moon, Loader2, Sprout } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +25,7 @@ import {
 import type { ZoneClimat } from "@/lib/terroir"
 import { todayLocalISO } from "@/lib/format-utils"
 import { parametreFuseau } from "@/components/lunaire/lecture"
+import { distanceSemainesAvant } from "./distance-semaines"
 
 interface JourLunaire {
   date: string
@@ -58,20 +60,6 @@ const CAT_STYLE: Record<CategorieLunaire, { bg: string; text: string; ring: stri
   fruit: { bg: "bg-orange-50", text: "text-orange-700", ring: "ring-orange-200" },
   racine: { bg: "bg-amber-50", text: "text-amber-800", ring: "ring-amber-200" },
   fleur: { bg: "bg-pink-50", text: "text-pink-700", ring: "ring-pink-200" },
-}
-
-// Semaine ISO d'une date (lundi = début), cohérent avec lib/assistant-helpers.
-function semaineISO(d: Date): number {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
-  const day = date.getUTCDay() || 7
-  date.setUTCDate(date.getUTCDate() + 4 - day)
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
-  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
-}
-
-// Distance (en semaines, vers l'avant) de la semaine courante à une semaine cible.
-function distanceSemaine(courante: number, cible: number): number {
-  return ((cible - courante) % 52 + 52) % 52
 }
 
 export function SemisLunaireEncart({
@@ -119,7 +107,10 @@ export function SemisLunaireEncart({
   }, [])
 
   const now = new Date()
-  const semaineCourante = semaineISO(now)
+  // Semaine ISO (lundi = début), comme lib/assistant-helpers, et longueur de
+  // SON année ISO : 53 semaines en 2026, ce que le modulo 52 ignorait.
+  const semaineCourante = getISOWeek(now)
+  const semainesAnnee = getISOWeeksInYear(new Date(getISOWeekYear(now), 6, 1))
   // Jour civil du lecteur, comme les jours du calendrier (le jour UTC
   // retenait la veille entre minuit et 2 h à Paris).
   const todayStr = todayLocalISO()
@@ -131,11 +122,13 @@ export function SemisLunaireEncart({
       const decalage = decalageItpPourLecteur(itp, zone, lecteurId ?? null) + reglageFin
       const sSemis = decalerSemaine(itp.semaineSemis, decalage)
       if (sSemis == null) continue
-      const dist = distanceSemaine(semaineCourante, sSemis)
+      const dist = distanceSemainesAvant(semaineCourante, sSemis, semainesAnnee)
       if (dist > horizonSemaines) continue
       const cat = categorieLunaire({
         especeId: itp.especeId,
-        nom: itp.espece?.id ?? itp.especeId,
+        // Le NOM de l'espèce : l'identifiant d'une espèce personnelle est un
+        // cuid, sur lequel aucun mot-clé (« carotte », « tomate ») ne porte.
+        nom: itp.espece?.nom ?? itp.espece?.id ?? itp.especeId,
         famille: itp.espece?.famille?.id ?? null,
       })
       if (!cat) continue
@@ -144,7 +137,7 @@ export function SemisLunaireEncart({
       map.get(cat)!.add(nom)
     }
     return map
-  }, [itps, zone, lecteurId, reglageFin, semaineCourante, horizonSemaines])
+  }, [itps, zone, lecteurId, reglageFin, semaineCourante, semainesAnnee, horizonSemaines])
 
   // 2) Prochains jours lunaires favorables (>= aujourd'hui) par type.
   const prochainsJours = React.useMemo(() => {

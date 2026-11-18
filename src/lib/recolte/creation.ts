@@ -2,7 +2,7 @@ import prisma from '@/lib/prisma'
 import { apresDemain, MESSAGE_RECOLTE_FUTURE } from '@/lib/interventions/date-realisee'
 import { createRecolteSchema } from '@/lib/validations/recolte'
 import { snapshotStatutBio } from '@/lib/statut-bio'
-import { ecrituresPassageAFait } from '@/lib/cultures/execution'
+import { ecrituresPassageAFait, verrouillerCultures } from '@/lib/cultures/execution'
 import { invalidateKpi } from '@/lib/kpi'
 import { refusRecolteAvantDebut } from './date-coherente'
 import { chargerSurchargesRendement, rendementEffectif } from './rendement-effectif'
@@ -74,9 +74,20 @@ export async function preparerRecoltes(userId: string, entrees: unknown[], unite
 export async function ecrireRecoltesPreparees(tx: Prisma.TransactionClient, preparees: Extract<Awaited<ReturnType<typeof preparerRecoltes>>, { ok: true }>['recoltes']) {
     const resultats = []
     const planches = new Map<number, { plancheId: string | null; parcelleId: string | null }>()
+    // Contre-revue adverse (2026-11-15) : verrou commun des étapes de culture
+    // (`verrouillerCultures`, celui du PUT, du PATCH et de `update_culture`),
+    // puis relecture de l'état des étapes SOUS le verrou. La culture lue par
+    // `preparerRecoltes` peut avoir été redatée entre-temps : recaler depuis
+    // cette copie laissait une récolte faite datée après la récolte saisie.
+    const cultureIds = [...new Set(preparees.map(r => r.culture.id))]
+    await verrouillerCultures(tx, preparees[0].data.userId, cultureIds)
+    const fraiches = await tx.culture.findMany({
+      where: { id: { in: cultureIds }, userId: preparees[0].data.userId },
+      select: { id: true, recolteFaite: true, dateRecolte: true, dateRecoltePlan: true },
+    })
     // Une même culture peut être citée plusieurs fois : sa date initiale est
     // recalée sur la première récolte chronologique, puis conservée.
-    const etats = new Map(preparees.map(r => [r.culture.id, r.culture]))
+    const etats = new Map(preparees.map(r => [r.culture.id, { ...r.culture, ...fraiches.find(c => c.id === r.culture.id) }]))
     for (const { culture, data } of [...preparees].sort((a, b) => a.data.date.getTime() - b.data.date.getTime())) {
       const recolte = await tx.recolte.create({ data, include: { espece: true, culture: true } })
       const etat = etats.get(culture.id)!

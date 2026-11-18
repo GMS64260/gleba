@@ -16,6 +16,11 @@ const patchSchema = z.object({
   // C9 : rouvrir ou annuler une injection RÉALISÉE exige une erreur de saisie
   // motivée (`src/lib/elevage/annulation-soin.ts`).
   annulation: annulationSoinSchema.optional(),
+  // ADV88 : délais d'attente prescrits, fournis à la validation d'un soin
+  // médicamenteux sans médicament de la pharmacie (mêmes bornes que le soin).
+  tempsAttenteLaitJ: z.number().int().min(0).max(365).nullable().optional(),
+  tempsAttenteViandeJ: z.number().int().min(0).max(365).nullable().optional(),
+  tempsAttenteOeufsJ: z.number().int().min(0).max(365).nullable().optional(),
 }).refine((d) => d.statut !== undefined || d.dateRealisee !== undefined, {
   message: "Indiquez un statut ou une date réelle.",
   path: ["statut"],
@@ -39,6 +44,11 @@ export async function PATCH(
       injectionId: parsed.data.injectionId,
       statut: parsed.data.statut,
       dateRealisee: parsed.data.dateRealisee,
+      delais: {
+        tempsAttenteLaitJ: parsed.data.tempsAttenteLaitJ,
+        tempsAttenteViandeJ: parsed.data.tempsAttenteViandeJ,
+        tempsAttenteOeufsJ: parsed.data.tempsAttenteOeufsJ,
+      },
     }, {
       gererStock: true,
       annulation: parsed.data.annulation,
@@ -56,7 +66,11 @@ export async function PATCH(
     })
     if (!resultat.ok) {
       return NextResponse.json(
-        { error: resultat.error, ...(resultat.code ? { code: resultat.code } : {}) },
+        {
+          error: resultat.error,
+          ...(resultat.code ? { code: resultat.code } : {}),
+          ...(resultat.delaisManquants ? { delaisManquants: resultat.delaisManquants } : {}),
+        },
         { status: resultat.status },
       )
     }

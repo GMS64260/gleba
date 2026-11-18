@@ -3,6 +3,8 @@
  * aucun stock de l'élevage (règles : src/lib/boutique/reprise-stock-lie.ts).
  *
  * À blanc par défaut : rien n'est écrit, le journal dit ce qui le serait.
+ * Les lignes `a_rapprocher` restent exclues même avec --appliquer. Leur présence
+ * rend un code de sortie 1 ; les mouvements existants ne sont jamais neutralisés.
  *
  *   tsx scripts/reprise-boutique-stock-lie.ts --user <id> [--journal fichier.json] [--appliquer]
  *   tsx scripts/reprise-boutique-stock-lie.ts --tous      [--journal fichier.json] [--appliquer]
@@ -28,6 +30,7 @@ async function main() {
     const journaux: JournalReprise[] = []
     const fichier = valeur('--journal')
     const echecs: string[] = []
+    let aRapprocher = 0
     const ecrire = () => { if (fichier) writeFileSync(fichier, JSON.stringify({ applique: appliquer, date: new Date().toISOString(), echecs, journaux }, null, 2)) }
     for (const id of comptes) {
       let journal: JournalReprise
@@ -37,12 +40,16 @@ async function main() {
       catch (e) { echecs.push(id); ecrire(); console.error(`${id} : reprise annulée pour ce compte —`, e instanceof Error ? e.message : e); continue }
       if (journal.evenements.length) { journaux.push(journal); ecrire() }
       const compte = (issue: string) => journal.evenements.filter((e) => e.issue === issue).length
-      console.log(`${id} : ${compte('relie')} produit(s) relié(s), ${compte('non_relie')} à relier à la main, ${compte('sortie')} ligne(s) sortie(s) dont ${journal.evenements.filter((e) => 'dateDeRepli' in e).length} à la date de la reprise, ${compte('deja_sortie')} déjà sortie(s), ${compte('stock_insuffisant')} sans stock suffisant`)
+      aRapprocher += compte('a_rapprocher')
+      console.log(`${id} : ${compte('relie')} produit(s) relié(s), ${compte('non_relie')} à relier à la main, ${compte('sortie')} ligne(s) sortie(s) dont ${journal.evenements.filter((e) => 'dateDeRepli' in e).length} à la date de la reprise, ${compte('deja_sortie')} déjà sortie(s), ${compte('stock_insuffisant')} sans stock suffisant, ${compte('a_rapprocher')} à rapprocher (sortie suspendue)`)
     }
     ecrire()
     if (!fichier) console.log(JSON.stringify(journaux, null, 2))
     if (echecs.length) { console.error(`${echecs.length} compte(s) en échec, non modifié(s) : ${echecs.join(', ')}`); process.exitCode = 1 }
-    console.log(appliquer ? 'Reprise appliquée.' : 'Reprise jouée à blanc : rien n’a été écrit. Relancez avec --appliquer.')
+    if (aRapprocher) { console.error(`${aRapprocher} ligne(s) à rapprocher : aucune sortie pour ces lignes, même avec --appliquer. Consultez les mouvements référencés au journal.`); process.exitCode = 1 }
+    console.log(appliquer
+      ? (aRapprocher || echecs.length ? 'Reprise partielle : consultez le journal.' : 'Reprise appliquée.')
+      : 'Reprise jouée à blanc : rien n’a été écrit. --appliquer ne traite que les lignes sans ambiguïté.')
   } finally { await prisma.$disconnect() }
 }
 

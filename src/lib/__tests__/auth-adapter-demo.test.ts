@@ -48,12 +48,14 @@ describe("glebaAdapter — protection du compte démo", () => {
     expect(await adapter.getUser!(DEMO_ID)).toBeNull()
   })
 
-  it("getUser renvoie les autres utilisateurs normalement", async () => {
+  // MC3 (revue adverse du 2026-11-15) : le cookie décodé par le traitement
+  // OAuth n'est pas revalidé ; un cookie révoqué y liait une identité Google
+  // au compte. Aucune session courante n'est jamais résolue par getUser.
+  it("getUser renvoie null pour tout compte, sans lire la base (identité OAuth jamais rattachée au cookie)", async () => {
     mocked.user.findUnique.mockResolvedValue(membreRow)
     const adapter = glebaAdapter()
-    const user = await adapter.getUser!("membre-id")
-    expect(user?.email).toBe("membre@example.com")
-    expect(user?.emailVerified).toBeInstanceOf(Date)
+    expect(await adapter.getUser!("membre-id")).toBeNull()
+    expect(mocked.user.findUnique).not.toHaveBeenCalled()
   })
 
   it("linkAccount refuse de lier une identité OAuth au compte démo", async () => {

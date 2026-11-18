@@ -3,6 +3,7 @@ import { prixFruitApi, dateRecolteApi, statutBioApresModification } from "@/lib/
 import { snapshotStatutBio } from "@/lib/statut-bio"
 import { avertissementsDarFruit } from "@/lib/verger/dar"
 import { modifierVenteVerger } from "@/lib/verger/vente"
+import { corpsRefusDar } from '@/lib/phyto/refus-dar'
 import { ErreurVerger } from "@/lib/verger/erreur"
 import { etatSortiesLotVerger, NATURE_TRANSFORMATION, reliquatApresCorrection } from "@/lib/verger/sortie-stock"
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
@@ -307,6 +308,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { id } = await params
     return NextResponse.json(await modifierVenteVerger('fruit', session!.user.id, session!.user.acteurId ?? session!.user.id, Number(id), await request.json()))
   } catch (err) {
+    // Délai avant récolte en cours : 409 { error, code: 'DAR_EN_COURS', traitements }.
+    const refusDar = corpsRefusDar(err)
+    if (refusDar) return NextResponse.json(refusDar, { status: 409 })
     if (err instanceof ErreurCommerciale) return NextResponse.json({ error: err.message }, { status: err.status })
     if (err instanceof ErreurVerger || err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Actualisez les stocks.' }, { status: 409 })

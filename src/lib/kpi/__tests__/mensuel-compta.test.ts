@@ -9,8 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/lib/comptabilite/encours', () => ({ chargerEncoursCompta: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
   default: {
+    exploitation: { findUnique: vi.fn(async () => ({ devise: 'EUR', territoire: 'METROPOLE' })) },
     venteManuelle: { findMany: vi.fn() },
     depenseManuelle: { findMany: vi.fn() },
+    // Dossiers de règlement (devise figée des dépenses) : aucun ici.
+    cibleReglement: { findMany: vi.fn(async () => []) },
     facture: { findMany: vi.fn() },
   },
 }))

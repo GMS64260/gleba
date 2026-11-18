@@ -1,12 +1,13 @@
 import PDFDocument from "pdfkit"
 
 import type { EmetteurSnapshot } from "@/lib/facture-utils"
-import { noteLibreDeFacture, type FacturePourExport } from "@/lib/facture-structuree"
+import { deviseEditionFacture, noteLibreDeFacture, type FacturePourExport } from "@/lib/facture-structuree"
 import { attacherFacturX, creerDocumentPdfA3, terminerPdf, type ProfilFacturX } from "@/lib/facturx/pdfa"
 import { LABELS_CATEGORIE_OPERATION, MENTION_OPTION_DEBITS, mentionsCodifiees, type CategorieOperation } from "@/lib/facture-regles"
 import { formatPrixUnitaire, mentionPrixUnitaireTTC } from "@/lib/comptabilite/prix-unitaire"
 import { symboleDevise } from "@/lib/format-utils"
 import { formatSiren, formatSiret } from "@/lib/siret"
+import { acheteurDeFacture } from "@/lib/comptabilite/rattachement-client"
 import { labelMentionAB, mentionABFacture } from "@/lib/statut-bio"
 import { getTerritoire, identifiantLegalAffichage } from "@/lib/territoires"
 
@@ -45,16 +46,31 @@ export function blocNotesFacture(facture: Pick<FacturePourExport, "type" | "note
   return { titre: facture.type === "avoir" ? "Motif de l'avoir" : "Conditions et notes", texte }
 }
 
+/**
+ * Lignes du bloc « FACTURÉ À » sous le nom : adresse, courriel, SIRET (ou
+ * SIREN), TVA intracommunautaire. Acheteur figé à l'émission (BX03) : une
+ * fiche client modifiée ensuite ne change plus le PDF d'une facture émise.
+ * Sans instantané complet, seuls les champs historiques présents sont imprimés.
+ */
+export function blocAcheteurPdf(facture: FacturePourExport): { nom: string; lignes: string[] } {
+  const acheteur = acheteurDeFacture(facture)
+  const lignes: string[] = []
+  if (acheteur.adresse) lignes.push(acheteur.adresse)
+  if (acheteur.email) lignes.push(acheteur.email)
+  if (acheteur.siret) lignes.push(`SIRET : ${formatSiret(acheteur.siret)}`)
+  else if (acheteur.siren) lignes.push(`SIREN : ${formatSiren(acheteur.siren)}`)
+  if (acheteur.tvaIntra) lignes.push(`TVA intra : ${acheteur.tvaIntra}`)
+  return { nom: acheteur.nom || "—", lignes }
+}
+
 export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExport, emetteur: EmetteurSnapshot | null): void {
   const typeLabel = TYPE_LABELS[facture.type] || facture.type.toUpperCase()
   // Bas utile de la page : un texte posé plus bas ferait ouvrir une page à
   // pdfkit (cf. le pied « Document généré le… » plus bas).
   const basUtile = () => doc.page.height - doc.page.margins.bottom
 
-  // Outre-mer : devise, identifiant légal et libellé de taxe dépendent du
-  // territoire de l'émetteur (cf src/lib/territoires.ts). Anciennes factures
-  // sans ces champs : repli métropole (€, SIRET, TVA).
-  const devise = emetteur?.devise || "EUR"
+  // La monnaie de la pièce émise reste indépendante du complément d'identité légale.
+  const devise = deviseEditionFacture(facture, emetteur)
   const sym = symboleDevise(devise as "EUR" | "XPF")
   const identEmetteur = emetteur ? identifiantLegalAffichage(emetteur) : null
   const libelleTaxe = getTerritoire(emetteur?.territoire).libelleTaxe || "TVA"
@@ -125,31 +141,13 @@ export function dessinerFacture(doc: PDFKit.PDFDocument, facture: FacturePourExp
   y = headerEndY + 22
   doc.font("Helvetica-Bold").fontSize(10).fillColor("#64748b").text("FACTURÉ À", 50, y)
   y += 14
+  const acheteur = blocAcheteurPdf(facture)
   doc.font("Helvetica-Bold").fontSize(11).fillColor("#1e293b")
-  doc.text(facture.clientNom || "—", 50, y, { width: 250 })
+  doc.text(acheteur.nom, 50, y, { width: 250 })
   y += 14
   doc.font("Helvetica").fontSize(9).fillColor("#475569")
-  if (facture.clientAdresse) {
-    doc.text(facture.clientAdresse, 50, y, { width: 250 })
-    y += 12
-  }
-  if (facture.client?.email) {
-    doc.text(facture.client.email, 50, y, { width: 250 })
-    y += 12
-  }
-  // Identité de l'acheteur figée sur la facture (lot 1), sinon la fiche client.
-  const clientSiret = facture.clientSiret || facture.client?.siret
-  const clientSiren = facture.clientSiren || facture.client?.siren
-  const clientTva = facture.clientTvaIntra || facture.client?.tvaIntra
-  if (clientSiret) {
-    doc.text(`SIRET : ${formatSiret(clientSiret)}`, 50, y, { width: 250 })
-    y += 12
-  } else if (clientSiren) {
-    doc.text(`SIREN : ${formatSiren(clientSiren)}`, 50, y, { width: 250 })
-    y += 12
-  }
-  if (clientTva) {
-    doc.text(`TVA intra : ${clientTva}`, 50, y, { width: 250 })
+  for (const ligne of acheteur.lignes) {
+    doc.text(ligne, 50, y, { width: 250 })
     y += 12
   }
   // Adresse de livraison si différente de celle du client (mention obligatoire, BG-15).

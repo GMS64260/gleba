@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DataTable } from "@/components/tables/DataTable"
 import { useToast } from "@/hooks/use-toast"
+import { useChargementPlanification } from "@/hooks/use-annee-planification"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { ZONE_CLIMAT_LABEL } from "@/lib/terroir"
 import { libelleImplantationItp, nomAffichableItp } from "@/lib/itp-label"
@@ -208,26 +209,14 @@ export function PlanificationTab({ year }: PlanificationTabProps) {
 // ============================================================
 
 function PlanificationSubTab({ year }: { year: number }) {
-  const [stats, setStats] = React.useState<Stats | null>(null)
-  const [isLoading, setIsLoading] = React.useState(true)
-
-  React.useEffect(() => {
-    async function fetchStats() {
-      setIsLoading(true)
-      try {
-        const response = await fetch(`/api/planification/stats?annee=${year}`)
-        if (response.ok) {
-          const data = await response.json()
-          setStats(data)
-        }
-      } catch {
-        // silent
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    fetchStats()
-  }, [year])
+  // Revue du 2026-11-11 — l'état du plan ne vaut que pour la saison demandée :
+  // un échec, ou le chargement d'une autre saison, laissait l'entrée de la
+  // saison précédente (« Créer 13 cultures » sous « Saison 2027 »). L'échec
+  // est dit sur place, sans toast : le hub reste utilisable sans ces compteurs.
+  const { resultat: stats, chargement: isLoading, erreur } = useChargementPlanification<Stats>(
+    `/api/planification/stats?annee=${year}`,
+    null,
+  )
 
   return (
     <div className="space-y-6">
@@ -241,6 +230,11 @@ function PlanificationSubTab({ year }: { year: number }) {
               {!isLoading && stats?.culturesACreer === 0 && !stats?.etapesRotationNonSuivies && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-100">
                   <CheckCircle2 className="h-4 w-4" /> Plan prêt à utiliser
+                </span>
+              )}
+              {erreur && (
+                <span role="status" className="text-xs font-medium text-amber-200">
+                  État du plan indisponible pour le moment
                 </span>
               )}
               {!isLoading && !!stats?.etapesRotationNonSuivies && (

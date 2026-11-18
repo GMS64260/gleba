@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
@@ -74,6 +74,14 @@ describe('soins planifies et temps attente lait', () => {
     mocks.stockUpdateMany.mockResolvedValue({ count: 1 })
     mocks.injectionFindMany.mockResolvedValue([])
     mocks.effectifTraiteAuJour.mockResolvedValue(null)
+  })
+
+  it('refuse la création d’un soin dont la cible vaut zéro', async () => {
+    const response = await POST(request('POST', { animalId: 0, type: 'Tonte' }))
+    expect(response.status).toBe(400)
+    expect((await response.json()).details.fieldErrors.animalId).toBeDefined()
+    expect(mocks.soinCreate).not.toHaveBeenCalled()
+    expect(mocks.animalFindFirst).not.toHaveBeenCalled()
   })
 
   it('ne demarre pas les temps attente pour un soin seulement planifie', async () => {
@@ -354,7 +362,7 @@ describe('soins planifies et temps attente lait', () => {
     vi.mocked(prismaMock.lotAnimaux.findFirst).mockResolvedValue({ id: 4, especeAnimale: null } as never)
     mocks.effectifTraiteAuJour.mockResolvedValue(37)
 
-    expect((await POST(request('POST', { lotId: 4, type: 'Vermifuge', produit: 'X', fait: true }))).status).toBe(201)
+    expect((await POST(request('POST', { lotId: 4, type: 'Vermifuge', produit: 'X', fait: true, tempsAttenteViandeJ: 0 }))).status).toBe(201)
     expect(mocks.soinCreate.mock.calls[0][0].data.effectifTraite).toBe(37)
     expect(mocks.effectifTraiteAuJour.mock.calls[0].slice(1, 3)).toEqual(['user-1', 4])
 
@@ -373,6 +381,7 @@ describe('soins planifies et temps attente lait', () => {
       produit: 'Dectomax',
       datePrevue: '2026-11-11',
       fait: true,
+      tempsAttenteViandeJ: 14,
     }))
 
     expect(response.status).toBe(201)
@@ -403,6 +412,7 @@ describe('soins planifies et temps attente lait', () => {
       type: 'Vermifuge',
       datePrevue: '2026-08-01',
       fait: true,
+      tempsAttenteViandeJ: 0,
     }))
 
     expect(response.status).toBe(201)
@@ -500,13 +510,6 @@ describe('ticket cmvnp6s3z : modifier le protocole garde l’heure réelle de la
   let injections: Ligne[]
   let soin: Record<string, unknown>
 
-  // Fuseau du conteneur de production (docker-compose : TZ Europe/Paris).
-  const tzAvant = process.env.TZ
-  beforeAll(() => { process.env.TZ = 'Europe/Paris' })
-  afterAll(() => {
-    if (tzAvant === undefined) delete process.env.TZ
-    else process.env.TZ = tzAvant
-  })
 
   // Faux `injections_soins` : rejoue le DELETE et l'upsert de
   // `synchroniserInjections` avec la sémantique du SQL (le DO UPDATE lit la
@@ -677,12 +680,12 @@ describe('ticket cmvnp6s3z : modifier le protocole garde l’heure réelle de la
     expect(soin.finAttenteLait).toEqual(new Date('2026-07-18T00:00:00Z'))
   })
 
-  it('1re injection datée 24/09 00:30 Paris (23/09 22:30 UTC) : le dialogue montre le 24/09 et ne la décale pas', async () => {
-    const minuitTrente = new Date('2026-09-23T22:30:00Z')
+  it('1re injection datée 24/09 00:30 en heure locale : le dialogue montre le 24/09 et ne la décale pas', async () => {
+    const minuitTrente = new Date(2026, 8, 24, 0, 30)
     soin = { ...soin, date: minuitTrente }
     injections = [
       { id: 'inj-1', numero: 1, datePrevue: minuitTrente, dateRealisee: minuitTrente, statut: 'realisee' },
-      { id: 'inj-2', numero: 2, datePrevue: new Date('2026-09-25T22:30:00Z'), dateRealisee: null, statut: 'a_faire' },
+      { id: 'inj-2', numero: 2, datePrevue: new Date(2026, 8, 26, 0, 30), dateRealisee: null, statut: 'a_faire' },
     ]
     expect(jourSoin(minuitTrente)).toBe('2026-09-24')
 
@@ -692,8 +695,8 @@ describe('ticket cmvnp6s3z : modifier le protocole garde l’heure réelle de la
     expect(res.status).toBe(200)
     expect(soin.date).toEqual(minuitTrente)
     expect(lignes()).toEqual([
-      [1, 'realisee', '2026-09-23T22:30:00.000Z', '2026-09-23T22:30:00.000Z'],
-      [2, 'a_faire', '2026-09-24T22:30:00.000Z', null],
+      [1, 'realisee', minuitTrente.toISOString(), minuitTrente.toISOString()],
+      [2, 'a_faire', new Date(2026, 8, 25, 0, 30).toISOString(), null],
     ])
   })
 })

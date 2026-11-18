@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { RecolteArbre } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
+import { normaliserStock, quantiteCanonique, retirerDuStock, stockCouvre } from '@/lib/stocks/milliemes'
 import { stockEstDenombrable } from '@/lib/commercial/stock-types'
 import { dateIsoFacture } from '@/lib/facture-regles'
 import { invalidateKpi } from '@/lib/kpi/cache'
@@ -35,7 +36,8 @@ const saisieSchema = z.object({
   cleIdempotence: z.string({ error: 'Actualisez la page avant d’enregistrer cette transformation.' }).min(8, 'Actualisez la page avant d’enregistrer cette transformation.').max(100),
   sources: z.array(z.object({
     fruitId: z.number({ error: 'Lot de fruits invalide.' }).int().positive(),
-    quantite: z.number({ error: 'Indiquez les kilos de fruits utilisés.' }).finite().positive('Indiquez les kilos de fruits utilisés.'),
+    quantite: z.number({ error: 'Indiquez les kilos de fruits utilisés.' }).finite().positive('Indiquez les kilos de fruits utilisés.')
+      .refine(q => quantiteCanonique(q) > 0, 'Indiquez les kilos de fruits utilisés.'),
   }), { error: 'Choisissez au moins un lot de fruits.' }).min(1, 'Choisissez au moins un lot de fruits.').max(20),
 })
 
@@ -92,7 +94,8 @@ export async function creerLotTransforme(userId: string, brut: unknown) {
         throw new ErreurVerger(`Le lot ${nom} n’a plus que ${arrondi(disponible)} kg en stock.`, 409, 'sources')
       }
       if (dateIsoFacture(jour) < dateIsoFacture(fruit.date)) throw new ErreurVerger(`La transformation ne peut pas précéder la récolte du lot ${nom}.`, 400, 'date')
-      fruits.push({ fruit, disponible, quantite: Math.min(source.quantite, disponible) })
+      // Même quantité pour le débit et la trace que l'annulation rendra (au plus le reliquat).
+      fruits.push({ fruit, disponible, quantite: stockCouvre(disponible, source.quantite) ? quantiteCanonique(source.quantite) : normaliserStock(disponible) })
     }
     const numLot = saisie.numLot || await prochainNumeroLotVerger(tx, userId, { date: jour, parcelleNom: 'TR', espece: saisie.produit })
     if (await tx.lotTransforme.findUnique({ where: { userId_numLot: { userId, numLot } }, select: { id: true } })) {
@@ -105,7 +108,7 @@ export async function creerLotTransforme(userId: string, brut: unknown) {
       cleIdempotence: saisie.cleIdempotence,
     } })
     for (const { fruit, disponible, quantite } of fruits) {
-      await tx.recolteArbre.update({ where: { id: fruit.id, userId }, data: { stockDisponibleCommercial: Math.max(0, arrondi(disponible - quantite)) } })
+      await tx.recolteArbre.update({ where: { id: fruit.id, userId }, data: { stockDisponibleCommercial: Math.max(0, retirerDuStock(disponible, quantite)) } })
       await tx.mouvementStockCommercial.create({ data: {
         userId, nature: NATURE_TRANSFORMATION, cleIdempotence: `${saisie.cleIdempotence}:${fruit.id}`,
         notes: `Transformé en ${saisie.produit} (lot ${numLot})`, articleStockType: 'fruit', articleStockId: String(fruit.id),

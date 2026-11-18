@@ -9,11 +9,14 @@
  * jour du navigateur, sans marge.
  */
 import { jourLocalISO } from '@/lib/accueil/classement'
+import { jourCivilStocke } from '@/lib/jour-civil'
 
 export function apresDemain(date: Date, maintenant: Date = new Date()): boolean {
   const demain = new Date(maintenant)
   demain.setDate(demain.getDate() + 1)
-  return jourLocalISO(date) > jourLocalISO(demain)
+  // Une date de calendrier stockée à minuit UTC se lit en UTC (`jourCivilStocke`) :
+  // lue en local, elle reculait d'un jour sur un serveur à l'ouest d'UTC.
+  return (jourCivilStocke(date) ?? jourLocalISO(date)) > jourLocalISO(demain)
 }
 
 export const MESSAGE_REALISEE_FUTURE =

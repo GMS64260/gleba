@@ -1,3 +1,4 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
 /**
  * API Routes pour les Zones de verger
  * GET /api/arbres/zones - Liste des zones avec count arbres
@@ -14,7 +15,7 @@ export async function GET() {
     const zones = await prisma.zoneVerger.findMany({
       where: { userId: session!.user.id },
       include: {
-        _count: { select: { arbres: true } },
+        _count: { select: { arbres: { where: filtreArbresVivants(session!.user.id) } } },
       },
       orderBy: { nom: "asc" },
     })

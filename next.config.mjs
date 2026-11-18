@@ -4,7 +4,14 @@ const nextConfig = {
   output: 'standalone',
 
   // Générer les pages en série et limiter le cache natif du compilateur.
-  experimental: { cpus: 1, turbopackMemoryLimit: 1024 * 1024 * 1024 },
+  // GLEBA_TURBOPACK_CACHE_DEV=0 : désactive le cache disque de Turbopack en next dev
+  // (.next/dev/cache/turbopack, actif par défaut en 16.2). Réservé au banc pour l'essai A/B
+  // de la panique turbo-tasks-backend (aggregation_update.rs) ; sans la variable, rien ne change.
+  experimental: {
+    cpus: 1,
+    turbopackMemoryLimit: 1024 * 1024 * 1024,
+    ...(process.env.GLEBA_TURBOPACK_CACHE_DEV === '0' ? { turbopackFileSystemCacheForDev: false } : {}),
+  },
 
   // Docker vérifie les types avant la compilation pour libérer toute la mémoire
   // du vérificateur. Les autres builds gardent la vérification Next habituelle.

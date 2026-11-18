@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Pencil } from "lucide-react"
 import { appliquerDecalageItp } from "@/lib/calendrier-climat"
 import { nomAffichableItp } from "@/lib/itp-label"
+import { barresGantt } from "./gantt-barres"
 import type { ItpVue } from "./types"
 
 interface GanttRowProps {
@@ -24,7 +25,17 @@ interface GanttRowProps {
   decalage?: number
 }
 
-export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
+/**
+ * Mémoïsée : le calendrier rend jusqu'à cent lignes et se redessinait en
+ * entier à chaque frappe dans la recherche ou réglage du décalage d'une autre
+ * ligne. Les propriétés sont stables (ITP de la liste, `onEdit` en
+ * `useCallback`, décalage numérique).
+ */
+export const GanttRow = React.memo(function GanttRow({
+  itp: itpRef,
+  onEdit,
+  decalage = 0,
+}: GanttRowProps) {
   // On travaille sur une copie décalée pour le rendu des barres et du type de
   // culture ; `onEdit` reçoit l'ITP de référence d'origine (édition en base).
   const itp = React.useMemo(
@@ -77,121 +88,9 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
     return '?'
   }
 
-  // Calculer les barres (position en % sur 52 semaines)
-  //
-  // Audit Marc 2026-05-14 — Bug 20 : la bande verte « Croissance »
-  // n'apparaissait pas sur les ITPs en semis direct (ex: Petit pois,
-  // Carotte, Radis) parce que la condition exigeait `semainePlantation`.
-  // Pour ces cycles, on découpe désormais la phase semis→récolte en :
-  //   * 3 semaines de "Semis" (orange) en début → germination + jeune plant
-  //   * le reste en "Croissance" (vert) jusqu'à la récolte
-  // Sources : J.-M. Fortier, Le Jardinier-Maraîcher (phase germination).
-  const PHASE_SEMIS_SEMAINES_DIRECT = 3
-
-  // Bug testeur 2026-05-29 (Carotte-automne-conservation-serre) — durée en
-  // semaines entre deux semaines de l'année, en tenant compte d'un passage
-  // d'année (récolte < semis → +52). Sans ça, `recolte - semis` était négatif
-  // et les barres avaient une largeur < 0 (semis/croissance invisibles).
-  const dureeSem = (debut: number, fin: number) =>
-    fin >= debut ? fin - debut : fin + 52 - debut
-  // Largeur en %, bornée pour ne pas déborder de l'axe 52 semaines (les cycles
-  // qui débordent sur l'année suivante sont tronqués proprement à S52).
-  const barre = (debut: number, dureeSemaines: number, color: string, label: string) => {
-    const start = ((debut - 1) / 52) * 100
-    const width = Math.min(100 - start, Math.max(0, (dureeSemaines / 52) * 100))
-    return { start, width, color, label }
-  }
-
-  const calculateBars = () => {
-    const bars: { start: number; width: number; color: string; label: string }[] = []
-
-    const pushWindow = (debut: number, fin: number, color: string, label: string) => {
-      if (fin >= debut) {
-        bars.push(barre(debut, fin - debut + 1, color, label))
-        return
-      }
-      bars.push(barre(debut, 53 - debut, color, label))
-      bars.push(barre(1, fin, color, label))
-    }
-
-    // Jeu documenté : les bornes sont de vraies fenêtres de décision, pas une
-    // date unique artificielle. On les rend directement et on garde une bande
-    // de croissance indicative entre la fin d'implantation et la récolte.
-    if (itp.semaineImplantationDebut && itp.semaineImplantationFin) {
-      pushWindow(
-        itp.semaineImplantationDebut,
-        itp.semaineImplantationFin,
-        '#f59e0b',
-        itp.implantation ?? 'Implantation'
-      )
-      if (itp.semaineRecolte) {
-        const croissanceDebut = itp.semaineImplantationFin
-        const croissance = dureeSem(croissanceDebut, itp.semaineRecolte)
-        if (croissance > 0) {
-          const croissanceFin = itp.semaineRecolte === 1 ? 52 : itp.semaineRecolte - 1
-          pushWindow(
-            croissanceDebut,
-            croissanceFin,
-            '#4caf50',
-            'Croissance indicative'
-          )
-        }
-      }
-      if (itp.semaineRecolte && itp.semaineRecolteFin) {
-        pushWindow(
-          itp.semaineRecolte,
-          itp.semaineRecolteFin,
-          '#9c27b0',
-          'Fenêtre de récolte'
-        )
-      }
-      // Semis en pépinière ANTÉRIEUR à la fenêtre d'implantation : cette branche
-      // rendait la fenêtre puis sortait, si bien que les 14 itinéraires dont le
-      // semis précède l'implantation (zinnia S13 pour une implantation S18–S22,
-      // muflier S8 pour S14–S18, giroflée S32 pour S40–S44…) n'affichaient aucune
-      // barre de semis — alors que la planification, elle, part bien du semis
-      // (`semaineSemisEffective`).
-      if (
-        itp.semaineSemis &&
-        itp.semaineSemis !== itp.semaineImplantationDebut &&
-        dureeSem(itp.semaineSemis, itp.semaineImplantationDebut) > 0 &&
-        dureeSem(itp.semaineSemis, itp.semaineImplantationDebut) < 26
-      ) {
-        pushWindow(
-          itp.semaineSemis,
-          itp.semaineImplantationDebut === 1 ? 52 : itp.semaineImplantationDebut - 1,
-          '#ff9800',
-          'Semis en pépinière'
-        )
-      }
-      return bars
-    }
-
-    // Cas pépinière : Semis (orange) puis Croissance (vert)
-    if (itp.semaineSemis && itp.semainePlantation) {
-      bars.push(barre(itp.semaineSemis, dureeSem(itp.semaineSemis, itp.semainePlantation), '#ff9800', 'Semis'))
-    } else if (itp.semaineSemis && itp.semaineRecolte && !itp.semainePlantation) {
-      // Cas semis direct : on découpe en Semis (3 sem) + Croissance
-      const cycle = dureeSem(itp.semaineSemis, itp.semaineRecolte)
-      const phaseSemis = Math.min(PHASE_SEMIS_SEMAINES_DIRECT, Math.max(1, Math.floor(cycle / 3)))
-      bars.push(barre(itp.semaineSemis, phaseSemis, '#ff9800', 'Semis / germination'))
-      bars.push(barre(itp.semaineSemis + phaseSemis, cycle - phaseSemis, '#4caf50', 'Croissance'))
-    }
-
-    // Cas pépinière (suite) : bande croissance
-    if (itp.semainePlantation && itp.semaineRecolte) {
-      bars.push(barre(itp.semainePlantation, dureeSem(itp.semainePlantation, itp.semaineRecolte), '#4caf50', 'Croissance'))
-    }
-
-    // Barre récolte (violet) : semaineRecolte → semaineRecolte + dureeRecolte
-    if (itp.semaineRecolte && itp.dureeRecolte) {
-      bars.push(barre(itp.semaineRecolte, itp.dureeRecolte, '#9c27b0', 'Récolte'))
-    }
-
-    return bars
-  }
-
-  const bars = calculateBars()
+  // Le tracé vit dans `gantt-barres.ts` (logique pure, testée) : barres qui
+  // bouclent en fin d'année, croissance indicative, barre de récolte.
+  const bars = React.useMemo(() => barresGantt(itp), [itp])
   const typeCulture = getTypeCulture()
   const isEditable = !!onEdit
 
@@ -277,4 +176,4 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
       </td>
     </tr>
   )
-}
+})

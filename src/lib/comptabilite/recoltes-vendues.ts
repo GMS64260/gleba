@@ -35,6 +35,23 @@ export interface RecolteVendueReinjectee {
   clientNom: string | null
 }
 
+/**
+ * Parmi `ids`, les récoltes du compte qui portent leur miroir comptable
+ * (`VenteManuelle` auto, `sourceType = 'recolte'`) : définition unique du
+ * « miroir », partagée par les lecteurs et par la reprise de l'historique
+ * (`reprise-recoltes-boutique.ts`).
+ */
+export async function chargerIdsRecoltesAvecMiroir(db: Lecteur, userId: string, ids: number[]): Promise<Set<number>> {
+  const avecMiroir = new Set<number>()
+  if (!ids.length) return avecMiroir
+  const miroirs = await db.venteManuelle.findMany({
+    where: { userId, auto: true, sourceType: 'recolte', sourceId: { in: ids } },
+    select: { sourceId: true },
+  })
+  for (const m of miroirs) if (m.sourceId != null) avecMiroir.add(m.sourceId)
+  return avecMiroir
+}
+
 export async function chargerRecoltesVenduesReinjectees(
   db: Lecteur,
   userId: string,
@@ -59,14 +76,7 @@ export async function chargerRecoltesVenduesReinjectees(
   })
   const lieeBoutique = (r: (typeof recoltes)[number]) => (r.produitsBoutique?.length ?? 0) > 0
   const lieesBoutique = recoltes.filter(lieeBoutique).map((r) => r.id)
-  const avecMiroir = new Set<number>()
-  if (lieesBoutique.length) {
-    const miroirs = await db.venteManuelle.findMany({
-      where: { userId, auto: true, sourceType: 'recolte', sourceId: { in: lieesBoutique } },
-      select: { sourceId: true },
-    })
-    for (const m of miroirs) if (m.sourceId != null) avecMiroir.add(m.sourceId)
-  }
+  const avecMiroir = await chargerIdsRecoltesAvecMiroir(db, userId, lieesBoutique)
   return recoltes
     .filter((r) => !lieeBoutique(r) || avecMiroir.has(r.id))
     .map((r) => ({

@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useExploitation } from "@/hooks/use-exploitation"
 import { useSession } from "next-auth/react"
 import {
   Plus,
@@ -125,6 +126,8 @@ export function EspecesTab() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId
   const isAdmin = session?.user?.role === "ADMIN"
   const [isLoading, setIsLoading] = React.useState(true)
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
@@ -179,10 +182,10 @@ export function EspecesTab() {
   // Le sélecteur d'atelier restreint ensuite à l'intérieur de ce périmètre.
   const displayedEspeces = React.useMemo(
     () =>
-      filtrerParOrigine(filteredEspeces, filtreOrigine, currentUserId).filter(
+      filtrerParOrigine(filteredEspeces, filtreOrigine, proprietaireId).filter(
         (e) => filieres.includes((e.filiere || "rente") as Filiere) && filiereMatch(filiereSel, e.filiere)
       ),
-    [filteredEspeces, filtreOrigine, currentUserId, filiereSel, filieres]
+    [filteredEspeces, filtreOrigine, proprietaireId, filiereSel, filieres]
   )
 
   const openCreate = () => {
@@ -427,6 +430,7 @@ export function EspecesTab() {
                         entree={{ id: esp.id, userId: esp.userId, partageCommunaute: esp.partageCommunaute }}
                         nom={esp.nom}
                         currentUserId={currentUserId}
+                        proprietaireId={proprietaireId}
                         actions={referentielActions}
                         showRemove={false}
                       />

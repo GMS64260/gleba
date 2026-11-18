@@ -1,3 +1,4 @@
+import { darIndicatifApresCorrection, MESSAGE_NATURE_AVEC_AMM, natureContreditAmm } from '@/lib/phyto/delai-avant-recolte'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -14,6 +15,7 @@ import prisma from '@/lib/prisma'
 import { invalidateKpi } from '@/lib/kpi'
 import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
 import { apresDemain, MESSAGE_REALISEE_FUTURE } from '@/lib/interventions/date-realisee'
+import { calculerStatsInterventions } from '@/lib/interventions/stats'
 import { irrigationCache } from '@/lib/irrigation-cache'
 import { supprimerArrosageNote } from '@/lib/irrigation-recording'
 import { lireAnnee } from '@/lib/api/annee'
@@ -21,7 +23,14 @@ import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compt
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
 import { verifierReferencesIntervention } from '@/lib/interventions/references'
 import { resoudreOperateurExploitation } from '@/lib/tracabilite/operateur-exploitation'
-import { chargerContexteRegistre } from '@/lib/tracabilite/contexte-registre'
+import {
+  chargerContexteRegistre,
+  contexteEstFige,
+  mentionALaCreation,
+  mentionApresRelecture,
+} from '@/lib/tracabilite/contexte-registre'
+import { refusUtilisation } from '@/lib/tracabilite/utilisation-semences'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import {
   interventionAuRegistre,
   journaliserRectificationPhyto,
@@ -392,7 +401,8 @@ export async function GET(request: NextRequest) {
       numAMM: null, cibleTraitement: null,
       doseAppliquee: op.quantite, uniteDose: op.unite,
       surfaceTraitee: null,
-      dar: null, delaiReentree: null, conditionsMeteo: null,
+      // Contre-revue B11 : DAR de l'étiquette saisi sur un traitement d'arbre.
+      dar: op.type === 'traitement' ? op.dar ?? null : null, delaiReentree: null, conditionsMeteo: null,
       intrantNom: op.produit,
       intrantQuantite: op.quantite,
       intrantUnite: op.unite,
@@ -521,15 +531,7 @@ export async function GET(request: NextRequest) {
     // Sort by date desc
     allEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-    // === Stats (all sources for the year) ===
-    const stats = {
-      total: allEntries.length,
-      heuresTravaillees: allEntries
-        .reduce((sum, i) => sum + ((i.dureeMinutes || 0) * (i.nbPersonnes || 1)), 0) / 60,
-      coutTotal: allEntries
-        .reduce((sum, i) => sum + (i.coutTotal || 0), 0),
-      planifiees: allEntries.filter((i) => !i.fait).length,
-    }
+    const stats = calculerStatsInterventions(allEntries)
 
     return NextResponse.json({ data: allEntries.slice(0, 500), stats })
   } catch (err) {
@@ -559,6 +561,8 @@ export async function POST(request: NextRequest) {
     if (d.fait && apresDemain(d.date)) {
       return NextResponse.json({ error: MESSAGE_REALISEE_FUTURE }, { status: 400 })
     }
+    const refusSemences = refusUtilisation(d.type, d.utilisationPhyto)
+    if (refusSemences) return NextResponse.json({ error: refusSemences, champ: 'utilisationPhyto' }, { status: 400 })
     const references = await verifierReferencesIntervention(prisma, userId, d)
     if (!references.ok) return NextResponse.json({ error: references.error, champ: references.champ }, { status: 400 })
     const plancheIdNormalise = references.plancheId ?? null
@@ -569,18 +573,28 @@ export async function POST(request: NextRequest) {
     // 2026-11-12, C4) ; une mise à jour ultérieure du référentiel ne
     // réécrit plus ce traitement au registre.
     const ref = phyto.produit
+    // CR-DAR-01 : la nature déclarée décide du contrôle du délai avant récolte ;
+    // un numéro d'AMM (saisi ou copié du référentiel) la contredit.
+    if (natureContreditAmm(d.natureProduit, d.numAMM ?? ref?.amm)) {
+      return NextResponse.json({ error: MESSAGE_NATURE_AVEC_AMM, champ: 'natureProduit' }, { status: 400 })
+    }
 
     const intervention = await prisma.$transaction(async tx => {
       await verrouillerReglements(tx, session!.user.id)
       // Contexte du registre (culture, localisation, conduite biologique)
       // figé au jour de l'enregistrement d'un traitement (C4).
-      const contexte = d.type === 'traitement_phyto'
+      const contexte = d.type === 'traitement_phyto' || d.utilisationPhyto != null
         ? await chargerContexteRegistre(tx, userId, {
             cultureId: d.cultureId ?? null,
             plancheId: plancheIdNormalise,
             arbreId: d.arbreId ?? null,
           }, d.date)
         : null
+      // Semences : la saisie prime sur la déduction ; la provenance de chaque
+      // mention est gardée pour qu'une déduction ne survive pas au retrait
+      // de sa source (contre-revue ADV89-2).
+      const cultureALaCreation = mentionALaCreation(d.cultureRegistre, contexte?.cultureRegistre)
+      const bioALaCreation = mentionALaCreation(d.conduiteBio, contexte?.conduiteBio)
       const intervention = await tx.intervention.create({
         data: {
           userId,
@@ -603,7 +617,11 @@ export async function POST(request: NextRequest) {
           doseAppliquee: d.doseAppliquee ?? null,
           uniteDose: d.uniteDose ?? null,
           surfaceTraitee: d.surfaceTraitee ?? null,
-          dar: d.dar ?? ref?.darJours ?? null,
+          // Revue QA du lot dar-cadre-legal-blocage : le délai du catalogue
+          // (ordre de grandeur générique) n'est plus recopié ici. `dar` ne
+          // porte que le délai SAISI, seul opposable à la vente ; le catalogue
+          // reste lu comme indication par le contrôle du délai.
+          dar: d.dar ?? null,
           delaiReentree: d.delaiReentree ?? null,
           conditionsMeteo: d.conditionsMeteo ?? null,
           // Intrant fields
@@ -621,6 +639,7 @@ export async function POST(request: NextRequest) {
           ventKmh: d.ventKmh ?? null,
           hygrometriePct: d.hygrometriePct ?? null,
           produitPhytoId: d.produitPhytoId ?? null,
+          natureProduit: d.natureProduit ?? null,
           // QA 2026-07-30 — ZNT : colonnes déjà présentes en base et restituées par
           // l'export du registre, mais jamais écrites par cette route.
           zntDistanceM: d.zntDistanceM ?? null,
@@ -636,7 +655,38 @@ export async function POST(request: NextRequest) {
           heureFin: d.heureFin ?? null,
           rentreeAnticipee: d.rentreeAnticipee ?? null,
           siretBeneficiaire: d.siretBeneficiaire ?? null,
-          ...(contexte ?? {}),
+          ...(contexte
+            ? {
+                ...contexte,
+                // Figé, même si les trois mentions sont vides (ADV89-1).
+                contexteFige: true,
+                origineCultureRegistre: contexte.cultureRegistre != null ? 'deduite' : null,
+                origineConduiteBio: contexte.conduiteBio != null ? 'deduite' : null,
+              }
+            : {}),
+          // Annexe II, tableaux C et D : semences et plants traités. La
+          // dénomination de la culture et la conduite biologique saisies
+          // complètent ce que les fiches ne donnent pas ; les substances
+          // actives sont copiées du référentiel au jour de la saisie.
+          ...(d.utilisationPhyto != null
+            ? {
+                utilisationPhyto: d.utilisationPhyto,
+                substancesActives: d.substancesActives ?? ref?.substanceActive ?? null,
+                quantiteSemences: d.quantiteSemences ?? null,
+                uniteQuantiteSemences: d.uniteQuantiteSemences ?? null,
+                densiteSemis: d.densiteSemis ?? null,
+                uniteDensiteSemis: d.uniteDensiteSemis ?? null,
+                gpsLat: d.gpsLat ?? null,
+                gpsLng: d.gpsLng ?? null,
+                rpgIlot: d.rpgIlot ?? null,
+                rpgParcelle: d.rpgParcelle ?? null,
+                rpgCommuneInsee: d.rpgCommuneInsee?.toUpperCase() ?? null,
+                cultureRegistre: cultureALaCreation.valeur,
+                origineCultureRegistre: cultureALaCreation.origine,
+                conduiteBio: bioALaCreation.valeur,
+                origineConduiteBio: bioALaCreation.origine,
+              }
+            : {}),
         },
       })
 
@@ -697,50 +747,18 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Verify ownership
-    const existing = await prisma.intervention.findFirst({
+    // Lecture préalable hors verrou : seulement pour répondre 404 sans ouvrir
+    // de transaction. Toute décision qui dépend de l'état de l'intervention
+    // est prise plus bas sur sa RELECTURE sous verrou (revues QA/ADV73 : une
+    // correction des notes ayant lu un délai indicatif réécrivait cet état
+    // périmé après une confirmation expresse concurrente).
+    const trouvee = await prisma.intervention.findFirst({
       where: { id: parseInt(id), userId },
+      select: { id: true },
     })
 
-    if (!existing) {
+    if (!trouvee) {
       return NextResponse.json({ error: 'Intervention non trouvée' }, { status: 404 })
-    }
-
-    // Seules les références modifiées sont revalidées : sans clé étrangère, une
-    // culture supprimée ou une planche renommée depuis la saisie reste stockée,
-    // le formulaire la renvoie telle quelle et toute correction tombait en 400.
-    const referenceChange = (champ: 'cultureId' | 'arbreId' | 'plancheId') =>
-      champ in updates && (parsedUpdates.data[champ] ?? null) !== existing[champ]
-    const references = await verifierReferencesIntervention(prisma, userId, {
-      ...(referenceChange('cultureId') ? { cultureId: parsedUpdates.data.cultureId } : {}),
-      ...(referenceChange('arbreId') ? { arbreId: parsedUpdates.data.arbreId } : {}),
-      ...(referenceChange('plancheId') ? { plancheId: parsedUpdates.data.plancheId } : {}),
-    })
-    if (!references.ok) return NextResponse.json({ error: references.error, champ: references.champ }, { status: 400 })
-
-    // DEV2 #7 — Audit comptable : la transition "Planifié → Fait" exige
-    // une durée renseignée (sinon les statistiques de coût MO restent
-    // à 0). On la bloque ici plutôt que de filtrer après coup.
-    if (updates.fait === true && existing.fait === false) {
-      const dureeFinale = updates.dureeMinutes !== undefined
-        ? parseInt(updates.dureeMinutes)
-        : existing.dureeMinutes
-      if (!dureeFinale || dureeFinale <= 0) {
-        return NextResponse.json(
-          {
-            error:
-              "Durée requise pour passer une intervention en \"Fait\". " +
-              "Saisissez le temps de travail (en minutes) pour alimenter les statistiques.",
-          },
-          { status: 400 }
-        )
-      }
-    }
-
-    const faitFinal = updates.fait !== undefined ? updates.fait === true : existing.fait
-    const dateFinale = updates.date !== undefined ? new Date(updates.date) : existing.date
-    if (faitFinal && !Number.isNaN(dateFinale.getTime()) && apresDemain(dateFinale)) {
-      return NextResponse.json({ error: MESSAGE_REALISEE_FUTURE }, { status: 400 })
     }
 
     // Revue de conformité du 2026-11-12 (C8) : la persistance lit les valeurs
@@ -749,6 +767,9 @@ export async function PATCH(request: NextRequest) {
     // observation liée). Un champ absent du corps n'est pas touché ; présent
     // et vide, il est effacé ; zéro reste zéro.
     const v = parsedUpdates.data
+    const present = (champ: string) => champ in updates
+    // Références de l'exploitation (opérateur, produit, observation) : elles
+    // ne dépendent pas de l'état de l'intervention.
     const phyto = await verifierChampsPhyto(userId, {
       operateurId: 'operateurId' in updates ? v.operateurId : undefined,
       produitPhytoId: 'produitPhytoId' in updates ? v.produitPhytoId : undefined,
@@ -756,49 +777,194 @@ export async function PATCH(request: NextRequest) {
     })
     if ('refus' in phyto) return NextResponse.json({ error: phyto.refus, champ: phyto.champ }, { status: 400 })
 
-    const data: Prisma.InterventionUncheckedUpdateInput = {}
-    const present = (champ: string) => champ in updates
-    if (present('date') && v.date) data.date = v.date
-    if (present('type') && v.type) data.type = v.type
-    if (present('nbPersonnes')) data.nbPersonnes = v.nbPersonnes ?? 1
-    if (present('fait') && v.fait !== undefined) data.fait = v.fait
-    // Planche inchangée : la valeur stockée (ancien nom compris) est gardée.
-    if (referenceChange('plancheId')) data.plancheId = references.plancheId ?? null
-    if (present('operateurId')) data.operateurId = phyto.operateurId
-    for (const champ of CHAMPS_PATCH_SIMPLES) {
-      if (!present(champ)) continue
-      const valeur = v[champ]
-      // Texte vide → null, comme l'ancien `|| null` ; zéro numérique conservé.
-      ;(data as Record<string, unknown>)[champ] =
-        typeof valeur === 'string' && valeur.trim() === '' ? null : valeur ?? null
-    }
-
-    const avantModification = interventionAuRegistre(existing) ? existing : null
-    const typeFinal = v.type ?? existing.type
     const updated = await prisma.$transaction(async tx => {
       await verrouillerReglements(tx, session!.user.id)
-      // Contexte du registre figé à nouveau quand ce qui le détermine change
-      // (lieu, culture, date, passage en « fait ») ou qu'il n'a jamais été figé.
-      const lieuChange = ['cultureId', 'plancheId', 'arbreId', 'date', 'fait', 'type'].some(present)
-      const jamaisFige = existing.cultureRegistre == null && existing.localisationRegistre == null && existing.conduiteBio == null
-      if (typeFinal === 'traitement_phyto' && (lieuChange || jamaisFige)) {
-        Object.assign(data, await chargerContexteRegistre(tx, userId, {
+      // Les écritures d'une même exploitation sont sérialisées par ce verrou :
+      // la ligne relue ici est l'état courant sur lequel tout se décide
+      // (provenance du délai, contrôles, contexte du registre, journal).
+      const existing = await tx.intervention.findFirst({ where: { id: parseInt(id), userId } })
+      if (!existing) throw new RefusModification('Intervention non trouvée', 404)
+
+      // Seules les références modifiées sont revalidées : sans clé étrangère, une
+      // culture supprimée ou une planche renommée depuis la saisie reste stockée,
+      // le formulaire la renvoie telle quelle et toute correction tombait en 400.
+      const referenceChange = (champ: 'cultureId' | 'arbreId' | 'plancheId') =>
+        champ in updates && (v[champ] ?? null) !== existing[champ]
+      const references = await verifierReferencesIntervention(tx, userId, {
+        ...(referenceChange('cultureId') ? { cultureId: v.cultureId } : {}),
+        ...(referenceChange('arbreId') ? { arbreId: v.arbreId } : {}),
+        ...(referenceChange('plancheId') ? { plancheId: v.plancheId } : {}),
+      })
+      if (!references.ok) throw new RefusModification(references.error, 400, references.champ)
+
+      // DEV2 #7 — Audit comptable : la transition "Planifié → Fait" exige
+      // une durée renseignée (sinon les statistiques de coût MO restent
+      // à 0). On la bloque ici plutôt que de filtrer après coup.
+      if (updates.fait === true && existing.fait === false) {
+        const dureeFinale = updates.dureeMinutes !== undefined
+          ? parseInt(updates.dureeMinutes)
+          : existing.dureeMinutes
+        if (!dureeFinale || dureeFinale <= 0) {
+          throw new RefusModification(
+            "Durée requise pour passer une intervention en \"Fait\". " +
+            "Saisissez le temps de travail (en minutes) pour alimenter les statistiques.",
+            400,
+          )
+        }
+      }
+
+      // CR-DAR-01 : même refus qu'à la création, sur les valeurs finales.
+      if (natureContreditAmm(
+        'natureProduit' in updates ? v.natureProduit : existing.natureProduit,
+        'numAMM' in updates ? v.numAMM : existing.numAMM,
+      )) {
+        throw new RefusModification(MESSAGE_NATURE_AVEC_AMM, 400, 'natureProduit')
+      }
+
+      // Tableaux C et D : le type d'utilisation reste cohérent avec le type
+      // d'intervention (valeurs finales, état relu sous verrou).
+      const utilisationFinale = present('utilisationPhyto')
+        ? v.utilisationPhyto ?? null
+        : existing.utilisationPhyto
+      const refusSemences = refusUtilisation(v.type ?? existing.type, utilisationFinale)
+      if (refusSemences) throw new RefusModification(refusSemences, 400, 'utilisationPhyto')
+
+      const faitFinal = updates.fait !== undefined ? updates.fait === true : existing.fait
+      const dateFinale = updates.date !== undefined ? new Date(updates.date) : existing.date
+      if (faitFinal && !Number.isNaN(dateFinale.getTime()) && apresDemain(dateFinale)) {
+        throw new RefusModification(MESSAGE_REALISEE_FUTURE, 400)
+      }
+
+      const data: Prisma.InterventionUncheckedUpdateInput = {}
+      if (present('date') && v.date) data.date = v.date
+      if (present('type') && v.type) data.type = v.type
+      if (present('nbPersonnes')) data.nbPersonnes = v.nbPersonnes ?? 1
+      if (present('fait') && v.fait !== undefined) data.fait = v.fait
+      // Planche inchangée : la valeur stockée (ancien nom compris) est gardée.
+      if (referenceChange('plancheId')) data.plancheId = references.plancheId ?? null
+      if (present('operateurId')) data.operateurId = phyto.operateurId
+      for (const champ of CHAMPS_PATCH_SIMPLES) {
+        if (!present(champ)) continue
+        const valeur = v[champ]
+        // Texte vide → null, comme l'ancien `|| null` ; zéro numérique conservé.
+        ;(data as Record<string, unknown>)[champ] =
+          typeof valeur === 'string' && valeur.trim() === '' ? null : valeur ?? null
+      }
+      // Un délai changé ou expressément confirmé ici est celui de l'exploitant :
+      // il cesse d'être l'indication recopiée du catalogue. Le même délai renvoyé
+      // par le formulaire (correction des notes) reste une indication (ADV221).
+      // Calculé sur l'état courant : une correction sans changement ni
+      // confirmation du délai conserve sa provenance (QA/ADV73).
+      if (existing.darIndicatif) {
+        data.darIndicatif = darIndicatifApresCorrection(existing, { darPresent: present('dar'), dar: v.dar, confirme: v.darConfirme })
+      }
+
+      const typeFinal = v.type ?? existing.type
+      // Contexte du registre figé à nouveau quand ce qui le détermine CHANGE
+      // RÉELLEMENT (lieu, culture, date, passage en « fait », type) ou qu'il
+      // n'a jamais été figé. Un champ renvoyé à l'identique par le formulaire
+      // (la date avec une correction de densité) ne relit pas les fiches :
+      // sinon une planche renommée ou convertie depuis la saisie réécrivait
+      // le contexte réglementaire d'origine (revues QA108 et ADV109).
+      // Date comparée en JOUR CIVIL (règle partagée `jourCivilStocke`) : une
+      // heure corrigée, ou le même jour renvoyé « AAAA-MM-JJ » par le
+      // formulaire pour une saisie horodatée, ne change pas le jour du
+      // contexte réglementaire (contre-revue ADV251).
+      const dateChange = present('date') && v.date != null && jourCivilStocke(v.date) !== jourCivilStocke(existing.date)
+      const faitChange = present('fait') && v.fait !== undefined && v.fait !== existing.fait
+      const typeChange = typeFinal !== existing.type
+      const utilisationChange = utilisationFinale !== (existing.utilisationPhyto ?? null)
+      const lieuChange =
+        referenceChange('cultureId') || referenceChange('plancheId') || referenceChange('arbreId') ||
+        dateChange || faitChange || typeChange
+      // Règle partagée avec l'écran et l'export : un contexte délibérément
+      // vidé reste figé (marqueur `contexteFige`, contre-revue ADV89-1).
+      const jamaisFige = !contexteEstFige(existing)
+      const semences = utilisationFinale != null
+      if ((typeFinal === 'traitement_phyto' || semences) && (lieuChange || jamaisFige || utilisationChange)) {
+        const relu = await chargerContexteRegistre(tx, userId, {
           cultureId: present('cultureId') ? v.cultureId ?? null : existing.cultureId,
           plancheId: referenceChange('plancheId') ? references.plancheId ?? null : existing.plancheId,
           arbreId: present('arbreId') ? v.arbreId ?? null : existing.arbreId,
           parcelleId: existing.parcelleId,
-        }, dateFinale))
+        }, dateFinale)
+        Object.assign(data, relu)
+        data.contexteFige = true
+        data.origineCultureRegistre = relu.cultureRegistre != null ? 'deduite' : null
+        data.origineConduiteBio = relu.conduiteBio != null ? 'deduite' : null
+        // Semences : chaque mention suit sa PROVENANCE enregistrée, pas une
+        // comparaison avec des fiches modifiables depuis (contre-revue
+        // ADV89-2). Une saisie est gardée ; une déduction ne survit pas à sa
+        // source et repasse « à compléter » si la nouvelle n'en donne pas.
+        // Provenance inconnue (ligne antérieure) : traitée comme déduite.
+        if (semences) {
+          const referencesChangees =
+            referenceChange('cultureId') || referenceChange('plancheId') || referenceChange('arbreId')
+          const culture = mentionApresRelecture({
+            stockee: existing.cultureRegistre,
+            origine: existing.origineCultureRegistre,
+            relue: relu.cultureRegistre,
+            referencesChangees,
+          })
+          const bio = mentionApresRelecture({
+            stockee: existing.conduiteBio,
+            origine: existing.origineConduiteBio,
+            relue: relu.conduiteBio,
+            referencesChangees,
+          })
+          data.cultureRegistre = culture.valeur
+          data.origineCultureRegistre = culture.origine
+          data.conduiteBio = bio.valeur
+          data.origineConduiteBio = bio.origine
+        }
+      }
+      if (semences) {
+        // Présent = écrit, y compris vide : une dénomination ou une conduite
+        // incertaine peut être remise « à compléter » (contrat « présent et
+        // vide = effacé », contre-revue ADV251). C'est une SAISIE : elle reste
+        // figée même si plus aucune mention du contexte n'est renseignée.
+        if (present('cultureRegistre')) {
+          data.cultureRegistre = v.cultureRegistre ?? null
+          data.origineCultureRegistre = 'saisie'
+          data.contexteFige = true
+        }
+        if (present('conduiteBio')) {
+          data.conduiteBio = v.conduiteBio ?? null
+          data.origineConduiteBio = 'saisie'
+          data.contexteFige = true
+        }
+        if (present('rpgCommuneInsee') && v.rpgCommuneInsee) data.rpgCommuneInsee = v.rpgCommuneInsee.toUpperCase()
+      }
+      // Cliché du produit (nom, AMM, substances actives) : il suit la
+      // référence EN BLOC. Référence réellement remplacée par une autre : les
+      // mentions non saisies dans la requête sont recopiées du nouveau
+      // produit (substances vides s'il n'en déclare pas), sinon le registre
+      // associait le nom et l'AMM de l'ancien produit aux substances du
+      // nouveau (ADV109, ADV251). Référence inchangée ou retirée : le cliché
+      // est gardé ; les substances seulement complétées si elles manquaient.
+      if (present('produitPhytoId') && phyto.produit) {
+        const produitChange = (v.produitPhytoId ?? null) !== (existing.produitPhytoId ?? null)
+        if (produitChange) {
+          if (!present('produitPhyto')) data.produitPhyto = phyto.produit.nomCommercial
+          if (!present('numAMM')) data.numAMM = phyto.produit.amm ?? null
+          // Quelle que soit l'utilisation finale : une ligne C convertie en
+          // traitement de surface gardait les substances de l'ancien produit,
+          // que le registre et l'export préfèrent au référentiel (ADV34-4).
+          if (!present('substancesActives')) data.substancesActives = phyto.produit.substanceActive ?? null
+        } else if (semences && !present('substancesActives') && !existing.substancesActives && phyto.produit.substanceActive) {
+          data.substancesActives = phyto.produit.substanceActive
+        }
       }
       const updated = await tx.intervention.update({ where: { id: parseInt(id), userId }, data })
       // Arrêté du 24 décembre 2025, art. 3 : l'état d'avant d'un traitement
       // réalisé reste retrouvable (revue de conformité du 2026-11-12, C3).
-      if (avantModification) {
+      if (interventionAuRegistre(existing)) {
         await journaliserRectificationPhyto(tx, {
           userId,
           source: 'intervention',
           sourceId: existing.id,
           action: 'modification',
-          avant: avantModification,
+          avant: existing,
           apres: updated,
           motif: motifRectification(updates.motif),
           auteurId: session!.user.id,
@@ -813,6 +979,9 @@ export async function PATCH(request: NextRequest) {
     irrigationCache.invalidateUser(userId)
     return NextResponse.json(updated)
   } catch (err) {
+    if (err instanceof RefusModification) {
+      return NextResponse.json({ error: err.message, ...(err.champ ? { champ: err.champ } : {}) }, { status: err.status })
+    }
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('Erreur PATCH /api/interventions:', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
@@ -841,25 +1010,34 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Intervention non trouvée' }, { status: 404 })
     }
 
-    await prisma.$transaction(async tx => {
+    const supprimee = await prisma.$transaction(async tx => {
       await verrouillerReglements(tx, session!.user.id)
+      // Relue sous le verrou, comme le PATCH : une correction concurrente
+      // (semis ordinaire devenu semis de semences traitées, tableau D) a pu
+      // changer ce qui doit être conservé (contre-revue ADV248-1).
+      const courante = await tx.intervention.findFirst({ where: { id: existing.id, userId } })
+      if (!courante) return false
       // Un traitement réalisé ne disparaît plus sans trace : son état complet
       // est déposé dans l'historique du registre avant la suppression
       // (arrêté du 24 décembre 2025, art. 3 ; revue de conformité, C3).
-      if (interventionAuRegistre(existing)) {
+      if (interventionAuRegistre(courante)) {
         await journaliserRectificationPhyto(tx, {
           userId,
           source: 'intervention',
-          sourceId: existing.id,
+          sourceId: courante.id,
           action: 'suppression',
-          avant: existing,
+          avant: courante,
           motif: motifRectification(searchParams.get('motif')),
           auteurId: session!.user.id,
         })
       }
-      await deleteAutoEntry('intervention', parseInt(id), 'depense', userId, tx)
-      await tx.intervention.delete({ where: { id: parseInt(id), userId } })
+      await deleteAutoEntry('intervention', courante.id, 'depense', userId, tx)
+      await tx.intervention.delete({ where: { id: courante.id, userId } })
+      return true
     })
+    if (!supprimee) {
+      return NextResponse.json({ error: 'Intervention non trouvée' }, { status: 404 })
+    }
     invalidateKpi(userId)
     irrigationCache.invalidateUser(userId)
 
@@ -876,14 +1054,25 @@ export async function DELETE(request: NextRequest) {
  * (vide → null, zéro conservé). Les références (planche, opérateur) ont leur
  * propre traitement.
  */
+/** Refus d'une modification décidé sous verrou, sur l'état relu de l'intervention. */
+class RefusModification extends Error {
+  constructor(message: string, public status: number, public champ?: string) {
+    super(message)
+    this.name = 'RefusModification'
+  }
+}
+
 const CHAMPS_PATCH_SIMPLES = [
   'description', 'dureeMinutes', 'coutMainOeuvre', 'coutTotal', 'cultureId', 'arbreId', 'datePrevue',
   'produitPhyto', 'numAMM', 'cibleTraitement', 'doseAppliquee', 'uniteDose', 'surfaceTraitee', 'dar',
   'delaiReentree', 'conditionsMeteo', 'zntDistanceM', 'zntRespectee', 'justification',
   'intrantNom', 'intrantQuantite', 'intrantUnite', 'intrantCout', 'intrantNumLot', 'notes',
-  'produitPhytoId', 'volumeBouillieLHa', 'temperatureC', 'ventKmh', 'hygrometriePct',
+  'produitPhytoId', 'natureProduit', 'volumeBouillieLHa', 'temperatureC', 'ventKmh', 'hygrometriePct',
   'certiphytoNum', 'certiphytoValidite', 'observationLieeId',
   'stadeBBCH', 'heureDebut', 'heureFin', 'rentreeAnticipee', 'siretBeneficiaire',
+  // Annexe II, tableaux C et D (semences et plants traités).
+  'utilisationPhyto', 'substancesActives', 'quantiteSemences', 'uniteQuantiteSemences',
+  'densiteSemis', 'uniteDensiteSemis', 'gpsLat', 'gpsLng', 'rpgIlot', 'rpgParcelle', 'rpgCommuneInsee',
 ] as const
 
 /**
@@ -895,7 +1084,7 @@ async function verifierChampsPhyto(
   userId: string,
   d: { operateurId?: string | null; produitPhytoId?: string | null; observationLieeId?: number | null },
 ): Promise<
-  | { operateurId: string | null; produit: { nomCommercial: string; amm: string | null; darJours: number | null } | null }
+  | { operateurId: string | null; produit: { nomCommercial: string; amm: string | null; darJours: number | null; substanceActive: string | null } | null }
   | { refus: string; champ: string }
 > {
   const operateur = await resoudreOperateurExploitation(userId, d.operateurId ?? null)
@@ -903,7 +1092,7 @@ async function verifierChampsPhyto(
   const produit = d.produitPhytoId
     ? await prisma.produitPhyto.findUnique({
         where: { id: d.produitPhytoId },
-        select: { nomCommercial: true, amm: true, darJours: true },
+        select: { nomCommercial: true, amm: true, darJours: true, substanceActive: true },
       })
     : null
   if (d.produitPhytoId && !produit) return { refus: 'Produit introuvable au référentiel.', champ: 'produitPhytoId' }

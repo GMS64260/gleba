@@ -25,11 +25,23 @@ vi.mock('@/lib/elevage/animal-lot', async (importOriginal) => ({
   redaterAffectationInitiale: mocks.redaterAffectationInitiale,
 }))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn() }))
+// La garde d'attente viande relit la fiche en base : exercée sur PostgreSQL
+// (attente-viande-routes.integration.test.ts), neutralisée ici.
+vi.mock('@/lib/elevage/sortie-animal.server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/elevage/sortie-animal.server')>()),
+  garantirAttenteViandeFiche: vi.fn(),
+}))
 vi.mock('@/lib/prisma', () => ({
   default: {
     $transaction: (callback: (tx: unknown) => unknown) => callback({
       $executeRaw: vi.fn(),
-      animal: { create: mocks.animalCreate, update: mocks.animalUpdate },
+      // La fiche de référence est relue sous verrou dans la transaction
+      // (`lireFicheSousVerrou`) : même fiche que la lecture initiale ici ; les
+      // entrelacements sont exercés sur PostgreSQL (attente-viande-routes).
+      $queryRaw: vi.fn(),
+      animal: { create: mocks.animalCreate, update: mocks.animalUpdate, findFirst: mocks.animalFindFirst },
+      venteProduit: { findFirst: vi.fn().mockResolvedValue(null) },
+      abattage: { findFirst: vi.fn().mockResolvedValue(null) },
     }),
     especeAnimale: { findUnique: mocks.especeFindUnique, findFirst: mocks.especeFindFirst },
     raceAnimale: { findFirst: mocks.raceFindFirst },
@@ -93,6 +105,48 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     const confirme = await POST(request('POST', { especeAnimaleId: 'ovin', identifiant: 'FR12345678901', confirmerDoublonIdentifiant: true }))
     expect(confirme.status).toBe(201)
     expect(mocks.animalCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('POST crée un bovin sans EDE avec les deux avertissements réglementaires (FRONT-09)', async () => {
+    mocks.exploitationFindUnique.mockResolvedValue({ numeroEde: null })
+    mocks.animalCreate.mockResolvedValue({
+      id: 9, lotId: null, prixAchat: null, createdAt: new Date(),
+      dateArrivee: new Date(), statutSanitaire: [],
+    })
+
+    const response = await POST(request('POST', { especeAnimaleId: 'bovin', nom: 'Bovine fictive' }))
+    const payload = await response.json()
+
+    expect(response.status).toBe(201)
+    expect(payload.warning).toContain('Numéro EDE non renseigné')
+    expect(payload.warning).toContain('Statut sanitaire inconnu')
+    expect(mocks.exploitationFindUnique).toHaveBeenCalledWith({
+      where: { userId: 'user-1' }, select: { numeroEde: true },
+    })
+  })
+
+  it('POST refuse un BDNI invalide en nommant le champ identifiant', async () => {
+    const response = await POST(request('POST', {
+      especeAnimaleId: 'bovin', typeIdentifiant: 'BDNI bovin', identifiant: 'FICTIF-INVALIDE',
+    }))
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).details.fieldErrors).toEqual({
+      identifiant: ['Identifiant invalide pour le type sélectionné'],
+    })
+    expect(mocks.animalCreate).not.toHaveBeenCalled()
+  })
+
+  it('POST permet un identifiant auxiliaire sans imposer un numéro réglementaire', async () => {
+    mocks.animalFindFirst.mockResolvedValue(null)
+    const response = await POST(request('POST', {
+      especeAnimaleId: 'bovin', typeIdentifiant: 'Auxiliaire éleveur', identifiant: 'FICTIF-001',
+    }))
+
+    expect(response.status).toBe(201)
+    expect(mocks.animalCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ typeIdentifiant: 'Auxiliaire éleveur', identifiant: 'FICTIF-001' }),
+    }))
   })
 
   it('POST accepte un lot assignable', async () => {
@@ -186,7 +240,7 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
 
   it('PATCH de « Modifier » conserve un prix d’achat à 0 au lieu de l’effacer', async () => {
     mocks.isAssignableAnimalLot.mockResolvedValue(true)
-    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'brebis_solognote', lotId: 42, prixAchat: 0, prixAchatInclusDansLot: false })
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'brebis_solognote', lotId: 42, prixAchat: 0, prixAchatInclusDansLot: false, parcelleGeoId: null })
 
     const response = await PATCH(request('PATCH', { id: 7, ...corpsEcranAnimaux }))
 

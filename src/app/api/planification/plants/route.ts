@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { lireAnnee } from '@/lib/api/annee'
 import { getBesoinsPlants } from '@/lib/planification'
 
 export async function GET(request: NextRequest) {
@@ -16,7 +17,8 @@ export async function GET(request: NextRequest) {
     const userId = getUserId(session)
     const { searchParams } = new URL(request.url)
 
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
+    // Année illisible (« abc », vide) : année courante, jamais NaN en base.
+    const { annee } = lireAnnee(searchParams)
 
     const besoins = await getBesoinsPlants(userId, annee)
 

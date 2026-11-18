@@ -23,6 +23,8 @@ vi.mock("react", async (original) => ({
 vi.mock("next-auth/react", () => ({ useSession: () => ({ data: { user: { id: "ferme-fictive" } } }) }))
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: hooks.toast }) }))
 vi.mock("@/components/shell/AppHeader", () => ({ AppHeader: () => null }))
+// useDevise() appelle useState : sans ce mock, il décale les index du banc de hooks ci-dessus (B1, PR #85).
+vi.mock("@/hooks/use-devise", () => ({ useDevise: () => "EUR" }))
 
 import InterventionsPage from "@/app/interventions/page"
 import { SanteTab } from "@/components/verger/SanteTab"

@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { enrichirMiroirsReglements } from '@/lib/comptabilite/projection-reglements'
+import { deviseCouranteExploitation } from '@/lib/comptabilite/devise-reglement'
+import { monnaieVente } from '@/lib/comptabilite/devise-vente'
 import { cleMiroirReglement } from '@/lib/comptabilite/cle-reglement'
 import { suiviReglementActif } from '@/lib/comptabilite/suivi-reglement-source'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
       if (dateFin) where.date.lte = new Date(dateFin)
     }
 
-    const [ventes, stats] = await Promise.all([
+    const [ventes, stats, exploitation] = await Promise.all([
       prisma.venteManuelle.findMany({
         where,
         orderBy: { date: 'desc' },
@@ -59,10 +61,15 @@ export async function GET(request: NextRequest) {
         _sum: { montant: true },
         _count: true,
       }),
+      prisma.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } }),
     ])
+    // Devise figée de chaque vente, lue par Impayées (QA180 / ADV181).
+    const deviseCourante = deviseCouranteExploitation(exploitation)
+    const lignes = (await enrichirMiroirsReglements(userId, 'vente', ventes))
+      .map((v) => ({ ...v, monnaie: monnaieVente(v, deviseCourante) }))
 
     return NextResponse.json({
-      data: await enrichirMiroirsReglements(userId, 'vente', ventes),
+      data: lignes,
       stats: {
         total: stats._sum.montant || 0,
         count: stats._count,

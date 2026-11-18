@@ -66,16 +66,24 @@ describe("POST /api/auth/change-password", () => {
 
   it("change le mot de passe d'un compte réel comme avant", async () => {
     mocks.userFindUnique.mockResolvedValue({ id: "u1", email: "maraicher@example.com", password: "hash" })
-    mocks.userUpdateMany.mockResolvedValue({ count: 1 })
+    mocks.userUpdate.mockResolvedValue({ sessionVersion: 1 })
 
     const res = await POST(requete())
 
     expect(res.status).toBe(200)
     // Écriture conditionnelle sur le hash vérifié, et révocation du jeton
-    // d'API et du lien de réinitialisation en cours (SEC-01).
-    expect(mocks.userUpdateMany).toHaveBeenCalledWith({
+    // d'API, du lien de réinitialisation en cours (SEC-01) et des autres
+    // sessions (MC3).
+    expect(mocks.userUpdate).toHaveBeenCalledWith({
       where: { id: "u1", password: "hash" },
-      data: { password: "nouveau-hash", apiToken: null, resetPasswordToken: null, resetPasswordExpires: null },
+      data: {
+        password: "nouveau-hash",
+        apiToken: null,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+        sessionVersion: { increment: 1 },
+      },
+      select: { sessionVersion: true },
     })
   })
 })

@@ -15,8 +15,8 @@ import {
   type ReactNode,
 } from "react"
 import L from "leaflet"
+import LeafletMapContainer from "./LeafletMapContainer"
 import {
-  MapContainer as LeafletMapContainer,
   TileLayer,
   LayersControl,
   useMap,

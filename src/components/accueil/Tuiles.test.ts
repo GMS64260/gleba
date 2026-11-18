@@ -221,17 +221,20 @@ describe("TuileElevage", () => {
 })
 
 describe("tuiles du catalogue", () => {
-  it("Trésorerie : créances en lignes de registre, retard en verbe, total à encaisser", () => {
+  it("Résultat : créances en lignes de registre, retard en verbe, total à encaisser", () => {
     const html = renderToStaticMarkup(
       createElement(TuileTresorerie, {
         chargement: false,
         tresorerie: {
           devise: "EUR", revenusYtd: 12000, depensesYtd: 8000, beneficeYtd: 4000, margePercentYtd: 33,
+          revenusYtdParDevise: [{ monnaie: "EUR", total: 12000 }], depensesYtdParDevise: [{ monnaie: "EUR", total: 8000 }],
+          beneficeYtdParDevise: [{ monnaie: "EUR", total: 4000 }],
           creances: [
-            { id: 1, numero: "F-2026-0002", client: "La Table du Bocage", montant: 1111.24, echeance: "2026-08-15T00:00:00.000Z", retardJours: 56 },
-            { id: 2, numero: "F-2026-0009", client: "AMAP du Bourg", montant: 240, echeance: "2026-10-20T00:00:00.000Z", retardJours: 0 },
+            { id: 1, numero: "F-2026-0002", client: "La Table du Bocage", montant: 1111.24, monnaie: "EUR", echeance: "2026-08-15T00:00:00.000Z", retardJours: 56 },
+            { id: 2, numero: "F-2026-0009", client: "AMAP du Bourg", montant: 240, monnaie: "EUR", echeance: "2026-10-20T00:00:00.000Z", retardJours: 0 },
           ],
-          totalCreances: 1351, nbDepensesNonPayees: 2, depensesNonPayees: 380,
+          totalCreances: 1351, totalCreancesParDevise: [{ monnaie: "EUR", total: 1351.24 }],
+          nbDepensesNonPayees: 2, depensesNonPayees: 380, depensesNonPayeesParDevise: [{ monnaie: "EUR", total: 380 }],
         },
       }),
     )
@@ -240,6 +243,39 @@ describe("tuiles du catalogue", () => {
     expect(html).toContain("À encaisser")
     expect(html).toContain("échue depuis 56 j")
     expect(html).toContain("2 dépenses à régler")
+  })
+
+  it("Trésorerie et Ventes : deux devises, deux totaux, jamais une somme (lot devise-totaux-api)", () => {
+    const net = (h: string) => h.replace(/[\u00a0\u202f]/g, " ")
+    const html = net(renderToStaticMarkup(
+      createElement(TuileTresorerie, {
+        chargement: false,
+        tresorerie: {
+          devise: "XPF", revenusYtd: null, depensesYtd: 0, beneficeYtd: null, margePercentYtd: null,
+          revenusYtdParDevise: [{ monnaie: "EUR", total: 316.5 }, { monnaie: "XPF", total: 1000 }],
+          depensesYtdParDevise: [{ monnaie: "XPF", total: 0 }],
+          beneficeYtdParDevise: [{ monnaie: "EUR", total: 316.5 }, { monnaie: "XPF", total: 1000 }],
+          creances: [
+            { id: 1, numero: "F-2026-0001", client: "Client fictif", montant: 105.5, monnaie: "EUR", echeance: null, retardJours: 0 },
+            { id: 3, numero: "F-2026-0003", client: "Client fictif", montant: 1000, monnaie: "XPF", echeance: null, retardJours: 0 },
+          ],
+          totalCreances: null, totalCreancesParDevise: [{ monnaie: "EUR", total: 316.5 }, { monnaie: "XPF", total: 1000 }],
+          nbDepensesNonPayees: 0, depensesNonPayees: 0, depensesNonPayeesParDevise: [{ monnaie: "XPF", total: 0 }],
+        },
+      }),
+    ))
+    expect(html).toContain("316,50 €")
+    expect(html).toContain("1 000 F")
+    expect(html).toContain("105,50 €")
+    expect(html).not.toContain("1 316")
+    expect(html).not.toContain("marge")
+    const ventes = net(renderToStaticMarkup(
+      createElement(TuileVentes, { chargement: false, ventes: { devise: "XPF", totalMois: null, nbMois: 3,
+        totalMoisParDevise: [{ monnaie: "EUR", total: 316.5 }, { monnaie: "XPF", total: 1000 }],
+        dernieres: [{ id: "facture-1", date: "2026-11-16T00:00:00.000Z", description: "Facture F-2026-0001", montant: 105.5, monnaie: "EUR", client: null, paye: false }] } }),
+    ))
+    expect(ventes).toContain("316,50 € · 1 000 F ce mois")
+    expect(ventes).toContain("105,50 €")
   })
 
   it("Verger : un lot par geste, « Fait » n'est pas promis ici, l'état vide parle", () => {
@@ -264,7 +300,7 @@ describe("tuiles du catalogue", () => {
     expect(stocks).toContain("Épuisé")
     expect(stocks).toContain("Bientôt périmé")
     const ventes = renderToStaticMarkup(
-      createElement(TuileVentes, { chargement: false, ventes: { devise: "EUR", totalMois: 420, nbMois: 3, dernieres: [{ id: "vente-1", date: "2026-10-09T00:00:00.000Z", description: "Panier légumes", montant: 25, client: "Marie", paye: false }] } }),
+      createElement(TuileVentes, { chargement: false, ventes: { devise: "EUR", totalMois: 420, totalMoisParDevise: [{ monnaie: "EUR", total: 420 }], nbMois: 3, dernieres: [{ id: "vente-1", date: "2026-10-09T00:00:00.000Z", description: "Panier légumes", montant: 25, monnaie: "EUR", client: "Marie", paye: false }] } }),
     )
     expect(ventes).toContain("Panier légumes")
     expect(ventes).toContain("À encaisser")

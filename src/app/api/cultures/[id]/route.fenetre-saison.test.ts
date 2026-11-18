@@ -30,14 +30,21 @@ vi.mock("@/lib/terroir", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/terroir")>()),
   zoneEffectiveUser: vi.fn().mockResolvedValue(null),
 }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  // Transaction simulée : verrou d'exploitation ($executeRaw) puis verrou
+  // commun des étapes (`verrouillerCultures`, $queryRaw).
+  const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(0),
+    $queryRaw: async () => [],
     culture: { findUnique: mocks.cultureFindUnique, update: mocks.cultureUpdate },
     planche: { findFirst: mocks.plancheFindFirst },
     iTP: { findFirst: mocks.itpFindFirst, findUnique: mocks.itpFindUnique },
     variete: { findFirst: mocks.varieteFindFirst },
-  },
-}))
+    // `espece.vivace` lu par le contrôle d'occupation (ADV33) : annuelle ici.
+    espece: { findFirst: async () => ({ vivace: false }) },
+  }
+  return { default: { $transaction: async (callback: (client: typeof tx) => unknown) => callback(tx) } }
+})
 
 import { PATCH, PUT } from "./route"
 
@@ -145,8 +152,9 @@ beforeEach(() => {
   mocks.cultureUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...cultureA, ...data }))
   mocks.itpFindUnique.mockResolvedValue({ especeId: "Ail" })
   mocks.plancheFindFirst.mockResolvedValue({ nom: "S1P1", longueur: 10 })
-  mocks.itpFindFirst.mockImplementation(async ({ where, select }: { where: { AND: Array<{ id?: string }> }; select: Record<string, boolean> }) => {
-    const id = where.AND[0].id as string
+  mocks.itpFindFirst.mockImplementation(async ({ where, select }: { where: { id?: string; AND?: Array<{ id?: string }> }; select: Record<string, boolean> }) => {
+    const id = (where.id ?? where.AND?.[0].id) as string
+    if (select.espacementRangs) return { espacementRangs: null }
     if (!ITPS[id]) return null
     return select.dureeRecolte ? ITPS[id] : { id }
   })
@@ -312,5 +320,28 @@ describe("PUT /api/cultures/[id] — alerte de saison (culture B)", () => {
     // recommandée » de la plantation n'est plus émis à côté.
     expect(corps.warnings.filter((w: string) => /plantation/i.test(w))).toEqual([corps.alerteSaison.message])
     expect(mocks.cultureUpdate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("PUT : une date effacée ne revient pas par la valeur stockée", () => {
+  // Revue du 2026-11-11 : `data.x ?? existing.x` remettait la date stockée à la
+  // place d'une date vidée, et la chronologie était jugée sur une plantation
+  // que l'utilisateur venait justement de retirer.
+  it("plantation vidée et récolte avancée avant l'ancienne plantation : accepté", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...cultureA, itpId: null, finRecolte: null })
+    const res = await PUT(
+      requete("PUT", { datePlantation: null, dateRecolte: "2026-09-15" }),
+      { params }
+    )
+    expect(res.status).toBe(200)
+    expect(ecrit().datePlantation).toBeNull()
+    expect(jour(ecrit().dateRecolte)).toBe("2026-09-15")
+  })
+
+  it("une plantation gardée reste comparée à la récolte avancée", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...cultureA, itpId: null, finRecolte: null })
+    const res = await PUT(requete("PUT", { dateRecolte: "2026-09-15" }), { params })
+    expect(res.status).toBe(400)
+    expect(mocks.cultureUpdate).not.toHaveBeenCalled()
   })
 })

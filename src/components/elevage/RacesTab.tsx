@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { useExploitation } from "@/hooks/use-exploitation"
 import { useSession } from "next-auth/react"
 import { Plus, Trash2, Bird } from "lucide-react"
 
@@ -66,6 +67,8 @@ export function RacesTab() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId
   const isAdmin = session?.user?.role === "ADMIN"
   const { filieres } = useElevageModes()
   const filiereSel = useFiliereSelection()
@@ -111,7 +114,7 @@ export function RacesTab() {
   const especeIdsVisibles = new Set(especesVisibles.map((e) => e.id))
   const racesVisibles = races.filter((r) => especeIdsVisibles.has(r.especeAnimaleId))
   const parEspece = filtre === "all" ? racesVisibles : racesVisibles.filter((r) => r.especeAnimaleId === filtre)
-  const filtered = filtrerParOrigine(parEspece, filtreOrigine, currentUserId)
+  const filtered = filtrerParOrigine(parEspece, filtreOrigine, proprietaireId)
 
   const ajouter = async () => {
     if (!form.especeAnimaleId) {
@@ -201,6 +204,7 @@ export function RacesTab() {
                       entree={{ id: r.id, userId: r.userId, partageCommunaute: r.partageCommunaute }}
                       nom={r.nom}
                       currentUserId={currentUserId}
+                      proprietaireId={proprietaireId}
                       actions={referentielActions}
                       showRemove={false}
                       signalerRefType="RACE"

@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ cultures: vi.fn(), recolte: vi.fn(), culture: vi.fn(), transaction: vi.fn(), surcharges: vi.fn(), invalider: vi.fn() }))
+// Règle réelle du rendement effectif ; seule la lecture des surcharges de la ferme
+// (`userStockEspece`) est simulée, sans remplacer le module (test du dépôt public).
 vi.mock('@/lib/prisma', () => ({ default: {
   culture: { findMany: mocks.cultures },
+  userStockEspece: { findMany: mocks.surcharges },
   $transaction: mocks.transaction,
 } }))
 vi.mock('@/lib/kpi', () => ({ invalidateKpi: mocks.invalider }))
-vi.mock('./rendement-effectif', async original => ({
-  ...await original<typeof import('./rendement-effectif')>(), chargerSurchargesRendement: mocks.surcharges,
-}))
 import { creerRecoltes, preparerRecoltes } from './creation'
 
 const tomate = {
@@ -24,8 +24,8 @@ const entree = { cultureId: 1, especeId: 'tomate-id', quantite: 750, unite: 'g',
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.cultures.mockResolvedValue([tomate])
-  mocks.surcharges.mockResolvedValue(new Map())
-  mocks.transaction.mockImplementation(async fn => fn({ recolte: { create: mocks.recolte }, culture: { update: mocks.culture }, intervention: { findMany: vi.fn(async () => []) } }))
+  mocks.surcharges.mockResolvedValue([])
+  mocks.transaction.mockImplementation(async fn => fn({ $queryRaw: vi.fn(async () => []), recolte: { create: mocks.recolte }, culture: { update: mocks.culture, findMany: vi.fn(async () => []) }, intervention: { findMany: vi.fn(async () => []) } }))
   mocks.recolte.mockImplementation(async ({ data }) => ({ id: 42, ...data, espece: tomate.espece }))
   mocks.culture.mockResolvedValue({})
 })
@@ -66,7 +66,7 @@ describe('saisie de récoltes du formulaire et de l’assistant', () => {
   })
 
   it('respecte les bottes déclarées par la ferme, sans nombre fractionnaire', async () => {
-    mocks.surcharges.mockResolvedValue(new Map([['tomate-id', { rendement: null, uniteRendement: 'bottes_m2' }]]))
+    mocks.surcharges.mockResolvedValue([{ especeId: 'tomate-id', rendement: null, uniteRendement: 'bottes_m2' }])
     const p = await preparerRecoltes('ferme', [{ ...entree, quantite: 3, unite: 'botte' }], true)
     expect(p.ok && p.recoltes[0].data).toMatchObject({ quantite: 3, unite: 'botte' })
     expect((await preparerRecoltes('ferme', [{ ...entree, quantite: 3.5, unite: 'botte' }], true)).ok).toBe(false)
@@ -99,7 +99,8 @@ describe('délai avant récolte à la saisie', () => {
     const date = new Date('2026-06-10T00:00:00Z')
     const tx = {
       recolte: { create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 7, ...data })) },
-      culture: { update: vi.fn() },
+      $queryRaw: vi.fn(async () => [{ id: 10 }]),
+      culture: { update: vi.fn(), findMany: vi.fn(async () => [{ id: 10, recolteFaite: true, dateRecolte: date, dateRecoltePlan: null }]) },
       intervention: { findMany: vi.fn(async (requete: { where: { userId: string } }) => [{
         cultureId: 10, plancheId: 'p1', date: new Date('2026-06-05T00:00:00Z'), dar: 7, produitPhyto: requete.where.userId ? 'Bouillie' : null, produitPhytoRef: null,
       }]) },

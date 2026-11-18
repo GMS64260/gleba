@@ -13,6 +13,7 @@
 
 import prisma from '@/lib/prisma'
 import { getKpiCompta } from '@/lib/kpi'
+import { ErreurDevisesIncompatibles, verifierDeviseCalcul } from './totaux-devise'
 import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
 import {
   ajouterQuantite,
@@ -103,9 +104,18 @@ export function productionTotaleParUnite(
 }
 
 export async function computeCoutsProduction(userId: string, year: number) {
+  const kpiCompta = await getKpiCompta(userId, year, new Date(), { parDevise: true })
+  verifierDeviseCalcul(kpiCompta.deviseCourante, kpiCompta.revenusYtdParDevise ?? [], kpiCompta.depensesYtdParDevise ?? [])
+  if (kpiCompta.revenusYtd === null || kpiCompta.depensesYtd === null || kpiCompta.revenusParModuleYtd === null) throw new ErreurDevisesIncompatibles()
+
   const startOfYear = new Date(year, 0, 1)
   const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
   const dateRange = { gte: startOfYear, lte: endOfYear }
+  // Les coûts ci-dessous portent sur l'année entière, y compris les charges
+  // futures déjà réglées. Le contrôle YTD ne couvre pas ces écritures figées.
+  // Ce second KPI ne remplace pas les revenus YTD utilisés dans le résultat.
+  const kpiAnnuel = await getKpiCompta(userId, year, endOfYear, { parDevise: true })
+  verifierDeviseCalcul(kpiCompta.deviseCourante, kpiAnnuel.revenusYtdParDevise ?? [], kpiAnnuel.depensesYtdParDevise ?? [])
   const maintenant = new Date()
   const revenusCultures = await chargerRevenusCultures(userId, startOfYear, year === maintenant.getFullYear() ? maintenant : endOfYear)
 
@@ -145,6 +155,7 @@ export async function computeCoutsProduction(userId: string, year: number) {
   const interventions = await prisma.intervention.findMany({
     where: {
       userId,
+      fait: true,
       date: dateRange,
       OR: [
         ...(cultureIds.length > 0 ? [{ cultureId: { in: cultureIds } }] : []),
@@ -487,8 +498,6 @@ export async function computeCoutsProduction(userId: string, year: number) {
   // Le revenu par culture/espèce rattache les ventes directes et les factures
   // aux lots concernés, mais le TOTAL exposé en haut de la
   // réponse est celui de la SSOT, identique sur tous les autres écrans.
-  const asOf = new Date()
-  const kpiCompta = await getKpiCompta(userId, year, asOf)
   // Même ventilation que le CA : ventes natives, BL facturés et avoirs,
   // à leur date comptable, sans compter deux fois la sortie physique.
   const vergerRevenus = kpiCompta.revenusParModuleYtd.parModule.verger

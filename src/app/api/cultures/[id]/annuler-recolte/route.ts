@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { refusSiLectureSeule } from '@/lib/exploitation/garde-session'
-import { SELECT_ETAPES, ecrituresRetourANonFait } from '@/lib/cultures/execution'
+import { SELECT_ETAPES, ecrituresRetourANonFait, verrouillerCultures } from '@/lib/cultures/execution'
 import { erreurFinRecolte } from '@/lib/cultures/fenetre-recolte'
 import { verrouillerRecolteLibre } from '@/lib/commercial/verrou-lot'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
@@ -50,6 +50,13 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
 
   try {
     const supprimees = await prisma.$transaction(async (tx) => {
+      // Contre-revue adverse 2 (2026-11-15) : verrou commun des étapes AVANT de
+      // lire la culture (ordre global : cultures puis lots). Sans lui, l'état
+      // des étapes lu ici pouvait être changé par un PUT concurrent, et une
+      // modification de récolte (qui prend la culture puis le lot) interbloquait
+      // avec la mise à jour finale de la culture. Mode `sansCle` : une vente qui
+      // tient un lot et crée son reliquat (clé étrangère) n'attend pas ce verrou.
+      await verrouillerCultures(tx, userId, [cultureId], 'sansCle')
       const culture = await tx.culture.findFirst({
         where: { id: cultureId, userId },
         select: { id: true, recolteFaite: true, finRecolte: true, ...SELECT_ETAPES },

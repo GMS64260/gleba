@@ -1,5 +1,8 @@
 "use client"
 
+import { formatMontantPiece, totalDansDeviseCourante, type PieceAvecDevise } from "@/lib/comptabilite/devise-piece-affichage"
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Onglet Production - Oeufs + Ventes + Abattages en sous-onglets
  */
@@ -59,7 +62,7 @@ import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
 import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
 import { confirmDialog } from "@/lib/global-dialog"
 import { envoyerAvecConfirmationLait } from "@/lib/elevage/confirmation-lait"
-import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
+import { symboleDevise, formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { tauxTvaVenteProduitParDefaut } from '@/lib/elevage/produits-ruche'
 import { jourCivilStocke } from '@/lib/jour-civil'
 
@@ -1188,7 +1191,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
 // Ventes
 // ============================================================
 
-interface Vente {
+interface Vente extends PieceAvecDevise {
   id: number
   date: string
   type: string
@@ -1232,6 +1235,9 @@ const estCessionGratuite = (notes: string | null | undefined) =>
   (notes ?? '').startsWith(PREFIXE_CESSION_GRATUITE)
 
 function VentesSubTab({ year }: { year?: number } = {}) {
+  const devise = useDevise()
+  const symbole = devise === null ? "—" : symboleDevise(devise)
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   // Revue 2026-09-28 — la liste ne demandait que l'année civile courante :
@@ -1413,7 +1419,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
       const total = parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)
       toast({
         title: "Vente enregistrée",
-        description: formData.cessionGratuite ? "Cession à titre gratuit" : formatMontantDevise(total),
+        description: formData.cessionGratuite ? "Cession à titre gratuit" : formatMontant(total),
       })
       // Review caprin 2026-07-22 — alerte délai d'attente lait sur vente de lait cru.
       if (json?.warning) toast({ variant: "destructive", title: "Attention lait", description: json.warning })
@@ -1453,7 +1459,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
           <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-emerald-100 text-xs">Chiffre d&apos;affaires</CardDescription>
-              <CardTitle className="text-2xl">{formatMontantDevise(stats.totalVentes)}</CardTitle>
+              <CardTitle className="text-2xl">{totalDansDeviseCourante(ventes, devise) ? formatMontant(stats.totalVentes) : "—"}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
@@ -1465,7 +1471,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-xs">Panier moyen</CardDescription>
-              <CardTitle className="text-2xl">{formatMontantDevise(stats.nbVentes > 0 ? stats.totalVentes / stats.nbVentes : 0)}</CardTitle>
+              <CardTitle className="text-2xl">{totalDansDeviseCourante(ventes, devise) ? formatMontant(stats.nbVentes > 0 ? stats.totalVentes / stats.nbVentes : 0) : "—"}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -1547,7 +1553,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                 <div className="space-y-2">
                   <Label>Prix unit. *</Label>
                   {/* Ticket cms1vqsqu — prix verrouillé à 0 quand cession gratuite. */}
-                  <Input type="number" step="any" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder={'€'} disabled={formData.cessionGratuite} />
+                  <Input type="number" step="any" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder={symbole} disabled={formData.cessionGratuite} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="vente-taux-tva">TVA *</Label>
@@ -1607,7 +1613,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                 <div className="text-center py-2 bg-green-50 rounded-lg">
                   <span className="text-sm text-muted-foreground">Total: </span>
                   <span className="text-xl font-bold text-green-700">
-                    {formatMontantDevise(parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire))}
+                    {formatMontant(parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire))}
                   </span>
                 </div>
               )}
@@ -1664,15 +1670,15 @@ function VentesSubTab({ year }: { year?: number } = {}) {
                     <TableCell><Badge variant="outline">{TYPE_LABELS[vente.type] || vente.type}</Badge></TableCell>
                     <TableCell>{vente.description || '-'}</TableCell>
                     <TableCell className="text-right">{vente.quantite} {labelUnite(vente.unite)}</TableCell>
-                    <TableCell className="text-right">{formatMontantDevise(vente.prixUnitaire)}</TableCell>
-                    <TableCell className="text-right font-bold text-green-600">{formatMontantDevise(vente.prixTotal)}</TableCell>
+                    <TableCell className="text-right">{formatMontantPiece(vente.prixUnitaire, vente, devise)}</TableCell>
+                    <TableCell className="text-right font-bold text-green-600">{formatMontantPiece(vente.prixTotal, vente, devise)}</TableCell>
                     <TableCell>{vente.client || '-'}</TableCell>
                     <TableCell>
                       <Badge className={vente.paye ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
                         {vente.factureId ? "Facturée" : (vente.montantRegle ?? 0) > 0 && (vente.resteAPayer ?? 0) > 0 ? "Partiellement encaissé" : vente.paye ? vente.montantRegle == null ? "Déclaré encaissé" : "Encaissé" : "À encaisser"}
                       </Badge>
                       {!vente.factureId && vente.paye && vente.montantRegle == null && <p className="mt-1 text-xs text-muted-foreground">Pointage sans détail de règlement. À vérifier dans Règlements.</p>}
-                      {!vente.factureId && vente.montantRegle != null && <p className="mt-1 text-xs">Reçu : {formatMontantDevise(vente.montantRegle)} · reste : {formatMontantDevise(vente.resteAPayer ?? 0)}</p>}
+                      {!vente.factureId && vente.montantRegle != null && <p className="mt-1 text-xs">Reçu : {formatMontantPiece(vente.montantRegle, vente, devise)} · reste : {formatMontantPiece(vente.resteAPayer ?? 0, vente, devise)}</p>}
                       <p className="mt-1 text-xs text-muted-foreground">{vente.factureId ? 'Voir la facture' : vente.modeReglement || 'Mode non renseigné'}</p>
                     </TableCell>
                     <TableCell>
@@ -1733,6 +1739,8 @@ function getEspeceFromAbattage(a: Abattage): { id: string; nom: string; couleur:
 }
 
 function AbattagesSubTab({ year }: { year?: number } = {}) {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   // Revue 2026-09-28 — même défaut que les ventes : 15 abattages 2023-2025
@@ -1929,7 +1937,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
           <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-emerald-100 text-xs">Revenus vente</CardDescription>
-              <CardTitle className="text-2xl">{formatMontantDevise(revenusVente)}</CardTitle>
+              <CardTitle className="text-2xl">{formatMontant(revenusVente)}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -2088,7 +2096,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
                     <TableCell className="text-right">{a.poidsVif ? `${a.poidsVif} kg` : '-'}</TableCell>
                     <TableCell className="text-right">{a.poidsCarcasse ? `${a.poidsCarcasse} kg` : '-'}</TableCell>
                     <TableCell><Badge variant="outline">{DEST_LABELS[a.destination] || a.destination}</Badge></TableCell>
-                    <TableCell className="text-right text-green-600">{a.prixVente ? formatMontantDevise(a.prixVente) : '-'}</TableCell>
+                    <TableCell className="text-right text-green-600">{a.prixVente ? formatMontant(a.prixVente) : '-'}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(a)} title="Modifier" className="text-slate-600 hover:text-slate-900">
                         <Pencil className="h-3.5 w-3.5" />

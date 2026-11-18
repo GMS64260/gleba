@@ -10,7 +10,7 @@
  * en compte).
  */
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 
 export const ZONES_CLIMAT = [
   // Métropole
@@ -187,7 +187,7 @@ export interface TerroirUser {
  * pour les usages serveur (ex : avertissement de plantation).
  */
 export async function zoneEffectiveUser(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   userId: string
 ): Promise<ZoneClimat | null> {
   const [user, terroir] = await Promise.all([
@@ -208,7 +208,7 @@ export async function zoneEffectiveUser(
  * - zoneClimat : dérivée du code postal, à défaut du centroïde d'une parcelle.
  * Tout champ peut être null (« non précisé »).
  */
-export async function terroirDeUser(prisma: PrismaClient, userId: string): Promise<TerroirUser> {
+export async function terroirDeUser(prisma: PrismaClient | Prisma.TransactionClient, userId: string): Promise<TerroirUser> {
   const [exploitation, planches, parcelles] = await Promise.all([
     prisma.exploitation.findUnique({
       where: { userId },

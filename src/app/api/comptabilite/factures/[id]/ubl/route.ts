@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { buildUblInvoice, UblValidationError } from '@/lib/facture-ubl'
-import { preparerExportFacture } from '@/lib/facture-structuree'
+import { entetesRapportExport, preparerExportFacture } from '@/lib/facture-structuree'
 
 /**
  * GET /api/comptabilite/factures/[id]/ubl — la facture en UBL 2.1 (EN 16931,
@@ -42,6 +42,8 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       'Content-Type': 'application/xml; charset=utf-8',
       'Content-Disposition': `attachment; filename="${filename}"`,
       'X-Content-Type-Options': 'nosniff',
+      // Rapport d'export : acheteur non figé (facture antérieure, BX03).
+      ...entetesRapportExport(facture),
     },
   })
 }

@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { masquerEntree, visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
+import { MESSAGE_MODULE_REFUSE, moduleOuvert } from '@/lib/exploitation/modules-chemins'
 import { exporterDonneesTabulaires } from '@/lib/export-tabulaire'
 import { sansChamps } from '@/lib/sans-champs'
 import { SELECT_FOURNISSEUR_SANS_BANQUE } from '@/lib/comptabilite/fournisseur-public'
@@ -39,6 +40,14 @@ export async function GET(request: NextRequest) {
           'Cache-Control': 'private, no-store',
         },
       })
+    }
+
+    // L'export JSON emporte planches, cultures, récoltes (maraîchage) et arbres
+    // (verger) : refusé au membre dont l'adhésion ferme l'un de ces modules,
+    // comme leurs routes d'API (route transversale, donc hors table).
+    const restriction = session!.user.modulesExploitation
+    if (!moduleOuvert(restriction, 'maraichage') || !moduleOuvert(restriction, 'verger')) {
+      return NextResponse.json({ error: MESSAGE_MODULE_REFUSE }, { status: 403 })
     }
 
     // Référentiels communautaires : on n'exporte que ce que CET utilisateur a le

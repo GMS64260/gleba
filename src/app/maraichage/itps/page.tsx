@@ -9,7 +9,6 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
 import {
   ArrowLeft,
@@ -31,8 +30,9 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { AvisDialog } from "@/components/avis/AvisDialog"
 import { AvisCell } from "@/components/avis/AvisCell"
 import type { AvisStatsListe } from "@/lib/avis/types"
-import { badgeOrigine } from "@/lib/referentiel-communaute"
-import { libelleImplantationItp, nomAffichableItp } from "@/lib/itp-label"
+import { origineBadge } from "@/lib/especes/affichage"
+import type { OrigineBadgeReferentiel } from "@/lib/referentiel-communaute"
+import { libelleFenetreSemaines, libelleImplantationItp, nomAffichableItp } from "@/lib/itp-label"
 import { dureeCycleItpJours } from "@/lib/cultures/dates-itp"
 import { itpApplicableAZone } from "@/lib/calendrier-climat"
 import type { ZoneClimat } from "@/lib/terroir"
@@ -45,6 +45,7 @@ interface ITPWithRelations {
   // Catalogue communautaire : userId null = Gleba officiel ; renseigné = perso
   // d'un membre. partageCommunaute = proposé/partagé à la communauté.
   userId: string | null
+  origine: OrigineBadgeReferentiel
   partageCommunaute: boolean
   especeId: string | null
   semaineSemis: number | null
@@ -134,9 +135,7 @@ function colonnes(zoneUser: ZoneClimat | null): ColumnDef<ITPWithRelations>[] {
       return (
         <div className="space-y-1">
           <Badge variant="outline" className="text-xs">
-            {itp.semaineImplantationFin
-              ? `S${start}–S${itp.semaineImplantationFin}`
-              : formatSemaine(start)}
+            {libelleFenetreSemaines(start, itp.semaineImplantationFin)}
           </Badge>
           <p className="text-[11px] text-muted-foreground">
             {libelleImplantationItp(itp)}
@@ -151,9 +150,7 @@ function colonnes(zoneUser: ZoneClimat | null): ColumnDef<ITPWithRelations>[] {
     header: "Récolte",
     cell: ({ row }) => (
       <Badge variant="secondary" className="text-xs">
-        {row.original.semaineRecolteFin
-          ? `S${row.original.semaineRecolte}–S${row.original.semaineRecolteFin}`
-          : formatSemaine(row.original.semaineRecolte)}
+        {libelleFenetreSemaines(row.original.semaineRecolte, row.original.semaineRecolteFin)}
       </Badge>
     ),
   },
@@ -243,6 +240,9 @@ export default function ITPsPage() {
   const currentUserId = session?.user.id
   const [data, setData] = React.useState<ITPWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  // Échec du dernier chargement : sans lui, le tableau vide annonçait « Aucun
+  // ITP trouvé » et invitait à en créer un.
+  const [erreurChargement, setErreurChargement] = React.useState(false)
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [avisRef, setAvisRef] = React.useState<ITPWithRelations | null>(null)
@@ -251,8 +251,13 @@ export default function ITPsPage() {
   const deferredSearch = React.useDeferredValue(search)
   const pageSize = 50
 
+  // Numéro de la dernière requête lancée : une réponse plus ancienne (frappe
+  // rapide, réseau lent) ne doit pas écraser celle de la recherche courante.
+  const requeteRef = React.useRef(0)
+
   // Charger les données
   const fetchData = React.useCallback(async () => {
+    const requete = ++requeteRef.current
     setIsLoading(true)
     try {
       // `calibre=1` : les semaines renvoyées sont celles de VOTRE zone, comme
@@ -270,21 +275,40 @@ export default function ITPsPage() {
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
+      if (requete !== requeteRef.current) return
+      setErreurChargement(false)
       setData(result.data)
       setPageCount(result.totalPages)
+      // Dernière ligne de la dernière page supprimée : on recule sur la page
+      // qui existe encore, au lieu de rester sur une page vide.
+      if (result.data.length === 0 && pageIndex > 0 && result.totalPages <= pageIndex) {
+        setPageIndex(Math.max(0, result.totalPages - 1))
+      }
     } catch {
+      if (requete !== requeteRef.current) return
+      setErreurChargement(true)
+      setData([])
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de charger les ITPs",
+        description: "Impossible de charger les ITP",
       })
     } finally {
-      setIsLoading(false)
+      if (requete === requeteRef.current) setIsLoading(false)
     }
   }, [pageIndex, deferredSearch, toast])
 
   React.useEffect(() => {
     fetchData()
+  }, [fetchData])
+
+  // Les colonnes sont mémoïsées : leurs boutons gardaient le `fetchData` du
+  // premier rendu et rechargeaient la page 1 sans recherche, sous un pager et
+  // un champ de recherche inchangés. Ils passent par cette référence, toujours
+  // à jour.
+  const rechargerRef = React.useRef(fetchData)
+  React.useEffect(() => {
+    rechargerRef.current = fetchData
   }, [fetchData])
 
   React.useEffect(() => {
@@ -354,7 +378,7 @@ export default function ITPsPage() {
           title: next ? "Proposé à la communauté" : "Rendu privé",
           description: `« ${formatItpLabel(itp)} »`,
         })
-        fetchData()
+        rechargerRef.current()
       } else {
         const p = await res.json().catch(() => null)
         toast({
@@ -377,7 +401,7 @@ export default function ITPsPage() {
       })
       if (res.ok) {
         toast({ title: "ITP supprimé", description: `« ${formatItpLabel(itp)} »` })
-        fetchData()
+        rechargerRef.current()
       } else {
         const p = await res.json().catch(() => null)
         toast({
@@ -460,7 +484,7 @@ export default function ITPsPage() {
         enableSorting: false,
         cell: ({ row }) => {
           const itp = row.original
-          const badge = badgeOrigine(itp, currentUserId)
+          const badge = origineBadge(itp)
           const mine = !!currentUserId && itp.userId === currentUserId
           return (
             <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
@@ -568,7 +592,13 @@ export default function ITPsPage() {
           onRowEdit={handleEdit}
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher un ITP..."
-          emptyMessage="Aucun ITP trouve. Cliquez sur + pour en créer un."
+          emptyMessage={
+            erreurChargement
+              ? "Les ITP n'ont pas pu être chargés. Réessayez avec le bouton d'actualisation."
+              : search.trim()
+                ? "Aucun ITP ne correspond à cette recherche."
+                : "Aucun ITP trouvé. Cliquez sur + pour en créer un."
+          }
         />
 
         <AvisDialog

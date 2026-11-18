@@ -6,8 +6,9 @@ import { formatSemaine } from '@/lib/assistant-helpers'
 import { jourLocalISO } from '@/lib/jour-civil'
 import { ecartJoursCivils } from './jours-civils'
 
-// Le fuseau doit être posé AVANT le démarrage de Vitest (pool threads).
-console.info(`Fuseau effectif B6 : ${Intl.DateTimeFormat().resolvedOptions().timeZone}`)
+// Les dates sont locales au processus : lancer aussi cette suite avec
+// TZ=Europe/Paris pour couvrir les changements d’heure, et avec TZ=UTC.
+const fuseau = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 // Exécuter la vraie fonction pure de la page sans monter ses dépendances navigateur.
 // Garder son emplacement évite de déplacer le code partagé avec le lot pr73.
@@ -21,9 +22,20 @@ const cycleItpPropose = new Function('datesDepuisItp', 'semaineSemisEffective', 
   `${js}; return cycleItpPropose`)(datesDepuisItp, semaineSemisEffective, formatSemaine, ecartJoursCivils) as
   (itp: SemainesItp, year: number, today: Date) => DatesCycle & { info: string | null }
 
-describe('écart en jours civils — Europe/Paris', () => {
-  it('utilise effectivement Europe/Paris', () => {
-    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Europe/Paris')
+describe(`écart en jours civils — ${fuseau}`, () => {
+  it('utilise le fuseau demandé au lancement, y compris pour les dates locales', () => {
+    // La CI et scripts/test-tz.mjs fixent TZ avant la création des workers.
+    // Vérifier aussi Date : modifier seulement process.env.TZ dans un worker
+    // peut laisser Date sur le fuseau précédent.
+    const attendu = process.env.TZ ?? fuseau
+    expect(fuseau).toBe(new Intl.DateTimeFormat('fr', { timeZone: attendu }).resolvedOptions().timeZone)
+    if (attendu === 'Europe/Paris') {
+      expect(new Date(2026, 0, 1).getTimezoneOffset()).toBe(-60)
+      expect(new Date(2026, 6, 1).getTimezoneOffset()).toBe(-120)
+    } else if (attendu === 'UTC') {
+      expect(new Date(2026, 0, 1).getTimezoneOffset()).toBe(0)
+      expect(new Date(2026, 6, 1).getTimezoneOffset()).toBe(0)
+    }
   })
   it("compte 46 jours à travers le passage à l'heure d'hiver", () => {
     expect(ecartJoursCivils(new Date(2026, 8, 28), new Date(2026, 10, 13))).toBe(46)

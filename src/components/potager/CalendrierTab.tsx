@@ -302,7 +302,30 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         body: JSON.stringify({ ids, type }),
       })
       if (!res.ok) throw new Error("Échec")
-      toast({ title: `${ids.length} tâche${ids.length > 1 ? "s" : ""} marquée${ids.length > 1 ? "s" : ""} comme faite${ids.length > 1 ? "s" : ""}` })
+      // Une culture dont le recalage ferait déborder la planche est refusée
+      // par le serveur et reste « à faire » : on recharge pour défaire l'affichage optimiste.
+      const payload = (await res.json().catch(() => null)) as
+        | { updated?: number; refusees?: Array<{ id: number; error: string }> }
+        | null
+      const refusees = payload?.refusees ?? []
+      const faites = payload?.updated ?? ids.length
+      if (faites > 0) {
+        toast({ title: `${faites} tâche${faites > 1 ? "s" : ""} marquée${faites > 1 ? "s" : ""} comme faite${faites > 1 ? "s" : ""}` })
+      }
+      if (refusees.length > 0) {
+        const noms = refusees
+          .map((r) => {
+            const t = taches[key].find((x) => x.id === r.id)
+            return [t?.especeNom ?? `Culture #${r.id}`, t?.varieteNom].filter(Boolean).join(" ")
+          })
+          .join(", ")
+        toast({
+          variant: "destructive",
+          title: `${refusees.length} tâche${refusees.length > 1 ? "s" : ""} non marquée${refusees.length > 1 ? "s" : ""} : planche pleine`,
+          description: `${noms} — ${refusees[0].error}`,
+        })
+        fetchTaches()
+      }
     } catch {
       toast({ variant: "destructive", title: "Erreur, recharge en cours" })
       fetchTaches()

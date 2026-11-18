@@ -44,5 +44,6 @@ export interface ItpVue {
   implantation?: string | null
   statutValidation?: string | null
   sourceRecordId?: string | null
-  notes: string | null
+  /** Absent de la projection allégée des calendriers (`champs=calendrier`). */
+  notes?: string | null
 }

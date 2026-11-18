@@ -57,3 +57,106 @@ export function identiteAcheteur(client: { siret?: string | null; siren?: string
     clientTvaIntra: client.tvaIntra?.trim() || null,
   }
 }
+
+/** Fiche client telle que lue pour figer l'acheteur. */
+export interface FicheAcheteur {
+  nom: string
+  type?: string | null
+  email?: string | null
+  adresse?: string | null
+  codePostal?: string | null
+  ville?: string | null
+  pays?: string | null
+  siret?: string | null
+  siren?: string | null
+  tvaIntra?: string | null
+}
+
+/** Colonnes de la facture qui portent l'identité figée de l'acheteur. */
+export interface InstantaneAcheteur extends IdentiteAcheteur {
+  clientNom: string
+  clientAdresse: string | null
+  clientEmail: string | null
+  clientCodePostal: string | null
+  clientVille: string | null
+  clientPays: string | null
+  clientType: string | null
+}
+
+const texte = (v?: string | null) => v?.trim() || null
+
+/**
+ * BX03 (2026-11-16) — identité complète de l'acheteur à figer sur une facture
+ * ou un avoir émis, lue sur sa fiche. Sans adresse sur la fiche, l'adresse
+ * saisie sur la facture est gardée plutôt que remplacée par une chaîne vide.
+ */
+export function instantaneAcheteur(client: FicheAcheteur, adresseSaisie?: string | null): InstantaneAcheteur {
+  return {
+    clientNom: client.nom,
+    clientAdresse: adresseDeFiche(client) || texte(adresseSaisie),
+    clientEmail: texte(client.email),
+    clientCodePostal: texte(client.codePostal),
+    clientVille: texte(client.ville),
+    clientPays: texte(client.pays),
+    clientType: texte(client.type),
+    ...identiteAcheteur(client),
+  }
+}
+
+/** Facture lue pour ses documents (PDF, UBL, Factur-X) : colonnes figées et fiche liée. */
+export interface FactureAcheteur {
+  clientNom: string
+  clientAdresse: string | null
+  clientSiret: string | null
+  clientSiren: string | null
+  clientTvaIntra: string | null
+  clientEmail: string | null
+  clientCodePostal: string | null
+  clientVille: string | null
+  clientPays: string | null
+  clientType: string | null
+  acheteurFigeLe: Date | null
+  client?: FicheAcheteur | null
+}
+
+/** Acheteur imprimé sur la facture et transmis dans le Factur-X. */
+export interface AcheteurDeFacture {
+  nom: string
+  adresse: string | null
+  siret: string | null
+  siren: string | null
+  tvaIntra: string | null
+  email: string | null
+  codePostal: string | null
+  ville: string | null
+  pays: string | null
+  type: string | null
+  /** false : instantané historique absent ou brouillon, sans complément courant. */
+  fige: boolean
+}
+
+export const AVERTISSEMENT_ACHETEUR_NON_FIGE =
+  'Acheteur non figé : identité historique incomplète ; seuls les champs archivés sur la facture sont exportés, sans complément depuis la fiche client actuelle.'
+
+/**
+ * Source unique des éditions PDF, UBL et Factur-X. Les colonnes archivées
+ * font foi, même vides. L'absence d'instantané est signalée séparément : elle
+ * n'autorise jamais à reconstruire l'identité historique depuis la fiche.
+ */
+export function acheteurDeFacture(facture: FactureAcheteur): AcheteurDeFacture {
+  const fige = facture.acheteurFigeLe != null
+  const siret = facture.clientSiret ?? null
+  return {
+    nom: facture.clientNom,
+    adresse: facture.clientAdresse ?? null,
+    siret,
+    siren: facture.clientSiren ?? (!fige && siret && siret.replace(/\D/g, '').length === 14 ? sirenFromSiret(siret) : null),
+    tvaIntra: facture.clientTvaIntra ?? null,
+    email: facture.clientEmail ?? null,
+    codePostal: facture.clientCodePostal ?? null,
+    ville: facture.clientVille ?? null,
+    pays: facture.clientPays ?? null,
+    type: facture.clientType ?? null,
+    fige,
+  }
+}

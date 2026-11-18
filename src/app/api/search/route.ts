@@ -19,10 +19,25 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { chargerAccesService } from '@/lib/abonnement/serveur'
 import { operationPermise } from '@/lib/abonnement/requetes'
-import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { cheminOuvert } from '@/lib/exploitation/modules-chemins'
+import { estVisibleReferentiel, visibiliteReferentiel, type EntreeReferentiel } from '@/lib/referentiel-communaute'
+import { normalizeReferentielKey } from '@/lib/normalize'
 import { formatSurface } from '@/components/parcelles/parcelle-constants'
 
 const TAKE = 8
+const SELECT_NOM_VISIBLE = { nom: true, userId: true, partageCommunaute: true } as const
+
+// Prisma `contains` utilise LIKE : ces caractères sont du texte saisi, pas des jokers.
+function contientLitteral(texte: string) {
+  return { contains: texte.replace(/[\\%_]/g, '\\$&'), mode: 'insensitive' as const }
+}
+
+function nomVisible(entree: (EntreeReferentiel & { nom: string | null; espece?: EntreeReferentiel }) | null, userId: string) {
+  if (!entree || !estVisibleReferentiel(entree, userId)) return null
+  // Pour une variété, la visibilité cascade depuis sa propre espèce.
+  if (entree.espece && !estVisibleReferentiel(entree.espece, userId)) return null
+  return entree.nom
+}
 
 export interface SearchItem {
   id: string
@@ -42,22 +57,33 @@ export async function GET(request: NextRequest) {
 
   const userId = session.user.id
   const like = { contains: q, mode: 'insensitive' as const }
+  const likeLitteral = contientLitteral(q)
+  const cle = normalizeReferentielKey(q)
+  // Une clé vide ne doit jamais devenir `contains: ''` (toutes les lignes).
+  const noms = { OR: [{ nom: likeLitteral }, ...(cle ? [{ nomNormalise: contientLitteral(cle) }] : [])] }
+  const visible = visibiliteReferentiel(userId)
+  const especeRecherchee = { AND: [visible, noms] }
+  const varieteVisible = { AND: [visible, { espece: visible }] }
+  const varieteRecherchee = { AND: [varieteVisible, noms] }
 
   const [cultures, varietes, arbres, animaux, lots, clients, factures, documents, parcelles, soins, recoltes, produitsBout] = await Promise.all([
     prisma.culture.findMany({
-      where: { userId, OR: [{ varieteId: like }, { especeId: like }] },
+      where: { userId, OR: [
+        // Compatibilité des identifiants historiques, en complément des noms visibles.
+        { varieteId: likeLitteral }, { especeId: likeLitteral },
+        { espece: especeRecherchee }, { variete: varieteRecherchee },
+      ] },
       take: TAKE,
       orderBy: { id: 'desc' },
-      select: { id: true, especeId: true, varieteId: true, plancheId: true, annee: true, espece: { select: { nom: true } }, variete: { select: { nom: true } } },
+      select: { id: true, especeId: true, varieteId: true, plancheId: true, annee: true, espece: { select: SELECT_NOM_VISIBLE }, variete: { select: { ...SELECT_NOM_VISIBLE, espece: { select: SELECT_NOM_VISIBLE } } } },
     }),
     // Variétés que le compte voit, comme GET /api/varietes (règle cascadée sur
     // l'espèce) : la recherche listait les variétés privées des autres comptes.
     prisma.variete.findMany({
       where: {
         AND: [
-          { OR: [{ id: like }, { nomNormalise: like }] },
-          visibiliteReferentiel(userId),
-          { espece: visibiliteReferentiel(userId) },
+          { OR: [{ id: likeLitteral }, noms] },
+          varieteVisible,
         ],
       },
       take: TAKE,
@@ -113,10 +139,13 @@ export async function GET(request: NextRequest) {
       select: { id: true, type: true, produit: true, date: true, animal: { select: { nom: true } }, lot: { select: { nom: true } } },
     }),
     prisma.recolte.findMany({
-      where: { userId, OR: [{ especeId: like }, { notes: like }] },
+      where: { userId, OR: [
+        // L'identifiant historique et les notes restent cherchés dans le texte brut.
+        { especeId: likeLitteral }, { notes: likeLitteral }, { espece: especeRecherchee },
+      ] },
       take: TAKE,
       orderBy: { date: 'desc' },
-      select: { id: true, especeId: true, notes: true, quantite: true, date: true, espece: { select: { nom: true } } },
+      select: { id: true, especeId: true, notes: true, quantite: true, date: true, espece: { select: SELECT_NOM_VISIBLE } },
     }),
     prisma.produitBoutique.findMany({
       where: { userId, nom: like },
@@ -129,7 +158,7 @@ export async function GET(request: NextRequest) {
   const items: SearchItem[] = [
     ...cultures.map((c): SearchItem => ({
       id: `culture-${c.id}`,
-      label: `${c.espece?.nom ?? c.especeId ?? '?'}${c.varieteId ? ` — ${c.variete?.nom ?? c.varieteId}` : ''}`,
+      label: `${nomVisible(c.espece, userId) ?? c.especeId ?? '?'}${c.varieteId ? ` — ${nomVisible(c.variete, userId) ?? c.varieteId}` : ''}`,
       sub: `Culture ${c.annee} · planche ${c.plancheId || '—'}`,
       type: 'Culture',
       href: `/maraichage/cultures/${c.id}`,
@@ -202,7 +231,7 @@ export async function GET(request: NextRequest) {
     })),
     ...recoltes.map((r): SearchItem => ({
       id: `recolte-${r.id}`,
-      label: `${r.espece?.nom ?? r.especeId ?? ''} · ${r.quantite} kg`,
+      label: `${nomVisible(r.espece, userId) ?? r.especeId ?? ''} · ${r.quantite} kg`,
       sub: `${r.notes || ''} · ${new Date(r.date).toLocaleDateString('fr-FR')}`.trim(),
       type: 'Récolte',
       href: `/maraichage/recoltes`,
@@ -217,5 +246,8 @@ export async function GET(request: NextRequest) {
   ]
 
   const acces = await chargerAccesService(userId)
-  return NextResponse.json({ items: items.filter(item => operationPermise(acces, item.href, 'GET')) })
+  // Un résultat dont l'écran est fermé (formule, ou module fermé au membre
+  // connecté : même table que la garde des API) n'est pas proposé.
+  const restriction = session.user.modulesExploitation
+  return NextResponse.json({ items: items.filter(item => operationPermise(acces, item.href, 'GET') && cheminOuvert(restriction, item.href)) })
 }

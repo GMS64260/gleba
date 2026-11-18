@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 /**
@@ -26,26 +26,25 @@ vi.mock("@/lib/terroir", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/terroir")>()),
   zoneEffectiveUser: vi.fn().mockResolvedValue(null),
 }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  // Transaction simulée : verrou d'exploitation ($executeRaw) puis verrou
+  // commun des étapes (`verrouillerCultures`, $queryRaw).
+  const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(0),
+    $queryRaw: async () => [],
     culture: { findUnique: mocks.cultureFindUnique, update: mocks.cultureUpdate },
     planche: { findFirst: mocks.plancheFindFirst },
     iTP: { findFirst: mocks.itpFindFirst },
     variete: { findFirst: mocks.varieteFindFirst },
-  },
-}))
+    // `espece.vivace` lu par le contrôle d'occupation (ADV33) : annuelle ici.
+    espece: { findFirst: async () => ({ vivace: false }) },
+  }
+  return { default: { $transaction: async (callback: (client: typeof tx) => unknown) => callback(tx) } }
+})
 
 import { PUT } from "./route"
 
-// Le conteneur tourne en Europe/Paris.
-const tzAvant = process.env.TZ
-beforeAll(() => {
-  process.env.TZ = "Europe/Paris"
-})
-afterAll(() => {
-  if (tzAvant === undefined) delete process.env.TZ
-  else process.env.TZ = tzAvant
-})
+// Le fuseau est fixé au démarrage de Vitest (Paris et UTC dans les contrôles).
 
 const PLANCHE = "cmvnulpl0000planche0002"
 
@@ -96,7 +95,7 @@ describe("PUT /api/cultures/[id] — dates comparées et écrites par jour (cmvn
   })
 
   it("la fiche renvoie le minuit local d'un ITP resynchronisé : stocké au jour civil, minuit UTC", async () => {
-    const res = await modifier({ dateSemis: "2027-04-11T22:00:00.000Z" })
+    const res = await modifier({ dateSemis: new Date(2027, 3, 12).toISOString() })
 
     expect(res.status).toBe(200)
     expect((ecrit().dateSemis as Date).toISOString()).toBe("2027-04-12T00:00:00.000Z")
@@ -130,12 +129,12 @@ describe("PUT /api/cultures/[id] — dates comparées et écrites par jour (cmvn
     })
   })
 
-  it("culture ancienne stockée à minuit Paris, renvoyée « AAAA-MM-JJ » : même jour, inchangée", async () => {
-    mocks.cultureFindUnique.mockResolvedValue({ ...stockee, dateSemis: new Date("2027-04-11T22:00:00.000Z") })
+  it("culture ancienne stockée à minuit local, renvoyée « AAAA-MM-JJ » : même jour, inchangée", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...stockee, dateSemis: new Date(2027, 3, 12) })
 
     await modifier({ dateSemis: "2027-04-12" })
 
-    expect((ecrit().dateSemis as Date).toISOString()).toBe("2027-04-11T22:00:00.000Z")
+    expect((ecrit().dateSemis as Date).toISOString()).toBe(new Date(2027, 3, 12).toISOString())
     expect(ecrit()).not.toHaveProperty("dateSemisPlan")
   })
 })
