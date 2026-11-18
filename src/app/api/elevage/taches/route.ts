@@ -301,9 +301,10 @@ export async function GET(request: NextRequest) {
     // avec ponte), on pondère 50/50 avec la moyenne observée pour ne pas
     // afficher un attendu qui contredit la réalité du terrain. Empêche le
     // ressenti "valeur figée à 23/jour alors que je collecte 10/jour".
-    const debutHistorique = new Date(now.getTime() - 60 * 86_400_000)
+    // Même référence que le modèle : aucune collecte ultérieure à la semaine consultée.
+    const debutHistorique = new Date(refDate.getTime() - 60 * 86_400_000)
     const historiqueOeufs = await prisma.productionOeuf.findMany({
-      where: { userId, date: { gte: debutHistorique, lte: now } },
+      where: { userId, date: { gte: debutHistorique, lte: refDate } },
       select: { date: true, quantite: true },
     })
     let estimationSource: 'theorique' | 'historique' | 'mixte' = 'theorique'

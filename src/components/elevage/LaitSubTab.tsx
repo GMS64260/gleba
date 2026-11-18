@@ -36,6 +36,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { envoyerAvecConfirmationLait } from "@/lib/elevage/confirmation-lait"
 import type { BilanLait } from "@/lib/elevage/bilan-lait"
+import type { OrigineLactation } from "@/lib/elevage/lactation-origine"
 import { BilanLaitResume } from "./BilanLaitResume"
 import { todayLocalISO } from '@/lib/format-utils'
 import {
@@ -1517,6 +1518,8 @@ function LactationView() {
   const [selectedId, setSelectedId] = React.useState<number | null>(null)
   const [data, setData] = React.useState<{
     dim: number | null
+    origineLactation: OrigineLactation
+    dimEstime: boolean
     courbe: { dim: number; date: string; volume: number; moyenne7j: number }[]
     moyenne7j?: number | null
     joursMesures?: number
@@ -1571,7 +1574,11 @@ function LactationView() {
           Courbe de lactation 305 j
         </CardTitle>
         <CardDescription>
-          DIM = jours depuis la dernière mise-bas. Suggestion de tarissement à DIM &gt; 270 ou production moyenne &lt; 0,5 L/j sur 7 j.
+          {data?.origineLactation === "mise_bas" && data.dimEstime === false
+            ? "DIM = jours depuis la dernière mise-bas. Suggestion de tarissement hors lactation longue : au-delà de 270 jours, ou après 60 jours si la production récente mesurée est inférieure à 0,5 L/j (au moins 3 jours mesurés)."
+            : data?.origineLactation === "premiere_collecte" && data.dimEstime
+              ? "Courbe estimée à partir des collectes disponibles dans les 305 derniers jours. Le début réel de lactation est inconnu ; aucune suggestion de tarissement."
+              : "Le début de lactation est inconnu. Une mise-bas ou des collectes sont nécessaires pour situer la courbe."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1593,13 +1600,19 @@ function LactationView() {
         {data && (
           <>
             <div className="flex flex-wrap items-center gap-3 text-sm">
-              <Badge variant="outline">DIM : {data.dim ?? "—"} j</Badge>
+              <Badge variant="outline">
+                {data.origineLactation === "mise_bas" && data.dimEstime === false
+                  ? `DIM : ${data.dim ?? "—"} j`
+                  : data.origineLactation === "premiere_collecte" && data.dimEstime
+                    ? `Âge estimé : ${data.dim ?? "—"} j depuis la première collecte disponible`
+                    : "Âge de lactation inconnu"}
+              </Badge>
               <Badge variant="outline">
                 {data.moyenne7j != null
                   ? `Moyenne des ${data.joursMesures ?? 7} derniers jours mesurés : ${data.moyenne7j} L/j`
                   : "Moyenne récente : pas assez de traites individuelles"}
               </Badge>
-              {data.suggererTarissement && (
+              {data.origineLactation === "mise_bas" && data.dimEstime === false && data.suggererTarissement && (
                 <Badge className="bg-amber-100 text-amber-800">⚠ Tarissement à envisager</Badge>
               )}
               {data.lactationLongue && (
