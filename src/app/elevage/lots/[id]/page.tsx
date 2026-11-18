@@ -1,5 +1,8 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+import { formatMontantDevise } from "@/lib/format-utils"
+
 /**
  * QA Julien 2026-05-15 — Bug #11 : fiche lot (v1 minimale).
  *
@@ -81,9 +84,11 @@ const STATUT_COLORS: Record<string, string> = {
   mort: "bg-red-100 text-red-800",
 }
 
-const euro = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" })
+
 
 export default function LotDetailPage() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const params = useParams()
   const router = useRouter()
   const lotId = params.id as string
@@ -226,13 +231,13 @@ export default function LotDetailPage() {
                   <div className="rounded-lg border bg-slate-50 p-3">
                     <p className="text-xs text-muted-foreground">Prix d&apos;achat total</p>
                     <p className="text-xl font-semibold">
-                      {lot.prixAchatTotal != null ? euro.format(lot.prixAchatTotal) : "Non renseigné"}
+                      {lot.prixAchatTotal != null ? formatMontant(lot.prixAchatTotal) : "Non renseigné"}
                     </p>
                   </div>
                   <div className="rounded-lg border bg-slate-50 p-3">
                     <p className="text-xs text-muted-foreground">Prix par animal à l&apos;achat</p>
                     <p className="text-xl font-semibold">
-                      {lot.prixAchatParAnimal != null ? euro.format(lot.prixAchatParAnimal) : "Non calculable"}
+                      {lot.prixAchatParAnimal != null ? formatMontant(lot.prixAchatParAnimal) : "Non calculable"}
                     </p>
                     <p className="text-xs text-muted-foreground">sur {lot.quantiteInitiale} animal(aux) initiaux</p>
                   </div>
@@ -241,14 +246,14 @@ export default function LotDetailPage() {
                       <TrendingDown className="h-3.5 w-3.5" />
                       Dépenses liées
                     </p>
-                    <p className="text-xl font-semibold text-red-700">{euro.format(lot.totauxEconomiques.depenses)}</p>
+                    <p className="text-xl font-semibold text-red-700">{formatMontant(lot.totauxEconomiques.depenses)}</p>
                   </div>
                   <div className="rounded-lg border bg-emerald-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-emerald-700">
                       <TrendingUp className="h-3.5 w-3.5" />
                       Recettes liées
                     </p>
-                    <p className="text-xl font-semibold text-emerald-700">{euro.format(lot.totauxEconomiques.recettes)}</p>
+                    <p className="text-xl font-semibold text-emerald-700">{formatMontant(lot.totauxEconomiques.recettes)}</p>
                   </div>
                 </div>
 
@@ -267,7 +272,7 @@ export default function LotDetailPage() {
                           </span>
                           <span className="min-w-0 flex-1">{mouvement.libelle}</span>
                           <span className={`font-semibold ${mouvement.type === "recette" ? "text-emerald-700" : "text-red-700"}`}>
-                            {mouvement.type === "recette" ? "+" : "−"} {euro.format(mouvement.montant)}
+                            {mouvement.type === "recette" ? "+" : "−"} {formatMontant(mouvement.montant)}
                           </span>
                         </li>
                       ))}

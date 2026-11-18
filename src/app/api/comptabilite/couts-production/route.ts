@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { computeCoutsProduction } from '@/lib/comptabilite/couts-production'
+import { ErreurDevisesIncompatibles } from '@/lib/comptabilite/totaux-devise'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    if (error instanceof ErreurDevisesIncompatibles) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/comptabilite/couts-production error:', error)
     return NextResponse.json(
       { error: 'Erreur lors du calcul des coûts de production', details: "Erreur interne du serveur" },

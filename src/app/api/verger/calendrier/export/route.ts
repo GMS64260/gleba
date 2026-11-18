@@ -1,3 +1,4 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
 /**
  * GET /api/verger/calendrier/export[?scope=mine|all]
  *
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
     profiles = TREE_CARE_PROFILES
   } else {
     const arbres = await prisma.arbre.findMany({
-      where: { userId },
+      where: filtreArbresVivants(userId),
       select: { espece: true },
     })
     const especesUniques = [...new Set(arbres.map((a) => a.espece).filter(Boolean))] as string[]

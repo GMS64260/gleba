@@ -23,7 +23,9 @@ import { especeAnimaleAccessible } from '@/lib/elevage/espece-accessible'
 // Motif partagé avec la garde de suppression, qui ne compte pas ce mouvement automatique.
 import { MOTIF_AFFECTATION_INITIALE } from '@/lib/elevage/traces-animal'
 import { invalidateKpi } from '@/lib/kpi'
-import { refusPassageAbattu, refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
+import { corpsRefusElevage, garantirAttenteViandeFiche, garantirRemiseActifPossible, lireFicheSousVerrou, refusRemiseActif } from '@/lib/elevage/sortie-animal.server'
+import { ErreurElevage } from '@/lib/elevage/erreurs'
+import { creerMouvementCheptel, ErreurMouvementCheptel } from '@/lib/elevage/creation-mouvement-cheptel'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 
 /** JJ/MM/AAAA déterministe (sans dépendre de l'ICU du runtime). */
@@ -396,14 +398,6 @@ export async function PATCH(request: NextRequest) {
       if (refus) return NextResponse.json({ error: refus, code: 'SORTIE_ACTIVE' }, { status: 409 })
     }
 
-    // « Abattu » posé à la main : même garde du délai d'attente viande que
-    // l'abattage (revue du 2026-11-04).
-    if (statut === 'abattu' && existing.statut !== 'abattu') {
-      const jourAbattage = dateSortie ? new Date(dateSortie) : new Date()
-      const refus = await refusPassageAbattu(prisma, session.user.id, existing.id, Number.isNaN(jourAbattage.getTime()) ? new Date() : jourAbattage)
-      if (refus) return NextResponse.json({ error: refus.error, code: refus.code, details: refus.details }, { status: refus.status })
-    }
-
     // Ticket utilisateur 2026-07-22 — le formulaire envoyait bien la nouvelle
     // espèce/type de production, mais PATCH l'ignorait silencieusement.
     // Vérifier aussi que la nouvelle référence est visible avant de l'appliquer.
@@ -483,7 +477,6 @@ export async function PATCH(request: NextRequest) {
       updateData.raceAnimaleId = raceRef?.id ?? null
       updateData.race = raceRef?.nom ?? null
     }
-    if (parcelleGeoId !== undefined) updateData.parcelleGeoId = parcelleGeoId || null
     if (nom !== undefined) updateData.nom = nom
     if (race !== undefined) {
       updateData.race = race
@@ -632,6 +625,11 @@ export async function PATCH(request: NextRequest) {
 
     const animal = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      // État de référence relu sous verrou : `existing`, lu avant la
+      // transaction, peut dater d'avant une requête concurrente. Le redatage,
+      // le changement de lot, le déplacement et la garde partent de `avant`.
+      const avant = await lireFicheSousVerrou(tx, session.user.id, existing.id)
+      await garantirRemiseActifPossible(tx, session.user.id, avant, statut)
       const updated = await tx.animal.update({
         where: { id: parseInt(id) },
         data: updateData,
@@ -642,20 +640,28 @@ export async function PATCH(request: NextRequest) {
       })
       // L'entrée dans le premier lot suit la date d'arrivée corrigée (avant
       // l'éventuel changement de lot de ce même PATCH, qui clôt cette ligne).
-      if (updateData.dateArrivee instanceof Date && updateData.dateArrivee.getTime() !== existing.dateArrivee?.getTime()) {
-        await redaterAffectationInitiale(tx, session.user.id, existing.id, updateData.dateArrivee)
+      if (updateData.dateArrivee instanceof Date && updateData.dateArrivee.getTime() !== avant.dateArrivee?.getTime()) {
+        await redaterAffectationInitiale(tx, session.user.id, avant.id, updateData.dateArrivee)
       }
       if (updateData.lotId !== undefined) {
-        await enregistrerChangementLot(tx, session.user.id, existing.id, existing.lotId, updated.lotId)
+        await enregistrerChangementLot(tx, session.user.id, avant.id, avant.lotId, updated.lotId)
       }
-      if (updateData.parcelleGeoId !== undefined && updated.parcelleGeoId !== existing.parcelleGeoId) {
-        await tx.mouvementCheptel.create({
-          data: {
-            userId: session.user.id, animalId: existing.id,
-            parcelleAvantId: existing.parcelleGeoId, parcelleApresId: updated.parcelleGeoId,
-            date: new Date(), motif: 'Modification de la fiche animal',
-          },
+      // Garde du délai d'attente viande sur l'état FINAL : après le redatage
+      // de l'historique, que la garde lit (elle passait avant, et une arrivée
+      // reculée avec « abattu » dans la même requête la contournait).
+      await garantirAttenteViandeFiche(tx, session.user.id, avant)
+      // Le déplacement passe par le journal, qui fait foi : cible verrouillée,
+      // position recalée sur le mouvement le plus récent (ELEV-05). La fiche
+      // n'écrit plus `parcelleGeoId` elle-même.
+      const parcelleCible = parcelleGeoId === undefined ? avant.parcelleGeoId : (parcelleGeoId || null)
+      if (parcelleCible !== avant.parcelleGeoId) {
+        await creerMouvementCheptel(tx, session.user.id, {
+          animalId: avant.id,
+          parcelleAvantId: avant.parcelleGeoId, parcelleApresId: parcelleCible,
+          date: new Date(), motif: 'Modification de la fiche animal',
         })
+        const position = await tx.animal.findFirst({ where: { id: avant.id, userId: session.user.id }, select: { parcelleGeoId: true } })
+        updated.parcelleGeoId = position?.parcelleGeoId ?? null
       }
       await createDepenseFromAchatAnimal(session.user.id, {
         id: updated.id,
@@ -672,6 +678,8 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ data: animal })
   } catch (error) {
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (error instanceof ErreurElevage) return NextResponse.json(corpsRefusElevage(error), { status: error.status })
+    if (error instanceof ErreurMouvementCheptel) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/animaux error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },

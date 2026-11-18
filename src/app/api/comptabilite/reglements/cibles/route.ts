@@ -1,4 +1,4 @@
-import { deviseFactureReglement } from '@/lib/comptabilite/devise-reglement'
+import { monnaieFacture } from '@/lib/comptabilite/devise-reglement'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
   const cibles = [
     ...factures.map((f) => ({
       type: 'Facture',
-      devise: deviseFactureReglement(f.emetteurSnapshot, devise),
+      devise: monnaieFacture(f.emetteurSnapshot, f.date) ?? '',
       id: f.id,
       cle: cleFacture(f.id),
       libelle: f.numero + ' · ' + f.clientNom,

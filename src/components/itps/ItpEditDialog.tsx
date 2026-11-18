@@ -32,6 +32,8 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { nomAffichableItp } from "@/lib/itp-label"
 import { decalerSemaine } from "@/lib/calendrier-climat"
+import { ITP_TYPE_PLANCHE } from "@/lib/validations/itp"
+import { barresGantt, type ItpGantt } from "./gantt-barres"
 import type { ItpVue } from "./types"
 
 interface ItpEditDialogProps {
@@ -168,8 +170,9 @@ export function ItpEditDialog({
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la mise à jour")
+        // Une erreur de proxy n'est pas du JSON : pas de « Unexpected token < ».
+        const error = await response.json().catch(() => null)
+        throw new Error(error?.error || "Erreur lors de la mise à jour")
       }
 
       const updated = await response.json()
@@ -320,10 +323,13 @@ export function ItpEditDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_none">Non spécifié</SelectItem>
-                  <SelectItem value="Serre">Serre</SelectItem>
-                  <SelectItem value="Plein champ">Plein champ</SelectItem>
-                  <SelectItem value="Tunnel">Tunnel</SelectItem>
-                  <SelectItem value="Chassis">Châssis</SelectItem>
+                  {/* Liste du schéma de validation : « Sous abri », porté par
+                      212 itinéraires, manquait et laissait le champ vide. */}
+                  {ITP_TYPE_PLANCHE.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type === "Chassis" ? "Châssis" : type}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -333,10 +339,7 @@ export function ItpEditDialog({
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-muted-foreground">Aperçu</Label>
             <GanttPreview
-              semaineSemis={semaineSemis}
-              semainePlantation={semainePlantation}
-              semaineRecolte={semaineRecolte}
-              dureeRecolte={dureeRecolte}
+              itp={{ ...itp, semaineSemis, semainePlantation, semaineRecolte, dureeRecolte }}
             />
           </div>
         </div>
@@ -355,41 +358,15 @@ export function ItpEditDialog({
   )
 }
 
-/** Mini barre Gantt de preview dans le dialog */
-function GanttPreview({
-  semaineSemis,
-  semainePlantation,
-  semaineRecolte,
-  dureeRecolte,
-}: {
-  semaineSemis: number | null
-  semainePlantation: number | null
-  semaineRecolte: number | null
-  dureeRecolte: number | null
-}) {
-  const bars: { start: number; width: number; color: string; label: string }[] = []
-
-  // Bug testeur 2026-05-29 — passage d'année (récolte < semis → +52) sinon
-  // largeurs négatives = barres invisibles (Carotte-automne-conservation-serre).
-  const dureeSem = (debut: number, fin: number) => (fin >= debut ? fin - debut : fin + 52 - debut)
-  const pushBarre = (debut: number, dureeSemaines: number, color: string, label: string) => {
-    const start = (debut / 52) * 100
-    bars.push({ start, width: Math.min(100 - start, Math.max(0, (dureeSemaines / 52) * 100)), color, label })
-  }
-
-  if (semaineSemis && semainePlantation) {
-    pushBarre(semaineSemis, dureeSem(semaineSemis, semainePlantation), '#ff9800', 'Semis')
-  } else if (semaineSemis && semaineRecolte && !semainePlantation) {
-    pushBarre(semaineSemis, dureeSem(semaineSemis, semaineRecolte), '#ff9800', 'Semis')
-  }
-
-  if (semainePlantation && semaineRecolte) {
-    pushBarre(semainePlantation, dureeSem(semainePlantation, semaineRecolte), '#4caf50', 'Croissance')
-  }
-
-  if (semaineRecolte && dureeRecolte) {
-    pushBarre(semaineRecolte, dureeRecolte, '#9c27b0', 'Récolte')
-  }
+/**
+ * Mini barre Gantt de preview dans le dialog.
+ *
+ * Même tracé que les lignes du calendrier (`barresGantt`) : l'aperçu avait sa
+ * propre arithmétique, décalée d'une semaine vers la droite (S52 hors cadre) et
+ * tronquée en fin d'année.
+ */
+function GanttPreview({ itp }: { itp: ItpGantt }) {
+  const bars = barresGantt(itp)
 
   const months = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
 

@@ -1,3 +1,4 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
 /**
  * API Dashboard - Statistiques pour les graphiques
  * GET /api/dashboard - Retourne toutes les stats du dashboard
@@ -7,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { getKpiMaraichage } from "@/lib/kpi"
+import { finRecoltesYtd } from "@/lib/kpi/periode-recoltes"
 import { getRecoltesAnneeAggregat } from "@/lib/kpi/recoltes-annee"
 import { surfaceCultureM2 } from "@/lib/culture-surface"
 import { projectionRecolte, type UniteQuantite } from "@/lib/recolte/projection"
@@ -35,6 +37,7 @@ export async function GET(request: NextRequest) {
     // datées du 31 décembre tombent hors borne et disparaissent du graphique.
     const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59, 999)
     const asOf = new Date()
+    const finRecoltes = finRecoltesYtd(currentYear, asOf)
 
     // Source unique de vérité pour les KPI agrégés (surface cultivée vs
     // planifiée, récoltes YTD, comparaison N-1 YTD à date égale).
@@ -46,12 +49,12 @@ export async function GET(request: NextRequest) {
       getRecoltesAnneeAggregat(userId, currentYear),
     ])
 
-    // Compteurs purement référentiels (catalogue, pas année-dépendants)
+    // Catalogue et arbres : référentiels ; récoltes : même période que le KPI.
     const [especesCount, arbresCount, recoltesCountYear] = await Promise.all([
       prisma.espece.count(),
-      prisma.arbre.count({ where: { userId } }),
+      prisma.arbre.count({ where: filtreArbresVivants(userId) }),
       prisma.recolte.count({
-        where: { userId, date: { gte: startOfYear, lte: asOf } },
+        where: { userId, date: { gte: startOfYear, lte: finRecoltes } },
       }),
     ])
 

@@ -187,12 +187,14 @@ describe('C4 : copie au jour de l’enregistrement', () => {
     uniteDose: 'L/ha',
   }
 
-  it('produit du référentiel : nom, AMM et DAR copiés sur le traitement', async () => {
+  it('produit du référentiel : nom et AMM copiés ; le délai générique du catalogue ne l’est plus', async () => {
     mocks.produitFindUnique.mockResolvedValue({ nomCommercial: 'Produit B', amm: '9800203', darJours: 14 })
     const res = await POST(requete('POST', { ...corps, produitPhytoId: 'p1' }))
     expect(res.status).toBe(201)
+    // Lot dar-cadre-legal-blocage : ProduitPhyto.darJours est un ordre de
+    // grandeur, pas le délai d'une AMM ; recopié, il devenait opposable.
     expect(mocks.create.mock.calls[0][0].data).toMatchObject({
-      produitPhyto: 'Produit B', numAMM: '9800203', dar: 14, produitPhytoId: 'p1',
+      produitPhyto: 'Produit B', numAMM: '9800203', dar: null, produitPhytoId: 'p1',
     })
   })
 

@@ -88,6 +88,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/whatwg-fetch ./node_
 
 # Copier scripts et CSV enrichis
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+# Règle de la reprise BL-01 (scripts/reprise-recoltes-vendues-boutique.ts) : ces
+# modules (règle, verrous partagés) n'importent que les types de @prisma/client
+# et se référencent par chemins relatifs.
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/comptabilite/recoltes-vendues.ts /app/src/lib/comptabilite/reprise-recoltes-boutique.ts /app/src/lib/comptabilite/verrou-reglements.ts ./src/lib/comptabilite/
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/stocks/verrou-commercial.ts ./src/lib/stocks/
 COPY --from=builder --chown=nextjs:nodejs /app/especes_enriched.csv /app/itps_enriched.csv /app/varietes_enriched.csv ./
 
 # DEV1 #8 — Données YAML versionnées (matrice PCA, audit-trail).

@@ -28,8 +28,9 @@ afterEach(() => vi.useRealTimers())
 async function charger(stationDaily: MeteoPrevision[]) {
   m.fetchCache.mockImplementation(async (key: string) => {
     if (!key.startsWith('openmeteo:forecast:')) return []
-    return { current: { precipitation: 1, temperature: 14 },
-      daily: key.includes(':44,1:') ? stationDaily : [jour('2026-07-20', 1), jour('2026-07-21', 2)] }
+    const station = key.includes(':44,1:')
+    return { current: { precipitation: station ? 3 : 1, temperature: 14 },
+      daily: station ? stationDaily : [jour('2026-07-20', 1), jour('2026-07-21', 2)] }
   })
   return getMeteoForParcelle('p1', 'ferme-fictive')
 }
@@ -37,7 +38,8 @@ async function charger(stationDaily: MeteoPrevision[]) {
 describe('station de référence : jour courant par date', () => {
   it('enrichit aujourd’hui avec la station du jour, pas daily[0] daté d’hier', async () => {
     const meteo = await charger([jour('2026-07-20', 40), jour('2026-07-21', 7)])
-    expect(meteo?.actuelle?.precipitation).toBe(7)
+    // Conditions relevées à la station, pas le cumul prévu du jour (revue du 2026-11-11).
+    expect(meteo?.actuelle?.precipitation).toBe(3)
     expect(meteo?.previsions.find(j => j.date === '2026-07-21')?.precipitation).toBe(7)
     expect(meteo?.previsions.find(j => j.date === '2026-07-20')?.precipitation).toBe(1)
     expect(m.parcelle).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'p1', userId: 'ferme-fictive' } }))

@@ -7,12 +7,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { updateCultureSchema, normalizeCultureDateFields, retenirDatesCulture } from '@/lib/validations'
 import { jourCivilStocke } from '@/lib/jour-civil'
-import { erreurFinRecolte, fenetreRecolteIncoherente, finRecolteApresModification } from '@/lib/cultures/fenetre-recolte'
+import { controlerOccupationModification, verrouillerOccupationExploitation } from '@/lib/cultures/occupation-modification'
+import type { Prisma, Culture } from '@prisma/client'
+import { erreurChronologieCycle, erreurFinRecolte, fenetreRecolteIncoherente, finRecolteApresModification } from '@/lib/cultures/fenetre-recolte'
 import type { AlerteSaisonCulture } from '@/lib/cultures/saison-culture'
-import { validateCultureDates } from '@/lib/validations/date-validation'
+import { datesCultureTouchees, refusDatesCulture, validerDatesCultureModifiee } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { irrigationCache } from '@/lib/irrigation-cache'
 import { invalidateKpi } from '@/lib/kpi'
@@ -23,11 +26,15 @@ import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/ren
 import {
   CHAMP_DATE_ETAPE,
   ETAPES,
+  controlerDatesEtapesFaites,
   ecrituresDatePlanRedefinie,
+  instantPassageAFait,
   ecrituresPassageAFait,
   ecrituresRetourANonFait,
+  OPTIONS_TRANSACTION_CULTURE,
+  verrouillerCultures,
 } from '@/lib/cultures/execution'
-import type { ChampDateEtape, ChampEtape } from '@/lib/cultures/execution'
+import type { ChampDateEtape, ChampEtape, EtatDatesEtapes } from '@/lib/cultures/execution'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
@@ -39,13 +46,28 @@ import { quantiteCultureApresModification } from '@/lib/cultures/quantite-plants
 type RouteParams = { params: Promise<{ id: string }> }
 
 /**
+ * Champs non datés du PATCH rapide. Sans ce contrôle, une case envoyée en texte
+ * ou un corps vide partaient tels quels à Prisma et répondaient 500.
+ */
+const champsRapidesSchema = z
+  .object({
+    semisFait: z.boolean(),
+    plantationFaite: z.boolean(),
+    recolteFaite: z.boolean(),
+    terminee: z.string().max(10).nullable(),
+    aIrriguer: z.boolean().nullable(),
+    notes: z.string().max(5000).nullable(),
+  })
+  .partial()
+
+/**
  * ITP d'une culture tel que son propriétaire le voit : visible et en service,
  * semaines transposées vers la zone de son exploitation (le référentiel des
  * dates que les écrans préremplissent), avec sa fenêtre d'implantation et sa
  * durée de récolte.
  */
-async function lireItpCalibre(itpId: string, userId: string) {
-  const itpBrut = await prisma.iTP.findFirst({
+async function lireItpCalibre(itpId: string, userId: string, tx: Prisma.TransactionClient) {
+  const itpBrut = await tx.iTP.findFirst({
     where: { AND: [{ id: itpId }, whereItpUtilisable(userId)] },
     select: {
       userId: true,
@@ -63,7 +85,7 @@ async function lireItpCalibre(itpId: string, userId: string) {
   if (!itpBrut) return null
   return appliquerDecalageItp(
     itpBrut,
-    decalageItpPourLecteur(itpBrut, await zoneEffectiveUser(prisma, userId), userId)
+    decalageItpPourLecteur(itpBrut, await zoneEffectiveUser(tx, userId), userId)
   )
 }
 
@@ -197,274 +219,282 @@ export async function PUT(
       )
     }
 
-    // Vérifier existence et propriété
-    const existing = await prisma.culture.findUnique({
-      where: {
-        id: cultureId,
-        userId: session!.user.id,
-      },
-    })
-
-    if (!existing) {
-      return NextResponse.json(
-        { error: `Culture #${id} non trouvée` },
-        { status: 404 }
-      )
-    }
-
-    const data = validationResult.data
-    // Ticket QA cmvnulry1 (2026-10-25) — une date de culture est un JOUR : même
-    // jour civil que la date stockée → instant stocké gardé ; autre jour →
-    // minuit UTC de ce jour (règle `dateSoinRetenue` de l'élevage).
-    retenirDatesCulture(data, existing)
-
-    if (data.plancheId) {
-      const planche = await prisma.planche.findFirst({
-        where: { id: data.plancheId, userId: session!.user.id },
-        select: { id: true },
-      })
-      if (!planche) return NextResponse.json(
-        { error: 'Planche introuvable pour votre exploitation.', champ: 'plancheId' },
-        { status: 400 },
-      )
-    }
-    if (data.especeId && data.especeId !== existing.especeId) {
-      const espece = await prisma.espece.findFirst({
-        where: { AND: [{ id: data.especeId }, visibiliteReferentiel(session!.user.id)] },
-        select: { id: true },
-      })
-      if (!espece) return NextResponse.json(
-        { error: 'Espèce indisponible pour votre exploitation.', champ: 'especeId' },
-        { status: 400 },
-      )
-    }
-
-    // Changer l'ITP d'une culture est une écriture : l'itinéraire visé doit être
-    // visible par ce membre ET encore en service, comme à la création. Sans ce
-    // contrôle, l'édition rattachait une culture à l'itinéraire privé d'un autre
-    // compte, que la réponse `include: { itp }` renvoyait ensuite.
-    if (data.itpId && data.itpId !== existing.itpId) {
-      const cible = await prisma.iTP.findFirst({
-        where: { AND: [{ id: data.itpId }, whereItpUtilisable(session!.user.id)] },
-        select: { id: true },
-      })
-      if (!cible) {
-        return NextResponse.json(
-          {
-            error: `L'itinéraire technique « ${data.itpId} » n'est pas disponible : introuvable, privé, ou retiré du service.`,
-          },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Signalement 2026-09-25 — changer l'espèce d'une culture gardait la
-    // variété et l'ITP de l'ancienne : un « Navet » restait en variété
-    // « Roquette », avec l'itinéraire de la roquette. La règle de la création
-    // (variété et ITP de CETTE espèce) vaut aussi en modification, dès que
-    // l'espèce ou la référence change ; une édition qui ne touche à aucune des
-    // trois ne bloque pas une fiche ancienne.
-    const especeFinale = data.especeId ?? existing.especeId
-    const varieteFinale = data.varieteId !== undefined ? data.varieteId : existing.varieteId
-    const itpFinal = data.itpId !== undefined ? data.itpId : existing.itpId
-    const especeChangee = especeFinale !== existing.especeId
-    if (varieteFinale && (especeChangee || varieteFinale !== existing.varieteId)) {
-      const variete = await prisma.variete.findFirst({
+    // Contre-revue adverse (2026-11-15) : lecture, recalages, gardes et
+    // écriture sous le verrou commun des étapes (`verrouillerCultures`), pris
+    // avant de lire la culture : un PATCH ou une récolte concurrents attendent.
+    const reponse = await prisma.$transaction(async (tx) => {
+      // Ordre global des verrous : exploitation (occupation, comme POST et
+      // creerCulturesBatch) PUIS cultures (étapes), jamais l'inverse.
+      await verrouillerOccupationExploitation(tx, session!.user.id)
+      await verrouillerCultures(tx, session!.user.id, [cultureId])
+      // Vérifier existence et propriété
+      const existing = await tx.culture.findUnique({
         where: {
-          AND: [
-            { id: varieteFinale, especeId: especeFinale },
-            visibiliteReferentiel(session!.user.id),
-          ],
+          id: cultureId,
+          userId: session!.user.id,
         },
-        select: { id: true },
       })
-      if (!variete) {
-        return NextResponse.json(
-          {
-            error: `La variété « ${varieteFinale} » n'est pas disponible pour l'espèce « ${especeFinale} » : introuvable, privée, ou rattachée à une autre espèce. Choisissez une variété de cette espèce.`,
-          },
-          { status: 400 }
-        )
-      }
-    }
-    if (itpFinal && (especeChangee || itpFinal !== existing.itpId)) {
-      const itpCible = await prisma.iTP.findUnique({
-        where: { id: itpFinal },
-        select: { especeId: true },
-      })
-      if (itpCible?.especeId && itpCible.especeId !== especeFinale) {
-        return NextResponse.json(
-          {
-            error: `L'itinéraire technique « ${itpFinal} » est prévu pour l'espèce « ${itpCible.especeId} », pas pour « ${especeFinale} ». Choisissez un itinéraire de cette espèce.`,
-          },
-          { status: 400 }
-        )
-      }
-    }
 
-    // Audit Marc 2026-05-14 — Bug 04 : valider les dates contre l'ITP en
-    // modification également (warnings non bloquants remontés au client).
-    const dateWarnings: string[] = []
-    let alerteSaison: AlerteSaisonCulture | null = null
-    const datesTouchees = Boolean(data.dateSemis || data.datePlantation || data.dateRecolte)
-    const itpChange = data.itpId !== undefined && (data.itpId ?? null) !== (existing.itpId ?? null)
-    // ITP final de la culture, lu une fois : validation des dates, alerte de
-    // saison et durée de récolte de la fenêtre (2026-10-25).
-    let itp: Awaited<ReturnType<typeof lireItpCalibre>> = null
-    // Fenêtre de récolte à refaire depuis l'ITP : itinéraire changé, ou fenêtre
-    // stockée incohérente (réparée au prochain enregistrement).
-    const fenetreARefaire =
-      Boolean(data.dateRecolte ?? existing.dateRecolte) && (itpChange || fenetreRecolteIncoherente(existing))
-    let itpLu = false
-    if (itpFinal && (datesTouchees || fenetreARefaire)) {
-      try {
-        itp = await lireItpCalibre(itpFinal, session!.user.id)
-        itpLu = true
-      } catch (e) {
-        console.warn('ITP non lu pour la modification de culture :', e)
+      if (!existing) {
+        return NextResponse.json(
+          { error: `Culture #${id} non trouvée` },
+          { status: 404 }
+        )
       }
-    }
-    if (datesTouchees) {
-      try {
-        const annee = data.annee ?? existing.annee ?? new Date().getFullYear()
-        const v = validateCultureDates({
-          dateSemis: data.dateSemis ?? existing.dateSemis,
-          datePlantation: data.datePlantation ?? existing.datePlantation,
-          dateRecolte: data.dateRecolte ?? existing.dateRecolte,
-          itp,
-          annee,
+
+      const data = validationResult.data
+      // Ticket QA cmvnulry1 (2026-10-25) — une date de culture est un JOUR : même
+      // jour civil que la date stockée → instant stocké gardé ; autre jour →
+      // minuit UTC de ce jour (règle `dateSoinRetenue` de l'élevage).
+      retenirDatesCulture(data, existing)
+
+      if (data.plancheId) {
+        const planche = await tx.planche.findFirst({
+          where: { id: data.plancheId, userId: session!.user.id },
+          select: { id: true },
         })
-        // Même refus qu'à la création : les erreurs de chronologie n'étaient
-        // pas même journalisées ici, seules les alertes remontaient.
-        if (!v.valid) {
+        if (!planche) return NextResponse.json(
+          { error: 'Planche introuvable pour votre exploitation.', champ: 'plancheId' },
+          { status: 400 },
+        )
+      }
+      if (data.especeId && data.especeId !== existing.especeId) {
+        const espece = await tx.espece.findFirst({
+          where: { AND: [{ id: data.especeId }, visibiliteReferentiel(session!.user.id)] },
+          select: { id: true },
+        })
+        if (!espece) return NextResponse.json(
+          { error: 'Espèce indisponible pour votre exploitation.', champ: 'especeId' },
+          { status: 400 },
+        )
+      }
+
+      // Changer l'ITP d'une culture est une écriture : l'itinéraire visé doit être
+      // visible par ce membre ET encore en service, comme à la création. Sans ce
+      // contrôle, l'édition rattachait une culture à l'itinéraire privé d'un autre
+      // compte, que la réponse `include: { itp }` renvoyait ensuite.
+      if (data.itpId && data.itpId !== existing.itpId) {
+        const cible = await tx.iTP.findFirst({
+          where: { AND: [{ id: data.itpId }, whereItpUtilisable(session!.user.id)] },
+          select: { id: true },
+        })
+        if (!cible) {
           return NextResponse.json(
-            { error: v.errors.join(' '), errors: v.errors },
+            {
+              error: `L'itinéraire technique « ${data.itpId} » n'est pas disponible : introuvable, privé, ou retiré du service.`,
+            },
             { status: 400 }
           )
         }
-        dateWarnings.push(...v.warnings)
-        alerteSaison = v.alerteSaison
-      } catch (e) {
-        console.warn('Date validation PUT skipped:', e)
       }
-    }
 
-    // La fenêtre de récolte suit son début (2026-10-25) : changer l'ITP ou la
-    // date de récolte sans toucher la fin laissait une fenêtre d'un autre
-    // itinéraire (ail récolté S29 2026, fin au 9 août 2027). Une fin modifiée
-    // par l'utilisateur fait foi.
-    const finSuivante = finRecolteApresModification({
-      avant: existing,
-      dateRecolte:
-        data.dateRecolte !== undefined ? ((data.dateRecolte as Date | null) ?? null) : existing.dateRecolte,
-      finSoumise: data.finRecolte as Date | null | undefined,
-      itpChange,
-      // Sans ITP : null (une fin héritée d'un autre itinéraire ne survit pas) ;
-      // ITP non lu : inconnu, rien n'est effacé.
-      itp: !itpFinal ? null : itpLu ? itp : undefined,
-    })
-    if (finSuivante !== undefined) data.finRecolte = finSuivante
-
-    // Bug testeur 2026-05-31 — Longueur de culture > longueur de planche : la
-    // création (POST) bloque déjà via peutAjouterCulture(), mais l'édition ne
-    // vérifiait rien. On remonte un warning non bloquant (comme les dates).
-    const plancheId = data.plancheId ?? existing.plancheId
-    const longueurCulture = data.longueur ?? existing.longueur
-    if (plancheId && longueurCulture) {
-      try {
-        const planche = await prisma.planche.findFirst({
-          where: { id: plancheId, userId: session!.user.id },
-          select: { nom: true, longueur: true },
+      // Signalement 2026-09-25 — changer l'espèce d'une culture gardait la
+      // variété et l'ITP de l'ancienne : un « Navet » restait en variété
+      // « Roquette », avec l'itinéraire de la roquette. La règle de la création
+      // (variété et ITP de CETTE espèce) vaut aussi en modification, dès que
+      // l'espèce ou la référence change ; une édition qui ne touche à aucune des
+      // trois ne bloque pas une fiche ancienne.
+      const especeFinale = data.especeId ?? existing.especeId
+      const varieteFinale = data.varieteId !== undefined ? data.varieteId : existing.varieteId
+      const itpFinal = data.itpId !== undefined ? data.itpId : existing.itpId
+      const especeChangee = especeFinale !== existing.especeId
+      if (varieteFinale && (especeChangee || varieteFinale !== existing.varieteId)) {
+        const variete = await tx.variete.findFirst({
+          where: {
+            AND: [
+              { id: varieteFinale, especeId: especeFinale },
+              visibiliteReferentiel(session!.user.id),
+            ],
+          },
+          select: { id: true },
         })
-        if (planche?.longueur && longueurCulture > planche.longueur) {
-          dateWarnings.push(
-            `Longueur de la culture (${longueurCulture} m) supérieure à la longueur de la planche ${planche.nom} (${planche.longueur} m).`
+        if (!variete) {
+          return NextResponse.json(
+            {
+              error: `La variété « ${varieteFinale} » n'est pas disponible pour l'espèce « ${especeFinale} » : introuvable, privée, ou rattachée à une autre espèce. Choisissez une variété de cette espèce.`,
+            },
+            { status: 400 }
           )
         }
-      } catch (e) {
-        console.warn('Longueur validation PUT skipped:', e)
       }
-    }
-
-    // Le formulaire complet est un chemin de complétion comme les autres : il
-    // porte les trois cases « fait » ET les trois dates. Deux conséquences,
-    // traitées par le même SSOT que le PATCH rapide (execution.ts).
-    // 1. Cocher « semis fait » ici ne recalait rien : le registre pouvait
-    //    afficher un fait daté dans le futur, ce que QA cmsp66tdm avait fermé
-    //    côté PATCH seulement.
-    // 2. Décocher rendait la date de plan — mais le formulaire renvoie AUSSI la
-    //    date affichée, c'est-à-dire la date d'exécution. La restitution ne
-    //    s'applique donc que si l'utilisateur n'a pas lui-même changé la date :
-    //    une date modifiée est un nouveau plan et fait foi.
-    const dateSoumise: Record<ChampEtape, Date | null | undefined> = {
-      semisFait: 'dateSemis' in data ? ((data.dateSemis as Date | null) ?? null) : undefined,
-      plantationFaite:
-        'datePlantation' in data ? ((data.datePlantation as Date | null) ?? null) : undefined,
-      recolteFaite: 'dateRecolte' in data ? ((data.dateRecolte as Date | null) ?? null) : undefined,
-    }
-    const faitSoumis: Record<ChampEtape, boolean | undefined> = {
-      semisFait: data.semisFait,
-      plantationFaite: data.plantationFaite,
-      recolteFaite: data.recolteFaite,
-    }
-    const ecrituresEtapes: Record<string, Date | null> = {}
-    for (const champEtape of ETAPES) {
-      const champDate = CHAMP_DATE_ETAPE[champEtape]
-      const soumise = dateSoumise[champEtape]
-      // Date modifiée = autre JOUR civil (cmvnulry1) : un même jour renvoyé
-      // sous une autre forme (« AAAA-MM-JJ » d'un instant horodaté, minuit
-      // Paris d'une culture ancienne) n'est pas une nouvelle date de plan.
-      if (
-        soumise !== undefined &&
-        jourCivilStocke(soumise) !== jourCivilStocke(existing[champDate])
-      ) {
-        Object.assign(ecrituresEtapes, ecrituresDatePlanRedefinie(champEtape))
-        continue
+      if (itpFinal && (especeChangee || itpFinal !== existing.itpId)) {
+        const itpCible = await tx.iTP.findUnique({
+          where: { id: itpFinal },
+          select: { especeId: true },
+        })
+        if (itpCible?.especeId && itpCible.especeId !== especeFinale) {
+          return NextResponse.json(
+            {
+              error: `L'itinéraire technique « ${itpFinal} » est prévu pour l'espèce « ${itpCible.especeId} », pas pour « ${especeFinale} ». Choisissez un itinéraire de cette espèce.`,
+            },
+            { status: 400 }
+          )
+        }
       }
-      if (faitSoumis[champEtape] === true && !existing[champEtape]) {
-        Object.assign(ecrituresEtapes, ecrituresPassageAFait(existing, champEtape))
-      } else if (faitSoumis[champEtape] === false && existing[champEtape]) {
-        Object.assign(ecrituresEtapes, ecrituresRetourANonFait(existing, champEtape))
+
+      // Le formulaire complet est un chemin de complétion comme les autres : il
+      // porte les trois cases « fait » ET les trois dates. Deux conséquences,
+      // traitées par le même SSOT que le PATCH rapide (execution.ts).
+      // 1. Cocher « semis fait » ici ne recalait rien : le registre pouvait
+      //    afficher un fait daté dans le futur, ce que QA cmsp66tdm avait fermé
+      //    côté PATCH seulement.
+      // 2. Décocher rendait la date de plan — mais le formulaire renvoie AUSSI la
+      //    date affichée, c'est-à-dire la date d'exécution. La restitution ne
+      //    s'applique donc que si l'utilisateur n'a pas lui-même changé la date :
+      //    une date modifiée est un nouveau plan et fait foi.
+      const dateSoumise: Record<ChampEtape, Date | null | undefined> = {
+        semisFait: 'dateSemis' in data ? ((data.dateSemis as Date | null) ?? null) : undefined,
+        plantationFaite:
+          'datePlantation' in data ? ((data.datePlantation as Date | null) ?? null) : undefined,
+        recolteFaite: 'dateRecolte' in data ? ((data.dateRecolte as Date | null) ?? null) : undefined,
       }
-    }
+      const faitSoumis: Record<ChampEtape, boolean | undefined> = {
+        semisFait: data.semisFait,
+        plantationFaite: data.plantationFaite,
+        recolteFaite: data.recolteFaite,
+      }
+      const ecrituresEtapes: Record<string, Date | null> = {}
+      for (const champEtape of ETAPES) {
+        const champDate = CHAMP_DATE_ETAPE[champEtape]
+        const soumise = dateSoumise[champEtape]
+        // Date modifiée = autre JOUR civil (cmvnulry1) : un même jour renvoyé
+        // sous une autre forme (« AAAA-MM-JJ » d'un instant horodaté, minuit
+        // Paris d'une culture ancienne) n'est pas une nouvelle date de plan.
+        if (
+          soumise !== undefined &&
+          jourCivilStocke(soumise) !== jourCivilStocke(existing[champDate])
+        ) {
+          Object.assign(ecrituresEtapes, ecrituresDatePlanRedefinie(champEtape))
+          continue
+        }
+        if (faitSoumis[champEtape] === true && !existing[champEtape]) {
+          const instant = await instantPassageAFait(tx, { userId: session!.user.id, cultureId, champEtape })
+          Object.assign(ecrituresEtapes, ecrituresPassageAFait(existing, champEtape, instant))
+        } else if (faitSoumis[champEtape] === false && existing[champEtape]) {
+          Object.assign(ecrituresEtapes, ecrituresRetourANonFait(existing, champEtape))
+        }
+      }
 
-    // Ticket QA cmvnpkkhp (2026-10-25) — « Quantité / plants (auto) » suit les
-    // rangs, la longueur et l'espacement, par la règle de la création. Le
-    // formulaire d'édition renvoyait vide la quantité d'une culture née sans
-    // elle ; une quantité saisie à la main reste intacte.
-    const quantiteAuto = quantiteCultureApresModification(existing, data)
-    const ecritureQuantite = quantiteAuto === undefined ? {} : { quantite: quantiteAuto }
+      // Recette-3 (culture97) : une étape faite ne peut être redatée ni dans le
+      // futur ni, pour la récolte, après la première récolte enregistrée.
+      // Contrôlé AVANT la chronologie (revue QA 60) : la redatation d'un semis
+      // fait au 30/11 doit répondre par la règle de l'étape faite et son champ,
+      // pas par « le semis doit précéder la plantation ».
+      const etapesFinales: EtatDatesEtapes = {}
+      for (const champEtape of ETAPES) {
+        const champDate = CHAMP_DATE_ETAPE[champEtape]
+        etapesFinales[champEtape] = faitSoumis[champEtape] ?? existing[champEtape]
+        etapesFinales[champDate] =
+          champDate in ecrituresEtapes ? ecrituresEtapes[champDate]
+            : dateSoumise[champEtape] !== undefined ? dateSoumise[champEtape] : existing[champDate]
+      }
+      const erreurEtape = await controlerDatesEtapesFaites(tx, {
+        userId: session!.user.id,
+        cultureId,
+        avant: existing,
+        apres: etapesFinales,
+      })
+      if (erreurEtape) return NextResponse.json(erreurEtape, { status: 400 })
 
-    const datesFinales = { ...existing, ...data, ...ecrituresEtapes }
-    // Une ancienne incohérence ne doit pas empêcher de corriger une note.
-    // Contrôler la paire lorsqu'un de ses jours change, après tous les recalages.
-    if ((['dateRecolte', 'finRecolte'] as const).some(champ =>
-      jourCivilStocke(datesFinales[champ]) !== jourCivilStocke(existing[champ]),
-    )) {
-      const erreurFin = erreurFinRecolte(datesFinales)
-      if (erreurFin) return NextResponse.json({ error: erreurFin, champ: 'finRecolte' }, { status: 400 })
-    }
+      // Audit Marc 2026-05-14 — Bug 04 : valider les dates contre l'ITP en
+      // modification également (warnings non bloquants remontés au client).
+      const dateWarnings: string[] = []
+      let alerteSaison: AlerteSaisonCulture | null = null
+      const datesTouchees = datesCultureTouchees(data)
+      const itpChange = data.itpId !== undefined && (data.itpId ?? null) !== (existing.itpId ?? null)
+      // ITP final de la culture, lu une fois : validation des dates, alerte de
+      // saison et durée de récolte de la fenêtre (2026-10-25).
+      let itp: Awaited<ReturnType<typeof lireItpCalibre>> = null
+      // Fenêtre de récolte à refaire depuis l'ITP : itinéraire changé, ou fenêtre
+      // stockée incohérente (réparée au prochain enregistrement).
+      const fenetreARefaire =
+        Boolean(data.dateRecolte ?? existing.dateRecolte) && (itpChange || fenetreRecolteIncoherente(existing))
+      let itpLu = false
+      if (itpFinal && (datesTouchees || fenetreARefaire)) {
+        try {
+          itp = await lireItpCalibre(itpFinal, session!.user.id, tx)
+          itpLu = true
+        } catch (e) {
+          console.warn('ITP non lu pour la modification de culture :', e)
+        }
+      }
+      if (datesTouchees) {
+        try {
+          const annee = data.annee ?? existing.annee ?? new Date().getFullYear()
+          // Dates fusionnées (champ absent = valeur stockée, `null` = date
+          // effacée) jugées par le helper que partage l'outil `update_culture`
+          // de l'assistant (ASS-07) : une seule règle pour les deux surfaces.
+          const v = validerDatesCultureModifiee(existing, data, { itp, annee })
+          // Même refus qu'à la création : les erreurs de chronologie n'étaient
+          // pas même journalisées ici, seules les alertes remontaient.
+          if (v && !v.valid) return NextResponse.json(refusDatesCulture(v), { status: 400 })
+          if (v) {
+            dateWarnings.push(...v.warnings)
+            alerteSaison = v.alerteSaison
+          }
+        } catch (e) {
+          console.warn('Date validation PUT skipped:', e)
+        }
+      }
 
-    // Mise à jour
-    const culture = await prisma.culture.update({
-      where: { id: cultureId },
-      data: { ...validationResult.data, ...ecritureQuantite, ...ecrituresEtapes },
-      include: {
-        espece: true,
-        variete: true,
-        itp: true,
-        planche: true,
-      },
-    })
+      // La fenêtre de récolte suit son début (2026-10-25) : changer l'ITP ou la
+      // date de récolte sans toucher la fin laissait une fenêtre d'un autre
+      // itinéraire (ail récolté S29 2026, fin au 9 août 2027). Une fin modifiée
+      // par l'utilisateur fait foi.
+      const finSuivante = finRecolteApresModification({
+        avant: existing,
+        dateRecolte:
+          data.dateRecolte !== undefined ? ((data.dateRecolte as Date | null) ?? null) : existing.dateRecolte,
+        finSoumise: data.finRecolte as Date | null | undefined,
+        itpChange,
+        // Sans ITP : null (une fin héritée d'un autre itinéraire ne survit pas) ;
+        // ITP non lu : inconnu, rien n'est effacé.
+        itp: !itpFinal ? null : itpLu ? itp : undefined,
+      })
+      if (finSuivante !== undefined) data.finRecolte = finSuivante
 
-    invalidateKpi(session!.user.id)
+      // Ticket QA cmvnpkkhp (2026-10-25) — « Quantité / plants (auto) » suit les
+      // rangs, la longueur et l'espacement, par la règle de la création. Le
+      // formulaire d'édition renvoyait vide la quantité d'une culture née sans
+      // elle ; une quantité saisie à la main reste intacte.
+      const quantiteAuto = quantiteCultureApresModification(existing, data)
+      const ecritureQuantite = quantiteAuto === undefined ? {} : { quantite: quantiteAuto }
 
-    const reponse = masquerReferentielsEmbarques(culture, session!.user.id)
-    return NextResponse.json({
-      ...reponse,
-      ...(dateWarnings.length > 0 ? { warnings: dateWarnings } : {}),
-      ...(alerteSaison ? { alerteSaison } : {}),
-    })
+      const datesFinales = { ...existing, ...data, ...ecrituresEtapes }
+      // Une ancienne incohérence ne doit pas empêcher de corriger une note.
+      // Contrôler la paire lorsqu'un de ses jours change, après tous les recalages.
+      if ((['dateRecolte', 'finRecolte'] as const).some(champ =>
+        jourCivilStocke(datesFinales[champ]) !== jourCivilStocke(existing[champ]),
+      )) {
+        const erreurFin = erreurFinRecolte(datesFinales)
+        if (erreurFin) return NextResponse.json({ error: erreurFin, champ: 'finRecolte' }, { status: 400 })
+      }
+
+      const occupation = await controlerOccupationModification(tx, session!.user.id, existing, datesFinales as Culture)
+      if (occupation.refus) return NextResponse.json(occupation.refus, { status: 400 })
+      dateWarnings.push(...occupation.warnings)
+
+      // Mise à jour
+      const culture = await tx.culture.update({
+        where: { id: cultureId },
+        data: { ...validationResult.data, ...ecritureQuantite, ...ecrituresEtapes },
+        include: {
+          espece: true,
+          variete: true,
+          itp: true,
+          planche: true,
+        },
+      })
+
+      const visible = masquerReferentielsEmbarques(culture, session!.user.id)
+      return NextResponse.json({
+        ...visible,
+        ...(dateWarnings.length > 0 ? { warnings: dateWarnings } : {}),
+        ...(alerteSaison ? { alerteSaison } : {}),
+      })
+    }, OPTIONS_TRANSACTION_CULTURE)
+    if (reponse.status === 200) invalidateKpi(session!.user.id)
+    return reponse
   } catch (error) {
     console.error('PUT /api/cultures/[id] error:', error)
     return NextResponse.json(
@@ -494,218 +524,291 @@ export async function PATCH(
       )
     }
 
-    // Verifier existence et propriete
-    const existing = await prisma.culture.findUnique({
-      where: {
-        id: cultureId,
-        userId: session!.user.id,
-      },
-      include: {
-        _count: { select: { recoltes: true } },
-        itp: { select: { semainePlantation: true } },
-      },
-    })
+    // Contre-revue adverse (2026-11-15) : même verrou que le PUT, pris avant
+    // de lire la culture ; contrôles et écriture dans la même transaction.
+    let irrigationModifiee = false
+    const reponse = await prisma.$transaction(async (tx) => {
+      // Même ordre que le PUT : exploitation (occupation) PUIS culture (étapes).
+      await verrouillerOccupationExploitation(tx, session!.user.id)
+      await verrouillerCultures(tx, session!.user.id, [cultureId])
+      // Verifier existence et propriete
+      const existing = await tx.culture.findUnique({
+        where: {
+          id: cultureId,
+          userId: session!.user.id,
+        },
+        include: {
+          _count: { select: { recoltes: true } },
+          itp: { select: { semainePlantation: true } },
+        },
+      })
 
-    if (!existing) {
-      return NextResponse.json(
-        { error: `Culture #${id} non trouvée` },
-        { status: 404 }
-      )
-    }
+      if (!existing) {
+        return NextResponse.json(
+          { error: `Culture #${id} non trouvée` },
+          { status: 404 }
+        )
+      }
 
-    // Champs autorises pour PATCH rapide
-    const allowedFields = [
-      'semisFait',
-      'plantationFaite',
-      'recolteFaite',
-      'terminee',
-      'aIrriguer',
-      'derniereIrrigation',
-      'dateSemis',
-      'datePlantation',
-      'dateRecolte',
-      // Fin de la fenêtre de récolte (2026-08-26) : modifiable comme les autres
-      // dates, pour corriger une durée que le référentiel donne trop courte ou
-      // trop longue sur une parcelle donnée.
-      'finRecolte',
-      'notes',
-    ]
+      // Champs autorises pour PATCH rapide
+      const allowedFields = [
+        'semisFait',
+        'plantationFaite',
+        'recolteFaite',
+        'terminee',
+        'aIrriguer',
+        'derniereIrrigation',
+        'dateSemis',
+        'datePlantation',
+        'dateRecolte',
+        // Fin de la fenêtre de récolte (2026-08-26) : modifiable comme les autres
+        // dates, pour corriger une durée que le référentiel donne trop courte ou
+        // trop longue sur une parcelle donnée.
+        'finRecolte',
+        'notes',
+      ]
 
-    const dateFields = [
-      'dateSemis',
-      'datePlantation',
-      'dateRecolte',
-      'finRecolte',
-      'derniereIrrigation',
-    ]
-    const updateData: Record<string, unknown> = {}
-    for (const field of allowedFields) {
-      if (field in body) {
-        // Convertir les chaînes ISO en Date pour les champs DateTime.
-        // '' vaut effacement (sinon Prisma reçoit une chaîne vide et jette).
-        if (dateFields.includes(field)) {
-          if (body[field]) {
-            const parsed = new Date(body[field])
-            if (Number.isNaN(parsed.getTime())) {
-              return NextResponse.json(
-                { error: `Date invalide pour ${field}` },
-                { status: 400 }
-              )
+      const dateFields = [
+        'dateSemis',
+        'datePlantation',
+        'dateRecolte',
+        'finRecolte',
+        'derniereIrrigation',
+      ]
+      if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+        return NextResponse.json({ error: 'Données invalides' }, { status: 400 })
+      }
+
+      const updateData: Record<string, unknown> = {}
+      for (const field of allowedFields) {
+        if (field in body) {
+          // Convertir les chaînes ISO en Date pour les champs DateTime.
+          // '' vaut effacement (sinon Prisma reçoit une chaîne vide et jette).
+          if (dateFields.includes(field)) {
+            if (body[field]) {
+              const parsed = new Date(body[field])
+              if (Number.isNaN(parsed.getTime())) {
+                return NextResponse.json(
+                  { error: `Date invalide pour ${field}` },
+                  { status: 400 }
+                )
+              }
+              updateData[field] = parsed
+            } else {
+              updateData[field] = null
             }
-            updateData[field] = parsed
           } else {
-            updateData[field] = null
+            updateData[field] = body[field]
           }
-        } else {
-          updateData[field] = body[field]
         }
       }
-    }
 
-    if (Object.keys(updateData).length === 0) {
-      return NextResponse.json(
-        { error: 'Aucun champ valide a mettre a jour' },
-        { status: 400 }
+      if (Object.keys(updateData).length === 0) {
+        return NextResponse.json(
+          { error: 'Aucun champ valide a mettre a jour' },
+          { status: 400 }
+        )
+      }
+
+      const champsRapides = champsRapidesSchema.safeParse(updateData)
+      if (!champsRapides.success) {
+        return NextResponse.json(
+          { error: 'Données invalides', details: champsRapides.error.flatten() },
+          { status: 400 }
+        )
+      }
+      // « '' » n'est ni terminée ni en cours : le filtre la rangeait dans
+      // « Terminée » quand l'affichage la disait en cours (`etatCulture`).
+      if (typeof updateData.terminee === 'string' && updateData.terminee.trim() === '') {
+        updateData.terminee = null
+      }
+
+      // Revue du 2026-11-11 — une date déplacée (glisser-déposer du calendrier)
+      // garde l'ordre du cycle, comme à la création, au formulaire complet et au
+      // report : ce chemin écrivait une récolte avant sa plantation. Contrôlé
+      // seulement quand un jour change, pour qu'une fiche ancienne reste
+      // corrigeable sur ses autres champs ; le recalage d'une étape cochée
+      // (plus bas) n'est pas concerné.
+      const CHAMPS_CYCLE = ['dateSemis', 'datePlantation', 'dateRecolte'] as const
+      const cycleFinal = {
+        dateSemis: 'dateSemis' in updateData ? (updateData.dateSemis as Date | null) : existing.dateSemis,
+        datePlantation:
+          'datePlantation' in updateData ? (updateData.datePlantation as Date | null) : existing.datePlantation,
+        dateRecolte: 'dateRecolte' in updateData ? (updateData.dateRecolte as Date | null) : existing.dateRecolte,
+      }
+      const jourDeplace = CHAMPS_CYCLE.some(
+        (champ) => champ in updateData && jourCivilStocke(cycleFinal[champ]) !== jourCivilStocke(existing[champ])
       )
-    }
+      // Rendu APRÈS la garde des étapes faites (revue QA 60, comme le PUT) :
+      // une étape faite datée dans le futur répond par sa règle et son champ.
+      const erreurCycle = jourDeplace ? erreurChronologieCycle(cycleFinal) : null
 
-    // QA cmsio768u / cmsio8o54 (2026-08-07) — les actions rapides du tableau
-    // sont des bascules : recliquer sur une étape déjà faite la dé-marque. La
-    // cascade d'état (récolte > plantation > semis) faisait alors régresser une
-    // culture qui portait déjà des récoltes — « Planifiée » affiché à côté de
-    // 3 récoltes, ou « Plantée » à côté de 4. Le registre de récolte est la
-    // source de vérité : on refuse de le contredire plutôt que de recalculer un
-    // état faux.
-    const ETAPES = ['semisFait', 'plantationFaite', 'recolteFaite'] as const
-    const LIBELLE_ETAPE: Record<string, string> = {
-      semisFait: 'le semis',
-      plantationFaite: 'la plantation',
-      recolteFaite: 'la récolte',
-    }
-    const etapesAnnulees = ETAPES.filter((e) => e in updateData && updateData[e] === false)
+      // QA cmsio768u / cmsio8o54 (2026-08-07) — les actions rapides du tableau
+      // sont des bascules : recliquer sur une étape déjà faite la dé-marque. La
+      // cascade d'état (récolte > plantation > semis) faisait alors régresser une
+      // culture qui portait déjà des récoltes — « Planifiée » affiché à côté de
+      // 3 récoltes, ou « Plantée » à côté de 4. Le registre de récolte est la
+      // source de vérité : on refuse de le contredire plutôt que de recalculer un
+      // état faux.
+      const ETAPES = ['semisFait', 'plantationFaite', 'recolteFaite'] as const
+      const LIBELLE_ETAPE: Record<string, string> = {
+        semisFait: 'le semis',
+        plantationFaite: 'la plantation',
+        recolteFaite: 'la récolte',
+      }
+      const etapesAnnulees = ETAPES.filter((e) => e in updateData && updateData[e] === false)
 
-    // QA cmsoaedw2 — un ITP en semis direct (pas de semaine de plantation) n'a
-    // pas d'étape plantation : la marquer « faite » fabrique un état de suivi
-    // incohérent. Le masquage UI du 2026-08-11 est ici verrouillé côté serveur.
-    // On ne bloque que la POSE (true) : une valeur héritée reste annulable, et
-    // le PUT du formulaire d'édition (geste explicite) n'est pas concerné.
-    const datePlantationFinale = 'datePlantation' in updateData
-      ? updateData.datePlantation
-      : existing.datePlantation
-    if (
-      updateData.plantationFaite === true &&
-      existing.itp != null &&
-      existing.itp.semainePlantation == null &&
-      datePlantationFinale == null
-    ) {
-      return NextResponse.json(
-        {
-          error: `L'itinéraire technique de cette culture est en semis direct :`
-            + ` il n'y a pas d'étape de plantation à marquer. Renseignez une date`
-            + ` de plantation si cette culture est réellement repiquée.`,
-        },
-        { status: 409 }
-      )
-    }
-
-    if (etapesAnnulees.length > 0 && existing._count.recoltes > 0) {
-      const n = existing._count.recoltes
-      return NextResponse.json(
-        {
-          error: `Cette culture porte ${n} récolte${n > 1 ? 's' : ''} enregistrée${n > 1 ? 's' : ''}`
-            + ` : ${etapesAnnulees.map((e) => LIBELLE_ETAPE[e]).join(' et ')} ne peut pas être annulé`
-            + ` sans contredire le registre de récolte. Supprimez d'abord les récoltes concernées.`,
-          recoltes: n,
-        },
-        { status: 409 }
-      )
-    }
-
-    // Cohérence du cycle : annuler une étape amont en laissant une étape aval
-    // marquée faite produit un état incohérent, sauf si le même appel annule
-    // aussi l'aval.
-    const resteraFaite = (champ: (typeof ETAPES)[number]) =>
-      champ in updateData ? updateData[champ] === true : Boolean(existing[champ])
-
-    for (const annulee of etapesAnnulees) {
-      const aval = ETAPES.slice(ETAPES.indexOf(annulee) + 1).filter(resteraFaite)
-      if (aval.length > 0) {
+      // QA cmsoaedw2 — un ITP en semis direct (pas de semaine de plantation) n'a
+      // pas d'étape plantation : la marquer « faite » fabrique un état de suivi
+      // incohérent. Le masquage UI du 2026-08-11 est ici verrouillé côté serveur.
+      // On ne bloque que la POSE (true) : une valeur héritée reste annulable, et
+      // le PUT du formulaire d'édition (geste explicite) n'est pas concerné.
+      const datePlantationFinale = 'datePlantation' in updateData
+        ? updateData.datePlantation
+        : existing.datePlantation
+      if (
+        updateData.plantationFaite === true &&
+        existing.itp != null &&
+        existing.itp.semainePlantation == null &&
+        datePlantationFinale == null
+      ) {
         return NextResponse.json(
           {
-            error: `Annulez d'abord ${aval.map((e) => LIBELLE_ETAPE[e]).join(' et ')}`
-              + ` : le cycle ne peut pas revenir avant ${LIBELLE_ETAPE[annulee]}`
-              + ` tant qu'une étape postérieure reste marquée faite.`,
+            error: `L'itinéraire technique de cette culture est en semis direct :`
+              + ` il n'y a pas d'étape de plantation à marquer. Renseignez une date`
+              + ` de plantation si cette culture est réellement repiquée.`,
           },
           { status: 409 }
         )
       }
-    }
 
-    // QA cmsp66tdm — une étape marquée faite ne peut pas rester datée dans le
-    // futur : cliquer une tâche planifiée au 15/08 le 11/08 enregistrait « Semis
-    // fait le 15/08 » au registre. On recale la date d'exécution sur le jour
-    // courant, sauf si l'appel fournit lui-même la date (geste explicite).
-    //
-    // Friction 2026-08-20 — et le retour en arrière rend sa date au plan. Le
-    // bouton « Annuler le semis fait » de /maraichage/cultures passe ici : sans
-    // restitution, cocher puis décocher laissait la date d'exécution en place et
-    // le plan était perdu.
-    // La fenêtre de récolte suit une date de récolte déplacée par l'appel
-    // (règle de la modification et du report, `finRecolteApresModification`).
-    // Avant le recalage d'exécution : marquer une récolte faite ne déplace pas
-    // la fenêtre.
-    if (updateData.dateRecolte !== undefined) {
-      const fin = finRecolteApresModification({
+      if (etapesAnnulees.length > 0 && existing._count.recoltes > 0) {
+        const n = existing._count.recoltes
+        return NextResponse.json(
+          {
+            error: `Cette culture porte ${n} récolte${n > 1 ? 's' : ''} enregistrée${n > 1 ? 's' : ''}`
+              + ` : ${etapesAnnulees.map((e) => LIBELLE_ETAPE[e]).join(' et ')} ne peut pas être annulé`
+              + ` sans contredire le registre de récolte. Supprimez d'abord les récoltes concernées.`,
+            recoltes: n,
+          },
+          { status: 409 }
+        )
+      }
+
+      // Cohérence du cycle : annuler une étape amont en laissant une étape aval
+      // marquée faite produit un état incohérent, sauf si le même appel annule
+      // aussi l'aval.
+      const resteraFaite = (champ: (typeof ETAPES)[number]) =>
+        champ in updateData ? updateData[champ] === true : Boolean(existing[champ])
+
+      for (const annulee of etapesAnnulees) {
+        const aval = ETAPES.slice(ETAPES.indexOf(annulee) + 1).filter(resteraFaite)
+        if (aval.length > 0) {
+          return NextResponse.json(
+            {
+              error: `Annulez d'abord ${aval.map((e) => LIBELLE_ETAPE[e]).join(' et ')}`
+                + ` : le cycle ne peut pas revenir avant ${LIBELLE_ETAPE[annulee]}`
+                + ` tant qu'une étape postérieure reste marquée faite.`,
+            },
+            { status: 409 }
+          )
+        }
+      }
+
+      // QA cmsp66tdm — une étape marquée faite ne peut pas rester datée dans le
+      // futur : cliquer une tâche planifiée au 15/08 le 11/08 enregistrait « Semis
+      // fait le 15/08 » au registre. On recale la date d'exécution sur le jour
+      // courant, sauf si l'appel fournit lui-même la date (geste explicite).
+      //
+      // Friction 2026-08-20 — et le retour en arrière rend sa date au plan. Le
+      // bouton « Annuler le semis fait » de /maraichage/cultures passe ici : sans
+      // restitution, cocher puis décocher laissait la date d'exécution en place et
+      // le plan était perdu.
+      // La fenêtre de récolte suit une date de récolte déplacée par l'appel
+      // (règle de la modification et du report, `finRecolteApresModification`).
+      // Avant le recalage d'exécution : marquer une récolte faite ne déplace pas
+      // la fenêtre.
+      if (updateData.dateRecolte !== undefined) {
+        const fin = finRecolteApresModification({
+          avant: existing,
+          dateRecolte: updateData.dateRecolte as Date | null,
+          finSoumise: 'finRecolte' in updateData ? (updateData.finRecolte as Date | null) : undefined,
+        })
+        if (fin !== undefined) updateData.finRecolte = fin
+      }
+
+      for (const [champEtape, champDate] of Object.entries(CHAMP_DATE_ETAPE) as Array<
+        [ChampEtape, ChampDateEtape]
+      >) {
+        if (!(champEtape in updateData)) continue
+        if (champDate in updateData) {
+          // Date fournie dans le même appel : c'est elle qui fait foi, la mémoire
+          // du plan n'a plus d'objet.
+          Object.assign(updateData, ecrituresDatePlanRedefinie(champEtape))
+          continue
+        }
+        if (updateData[champEtape] === true) {
+          const instant = await instantPassageAFait(tx, { userId: session!.user.id, cultureId, champEtape })
+          Object.assign(updateData, ecrituresPassageAFait(existing, champEtape, instant))
+        } else if (updateData[champEtape] === false) {
+          Object.assign(updateData, ecrituresRetourANonFait(existing, champEtape))
+        }
+      }
+
+      // Même garde que le PUT et l'assistant (`controlerDatesEtapesFaites`) : une
+      // date fournie avec ou pour une étape faite n'est ni future ni postérieure
+      // à la première récolte. Le recalage ci-dessus laisse passer une étape
+      // cochée sans date.
+      const etapesFinales: EtatDatesEtapes = {}
+      for (const [champEtape, champDate] of Object.entries(CHAMP_DATE_ETAPE) as Array<
+        [ChampEtape, ChampDateEtape]
+      >) {
+        etapesFinales[champEtape] = champEtape in updateData
+          ? (updateData[champEtape] as boolean | null) : existing[champEtape]
+        etapesFinales[champDate] = champDate in updateData
+          ? (updateData[champDate] as Date | null) : existing[champDate]
+      }
+      const erreurEtape = await controlerDatesEtapesFaites(tx, {
+        userId: session!.user.id,
+        cultureId,
         avant: existing,
-        dateRecolte: updateData.dateRecolte as Date | null,
-        finSoumise: 'finRecolte' in updateData ? (updateData.finRecolte as Date | null) : undefined,
+        apres: etapesFinales,
       })
-      if (fin !== undefined) updateData.finRecolte = fin
-    }
-
-    for (const [champEtape, champDate] of Object.entries(CHAMP_DATE_ETAPE) as Array<
-      [ChampEtape, ChampDateEtape]
-    >) {
-      if (!(champEtape in updateData)) continue
-      if (champDate in updateData) {
-        // Date fournie dans le même appel : c'est elle qui fait foi, la mémoire
-        // du plan n'a plus d'objet.
-        Object.assign(updateData, ecrituresDatePlanRedefinie(champEtape))
-        continue
+      if (erreurEtape) return NextResponse.json(erreurEtape, { status: 400 })
+      if (erreurCycle) {
+        return NextResponse.json({ error: erreurCycle, errors: [erreurCycle] }, { status: 400 })
       }
-      if (updateData[champEtape] === true) {
-        Object.assign(updateData, ecrituresPassageAFait(existing, champEtape))
-      } else if (updateData[champEtape] === false) {
-        Object.assign(updateData, ecrituresRetourANonFait(existing, champEtape))
+
+      const datesFinales = {
+        dateRecolte: updateData.dateRecolte !== undefined
+          ? (updateData.dateRecolte as Date | null) : existing.dateRecolte,
+        finRecolte: updateData.finRecolte !== undefined
+          ? (updateData.finRecolte as Date | null) : existing.finRecolte,
       }
+      if (jourCivilStocke(datesFinales.dateRecolte) !== jourCivilStocke(existing.dateRecolte)
+        || jourCivilStocke(datesFinales.finRecolte) !== jourCivilStocke(existing.finRecolte)) {
+        const erreurFin = erreurFinRecolte(datesFinales)
+        if (erreurFin) return NextResponse.json({ error: erreurFin, champ: 'finRecolte' }, { status: 400 })
+      }
+
+      const occupation = await controlerOccupationModification(tx, session!.user.id, existing,
+        { ...existing, ...updateData } as Culture)
+      if (occupation.refus) return NextResponse.json(occupation.refus, { status: 400 })
+
+      const culture = await tx.culture.update({
+        where: { id: cultureId },
+        data: updateData,
+      })
+      irrigationModifiee = 'derniereIrrigation' in updateData
+
+      return NextResponse.json(culture)
+    }, OPTIONS_TRANSACTION_CULTURE)
+    if (reponse.status === 200) {
+      // Invalider le cache irrigation si la date d'arrosage a changé
+      if (irrigationModifiee) irrigationCache.invalidateUser(session!.user.id)
+      invalidateKpi(session!.user.id)
     }
-
-    const datesFinales = {
-      dateRecolte: updateData.dateRecolte !== undefined
-        ? (updateData.dateRecolte as Date | null) : existing.dateRecolte,
-      finRecolte: updateData.finRecolte !== undefined
-        ? (updateData.finRecolte as Date | null) : existing.finRecolte,
-    }
-    if (jourCivilStocke(datesFinales.dateRecolte) !== jourCivilStocke(existing.dateRecolte)
-      || jourCivilStocke(datesFinales.finRecolte) !== jourCivilStocke(existing.finRecolte)) {
-      const erreurFin = erreurFinRecolte(datesFinales)
-      if (erreurFin) return NextResponse.json({ error: erreurFin, champ: 'finRecolte' }, { status: 400 })
-    }
-
-    const culture = await prisma.culture.update({
-      where: { id: cultureId },
-      data: updateData,
-    })
-
-    // Invalider le cache irrigation si la date d'arrosage a changé
-    if ('derniereIrrigation' in updateData) {
-      irrigationCache.invalidateUser(session!.user.id)
-    }
-
-    invalidateKpi(session!.user.id)
-
-
-    return NextResponse.json(culture)
+    return reponse
   } catch (error) {
     console.error('PATCH /api/cultures/[id] error:', error)
     return NextResponse.json(

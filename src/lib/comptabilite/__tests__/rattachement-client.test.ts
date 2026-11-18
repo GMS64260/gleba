@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { adresseDeFiche, clientDesigneParNom, identiteAcheteur, normaliserNomClient } from '../rattachement-client'
+import { acheteurDeFacture, adresseDeFiche, clientDesigneParNom, identiteAcheteur, instantaneAcheteur, normaliserNomClient } from '../rattachement-client'
 
 describe('normaliserNomClient', () => {
   it('ignore casse, accents et espaces superflus', () => {
@@ -59,5 +59,40 @@ describe('adresseDeFiche', () => {
     expect(adresseDeFiche({ adresse: '2 quai des Pêcheurs', codePostal: '64500', ville: 'Ciboure' })).toBe('2 quai des Pêcheurs, 64500, Ciboure')
     expect(adresseDeFiche({ adresse: null, codePostal: '', ville: 'Ciboure' })).toBe('Ciboure')
     expect(adresseDeFiche({})).toBe('')
+  })
+})
+
+// BX03 (2026-11-16) : identité complète de l'acheteur figée à l'émission.
+describe('acheteur figé', () => {
+  const ficheParticulier = { nom: 'Camille Fictive', type: 'particulier', email: 'camille@example.invalid', adresse: '3 chemin fictif', codePostal: '64000', ville: 'Pau', pays: 'France' }
+  const fichePro = { nom: 'Fictive SARL', type: 'professionnel', email: 'achats@example.invalid', adresse: '9 quai fictif', codePostal: '64100', ville: 'Bayonne', pays: 'France', siret: '12345678900017', siren: '123456789', tvaIntra: 'FR00123456789' }
+
+  it('instantaneAcheteur fige toute l’identité de la fiche', () => {
+    expect(instantaneAcheteur(ficheParticulier)).toEqual({
+      clientNom: 'Camille Fictive', clientAdresse: '3 chemin fictif, 64000, Pau', clientEmail: 'camille@example.invalid',
+      clientCodePostal: '64000', clientVille: 'Pau', clientPays: 'France', clientType: 'particulier',
+      clientSiret: null, clientSiren: null, clientTvaIntra: null,
+    })
+    expect(instantaneAcheteur({ nom: 'Sans adresse' }, 'Adresse saisie').clientAdresse).toBe('Adresse saisie')
+  })
+
+  it('facture figée : la fiche modifiée n’est jamais relue', () => {
+    const facture = { ...instantaneAcheteur(ficheParticulier), acheteurFigeLe: new Date('2026-11-16'), client: fichePro }
+    expect(acheteurDeFacture(facture)).toEqual({
+      nom: 'Camille Fictive', adresse: '3 chemin fictif, 64000, Pau', siret: null, siren: null, tvaIntra: null,
+      email: 'camille@example.invalid', codePostal: '64000', ville: 'Pau', pays: 'France', type: 'particulier', fige: true,
+    })
+  })
+
+  it('facture antérieure non figée : champs absents conservés, sans repli courant', () => {
+    const ancienne = {
+      clientNom: 'Camille Fictive', clientAdresse: '3 chemin fictif', clientSiret: null, clientSiren: null, clientTvaIntra: null,
+      clientEmail: null, clientCodePostal: null, clientVille: null, clientPays: null, clientType: null, acheteurFigeLe: null, client: fichePro,
+    }
+    expect(acheteurDeFacture(ancienne)).toEqual({
+      nom: 'Camille Fictive', adresse: '3 chemin fictif', siret: null, siren: null, tvaIntra: null,
+      email: null, codePostal: null, ville: null, pays: null, type: null, fige: false,
+    })
+    expect(acheteurDeFacture({ ...ancienne, client: null }).fige).toBe(false)
   })
 })

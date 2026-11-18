@@ -305,8 +305,9 @@ function Jardin3DContent() {
           <Garden3DView data={data} fond={fond3D} autoRotate={autoRotate} showLabels={showLabels} selectedPlancheId={selectedPlancheId} onSelectPlanche={(planche) => setSelectedPlancheId(planche.id)} />
 
           {/* Barre de temps */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-3">
-            <div className="pointer-events-auto flex w-full max-w-xl flex-wrap items-center gap-3 rounded-2xl bg-white/92 px-4 py-3 shadow-lg backdrop-blur">
+          {/* Sur mobile : garder 3 rem de bulle + 1 rem de retrait + 1 rem d'écart à droite. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-3 pr-20 sm:pr-3">
+            <div className="pointer-events-auto flex w-full max-w-xl flex-wrap items-center gap-3 rounded-2xl bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
               <CalendarClock className={`h-5 w-5 flex-shrink-0 ${estAujourdhui ? "text-emerald-600" : "text-amber-500"}`} />
               <div className="flex min-w-[8.5rem] flex-col">
                 <span className="text-[11px] uppercase tracking-wide text-gray-400">Le jardin au</span>

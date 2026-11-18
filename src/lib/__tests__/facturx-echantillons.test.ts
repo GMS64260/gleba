@@ -66,10 +66,11 @@ const base = (numero: string, type: string, lignes: ReturnType<typeof ligne>[], 
   const c = client()
   return {
     id: 1, userId: "u", numero, type, clientId: 1, client: c, clientNom: c.nom, clientAdresse: "4 place du Marché", clientSiret: c.siret, clientSiren: c.siren, clientTvaIntra: c.tvaIntra,
+    clientEmail: c.email, clientCodePostal: c.codePostal, clientVille: c.ville, clientPays: c.pays, clientType: c.type, acheteurFigeLe: new Date("2026-10-12"),
     date: new Date("2026-10-12T00:00:00+02:00"), dateEcheance: new Date("2026-11-11T00:00:00+01:00"), objet: "Légumes de saison, semaine 41",
     categorieOperation: "biens", dateLivraison: null, adresseLivraison: null, codePostalLivraison: null, villeLivraison: null, paysLivraison: null,
     totalHT, totalTVA, totalTTC: Math.round((totalHT + totalTVA) * 100) / 100, totauxParTauxTva: null, statut: "emise", datePaiement: null, modePaiement: null,
-    factureOrigineId: null, conditionsPaiement: "Paiement à 30 jours", mentionsSpecifiques: ["escompte", "penalites", "indemnite-40", "ab"], emetteurSnapshot: null,
+    factureOrigineId: null, conditionsPaiement: "Paiement à 30 jours", mentionsSpecifiques: ["escompte", "penalites", "indemnite-40", "ab"], emetteurSnapshot: emetteur("reel-simplifie"),
     notes: null, mentionsLegales: null, createdAt: new Date(), updatedAt: new Date(), lignes, ...extra,
   } as unknown as FacturePourExport
 }
@@ -142,7 +143,7 @@ describe("échantillons Factur-X et UBL de bout en bout", () => {
     const particulier = { ...client(), nom: "Jeanne Martin", type: "particulier", siret: null, siren: null, tvaIntra: null, email: "jeanne@exemple.fr" }
     const { donnees } = await produire(
       "facture-particulier",
-      base("F-2026-0045", "facture", lignes, { client: particulier, clientNom: particulier.nom, clientSiret: null, clientSiren: null, clientTvaIntra: null }),
+      base("F-2026-0045", "facture", lignes, { client: particulier, clientNom: particulier.nom, clientType: particulier.type, clientEmail: particulier.email, clientSiret: null, clientSiren: null, clientTvaIntra: null }),
       emetteur("reel-simplifie"),
     )
     expect(donnees.traitement).toBe("B2C")
@@ -215,7 +216,7 @@ describe("échantillons Factur-X et UBL de bout en bout", () => {
     const lignes = [ligne(0, "Panier de légumes", 2, "unité", 18.9, 5.5)]
     const particulier = { ...client(), nom: "Jeanne Martin", type: "particulier", siret: null, siren: null, tvaIntra: null, email: null }
     const donnees = donneesFactureStructuree(
-      base("F-2026-0049", "facture", lignes, { client: particulier, clientNom: particulier.nom, clientSiret: null, clientSiren: null, clientTvaIntra: null }),
+      base("F-2026-0049", "facture", lignes, { client: particulier, clientNom: particulier.nom, clientType: particulier.type, clientEmail: particulier.email, clientSiret: null, clientSiren: null, clientTvaIntra: null }),
       emetteur("reel-simplifie"),
     )
     expect(donnees.traitement).toBe("B2C")

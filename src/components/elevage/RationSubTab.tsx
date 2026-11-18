@@ -1,5 +1,7 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Calculateur de ration caprine — PROMPT 25.
  *
@@ -16,7 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { besoinsMonogastrique, besoinsRuminant, bilanRation, bilanRationMonogastrique, type ProfilEspeceRation, type StadeGestation, type LigneRation } from "@/lib/elevage/ration"
-import { formatMontantDevise } from "@/lib/format-utils"
+import { symboleDevise, formatMontantDevise } from "@/lib/format-utils"
 
 type Aliment = {
   id: string
@@ -54,6 +56,9 @@ const STADES = [
 ]
 
 export function RationSubTab() {
+  const devise = useDevise()
+  const symbole = devise === null ? "—" : symboleDevise(devise)
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const [aliments, setAliments] = React.useState<Aliment[]>([])
   const [loading, setLoading] = React.useState(true)
   const [poids, setPoids] = React.useState(60)
@@ -283,7 +288,7 @@ export function RationSubTab() {
                   <th className="p-2 text-left">Aliment</th>
                   <th className="p-2 text-right">UFL/kg</th>
                   <th className="p-2 text-right">PDIN/PDIE</th>
-                  <th className="p-2 text-right">€/kg</th>
+                  <th className="p-2 text-right">{symbole}/kg</th>
                   <th className="p-2 text-right w-28">Quantité (kg)</th>
                 </tr>
               </thead>
@@ -339,11 +344,11 @@ export function RationSubTab() {
           </div>
           <div className="rounded-lg border p-3">
             <div className="text-xs text-slate-500">Coût ration / jour</div>
-            <div className="text-lg font-semibold">{formatMontantDevise(bilan.cout)}</div>
+            <div className="text-lg font-semibold">{formatMontant(bilan.cout)}</div>
             <div className="text-xs text-slate-400">{bilan.uel > 0 ? `${bilan.uel} UEL` : ""}</div>
           </div>
         </div>}
-        {bilanMono && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Ingestion</div><div className="text-lg font-semibold">{bilanMono.ingestionKg} kg</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Énergie</div><div className="text-lg font-semibold">{bilanMono.energieKcal} kcal</div><div className={couvClass(bilanMono.couvertureEnergie)}>{bilanMono.couvertureEnergie}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Protéines</div><div className="text-lg font-semibold">{bilanMono.proteinesG} g</div><div className={couvClass(bilanMono.couvertureProteines)}>{bilanMono.couvertureProteines}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Coût/jour</div><div className="text-lg font-semibold">{formatMontantDevise(bilanMono.cout)}</div></div></div>}
+        {bilanMono && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Ingestion</div><div className="text-lg font-semibold">{bilanMono.ingestionKg} kg</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Énergie</div><div className="text-lg font-semibold">{bilanMono.energieKcal} kcal</div><div className={couvClass(bilanMono.couvertureEnergie)}>{bilanMono.couvertureEnergie}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Protéines</div><div className="text-lg font-semibold">{bilanMono.proteinesG} g</div><div className={couvClass(bilanMono.couvertureProteines)}>{bilanMono.couvertureProteines}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Coût/jour</div><div className="text-lg font-semibold">{formatMontant(bilanMono.cout)}</div></div></div>}
 
         {/* Enregistrer le plan */}
         <div className="rounded-lg border p-3 space-y-2">

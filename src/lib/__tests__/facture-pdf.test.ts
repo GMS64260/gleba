@@ -55,7 +55,7 @@ const facture = (extra: Record<string, unknown> = {}): FacturePourExport =>
     categorieOperation: "mixte", dateLivraison: null, adresseLivraison: null, codePostalLivraison: null, villeLivraison: null, paysLivraison: null,
     totalHT: 150, totalTVA: 15.5, totalTTC: 165.5, totauxParTauxTva: { "5.5": { ht: 100, tva: 5.5, ttc: 105.5 }, "20": { ht: 50, tva: 10, ttc: 60 } },
     statut: "emise", datePaiement: null, modePaiement: null, factureOrigineId: null, conditionsPaiement: null,
-    mentionsSpecifiques: ["escompte", "penalites", "indemnite-40"], emetteurSnapshot: null, notes: null, mentionsLegales: null,
+    mentionsSpecifiques: ["escompte", "penalites", "indemnite-40"], emetteurSnapshot: emetteur, notes: null, mentionsLegales: null,
     createdAt: new Date(), updatedAt: new Date(),
     lignes: [
       { id: 1, factureId: 1, ordre: 0, description: "Légumes", quantite: 10, unite: "kg", prixUnitaire: 10, tauxTVA: 5.5, montantHT: 100, montantTVA: 5.5, montantTTC: 105.5, statutBio: null },
@@ -224,5 +224,34 @@ describe("PDF de facture : caractères imprimables en police standard (revue du 
     expect(payee).toContain("Payée le")
     expect(annulee).toContain("FACTURE ANNULÉE")
     expect(payee + annulee).not.toMatch(/[✓✗]/)
+  })
+})
+
+/**
+ * BX03 — revues QA59/ADV60 du 16/11 : le PDF d'une facture antérieure (acheteur
+ * non figé) n'imprime que l'adresse portée par la facture, comme avant le lot ;
+ * une adresse ajoutée ensuite sur la fiche n'apparaît pas à la réédition.
+ */
+describe("PDF de facture : bloc « Facturé à »", () => {
+  const fiche = { nom: "Camille Fictive", type: "particulier", email: "camille@example.invalid", adresse: "99 rue fictive ajoutée après émission",
+    codePostal: "64000", ville: "Pau", pays: "France", siret: null, siren: null, tvaIntra: null }
+
+  it("facture non figée sans adresse : l'adresse de la fiche complétée ensuite n'est pas imprimée", async () => {
+    const tout = textes(await dessiner(facture({ clientAdresse: null, acheteurFigeLe: null, clientId: 7, client: fiche }))).join("\n")
+    expect(tout).not.toContain("99 rue fictive")
+    // Une fiche courante ne complète pas une identité historique.
+    expect(tout).not.toContain("camille@example.invalid")
+  })
+
+  it("facture non figée avec adresse : celle de la facture, pas celle de la fiche", async () => {
+    const tout = textes(await dessiner(facture({ clientAdresse: "3 chemin fictif, 64000, Pau", acheteurFigeLe: null, clientId: 7, client: fiche }))).join("\n")
+    expect(tout).toContain("3 chemin fictif, 64000, Pau")
+    expect(tout).not.toContain("99 rue fictive")
+  })
+
+  it("facture figée : seules ses colonnes, la fiche n'est pas relue", async () => {
+    const tout = textes(await dessiner(facture({ clientAdresse: null, clientEmail: null, acheteurFigeLe: new Date("2026-11-16T10:00:00Z"), clientId: 7, client: fiche }))).join("\n")
+    expect(tout).not.toContain("99 rue fictive")
+    expect(tout).not.toContain("camille@example.invalid")
   })
 })

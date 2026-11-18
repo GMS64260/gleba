@@ -1,5 +1,7 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Onglet Alimentation - Stocks aliments + Consommations + Soins en sous-onglets
  */
@@ -50,7 +52,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { confirmDialog } from "@/lib/global-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
-import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
+import { symboleDevise, formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { dateSoinARenvoyer, jourSoin } from '@/lib/elevage/date-soin'
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 import { SelecteurPeriodeExercice, parametreAnnee, type PeriodeListe } from "./SelecteurPeriodeExercice"
@@ -212,6 +214,8 @@ function labelType(code: string | null | undefined): string {
 }
 
 function StocksSubTab() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [aliments, setAliments] = React.useState<Aliment[]>([])
@@ -453,7 +457,7 @@ function StocksSubTab() {
                           </div>
                         ) : (
                         <div className="flex items-center justify-end gap-1.5">
-                          {a.prix ? formatMontantDevise(a.prix) : '-'}
+                          {a.prix ? formatMontant(a.prix) : '-'}
                           {prixHorsNorme && (
                             <button
                               type="button"
@@ -1110,6 +1114,9 @@ const CONSEQUENCE_REOUVERTURE =
   "Le soin redevient prévu : le médicament prélevé revient en stock, la dépense automatique est retirée et ses délais d’attente sont levés."
 
 function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { initialAnimalId?: string | null; initialOpen?: boolean; year?: number }) {
+  const devise = useDevise()
+  const symbole = devise === null ? "—" : symboleDevise(devise)
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const caps = capacitesSelection(useFiliereSelection())
   const filiereSel = useFiliereSelection()
   const { toast } = useToast()
@@ -2185,7 +2192,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                       <option value="Autre">Autre</option>
                     </select>
                   </div>
-                  <div className="space-y-2"><Label>Coût (€)</Label><Input type="number" step="0.01" value={formData.cout} onChange={(e) => setFormData(f => ({ ...f, cout: e.target.value }))} /></div>
+                  <div className="space-y-2"><Label>Coût ({symbole})</Label><Input type="number" step="0.01" value={formData.cout} onChange={(e) => setFormData(f => ({ ...f, cout: e.target.value }))} /></div>
                 </div>
 
                 <div className="space-y-2">
@@ -2457,7 +2464,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                       })()}
                     </TableCell>
                     )}
-                    <TableCell className="text-right">{soin.cout ? formatMontantDevise(soin.cout) : '-'}</TableCell>
+                    <TableCell className="text-right">{soin.cout ? formatMontant(soin.cout) : '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{soin.notes || '-'}</TableCell>
                   </TableRow>
                   )
@@ -2521,7 +2528,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                     <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                       <span className="text-muted-foreground">{new Date(dateAffichee).toLocaleDateString("fr-FR")}</span>
                       {enRetard && <span className="font-medium text-red-700 uppercase tracking-wide">En retard</span>}
-                      {soin.cout ? <span className="text-muted-foreground">{formatMontantDevise(soin.cout)}</span> : null}
+                      {soin.cout ? <span className="text-muted-foreground">{formatMontant(soin.cout)}</span> : null}
                       {rvLait && <span className={rvLait > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Lait : {rvLait.toLocaleDateString("fr-FR")}</span>}
                       {rvOeufs && <span className={rvOeufs > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Œufs : {rvOeufs.toLocaleDateString("fr-FR")}</span>}
                       {rvViande && <span className={rvViande > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Viande : {rvViande.toLocaleDateString("fr-FR")}</span>}

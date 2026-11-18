@@ -8,22 +8,37 @@ const mocks = vi.hoisted(() => ({
   animalUpdate: vi.fn(),
   animalFindMany: vi.fn(),
   enregistrerChangementLot: vi.fn(),
+  redaterAffectationInitiale: vi.fn(),
   soinFindMany: vi.fn(),
   especeFindFirst: vi.fn(),
   refusRemiseActif: vi.fn(),
-  refusPassageAbattu: vi.fn(),
+  garantirAttenteViandeFiche: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock('@/lib/elevage/sortie-animal.server', () => ({ refusRemiseActif: mocks.refusRemiseActif, refusPassageAbattu: mocks.refusPassageAbattu }))
+vi.mock('@/lib/elevage/sortie-animal.server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/elevage/sortie-animal.server')>()),
+  refusRemiseActif: mocks.refusRemiseActif,
+  garantirAttenteViandeFiche: mocks.garantirAttenteViandeFiche,
+}))
 vi.mock('@/lib/elevage/animal-lot', () => ({
   isAssignableAnimalLot: mocks.isAssignableAnimalLot,
   enregistrerChangementLot: mocks.enregistrerChangementLot,
+  redaterAffectationInitiale: mocks.redaterAffectationInitiale,
 }))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn(), deleteAutoEntry: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
   default: {
-    $transaction: (callback: (tx: unknown) => unknown) => callback({ $executeRaw: vi.fn(), animal: { update: mocks.animalUpdate } }),
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      $executeRaw: vi.fn(),
+      // La fiche de référence est relue sous verrou dans la transaction
+      // (`lireFicheSousVerrou`) : même fiche que la lecture initiale ici ; les
+      // entrelacements sont exercés sur PostgreSQL (attente-viande-routes).
+      $queryRaw: vi.fn(),
+      animal: { update: mocks.animalUpdate, findFirst: mocks.animalFindFirst },
+      venteProduit: { findFirst: vi.fn().mockResolvedValue(null) },
+      abattage: { findFirst: vi.fn().mockResolvedValue(null) },
+    }),
     animal: { findFirst: mocks.animalFindFirst, update: mocks.animalUpdate, findMany: mocks.animalFindMany },
     // Ticket cmsoglwee — le GET fusionne les soins du lot de l'animal.
     soinAnimal: { findMany: mocks.soinFindMany },
@@ -33,6 +48,7 @@ vi.mock('@/lib/prisma', () => ({
 }))
 
 import { GET, PATCH, PUT } from './route'
+import { ErreurElevage } from '@/lib/elevage/erreurs'
 
 const callPut = (body: object) => PUT(
   new NextRequest('http://localhost/api/elevage/animaux/7', { method: 'PUT', body: JSON.stringify(body) }),
@@ -133,6 +149,18 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
     mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin' })
     mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, lotId: data.lotId ?? 42, prixAchat: null }))
     mocks.especeFindFirst.mockResolvedValue({ id: 'caprin' })
+  })
+
+  it("une date d'arrivée corrigée redate l'entrée dans le premier lot, pas une date inchangée (revue du 2026-11-11)", async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin', dateArrivee: new Date('2026-11-10') })
+    mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, lotId: 42, prixAchat: null, dateArrivee: data.dateArrivee ?? new Date('2026-11-10') }))
+    expect((await callPut({ dateArrivee: '2026-11-01' })).status).toBe(200)
+    expect(mocks.redaterAffectationInitiale).toHaveBeenCalledWith(expect.anything(), 'user-1', 7, new Date('2026-11-01'))
+
+    mocks.redaterAffectationInitiale.mockClear()
+    expect((await callPut({ dateArrivee: '2026-11-10' })).status).toBe(200)
+    expect((await callPut({ nom: 'Blanchette' })).status).toBe(200)
+    expect(mocks.redaterAffectationInitiale).not.toHaveBeenCalled()
   })
 
   it('PUT normalise le sexe, refuse une valeur inconnue et ne passe plus un père sous silence', async () => {
@@ -270,16 +298,25 @@ describe('sorties et filiation — /api/elevage/animaux/[id]', () => {
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
   })
 
-  it('refuse (409) de passer « abattu » un animal en délai d’attente viande', async () => {
-    mocks.animalFindFirst.mockResolvedValue({ id: 7, statut: 'actif', dateSortie: null })
-    mocks.refusPassageAbattu.mockResolvedValueOnce({ error: "Abattage interdit : animal en temps d'attente vétérinaire", code: 'ATTENTE_VIANDE_ACTIVE', status: 409 })
+  it('refuse (409) quand la garde d’attente viande, évaluée dans la transaction sur l’état final, lève son refus', async () => {
+    const existante = { id: 7, statut: 'actif', dateSortie: null }
+    mocks.animalFindFirst.mockResolvedValue(existante)
+    mocks.garantirAttenteViandeFiche.mockRejectedValueOnce(new ErreurElevage(
+      "Abattage interdit : animal en temps d'attente vétérinaire", 409, 'ATTENTE_VIANDE_ACTIVE',
+      "Traitement(s) : Antibiotique (jusqu'au 25/11/2026 inclus).",
+    ))
 
     const response = await callPatch({ statut: 'abattu', dateSortie: '2026-11-20' })
 
     expect(response.status).toBe(409)
-    expect((await response.json()).code).toBe('ATTENTE_VIANDE_ACTIVE')
-    expect(mocks.refusPassageAbattu).toHaveBeenCalledWith(expect.anything(), 'user-1', 7, new Date('2026-11-20'))
-    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+    expect(await response.json()).toEqual({
+      error: "Abattage interdit : animal en temps d'attente vétérinaire",
+      code: 'ATTENTE_VIANDE_ACTIVE',
+      details: "Traitement(s) : Antibiotique (jusqu'au 25/11/2026 inclus).",
+    })
+    // Après l'écriture de la fiche : la garde juge l'état final, la transaction annule.
+    expect(mocks.garantirAttenteViandeFiche).toHaveBeenCalledWith(expect.anything(), 'user-1', existante)
+    expect(mocks.animalUpdate.mock.invocationCallOrder[0]).toBeLessThan(mocks.garantirAttenteViandeFiche.mock.invocationCallOrder[0])
   })
 
   it('garde la date fournie lors d’un décès', async () => {

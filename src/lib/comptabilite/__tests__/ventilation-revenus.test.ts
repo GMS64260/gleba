@@ -14,6 +14,7 @@ import {
   moduleDesVentesPortees,
   moduleDeVente,
   ventilerRevenus,
+  ventilerRevenusParDevise,
   type FactureAVentiler,
   type VenteAVentiler,
 } from '../ventilation-revenus'
@@ -109,5 +110,35 @@ describe('ventilerRevenus', () => {
     const v = ventilerRevenus([{ montant: Number.NaN, module: 'potager' }], [{ type: 'facture', totalTTC: Number.NaN, moduleSource: null }])
     expect(v.total).toBe(0)
     expect(somme(v.parModule)).toBe(0)
+  })
+})
+
+describe('ventilerRevenusParDevise', () => {
+  type V = VenteAVentiler & { monnaie: 'EUR' | 'XPF' | null }
+  type F = FactureAVentiler & { monnaie: 'EUR' | 'XPF' | null }
+  const parDevise = (ventes: V[], factures: F[], vide: 'EUR' | 'XPF' | null = 'XPF') =>
+    ventilerRevenusParDevise(ventes, factures, v => v.monnaie, f => f.monnaie, vide)
+
+  it('facture EUR puis avoir EUR sur ferme XPF : un seul total EUR', () => {
+    const r = parDevise([], [
+      { type: 'facture', totalTTC: 105.5, moduleSource: null, monnaie: 'EUR' },
+      { type: 'avoir', totalTTC: 52.75, moduleSource: null, monnaie: 'EUR' },
+    ])
+    expect(r).toHaveLength(1)
+    expect(r[0]).toMatchObject({ monnaie: 'EUR', count: 2, total: 52.75 })
+    expect(r[0].parModule.autre).toBe(52.75)
+  })
+
+  it('ne somme jamais deux devises ; ordre EUR, XPF, inconnue ; Σ parModule = total par devise', () => {
+    const r = parDevise(
+      [{ montant: 5000, module: 'elevage', monnaie: 'XPF' }, { montant: 10.1, module: 'verger', monnaie: 'EUR' }],
+      [{ type: 'facture', totalTTC: 30, moduleSource: 'elevage', monnaie: null }, { type: 'facture', totalTTC: 0.2, moduleSource: 'potager', monnaie: 'EUR' }],
+    )
+    expect(r.map(g => [g.monnaie, g.total])).toEqual([['EUR', 10.3], ['XPF', 5000], [null, 30]])
+    for (const g of r) expect(somme(g.parModule)).toBe(g.total)
+  })
+
+  it('sans écriture : un seul groupe à zéro dans la devise courante', () => {
+    expect(parDevise([], [])).toEqual([expect.objectContaining({ monnaie: 'XPF', count: 0, total: 0 })])
   })
 })

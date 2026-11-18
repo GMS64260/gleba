@@ -10,50 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
-import { z } from 'zod'
-
-const mouvementSchema = z
-  .object({
-    animalId: z.coerce.number().int().positive().nullable().optional(),
-    lotId: z.coerce.number().int().positive().nullable().optional(),
-    parcelleAvantId: z.string().nullable().optional(),
-    parcelleApresId: z.string().nullable().optional(),
-    date: z.coerce.date(),
-    motif: z.string().max(200).nullable().optional(),
-    notes: z.string().max(2000).nullable().optional(),
-  })
-  .refine((d) => Boolean(d.animalId) !== Boolean(d.lotId), {
-    message: 'Renseignez un animal ou un lot, pas les deux.',
-  })
-
-type CibleMouvement = { animalId: number | null; lotId: number | null }
-
-/**
- * Sérialise les mouvements d'une même bête ou d'un même lot : sans ce verrou,
- * deux saisies concurrentes recalculaient chacune la position sans voir l'autre.
- */
-async function verrouillerCible(tx: Prisma.TransactionClient, userId: string, cible: CibleMouvement) {
-  if (cible.animalId) await tx.$queryRaw`SELECT id FROM animaux WHERE id = ${cible.animalId} AND user_id = ${userId} FOR UPDATE`
-  else if (cible.lotId) await tx.$queryRaw`SELECT id FROM lots_animaux WHERE id = ${cible.lotId} AND user_id = ${userId} FOR UPDATE`
-}
-
-/**
- * Revue Codex ELEV-05 (2026-11-12). Toute écriture de `parcelleGeoId` journalise
- * un mouvement : le journal fait foi. La position courante est la destination
- * du mouvement le plus récent par date (à date égale, le dernier saisi) ; sans
- * mouvement, `repli`. Avant, un POST antidaté écrasait la position, et la
- * suppression du seul mouvement A→B laissait la bête sans parcelle.
- */
-async function recalerPosition(tx: Prisma.TransactionClient, userId: string, cible: CibleMouvement, repli: string | null) {
-  const dernier = await tx.mouvementCheptel.findFirst({
-    where: { userId, ...(cible.animalId ? { animalId: cible.animalId } : { lotId: cible.lotId }) },
-    orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-    select: { parcelleApresId: true },
-  })
-  const parcelleGeoId = dernier ? dernier.parcelleApresId : repli
-  if (cible.animalId) await tx.animal.updateMany({ where: { id: cible.animalId, userId }, data: { parcelleGeoId } })
-  else if (cible.lotId) await tx.lotAnimaux.updateMany({ where: { id: cible.lotId, userId }, data: { parcelleGeoId } })
-}
+import { creerMouvementCheptel, ErreurMouvementCheptel, mouvementSchema, recalerPosition, verrouillerCible } from '@/lib/elevage/creation-mouvement-cheptel'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -101,50 +58,14 @@ export async function POST(request: NextRequest) {
     const d = parsed.data
     const userId = session.user.id
 
-    // POSTREVIEW Sprint 5 — Validation tenant : chaque ressource référencée
-    // doit appartenir au user authentifié (avant : IDOR exploitable trivialement)
-    if (d.animalId) {
-      const a = await prisma.animal.findFirst({ where: { id: d.animalId, userId }, select: { id: true } })
-      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
-    }
-    if (d.lotId) {
-      const l = await prisma.lotAnimaux.findFirst({ where: { id: d.lotId, userId }, select: { id: true } })
-      if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
-    }
-    if (d.parcelleAvantId) {
-      const p = await prisma.parcelleGeo.findFirst({ where: { id: d.parcelleAvantId, userId }, select: { id: true } })
-      if (!p) return NextResponse.json({ error: 'Parcelle origine introuvable' }, { status: 404 })
-    }
-    if (d.parcelleApresId) {
-      const p = await prisma.parcelleGeo.findFirst({ where: { id: d.parcelleApresId, userId }, select: { id: true } })
-      if (!p) return NextResponse.json({ error: 'Parcelle destination introuvable' }, { status: 404 })
-    }
-
-    // Le journal et l'emplacement courant forment une seule opération : une
-    // erreur ne doit jamais laisser la carte et l'historique en désaccord.
-    const m = await prisma.$transaction(async (tx) => {
-      await verrouillerCible(tx, userId, { animalId: d.animalId ?? null, lotId: d.lotId ?? null })
-      const mouvement = await tx.mouvementCheptel.create({
-        data: {
-          userId,
-          animalId: d.animalId ?? null,
-          lotId: d.lotId ?? null,
-          parcelleAvantId: d.parcelleAvantId ?? null,
-          parcelleApresId: d.parcelleApresId ?? null,
-          date: d.date,
-          motif: d.motif ?? null,
-          notes: d.notes ?? null,
-        },
-      })
-
-      // Un mouvement antidaté complète l'historique sans déplacer la bête :
-      // la position reste celle du mouvement le plus récent (ELEV-05).
-      await recalerPosition(tx, userId, { animalId: d.animalId ?? null, lotId: d.lotId ?? null }, d.parcelleApresId ?? null)
-      return mouvement
-    })
+    // Appartenance des ressources, journal et emplacement courant forment une
+    // seule opération, partagée avec l'assistant : une erreur ne laisse jamais
+    // la carte et l'historique en désaccord.
+    const m = await prisma.$transaction((tx) => creerMouvementCheptel(tx, userId, d))
 
     return NextResponse.json({ data: m }, { status: 201 })
   } catch (err) {
+    if (err instanceof ErreurMouvementCheptel) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('POST /api/elevage/mouvements-cheptel error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }

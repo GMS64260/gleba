@@ -27,12 +27,12 @@ export function symboleDevise(devise: Devise = "EUR"): string {
  * - EUR : « 1 234,56 € »
  * - XPF : « 1 235 F » (franc Pacifique, sans décimales)
  */
-export function formatMontantDevise(montant: number, devise: Devise = "EUR"): string {
+export function formatMontantDevise(montant: number, devise: Devise, decimales = 2): string {
   const safe = Number.isFinite(montant) ? montant : 0
   if (devise === "XPF") {
     return `${xpfFormatter.format(Math.round(safe))} F`
   }
-  return euroFormatter.format(safe)
+  return decimales === 2 ? euroFormatter.format(safe) : new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: decimales }).format(safe)
 }
 
 /**

@@ -1,5 +1,8 @@
 "use client"
 
+import { devisePieceAffichage, formatMontantPiece, totalDansDeviseCourante, type PieceAvecDevise } from "@/lib/comptabilite/devise-piece-affichage"
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Page Récoltes - Suivi de la production avec gestion stock/vente
  */
@@ -46,7 +49,7 @@ import { BoutonPartagerRecolte } from "@/components/avis/PartagerRecolte"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { getAvailableYears } from "@/components/year-selector"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
-import { formatMontantDevise } from "@/lib/format-utils"
+import { symboleDevise, formatMontantDevise } from "@/lib/format-utils"
 import { formatPrixUnitaire } from "@/lib/comptabilite/prix-unitaire"
 import {
   libelleCourtValorisation,
@@ -80,7 +83,7 @@ const uniteRecolte = (unite: string | null | undefined): UniteQuantite =>
 const prixParUnite = (unite: UniteQuantite): string =>
   unite === 'kg' ? 'au kg' : `par ${libelleUniteQuantite(unite, 1)}`
 
-interface RecolteWithRelations {
+interface RecolteWithRelations extends PieceAvecDevise {
   id: number
   especeId: string
   cultureId: number
@@ -136,10 +139,22 @@ interface StockEspece {
 const PLAFOND_HISTORIQUE = 1000
 
 export default function RecoltesPage() {
+  const devise = useDevise()
+  const symbole = devise === null ? "—" : symboleDevise(devise)
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
+  const formatPrixVente = (recolte: RecolteWithRelations) => {
+    const monnaie = devisePieceAffichage(recolte, devise)
+    return monnaie === null ? "—" : `${formatPrixUnitaire(recolte.prixKg ?? 0, monnaie)} ${symboleDevise(monnaie)} / ${libelleUniteQuantite(uniteRecolte(recolte.unite), 1)}`
+  }
   const { toast } = useToast()
   const [data, setData] = React.useState<RecolteWithRelations[]>([])
   const [clients, setClients] = React.useState<Client[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  // Un échec de chargement est dit dans les onglets : « Aucune récolte en
+  // stock » sous une erreur laissait croire le stock vide.
+  const [erreurChargement, setErreurChargement] = React.useState(false)
+  // Seule la dernière demande écrit (année ou espèce changée entre-temps).
+  const demandeRef = React.useRef(0)
   const [activeTab, setActiveTab] = React.useState("stock")
 
   const [selectedAnnee, setSelectedAnnee] = React.useState<string>('all')
@@ -166,6 +181,7 @@ export default function RecoltesPage() {
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
+    const demande = ++demandeRef.current
     setIsLoading(true)
     try {
       // Revue du 2026-11-04 — deux lectures : les lots EN STOCK sans plafond
@@ -188,6 +204,8 @@ export default function RecoltesPage() {
 
       if (stockRes.ok && historiqueRes.ok) {
         const [stock, historique] = await Promise.all([stockRes.json(), historiqueRes.json()])
+        if (demande !== demandeRef.current) return
+        setErreurChargement(false)
         setData([...(stock.data || []), ...(historique.data || [])])
         setHistoriqueTronque(
           typeof historique.total === "number" && historique.total > (historique.data?.length ?? 0)
@@ -202,18 +220,31 @@ export default function RecoltesPage() {
       }
       if (clientsRes.ok) {
         const result = await clientsRes.json()
-        setClients(result.data || [])
+        if (demande === demandeRef.current) setClients(result.data || [])
       }
     } catch {
+      if (demande !== demandeRef.current) return
+      // Les lignes d'un autre filtre ne restent pas sous le nouveau.
+      setData([])
+      setHistoriqueTronque(null)
+      setErreurChargement(true)
       toast({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de charger les récoltes",
       })
     } finally {
-      setIsLoading(false)
+      if (demande === demandeRef.current) setIsLoading(false)
     }
   }, [selectedAnnee, selectedEspece, toast])
+
+  /** Texte d'un onglet sans ligne : chargement, échec, ou vraiment vide. */
+  const messageSansLigne = (vide: string) =>
+    isLoading
+      ? "Chargement..."
+      : erreurChargement
+        ? "Les récoltes n'ont pas pu être chargées. Changez de filtre ou rechargez la page pour réessayer."
+        : vide
 
   React.useEffect(() => {
     fetchData()
@@ -355,7 +386,7 @@ export default function RecoltesPage() {
       toast({
         variant: "destructive",
         title: "Prix manquant",
-        description: `Saisissez un prix ${prixParUnite(unite)} supérieur à 0 €.`,
+        description: `Saisissez un prix ${prixParUnite(unite)} supérieur à 0 ${symbole}.`,
       })
       return
     }
@@ -562,7 +593,7 @@ export default function RecoltesPage() {
               <p className="text-2xl font-bold text-green-800">
                 {formatQuantiteParUnite(stockParUnite)}
               </p>
-              <p className="text-xs text-green-600">Valeur : {formatMontantDevise(stockValeur)}</p>
+              <p className="text-xs text-green-600">Valeur : {formatMontant(stockValeur)}</p>
               {stockMethode && (
                 <p className="text-[11px] text-green-700/80">{stockMethode}</p>
               )}
@@ -596,7 +627,7 @@ export default function RecoltesPage() {
                 <Euro className="h-4 w-4 text-emerald-600" />
                 <p className="text-sm text-emerald-700">CA Ventes</p>
               </div>
-              <p className="text-2xl font-bold text-emerald-800">{formatMontantDevise(totalVentes)}</p>
+              <p className="text-2xl font-bold text-emerald-800">{totalDansDeviseCourante(venduRecoltes, devise) ? formatMontant(totalVentes) : "—"}</p>
               {historiqueTronque !== null && (
                 <p className="text-[11px] text-emerald-700/80">
                   Sur les {PLAFOND_HISTORIQUE} sorties les plus récentes ({historiqueTronque} au total) : choisissez une année pour le détail.
@@ -680,10 +711,10 @@ export default function RecoltesPage() {
                   </div>
                 )}
                 {data.some((r) => r.produitsBoutique?.length) && <p className="mb-3 text-sm text-muted-foreground">Les récoltes mises en boutique sont suivies dans leur catalogue. <Link className="text-primary underline" href="/boutique?tab=produits">Voir les stocks boutique</Link></p>}
-                {isLoading ? (
-                  <p className="text-muted-foreground">Chargement...</p>
-                ) : stockRecoltes.length === 0 ? (
-                  <p className="text-muted-foreground">Aucune récolte en stock</p>
+                {isLoading || stockRecoltes.length === 0 ? (
+                  <p className="text-muted-foreground" role={erreurChargement ? "alert" : undefined}>
+                    {messageSansLigne("Aucune récolte en stock")}
+                  </p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -709,7 +740,16 @@ export default function RecoltesPage() {
                             key={r.id}
                             className={isPerime ? "bg-red-50" : isBientotPerime ? "bg-amber-50" : ""}
                           >
-                            <TableCell>{format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                            <TableCell>
+                              {/* Seul accès à la fiche de la récolte (correction de la date, de la quantité, des notes). */}
+                              <Link
+                                className="text-primary underline"
+                                href={`/maraichage/recoltes/${r.id}`}
+                                title="Ouvrir la fiche de cette récolte"
+                              >
+                                {format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}
+                              </Link>
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <div
@@ -755,9 +795,9 @@ export default function RecoltesPage() {
                             <TableCell className="text-right text-blue-600">
                               {r.valorisation && r.valorisation.source !== "aucune" ? (
                                 <span title={libelleValorisationLot(r.valorisation)}>
-                                  {formatMontantDevise(r.valorisation.valeur)}
+                                  {formatMontant(r.valorisation.valeur)}
                                   <span className="block text-[10px] text-muted-foreground">
-                                    {formatPrixUnitaire(r.valorisation.prixUnitaire)} € / {libelleUniteQuantite(r.valorisation.unite, 1)}, {libelleCourtValorisation(r.valorisation)}
+                                    {devise === null ? "—" : formatPrixUnitaire(r.valorisation.prixUnitaire, devise)} {symbole} / {libelleUniteQuantite(r.valorisation.unite, 1)}, {libelleCourtValorisation(r.valorisation)}
                                   </span>
                                 </span>
                               ) : (
@@ -806,7 +846,9 @@ export default function RecoltesPage() {
               </CardHeader>
               <CardContent>
                 {venduRecoltes.length === 0 ? (
-                  <p className="text-muted-foreground">Aucune vente enregistrée</p>
+                  <p className="text-muted-foreground" role={erreurChargement ? "alert" : undefined}>
+                    {messageSansLigne("Aucune vente enregistrée")}
+                  </p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -840,10 +882,10 @@ export default function RecoltesPage() {
                             {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                           </TableCell>
                           <TableCell className="text-right">
-                            {r.prixKg ? `${formatPrixUnitaire(r.prixKg)} € / ${libelleUniteQuantite(uniteRecolte(r.unite), 1)}` : "-"}
+                            {r.prixKg ? formatPrixVente(r) : "-"}
                           </TableCell>
                           <TableCell className="text-right font-medium text-green-600">
-                            {r.prixTotal ? formatMontantDevise(r.prixTotal) : "-"}
+                            {r.prixTotal ? formatMontantPiece(r.prixTotal, r, devise) : "-"}
                           </TableCell>
                           <TableCell>{r.clientNom || "-"}</TableCell>
                           <TableCell>
@@ -873,7 +915,9 @@ export default function RecoltesPage() {
               </CardHeader>
               <CardContent>
                 {sortiesRecoltes.length === 0 ? (
-                  <p className="text-muted-foreground">Aucune perte ni consommation personnelle enregistrée</p>
+                  <p className="text-muted-foreground" role={erreurChargement ? "alert" : undefined}>
+                    {messageSansLigne("Aucune perte ni consommation personnelle enregistrée")}
+                  </p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -890,7 +934,8 @@ export default function RecoltesPage() {
                     <TableBody>
                       {sortiesRecoltes.map((r) => (
                         <TableRow key={r.id}>
-                          <TableCell>{format(new Date(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                          {/* Jour civil stocké : `new Date(r.date)` reculait d'un jour à l'ouest d'UTC. */}
+                          <TableCell>{format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
                           <TableCell>
                             {r.statut === "perte" ? (
                               <Badge variant="outline" className="border-orange-300 text-orange-700">Perte</Badge>
@@ -947,7 +992,7 @@ export default function RecoltesPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Prix {prixParUnite(uniteRecolte(selectedRecolte.unite))} (€)</Label>
+                    <Label>Prix {prixParUnite(uniteRecolte(selectedRecolte.unite))} ({symbole})</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -971,7 +1016,7 @@ export default function RecoltesPage() {
                   <div className="p-3 bg-blue-50 rounded-lg">
                     <p className="text-sm text-blue-700">
                       Total: <span className="font-bold">
-                        {formatMontantDevise(parseFloat(venteData.prixKg) * parseFloat(venteData.quantiteVendue))}
+                        {formatMontant(parseFloat(venteData.prixKg) * parseFloat(venteData.quantiteVendue))}
                       </span>
                     </p>
                   </div>

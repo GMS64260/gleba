@@ -28,6 +28,9 @@ vi.mock('@/lib/terroir', async (importOriginal) => ({
 import prisma from '@/lib/prisma'
 import { getCulturesPrevues, getCulturesPrevuesEtEtapesNonSuivies, getStatsPlanification } from '../planification'
 
+// Les instants se lisent au jour local du processus (`jourCivilStocke`).
+// Le fuseau est fixé au démarrage de Vitest (Paris et UTC dans les contrôles).
+
 const mocked = prisma as unknown as {
   planche: { findMany: ReturnType<typeof vi.fn> }
   espece: { findMany: ReturnType<typeof vi.fn> }
@@ -164,7 +167,8 @@ describe('getCulturesPrevues (inventaire annuel)', () => {
     const where = mocked.culture.findMany.mock.calls.at(-1)![0].where
     expect(where.annee).toBeUndefined()
     expect(where.OR[0]).toEqual({ annee: 2027 })
-    expect(where.OR[1].annee).toBe(2026)
+    // Toute année antérieure (relecture du 2026-11-12), pas la seule précédente.
+    expect(where.OR[1].annee).toEqual({ lt: 2027 })
     expect(avecOption).toHaveLength(1)
     // Récolte lue dans l'année ; plantation de 2026 hors année ; aucun repli sur
     // les semaines de l'itinéraire (qui décrivent 2026).
@@ -197,8 +201,8 @@ describe('getCulturesPrevues (inventaire annuel)', () => {
     culture.longueur = 10
     culture.nbRangs = 3
     culture.espacement = 11
-    culture.dateSemis = new Date('2027-03-21T23:00:00.000Z')
-    culture.dateRecolte = new Date('2027-05-16T22:00:00.000Z')
+    culture.dateSemis = new Date(2027, 2, 22)
+    culture.dateRecolte = new Date(2027, 4, 17)
     culture.planche.longueur = 15
     culture.planche.surface = 18
     mocked.culture.findMany.mockResolvedValue([culture])

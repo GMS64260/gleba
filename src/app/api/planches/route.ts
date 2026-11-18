@@ -12,6 +12,10 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { surfacePlanche } from '@/lib/planches/surface'
 import { parcelleRefusee } from '@/lib/parcelles/appartenance'
+import { lireParametresListe } from '@/lib/cultures/pagination-liste'
+
+/** Colonnes de `Planche` sur lesquelles la liste peut être triée. */
+const TRIS_PLANCHE = Object.values(Prisma.PlancheScalarFieldEnum)
 
 // GET /api/planches
 export async function GET(request: NextRequest) {
@@ -21,14 +25,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
 
-    // Pagination
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '100')
-    const skip = (page - 1) * pageSize
-
-    // Tri
-    const sortBy = searchParams.get('sortBy') || 'nom'
-    const sortOrder = searchParams.get('sortOrder') || 'asc'
+    // Pagination et tri, bornés (une valeur inexploitable retombe sur le défaut)
+    const { page, pageSize, skip, sortBy, sortOrder } = lireParametresListe(searchParams, {
+      taillePageDefaut: 100,
+      trisPermis: TRIS_PLANCHE,
+      triDefaut: 'nom',
+      ordreDefaut: 'asc',
+    })
 
     // Filtres
     const search = searchParams.get('search') || ''

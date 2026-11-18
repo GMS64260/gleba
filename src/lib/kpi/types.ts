@@ -8,7 +8,9 @@
  */
 
 import type { QuantiteParUnite } from '@/lib/recolte/quantites'
-import type { VentilationRevenus } from '@/lib/comptabilite/ventilation-revenus'
+import type { VentilationRevenus, VentilationRevenusDevise } from '@/lib/comptabilite/ventilation-revenus'
+import type { TotalDevise } from '@/lib/comptabilite/totaux-devise'
+import type { Devise } from '@/lib/territoires'
 
 export interface KPIBase {
   /** Année de référence (ex : 2026). */
@@ -63,30 +65,44 @@ export interface KPIMaraichage extends KPIBase {
 }
 
 export interface KPICompta extends KPIBase {
-  /** Revenus (€ TTC) cumulés du 1er janvier `year` à `asOf`. */
-  revenusYtd: number
+  /**
+   * Devise courante de l'exploitation. Les champs `…ParDevise` ventilent chaque
+   * total par devise (pièce : devise figée ; sinon devise courante) ; le total
+   * historique voisin vaut null quand plusieurs devises coexistent.
+   */
+  deviseCourante: Devise
+  /** Revenus (TTC) cumulés du 1er janvier `year` à `asOf`, null en multi-devise. */
+  revenusYtd: number | null
+  revenusYtdParDevise: VentilationRevenusDevise[]
   /**
    * Ventilation par module des mêmes revenus (ticket cmvflua2x) : la somme des
    * modules est `revenusYtd`, avec la composition du total (ventes, factures
    * rattachées, factures sans vente, avoirs).
    */
-  revenusParModuleYtd: VentilationRevenus
+  revenusParModuleYtd: VentilationRevenus | null
   /** Revenus (€ TTC) cumulés de l'année `year - 1` au même jour. */
-  revenusN1Ytd: number
+  revenusN1Ytd: number | null
+  revenusN1YtdParDevise: TotalDevise[]
   /** Revenus (€ TTC) totaux de l'année `year - 1` (info seulement). */
-  revenusN1Total: number
+  revenusN1Total: number | null
+  revenusN1TotalParDevise: TotalDevise[]
 
   /** Dépenses (€ TTC) cumulées du 1er janvier `year` à `asOf`. */
-  depensesYtd: number
+  depensesYtd: number | null
+  depensesYtdParDevise: TotalDevise[]
   /** Dépenses (€ TTC) cumulées de l'année `year - 1` au même jour. */
-  depensesN1Ytd: number
+  depensesN1Ytd: number | null
+  depensesN1YtdParDevise: TotalDevise[]
   /** Dépenses (€ TTC) totales de l'année `year - 1` (info seulement). */
-  depensesN1Total: number
+  depensesN1Total: number | null
+  depensesN1TotalParDevise: TotalDevise[]
 
   /** Bénéfice = revenusYtd - depensesYtd. */
-  beneficeYtd: number
+  beneficeYtd: number | null
+  /** Revenus − dépenses devise par devise, jamais converti. */
+  beneficeYtdParDevise: TotalDevise[]
   /** Marge en % (0 si revenusYtd == 0). */
-  margePercentYtd: number
+  margePercentYtd: number | null
 
   /**
    * BUG #2 (audit compta 2026-05-15) — Sous-ensemble des dépenses YTD
@@ -96,9 +112,11 @@ export interface KPICompta extends KPIBase {
    * l'UI puisse afficher un badge informatif et que le comptable sache
    * combien de trésorerie sortira encore.
    */
-  depensesNonPayeesYtd: number
+  depensesNonPayeesYtd: number | null
+  depensesNonPayeesYtdParDevise: TotalDevise[]
   nbDepensesNonPayees: number
-  revenusNonPayesYtd: number
+  revenusNonPayesYtd: number | null
+  revenusNonPayesYtdParDevise: TotalDevise[]
   nbRevenusNonPayes: number
 }
 

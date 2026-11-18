@@ -1,5 +1,7 @@
 "use client"
 
+import { useDevise } from "@/hooks/use-devise"
+
 /**
  * Détail d'une campagne de plantation : etapes (Gantt simplifié) + observations
  */
@@ -180,6 +182,8 @@ interface Props {
 }
 
 export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate }: Props) {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { toast } = useToast()
   const [campagne, setCampagne] = React.useState<Campagne | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -417,9 +421,9 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                   <Info label="Localisation" value={campagne.parcelleGeo?.nom || campagne.zoneVerger?.nom || "—"} />
                   <Info label="Protection" value={campagne.protectionType || "—"} />
                   <Info label="Objectifs" value={campagne.objectifs || "—"} />
-                  <Info label="Budget prévu" value={campagne.budgetPrevu ? formatMontantDevise(campagne.budgetPrevu) : "—"} />
-                  <Info label="Coût réel" value={campagne.coutReel ? formatMontantDevise(campagne.coutReel) : "—"} />
-                  <Info label="Aides perçues" value={campagne.montantAides ? formatMontantDevise(campagne.montantAides) : "—"} />
+                  <Info label="Budget prévu" value={campagne.budgetPrevu ? formatMontant(campagne.budgetPrevu) : "—"} />
+                  <Info label="Coût réel" value={campagne.coutReel ? formatMontant(campagne.coutReel) : "—"} />
+                  <Info label="Aides perçues" value={campagne.montantAides ? formatMontant(campagne.montantAides) : "—"} />
                 </CardContent>
               </Card>
               {/* Contexte de la replantation (si applicable) */}
@@ -498,7 +502,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                             {etape.dateRealisation && (
                               <span>✓ Réalisée : {new Date(etape.dateRealisation).toLocaleDateString("fr-FR")}</span>
                             )}
-                            {etape.cout != null && <span>{formatMontantDevise(etape.cout)}</span>}
+                            {etape.cout != null && <span>{formatMontant(etape.cout)}</span>}
                           </div>
                           {/* Bug feedback testeur 2026-05-25 (cmplk4f5x) —
                               alerte quand dateRealisation < datePrevue, signe

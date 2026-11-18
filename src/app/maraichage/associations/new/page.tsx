@@ -8,6 +8,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Heart, Save, Plus, Trash2 } from "lucide-react"
+import { useSession } from "next-auth/react"
 import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 
@@ -38,6 +39,7 @@ import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface Espece {
   id: string
+  nom?: string | null
   familleId: string | null
 }
 
@@ -48,6 +50,11 @@ interface Famille {
 export default function NewAssociationPage() {
   const router = useRouter()
   const { toast } = useToast()
+  // Référentiel commun : écriture réservée à l'administration (routes en
+  // `requireAdminApi`). Un autre compte ne remplit pas un formulaire qui
+  // finirait en « Accès interdit ».
+  const { data: session, status } = useSession()
+  const lectureSeule = status !== "loading" && session?.user?.role !== "ADMIN"
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [especes, setEspeces] = React.useState<Espece[]>([])
   const [familles, setFamilles] = React.useState<Famille[]>([])
@@ -148,7 +155,15 @@ export default function NewAssociationPage() {
       {/* Content */}
       <main className="container mx-auto px-4 py-6 max-w-3xl">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            {lectureSeule && (
+              <p role="status" className="mb-6 rounded-lg border border-pink-200 bg-pink-50 p-4 text-sm text-pink-800">
+                Les associations forment un référentiel commun à toutes les exploitations, géré par
+                l&apos;administration : la création d&apos;une association lui est réservée.
+              </p>
+            )}
+            {/* `disabled` sur le fieldset neutralise tous les champs et boutons qu'il contient. */}
+            <fieldset disabled={lectureSeule} className="space-y-6 min-w-0 border-0 p-0 m-0">
             {/* Informations générales */}
             <Card>
               <CardHeader>
@@ -230,7 +245,9 @@ export default function NewAssociationPage() {
                 <CardTitle>Plantes associées</CardTitle>
                 <CardDescription>
                   Ajoutez les espèces ou familles qui font partie de cette association.
-                  Cochez &quot;Requise&quot; si c&apos;est une association nécessaire.
+                  Cochez &quot;Pivot&quot; pour l&apos;espèce centrale de la règle : elle est reliée à
+                  chacune des autres, qui ne sont pas reliées entre elles. Sans pivot, toutes les
+                  plantes de la liste sont reliées deux à deux.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -256,7 +273,7 @@ export default function NewAssociationPage() {
                                 <SelectItem value="_none_">Aucune</SelectItem>
                                 {especes.map((e) => (
                                   <SelectItem key={e.id} value={e.id}>
-                                    {e.id}
+                                    {e.nom ?? e.id}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -322,7 +339,7 @@ export default function NewAssociationPage() {
                               onCheckedChange={field.onChange}
                             />
                           </FormControl>
-                          <FormLabel className="text-xs !mt-0">Requise</FormLabel>
+                          <FormLabel className="text-xs !mt-0">Pivot</FormLabel>
                         </FormItem>
                       )}
                     />
@@ -334,6 +351,7 @@ export default function NewAssociationPage() {
                       className="mt-6"
                       onClick={() => remove(index)}
                       disabled={fields.length === 1}
+                      aria-label="Retirer cette plante"
                     >
                       <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
@@ -388,11 +406,12 @@ export default function NewAssociationPage() {
               >
                 Annuler
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || lectureSeule}>
                 <Save className="h-4 w-4 mr-2" />
                 {isSubmitting ? "Enregistrement..." : "Enregistrer"}
               </Button>
             </div>
+            </fieldset>
           </form>
         </Form>
       </main>

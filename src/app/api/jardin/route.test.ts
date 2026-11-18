@@ -49,4 +49,18 @@ describe("GET /api/jardin — cultures en place", () => {
     expect(args.where).toEqual({ userId: "u1", parcelleGeoId: null })
     expect(args.select.cultures.where.OR).toHaveLength(2)
   })
+
+  it("membre dont l'adhésion exclut le maraîchage : aucune planche, aucune lecture", async () => {
+    mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1", modulesExploitation: ["elevage"] } }, error: null })
+    const res = await GET(new NextRequest("http://localhost/api/jardin"))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual([])
+    expect(mocks.plancheFindMany).not.toHaveBeenCalled()
+  })
+
+  it("membre limité au maraîchage : planches lues normalement", async () => {
+    mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1", modulesExploitation: ["maraichage"] } }, error: null })
+    await GET(new NextRequest("http://localhost/api/jardin"))
+    expect(mocks.plancheFindMany).toHaveBeenCalledTimes(1)
+  })
 })

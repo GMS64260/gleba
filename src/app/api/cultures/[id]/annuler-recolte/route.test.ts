@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   recolteFindMany: vi.fn(),
   recolteDelete: vi.fn(),
   verrou: vi.fn(),
+  verrouCultures: vi.fn(async () => [{ id: 42 }]),
   deleteAutoEntry: vi.fn(),
   invalidateKpi: vi.fn(),
 }))
@@ -29,6 +30,8 @@ vi.mock('@/lib/prisma', () => ({
     $transaction: (callback: (tx: unknown) => unknown) => callback({
       culture: { findFirst: mocks.cultureFindFirst, update: mocks.cultureUpdate },
       recolte: { findMany: mocks.recolteFindMany, delete: mocks.recolteDelete },
+      // Verrou commun des étapes (contre-revue adverse 2), pris avant toute lecture.
+      $queryRaw: mocks.verrouCultures,
     }),
   },
 }))
@@ -54,6 +57,17 @@ beforeEach(() => {
 })
 
 describe('POST /api/cultures/[id]/annuler-recolte', () => {
+  it('prend le verrou commun des étapes (FOR NO KEY UPDATE) avant de lire la culture et les lots', async () => {
+    mocks.recolteFindMany.mockResolvedValue([{ id: 1, statut: 'en_stock' }])
+    const res = await annuler()
+    expect(res.status).toBe(200)
+    const [sql] = mocks.verrouCultures.mock.calls[0] as unknown as [TemplateStringsArray]
+    expect(sql.join('?')).toMatch(/FROM cultures[\s\S]*FOR NO KEY UPDATE/)
+    const ordre = (f: { mock: { invocationCallOrder: number[] } }) => f.mock.invocationCallOrder[0]
+    expect(ordre(mocks.verrouCultures)).toBeLessThan(ordre(mocks.cultureFindFirst))
+    expect(ordre(mocks.verrouCultures)).toBeLessThan(ordre(mocks.verrou))
+  })
+
   it('refuse en 409 sans RIEN supprimer quand une récolte est vendue', async () => {
     mocks.recolteFindMany.mockResolvedValue([
       { id: 1, statut: 'en_stock' }, { id: 2, statut: 'en_stock' }, { id: 3, statut: 'vendu' },

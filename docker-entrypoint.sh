@@ -45,17 +45,30 @@ unset SECRET_SESSION
 echo "==> Applying database migrations (prisma migrate deploy)..."
 node node_modules/prisma/build/index.js migrate deploy
 
+# Les seeds idempotents indiquent eux-mêmes les données déjà présentes.
+# Un code non nul reste un échec ; il n'empêche pas le démarrage de l'application.
+# Garder stdout/stderr sans afficher les arguments ni la configuration d'accès.
+executer_seed() {
+  seed="$1"
+  if npx tsx "$seed"; then
+    printf '==> SUCCÈS du seed %s\n' "$seed"
+  else
+    code=$?
+    printf '==> ÉCHEC du seed %s (code de sortie %s) ; poursuite du démarrage. Voir le diagnostic ci-dessus.\n' "$seed" "$code" >&2
+  fi
+}
+
 echo "==> Seeding database (if empty)..."
-npx tsx prisma/seed.ts 2>/dev/null || echo "Database already seeded or seed skipped"
+executer_seed prisma/seed.ts
 
 echo "==> Creating demo account (if not exists)..."
-npx tsx prisma/seed-demo.ts 2>/dev/null || echo "Demo account already exists or creation skipped"
+executer_seed prisma/seed-demo.ts
 
 echo "==> Seeding animal breeds referential (idempotent)..."
-npx tsx prisma/seed-races.ts 2>/dev/null || echo "Breeds seed skipped"
+executer_seed prisma/seed-races.ts
 
 echo "==> Seeding geographic referential (outre-mer species/ITP, idempotent)..."
-npx tsx prisma/seed-referentiel-geographique.ts 2>/dev/null || echo "Geographic referential seed skipped"
+executer_seed prisma/seed-referentiel-geographique.ts
 
 # Issue #30 : catalogue variétal arboricole (petits fruits, méditerranéens,
 # noyers, châtaigniers, kiwis, agrumes). `prisma/seed-varietes-arbres.sql`
@@ -66,7 +79,7 @@ npx tsx prisma/seed-referentiel-geographique.ts 2>/dev/null || echo "Geographic 
 # ensuite enrichir : dans cet ordre, une installation neuve converge en un seul
 # démarrage au lieu de deux.
 echo "==> Seeding tree/berry varieties referential (idempotent)..."
-npx tsx prisma/seed-varietes-arbres.ts || echo "Tree varieties seed skipped"
+executer_seed prisma/seed-varietes-arbres.ts
 
 # Issue #29 (Siruv, 2026-08-26) : `varietes_enriched.csv` était bien copié dans
 # l'image (Dockerfile) et le script d'import existait, mais personne ne l'appelait.
@@ -78,7 +91,7 @@ npx tsx prisma/seed-varietes-arbres.ts || echo "Tree varieties seed skipped"
 # rejouerait la régression de mai 2026 où le CSV réécrivait à chaque boot des
 # valeurs agronomiques corrigées par migration.
 echo "==> Importing enriched CSV data (especes, ITP, varietes, idempotent)..."
-npx tsx scripts/import-enriched-csv.ts || echo "Enriched CSV import skipped"
+executer_seed scripts/import-enriched-csv.ts
 
 echo "==> Starting application..."
 exec node server.js

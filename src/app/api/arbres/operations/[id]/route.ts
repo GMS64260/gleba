@@ -11,7 +11,8 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
-import { contexteOperationTraitement } from "@/lib/tracabilite/contexte-registre"
+import { contexteEstFige, contexteOperationTraitement } from "@/lib/tracabilite/contexte-registre"
+import { lireDelaiEtNatureDeclares } from "@/lib/phyto/delai-avant-recolte"
 import {
   journaliserRectificationPhyto,
   motifRectification,
@@ -80,28 +81,49 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "ID invalide" }, { status: 400 })
     }
 
-    // Vérifier propriété
-    const existing = await prisma.operationArbre.findUnique({
+    // Première lecture hors transaction : elle ne sert qu'à répondre 404 sans
+    // prendre le verrou. Aucune décision ne s'appuie sur elle.
+    const apercu = await prisma.operationArbre.findUnique({
       where: {
         id: operationId,
         userId: session!.user.id,
       },
+      select: { id: true },
     })
 
-    if (!existing) {
+    if (!apercu) {
       return NextResponse.json({ error: "Opération non trouvée" }, { status: 404 })
     }
 
     const body = await request.json()
 
+    // Lot dar-cadre-legal-blocage : délai de l'étiquette et nature du produit
+    // d'un traitement (clé absente = inchangée), lus par le contrôle du délai
+    // avant récolte.
+    const delai = lireDelaiEtNatureDeclares(body)
+    if ("refus" in delai) {
+      return NextResponse.json({ error: delai.refus, champ: delai.champ }, { status: 400 })
+    }
+
     const operation = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
-      // Traitement réalisé : contexte du registre figé quand il le devient, ou
-      // quand sa date ou son type change, ou s'il ne l'a jamais été (CR-PHY-03).
+      // Relue SOUS le verrou (contre-revue CR-PHY-03, tour 2) : deux
+      // réalisations concurrentes lisaient toutes deux la tâche encore
+      // planifiée ; la seconde refigeait le contexte sur la fiche du moment et
+      // ne journalisait rien. Le contexte et le journal se décident sur l'état
+      // que cette transaction modifie réellement.
+      const existing = await tx.operationArbre.findFirst({ where: { id: operationId, userId: session!.user.id } })
+      if (!existing) return null
+      // Traitement réalisé : contexte du registre figé quand il le DEVIENT
+      // (tâche cochée, type changé en traitement), ou s'il ne l'a jamais été
+      // (CR-PHY-03). Un traitement déjà figé le reste : renvoyer « fait », la
+      // date ou le type avec une simple correction relisait la fiche actuelle
+      // de l'arbre et réécrivait culture, localisation et conduite bio.
       const jamaisFige =
-        existing.cultureRegistre == null && existing.localisationRegistre == null && existing.conduiteBio == null
+        !contexteEstFige(existing)
+      const etaitTraitementRealise = existing.type === 'traitement' && existing.fait
       const contexte =
-        jamaisFige || "fait" in body || "date" in body || "type" in body
+        jamaisFige || !etaitTraitementRealise
           ? await contexteOperationTraitement(tx, session!.user.id, {
               type: body.type ?? existing.type,
               fait: body.fait ?? existing.fait,
@@ -117,6 +139,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         type: body.type,
         description: body.description,
         produit: body.produit,
+        dar: delai.dar,
+        natureProduit: delai.natureProduit,
         quantite: body.quantite,
         unite: body.unite,
         cout: body.cout !== undefined ? (body.cout != null ? parseFloat(body.cout) : null) : undefined,
@@ -180,6 +204,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return operation
     })
 
+    if (!operation) {
+      return NextResponse.json({ error: "Opération non trouvée" }, { status: 404 })
+    }
+
     invalidateKpi(session!.user.id)
     return NextResponse.json(operation)
   } catch (err) {
@@ -204,20 +232,24 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "ID invalide" }, { status: 400 })
     }
 
-    // Vérifier propriété
-    const existing = await prisma.operationArbre.findUnique({
+    const apercu = await prisma.operationArbre.findUnique({
       where: {
         id: operationId,
         userId: session!.user.id,
       },
+      select: { id: true },
     })
 
-    if (!existing) {
+    if (!apercu) {
       return NextResponse.json({ error: "Opération non trouvée" }, { status: 404 })
     }
 
-    await prisma.$transaction(async (tx) => {
+    const supprimee = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      // Relue sous le verrou, comme au PUT : une tâche lue planifiée puis
+      // réalisée entre-temps est un traitement du registre, à journaliser.
+      const existing = await tx.operationArbre.findFirst({ where: { id: operationId, userId: session!.user.id } })
+      if (!existing) return false
       if (operationAuRegistre(existing)) {
         await journaliserRectificationPhyto(tx, {
           userId: session!.user.id,
@@ -231,7 +263,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       }
       await deleteAutoEntry('operation_arbre', operationId, 'depense', session!.user.id, tx)
       await tx.operationArbre.delete({ where: { id: operationId, userId: session!.user.id } })
+      return true
     })
+
+    if (!supprimee) {
+      return NextResponse.json({ error: "Opération non trouvée" }, { status: 404 })
+    }
 
     invalidateKpi(session!.user.id)
     return NextResponse.json({ success: true })

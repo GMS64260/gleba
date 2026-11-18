@@ -784,7 +784,16 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 ? `Effectif = ${enLots} têtes dans les lots (dont ${rattaches} fiche${rattaches > 1 ? 's' : ''} nominative${rattaches > 1 ? 's' : ''} rattachée${rattaches > 1 ? 's' : ''}) + ${horsLot} fiche${horsLot > 1 ? 's' : ''} hors lot. Les fiches rattachées à un lot ne sont pas comptées deux fois.`
                 : undefined
               return (
-                <Link href="/elevage/animaux" className="block">
+                <Link
+                  href="/elevage?tab=animaux"
+                  prefetch={false}
+                  className="block"
+                  onClick={(evenement) => {
+                    if (evenement.metaKey || evenement.ctrlKey || evenement.shiftKey || evenement.altKey || evenement.button !== 0) return
+                    evenement.preventDefault()
+                    updateDashboardSearchParams(new URLSearchParams("tab=animaux"), "push")
+                  }}
+                >
                   <Card title={infoBulle} className={`${kpiCardClass("neutre")} hover:brightness-110 transition-[filter] cursor-pointer`}>
                     <CardHeader className="pb-1 pt-3 px-4">
                       <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Animaux actifs</CardDescription>

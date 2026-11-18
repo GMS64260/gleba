@@ -42,6 +42,7 @@ function PluieBarChart({
   const w = 16
   const gap = 2
   const h = 60
+  const MARGE_HAUTE = 10
   const totalW = all.length * (w + gap) - gap
 
   function formatDateShort(dateStr: string) {
@@ -53,10 +54,12 @@ function PluieBarChart({
     <div className="w-full overflow-x-auto">
       <svg
         width={totalW}
-        height={h + 18}
+        height={h + 18 + MARGE_HAUTE}
         style={{ display: "block", minWidth: totalW }}
         aria-label="Graphique pluviométrie"
       >
+        {/* Marge haute : l'étiquette de la plus haute barre sortait du dessin. */}
+        <g transform={`translate(0, ${MARGE_HAUTE})`}>
         {all.map((d, i) => {
           const barH = Math.max(2, (d.mm / maxMm) * h)
           const x = i * (w + gap)
@@ -109,6 +112,7 @@ function PluieBarChart({
             </g>
           )
         })}
+        </g>
       </svg>
       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
@@ -201,6 +205,11 @@ function PluviometriePlancheInterne({ plancheId }: Props) {
   const p = data.pluviometrie
   const { total7j, total30j, joursSansPluie, prochainePluie, prochaineQuantite, historique, previsions } = p
 
+  // Cumul inconnu (archive indisponible) : un tiret, jamais « 0 mm ».
+  function formatCumul(mm: number | null) {
+    return mm === null ? "—" : `${mm.toLocaleString("fr-FR")} mm`
+  }
+
   function formatDate(dateStr: string) {
     const d = new Date(dateStr + "T00:00:00")
     return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })
@@ -217,14 +226,21 @@ function PluviometriePlancheInterne({ plancheId }: Props) {
       {/* Stats résumées */}
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-md bg-blue-50 border border-blue-100 px-3 py-2 text-center">
-          <div className="text-lg font-bold text-blue-700">{total7j} mm</div>
+          <div className="text-lg font-bold text-blue-700">{formatCumul(total7j)}</div>
           <div className="text-xs text-blue-500">7 derniers jours</div>
         </div>
         <div className="rounded-md bg-slate-50 border border-slate-100 px-3 py-2 text-center">
-          <div className="text-lg font-bold text-slate-700">{total30j} mm</div>
+          <div className="text-lg font-bold text-slate-700">{formatCumul(total30j)}</div>
           <div className="text-xs text-slate-500">30 derniers jours</div>
         </div>
       </div>
+
+      {/* Archive en panne ou pas encore publiée : inconnu, pas « 0 mm » */}
+      {p.historiqueIndisponible && (
+        <div className="text-xs text-muted-foreground italic" role="status">
+          Relevés de pluie momentanément indisponibles — seules les prévisions sont affichées.
+        </div>
+      )}
 
       {/* Jours sans pluie */}
       {joursSansPluie > 0 && (

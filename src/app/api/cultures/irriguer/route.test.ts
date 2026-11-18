@@ -24,6 +24,7 @@ vi.mock('@/lib/irrigation-recording', () => ({
   supprimerArrosageNote: vi.fn(),
 }))
 
+import { AccesServiceRefuse } from '@/lib/abonnement/serveur'
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
 import { GET, PATCH } from './route'
 
@@ -70,7 +71,7 @@ describe('PATCH /api/cultures/irriguer : quantité versée', () => {
   })
 
   it('« Quantité inconnue » (sans litres) : arrosage complet, comme avant', async () => {
-    mocks.enregistrerArrosageCultures.mockResolvedValue({ dateEffective: new Date(), derniereIrrigationAvant: {} })
+    mocks.enregistrerArrosageCultures.mockResolvedValue({ cultureIds: [7, 8], culturesMisesAJour: 2, dateEffective: new Date(), derniereIrrigationAvant: {} })
     const res = await PATCH(patch({ cultureIds: [7, 8], marquerArrosage: true, notes: null }))
     expect(res.status).toBe(200)
     expect(mocks.enregistrerArrosageCultures).toHaveBeenCalled()
@@ -134,5 +135,90 @@ describe('GET /api/cultures/irriguer : tournée du jour', () => {
     expect(corps.tournee.horsTournee).toEqual([
       { cultureId: 829, libelle: 'Poireau Bleu de Solaise', plancheNom: 'C2', urgence: 'critique', motif: 'non_cochee' },
     ])
+  })
+})
+
+/**
+ * Revue du 2026-11-11 : la route rendait 500 (ou un faux succès) pour des
+ * refus et des entrées illisibles qu'elle sait nommer.
+ */
+describe('GET /api/cultures/irriguer : refus et entrées illisibles', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'u1' } } })
+  })
+
+  it('carnet sans la météo : 403 avec le code et le lien d’abonnement, pas 500', async () => {
+    vi.mocked(computeConseilIrrigation).mockRejectedValue(new AccesServiceRefuse())
+    const res = await GET(new NextRequest('http://localhost/api/cultures/irriguer'))
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({
+      code: 'FORMULE_INSUFFISANTE',
+      abonnementUrl: '/parametres?section=abonnement',
+      error: expect.stringContaining('Abonnement'),
+    })
+  })
+
+  it('année illisible : 400, sans calcul', async () => {
+    for (const annee of ['abc', '2026abc', '99999', '-1']) {
+      const res = await GET(new NextRequest(`http://localhost/api/cultures/irriguer?annee=${annee}`))
+      expect(res.status, annee).toBe(400)
+    }
+    expect(computeConseilIrrigation).not.toHaveBeenCalled()
+  })
+
+  it('sans année : la saison en cours', async () => {
+    vi.mocked(computeConseilIrrigation).mockResolvedValue({ data: [], stats: {} } as never)
+    const res = await GET(new NextRequest('http://localhost/api/cultures/irriguer'))
+    expect(res.status).toBe(200)
+    expect(computeConseilIrrigation).toHaveBeenCalledWith('u1', new Date().getFullYear())
+  })
+
+  it('ne sert chaque culture qu’une fois (ni `parIlot` ni `parTypeIrrigation`)', async () => {
+    const c = { id: 1, aIrriguer: true, urgence: 'faible', raisonUrgence: '', sousAbri: false, reserve: null, espece: { nom: 'Radis' }, planche: null }
+    vi.mocked(computeConseilIrrigation).mockResolvedValue({
+      data: [c], parIlot: { A: [c] }, parTypeIrrigation: { 'Non défini': [c] }, stats: { total: 1 }, annee: 2026, meteo: null,
+    } as never)
+    const corps = await (await GET(new NextRequest('http://localhost/api/cultures/irriguer'))).json()
+    expect(corps.data).toHaveLength(1)
+    expect(corps.stats).toEqual({ total: 1 })
+    expect(corps).not.toHaveProperty('parIlot')
+    expect(corps).not.toHaveProperty('parTypeIrrigation')
+  })
+})
+
+describe('PATCH /api/cultures/irriguer : refus et entrées illisibles', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'u1' } } })
+  })
+
+  it('« Noter » sans quantité sur des cultures introuvables : 404, pas « Arrosage noté »', async () => {
+    mocks.enregistrerArrosageCultures.mockResolvedValue({
+      cultureIds: [], plancheIds: [], culturesMisesAJour: 0, dateEffective: new Date(), derniereIrrigationAvant: {},
+    })
+    const res = await PATCH(patch({ cultureIds: [7, 8], marquerArrosage: true, notes: null }))
+    expect(res.status).toBe(404)
+    expect((await res.json()).error).toBe('Culture non trouvée')
+  })
+
+  it('coche « à irriguer » sans valeur booléenne : 400, rien n’est écrit', async () => {
+    for (const corps of [{ cultureId: 5 }, { cultureId: 5, aIrriguer: 'oui' }, { cultureId: 5, aIrriguer: null }]) {
+      const res = await PATCH(patch(corps))
+      expect(res.status, JSON.stringify(corps)).toBe(400)
+    }
+  })
+
+  it('corps illisible : 400', async () => {
+    const res = await PATCH(new NextRequest('http://localhost/api/cultures/irriguer', {
+      method: 'PATCH', body: '{pas du json', headers: { 'content-type': 'application/json' },
+    }))
+    expect(res.status).toBe(400)
+    for (const corps of ['null', '[]', '"texte"']) {
+      const r = await PATCH(new NextRequest('http://localhost/api/cultures/irriguer', {
+        method: 'PATCH', body: corps, headers: { 'content-type': 'application/json' },
+      }))
+      expect(r.status, corps).toBe(400)
+    }
   })
 })

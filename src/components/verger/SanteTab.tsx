@@ -946,6 +946,7 @@ function RegistrePhytoSubTab() {
           produit?: string | null
           quantite?: number | null
           unite?: string | null
+          dar?: number | null
           arbre?: { id: number; nom: string; type: string; espece: string | null }
         }>) {
           if (!op.fait) continue
@@ -967,7 +968,8 @@ function RegistrePhytoSubTab() {
             produit: op.produit ?? null,
             doseAppliquee: op.quantite ?? null,
             uniteDose: op.unite ?? null,
-            dar: null,
+            // Contre-revue B11 : DAR de l'étiquette saisi sur l'opération.
+            dar: op.dar ?? null,
             numAMM: null,
             zntRespectee: null,
             zntDistanceM: null,

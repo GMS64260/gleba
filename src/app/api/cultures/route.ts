@@ -10,14 +10,14 @@ import { createCultureSchema, normaliserDatesCreationCulture, validateCultureDat
 import { dateJourSeul } from '@/lib/jour-civil'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { evaluerOccupationPlanche } from '@/lib/planche-validation'
-import { selectCulturesOccupation } from '@/lib/planches/occupation'
+import { avertissementsChevauchementPlanche, evaluerOccupationPlanche } from '@/lib/planche-validation'
+import { selectCulturesOccupation, vivaceACreer } from '@/lib/planches/occupation'
 import { ensurePlaceholderVariete } from '@/lib/varietes'
 import { invalidateKpi } from '@/lib/kpi'
 import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
 import { ecrituresPassageAFait, ETAPES, type EtatEtapes } from '@/lib/cultures/execution'
-import { chevauchePeriode, debutOccupation, estVivaceEnPlace, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
+import { debutOccupation, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
 import type { AlerteSaisonCulture } from '@/lib/cultures/saison-culture'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { avertissementItpPlanche, verdictItpPlanche } from '@/lib/cultures/itp-planche'
@@ -30,6 +30,12 @@ import { type UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { quantiteCultureACreer } from '@/lib/cultures/quantite-plants'
+import { lireAnneeFiltre, lireParametresListe } from '@/lib/cultures/pagination-liste'
+import { aIrriguerALaCreation } from '@/lib/cultures/a-irriguer'
+import { verrouillerOccupationExploitation } from '@/lib/cultures/occupation-modification'
+
+/** Colonnes de `Culture` sur lesquelles la liste peut être triée. */
+const TRIS_CULTURE = Object.values(Prisma.CultureScalarFieldEnum)
 
 // GET /api/cultures
 export async function GET(request: NextRequest) {
@@ -39,22 +45,24 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
 
-    // Pagination
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
-    const skip = (page - 1) * pageSize
-
-    // Tri
-    const sortBy = searchParams.get('sortBy') || 'id'
-    const sortOrder = searchParams.get('sortOrder') || 'desc'
+    // Pagination et tri, bornés (une valeur inexploitable retombe sur le défaut)
+    const { page, pageSize, skip, sortBy, sortOrder } = lireParametresListe(searchParams, {
+      taillePageDefaut: 50,
+      trisPermis: TRIS_CULTURE,
+      triDefaut: 'id',
+      ordreDefaut: 'desc',
+    })
 
     // Filtres
     const search = searchParams.get('search') || ''
-    const annee = searchParams.get('annee')
+    const annee = lireAnneeFiltre(searchParams.get('annee'))
     const especeId = searchParams.get('especeId')
     const varieteId = searchParams.get('varieteId') || searchParams.get('variete')
     const plancheId = searchParams.get('plancheId')
     const etat = searchParams.get('etat') // Planifiée, Semée, Plantée, En recolte, Terminée
+    // Cultures non terminées seulement (saisie de récolte) : filtrer après
+    // coup une page triée par identifiant laissait de côté les plus anciennes.
+    const enCours = searchParams.get('enCours') === '1'
 
     // Construction du where - FILTRE PAR USER
     const where: Prisma.CultureWhereInput = {
@@ -65,13 +73,16 @@ export async function GET(request: NextRequest) {
       where.OR = [
         { espece: { id: { contains: search, mode: 'insensitive' } } },
         { variete: { id: { contains: search, mode: 'insensitive' } } },
+        // Espèce ou variété personnelle : identifiant opaque, le nom vit dans `nom`.
+        { espece: { nom: { contains: search, mode: 'insensitive' } } },
+        { variete: { nom: { contains: search, mode: 'insensitive' } } },
         { planche: { nom: { contains: search, mode: 'insensitive' } } },
         { notes: { contains: search, mode: 'insensitive' } },
       ]
     }
 
-    if (annee) {
-      where.annee = parseInt(annee)
+    if (annee != null) {
+      where.annee = annee
     }
 
     if (especeId) {
@@ -84,6 +95,10 @@ export async function GET(request: NextRequest) {
 
     if (plancheId) {
       where.plancheId = plancheId
+    }
+
+    if (enCours) {
+      where.terminee = null
     }
 
     // Filtre par état (calculé). QA cmsp59tdu — le filtre est le miroir exact
@@ -186,6 +201,9 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/cultures
+/** La place lue avant le verrou a été prise par une création concurrente. */
+class OccupationPriseEntreTemps extends Error {}
+
 export async function POST(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
@@ -429,6 +447,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Relecture de l'occupation sous le verrou de création (voir la transaction
+    // plus bas) : rend le message de refus si la place a été prise entre-temps.
+    let recontroleOccupation: ((tx: Prisma.TransactionClient) => Promise<string | null>) | null = null
+
     // Valider l'occupation de la planche si plancheId fourni
     if (data.plancheId) {
       const planche = await prisma.planche.findFirst({
@@ -475,23 +497,18 @@ export async function POST(request: NextRequest) {
         finRecolte: (data.finRecolte as Date | null) ?? null,
       })
 
-      if (planche && data.plancheId) {
-        if (newStart && newEnd) {
-          for (const c of planche.cultures) {
-            // Une vivace en place (fraisier planté il y a trois ans, jamais
-            // terminée) recouvre toute période postérieure à sa mise en place :
-            // sa fin de fenêtre de récolte n'est pas une fin d'occupation.
-            if (chevauchePeriode(c, newStart, newEnd) !== true) continue
-            const cStart = debutOccupation(c)!
-            const fmt = (d: Date | string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-            const periode = estVivaceEnPlace(c)
-              ? `en place depuis le ${fmt(cStart)}, vivace`
-              : `${fmt(cStart)}–${fmt(finDeCycle(c)!)}`
-            dateWarnings.push(
-              `Chevauchement détecté sur la planche : ${c.espece?.id || 'culture'} #${c.id} (${periode}) recouvre la période demandée.`
-            )
-          }
-        }
+      // revue-adv-183 : une nouvelle vivace occupe la planche sans fin de
+      // cycle, comme ses voisines. `espece` est l'espèce réelle de la
+      // culture, déjà lue dans le référentiel visible du compte.
+      const vivace = vivaceACreer(espece.vivace)
+
+      if (planche) {
+        dateWarnings.push(...avertissementsChevauchementPlanche({
+          culturesEnPlace: planche.cultures,
+          debut: newStart,
+          fin: newEnd,
+          vivace,
+        }))
       }
 
       if (planche) {
@@ -508,7 +525,31 @@ export async function POST(request: NextRequest) {
           longueur: data.longueur,
           debut: newStart,
           fin: newEnd,
+          vivace,
         })
+
+        if (verdict.verifie && verdict.possible) {
+          const plancheId = planche.id
+          const dimensions = { largeur: planche.largeur, longueur: planche.longueur }
+          const espacementRangs = itp?.espacementRangs ?? null
+          recontroleOccupation = async (tx) => {
+            const culturesEnPlace = await tx.culture.findMany({
+              where: { plancheId, terminee: null },
+              select: selectCulturesOccupation,
+            })
+            const relu = evaluerOccupationPlanche({
+              planche: dimensions,
+              culturesEnPlace,
+              espacementRangs,
+              nbRangs: data.nbRangs,
+              longueur: data.longueur,
+              debut: newStart,
+              fin: newEnd,
+              vivace,
+            })
+            return relu.verifie && !relu.possible ? (relu.message ?? "Largeur insuffisante") : null
+          }
+        }
 
         if (!verdict.verifie) {
           dateWarnings.push(verdict.avertissement)
@@ -539,18 +580,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Auto-remplir aIrriguer si non fourni et espece a besoin eau élevé
-    let aIrriguer = data.aIrriguer
-    if (aIrriguer === undefined || aIrriguer === null) {
-      // Besoin eau >= 3 ou irrigation explicitement "Eleve"/"Élevé"
-      if (
-        (espece.besoinEau && espece.besoinEau >= 3) ||
-        espece.irrigation?.toLowerCase() === 'eleve' ||
-        espece.irrigation?.toLowerCase() === 'élevé'
-      ) {
-        aIrriguer = true
-      }
-    }
+    // Sans choix explicite, une espèce gourmande en eau est marquée à irriguer.
+    const aIrriguer = aIrriguerALaCreation(data.aIrriguer, espece)
 
     // Vérifier que les foreign keys existent avant création
     // `itp` a déjà été résolu plus haut sous la règle « visible et actif » :
@@ -577,6 +608,14 @@ export async function POST(request: NextRequest) {
 
     // Création + décrément stock dans une transaction atomique
     const culture = await prisma.$transaction(async (tx) => {
+      // Même verrou consultatif que la création par lot (`creerCulturesBatch`) :
+      // deux créations simultanées sur une exploitation passent l'une après
+      // l'autre, et la seconde relit l'occupation de la planche après la
+      // première au lieu de se fier à une lecture faite avant le verrou.
+      await verrouillerOccupationExploitation(tx, session!.user.id)
+      const refus = recontroleOccupation ? await recontroleOccupation(tx) : null
+      if (refus) throw new OccupationPriseEntreTemps(refus)
+
       // Si pas de variété fournie : assigner le placeholder "Non spécifiée"
       // de l'espèce (créé à la demande). Aucune Culture ne reste sans variete.
       const varieteId = data.varieteId ?? (await ensurePlaceholderVariete(data.especeId, tx))
@@ -632,6 +671,12 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
+    if (error instanceof OccupationPriseEntreTemps) {
+      return NextResponse.json(
+        { error: `${error.message}. Une autre culture vient d'être créée sur cette planche : rechargez et réessayez.` },
+        { status: 409 }
+      )
+    }
     console.error('POST /api/cultures error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création de la culture' },

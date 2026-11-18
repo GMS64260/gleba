@@ -290,6 +290,9 @@ export function AssistantStepDates({
             dateSemis: enJour(culture.dateSemis),
             datePlantation: enJour(culture.datePlantation),
             dateRecolte: enJour(culture.dateRecolte),
+            // Ne sert qu'à un itinéraire sans espèce : une vivace est évaluée
+            // vivace, comme à la création (revue-adv-183).
+            especeId: espece?.id ?? culture.especeId ?? "",
           })
           const res = await fetch(`/api/cultures/occupation?${params.toString()}`)
           if (cancelled) return
@@ -376,6 +379,8 @@ export function AssistantStepDates({
     culture.dateRecolte,
     itp?.id,
     itp?.espacementRangs,
+    espece?.id,
+    culture.especeId,
   ])
 
   // --- Helpers for validation display ---

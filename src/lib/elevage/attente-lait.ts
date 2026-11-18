@@ -216,20 +216,23 @@ export async function chargerAppartenances(
   return historiques
 }
 
+export type CouvertureCollecte = { id: string; ecarteAttente: boolean; couverte: boolean }
+
 /**
- * Recalcule `ecarteAttente` pour les collectes des cibles données sur la fenêtre
- * [dateMin, dateMax] (bornée au jour). Idempotent : n'écrit que les collectes
- * dont l'état change. Retourne le nombre de collectes modifiées.
+ * Pour chaque collecte des cibles données sur la fenêtre [dateMin, dateMax]
+ * (bornée au jour) : son écartement stocké et si un soin actif la couvre
+ * aujourd'hui. Lecture seule ; `resyncEcartementLait` et le redatage d'une
+ * arrivée (`redaterAffectationInitiale`) en déduisent ce qu'ils écrivent.
  */
-export async function resyncEcartementLait(
+export async function couvertureCollectes(
   db: Db,
   userId: string,
   cibles: { animalIds: number[]; lotIds: number[] },
   dateMin: Date,
   dateMax: Date
-): Promise<number> {
+): Promise<CouvertureCollecte[]> {
   const { animalIds, lotIds } = cibles
-  if (animalIds.length === 0 && lotIds.length === 0) return 0
+  if (animalIds.length === 0 && lotIds.length === 0) return []
 
   const orCible: Prisma.CollecteLaitWhereInput[] = []
   if (animalIds.length) orCible.push({ animalId: { in: animalIds } })
@@ -240,7 +243,7 @@ export async function resyncEcartementLait(
     where: { userId, date: { gte: debut, lte: dateMax }, OR: orCible },
     select: { id: true, date: true, animalId: true, lotId: true, ecarteAttente: true },
   })
-  if (collectes.length === 0) return 0
+  if (collectes.length === 0) return []
 
   // Tous les soins actifs dont la fenêtre d'attente lait chevauche [dateMin, dateMax]
   // (peu nombreux sur une ferme). Pas de filtre cible : la couverture cross-
@@ -277,15 +280,35 @@ export async function resyncEcartementLait(
     for (const a of animaux) lotDe.set(a.id, a.lotId)
   }
 
-  const aEcarter: string[] = []
-  const aReintegrer: string[] = []
-  for (const c of collectes) {
-    const doitEtreEcartee = soins.some((s) => couvre(s, c, historiques, lotDe))
-    if (doitEtreEcartee && !c.ecarteAttente) aEcarter.push(c.id)
-    else if (!doitEtreEcartee && c.ecarteAttente) aReintegrer.push(c.id)
-  }
-  if (aEcarter.length) await db.collecteLait.updateMany({ where: { id: { in: aEcarter } }, data: { ecarteAttente: true } })
-  if (aReintegrer.length) await db.collecteLait.updateMany({ where: { id: { in: aReintegrer } }, data: { ecarteAttente: false } })
+  return collectes.map((c) => ({
+    id: c.id,
+    ecarteAttente: c.ecarteAttente,
+    couverte: soins.some((s) => couvre(s, c, historiques, lotDe)),
+  }))
+}
+
+/**
+ * Recalcule `ecarteAttente` pour les collectes des cibles données sur la fenêtre
+ * [dateMin, dateMax] (bornée au jour). Idempotent : n'écrit que les collectes
+ * dont l'état change. Retourne le nombre de collectes modifiées.
+ */
+export async function resyncEcartementLait(
+  db: Db,
+  userId: string,
+  cibles: { animalIds: number[]; lotIds: number[] },
+  dateMin: Date,
+  dateMax: Date
+): Promise<number> {
+  const couverture = await couvertureCollectes(db, userId, cibles, dateMin, dateMax)
+  const aEcarter = couverture.filter((c) => c.couverte && !c.ecarteAttente).map((c) => c.id)
+  const aReintegrer = couverture.filter((c) => !c.couverte && c.ecarteAttente).map((c) => c.id)
+  return ecrireEcartement(db, userId, aEcarter, aReintegrer)
+}
+
+/** Écrit l'écartement décidé par l'appelant, toujours scopé à l'exploitation. */
+export async function ecrireEcartement(db: Db, userId: string, aEcarter: string[], aReintegrer: string[]): Promise<number> {
+  if (aEcarter.length) await db.collecteLait.updateMany({ where: { userId, id: { in: aEcarter } }, data: { ecarteAttente: true } })
+  if (aReintegrer.length) await db.collecteLait.updateMany({ where: { userId, id: { in: aReintegrer } }, data: { ecarteAttente: false } })
   return aEcarter.length + aReintegrer.length
 }
 

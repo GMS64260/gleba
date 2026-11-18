@@ -70,7 +70,7 @@ export const CATALOGUE_TUILES: Record<IdTuile, FicheTuile> = {
   agent: { id: "agent", libelle: "Gleba", description: "L'alerte du moment, le point le plus pressant, une question à poser.", largeur: 7, hauteur: 1, tailles: [6, 8, 12] },
   elevage: { id: "elevage", libelle: "Élevage", description: "Les échéances à venir sous 7 jours : soins, mises bas, délais d'attente.", module: "elevage", largeur: 5, hauteur: 1, tailles: [4, 6, 8] },
   "recoltes-semaine": { id: "recoltes-semaine", libelle: "Récoltes de la semaine", description: "Ce qui arrive à maturité dans la semaine, à noter d'un geste.", module: "maraichage", largeur: 6, hauteur: 1, tailles: [4, 6, 8] },
-  tresorerie: { id: "tresorerie", libelle: "Trésorerie et créances", description: "Résultat de l'année, factures émises à encaisser, dépenses à régler.", module: "comptabilite", largeur: 6, hauteur: 1, tailles: [4, 6, 8] },
+  tresorerie: { id: "tresorerie", libelle: "Résultat et créances", description: "Résultat de l'année, factures émises à encaisser, dépenses à régler.", module: "comptabilite", largeur: 6, hauteur: 1, tailles: [4, 6, 8] },
   verger: { id: "verger", libelle: "Verger à faire", description: "Les gestes dont la fenêtre est ouverte, par lot d'arbres.", module: "verger", largeur: 6, hauteur: 1, tailles: [4, 6, 8] },
   stocks: { id: "stocks", libelle: "Stocks et péremptions", description: "Aliments sous le seuil d'alerte, médicaments proches de la péremption.", module: "elevage", largeur: 4, hauteur: 1, tailles: [4, 6, 8] },
   ventes: { id: "ventes", libelle: "Ventes récentes", description: "Les dernières ventes et le total du mois en cours.", module: "comptabilite", largeur: 6, hauteur: 1, tailles: [4, 6, 8] },
@@ -101,7 +101,7 @@ export const LIBELLES: Record<IdRepere | IdTuile, string> = {
   "repere:cultures": "Cultures en place",
   "repere:surface": "Surface cultivée",
   "repere:recoltes": "Récoltes",
-  "repere:tresorerie": "Trésorerie",
+  "repere:tresorerie": "Résultat",
   "repere:semaine": "Semaine",
   ...(Object.fromEntries(IDS_TUILES.map((id) => [id, CATALOGUE_TUILES[id].libelle])) as Record<IdTuile, string>),
 }

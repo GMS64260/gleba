@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 /**
@@ -14,6 +14,7 @@ import { NextRequest } from "next/server"
 
 const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
+  especeFindMany: vi.fn(),
   itpFindMany: vi.fn(),
   plancheFindMany: vi.fn(),
   cultureFindFirst: vi.fn(),
@@ -24,15 +25,23 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock("@/lib/prisma", () => ({
-  default: {
+vi.mock("@/lib/prisma", () => {
+  const db = {
     iTP: { findMany: mocks.itpFindMany },
+    espece: { findMany: mocks.especeFindMany },
     planche: { findMany: mocks.plancheFindMany },
     culture: { findFirst: mocks.cultureFindFirst, create: mocks.cultureCreate, findMany: mocks.cultureFindMany },
     intervention: { findMany: mocks.interventionFindMany },
     fertilisation: { findMany: mocks.fertilisationFindMany },
-  },
-}))
+    // La création par lot pose la variété de repli de l'espèce, comme la
+    // création unitaire : elle existe déjà dans ce scénario.
+    variete: { findFirst: async () => ({ id: "variete-repli" }) },
+    // Le lot s'exécute dans une transaction, sous verrou consultatif.
+    $executeRaw: async () => 0,
+    $transaction: async (lot: (tx: unknown) => Promise<unknown>) => lot(db),
+  }
+  return { default: db }
+})
 // Mock partiel : `calendrier-climat` dérive ses zones de `terroir` au chargement.
 vi.mock("@/lib/terroir", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/terroir")>()),
@@ -42,14 +51,7 @@ vi.mock("@/lib/terroir", async (importOriginal) => ({
 import { creerCulturesBatch } from "@/lib/planification"
 import { GET } from "./route"
 
-const tzAvant = process.env.TZ
-beforeAll(() => {
-  process.env.TZ = "Europe/Paris"
-})
-afterAll(() => {
-  if (tzAvant === undefined) delete process.env.TZ
-  else process.env.TZ = tzAvant
-})
+// Le fuseau est fixé au démarrage de Vitest (Paris et UTC dans les contrôles).
 
 /** Format de l'en-tête d'une culture dans l'écran (`formatDateShort`, page /tracabilite). */
 const commeLEcran = (jour: string | null) =>
@@ -113,6 +115,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u-demo" } }, error: null })
   mocks.itpFindMany.mockResolvedValue([ITP_COURGE])
+  mocks.especeFindMany.mockResolvedValue([{ id: 'Courge', vivace: false }])
   mocks.plancheFindMany.mockResolvedValue([{ ...PLANCHE, cultures: [] }])
   mocks.cultureFindFirst.mockResolvedValue(null)
   mocks.cultureCreate.mockImplementation(async ({ data }) => ({ id: 1237, ...data }))
@@ -162,12 +165,12 @@ describe("Registre de culture : semis d'une culture créée depuis la rotation (
     ])
   })
 
-  it("une culture déjà stockée à minuit Paris s'affiche à son jour, une saisie manuelle aussi", async () => {
+  it("une culture déjà stockée à minuit local s'affiche à son jour, une saisie manuelle aussi", async () => {
     mocks.cultureFindMany.mockResolvedValue([
       // Courge #1237 telle que l'ancienne création depuis la rotation l'a stockée.
       ligneRegistre(1237, "Courge", {
-        dateSemis: new Date("2027-04-11T22:00:00.000Z"),
-        datePlantation: new Date("2027-05-09T22:00:00.000Z"),
+        dateSemis: new Date(2027, 3, 12),
+        datePlantation: new Date(2027, 4, 10),
       }),
       // Radis saisi à la main le 01/06/2027 (formulaire « AAAA-MM-JJ »).
       ligneRegistre(1240, "Radis", { dateSemis: new Date("2027-06-01T00:00:00.000Z"), datePlantation: null }),

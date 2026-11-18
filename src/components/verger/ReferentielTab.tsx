@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { useExploitation } from "@/hooks/use-exploitation"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
@@ -310,6 +311,8 @@ function EspecesReferentiel() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId ?? null
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [filteredData, setFilteredData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -411,7 +414,7 @@ function EspecesReferentiel() {
   const columnsAvecAvis = React.useMemo<ColumnDef<EspeceWithRelations>[]>(
     () => [
       ...columns,
-      makeOrigineColumn<EspeceWithRelations>((e) => e.nom ?? e.id, currentUserId, referentielActions, "ESPECE"),
+      makeOrigineColumn<EspeceWithRelations>((e) => e.nom ?? e.id, currentUserId, referentielActions, "ESPECE", proprietaireId),
       {
         id: "avis",
         header: "Avis",
@@ -427,7 +430,7 @@ function EspecesReferentiel() {
         ),
       },
     ],
-    [currentUserId, referentielActions]
+    [currentUserId, proprietaireId, referentielActions]
   )
 
   return (
@@ -463,7 +466,7 @@ function EspecesReferentiel() {
 
       <DataTable
         columns={columnsAvecAvis}
-        data={filtrerParOrigine(filteredData, filtreOrigine, currentUserId)}
+        data={filtrerParOrigine(filteredData, filtreOrigine, proprietaireId)}
         isLoading={isLoading}
         showPagination={true}
         pageSize={50}
@@ -641,6 +644,8 @@ function PorteGreffesReferentiel() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId ?? null
   const [data, setData] = React.useState<PorteGreffeRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
@@ -698,7 +703,7 @@ function PorteGreffesReferentiel() {
         />
       ),
     },
-    makeOrigineColumn<PorteGreffeRow>((r) => r.nom, currentUserId, actions, "PORTE_GREFFE"),
+    makeOrigineColumn<PorteGreffeRow>((r) => r.nom, currentUserId, actions, "PORTE_GREFFE", proprietaireId),
   ]
 
   return (
@@ -715,7 +720,7 @@ function PorteGreffesReferentiel() {
       </div>
       <DataTable
         columns={columns}
-        data={filtrerParOrigine(data, filtreOrigine, currentUserId)}
+        data={filtrerParOrigine(data, filtreOrigine, proprietaireId)}
         isLoading={isLoading}
         showPagination={false}
         searchPlaceholder="Rechercher un porte-greffe..."
@@ -832,6 +837,8 @@ function EssencesReferentiel() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId ?? null
   const [data, setData] = React.useState<EssenceBocageRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
@@ -881,7 +888,7 @@ function EssencesReferentiel() {
     },
     { accessorKey: "persistant", header: "Persistant", cell: ({ getValue }) => (getValue() ? "Oui" : "—") },
     { accessorKey: "epineux", header: "Épineux", cell: ({ getValue }) => (getValue() ? "Oui" : "—") },
-    makeOrigineColumn<EssenceBocageRow>((r) => r.nomCommun, currentUserId, actions),
+    makeOrigineColumn<EssenceBocageRow>((r) => r.nomCommun, currentUserId, actions, undefined, proprietaireId),
   ]
 
   return (
@@ -901,7 +908,7 @@ function EssencesReferentiel() {
       </div>
       <DataTable
         columns={columns}
-        data={filtrerParOrigine(data, filtreOrigine, currentUserId)}
+        data={filtrerParOrigine(data, filtreOrigine, proprietaireId)}
         isLoading={isLoading}
         showPagination={false}
         onRefresh={fetchData}
@@ -934,6 +941,8 @@ function EssencesForestieresReferentiel() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = session?.user?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId ?? null
   const [data, setData] = React.useState<EssenceForestiereRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
@@ -998,7 +1007,7 @@ function EssencesForestieresReferentiel() {
         return v != null ? `${v}` : "—"
       },
     },
-    makeOrigineColumn<EssenceForestiereRow>((r) => r.nom, currentUserId, actions),
+    makeOrigineColumn<EssenceForestiereRow>((r) => r.nom, currentUserId, actions, undefined, proprietaireId),
   ]
 
   return (
@@ -1030,7 +1039,7 @@ function EssencesForestieresReferentiel() {
       </div>
       <DataTable
         columns={columns}
-        data={filtrerParOrigine(data, filtreOrigine, currentUserId)}
+        data={filtrerParOrigine(data, filtreOrigine, proprietaireId)}
         isLoading={isLoading}
         showPagination={false}
         onRefresh={fetchData}

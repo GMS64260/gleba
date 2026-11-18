@@ -19,6 +19,7 @@ import { surfaceCultureM2 } from '@/lib/culture-surface'
 import type { KPIMaraichage } from './types'
 import { shiftToPrevYear } from './types'
 import { asOfDayKey, memoize } from './cache'
+import { finRecoltesYtd } from './periode-recoltes'
 import { type UniteQuantite } from '@/lib/recolte/projection'
 import {
   ajouterQuantite,
@@ -49,14 +50,12 @@ async function computeKpiMaraichage(
   asOf: Date
 ): Promise<KPIMaraichage> {
   const startOfYear = new Date(year, 0, 1, 0, 0, 0, 0)
-  const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
   const endOfYearN1 = new Date(year - 1, 11, 31, 23, 59, 59, 999)
   const startOfYearN1 = new Date(year - 1, 0, 1, 0, 0, 0, 0)
-  // Ticket DEV2 #1 — Borne haute YTD : pour l'année en cours c'est `asOf`,
-  // pour une année passée c'est la fin de cette année. Sinon, sélectionner
-  // 2024 alors qu'on est en 2026 retournait toutes les récoltes 2024+2025+2026.
+  // Même borne que le compteur du dashboard : année passée complète,
+  // année courante à date et aucune récolte future dans le cumul réalisé.
   const isCurrentYear = asOf.getFullYear() === year
-  const upperBound = isCurrentYear ? asOf : endOfYear
+  const upperBound = finRecoltesYtd(year, asOf)
   const asOfN1 = isCurrentYear ? shiftToPrevYear(asOf) : endOfYearN1
 
   const [

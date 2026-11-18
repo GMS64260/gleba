@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { UblValidationError } from "@/lib/facture-ubl"
 import { genererPdfFacture } from "@/lib/facture-pdf"
-import { preparerExportFacture } from "@/lib/facture-structuree"
+import { entetesRapportExport, preparerExportFacture } from "@/lib/facture-structuree"
 import { PROFIL_CII, buildCiiInvoice } from "@/lib/facturx/cii"
 
 /**
@@ -55,6 +55,8 @@ export async function GET(request: NextRequest, { params }: Params) {
       "Content-Disposition": dispositionDocument(request, nom),
       "Cache-Control": "no-cache",
       "X-Content-Type-Options": "nosniff",
+      // Rapport d'export : acheteur non figé (facture antérieure, BX03).
+      ...entetesRapportExport(facture),
     },
   })
 }

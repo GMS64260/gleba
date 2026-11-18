@@ -40,7 +40,7 @@ vi.mock('@/lib/facture-utils', () => ({
   creerFacture: vi.fn(),
   montantAvoirsEmis: async () => 0,
   reserverProchainNumeroForEmission: async () => ({ numero: 'F-2026-0001' }),
-  snapshotEmetteurForEmission: async () => (m.regimeEmission === null ? null : { regimeTva: m.regimeEmission }),
+  snapshotEmetteurPiece: async () => (m.regimeEmission === null ? null : { regimeTva: m.regimeEmission }),
 }))
 vi.mock('@/lib/prisma', () => {
   const tx = {

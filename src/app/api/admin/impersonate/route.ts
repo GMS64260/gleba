@@ -19,6 +19,7 @@ import {
   hashJeton,
   IMPERSONATION_TTL_MS,
 } from "@/lib/impersonation"
+import { versionSession } from "@/lib/session-version"
 
 export async function POST(request: Request) {
   const { session, error } = await requireAdminApi(request)
@@ -57,6 +58,10 @@ export async function POST(request: Request) {
       targetId,
       expiresAt: new Date(Date.now() + IMPERSONATION_TTL_MS),
       ip: getClientIP(request),
+      // MC3 : version de la session qui émet, déjà comparée à la base par
+      // requireAdminApi. Un mot de passe posé ensuite sur le compte de
+      // l'administrateur rend ce jeton inutilisable (`authorizeImpersonation`).
+      adminSessionVersion: versionSession(session!.user.sessionVersion),
     },
   })
 

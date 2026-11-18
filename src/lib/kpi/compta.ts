@@ -26,9 +26,15 @@ import { chargerEncoursCompta } from '@/lib/comptabilite/encours'
 import type { ModuleCompta } from '@/lib/comptabilite/modules'
 import {
   moduleDesVentesPortees,
-  ventilerRevenus,
+  ventilerRevenusParDevise,
   type VentilationRevenus,
 } from '@/lib/comptabilite/ventilation-revenus'
+import { deviseCouranteExploitation, monnaieFacture } from '@/lib/comptabilite/devise-reglement'
+import { monnaieVente, SELECT_CONTEXTE_FISCAL_VENTE } from '@/lib/comptabilite/devise-vente'
+import { monnaieImpayee } from '@/lib/comptabilite/ventilation-impayees'
+import { sommerParDevise, soustraireParDevise, totalSiUneDevise, margeParDevise, verifierDeviseCalcul, ErreurDevisesIncompatibles, type TotalDevise } from '@/lib/comptabilite/totaux-devise'
+import { chargerMonnaiesDepenses, SELECT_IDENTITE_DEPENSE } from '@/lib/comptabilite/devise-ecritures'
+import type { Devise } from '@/lib/territoires'
 import type { KPICompta } from './types'
 import { shiftToPrevYear } from './types'
 import { asOfDayKey, memoize } from './cache'
@@ -72,19 +78,35 @@ export function whereFacturesRevenus(userId: string, debut: Date, fin: Date): Pr
   return { userId, date: { gte: debut, lte: fin }, statut: { notIn: STATUTS_FACTURE_HORS_VENTES } }
 }
 
+/** Lecteurs historiques : contrat numérique, refus explicite si les devises sont incompatibles. */
+type KPIComptaMonoDevise = { [K in keyof KPICompta]: NonNullable<KPICompta[K]> }
+export function getKpiCompta(userId: string, year: number, asOf: Date, options: { parDevise: true }): Promise<KPICompta>
+export function getKpiCompta(userId: string, year: number, asOf?: Date): Promise<KPIComptaMonoDevise>
 export async function getKpiCompta(
   userId: string,
   year: number,
-  asOf: Date = new Date()
+  asOf: Date = new Date(),
+  options?: { parDevise: true },
 ): Promise<KPICompta> {
-  const key = `compta:${userId}:${year}:${asOfDayKey(asOf)}`
-  return memoize(key, () => computeKpiCompta(userId, year, asOf))
+  const exploitation = await prisma.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } })
+  const deviseCourante = deviseCouranteExploitation(exploitation)
+  // La devise courante est une entrée du calcul des écritures non figées.
+  const key = `compta:${userId}:${year}:${asOfDayKey(asOf)}:${deviseCourante}`
+  const kpi = await memoize(key, () => computeKpiCompta(userId, year, asOf, deviseCourante))
+  if (!options?.parDevise) {
+    verifierDeviseCalcul(kpi.deviseCourante,
+      kpi.revenusYtdParDevise, kpi.depensesYtdParDevise, kpi.revenusN1YtdParDevise, kpi.revenusN1TotalParDevise,
+      kpi.depensesN1YtdParDevise, kpi.depensesN1TotalParDevise, kpi.revenusNonPayesYtdParDevise, kpi.depensesNonPayeesYtdParDevise)
+    if (Object.values(kpi).some(v => v === null)) throw new ErreurDevisesIncompatibles()
+  }
+  return kpi
 }
 
 async function computeKpiCompta(
   userId: string,
   year: number,
-  asOf: Date
+  asOf: Date,
+  deviseCourante: Devise,
 ): Promise<KPICompta> {
   const startOfYearN1 = new Date(year - 1, 0, 1, 0, 0, 0, 0)
   const endOfYearN1 = new Date(year - 1, 11, 31, 23, 59, 59, 999)
@@ -101,83 +123,132 @@ async function computeKpiCompta(
   // Ticket cmvflua2x (2026-10-19) : les revenus de l'exercice sont lus ligne à
   // ligne et ventilés par module dans le même calcul ; le total exposé est la
   // somme de cette ventilation, qui ne peut donc plus s'en écarter.
-  const [
-    ventilationYtd,
-    venteN1Ytd,
-    venteN1Total,
-    factureN1Ytd,
-    factureN1Total,
-  ] = await Promise.all([
-    chargerVentilationRevenus(userId, startOfYear, upperBound),
-    sumVenteManuelle(userId, startOfYearN1, asOfN1),
-    sumVenteManuelle(userId, startOfYearN1, endOfYearN1),
-    sumLigneFacture(userId, startOfYearN1, asOfN1),
-    sumLigneFacture(userId, startOfYearN1, endOfYearN1),
+  // Lot devise-totaux-api (16/11/2026) : les mêmes lignes sont ventilées par
+  // devise (une pièce garde sa devise figée, un montant sans devise figée suit
+  // la devise courante) ; deux devises ne s'additionnent jamais côté écran.
+  const [revenusExercice, revenusN1] = await Promise.all([
+    chargerRevenusExercice(userId, startOfYear, upperBound, deviseCourante),
+    chargerLignesRevenusDevise(userId, startOfYearN1, endOfYearN1, deviseCourante),
   ])
+  const revenusN1YtdLignes = revenusN1.filter((l) => l.date <= asOfN1)
 
-  const revenusYtd = ventilationYtd.total
-  const revenusN1Ytd = venteN1Ytd + factureN1Ytd
-  const revenusN1Total = venteN1Total + factureN1Total
+  const revenusN1YtdParDevise = sommerParDevise(revenusN1YtdLignes, l => l.monnaie, l => l.montant, deviseCourante)
+  const revenusN1TotalParDevise = sommerParDevise(revenusN1, l => l.monnaie, l => l.montant, deviseCourante)
 
   // ============================================================
   // DÉPENSES : DepenseManuelle
   // ============================================================
-  const [
-    depenseYtd,
-    depenseN1Ytd,
-    depenseN1Total,
-  ] = await Promise.all([
-    sumDepenseManuelle(userId, startOfYear, upperBound),
-    sumDepenseManuelle(userId, startOfYearN1, asOfN1),
-    sumDepenseManuelle(userId, startOfYearN1, endOfYearN1),
-  ])
+  // Lot devise-totaux-api, tour 2 (inventaire du 16/11/2026) : une dépense n'a
+  // pas de colonne de devise, mais une dépense réglée a un dossier de
+  // règlement dont la devise est figée ; elle fait foi. Sans dossier, la
+  // dépense suit la devise courante de l'exploitation.
+  const depensesLues = await chargerLignesDepensesDevise(userId, startOfYearN1, plusTardive(upperBound, endOfYearN1), deviseCourante)
+  const depensesExercice = depensesLues.filter((l) => l.date >= startOfYear && l.date <= upperBound)
+  const depensesN1Total = depensesLues.filter((l) => l.date <= endOfYearN1)
+  const depensesN1YtdLignes = depensesN1Total.filter((l) => l.date <= asOfN1)
+  const parDeviseDepenses = (lignes: LigneDepenseDevise[]) => sommerParDevise(lignes, (l) => l.monnaie, (l) => l.montant, deviseCourante)
 
-  const encours = await chargerEncoursCompta(userId, startOfYear, upperBound)
+  const encours = await chargerEncoursCompta(userId, startOfYear, upperBound, deviseCourante)
 
-  const beneficeYtd = revenusYtd - depenseYtd
-  const margePercentYtd = revenusYtd > 0 ? (beneficeYtd / revenusYtd) * 100 : 0
+  const revenusYtdParDevise = revenusExercice.parDevise
+  const depensesYtdParDevise = parDeviseDepenses(depensesExercice)
+  const depensesN1YtdParDevise = parDeviseDepenses(depensesN1YtdLignes)
+  const depensesN1TotalParDevise = parDeviseDepenses(depensesN1Total)
+  const beneficeYtdParDevise = soustraireParDevise(revenusYtdParDevise, depensesYtdParDevise)
+  const depensesNonPayeesYtdParDevise = sommerParDevise(
+    encours.dettes.items, d => d.monnaie === undefined ? deviseCourante : d.monnaie, d => d.montant, deviseCourante)
+  const revenusNonPayesYtdParDevise = sommerParDevise(
+    encours.creances.items, i => monnaieImpayee(i, deviseCourante), i => i.montant, deviseCourante)
 
   return {
     year,
     asOf,
-    revenusYtd: round2(revenusYtd),
-    revenusParModuleYtd: ventilationYtd,
-    revenusN1Ytd: round2(revenusN1Ytd),
-    revenusN1Total: round2(revenusN1Total),
-    depensesYtd: round2(depenseYtd),
-    depensesN1Ytd: round2(depenseN1Ytd),
-    depensesN1Total: round2(depenseN1Total),
-    beneficeYtd: round2(beneficeYtd),
-    margePercentYtd: round2(margePercentYtd),
-    depensesNonPayeesYtd: encours.dettes.total,
+    deviseCourante,
+    revenusYtd: totalSiUneDevise(revenusYtdParDevise),
+    revenusYtdParDevise,
+    revenusParModuleYtd: revenusExercice.ventilation,
+    revenusN1Ytd: totalSiUneDevise(revenusN1YtdParDevise),
+    revenusN1YtdParDevise,
+    revenusN1Total: totalSiUneDevise(revenusN1TotalParDevise),
+    revenusN1TotalParDevise,
+    depensesYtd: totalSiUneDevise(depensesYtdParDevise),
+    depensesYtdParDevise,
+    depensesN1Ytd: totalSiUneDevise(depensesN1YtdParDevise),
+    depensesN1YtdParDevise,
+    depensesN1Total: totalSiUneDevise(depensesN1TotalParDevise),
+    depensesN1TotalParDevise,
+    beneficeYtd: totalSiUneDevise(beneficeYtdParDevise),
+    beneficeYtdParDevise,
+    margePercentYtd: margeParDevise(revenusYtdParDevise, depensesYtdParDevise),
+    depensesNonPayeesYtd: totalSiUneDevise(depensesNonPayeesYtdParDevise),
+    depensesNonPayeesYtdParDevise,
     nbDepensesNonPayees: encours.dettes.nombre,
-    revenusNonPayesYtd: encours.creances.total,
+    revenusNonPayesYtd: totalSiUneDevise(revenusNonPayesYtdParDevise),
+    revenusNonPayesYtdParDevise,
     nbRevenusNonPayes: encours.creances.items.length,
   }
 }
 
-async function sumVenteManuelle(
+/** Ligne de revenu réduite à sa date, son montant signé et sa devise. */
+interface LigneRevenuDevise { date: Date; montant: number; monnaie: Devise | null }
+
+/**
+ * Revenus d'une période, ligne à ligne, avec leur devise : mêmes ventes et
+ * mêmes factures (avoirs soustraits) que le total des revenus.
+ */
+async function chargerLignesRevenusDevise(
   userId: string,
-  start: Date,
-  end: Date
-): Promise<number> {
-  const r = await prisma.venteManuelle.aggregate({
-    where: whereVentesRevenus(userId, start, end),
-    _sum: { montant: true },
-  })
-  return r._sum.montant ?? 0
+  debut: Date,
+  fin: Date,
+  deviseCourante: Devise,
+): Promise<LigneRevenuDevise[]> {
+  const [ventes, factures] = await Promise.all([
+    prisma.venteManuelle.findMany({
+      where: whereVentesRevenus(userId, debut, fin),
+      select: { date: true, montant: true, ...SELECT_CONTEXTE_FISCAL_VENTE },
+    }),
+    prisma.facture.findMany({
+      where: whereFacturesRevenus(userId, debut, fin),
+      select: { date: true, type: true, totalTTC: true, emetteurSnapshot: true },
+    }),
+  ])
+  return [
+    ...ventes.map((v) => ({ date: v.date, montant: v.montant, monnaie: monnaieVente(v, deviseCourante) })),
+    ...factures.map((f) => ({
+      date: f.date,
+      montant: (f.type === 'avoir' ? -1 : 1) * f.totalTTC,
+      monnaie: monnaieFacture(f.emetteurSnapshot, f.date),
+    })),
+  ]
 }
 
-async function sumDepenseManuelle(
+/** Dépense comptable réduite à sa date, son montant et sa devise (dossier figé, sinon courante). */
+interface LigneDepenseDevise { date: Date; montant: number; monnaie: Devise | null }
+
+/** Fin de la lecture des dépenses : l'exercice en cours et toute l'année N-1. */
+function plusTardive(a: Date, b: Date): Date {
+  return a > b ? a : b
+}
+
+/**
+ * Dépenses comptables d'une période, ligne à ligne, avec leur devise : même
+ * périmètre que le total (`whereDepensesComptables`).
+ */
+export async function chargerLignesDepensesDevise(
   userId: string,
-  start: Date,
-  end: Date
-): Promise<number> {
-  const r = await prisma.depenseManuelle.aggregate({
-    where: whereDepensesComptables(userId, start, end),
-    _sum: { montant: true },
+  debut: Date,
+  fin: Date,
+  deviseCourante: Devise | null,
+): Promise<Array<LigneDepenseDevise & { id: number; categorie: string; module: string | null }>> {
+  const depenses = await prisma.depenseManuelle.findMany({
+    where: whereDepensesComptables(userId, debut, fin),
+    select: { ...SELECT_IDENTITE_DEPENSE, date: true, montant: true, categorie: true, module: true },
   })
-  return r._sum.montant ?? 0
+  const monnaies = await chargerMonnaiesDepenses(userId, depenses, deviseCourante)
+  return depenses.map((d) => ({
+    id: d.id, date: d.date, montant: d.montant, categorie: d.categorie, module: d.module,
+    monnaie: monnaies.has(d.id) ? monnaies.get(d.id)! : deviseCourante,
+  }))
 }
 
 /**
@@ -193,39 +264,45 @@ export async function chargerMensuelCompta(
   year: number,
   asOf: Date = new Date(),
 ): Promise<Array<{ revenus: number; depenses: number }>> {
-  const { debut, fin } = bornesExerciceKpi(year, asOf)
-  const [ventes, factures, depenses] = await Promise.all([
-    prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debut, fin), select: { date: true, montant: true } }),
-    prisma.facture.findMany({ where: whereFacturesRevenus(userId, debut, fin), select: { date: true, type: true, totalTTC: true } }),
-    prisma.depenseManuelle.findMany({ where: whereDepensesComptables(userId, debut, fin), select: { date: true, montant: true } }),
-  ])
-  const mois = Array.from({ length: 12 }, () => ({ revenus: 0, depenses: 0 }))
-  for (const v of ventes) mois[v.date.getMonth()].revenus += v.montant
-  for (const f of factures) mois[f.date.getMonth()].revenus += (f.type === 'avoir' ? -1 : 1) * f.totalTTC
-  for (const d of depenses) mois[d.date.getMonth()].depenses += d.montant
-  return mois.map((m) => ({ revenus: round2(m.revenus), depenses: round2(m.depenses) }))
+  const exploitation = await prisma.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } })
+  const deviseCourante = deviseCouranteExploitation(exploitation)
+  const mois = await chargerMensuelComptaParDevise(userId, year, asOf, deviseCourante)
+  verifierDeviseCalcul(deviseCourante, ...mois.flatMap(m => [m.revenusParDevise, m.depensesParDevise]))
+  return mois.map(({ revenus, depenses }) => {
+    if (revenus === null || depenses === null) throw new ErreurDevisesIncompatibles()
+    return { revenus, depenses }
+  })
 }
 
 /**
- * Somme les lignes des factures émises et payées (statut ≠ 'annulee',
- * 'brouillon') sur la période. Les avoirs (`type='avoir'`) sont soustraits.
+ * `chargerMensuelCompta` avec, pour chaque mois, ses revenus devise par devise
+ * (même règle que `getKpiCompta` : devise figée de la pièce, sinon
+ * `deviseCourante`) ; ses dépenses de même (devise du dossier de règlement,
+ * sinon `deviseCourante`).
  */
-async function sumLigneFacture(
+export async function chargerMensuelComptaParDevise(
   userId: string,
-  start: Date,
-  end: Date
-): Promise<number> {
-  const factures = await prisma.facture.findMany({
-    where: whereFacturesRevenus(userId, start, end),
-    select: { type: true, totalTTC: true },
+  year: number,
+  asOf: Date,
+  deviseCourante: Devise | null,
+): Promise<Array<{ revenus: number | null; depenses: number | null; revenusParDevise: TotalDevise[]; depensesParDevise: TotalDevise[] }>> {
+  const { debut, fin } = bornesExerciceKpi(year, asOf)
+  const [ventes, factures, depenses] = await Promise.all([
+    prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debut, fin), select: { date: true, montant: true, ...SELECT_CONTEXTE_FISCAL_VENTE } }),
+    prisma.facture.findMany({ where: whereFacturesRevenus(userId, debut, fin), select: { date: true, type: true, totalTTC: true, emetteurSnapshot: true } }),
+    chargerLignesDepensesDevise(userId, debut, fin, deviseCourante),
+  ])
+  const mois = Array.from({ length: 12 }, () => ({ revenus: [] as LigneRevenuDevise[], depenses: [] as LigneDepenseDevise[] }))
+  for (const v of ventes) mois[v.date.getMonth()].revenus.push({ date: v.date, montant: v.montant, monnaie: monnaieVente(v, deviseCourante) })
+  for (const f of factures) mois[f.date.getMonth()].revenus.push({
+    date: f.date, montant: (f.type === 'avoir' ? -1 : 1) * f.totalTTC, monnaie: monnaieFacture(f.emetteurSnapshot, f.date),
   })
-
-  let total = 0
-  for (const f of factures) {
-    const signe = f.type === 'avoir' ? -1 : 1
-    total += signe * f.totalTTC
-  }
-  return total
+  for (const d of depenses) mois[d.date.getMonth()].depenses.push(d)
+  return mois.map((m) => {
+    const revenusParDevise = sommerParDevise(m.revenus, l => l.monnaie, l => l.montant, deviseCourante)
+    const depensesParDevise = sommerParDevise(m.depenses, l => l.monnaie, l => l.montant, deviseCourante)
+    return { revenus: totalSiUneDevise(revenusParDevise), depenses: totalSiUneDevise(depensesParDevise), revenusParDevise, depensesParDevise }
+  })
 }
 
 /** Ventes métier qu'une facture peut porter (relations de `Facture`). */
@@ -239,7 +316,7 @@ const VENTES_PORTEES = {
 
 /**
  * Revenus de la période, ligne à ligne, ventilés par module : mêmes ventes et
- * mêmes factures que `sumVenteManuelle` + `sumLigneFacture`. Une facture prend
+ * mêmes factures que le total des revenus de `getKpiCompta`. Une facture prend
  * le module de la vente métier qu'elle porte, un avoir celui de sa facture
  * d'origine, une facture saisie sans vente va en « Autre ».
  */
@@ -248,7 +325,7 @@ export async function chargerFacturesRevenus(userId: string, debut: Date, fin: D
   const factures = await prisma.facture.findMany({
     where: whereFacturesRevenus(userId, debut, fin),
     select: { id: true, numero: true, type: true, statut: true, date: true, clientNom: true, objet: true,
-      totalTTC: true, factureOrigineId: true, modePaiement: true,
+      totalTTC: true, factureOrigineId: true, modePaiement: true, emetteurSnapshot: true,
       lignes: { select: { articleStockType: true } }, _count: { select: VENTES_PORTEES } },
   })
   // Un avoir suit sa facture d'origine, qui peut dater d'un exercice antérieur.
@@ -289,14 +366,23 @@ export async function chargerFacturesRevenus(userId: string, debut: Date, fin: D
     : moduleParFacture.get(f.id) ?? null }))
 }
 
-export async function chargerVentilationRevenus(userId: string, debut: Date, fin: Date): Promise<VentilationRevenus> {
+/** Revenus par devise et module ; ventilation scalaire indisponible en mélange. */
+export async function chargerRevenusExercice(userId: string, debut: Date, fin: Date, deviseCourante: Devise) {
   const [ventes, factures] = await Promise.all([
-    prisma.venteManuelle.findMany({ where: whereVentesRevenus(userId, debut, fin), select: { montant: true, module: true, categorie: true } }),
+    prisma.venteManuelle.findMany({
+      where: whereVentesRevenus(userId, debut, fin),
+      select: { montant: true, module: true, categorie: true, ...SELECT_CONTEXTE_FISCAL_VENTE },
+    }),
     chargerFacturesRevenus(userId, debut, fin),
   ])
-  return ventilerRevenus(ventes, factures)
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100
+  const parDevise = ventilerRevenusParDevise(
+    ventes, factures,
+    v => monnaieVente(v, deviseCourante),
+    f => monnaieFacture(f.emetteurSnapshot, f.date),
+    deviseCourante,
+  )
+  const ventilation: VentilationRevenus | null = parDevise.length === 1
+    ? { total: parDevise[0].total, parModule: parDevise[0].parModule, composition: parDevise[0].composition }
+    : null
+  return { ventilation, parDevise }
 }

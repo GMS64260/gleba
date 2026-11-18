@@ -55,12 +55,13 @@ vi.mock("@/lib/prisma", () => ({
           create: mocks.txInterventionCreate,
         },
         observationSante: { findMany: mocks.txObservationFindMany },
+        lotArbres: { findFirst: mocks.lotArbresFindFirst },
         operationArbre: { findMany: mocks.txOperationFindMany },
         arbre: { findUnique: mocks.arbreFindUnique, update: mocks.arbreUpdate, delete: mocks.txArbreDelete, findFirst: vi.fn(async () => null) },
         // Contexte du registre relu avant la suppression (CR-PHY-01).
         culture: { findFirst: vi.fn(async () => null) },
         planche: { findFirst: vi.fn(async () => null) },
-        parcelleGeo: { findFirst: vi.fn(async () => null) },
+        parcelleGeo: { findFirst: vi.fn(async () => null), findMany: mocks.parcelleFindMany },
       }),
   },
 }))
@@ -172,10 +173,27 @@ describe("PUT /api/arbres/[id]", () => {
       where: {
         userId: "user-1",
         parcelleGeoId: "parcelle-1",
-        espece: { equals: "Pêcher", mode: "insensitive" },
+        espece: { in: ["Pêcher"], mode: "insensitive" },
       },
       select: { id: true },
     })
+    expect(mocks.arbreUpdate).not.toHaveBeenCalled()
+  })
+
+  it("tolère un conflit historique quand le couple relu sous verrou reste inchangé", async () => {
+    mocks.arbreFindUnique.mockResolvedValue({ id: 42, userId: "user-1", espece: "Pêcher", parcelleGeoId: "parcelle-1" })
+    mocks.lotArbresFindFirst.mockResolvedValue({ id: 8 })
+    const response = await PUT(request({ parcelleGeoId: "parcelle-1", notes: "Correction" }) as never, params)
+    expect(response.status).toBe(200)
+    expect(mocks.lotArbresFindFirst).not.toHaveBeenCalled()
+    expect(mocks.arbreUpdate).toHaveBeenCalled()
+  })
+
+  it("renvoie 404 si l’arbre disparaît entre la lecture initiale et le verrou", async () => {
+    mocks.arbreFindUnique.mockResolvedValueOnce({ id: 42, userId: "user-1", espece: "Pêcher", parcelleGeoId: null })
+      .mockResolvedValueOnce(null)
+    const response = await PUT(request({ notes: "Correction" }) as never, params)
+    expect(response.status).toBe(404)
     expect(mocks.arbreUpdate).not.toHaveBeenCalled()
   })
 

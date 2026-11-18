@@ -7,8 +7,11 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useAnneePlanification } from "@/hooks/use-annee-planification"
-import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
+import { useAnneePlanification, useChargementPlanification } from "@/hooks/use-annee-planification"
+import {
+  ErreurChargementPlanification,
+  SelecteurAnneePlanification,
+} from "@/components/maraichage/SelecteurAnneePlanification"
 import { ArrowLeft, BarChart3 } from "lucide-react"
 import {
   BarChart,
@@ -32,11 +35,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "@/hooks/use-toast"
+import { quantiteInfobulle } from "./infobulle"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 import {
   arrondirQuantites,
-  formatQuantite,
   formatQuantiteParUnite,
   fusionnerQuantites,
   quantitesNonNulles,
@@ -78,42 +80,23 @@ interface Stats {
   meilleureQuantite: number
 }
 
-function RecoltesPrevuesContent() {
-  const { toast } = useToast()
+const AUCUNE_PERIODE: RecoltePrevue[] = []
 
-  const [data, setData] = React.useState<RecoltePrevue[]>([])
-  const [stats, setStats] = React.useState<Stats | null>(null)
-  const [isLoading, setIsLoading] = React.useState(true)
+function RecoltesPrevuesContent() {
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
   const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
-
-
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/planification/recoltes-prevues?annee=${annee}&groupBy=mois`)
-      if (!response.ok) throw new Error("Erreur lors du chargement")
-      const result = await response.json()
-      setData(result.data)
-      setStats(result.stats)
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de charger les récoltes prévues",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [annee, toast])
-
-  React.useEffect(() => {
-    // Ne pas charger la saison courante avant d'avoir restauré la saison
-    // mémorisée : la réponse tardive écraserait les données de la bonne année.
-    if (!anneePrete) return
-    fetchData()
-  }, [anneePrete, fetchData])
+  // Rien n'est demandé avant la restauration de la saison mémorisée ; une
+  // réponse ne vaut que pour la saison qui l'a demandée.
+  const { resultat, chargement: isLoading, erreur, recharger } = useChargementPlanification<{
+    data: RecoltePrevue[]
+    stats: Stats
+  }>(
+    anneePrete ? `/api/planification/recoltes-prevues?annee=${annee}&groupBy=mois` : null,
+    "Impossible de charger les récoltes prévues",
+  )
+  const data = resultat?.data ?? AUCUNE_PERIODE
+  const stats = resultat?.stats ?? null
 
   /*
     Préparer les données du graphique. UNE SÉRIE PAR UNITÉ (2026-08-20) : la
@@ -224,6 +207,13 @@ function RecoltesPrevuesContent() {
           </div>
         )}
 
+        {erreur && (
+          <ErreurChargementPlanification
+            message={`Les récoltes prévues de ${annee} n’ont pas pu être chargées.`}
+            onReessayer={recharger}
+          />
+        )}
+
         {/* Onglets */}
         <div className="flex gap-2 mb-4">
           <Link href={`/maraichage/planification/recoltes-prevues?annee=${annee}`}>
@@ -250,6 +240,8 @@ function RecoltesPrevuesContent() {
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-[300px] w-full" />
+            ) : erreur ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">Chargement impossible.</p>
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={chartData}>
@@ -257,10 +249,7 @@ function RecoltesPrevuesContent() {
                   <XAxis dataKey="mois" />
                   <YAxis />
                   <Tooltip
-                    formatter={(value, name) => [
-                      formatQuantite(Number(value), name as UniteQuantite),
-                      "Récolte",
-                    ]}
+                    formatter={(value, _nom, serie) => [quantiteInfobulle(value, serie?.dataKey), "Récolte"]}
                     contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                   />
                   {(unitesPresentes.length > 0 ? unitesPresentes : (["kg"] as UniteQuantite[])).map(
@@ -288,6 +277,8 @@ function RecoltesPrevuesContent() {
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
+            ) : erreur ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">Chargement impossible.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -300,7 +291,12 @@ function RecoltesPrevuesContent() {
                 </TableHeader>
                 <TableBody>
                   {data.map((r) => (
-                    <TableRow key={r.periode} className={r.totalKg === 0 ? "opacity-50" : ""}>
+                    <TableRow
+                      key={r.periode}
+                      // Mois vide = aucune quantité, toutes unités comprises : un
+                      // mois de fleurs en tiges a un total en kilos nul.
+                      className={quantitesNonNulles(r.totalParUnite ?? {}).length === 0 ? "opacity-50" : ""}
+                    >
                       <TableCell className="font-medium">{r.periode}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">

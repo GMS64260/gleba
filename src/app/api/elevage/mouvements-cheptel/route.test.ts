@@ -18,8 +18,9 @@ vi.mock('@/lib/prisma', () => {
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([]),
     mouvementCheptel: { create: mocks.mouvementCreate, findFirst: mocks.mouvementFindFirst },
-    lotAnimaux: { updateMany: mocks.lotUpdateMany },
-    animal: { updateMany: mocks.animalUpdateMany },
+    lotAnimaux: { findFirst: mocks.lotFindFirst, updateMany: mocks.lotUpdateMany },
+    animal: { findFirst: mocks.animalFindFirst, updateMany: mocks.animalUpdateMany },
+    parcelleGeo: { findFirst: mocks.parcelleFindFirst },
   }
   return { default: {
     animal: { findFirst: mocks.animalFindFirst },

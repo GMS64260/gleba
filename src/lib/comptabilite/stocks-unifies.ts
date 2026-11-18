@@ -1,3 +1,4 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
 /**
  * Stocks unifiés multi-modules — source unique de vérité de l'écran
  * Comptabilité > Stocks (les 11 catégories : graines, plants, fertilisants,
@@ -188,7 +189,7 @@ export async function computeStocksUnifies(userId: string) {
     // Arbres actifs
     prisma.arbre.groupBy({
       by: ['type'],
-      where: { userId, etat: { not: 'mort' } },
+      where: filtreArbresVivants(userId),
       _count: true,
     }),
 

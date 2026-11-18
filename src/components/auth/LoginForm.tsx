@@ -28,6 +28,9 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   google:
     "Connexion Google impossible : adresse email absente ou non vérifiée par Google.",
   inactive: "Ce compte a été désactivé. Contactez contact@gleba.fr.",
+  // Mot de passe changé ou réinitialisé depuis la connexion (MC3).
+  session_revoquee:
+    "Le mot de passe de ce compte a été modifié : reconnectez-vous avec le nouveau mot de passe.",
   AccessDenied: "Connexion refusée.",
   OAuthAccountNotLinked:
     "Cet email est déjà associé à un compte. Connectez-vous avec votre mot de passe.",

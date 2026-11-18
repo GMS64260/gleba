@@ -90,6 +90,11 @@ model User {
   resetPasswordToken   String?   @unique @map("reset_password_token")
   resetPasswordExpires DateTime? @map("reset_password_expires")
   apiToken             String?   @unique @map("api_token")
+  // Version des sessions (MC3) : incrémentée à chaque mot de passe posé
+  // (changement, réinitialisation, réglage administrateur). Un jeton de
+  // session porte la version lue à la connexion ; relue à chaque requête
+  // (`lib/compte-actif.ts`), un écart coupe la session.
+  sessionVersion       Int       @default(0) @map("session_version")
   // Désabonnement des emails non transactionnels (campagnes feedback, etc.).
   // Les emails transactionnels (vérification, reset mot de passe) n'y sont PAS
   // soumis. `unsubscribeToken` est un token stable servant de lien de
@@ -409,6 +414,10 @@ model ImpersonationGrant {
   expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
   ip         String?
+  // Version de session de l'administrateur à l'émission (MC3) : un mot de
+  // passe posé sur son compte rend le jeton inutilisable et coupe les
+  // consultations ouvertes avec lui.
+  adminSessionVersion Int @default(0) @map("admin_session_version")
 
   @@index([adminId])
   @@index([targetId])
@@ -1818,6 +1827,13 @@ model OperationArbre {
   type              String    @map("type") // "taille", "greffe", "traitement", "fertilisation", "autre"
   description       String?   @map("description")
   produit           String?   @map("produit") // Produit utilisé
+  // Lot dar-cadre-legal-blocage (tour 2) : un traitement réalisé entre au
+  // contrôle du délai avant récolte. Délai lu sur l'étiquette (jours) et
+  // nature déclarée ('amm' | 'substance_base' | 'biostimulant'), comme sur
+  // Intervention. NULL = non renseigné : produit présumé sous AMM, défaut
+  // légal de 3 jours (arrêté du 4 mai 2017, art. 3, I).
+  dar               Int?      @map("dar")
+  natureProduit     String?   @map("nature_produit")
   quantite          Float?    @map("quantite") // Quantité
   unite             String?   @map("unite") // L, kg, etc.
   cout              Float?    @map("cout") // Coût en €
@@ -2155,6 +2171,11 @@ model Association {
   description String?
   notes       String?
   type        String  @default("favorable") @map("type") // favorable | incompatible | neutre
+  /// Règle désactivée (décision du 2026-11-15, PR #73) : conservée avec ses
+  /// détails, exclue de tous les calculs actifs ; null = active. Réactivation :
+  /// PUT /api/associations/[id] { active: true } (administration).
+  desactiveeLe       DateTime? @map("desactivee_le")
+  motifDesactivation String?   @map("motif_desactivation")
 
   // Relations
   details AssociationDetail[]
@@ -2168,8 +2189,11 @@ model AssociationDetail {
   id            Int         @id @default(autoincrement())
   associationId String      @map("association_id")
   association   Association @relation(fields: [associationId], references: [id], onDelete: Cascade)
+  // Cascade et non SetNull : une ligne d'espèce dont l'espèce disparaît ne doit pas
+  // survivre en ligne « famille seule », que les alertes liraient comme une règle
+  // valant pour toute la famille (revue du 2026-11-12).
   especeId      String?     @map("espece")
-  espece        Espece?     @relation(fields: [especeId], references: [id], onDelete: SetNull)
+  espece        Espece?     @relation(fields: [especeId], references: [id], onDelete: Cascade)
   familleId     String?     @map("famille")
   famille       Famille?    @relation(fields: [familleId], references: [id], onDelete: SetNull)
   groupe        String?     @map("groupe") // Groupe libre (ex: "Liliacées")
@@ -3596,6 +3620,17 @@ model Facture {
   clientSiret         String?   @map("client_siret")
   clientSiren         String?   @map("client_siren")
   clientTvaIntra      String?   @map("client_tva_intra")
+  // BX03 (2026-11-16) : le reste de l'identité de l'acheteur est figé aussi
+  // (courriel, code postal, ville, pays, particulier ou professionnel).
+  // `acheteurFigeLe` marque une facture dont l'acheteur est figé : sans lui
+  // (facture antérieure), les éditions signalent l'identité incomplète sans
+  // la reconstituer depuis la fiche courante ; la facture n'est jamais réécrite.
+  clientEmail         String?   @map("client_email")
+  clientCodePostal    String?   @map("client_code_postal")
+  clientVille         String?   @map("client_ville")
+  clientPays          String?   @map("client_pays")
+  clientType          String?   @map("client_type")
+  acheteurFigeLe      DateTime? @map("acheteur_fige_le")
   date                DateTime  @default(now()) @map("date")
   dateEcheance        DateTime? @map("date_echeance")
   objet               String?   @map("objet")
@@ -4041,6 +4076,11 @@ model Intervention {
   uniteDose            String?           @map("unite_dose") // "L/ha", "kg/ha", "g/L"
   surfaceTraitee       Float?            @map("surface_traitee") // m² ou ha
   dar                  Int?              @map("dar") // Délai Avant Récolte (jours)
+  // Lot dar-cadre-legal-blocage (tour 2) : vrai sur les lignes ANCIENNES dont
+  // `dar` avait été recopié du catalogue ProduitPhyto.darJours par l'API. Ce
+  // délai générique n'est pas celui d'une AMM : il reste une indication, il ne
+  // bloque aucune vente. Toute saisie ou correction du délai le remet à faux.
+  darIndicatif         Boolean           @default(false) @map("dar_indicatif")
   delaiReentree        Int?              @map("delai_reentree") // Heures avant réentrée
   conditionsMeteo      String?           @map("conditions_meteo") // Conditions météo lors du traitement (texte libre, déprécié)
   // PROMPT 11 LOT A — FK vers le référentiel ProduitPhyto. Le champ TEXT
@@ -4049,6 +4089,10 @@ model Intervention {
   produitPhytoRef      ProduitPhyto?     @relation(fields: [produitPhytoId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "interventions_produit_phyto_fkey")
   // PROMPT 11 LOT A — Action sans produit (taille sanitaire, désherbage manuel, etc.)
   geste                String?           @map("geste")
+  // Contre-revue CR-DAR-01 : nature DÉCLARÉE du produit saisi librement
+  // (amm | substance_base | biostimulant), cf. CHECK SQL. NULL = non précisée,
+  // traitée comme un produit avec AMM. La classification du référentiel prime.
+  natureProduit        String?           @map("nature_produit")
   // PROMPT 11 LOT B — Champs réglementaires détaillés (Arrêté 16 juin 2009).
   volumeBouillieLHa    Float?            @map("volume_bouillie_l_ha")
   temperatureC         Float?            @map("temperature_c")
@@ -4085,6 +4129,30 @@ model Intervention {
   cultureRegistre      String?           @map("culture_registre")
   localisationRegistre String?           @map("localisation_registre")
   conduiteBio          Boolean?          @map("conduite_bio")
+  // Contexte figé, même vidé (contexteEstFige) ; provenance des mentions des
+  // tableaux C et D : saisie | deduite (NULL : inconnue ou vide non saisie).
+  contexteFige           Boolean         @default(false) @map("contexte_fige")
+  origineCultureRegistre String?         @map("origine_culture_registre")
+  origineConduiteBio     String?         @map("origine_conduite_bio")
+  // Arrêté du 24 décembre 2025, annexe II, tableaux C (traitement de semences
+  // ou de plants) et D (semis de semences traitées, lorsque le traitement n'a
+  // pas été enregistré au point C par le même établissement). NULL = traitement
+  // de surface (tableau A) ou intervention hors registre ; jamais déduit des
+  // lignes anciennes. Lot : `intrantNumLot` ; surface semée : `surfaceTraitee`.
+  utilisationPhyto     String?           @map("utilisation_phyto") // traitement_semences | semis_semences_traitees
+  substancesActives    String?           @map("substances_actives") // D : copiées du référentiel à la saisie
+  quantiteSemences     Float?            @map("quantite_semences") // C : quantité de semences ou plants traitée
+  uniteQuantiteSemences String?          @map("unite_quantite_semences") // kg, t, semences, plants
+  densiteSemis         Float?            @map("densite_semis") // D
+  uniteDensiteSemis    String?           @map("unite_densite_semis") // kg/ha, semences/ha…
+  // Point représentatif en degrés décimaux WGS84 : installation de traitement
+  // (C) ou parcelle sans référence RPG (D).
+  gpsLat               Float?            @map("gps_lat")
+  gpsLng               Float?            @map("gps_lng")
+  // D : référence RPG de la surface semée (îlot, parcelle, code commune Insee).
+  rpgIlot              String?           @map("rpg_ilot")
+  rpgParcelle          String?           @map("rpg_parcelle")
+  rpgCommuneInsee      String?           @map("rpg_commune_insee")
   // Intrants consommés
   intrantNom           String?           @map("intrant_nom") // Nom de l'intrant utilisé
   intrantQuantite      Float?            @map("intrant_quantite")
@@ -4106,6 +4174,7 @@ model Intervention {
   @@index([operateurId], map: "interventions_operateur_idx")
   @@index([observationLieeId], map: "interventions_observation_liee_idx")
   @@index([parcelleId], map: "interventions_parcelle_idx")
+  @@index([userId, utilisationPhyto], map: "interventions_utilisation_phyto_idx")
   @@map("interventions")
 }
 

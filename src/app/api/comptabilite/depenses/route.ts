@@ -9,7 +9,11 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { enrichirLignesReglements } from '@/lib/comptabilite/projection-reglements'
 import { MODULES_COMPTA, bucketModuleCompta, ventilerParModule } from '@/lib/comptabilite/modules'
-import { chargerSuiviDesDepenses } from '@/lib/comptabilite/suivi-ecriture'
+import { chargerSuiviDesDepenses, MIROIR_DEPENSE_PAR_SOURCE } from '@/lib/comptabilite/suivi-ecriture'
+import { deviseCouranteExploitation } from '@/lib/comptabilite/devise-reglement'
+import { chargerDevisesDossiers, cleDossierDepense, cleDossierDepenseSource } from '@/lib/comptabilite/devise-ecritures'
+import { sommerParDevise } from '@/lib/comptabilite/totaux-devise'
+import type { Devise } from '@/lib/territoires'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -469,30 +473,71 @@ export async function GET(request: NextRequest) {
     // Trier par date décroissante
     filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
+    // Devise figée d'une dépense (lot devise-totaux-api, tour 2) : celle de
+    // son dossier de règlement, figée au premier règlement. Une dépense sans
+    // dossier n'a pas de devise figée : pas de `monnaie`, la devise courante
+    // s'applique. Les coûts analytiques (soins, aliments, fertilisations)
+    // n'ont jamais de règlement.
+    const exploitation = await prisma.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } })
+    const devise = deviseCouranteExploitation(exploitation)
+    const cleDossier = (e: UnifiedExpense): string | null =>
+      e.source === 'DepenseManuelle'
+        ? cleDossierDepense({ id: e.sourceId, auto: false, sourceType: null, sourceId: null, sourceRef: null })
+        : MIROIR_DEPENSE_PAR_SOURCE[e.source]
+          ? cleDossierDepenseSource(MIROIR_DEPENSE_PAR_SOURCE[e.source], e.sourceId)
+          : null
+    const devisesFigees = await chargerDevisesDossiers(userId, filtered.map(cleDossier).filter((c): c is string => c !== null))
+    const monnaieFigee = (e: UnifiedExpense) => {
+      const cle = cleDossier(e)
+      return cle !== null && devisesFigees.has(cle) ? { monnaie: devisesFigees.get(cle)! } : {}
+    }
+    const monnaieLigne = (e: UnifiedExpense): Devise | null => {
+      const cle = cleDossier(e)
+      return cle !== null && devisesFigees.has(cle) ? devisesFigees.get(cle)! : devise
+    }
+
     // Limiter
     const page = filtered.slice(0, limit)
     const suivi = await chargerSuiviDesDepenses(userId, page)
-    const limited = await enrichirLignesReglements(userId, 'depense', page.map((d) => ({ ...d, ...suivi.get(d.id) })), depensesManuelles)
+    const limited = (await enrichirLignesReglements(userId, 'depense', page.map((d) => ({ ...d, ...suivi.get(d.id) })), depensesManuelles))
+      .map((l) => ({ ...l, ...monnaieFigee(l) }))
 
     // Calculer les stats
     const comptables = filtered.filter((e) => e.comptable)
+    // Une devise, un groupe : jamais de somme EUR + XPF. Les totaux
+    // historiques valent `null` dès que deux devises coexistent.
+    const devisesLignes = sommerParDevise(filtered, monnaieLigne, () => 0, devise).map((g) => g.monnaie)
+    const parDevise = devisesLignes.map((monnaie) => {
+      const lignes = comptables.filter((e) => monnaieLigne(e) === monnaie)
+      return {
+        monnaie,
+        count: filtered.filter((e) => monnaieLigne(e) === monnaie).length,
+        total: Math.round(lignes.reduce((sum, e) => sum + e.montant, 0) * 100) / 100,
+        totalAnalytique: Math.round(filtered.filter((e) => !e.comptable && monnaieLigne(e) === monnaie).reduce((sum, e) => sum + e.montant, 0) * 100) / 100,
+        parModule: ventilerParModule(lignes, (e) => e.montant, (e) => e.module),
+      }
+    })
+    const multiDevise = parDevise.length > 1
     const stats = {
       // Le total comptable n'additionne jamais une consommation interne à la
       // facture d'achat qui a approvisionné le stock.
-      total: comptables.reduce((sum, e) => sum + e.montant, 0),
-      totalComptable: comptables.reduce((sum, e) => sum + e.montant, 0),
-      totalAnalytique: filtered.filter((e) => !e.comptable).reduce((sum, e) => sum + e.montant, 0),
+      total: multiDevise ? null : comptables.reduce((sum, e) => sum + e.montant, 0),
+      totalComptable: multiDevise ? null : comptables.reduce((sum, e) => sum + e.montant, 0),
+      totalAnalytique: multiDevise ? null : filtered.filter((e) => !e.comptable).reduce((sum, e) => sum + e.montant, 0),
+      parDevise,
       count: filtered.length,
       // Ticket cmsx69cuc — la somme des quatre postes est désormais EGALE au
       // total comptable : les modules hors liste (`general`, `boutique`) sont
       // rangés en « Autre » au lieu d'être ignorés par les quatre filtres.
-      parModule: ventilerParModule(comptables, (e) => e.montant, (e) => e.module),
-      parCategorie: Object.entries(
-        comptables.reduce((acc, e) => {
-          acc[e.categorie] = (acc[e.categorie] || 0) + e.montant
-          return acc
-        }, {} as Record<string, number>)
-      ).map(([categorie, montant]) => ({ categorie, montant })),
+      parModule: multiDevise ? null : ventilerParModule(comptables, (e) => e.montant, (e) => e.module),
+      // Une part par catégorie ET par devise (`monnaie`) : jamais de somme.
+      parCategorie: [...comptables.reduce((acc, e) => {
+        const monnaie = monnaieLigne(e)
+        const cle = JSON.stringify([e.categorie, monnaie])
+        const part = acc.get(cle) ?? { categorie: e.categorie, monnaie, montant: 0 }
+        part.montant += e.montant
+        return acc.set(cle, part)
+      }, new Map<string, { categorie: string; monnaie: ReturnType<typeof monnaieLigne>; montant: number }>()).values()],
     }
 
     return NextResponse.json({

@@ -12,6 +12,8 @@
  */
 
 export type OrigineReferentiel = 'gleba' | 'communaute' | 'perso'
+/** Valeur transmise par les listes d'espèces et d'ITP ; l'officiel n'a pas de badge. */
+export type OrigineBadgeReferentiel = Exclude<OrigineReferentiel, 'gleba'> | null
 
 export interface EntreeReferentiel {
   userId?: string | null
@@ -79,6 +81,12 @@ export function origineReferentiel(
   if (entree.userId == null) return 'gleba'
   if (currentUserId && entree.userId === currentUserId) return 'perso'
   return 'communaute'
+}
+
+/** À calculer côté serveur avec le tenant résolu, avant de masquer l'auteur. */
+export function originePourBadge(entree: EntreeReferentiel, proprietaireId: string): OrigineBadgeReferentiel {
+  const origine = origineReferentiel(entree, proprietaireId)
+  return origine === 'gleba' ? null : origine
 }
 
 /** Badge d'affichage (null pour Gleba officiel = pas de badge, c'est le défaut). */

@@ -7,6 +7,7 @@ import {
   ecrituresDatePlanRedefinie,
   ecrituresPassageAFait,
   ecrituresRetourANonFait,
+  erreurDatesEtapesFaites,
 } from '../execution'
 
 /**
@@ -118,5 +119,37 @@ describe('mémoire de la date de plan', () => {
       recolteFaite: 'dateRecoltePlan',
     })
     expect(ETAPES).toEqual(['semisFait', 'plantationFaite', 'recolteFaite'])
+  })
+})
+
+/** Recette-3 (culture97) : garde des dates d'étapes faites, règle pure. */
+describe('erreurDatesEtapesFaites', () => {
+  // 15/11/2026 à 00:30 à Paris = 14/11 23:30 UTC : le jour courant est le 15.
+  const maintenant = new Date('2026-11-14T23:30:00.000Z')
+  const avant = { semisFait: true, dateSemis: new Date('2026-10-01T00:00:00.000Z') }
+
+  it('accepte le jour civil courant de Paris, refuse le lendemain', () => {
+    expect(erreurDatesEtapesFaites(avant, { ...avant, dateSemis: new Date('2026-11-15T00:00:00.000Z') }, null, maintenant)).toBeNull()
+    expect(erreurDatesEtapesFaites(avant, { ...avant, dateSemis: new Date('2026-11-16T00:00:00.000Z') }, null, maintenant))
+      .toEqual({ error: 'La date du semis réalisé ne peut pas être dans le futur.', champ: 'dateSemis' })
+  })
+
+  it('ne contrôle ni une étape non faite, ni une étape dont rien ne change', () => {
+    const futur = new Date('2026-12-01T00:00:00.000Z')
+    expect(erreurDatesEtapesFaites({}, { semisFait: false, dateSemis: futur }, null, maintenant)).toBeNull()
+    const incoherent = { semisFait: true, dateSemis: futur }
+    expect(erreurDatesEtapesFaites(incoherent, { ...incoherent }, null, maintenant)).toBeNull()
+    // Même jour sous une autre forme (minuit Paris) : pas un changement.
+    expect(erreurDatesEtapesFaites(incoherent, { semisFait: true, dateSemis: new Date('2026-11-30T23:00:00.000Z') }, null, maintenant)).toBeNull()
+  })
+
+  it('récolte : le jour de la première récolte passe, le lendemain non', () => {
+    const premiere = new Date('2026-11-13T08:30:00.000Z')
+    const base = { recolteFaite: true, dateRecolte: new Date('2026-11-12T00:00:00.000Z') }
+    expect(erreurDatesEtapesFaites(base, { ...base, dateRecolte: new Date('2026-11-13T00:00:00.000Z') }, premiere, maintenant)).toBeNull()
+    expect(erreurDatesEtapesFaites(base, { ...base, dateRecolte: new Date('2026-11-14T00:00:00.000Z') }, premiere, maintenant)).toEqual({
+      error: 'La date de récolte ne peut pas être postérieure à la première récolte enregistrée (13/11/2026).',
+      champ: 'dateRecolte',
+    })
   })
 })

@@ -27,7 +27,15 @@ import {
   METHODES_OBSERVATION_REGISTRE,
   champsManquantsRegistreObservation,
 } from '@/lib/tracabilite/conformite-observation-phyto'
-import { chargerContexteRegistre, type ContexteRegistre } from '@/lib/tracabilite/contexte-registre'
+import { lireContexteRegistre, type ContexteRegistre, type LigneAvecContexte, type ReferencesLieu } from '@/lib/tracabilite/contexte-registre'
+import {
+  FILTRE_INTERVENTIONS_REGISTRE,
+  UTILISATION_SEMIS_TRAITE,
+  champsManquantsSemences,
+  mentionsACompleter,
+  mentionsSemences,
+  typeUtilisation,
+} from '@/lib/tracabilite/utilisation-semences'
 import {
   applicateurPhyto,
   libelleMeteoPhyto,
@@ -143,23 +151,15 @@ export function classifierProduitHeuristique(nom: string | null): string | null 
 
 /**
  * Contexte d'une ligne : figé sur le traitement s'il a été enregistré depuis
- * le 2026-11-13, sinon relu des fiches actuelles (lignes antérieures).
+ * le 2026-11-13, même vidé (règle partagée `lireContexteRegistre`), sinon relu des
+ * fiches actuelles (lignes antérieures).
  */
 async function contexteLigne(
-  ligne: { date?: Date; cultureRegistre?: string | null; localisationRegistre?: string | null; conduiteBio?: boolean | null },
+  ligne: LigneAvecContexte,
   userId: string,
-  refs: Parameters<typeof chargerContexteRegistre>[2],
+  refs: ReferencesLieu,
 ): Promise<ContexteRegistre & { contexteFige: boolean }> {
-  if (ligne.cultureRegistre != null || ligne.localisationRegistre != null || ligne.conduiteBio != null) {
-    return {
-      cultureRegistre: ligne.cultureRegistre ?? null,
-      localisationRegistre: ligne.localisationRegistre ?? null,
-      conduiteBio: ligne.conduiteBio ?? null,
-      contexteFige: true,
-    }
-  }
-  const relu = await chargerContexteRegistre(prisma, userId, refs, ligne.date ?? new Date())
-  return { ...relu, contexteFige: false }
+  return lireContexteRegistre(prisma, userId, ligne, refs)
 }
 
 /** Mentions de l'annexe I ajoutées à chaque ligne (arrêté du 24 décembre 2025). */
@@ -196,7 +196,9 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
   const interventions = await prisma.intervention.findMany({
     where: {
       userId,
-      type: 'traitement_phyto',
+      // Traitements (annexe II, tableaux A et C) et semis de semences
+      // traitées (tableau D) : même filtre que l'export.
+      ...FILTRE_INTERVENTIONS_REGISTRE,
       // Un traitement seulement PLANIFIÉ n'a pas été appliqué : il n'a pas sa
       // place au registre ni au cumul de cuivre (revue du 2026-11-04 ; les
       // opérations d'arbre plus bas filtrent déjà sur `fait`).
@@ -301,20 +303,42 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         arbreId: intervention.arbreId,
         parcelleId: intervention.parcelleId,
       })
-      if (intervention.cultureRegistre) cultureNom = intervention.cultureRegistre
+      // Contexte figé : sa dénomination prime, y compris vide. Une dénomination
+      // effacée (« à compléter ») n'est pas remplacée par le nom relu de la
+      // fiche culture actuelle, sinon la ligne se déclarait complète avec une
+      // colonne Culture vide à l'export, et un renommage d'espèce réécrivait
+      // le nom affiché (contre-revue ADV34-2). Seules les lignes anciennes,
+      // sans contexte figé, gardent le nom relu des fiches.
+      if (contexte.contexteFige) cultureNom = contexte.cultureRegistre ?? ''
 
       // Detecter les champs manquants obligatoires
       const surfaceM2 = surfaceRegistreM2(intervention)
-      const champsMissing = champsManquantsRegistre({
-        produit: produitNom,
-        numAMM: numAMMRetenu,
-        doseAppliquee: intervention.doseAppliquee,
-        uniteDose: intervention.uniteDose,
-        surfaceM2,
-        dar: intervention.dar,
-        localise: Boolean(cultureNom || plancheNom || contexte.localisationRegistre),
-        ammExigee: ammExigee(classification),
-      })
+      // Semences et plants traités : mentions des tableaux C et D, pas
+      // celles d'un traitement de surface (ni surface traitée, ni DAR).
+      const utilisation = typeUtilisation(intervention)
+      const semis = utilisation === UTILISATION_SEMIS_TRAITE
+      const champsMissing = utilisation === 'surface'
+        ? champsManquantsRegistre({
+            produit: produitNom,
+            numAMM: numAMMRetenu,
+            doseAppliquee: intervention.doseAppliquee,
+            uniteDose: intervention.uniteDose,
+            surfaceM2,
+            dar: intervention.dar,
+            localise: Boolean(cultureNom || plancheNom || contexte.localisationRegistre),
+            ammExigee: ammExigee(classification),
+          })
+        : champsManquantsSemences({
+            ...intervention,
+            produit: produitNom,
+            numAMM: numAMMRetenu,
+            numAMMValide: numAMMValide(numAMMRetenu),
+            ammExigee: ammExigee(classification),
+            surfaceM2,
+            culture: cultureNom,
+            localisationRegistre: contexte.localisationRegistre,
+            conduiteBio: contexte.conduiteBio,
+          })
 
       return {
         id: intervention.id,
@@ -326,14 +350,17 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         nuisibleCible: intervention.cibleTraitement || null,
         produit: produitNom,
         produitId: ref?.id ?? null,
-        substanceActive: ref?.substanceActive ?? null,
+        // Substances enregistrées sur la ligne (semences) avant le référentiel actuel.
+        substanceActive: intervention.substancesActives ?? ref?.substanceActive ?? null,
         classification,
         classificationSource,
         autoriseAB,
         numAMM: numAMMRetenu,
         doseAppliquee: intervention.doseAppliquee || null,
         uniteDose: intervention.uniteDose || null,
-        surfaceTraitee: surfaceM2,
+        // Une surface SEMÉE n'est pas une surface traitée : elle sort dans
+        // `surfaceSemeeM2` et n'entre pas dans le cumul des surfaces traitées.
+        surfaceTraitee: semis ? null : surfaceM2,
         volumeBouillieLHa: intervention.volumeBouillieLHa ?? null,
         temperatureC: intervention.temperatureC ?? null,
         ventKmh: intervention.ventKmh ?? null,
@@ -363,6 +390,9 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
           rentreeAnticipee: intervention.rentreeAnticipee,
           siretBeneficiaire: intervention.siretBeneficiaire,
         }),
+        ...mentionsSemences({ ...intervention, localisationRegistre: contexte.localisationRegistre, surfaceM2 }),
+        // Semences : mentions obligatoires manquantes, en clair (« à compléter »).
+        aCompleter: utilisation === 'surface' ? [] : mentionsACompleter(champsMissing),
         champsManquants: champsMissing,
         complet: champsMissing.length === 0,
       }
@@ -405,8 +435,8 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
     entries.push({
       id: 1_000_000_000 + o.id, // évite la collision d'id avec les interventions
       date: jourLigne(o.date),
-      culture: o.cultureRegistre || o.arbre?.nom || 'Non renseigné',
-      espece: o.arbre?.espece || '',
+      culture: (contexte.contexteFige ? contexte.cultureRegistre : o.arbre?.nom) || 'Non renseigné',
+      espece: contexte.contexteFige ? '' : o.arbre?.espece || '',
       parcelle: o.parcelle?.nom || 'Non renseigné',
       localisation: '',
       nuisibleCible: o.diagnostic ?? o.symptome ?? null,
@@ -439,6 +469,8 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       notes: null,
       description: null,
       ...mentionsAnnexe(contexte, { stadeBBCH: o.stadeBBCH }),
+      ...mentionsSemences({}),
+      aCompleter: [] as string[],
       champsManquants: champsMissing,
       complet: champsMissing.length === 0,
     })
@@ -449,8 +481,9 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
   // (SanteTab) les affiche depuis le Bug #16, mais le registre global (et
   // donc l'outil assistant) les omettait : la « Bouillie bordelaise 3 kg »
   // d'un arbre manquait au registre réglementaire. Même format de ligne que
-  // SanteTab : produit, dose (quantité/unité), arbre ; AMM et DAR n'existent
-  // pas sur ce modèle → null.
+  // SanteTab : produit, dose (quantité/unité), arbre. L'AMM n'existe pas sur
+  // ce modèle → null ; le DAR de l'étiquette y est saisi depuis la migration
+  // 20261113210000 (contre-revue B11 : il restait à null au registre).
   const operations = await prisma.operationArbre.findMany({
     where: {
       userId,
@@ -468,7 +501,8 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
   })
   for (const op of operations) {
     const produitNom = op.produit ?? null
-    // AMM, surface et DAR sont absents du modèle OperationArbre : toujours manquants.
+    // AMM et surface sont absents du modèle OperationArbre : toujours manquants.
+    // Le DAR est celui saisi sur l'opération (manquant s'il ne l'est pas).
     const classificationOp = classifierProduitHeuristique(produitNom)
     const champsMissing = champsManquantsRegistre({
       produit: op.produit,
@@ -476,7 +510,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       doseAppliquee: op.quantite,
       uniteDose: op.unite,
       surfaceM2: null,
-      dar: null,
+      dar: op.dar ?? null,
       localise: Boolean(op.arbre?.nom),
       ammExigee: ammExigee(classificationOp),
     })
@@ -485,8 +519,10 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
     entries.push({
       id: 2_000_000_000 + op.id, // évite la collision d'id avec interventions et observations
       date: jourLigne(op.date),
-      culture: op.cultureRegistre || op.arbre?.nom || 'Non renseigné',
-      espece: op.arbre?.espece || '',
+      culture: (contexte.contexteFige ? contexte.cultureRegistre : op.arbre?.nom) || 'Non renseigné',
+      // Contexte figé : la culture porte déjà l'espèce du jour du traitement ;
+      // celle de la fiche actuelle la contredirait après un changement.
+      espece: contexte.contexteFige ? '' : op.arbre?.espece || '',
       parcelle: 'Non renseigné',
       localisation: '',
       nuisibleCible: null,
@@ -504,7 +540,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       temperatureC: op.temperatureC ?? null,
       ventKmh: op.ventKmh ?? null,
       hygrometriePct: op.hygrometriePct ?? null,
-      dar: null,
+      dar: op.dar ?? null,
       delaiReentree: null,
       zntDistanceM: null,
       zntRespectee: null,
@@ -519,6 +555,8 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       notes: op.notes || null,
       description: op.description || null,
       ...mentionsAnnexe(contexte, {}),
+      ...mentionsSemences({}),
+      aCompleter: [] as string[],
       champsManquants: champsMissing,
       complet: champsMissing.length === 0,
     })

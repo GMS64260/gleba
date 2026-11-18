@@ -3,6 +3,7 @@
  */
 
 import nodemailer from "nodemailer"
+import type { Devise } from "@/lib/territoires"
 import { formatMontantDevise } from "@/lib/format-utils"
 
 /**
@@ -256,6 +257,7 @@ interface CommandeBoutiqueEmailArgs {
   clientEmail: string
   clientTelephone: string | null
   total: number
+  devise?: Devise | null
   lignes: Array<{ nom: string; quantite: number; unite: string; prixUnitaire: number; total: number }>
   modeLivraison: string | null
   dateRetraitSouhaitee: Date | null
@@ -272,8 +274,8 @@ export function commandeBoutiqueEmail(args: CommandeBoutiqueEmailArgs) {
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(l.nom)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${l.quantite} ${escapeHtml(l.unite)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${formatMontantDevise(l.prixUnitaire)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${formatMontantDevise(l.total)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${args.devise == null ? "—" : formatMontantDevise(l.prixUnitaire, args.devise)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${args.devise == null ? "—" : formatMontantDevise(l.total, args.devise)}</td>
       </tr>`
     )
     .join("")
@@ -327,7 +329,7 @@ export function commandeBoutiqueEmail(args: CommandeBoutiqueEmailArgs) {
               <tfoot>
                 <tr style="background:#0d9488;color:white;">
                   <td colspan="3" style="padding:12px;text-align:right;font-size:14px;font-weight:600;">Total commande</td>
-                  <td style="padding:12px;text-align:right;font-size:16px;font-weight:700;">${formatMontantDevise(args.total)}</td>
+                  <td style="padding:12px;text-align:right;font-size:16px;font-weight:700;">${args.devise == null ? "—" : formatMontantDevise(args.total, args.devise)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -587,6 +589,7 @@ interface CommandeClientEmailArgs {
   suiviToken: string
   clientNom: string
   total: number
+  devise?: Devise | null
   lignes: Array<{ nom: string; quantite: number; unite: string; prixUnitaire: number; total: number }>
   modesPaiement: string | null
   modeLivraison: string | null
@@ -613,7 +616,7 @@ export function commandeClientConfirmationEmail(args: CommandeClientEmailArgs) {
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(l.nom)}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${l.quantite} ${escapeHtml(l.unite)}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${formatMontantDevise(l.total)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${args.devise == null ? "—" : formatMontantDevise(l.total, args.devise)}</td>
       </tr>`
     )
     .join("")
@@ -653,7 +656,7 @@ export function commandeClientConfirmationEmail(args: CommandeClientEmailArgs) {
               <tfoot>
                 <tr style="background:#0d9488;color:white;">
                   <td colspan="2" style="padding:12px;text-align:right;font-size:14px;font-weight:600;">À régler</td>
-                  <td style="padding:12px;text-align:right;font-size:16px;font-weight:700;">${formatMontantDevise(args.total)}</td>
+                  <td style="padding:12px;text-align:right;font-size:16px;font-weight:700;">${args.devise == null ? "—" : formatMontantDevise(args.total, args.devise)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -726,6 +729,7 @@ interface CommandeStatutEmailArgs {
   suiviToken: string
   clientNom: string
   statut: string
+  devise?: Devise | null
   total: number
   modesPaiement: string | null
 }
@@ -736,7 +740,7 @@ export function commandeStatutClientEmail(args: CommandeStatutEmailArgs) {
   const suiviUrl = commandeSuiviUrl(args.slug, args.numero, args.suiviToken)
   const rappelPaiement =
     args.statut === "prete"
-      ? `<div style="background:#fffbeb;border-radius:10px;padding:14px 16px;border-left:3px solid #f59e0b;margin:16px 0;"><p style="margin:0;font-size:13px;color:#78350f;line-height:1.6;"><strong>${formatMontantDevise(args.total)}</strong> à régler au retrait${args.modesPaiement ? `, par&nbsp;: ${escapeHtml(args.modesPaiement)}` : ""}.</p></div>`
+      ? `<div style="background:#fffbeb;border-radius:10px;padding:14px 16px;border-left:3px solid #f59e0b;margin:16px 0;"><p style="margin:0;font-size:13px;color:#78350f;line-height:1.6;"><strong>${args.devise == null ? "—" : formatMontantDevise(args.total, args.devise)}</strong> à régler au retrait${args.modesPaiement ? `, par&nbsp;: ${escapeHtml(args.modesPaiement)}` : ""}.</p></div>`
       : ""
 
   return {

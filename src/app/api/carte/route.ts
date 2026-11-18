@@ -1,3 +1,4 @@
+import { filtreArbresVivants } from "@/lib/verger/arbres-vivants"
 /**
  * API Routes pour les Parcelles Géoréférencées
  * GET /api/carte - Liste des parcelles de l'utilisateur
@@ -40,7 +41,7 @@ export async function GET() {
         _count: {
           select: {
             planches: true,
-            arbres: true,
+            arbres: { where: filtreArbresVivants(session!.user.id) },
             lotsAnimaux: true,
           },
         },

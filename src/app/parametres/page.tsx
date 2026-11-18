@@ -2129,7 +2129,12 @@ function ChangePasswordSection() {
         })
         return
       }
-      toast({ title: "Mot de passe modifié ✓" })
+      toast({ title: data.message || "Mot de passe modifié ✓" })
+      // MC3 : session non réémise par le serveur, elle est déjà caduque.
+      if (data.reconnexion) {
+        window.location.href = "/api/session-terminee"
+        return
+      }
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")

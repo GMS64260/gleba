@@ -6,6 +6,8 @@
  * Logique pure : aucun import runtime, sûr pour les tests unitaires.
  */
 
+import type { TotalDevise } from "@/lib/comptabilite/totaux-devise"
+
 import type { ModuleId } from "@/lib/modules"
 import type { EtatRegistre } from "@/components/accueil/PastilleEtat"
 import type { EcheanceElevage } from "@/lib/elevage/agenda.server"
@@ -121,9 +123,14 @@ export interface ReperesAccueil {
     /** Récolte dominante de l'année : la plus grosse unité (kg, tige, pièce…). */
     recoltes: { valeur: number; unite: string; valeurN1: number; ecartN1: number } | null
   } | null
+  /**
+   * Totaux monétaires : `null` dès que deux devises coexistent ; le voisin
+   * `…ParDevise` porte un total par devise (lot devise-totaux-api).
+   */
   comptabilite: {
-    beneficeYtd: number
-    margePercentYtd: number
+    beneficeYtd: number | null
+    beneficeYtdParDevise: TotalDevise[]
+    margePercentYtd: number | null
     nbRevenusNonPayes: number
     devise: "EUR" | "XPF"
   } | null
@@ -157,17 +164,23 @@ export interface RecolteSemaineAccueil {
   unite: string
 }
 
+/** Totaux monétaires : `null` dès que deux devises coexistent ; voir `…ParDevise`. */
 export interface TresorerieAccueil {
   devise: "EUR" | "XPF"
-  revenusYtd: number
-  depensesYtd: number
-  beneficeYtd: number
-  margePercentYtd: number
-  /** Factures émises non encaissées, de la plus ancienne échéance à la plus récente. */
-  creances: { id: number; numero: string; client: string; montant: number; echeance: string | null; retardJours: number }[]
-  totalCreances: number
+  revenusYtd: number | null
+  revenusYtdParDevise: TotalDevise[]
+  depensesYtd: number | null
+  depensesYtdParDevise: TotalDevise[]
+  beneficeYtd: number | null
+  beneficeYtdParDevise: TotalDevise[]
+  margePercentYtd: number | null
+  /** Factures émises non encaissées, de la plus ancienne échéance à la plus récente ; `monnaie` : devise figée. */
+  creances: { id: number; numero: string; client: string; montant: number; monnaie: "EUR" | "XPF" | null; echeance: string | null; retardJours: number }[]
+  totalCreances: number | null
+  totalCreancesParDevise: TotalDevise[]
   nbDepensesNonPayees: number
-  depensesNonPayees: number
+  depensesNonPayees: number | null
+  depensesNonPayeesParDevise: TotalDevise[]
 }
 
 export interface StocksAccueil {
@@ -179,10 +192,12 @@ export interface StocksAccueil {
 
 export interface VentesAccueil {
   devise: "EUR" | "XPF"
-  totalMois: number
+  /** `null` dès que deux devises coexistent ; voir `totalMoisParDevise`. */
+  totalMois: number | null
+  totalMoisParDevise: TotalDevise[]
   nbMois: number
-  /** Ventes manuelles et factures mêlées : id préfixé (« vente-12 », « facture-3 »). */
-  dernieres: { id: string; date: string; description: string; montant: number; client: string | null; paye: boolean }[]
+  /** Ventes manuelles et factures mêlées : id préfixé (« vente-12 », « facture-3 ») ; `monnaie` : devise figée. */
+  dernieres: { id: string; date: string; description: string; montant: number; monnaie: "EUR" | "XPF" | null; client: string | null; paye: boolean }[]
 }
 
 export interface JournalAccueil {

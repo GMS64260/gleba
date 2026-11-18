@@ -6,9 +6,11 @@
  */
 
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
 import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
+import { LIBELLES_NATURE_PRODUIT, NATURES_PRODUIT_DECLAREES } from "@/lib/phyto/delai-avant-recolte"
 import { getAvailableYears } from "@/components/year-selector"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -31,12 +33,15 @@ import { AppHeader } from "@/components/shell/AppHeader"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { libelleCulture } from "@/lib/cultures/label"
+import { CHAMPS_SEMENCES_VIDES, ErreurChampIntervention, UtilisationPhytoFields, type ErreurSaisieIntervention } from "@/components/phyto/UtilisationPhytoFields"
+import { refusUtilisation, UTILISATION_SEMIS_TRAITE, UTILISATION_TRAITEMENT_SEMENCES } from "@/lib/tracabilite/utilisation-semences"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { DarField } from "@/components/phyto/DarField"
 import { MotifRectificationField } from "@/components/phyto/MotifRectificationField"
 import { interventionAuRegistre } from "@/lib/tracabilite/historique-phyto"
-import { todayLocalISO } from '@/lib/format-utils'
+import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { TYPES_INTERVENTION, libelleTypeIntervention } from "@/lib/interventions/types"
+import type { StatsInterventions } from "@/lib/interventions/stats"
 import {
   libellesEmplacement,
   termesRecherche,
@@ -80,6 +85,8 @@ interface Intervention {
   datePrevue: string | null
   fait: boolean
   produitPhyto: string | null
+  /** Nature déclarée du produit saisi librement (CR-DAR-01). */
+  natureProduit?: string | null
   zntDistanceM?: number | null
   zntRespectee?: boolean | null
   numAMM: string | null
@@ -88,6 +95,8 @@ interface Intervention {
   uniteDose: string | null
   surfaceTraitee: number | null
   dar: number | null
+  /** Délai ancien recopié du catalogue : indication, pas un délai saisi. */
+  darIndicatif?: boolean
   delaiReentree: number | null
   conditionsMeteo: string | null
   intrantNom: string | null
@@ -96,6 +105,17 @@ interface Intervention {
   intrantCout: number | null
   intrantNumLot: string | null
   justification: string | null
+  utilisationPhyto?: string | null
+  substancesActives?: string | null
+  quantiteSemences?: number | null
+  uniteQuantiteSemences?: string | null
+  densiteSemis?: number | null
+  uniteDensiteSemis?: string | null
+  gpsLat?: number | null
+  gpsLng?: number | null
+  rpgIlot?: string | null
+  rpgParcelle?: string | null
+  rpgCommuneInsee?: string | null
   // Arrêté du 24 décembre 2025, annexe I : mentions « le cas échéant ».
   stadeBBCH?: string | null
   heureDebut?: string | null
@@ -111,13 +131,6 @@ interface Intervention {
   irrigationId?: number
   cultureNom: string | null
   plancheNom: string | null
-}
-
-interface Stats {
-  total: number
-  heuresTravaillees: number
-  coutTotal: number
-  planifiees: number
 }
 
 /**
@@ -218,10 +231,6 @@ function urlSansOuverture(): string {
 // Helper functions
 // ============================================================
 
-function formatEuro(value: number) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(value)
-}
-
 /**
  * Jour AAAA-MM-JJ d'une date d'intervention : une date de calendrier (minuit
  * UTC, formulaire) garde son jour ; un horodatage (assistant, ancien « Noter »)
@@ -251,11 +260,13 @@ function formatDuration(minutes: number | null) {
 // ============================================================
 
 export default function InterventionsPage() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   const { data: session } = useSession()
   const { toast } = useToast()
   // Data state
   const [interventions, setInterventions] = React.useState<Intervention[]>([])
-  const [stats, setStats] = React.useState<Stats | null>(null)
+  const [stats, setStats] = React.useState<StatsInterventions | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [cultures, setCultures] = React.useState<Culture[]>([])
   const [planches, setPlanches] = React.useState<Planche[]>([])
@@ -303,13 +314,16 @@ export default function InterventionsPage() {
     coutMainOeuvre: "",
     fait: true,
     // Phyto
+    ...CHAMPS_SEMENCES_VIDES,
     produitPhyto: "",
+    natureProduit: "",
     numAMM: "",
     cibleTraitement: "",
     doseAppliquee: "",
     uniteDose: "L/ha",
     surfaceTraitee: "",
     dar: "",
+    darConfirme: false,
     motif: "",
     conditionsMeteo: "",
     zntDistanceM: null as number | null,
@@ -332,6 +346,12 @@ export default function InterventionsPage() {
     justification: "",
   }
   const [form, setForm] = React.useState(emptyForm)
+  const [erreurSaisie, setErreurSaisie] = React.useState<ErreurSaisieIntervention>(null)
+  const erreurChamp = (champ: string) => <ErreurChampIntervention champ={champ} erreur={erreurSaisie} />
+  React.useEffect(() => { setErreurSaisie(null) }, [form, dialogOpen])
+  React.useEffect(() => {
+    if (erreurSaisie) document.getElementsByName(erreurSaisie.champ)[0]?.focus()
+  }, [erreurSaisie])
   const rectificationPhyto = editingIntervention !== null && interventionAuRegistre(editingIntervention)
 
   // PROMPT 11 LOT D — Si un param `?prefill=` est présent (depuis le bouton
@@ -474,6 +494,17 @@ export default function InterventionsPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
+    setErreurSaisie(null)
+    if (form.utilisationPhyto === UTILISATION_SEMIS_TRAITE) {
+      if (!(Number(form.densiteSemis.replace(",", ".")) > 0)) {
+        setErreurSaisie({ champ: "densiteSemis", message: "Renseignez une densité de semis supérieure à zéro." })
+        return
+      }
+      if (!form.uniteDensiteSemis.trim()) {
+        setErreurSaisie({ champ: "uniteDensiteSemis", message: "Renseignez l’unité de la densité de semis." })
+        return
+      }
+    }
     if (rectificationPhyto && !form.motif.trim()) {
       toast({ title: "Renseignez le motif de la rectification", variant: "destructive" })
       return
@@ -513,14 +544,34 @@ export default function InterventionsPage() {
       coutMainOeuvre: coutMainOeuvre || null,
       coutTotal: coutTotal || null,
       fait: form.fait,
-      // Phyto
+      // Phyto : les chaînes numériques sont normalisées par le schéma de l’API.
+      utilisationPhyto: form.utilisationPhyto || null,
+      // Hors C/D, le champ est masqué : un PATCH conserve la substance
+      // historique, également utilisée par les traitements de surface.
+      ...(form.utilisationPhyto
+        ? { substancesActives: form.substancesActives }
+        : editingIntervention ? {} : { substancesActives: null }),
+      quantiteSemences: form.utilisationPhyto === UTILISATION_TRAITEMENT_SEMENCES ? form.quantiteSemences : null,
+      uniteQuantiteSemences: form.utilisationPhyto === UTILISATION_TRAITEMENT_SEMENCES ? form.uniteQuantiteSemences : null,
+      densiteSemis: form.utilisationPhyto === UTILISATION_SEMIS_TRAITE ? form.densiteSemis : null,
+      uniteDensiteSemis: form.utilisationPhyto === UTILISATION_SEMIS_TRAITE ? form.uniteDensiteSemis : null,
+      gpsLat: form.utilisationPhyto ? form.gpsLat : null,
+      gpsLng: form.utilisationPhyto ? form.gpsLng : null,
+      rpgIlot: form.utilisationPhyto === UTILISATION_SEMIS_TRAITE ? form.rpgIlot : null,
+      rpgParcelle: form.utilisationPhyto === UTILISATION_SEMIS_TRAITE ? form.rpgParcelle : null,
+      rpgCommuneInsee: form.utilisationPhyto === UTILISATION_SEMIS_TRAITE ? form.rpgCommuneInsee : null,
       produitPhyto: form.produitPhyto,
+      // La nature reste déclarable pour les semences traitées (C/D).
+      natureProduit: form.type === "traitement_phyto" || form.utilisationPhyto ? form.natureProduit : "",
       numAMM: form.numAMM,
       cibleTraitement: form.cibleTraitement,
       doseAppliquee: form.doseAppliquee,
       uniteDose: form.uniteDose,
       surfaceTraitee: form.surfaceTraitee,
       dar: form.dar.trim() === "" ? null : Number(form.dar),
+      // Contre-revue ADV221 : le même délai renvoyé reste une indication du
+      // catalogue, sauf confirmation expresse de l'exploitant.
+      ...(editingIntervention?.darIndicatif && form.darConfirme ? { darConfirme: true } : {}),
       ...(rectificationPhyto ? { motif: form.motif.trim() } : {}),
       conditionsMeteo: form.conditionsMeteo,
       zntDistanceM: form.zntDistanceM,
@@ -575,6 +626,11 @@ export default function InterventionsPage() {
         // QA cmsno1hct — le corps d'erreur du serveur (validation zod…) était
         // jeté : toute 400 était indiscernable d'une panne réseau.
         const d = await res.json().catch(() => ({}))
+        if (res.status === 400 && typeof d.champ === "string") {
+          setErreurSaisie({ champ: d.champ, message: d.error || "Vérifiez ce champ." })
+          toast({ variant: "destructive", title: "Erreur", description: d.error || "Vérifiez le champ indiqué." })
+          return
+        }
         throw new Error(d.error ?? `Erreur ${res.status}`)
       }
     } catch (e) {
@@ -698,13 +754,26 @@ export default function InterventionsPage() {
       nbPersonnes: (intervention.nbPersonnes || 1).toString(),
       coutMainOeuvre: intervention.coutMainOeuvre?.toString() || "",
       fait: intervention.fait,
+      utilisationPhyto: intervention.utilisationPhyto || "",
+      substancesActives: intervention.substancesActives || "",
+      quantiteSemences: intervention.quantiteSemences?.toString() ?? "",
+      uniteQuantiteSemences: intervention.uniteQuantiteSemences || "",
+      densiteSemis: intervention.densiteSemis?.toString() ?? "",
+      uniteDensiteSemis: intervention.uniteDensiteSemis || "",
+      gpsLat: intervention.gpsLat?.toString() ?? "",
+      gpsLng: intervention.gpsLng?.toString() ?? "",
+      rpgIlot: intervention.rpgIlot || "",
+      rpgParcelle: intervention.rpgParcelle || "",
+      rpgCommuneInsee: intervention.rpgCommuneInsee || "",
       produitPhyto: intervention.produitPhyto || "",
+      natureProduit: intervention.natureProduit || "",
       numAMM: intervention.numAMM || "",
       cibleTraitement: intervention.cibleTraitement || "",
       doseAppliquee: intervention.doseAppliquee?.toString() || "",
       uniteDose: intervention.uniteDose || "L/ha",
       surfaceTraitee: intervention.surfaceTraitee?.toString() || "",
       dar: intervention.dar?.toString() || "",
+      darConfirme: false,
       motif: "",
       conditionsMeteo: intervention.conditionsMeteo || "",
       zntDistanceM: intervention.zntDistanceM ?? null,
@@ -848,7 +917,7 @@ export default function InterventionsPage() {
                     {editingIntervention ? "Modifiez les champs puis enregistrez." : "Remplissez les informations de l'intervention."}
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleCreate} className="space-y-4">
+                <form onSubmit={handleCreate} className="min-w-0 space-y-4 [&_.grid>div]:min-w-0 [&_[role=radiogroup]]:flex-wrap">
                   {/* PROMPT 11 LOT D — Bannière de traçabilité si l'intervention
                       est déclenchée depuis une observation santé verger. */}
                   {form.observationLieeId && (
@@ -865,6 +934,9 @@ export default function InterventionsPage() {
                       <Label>Date</Label>
                       <Input
                         type="date"
+                        name="date"
+                        aria-invalid={erreurSaisie?.champ === "date" || undefined}
+                        aria-describedby={erreurSaisie?.champ === "date" ? "erreur-intervention-date" : undefined}
                         value={form.date}
                         // Une date future se planifie : « Réalisée » se décoche (QA cmv3jatw8).
                         onChange={(e) =>
@@ -872,15 +944,21 @@ export default function InterventionsPage() {
                         }
                         required
                       />
+                      {erreurChamp("date")}
                     </div>
                     <div>
-                      <Label>Type</Label>
+                      <Label htmlFor="type-intervention">Type</Label>
                       <select
+                        id="type-intervention"
+                        name="type"
+                        aria-invalid={erreurSaisie?.champ === "type" || undefined}
+                        aria-describedby={erreurSaisie?.champ === "type" ? "erreur-intervention-type" : undefined}
                         value={form.type}
                         onChange={(e) =>
                           setForm({
                             ...form,
                             type: e.target.value,
+                            utilisationPhyto: refusUtilisation(e.target.value, form.utilisationPhyto || null) ? "" : form.utilisationPhyto,
                             // Un arrosage se compte en litres, pas en « kg » (unité par défaut).
                             ...(e.target.value === "arrosage" && form.intrantUnite === "kg" && !form.intrantQuantite
                               ? { intrantUnite: "L", intrantNom: form.intrantNom || "Eau" }
@@ -896,6 +974,7 @@ export default function InterventionsPage() {
                           </option>
                         ))}
                       </select>
+                      {erreurChamp("type")}
                     </div>
                     <div className="flex items-end gap-2">
                       <label className="flex items-center gap-2 cursor-pointer h-9">
@@ -926,6 +1005,9 @@ export default function InterventionsPage() {
                     <div>
                       <Label>Culture</Label>
                       <select
+                        name="cultureId"
+                        aria-invalid={erreurSaisie?.champ === "cultureId" || undefined}
+                        aria-describedby={erreurSaisie?.champ === "cultureId" ? "erreur-intervention-cultureId" : undefined}
                         value={form.cultureId}
                         onChange={(e) => setForm({ ...form, cultureId: e.target.value })}
                         className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -937,10 +1019,14 @@ export default function InterventionsPage() {
                           </option>
                         ))}
                       </select>
+                      {erreurChamp("cultureId")}
                     </div>
                     <div>
                       <Label>Planche</Label>
                       <select
+                        name="plancheId"
+                        aria-invalid={erreurSaisie?.champ === "plancheId" || undefined}
+                        aria-describedby={erreurSaisie?.champ === "plancheId" ? "erreur-intervention-plancheId" : undefined}
                         value={form.plancheId}
                         onChange={(e) => setForm({ ...form, plancheId: e.target.value })}
                         className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -952,6 +1038,7 @@ export default function InterventionsPage() {
                           </option>
                         ))}
                       </select>
+                      {erreurChamp("plancheId")}
                     </div>
                   </div>
 
@@ -959,11 +1046,15 @@ export default function InterventionsPage() {
                   <div>
                     <Label>Description</Label>
                     <Textarea
+                      name="description"
+                      aria-invalid={erreurSaisie?.champ === "description" || undefined}
+                      aria-describedby={erreurSaisie?.champ === "description" ? "erreur-intervention-description" : undefined}
                       value={form.description}
                       onChange={(e) => setForm({ ...form, description: e.target.value })}
                       placeholder="Détails de l'intervention..."
                       rows={2}
                     />
+                    {erreurChamp("description")}
                   </div>
 
                   {/* Row 3: Duration, Nb personnes, Cost */}
@@ -973,10 +1064,14 @@ export default function InterventionsPage() {
                       <Input
                         type="number"
                         min="0"
+                        name="dureeHeures"
+                        aria-invalid={erreurSaisie?.champ === "dureeHeures" || undefined}
+                        aria-describedby={erreurSaisie?.champ === "dureeHeures" ? "erreur-intervention-dureeHeures" : undefined}
                         value={form.dureeHeures}
                         onChange={(e) => setForm({ ...form, dureeHeures: e.target.value })}
                         placeholder="0"
                       />
+                      {erreurChamp("dureeHeures")}
                     </div>
                     <div>
                       <Label>Minutes</Label>
@@ -984,35 +1079,61 @@ export default function InterventionsPage() {
                         type="number"
                         min="0"
                         max="59"
+                        name="dureeMinutes"
+                        aria-invalid={erreurSaisie?.champ === "dureeMinutes" || undefined}
+                        aria-describedby={erreurSaisie?.champ === "dureeMinutes" ? "erreur-intervention-dureeMinutes" : undefined}
                         value={form.dureeMinutesForm}
                         onChange={(e) => setForm({ ...form, dureeMinutesForm: e.target.value })}
                         placeholder="0"
                       />
+                      {erreurChamp("dureeMinutes")}
                     </div>
                     <div>
                       <Label>Nb personnes</Label>
                       <Input
                         type="number"
                         min="1"
+                        name="nbPersonnes"
+                        aria-invalid={erreurSaisie?.champ === "nbPersonnes" || undefined}
+                        aria-describedby={erreurSaisie?.champ === "nbPersonnes" ? "erreur-intervention-nbPersonnes" : undefined}
                         value={form.nbPersonnes}
                         onChange={(e) => setForm({ ...form, nbPersonnes: e.target.value })}
                       />
+                      {erreurChamp("nbPersonnes")}
                     </div>
                     <div>
-                      <Label>Coût main d&apos;œuvre (€)</Label>
+                      <Label>Coût main d&apos;œuvre ({devise ?? "…"})</Label>
                       <Input
                         type="number"
                         step="0.01"
                         min="0"
+                        name="coutMainOeuvre"
+                        aria-invalid={erreurSaisie?.champ === "coutMainOeuvre" || undefined}
+                        aria-describedby={erreurSaisie?.champ === "coutMainOeuvre" ? "erreur-intervention-coutMainOeuvre" : undefined}
                         value={form.coutMainOeuvre}
                         onChange={(e) => setForm({ ...form, coutMainOeuvre: e.target.value })}
                         placeholder="0.00"
                       />
+                      {erreurChamp("coutMainOeuvre")}
                     </div>
                   </div>
 
+                  {["traitement_phyto", "semis", "plantation"].includes(form.type) && (
+                    <UtilisationPhytoFields
+                      value={form}
+                      typeIntervention={form.type}
+                      erreur={erreurSaisie}
+                      onChange={(next) => setForm({
+                        ...form,
+                        ...next,
+                        ...(next.utilisationPhyto === UTILISATION_TRAITEMENT_SEMENCES ? { type: "traitement_phyto" } : {}),
+                        ...(next.utilisationPhyto === UTILISATION_SEMIS_TRAITE ? { type: form.type === "plantation" ? "plantation" : "semis" } : {}),
+                      })}
+                    />
+                  )}
+
                   {/* Phyto section - conditional */}
-                  {form.type === "traitement_phyto" && (
+                  {(form.type === "traitement_phyto" || form.utilisationPhyto !== "") && (
                     <div className="border rounded-lg p-4 bg-red-50/50 space-y-4">
                       <h3 className="text-sm font-semibold text-red-800 flex items-center gap-2">
                         <ClipboardList className="h-4 w-4" />
@@ -1022,28 +1143,76 @@ export default function InterventionsPage() {
                         <div>
                           <Label>Produit</Label>
                           <Input
+                            name="produitPhyto"
+                            aria-invalid={erreurSaisie?.champ === "produitPhyto" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "produitPhyto" ? "erreur-intervention-produitPhyto" : undefined}
                             value={form.produitPhyto}
                             onChange={(e) => setForm({ ...form, produitPhyto: e.target.value })}
                             placeholder="Nom commercial"
                           />
+                          {erreurChamp("produitPhyto")}
                         </div>
                         <div>
                           <Label>Num AMM</Label>
                           <Input
+                            name="numAMM"
+                            aria-invalid={erreurSaisie?.champ === "numAMM" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "numAMM" ? "erreur-intervention-numAMM" : undefined}
                             value={form.numAMM}
                             onChange={(e) => setForm({ ...form, numAMM: e.target.value })}
                             placeholder="Autorisation de mise sur le marché"
                           />
+                          {erreurChamp("numAMM")}
                         </div>
+                      </div>
+                      {/* Contre-revue CR-DAR-01 : la nature se DÉCLARE (le nom
+                          libre ne classe rien) et décide du contrôle du délai
+                          avant récolte à la saisie d'une récolte. */}
+                      <div>
+                        <Label htmlFor="nature-produit">Nature du produit</Label>
+                        <select
+                          id="nature-produit"
+                          name="natureProduit"
+                          aria-invalid={erreurSaisie?.champ === "natureProduit" || undefined}
+                          aria-describedby={erreurSaisie?.champ === "natureProduit" ? "erreur-intervention-natureProduit" : undefined}
+                          value={form.natureProduit}
+                          onChange={(e) => setForm({ ...form, natureProduit: e.target.value })}
+                          className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          <option value="">Non précisée (traitée comme un produit avec AMM)</option>
+                          {NATURES_PRODUIT_DECLAREES.map((nature) => (
+                            <option key={nature} value={nature}>
+                              {LIBELLES_NATURE_PRODUIT[nature]}
+                            </option>
+                          ))}
+                        </select>
+                        {erreurChamp("natureProduit")}
+                        {form.natureProduit === "substance_base" && (
+                          <p className="mt-1 text-xs text-slate-600">
+                            Une substance de base s’emploie dans les conditions de son approbation : renseignez le
+                            délai avant récolte qu’elles prévoient pour cet usage, ou 0 s’il n’y en a pas. Sans délai
+                            saisi, la récolte suivante rappellera de les vérifier.
+                          </p>
+                        )}
+                        {form.natureProduit === "biostimulant" && (
+                          <p className="mt-1 text-xs text-slate-600">
+                            Un biostimulant n’est pas un produit phytopharmaceutique : aucun délai avant récolte ne
+                            s’applique, sauf si vous en saisissez un.
+                          </p>
+                        )}
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <Label>Cible</Label>
                           <Input
+                            name="cibleTraitement"
+                            aria-invalid={erreurSaisie?.champ === "cibleTraitement" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "cibleTraitement" ? "erreur-intervention-cibleTraitement" : undefined}
                             value={form.cibleTraitement}
                             onChange={(e) => setForm({ ...form, cibleTraitement: e.target.value })}
                             placeholder="Ravageur / maladie"
                           />
+                          {erreurChamp("cibleTraitement")}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
@@ -1051,14 +1220,21 @@ export default function InterventionsPage() {
                             <Input
                               type="number"
                               step="0.01"
+                              name="doseAppliquee"
+                              aria-invalid={erreurSaisie?.champ === "doseAppliquee" || undefined}
+                              aria-describedby={erreurSaisie?.champ === "doseAppliquee" ? "erreur-intervention-doseAppliquee" : undefined}
                               value={form.doseAppliquee}
                               onChange={(e) => setForm({ ...form, doseAppliquee: e.target.value })}
                               placeholder="0"
                             />
+                            {erreurChamp("doseAppliquee")}
                           </div>
                           <div>
                             <Label>Unité</Label>
                             <select
+                              name="uniteDose"
+                              aria-invalid={erreurSaisie?.champ === "uniteDose" || undefined}
+                              aria-describedby={erreurSaisie?.champ === "uniteDose" ? "erreur-intervention-uniteDose" : undefined}
                               value={form.uniteDose}
                               onChange={(e) => setForm({ ...form, uniteDose: e.target.value })}
                               className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -1068,6 +1244,7 @@ export default function InterventionsPage() {
                               <option value="g/L">g/L</option>
                               <option value="mL/L">mL/L</option>
                             </select>
+                            {erreurChamp("uniteDose")}
                           </div>
                         </div>
                       </div>
@@ -1077,19 +1254,47 @@ export default function InterventionsPage() {
                           <Input
                             type="number"
                             step="0.01"
+                            name="surfaceTraitee"
+                            aria-invalid={erreurSaisie?.champ === "surfaceTraitee" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "surfaceTraitee" ? "erreur-intervention-surfaceTraitee" : undefined}
                             value={form.surfaceTraitee}
                             onChange={(e) => setForm({ ...form, surfaceTraitee: e.target.value })}
                             placeholder="0"
                           />
+                          {erreurChamp("surfaceTraitee")}
                         </div>
-                        <DarField value={form.dar} onChange={(dar) => setForm({ ...form, dar })} />
+                        <div>
+                          <DarField value={form.dar} onChange={(dar) => setForm({ ...form, dar })} />
+                          {erreurChamp("dar")}
+                          {editingIntervention?.darIndicatif && form.dar === (editingIntervention.dar?.toString() ?? "") && form.dar !== "" && (
+                            <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                              <p>
+                                Ce délai a été recopié du catalogue Gleba : c’est un ordre de grandeur, il ne bloque pas la vente.
+                                Le délai qui s’impose est celui de l’étiquette (AMM) du produit.
+                              </p>
+                              <label className="mt-2 flex cursor-pointer items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={form.darConfirme}
+                                  onChange={(e) => setForm({ ...form, darConfirme: e.target.checked })}
+                                  className="rounded"
+                                />
+                                J’ai vérifié : ce délai est celui de l’étiquette du produit
+                              </label>
+                            </div>
+                          )}
+                        </div>
                         <div>
                           <Label>Conditions météo</Label>
                           <Input
+                            name="conditionsMeteo"
+                            aria-invalid={erreurSaisie?.champ === "conditionsMeteo" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "conditionsMeteo" ? "erreur-intervention-conditionsMeteo" : undefined}
                             value={form.conditionsMeteo}
                             onChange={(e) => setForm({ ...form, conditionsMeteo: e.target.value })}
                             placeholder="Soleil, vent faible..."
                           />
+                          {erreurChamp("conditionsMeteo")}
                         </div>
                       </div>
                       {/* QA 2026-07-30 — La ZNT (distance aux points d'eau) est
@@ -1103,6 +1308,8 @@ export default function InterventionsPage() {
                         respectee={form.zntRespectee}
                         onChange={(next) => setForm({ ...form, zntDistanceM: next.distanceM, zntRespectee: next.respectee })}
                       />
+                      {erreurChamp("zntDistanceM")}
+                      {erreurChamp("zntRespectee")}
                       {/* Arrêté du 24 décembre 2025 (registre d'utilisation des
                           produits phytopharmaceutiques), annexe I : mentions à
                           renseigner « le cas échéant ». */}
@@ -1111,35 +1318,47 @@ export default function InterventionsPage() {
                           À renseigner si l&apos;AMM ou la réglementation le prévoit (stade, horaires),
                           en cas de rentrée anticipée sur la parcelle, ou pour une prestation de service.
                         </p>
-                        <div className="grid gap-4 grid-cols-3">
+                        <div className="grid gap-4 sm:grid-cols-3">
                           <div>
                             <Label htmlFor="phyto-bbch">Stade BBCH</Label>
                             <Input
                               id="phyto-bbch"
                               inputMode="numeric"
                               maxLength={2}
+                              name="stadeBBCH"
+                              aria-invalid={erreurSaisie?.champ === "stadeBBCH" || undefined}
+                              aria-describedby={erreurSaisie?.champ === "stadeBBCH" ? "erreur-intervention-stadeBBCH" : undefined}
                               value={form.stadeBBCH}
                               onChange={(e) => setForm({ ...form, stadeBBCH: e.target.value.replace(/\D/g, "") })}
                               placeholder="65"
                             />
+                            {erreurChamp("stadeBBCH")}
                           </div>
                           <div>
                             <Label htmlFor="phyto-debut">Début</Label>
                             <Input
                               id="phyto-debut"
                               type="time"
+                              name="heureDebut"
+                              aria-invalid={erreurSaisie?.champ === "heureDebut" || undefined}
+                              aria-describedby={erreurSaisie?.champ === "heureDebut" ? "erreur-intervention-heureDebut" : undefined}
                               value={form.heureDebut}
                               onChange={(e) => setForm({ ...form, heureDebut: e.target.value })}
                             />
+                            {erreurChamp("heureDebut")}
                           </div>
                           <div>
                             <Label htmlFor="phyto-fin">Fin</Label>
                             <Input
                               id="phyto-fin"
                               type="time"
+                              name="heureFin"
+                              aria-invalid={erreurSaisie?.champ === "heureFin" || undefined}
+                              aria-describedby={erreurSaisie?.champ === "heureFin" ? "erreur-intervention-heureFin" : undefined}
                               value={form.heureFin}
                               onChange={(e) => setForm({ ...form, heureFin: e.target.value })}
                             />
+                            {erreurChamp("heureFin")}
                           </div>
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -1148,19 +1367,27 @@ export default function InterventionsPage() {
                             <Input
                               id="phyto-siret-beneficiaire"
                               inputMode="numeric"
+                              name="siretBeneficiaire"
+                              aria-invalid={erreurSaisie?.champ === "siretBeneficiaire" || undefined}
+                              aria-describedby={erreurSaisie?.champ === "siretBeneficiaire" ? "erreur-intervention-siretBeneficiaire" : undefined}
                               value={form.siretBeneficiaire}
                               onChange={(e) => setForm({ ...form, siretBeneficiaire: e.target.value })}
                               placeholder="14 chiffres"
                             />
+                            {erreurChamp("siretBeneficiaire")}
                           </div>
                           <div>
                             <Label htmlFor="phyto-rentree">Rentrée anticipée</Label>
                             <Input
                               id="phyto-rentree"
+                              name="rentreeAnticipee"
+                              aria-invalid={erreurSaisie?.champ === "rentreeAnticipee" || undefined}
+                              aria-describedby={erreurSaisie?.champ === "rentreeAnticipee" ? "erreur-intervention-rentreeAnticipee" : undefined}
                               value={form.rentreeAnticipee}
                               onChange={(e) => setForm({ ...form, rentreeAnticipee: e.target.value })}
                               placeholder="Moment, lieu, motif, mesures de protection"
                             />
+                            {erreurChamp("rentreeAnticipee")}
                           </div>
                         </div>
                       </div>
@@ -1168,11 +1395,15 @@ export default function InterventionsPage() {
                       <div>
                         <Label>Justification du traitement</Label>
                         <Textarea
+                          name="justification"
+                          aria-invalid={erreurSaisie?.champ === "justification" || undefined}
+                          aria-describedby={erreurSaisie?.champ === "justification" ? "erreur-intervention-justification" : undefined}
                           value={form.justification}
                           onChange={(e) => setForm({ ...form, justification: e.target.value })}
                           placeholder="Ex: Seuil PBI franchi (5 captures/piège/semaine), BSV régional du 12/05, observation #42"
                           rows={2}
                         />
+                        {erreurChamp("justification")}
                       </div>
                     </div>
                   )}
@@ -1184,10 +1415,14 @@ export default function InterventionsPage() {
                       <div>
                         <Label>Nom</Label>
                         <Input
+                          name="intrantNom"
+                          aria-invalid={erreurSaisie?.champ === "intrantNom" || undefined}
+                          aria-describedby={erreurSaisie?.champ === "intrantNom" ? "erreur-intervention-intrantNom" : undefined}
                           value={form.intrantNom}
                           onChange={(e) => setForm({ ...form, intrantNom: e.target.value })}
                           placeholder="Ex: Compost, paillage BRF..."
                         />
+                        {erreurChamp("intrantNom")}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -1195,14 +1430,21 @@ export default function InterventionsPage() {
                           <Input
                             type="number"
                             step="0.01"
+                            name="intrantQuantite"
+                            aria-invalid={erreurSaisie?.champ === "intrantQuantite" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "intrantQuantite" ? "erreur-intervention-intrantQuantite" : undefined}
                             value={form.intrantQuantite}
                             onChange={(e) => setForm({ ...form, intrantQuantite: e.target.value })}
                             placeholder="0"
                           />
+                          {erreurChamp("intrantQuantite")}
                         </div>
                         <div>
                           <Label>Unité</Label>
                           <select
+                            name="intrantUnite"
+                            aria-invalid={erreurSaisie?.champ === "intrantUnite" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "intrantUnite" ? "erreur-intervention-intrantUnite" : undefined}
                             value={form.intrantUnite}
                             onChange={(e) => setForm({ ...form, intrantUnite: e.target.value })}
                             className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -1214,27 +1456,36 @@ export default function InterventionsPage() {
                             <option value="m3">m³</option>
                             <option value="T">T</option>
                           </select>
+                          {erreurChamp("intrantUnite")}
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label>Coût (€)</Label>
+                          <Label>Coût ({devise ?? "…"})</Label>
                           <Input
                             type="number"
                             step="0.01"
+                            name="intrantCout"
+                            aria-invalid={erreurSaisie?.champ === "intrantCout" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "intrantCout" ? "erreur-intervention-intrantCout" : undefined}
                             value={form.intrantCout}
                             onChange={(e) => setForm({ ...form, intrantCout: e.target.value })}
                             placeholder="0.00"
                           />
+                          {erreurChamp("intrantCout")}
                         </div>
-                        <div>
-                          <Label>Num lot</Label>
+                        {!form.utilisationPhyto && <div>
+                          <Label>N° de lot</Label>
                           <Input
+                            name="intrantNumLot"
+                            aria-invalid={erreurSaisie?.champ === "intrantNumLot" || undefined}
+                            aria-describedby={erreurSaisie?.champ === "intrantNumLot" ? "erreur-intervention-intrantNumLot" : undefined}
                             value={form.intrantNumLot}
                             onChange={(e) => setForm({ ...form, intrantNumLot: e.target.value })}
                             placeholder="Traçabilité"
                           />
-                        </div>
+                          {erreurChamp("intrantNumLot")}
+                        </div>}
                       </div>
                     </div>
                   </div>
@@ -1243,11 +1494,15 @@ export default function InterventionsPage() {
                   <div>
                     <Label>Notes</Label>
                     <Textarea
+                      name="notes"
+                      aria-invalid={erreurSaisie?.champ === "notes" || undefined}
+                      aria-describedby={erreurSaisie?.champ === "notes" ? "erreur-intervention-notes" : undefined}
                       value={form.notes}
                       onChange={(e) => setForm({ ...form, notes: e.target.value })}
                       placeholder="Remarques supplémentaires…"
                       rows={2}
                     />
+                    {erreurChamp("notes")}
                   </div>
 
                   {/* Submit */}
@@ -1328,11 +1583,11 @@ export default function InterventionsPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Euro className="h-4 w-4" />
-                    Coût total
+                    Coût réalisé
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-2xl font-bold text-orange-700">{formatEuro(stats.coutTotal)}</p>
+                  <p className="text-2xl font-bold text-orange-700">{formatMontant(stats.coutTotal)}</p>
                 </CardContent>
               </Card>
               <Card>
@@ -1344,6 +1599,9 @@ export default function InterventionsPage() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-2xl font-bold text-orange-700">{stats.planifiees}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Heures planifiées : <span className="font-semibold text-orange-700">{stats.heuresPlanifiees.toFixed(1)}h</span>
+                  </p>
                 </CardContent>
               </Card>
             </>
@@ -1525,7 +1783,7 @@ export default function InterventionsPage() {
                             </TableCell>
                             <TableCell className="text-right whitespace-nowrap">
                               {intervention.coutTotal
-                                ? formatEuro(intervention.coutTotal)
+                                ? formatMontant(intervention.coutTotal)
                                 : "-"}
                             </TableCell>
                             <TableCell>
@@ -1623,7 +1881,7 @@ export default function InterventionsPage() {
                                     {intervention.coutMainOeuvre !== null && (
                                       <p>
                                         <span className="text-muted-foreground">Coût main d&apos;œuvre :</span>{" "}
-                                        {formatEuro(intervention.coutMainOeuvre)}
+                                        {formatMontant(intervention.coutMainOeuvre)}
                                       </p>
                                     )}
                                     {intervention.datePrevue && (
@@ -1657,7 +1915,7 @@ export default function InterventionsPage() {
                                       {intervention.intrantCout !== null && (
                                         <p>
                                           <span className="text-muted-foreground">Coût :</span>{" "}
-                                          {formatEuro(intervention.intrantCout)}
+                                          {formatMontant(intervention.intrantCout)}
                                         </p>
                                       )}
                                       {intervention.intrantNumLot && (
@@ -1682,6 +1940,12 @@ export default function InterventionsPage() {
                                         <span className="text-muted-foreground">Produit :</span>{" "}
                                         {intervention.produitPhyto}
                                       </p>
+                                      {intervention.natureProduit && intervention.natureProduit in LIBELLES_NATURE_PRODUIT && (
+                                        <p>
+                                          <span className="text-muted-foreground">Nature :</span>{" "}
+                                          {LIBELLES_NATURE_PRODUIT[intervention.natureProduit as keyof typeof LIBELLES_NATURE_PRODUIT]}
+                                        </p>
+                                      )}
                                       {intervention.numAMM && (
                                         <p>
                                           <span className="text-muted-foreground">AMM :</span>{" "}

@@ -25,7 +25,14 @@ import { formatNombre } from "@/lib/format-utils"
 import { libelleIrrigation } from "@/lib/planches/libelle-irrigation"
 import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
 import { aideQuantite, detailArrosageNote, lireLitres, litresConseilles } from "@/lib/irrigation/quantite-versee"
-import { afficheMesuresMeteo, bandeauMeteoIndisponible, type CauseSansMeteo } from "@/lib/irrigation/meteo-indisponible"
+import {
+  afficheMesuresMeteo,
+  bandeauMeteoIndisponible,
+  etatNappeIndisponible,
+  phraseNappeIndisponible,
+  type CauseSansMeteo,
+  type NappeIndisponible,
+} from "@/lib/irrigation/meteo-indisponible"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 
 // ============================================================
@@ -122,9 +129,13 @@ function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: Irrigati
   const [showAll, setShowAll] = React.useState(false)
   const [nappeData, setNappeData] = React.useState<NappeData | null>(null)
   // Production 2026-09-04 (exploitation réelle, bien localisée) : les 10 stations Hub'Eau trouvées
-  // dans les 50 km avaient toutes des relevés antérieurs à 2005 ; l'API rend
-  // 404 et le bloc nappe disparaissait sans un mot. On le dit, sobrement.
-  const [nappeIndisponible, setNappeIndisponible] = React.useState(false)
+  // autour de la parcelle avaient toutes des relevés antérieurs à 2005 ; l'API rend
+  // 404 et le bloc nappe disparaissait sans un mot. On le dit, sobrement, comme
+  // toute autre indisponibilité (`etatNappeIndisponible`).
+  const [nappeIndisponible, setNappeIndisponible] = React.useState<NappeIndisponible | null>(null)
+  // Vrai tant qu'une liste de conseils est affichée : un rafraîchissement raté
+  // la garde au lieu de la remplacer par l'erreur.
+  const listeAffichee = React.useRef(false)
   const [savingPlancheId, setSavingPlancheId] = React.useState<string | null>(null)
 
   const fetchRecos = React.useCallback(async (forceRefresh = false) => {
@@ -141,13 +152,26 @@ function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: Irrigati
       const res = await fetch(url)
       if (!res.ok) throw new Error("Erreur API")
       setData(await res.json())
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur API")
+      // Sans cette remise à zéro, l'erreur d'un premier essai restait affichée
+      // après un rechargement réussi.
+      setError(null)
+      listeAffichee.current = true
+    } catch {
+      if (forceRefresh && listeAffichee.current) {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: "Impossible d'actualiser les conseils d'irrigation.",
+        })
+      } else {
+        listeAffichee.current = false
+        setError("Les conseils d'irrigation n'ont pas pu être chargés.")
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [parcelleId])
+  }, [parcelleId, toast])
 
   // Ticket QA cmv3japsf : « Noter » demande la quantité versée. Avec elle, le
   // bilan retranche ces litres ; « Quantité inconnue » (litres null) compte un
@@ -196,6 +220,11 @@ function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: Irrigati
 
   // Fetch donnees nappe phreatique
   React.useEffect(() => {
+    // Une réponse arrivée après un changement de parcelle ne s'affiche plus.
+    let perime = false
+    setNappeIndisponible(null)
+    // La nappe d'une autre parcelle ne reste pas affichée sous la nouvelle.
+    setNappeData(null)
     if (!lat || !lng) {
       fetch("/api/carte")
         .then((r) => r.json())
@@ -206,7 +235,7 @@ function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: Irrigati
               ? parcelles
               : []
           const first = arr.find((p) => p.centroidLat && p.centroidLng)
-          if (first) {
+          if (first && !perime) {
             chargerNappe(first.centroidLat as number, first.centroidLng as number)
           }
         })
@@ -219,14 +248,21 @@ function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: Irrigati
       fetch(`/api/meteo/nappe?lat=${latitude}&lng=${longitude}`)
         .then((r) => {
           if (r.ok) return r.json()
-          // 404 = aucune station exploitable dans le rayon ; les autres
-          // indisponibilités maîtrisées (timeout Hub'Eau) affichent le même
-          // état sobre au lieu de faire disparaître le bloc sans explication.
-          if (r.status === 404 || r.status === 503) setNappeIndisponible(true)
+          // 404 = aucune station exploitable dans le rayon ; tout autre échec
+          // est une indisponibilité : le bloc le dit au lieu de disparaître.
+          if (!perime) setNappeIndisponible(etatNappeIndisponible(r.status))
           return null
         })
-        .then((d) => d && setNappeData(d))
-        .catch(() => {})
+        .then((d) => {
+          if (d && !perime) setNappeData(d)
+        })
+        // Réseau coupé ou réponse illisible : même état sobre.
+        .catch(() => {
+          if (!perime) setNappeIndisponible(etatNappeIndisponible(null))
+        })
+    }
+    return () => {
+      perime = true
     }
   }, [lat, lng])
 
@@ -243,8 +279,15 @@ function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: Irrigati
 
   if (error) {
     return (
-      <div className="border rounded-lg p-4 bg-white">
+      <div className="border rounded-lg p-4 bg-white flex items-center justify-between gap-3" role="alert">
         <p className="text-sm text-red-500">{error}</p>
+        <button
+          type="button"
+          onClick={() => fetchRecos()}
+          className="text-xs text-slate-600 underline hover:no-underline shrink-0"
+        >
+          Réessayer
+        </button>
       </div>
     )
   }
@@ -320,7 +363,7 @@ function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: Irrigati
       {nappeIndisponible && !nappeData && (
         <div className="px-3 py-1.5 border-b bg-slate-50 flex items-center gap-2 text-xs text-slate-500">
           <Waves className="h-3.5 w-3.5 shrink-0" />
-          <span>Nappe : aucune station Hub&apos;Eau avec des relevés récents dans un rayon de 50 km.</span>
+          <span>{phraseNappeIndisponible(nappeIndisponible)}</span>
         </div>
       )}
       {/* Nappe phreatique — masquer si relevé trop ancien (> 2 ans). Bug

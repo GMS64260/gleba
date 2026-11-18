@@ -40,6 +40,11 @@ export async function GET() {
       result[p.key] = p.value
     }
   }
+  // Modules ouverts par l'adhésion (`null` = aucune restriction), relus en
+  // base par `requireAuthApi` : le menu masque les modules fermés au membre.
+  // Ce n'est pas une préférence (non modifiable par PUT) : posé en dernier,
+  // il écrase toute clé homonyme. L'autorisation reste celle des routes.
+  result.restrictionModules = session.user.modulesExploitation ?? null
 
   return NextResponse.json(result, { headers: NO_STORE })
 }

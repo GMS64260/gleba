@@ -3,7 +3,12 @@
  *
  * GET /api/cultures/occupation?plancheId=…&itpId=…&nbRangs=3&longueur=24
  *     &dateSemis=AAAA-MM-JJ&datePlantation=…&dateRecolte=…&finRecolte=…
+ *     [&especeId=…]
  *   → VerdictOccupation (src/lib/planche-validation.ts)
+ *
+ * `especeId` (facultatif) ne sert que si l'itinéraire n'a pas d'espèce : la
+ * culture est évaluée vivace d'après l'espèce de l'ITP, sinon celle-ci, lue
+ * dans le référentiel visible du compte comme à la création (revue-adv-183).
  *
  * QA cmv2r1v63 (2026-10-10) — l'assistant de création calculait l'occupation de
  * son côté, avec d'autres règles que la création (POST /api/cultures) : son
@@ -15,7 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { evaluerOccupationPlanche } from '@/lib/planche-validation'
-import { selectCulturesOccupation } from '@/lib/planches/occupation'
+import { lireVivaceEspeces, selectCulturesOccupation, vivaceACreer } from '@/lib/planches/occupation'
 import { debutOccupation, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
@@ -65,6 +70,7 @@ export async function GET(request: NextRequest) {
           where: { AND: [{ id: itpId }, whereItpUtilisable(userId)] },
           select: {
             userId: true,
+            especeId: true,
             zoneClimat: true,
             semaineSemis: true,
             semainePlantation: true,
@@ -92,6 +98,14 @@ export async function GET(request: NextRequest) {
       finRecolte = dateJourSeul(finRecolteDepuisItp(dateRecolte, itpCalibre))
     }
 
+    // Espèce réelle de la culture à créer : celle de l'ITP lu, sinon le
+    // paramètre. Invisible pour ce compte : lue comme une annuelle (la
+    // création la refusera de toute façon).
+    const especeId = itp?.especeId || searchParams.get('especeId') || null
+    const vivace = especeId
+      ? vivaceACreer((await lireVivaceEspeces(prisma, userId, [especeId])).get(especeId))
+      : false
+
     const verdict = evaluerOccupationPlanche({
       planche: { largeur: planche.largeur, longueur: planche.longueur },
       culturesEnPlace: planche.cultures,
@@ -100,6 +114,7 @@ export async function GET(request: NextRequest) {
       longueur: lireNombre(searchParams.get('longueur')),
       debut: debutOccupation({ dateSemis, datePlantation }),
       fin: finDeCycle({ dateRecolte, finRecolte }),
+      vivace,
     })
     return NextResponse.json(verdict)
   } catch (err) {

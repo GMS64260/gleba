@@ -7,11 +7,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { moduleOuvert } from '@/lib/exploitation/modules-chemins'
 
 // GET /api/jardin?parcelle=ID|all|none
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
+  // Plan de la ferme, surface partagée (arbres et objets ont leurs routes) :
+  // ses planches et cultures relèvent du maraîchage. Membre dont l'adhésion
+  // exclut le maraîchage : aucune planche, sans lecture.
+  if (!moduleOuvert(session!.user.modulesExploitation, 'maraichage')) return NextResponse.json([])
 
   try {
     const parcelle = request.nextUrl.searchParams.get('parcelle')

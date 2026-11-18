@@ -2,17 +2,17 @@ import { describe, expect, it } from "vitest"
 import { origineBadge, nomEspece } from "./affichage"
 
 describe("origineBadge", () => {
-  it("identifie une espèce du compte courant", () => {
-    expect(origineBadge({ userId: "moi" }, "moi")?.label).toBe("Perso")
+  it("affiche Perso selon l'origine calculée par le serveur, sans identité de l'acteur", () => {
+    expect(origineBadge({ origine: "perso" })).toEqual({ label: "Perso", cls: "bg-amber-100 text-amber-700" })
   })
-  it("identifie une espèce d'un autre compte", () => {
-    expect(origineBadge({ userId: "autre" }, "moi")?.label).toBe("Communauté")
+  it("affiche Communauté selon l'origine calculée par le serveur", () => {
+    expect(origineBadge({ origine: "communaute" })).toEqual({ label: "Communauté", cls: "bg-sky-100 text-sky-700" })
   })
   it("ne donne aucun badge à une espèce officielle", () => {
-    expect(origineBadge({ userId: null }, "moi")).toBeNull()
+    expect(origineBadge({ origine: null })).toBeNull()
   })
-  it.each([undefined, null, ""])("ne devine pas l'origine sans compte courant (%s)", (compte) => {
-    expect(origineBadge({ userId: "moi" }, compte)).toBeNull()
+  it("ne devine pas l'origine si le serveur ne l'a pas fournie", () => {
+    expect(origineBadge({})).toBeNull()
   })
 })
 

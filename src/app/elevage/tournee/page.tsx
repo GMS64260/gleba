@@ -16,6 +16,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import { ajouterOperation, lireFile, lireTachesCachees, sauverTaches, synchroniserOperations, type TacheTournee } from "@/lib/elevage/offline-tournee"
 
+const CATEGORIES: Record<string, string> = {
+  alimentation: 'Alimentation',
+  traite: 'Traite',
+  soin: 'Soin',
+  reproduction: 'Reproduction',
+  paturage: 'Pâturage',
+  controle: 'Contrôle',
+  autre: 'Autre',
+}
+const PRIORITES: Record<string, string> = {
+  basse: 'Basse',
+  normale: 'Normale',
+  haute: 'Haute',
+  urgente: 'Urgente',
+}
+
 const localDateTime = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16) }
 
 // QA caprin cms1v3fso — la Tournée n'affichait que les tâches terrain saisies
@@ -36,6 +52,7 @@ const KINDS_TOURNEE = new Set(['soin_retard', 'soin_planifie', 'mise_bas', 'fene
 
 export default function TourneePage() {
   const { toast } = useToast()
+  const id = React.useId()
   const [tasks, setTasks] = React.useState<TacheTournee[]>([])
   const [echeances, setEcheances] = React.useState<EcheanceAgenda[]>([])
   const [online, setOnline] = React.useState(true)
@@ -158,8 +175,83 @@ export default function TourneePage() {
 
   return <div className="min-h-screen bg-slate-50"><AppHeader current="elevage" /><main className="mx-auto max-w-3xl p-3 sm:p-6 space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-2"><div><Button asChild variant="ghost" size="sm"><Link href="/elevage"><ArrowLeft className="h-4 w-4 mr-1" />Élevage</Link></Button><h1 className="text-2xl font-bold">Tournée du jour</h1><p className="text-sm text-muted-foreground">Actions terrain, acquittables même sans réseau.</p></div><div className="flex gap-2"><Badge variant={online ? 'default' : 'secondary'}>{online ? <Wifi className="h-3 w-3 mr-1" /> : <CloudOff className="h-3 w-3 mr-1" />}{online ? 'En ligne' : 'Hors ligne'}</Badge>{queued > 0 && <Badge variant="outline">{queued} à synchroniser</Badge>}</div></div>
-    <div className="flex gap-2"><Button variant="outline" onClick={() => refresh()}><RefreshCw className="h-4 w-4 mr-1" />Actualiser</Button><Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" />Nouvelle tâche</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Nouvelle tâche terrain</DialogTitle></DialogHeader><form onSubmit={creer} className="space-y-3"><div><Label>Titre</Label><Input required value={form.titre} onChange={e => setForm(f => ({ ...f, titre: e.target.value }))} /></div><div><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div><div className="grid grid-cols-2 gap-3"><div><Label>Catégorie</Label><Select value={form.categorie} onValueChange={v => setForm(f => ({ ...f, categorie: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['alimentation','traite','soin','reproduction','paturage','controle','autre'].map(v => <SelectItem value={v} key={v}>{v}</SelectItem>)}</SelectContent></Select></div><div><Label>Priorité</Label><Select value={form.priorite} onValueChange={v => setForm(f => ({ ...f, priorite: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['basse','normale','haute','urgente'].map(v => <SelectItem value={v} key={v}>{v}</SelectItem>)}</SelectContent></Select></div></div><div className="grid grid-cols-2 gap-3"><div><Label>Cible</Label><Select value={form.cible} onValueChange={v => setForm(f => ({ ...f, cible: v, cibleId: '' }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="aucune">Toute l’exploitation</SelectItem><SelectItem value="lot">Un lot</SelectItem><SelectItem value="animal">Un animal</SelectItem></SelectContent></Select></div>{form.cible !== 'aucune' && <div><Label>{form.cible === 'lot' ? 'Lot' : 'Animal'}</Label><Select value={form.cibleId} onValueChange={v => setForm(f => ({ ...f, cibleId: v }))}><SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger><SelectContent>{form.cible === 'lot' ? lots.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.nom || `Lot #${l.id}`}</SelectItem>) : animaux.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.nom || a.identifiant || `#${a.id}`}</SelectItem>)}</SelectContent></Select></div>}</div><div><Label>Première échéance</Label><Input type="datetime-local" required value={form.prochaineEcheance} onChange={e => setForm(f => ({ ...f, prochaineEcheance: e.target.value }))} /></div><div><Label>Récurrence en jours</Label><Input type="number" min="1" max="366" value={form.recurrenceJours} onChange={e => setForm(f => ({ ...f, recurrenceJours: e.target.value }))} placeholder="Vide = une seule fois" /></div><Button type="submit" disabled={(form.cible !== 'aucune' && !form.cibleId) || isSubmitting}>{isSubmitting ? "Enregistrement..." : "Créer"}</Button></form></DialogContent></Dialog></div>
-    <Card><CardHeader><CardTitle className="text-lg">Identifier un animal</CardTitle><CardDescription>Saisie, douchette clavier ou étiquette NFC contenant le numéro de boucle.</CardDescription></CardHeader><CardContent><div className="flex gap-2"><Input value={scanCode} onChange={e => setScanCode(e.target.value)} onKeyDown={e => e.key === 'Enter' && rechercherCode()} placeholder="N° de boucle / RFID" /><Button variant="outline" onClick={() => rechercherCode()}><ScanLine className="h-4 w-4" /></Button><Button variant="outline" onClick={lireNfc}>NFC</Button></div>{scanResult && <div className="mt-3 rounded-lg bg-emerald-50 p-3"><Link className="font-medium underline" href={`/elevage/animaux/${scanResult.id}`}>{scanResult.nom || scanResult.identifiant} · {scanResult.especeAnimale.nom}</Link></div>}</CardContent></Card>
+    <div className="flex gap-2">
+      <Button variant="outline" onClick={() => refresh()}><RefreshCw className="h-4 w-4 mr-1" />Actualiser</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" />Nouvelle tâche</Button></DialogTrigger>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Nouvelle tâche terrain</DialogTitle></DialogHeader>
+          <form onSubmit={creer} className="space-y-3">
+            <div>
+              <Label htmlFor={`${id}-titre`}>Titre</Label>
+              <Input id={`${id}-titre`} required value={form.titre} onChange={e => setForm(f => ({ ...f, titre: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor={`${id}-description`}>Description</Label>
+              <Textarea id={`${id}-description`} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label id={`${id}-categorie-label`} htmlFor={`${id}-categorie`}>Catégorie</Label>
+                <Select value={form.categorie} onValueChange={v => setForm(f => ({ ...f, categorie: v }))}>
+                  <SelectTrigger id={`${id}-categorie`} aria-labelledby={`${id}-categorie-label`}><SelectValue /></SelectTrigger>
+                  <SelectContent>{Object.entries(CATEGORIES).map(([valeur, libelle]) => <SelectItem value={valeur} key={valeur}>{libelle}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label id={`${id}-priorite-label`} htmlFor={`${id}-priorite`}>Priorité</Label>
+                <Select value={form.priorite} onValueChange={v => setForm(f => ({ ...f, priorite: v }))}>
+                  <SelectTrigger id={`${id}-priorite`} aria-labelledby={`${id}-priorite-label`}><SelectValue /></SelectTrigger>
+                  <SelectContent>{Object.entries(PRIORITES).map(([valeur, libelle]) => <SelectItem value={valeur} key={valeur}>{libelle}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label id={`${id}-cible-label`} htmlFor={`${id}-cible`}>Cible</Label>
+                <Select value={form.cible} onValueChange={v => setForm(f => ({ ...f, cible: v, cibleId: '' }))}>
+                  <SelectTrigger id={`${id}-cible`} aria-labelledby={`${id}-cible-label`}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="aucune">Toute l’exploitation</SelectItem>
+                    <SelectItem value="lot">Un lot</SelectItem>
+                    <SelectItem value="animal">Un animal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.cible !== 'aucune' && <div>
+                <Label id={`${id}-cibleId-label`} htmlFor={`${id}-cibleId`}>{form.cible === 'lot' ? 'Lot' : 'Animal'}</Label>
+                <Select value={form.cibleId} onValueChange={v => setForm(f => ({ ...f, cibleId: v }))}>
+                  <SelectTrigger id={`${id}-cibleId`} aria-labelledby={`${id}-cibleId-label`}><SelectValue placeholder="Choisir" /></SelectTrigger>
+                  <SelectContent>{form.cible === 'lot' ? lots.map(l => <SelectItem key={l.id} value={String(l.id)}>{l.nom || `Lot #${l.id}`}</SelectItem>) : animaux.map(a => <SelectItem key={a.id} value={String(a.id)}>{a.nom || a.identifiant || `#${a.id}`}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>}
+            </div>
+            <div>
+              <Label htmlFor={`${id}-echeance`}>Première échéance</Label>
+              <Input id={`${id}-echeance`} type="datetime-local" required value={form.prochaineEcheance} onChange={e => setForm(f => ({ ...f, prochaineEcheance: e.target.value }))} />
+            </div>
+            <div>
+              <Label htmlFor={`${id}-recurrence`}>Récurrence en jours</Label>
+              <Input id={`${id}-recurrence`} aria-describedby={`${id}-recurrence-aide`} type="number" min="1" max="366" value={form.recurrenceJours} onChange={e => setForm(f => ({ ...f, recurrenceJours: e.target.value }))} />
+              <p id={`${id}-recurrence-aide`} className="text-sm text-muted-foreground">Vide = une seule fois</p>
+            </div>
+            <Button type="submit" disabled={(form.cible !== 'aucune' && !form.cibleId) || isSubmitting}>{isSubmitting ? "Enregistrement..." : "Créer"}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+    <Card>
+      <CardHeader><CardTitle className="text-lg">Identifier un animal</CardTitle><CardDescription>Saisie, douchette clavier ou étiquette NFC contenant le numéro de boucle.</CardDescription></CardHeader>
+      <CardContent>
+        <Label htmlFor={`${id}-scan`}>N° de boucle / RFID</Label>
+        <div className="flex gap-2">
+          <Input id={`${id}-scan`} className="min-w-0 flex-1" value={scanCode} onChange={e => setScanCode(e.target.value)} onKeyDown={e => e.key === 'Enter' && rechercherCode()} placeholder="N° de boucle / RFID" />
+          <Button variant="outline" aria-label="Rechercher l’animal" onClick={() => rechercherCode()}><ScanLine aria-hidden="true" className="h-4 w-4" /></Button>
+          <Button variant="outline" onClick={lireNfc}>NFC</Button>
+        </div>
+        {scanResult && <div className="mt-3 rounded-lg bg-emerald-50 p-3"><Link className="font-medium underline" href={`/elevage/animaux/${scanResult.id}`}>{scanResult.nom || scanResult.identifiant} · {scanResult.especeAnimale.nom}</Link></div>}
+      </CardContent>
+    </Card>
     {echeances.length > 0 && <div className="space-y-3">
       <h2 className="text-lg font-semibold">Échéances élevage (7 jours)</h2>
       {echeances.map(e => (
@@ -189,6 +281,6 @@ export default function TourneePage() {
     </div>}
     <div className="space-y-3">
     <h2 className="text-lg font-semibold">Tâches terrain</h2>
-    {tasks.map(task => <Card key={task.id} className={task.priorite === 'urgente' ? 'border-red-400' : ''}><CardHeader className="pb-2"><div className="flex justify-between gap-3"><div><CardTitle className="text-lg">{task.titre}</CardTitle><CardDescription>{new Date(task.prochaineEcheance).toLocaleString('fr-FR')} · {task.categorie}{task.recurrenceJours ? ` · tous les ${task.recurrenceJours} j` : ''}</CardDescription></div><Badge variant={task.priorite === 'urgente' ? 'destructive' : 'outline'}>{task.priorite}</Badge></div></CardHeader><CardContent><p className="mb-3 text-sm">{task.description}</p><Button className="w-full min-h-12" onClick={() => terminer(task)}><Check className="h-5 w-5 mr-2" />Fait</Button></CardContent></Card>)}{!tasks.length && <Card><CardContent className="py-12 text-center text-muted-foreground">{echeances.length > 0 ? 'Aucune tâche terrain planifiée — voir les échéances ci-dessus.' : 'Aucune tâche à réaliser dans les sept prochains jours.'}</CardContent></Card>}</div>
+    {tasks.map(task => <Card key={task.id} className={task.priorite === 'urgente' ? 'border-red-400' : ''}><CardHeader className="pb-2"><div className="flex justify-between gap-3"><div><CardTitle className="text-lg">{task.titre}</CardTitle><CardDescription>{new Date(task.prochaineEcheance).toLocaleString('fr-FR')} · {CATEGORIES[task.categorie] ?? task.categorie}{task.recurrenceJours ? ` · tous les ${task.recurrenceJours} j` : ''}</CardDescription></div><Badge variant={task.priorite === 'urgente' ? 'destructive' : 'outline'}>{PRIORITES[task.priorite] ?? task.priorite}</Badge></div></CardHeader><CardContent><p className="mb-3 text-sm">{task.description}</p><Button className="w-full min-h-12" onClick={() => terminer(task)}><Check className="h-5 w-5 mr-2" />Fait</Button></CardContent></Card>)}{!tasks.length && <Card><CardContent className="py-12 text-center text-muted-foreground">{echeances.length > 0 ? 'Aucune tâche terrain planifiée — voir les échéances ci-dessus.' : 'Aucune tâche à réaliser dans les sept prochains jours.'}</CardContent></Card>}</div>
   </main></div>
 }

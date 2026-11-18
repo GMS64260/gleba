@@ -1,8 +1,10 @@
-/** Une origine communautaire ne peut être affirmée sans connaître le compte courant. */
-export function origineBadge(o: { userId?: string | null }, currentUserId?: string | null) {
-  if (o.userId == null || !currentUserId) return null
-  if (o.userId === currentUserId) return { label: "Perso", cls: "bg-amber-100 text-amber-700" }
-  return { label: "Communauté", cls: "bg-sky-100 text-sky-700" }
+import type { OrigineBadgeReferentiel } from "@/lib/referentiel-communaute"
+
+/** L'origine est résolue par le serveur par rapport à l'exploitation. */
+export function origineBadge(o: { origine?: OrigineBadgeReferentiel }) {
+  if (o.origine === "perso") return { label: "Perso", cls: "bg-amber-100 text-amber-700" }
+  if (o.origine === "communaute") return { label: "Communauté", cls: "bg-sky-100 text-sky-700" }
+  return null
 }
 
 /** Nom commun d'une espèce personnelle, identifiant lisible du catalogue officiel. */

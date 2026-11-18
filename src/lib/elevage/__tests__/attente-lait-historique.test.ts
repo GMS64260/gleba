@@ -40,7 +40,7 @@ describe('attente lait avec historique animal–lot', () => {
     )
 
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['collecte-1'] } },
+      where: { userId: 'user-1', id: { in: ['collecte-1'] } },
       data: { ecarteAttente: true },
     })
   })
@@ -57,7 +57,7 @@ describe('attente lait avec historique animal–lot', () => {
       ]),
     }
     await resyncEcartementLait(db as never, 'user-1', { animalIds: [8], lotIds: [1, 2] }, new Date('2026-01-01'), new Date('2026-01-07'))
-    expect(updateMany).toHaveBeenCalledWith({ where: { id: { in: ['c2'] } }, data: { ecarteAttente: true } })
+    expect(updateMany).toHaveBeenCalledWith({ where: { userId: 'user-1', id: { in: ['c2'] } }, data: { ecarteAttente: true } })
   })
 })
 

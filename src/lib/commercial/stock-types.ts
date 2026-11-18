@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { TraitementDarEnCours } from '@/lib/phyto/delai-avant-recolte'
 
 export const TYPES_STOCK_COMMERCIAL = ['recolte', 'fruit', 'bois', 'boutique', 'oeufs', 'ruche', 'fromage', 'transforme'] as const
 export type TypeStockCommercial = (typeof TYPES_STOCK_COMMERCIAL)[number]
@@ -20,6 +21,13 @@ export interface ArticleStockCommercial {
   href: string
   dateLot?: string
   avertissements?: string[]
+  /**
+   * Délai avant récolte légal en cours (verdict bloquant de
+   * `src/lib/phyto/delai-avant-recolte.ts`) : le lot ne peut être ni livré,
+   * ni facturé, ni préparé pour la caisse. `avertissements` garde tous les
+   * messages, rappels informatifs compris, qui n'empêchent rien.
+   */
+  blocageDar?: { blocages: string[]; traitements: TraitementDarEnCours[] }
 }
 export function cleArticle(a: Pick<ArticleStockCommercial, 'type' | 'id'>) { return `${a.type}:${a.id}` }
 export function disponibleCommercial(lot: { quantite: number; stockDisponibleCommercial?: number | null }) {

@@ -3,7 +3,7 @@ import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { genererPdfFacture } from "@/lib/facture-pdf"
-import { emetteurDeFacture } from "@/lib/facture-structuree"
+import { emetteurDeFacture, entetesRapportExport, ErreurDeviseFacture } from "@/lib/facture-structuree"
 
 /**
  * GET /api/comptabilite/factures/[id]/pdf — PDF d'une facture / avoir / acompte.
@@ -36,8 +36,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Facture non trouvée" }, { status: 404 })
   }
 
-  // Snapshot émetteur figé sur la facture, sinon l'Exploitation courante (compat factures pré-14C).
-  const emetteur = await emetteurDeFacture(facture, session!.user.id)
+  let emetteur
+  try {
+    emetteur = await emetteurDeFacture(facture, session!.user.id)
+  } catch (error) {
+    if (error instanceof ErreurDeviseFacture) return NextResponse.json({ error: error.message }, { status: 422 })
+    throw error
+  }
   const buffer = await genererPdfFacture(facture, emetteur)
 
   return new NextResponse(new Uint8Array(buffer), {
@@ -46,6 +51,8 @@ export async function GET(request: NextRequest, { params }: Params) {
       "Content-Type": "application/pdf",
       "Content-Disposition": dispositionDocument(request, `${facture.numero}.pdf`),
       "Cache-Control": "no-cache",
+      // Acheteur non figé (facture antérieure, BX03) : signalé, jamais réécrit.
+      ...entetesRapportExport(facture),
     },
   })
 }

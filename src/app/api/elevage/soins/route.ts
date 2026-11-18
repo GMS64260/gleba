@@ -1,3 +1,4 @@
+import { creerSoinAnimal } from '@/lib/elevage/creation-soin'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -21,29 +22,20 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromSoinAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
-import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
-import { calendrierInjections } from '@/lib/elevage/injections'
+import { soinPatchSchema } from '@/lib/validations/elevage-soin'
 import { lireInjections, synchroniserInjections, fenetresAttenteDepuisInjections } from '@/lib/elevage/injections-protocole'
 import { dateSoinRetenue } from '@/lib/elevage/date-soin'
 import { lotMedicamentPerime, refusUnitePrelevement } from '@/lib/elevage/stock-medicament'
-import { randomUUID } from 'node:crypto'
 // Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
 import { ciblesLaitAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
 import { fenetreSoin, restituerPrelevement, supprimerSoin } from '@/lib/elevage/suppression-soin'
 import { controlerAnnulation, journaliserAnnulationSoin, MESSAGE_ANNULATION_REQUISE } from '@/lib/elevage/annulation-soin'
-import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import { whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
 import { effectifTraiteAuJour } from '@/lib/elevage/effectif-traite'
 import { TYPES_SOIN_MEDICAMENTEUX } from '@/lib/elevage/types-soin'
-import {
-  PLANCHER_CASCADE_LAIT_J,
-  PLANCHER_CASCADE_VIANDE_J,
-  PLANCHER_CASCADE_OEUFS_J,
-  resoudreDelaisVeterinaires,
-  type EspecePourDelai,
-} from '@/lib/elevage/delais-veterinaires'
+import { refusDelaisValidationSoin, RefusDelaisSousVerrou } from '@/lib/elevage/delais-validation-soin'
 
 function addDays(d: Date, n: number): Date {
   const r = new Date(d)
@@ -171,345 +163,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
-
   try {
-    const body = await request.json()
-    const parsed = soinSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
-    }
-
-    const d = parsed.data
-    const dateSoin = d.date || new Date()
-
-    // Audit élevage 2026-06-11 — validation tenant : l'animal/le lot soigné
-    // doit appartenir au user (sinon le soin référence — et la réponse
-    // expose via include — la fiche d'un animal d'un autre compte).
-    let cibleEspece: EspecePourDelai | null = null
-    if (d.animalId) {
-      const a = await prisma.animal.findFirst({
-        where: { id: d.animalId, userId: session.user.id },
-        select: {
-          id: true,
-          especeAnimale: {
-            select: { id: true, nom: true, categorieReglementaire: true, type: true, production: true, productions: true },
-          },
-        },
-      })
-      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
-      cibleEspece = a.especeAnimale
-    }
-    if (d.lotId) {
-      const l = await prisma.lotAnimaux.findFirst({
-        where: { id: d.lotId, userId: session.user.id },
-        select: {
-          id: true,
-          especeAnimale: {
-            select: { id: true, nom: true, categorieReglementaire: true, type: true, production: true, productions: true },
-          },
-        },
-      })
-      if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
-      cibleEspece = l.especeAnimale
-    }
-
-    // Snapshot temps d'attente depuis le produit FK si renseigné
-    let tempsLait = 0
-    let tempsViande = 0
-    let tempsOeufs = 0
-    let nomProduit = d.produit || null
-    let delaiAttenteSource: string | null = d.produitId ? 'referentiel_produit' : 'saisie_libre'
-    let produitHorsAmm = false
-    if (d.produitId) {
-      const p = await prisma.produitVeterinaire.findUnique({
-        where: { id: d.produitId },
-        include: {
-          delaisParEspece: cibleEspece
-            ? { where: { especeAnimaleId: cibleEspece.id } }
-            : false,
-        },
-      })
-      if (!p) return NextResponse.json({ error: 'Produit vétérinaire introuvable' }, { status: 400 })
-      const resolus = resoudreDelaisVeterinaires(p, cibleEspece)
-      tempsLait = resolus.tempsAttenteLaitJ
-      tempsViande = resolus.tempsAttenteViandeJ
-      tempsOeufs = resolus.tempsAttenteOeufsJ
-      delaiAttenteSource = resolus.source
-      produitHorsAmm = !resolus.couvertAmm
-      if (!nomProduit) nomProduit = p.nom
-    }
-    const soinMedicamenteux = TYPES_MEDICAMENTEUX.has(d.type)
-    if (soinMedicamenteux && d.produitId && !d.stockMedicamentId) {
-      return NextResponse.json(
-        {
-          error: "Sélectionnez un lot de pharmacie pour ce médicament.",
-          code: "LOT_PHARMACIE_REQUIS",
-        },
-        { status: 422 },
-      )
-    }
-    const stockMedicament = d.stockMedicamentId
-      ? await prisma.stockMedicamentElevage.findFirst({
-          where: { id: d.stockMedicamentId, userId: session.user.id },
-        })
-      : null
-    if (d.stockMedicamentId && !stockMedicament) {
-      return NextResponse.json({ error: "Lot de pharmacie introuvable." }, { status: 404 })
-    }
-    if (stockMedicament && stockMedicament.produitId !== d.produitId) {
-      return NextResponse.json(
-        { error: "Le lot de pharmacie ne correspond pas au produit sélectionné." },
-        { status: 422 },
-      )
-    }
-    if (stockMedicament && lotMedicamentPerime(stockMedicament.datePeremption, dateSoin)) {
-      return NextResponse.json(
-        { error: `Le lot ${stockMedicament.numeroLot} est périmé à la date du soin.` },
-        { status: 422 },
-      )
-    }
-    const refusUnite = stockMedicament ? refusUnitePrelevement(d.unite, stockMedicament.unite) : null
-    if (refusUnite) return NextResponse.json({ error: refusUnite, champ: 'unite' }, { status: 422 })
-    if (stockMedicament && (!d.quantite || d.quantite <= 0)) {
-      return NextResponse.json(
-        { error: `Renseignez la quantité prélevée en ${stockMedicament.unite}.` },
-        { status: 422 },
-      )
-    }
-    // QA caprin cms1v5j14 — délais surchargeables par soin : la valeur AMM du
-    // produit n'est qu'un défaut, l'ordonnance du vétérinaire prime (usage hors
-    // AMM/cascade : délais majorés). null = conserver la valeur du produit.
-    const defautLait = tempsLait
-    const defautViande = tempsViande
-    if (d.tempsAttenteLaitJ != null) {
-      tempsLait = produitHorsAmm
-        ? Math.max(PLANCHER_CASCADE_LAIT_J, d.tempsAttenteLaitJ)
-        : d.tempsAttenteLaitJ
-    }
-    if (d.tempsAttenteViandeJ != null) {
-      tempsViande = produitHorsAmm
-        ? Math.max(PLANCHER_CASCADE_VIANDE_J, d.tempsAttenteViandeJ)
-        : d.tempsAttenteViandeJ
-    }
-    if (d.tempsAttenteOeufsJ != null) {
-      tempsOeufs = produitHorsAmm
-        ? Math.max(PLANCHER_CASCADE_OEUFS_J, d.tempsAttenteOeufsJ)
-        : d.tempsAttenteOeufsJ
-    }
-    if (d.tempsAttenteLaitJ != null || d.tempsAttenteViandeJ != null) {
-      if (tempsLait !== defautLait || tempsViande !== defautViande) {
-        delaiAttenteSource = 'prescription'
-      }
-    }
-    // QA 2026-07-30 — Un traitement sur un lot de pondeuses affichait « LAIT
-    // 03/08 » : ni le formulaire ni cette route ne vérifiaient que l'espèce
-    // ciblée produit du lait, et la matrice AMM décline le délai lait sur
-    // toutes les espèces couvertes, volailles incluses. Un délai œufs n'existe
-    // pas encore au schéma : on neutralise donc le délai lait plutôt que
-    // d'afficher une date de retrait trompeuse.
-    if (tempsLait > 0 && estEspeceSansDelaiLait(cibleEspece)) {
-      // QA 2026-07-30 (2e passage) — Neutraliser le délai lait ne suffisait pas :
-      // l'éleveur saisissait 5 j pour ses pondeuses et ne voyait plus AUCUN
-      // délai. Sur une espèce avicole, un délai « lait » saisi ou hérité de la
-      // matrice AMM est en réalité un délai œufs : on le reporte au lieu de
-      // le perdre, sans jamais écraser une valeur œufs explicite.
-      if (tempsOeufs === 0) tempsOeufs = tempsLait
-      tempsLait = 0
-    }
-    // PROMPT 30 — un traitement peut compter plusieurs injections (ex. J0/J1/J2).
-    // Le délai d'attente court depuis la DERNIÈRE injection.
-    const nbInjections = d.nbInjections ?? 1
-    const intervalleH = d.intervalleInjectionsHeures ?? null
-    const derniereInjection = nbInjections > 1 && intervalleH
-      ? new Date(dateSoin.getTime() + (nbInjections - 1) * intervalleH * 3_600_000)
-      : dateSoin
-    // Un soin planifie n'est pas encore administre : on conserve le snapshot
-    // des delais du produit, mais la fenetre ne devient effective qu'au
-    // passage a `fait=true`.
-    // QA cmsqlj7bn — quand le rappel est matérialisé en soin distinct (plus bas),
-    // le soin exécuté ne doit PAS conserver la date du rappel comme date prévue :
-    // l'écran affichait alors « 19/08 — Fait en avance le 12/08 » pour un soin
-    // administré le 12/08, et le rappel apparaissait deux fois au calendrier.
-    const rappelMaterialise = Boolean(d.fait && d.datePrevue && d.datePrevue.getTime() > dateSoin.getTime())
-
-    const finLait = d.fait && tempsLait > 0 ? addDays(derniereInjection, tempsLait) : null
-    const finViande = d.fait && tempsViande > 0 ? addDays(derniereInjection, tempsViande) : null
-    const finOeufs = d.fait && tempsOeufs > 0 ? addDays(derniereInjection, tempsOeufs) : null
-
-    const result = await prisma.$transaction(async (tx) => {
-      await verrouillerReglements(tx, session!.user.id)
-      const quantitePrelevee = d.fait && stockMedicament ? d.quantite ?? 0 : 0
-      if (quantitePrelevee > 0) {
-        const decremente = await tx.stockMedicamentElevage.updateMany({
-          where: {
-            id: stockMedicament!.id,
-            userId: session.user.id,
-            quantite: { gte: quantitePrelevee },
-          },
-          data: { quantite: { decrement: quantitePrelevee } },
-        })
-        if (decremente.count !== 1) {
-          throw new Error(`STOCK_MEDICAMENT_INSUFFISANT:${stockMedicament!.quantite}`)
-        }
-      }
-      // C10 : nombre d'animaux du lot traités, figé le jour même de
-      // l'administration (inconnu, donc NULL, pour une saisie d'un autre jour).
-      const effectifTraite = d.fait
-        ? await effectifTraiteAuJour(tx, session.user.id, d.lotId, dateSoin)
-        : null
-      const soin = await tx.soinAnimal.create({
-        data: {
-          userId: session.user.id,
-          animalId: d.animalId || null,
-          lotId: d.lotId || null,
-          effectifTraite,
-          date: dateSoin,
-          type: d.type,
-          description: d.description ?? null,
-          produit: nomProduit,
-          produitId: d.produitId ?? null,
-          stockMedicamentId: stockMedicament?.id ?? null,
-          numeroLotMedicament: stockMedicament?.numeroLot ?? null,
-          peremptionMedicament: stockMedicament?.datePeremption ?? null,
-          quantitePreleveeStock: quantitePrelevee,
-          dose: d.dose ?? null,
-          voie: d.voie ?? null,
-          motif: d.motif ?? null,
-          ordonnanceUrl: d.ordonnanceUrl || stockMedicament?.ordonnanceUrl || null,
-          quantite: d.quantite ?? null,
-          unite: d.unite ?? null,
-          cout: d.cout ?? null,
-          veterinaire: d.veterinaire ?? null,
-          datePrevue: rappelMaterialise ? null : (d.datePrevue ?? null),
-          fait: d.fait,
-          notes: d.notes ?? null,
-          nbInjections,
-          intervalleInjectionsHeures: intervalleH,
-          tempsAttenteLaitJ: tempsLait > 0 ? tempsLait : null,
-          tempsAttenteViandeJ: tempsViande > 0 ? tempsViande : null,
-          tempsAttenteOeufsJ: tempsOeufs > 0 ? tempsOeufs : null,
-          delaiAttenteSource,
-          finAttenteLait: finLait,
-          finAttenteViande: finViande,
-          finAttenteOeufs: finOeufs,
-        },
-        include: { animal: true, lot: true, produitVeterinaire: true },
-      })
-      const calendrier = calendrierInjections(dateSoin, nbInjections, intervalleH, d.fait)
-      for (const injection of calendrier) {
-        await tx.$executeRaw`
-          INSERT INTO injections_soins
-            (id, user_id, soin_id, numero, date_prevue, date_realisee, statut, created_at, updated_at)
-          VALUES
-            (${randomUUID()}, ${session.user.id}, ${soin.id}, ${injection.numero},
-             ${injection.datePrevue}, ${injection.dateRealisee ?? null}, ${injection.statut},
-             NOW(), NOW())
-        `
-      }
-
-      // Ticket cmsof7ccx — le champ « Rappel planifié » d'un soin déjà effectué
-      // ne produisait JAMAIS de rappel : GET ?rappels=1 exige fait=false, or le
-      // soin créé ici est fait=true (sa datePrevue future restait invisible).
-      // On matérialise le rappel par un second soin planifié (fait=false) daté
-      // de datePrevue — mêmes cible, produit, protocole et délais — calqué sur
-      // la duplication côté client (AlimentationTab, cms1vau9l). Il apparaît
-      // ainsi dans les soins à faire et le calendrier.
-      let rappel: { id: number } | null = null
-      if (rappelMaterialise && d.datePrevue) {
-        const rappelCree = await tx.soinAnimal.create({
-          data: {
-            userId: session.user.id,
-            animalId: d.animalId || null,
-            lotId: d.lotId || null,
-            date: d.datePrevue,
-            type: d.type,
-            description: d.description ?? null,
-            produit: nomProduit,
-            produitId: d.produitId ?? null,
-            stockMedicamentId: stockMedicament?.id ?? null,
-            numeroLotMedicament: stockMedicament?.numeroLot ?? null,
-            peremptionMedicament: stockMedicament?.datePeremption ?? null,
-            dose: d.dose ?? null,
-            voie: d.voie ?? null,
-            motif: d.motif ?? null,
-            ordonnanceUrl: d.ordonnanceUrl || stockMedicament?.ordonnanceUrl || null,
-            quantite: d.quantite ?? null,
-            unite: d.unite ?? null,
-            // QA cmsqmqwn9 — le rappel héritait du coût du soin exécuté : le
-            // coût sanitaire de l'animal doublait à chaque rappel programmé.
-            // Un soin non administré n'a pas coûté : le coût se saisit à sa
-            // validation, comme le prélèvement de stock.
-            cout: null,
-            veterinaire: d.veterinaire ?? null,
-            datePrevue: d.datePrevue,
-            fait: false,
-            notes: `Rappel du soin du ${dateSoin.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}`,
-            nbInjections,
-            intervalleInjectionsHeures: intervalleH,
-            tempsAttenteLaitJ: tempsLait > 0 ? tempsLait : null,
-            tempsAttenteViandeJ: tempsViande > 0 ? tempsViande : null,
-            tempsAttenteOeufsJ: tempsOeufs > 0 ? tempsOeufs : null,
-            delaiAttenteSource,
-            // fait=false : fenêtres d'attente nulles tant que non administré,
-            // et aucun prélèvement de stock avant validation.
-          },
-        })
-        rappel = { id: rappelCree.id }
-        for (const injection of calendrierInjections(d.datePrevue, nbInjections, intervalleH, false)) {
-          await tx.$executeRaw`
-            INSERT INTO injections_soins
-              (id, user_id, soin_id, numero, date_prevue, date_realisee, statut, created_at, updated_at)
-            VALUES
-              (${randomUUID()}, ${session.user.id}, ${rappelCree.id}, ${injection.numero},
-               ${injection.datePrevue}, ${injection.dateRealisee ?? null}, ${injection.statut},
-               NOW(), NOW())
-          `
-        }
-      }
-
-      // Écartement des collectes (cross-granularité individu↔lot, recompute).
-      let nbEcartees = 0
-      if (finLait) {
-        const cibles = await ciblesLaitAffectees(tx, session.user.id, d.animalId ?? null, d.lotId ?? null)
-        nbEcartees = await resyncEcartementLait(tx, session.user.id, cibles, dateSoin, finLait)
-      }
-      await createDepenseFromSoinAnimal(session.user.id, {
-        id: soin.id,
-        type: soin.type,
-        cout: soin.cout,
-        date: soin.date,
-        fait: soin.fait,
-      }, tx)
-      return { soin, nbEcartees, rappel }
-    })
-    invalidateKpi(session.user.id)
-
-    const infos = [
-      result.nbEcartees > 0
-        ? `${result.nbEcartees} collecte(s) de lait écartée(s) jusqu'au ${finLait?.toLocaleDateString('fr-FR')}.`
-        : null,
-      result.rappel
-        ? `Rappel planifié le ${d.datePrevue?.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}.`
-        : null,
-    ].filter(Boolean)
-    return NextResponse.json(
-      {
-        data: result.soin,
-        rappel: result.rappel,
-        info: infos.length > 0 ? infos.join(' ') : null,
-      },
-      { status: 201 }
-    )
+    const resultat = await creerSoinAnimal(await request.json(), session.user.id)
+    return NextResponse.json(resultat.body, { status: resultat.status })
   } catch (err) {
-    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('POST /api/elevage/soins error:', err)
-    if (err instanceof Error && err.message.startsWith('STOCK_MEDICAMENT_INSUFFISANT:')) {
-      const disponible = err.message.split(':')[1]
-      return NextResponse.json(
-        { error: `Stock insuffisant : ${disponible} disponible(s).`, code: 'STOCK_MEDICAMENT_INSUFFISANT' },
-        { status: 422 },
-      )
-    }
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
 }
@@ -720,26 +378,37 @@ export async function PATCH(request: NextRequest) {
       (updateData.tempsAttenteLaitJ !== undefined && updateData.tempsAttenteLaitJ !== existing.tempsAttenteLaitJ) ||
       (updateData.tempsAttenteViandeJ !== undefined && updateData.tempsAttenteViandeJ !== existing.tempsAttenteViandeJ) ||
       (updateData.tempsAttenteOeufsJ !== undefined && updateData.tempsAttenteOeufsJ !== existing.tempsAttenteOeufsJ)
-    const taLaitEffectif = updateData.tempsAttenteLaitJ !== undefined ? updateData.tempsAttenteLaitJ : existing.tempsAttenteLaitJ
-    const taViandeEffectif = updateData.tempsAttenteViandeJ !== undefined ? updateData.tempsAttenteViandeJ : existing.tempsAttenteViandeJ
-    const taOeufsEffectif = updateData.tempsAttenteOeufsJ !== undefined ? updateData.tempsAttenteOeufsJ : existing.tempsAttenteOeufsJ
-    if (dateChangee || faitChange || injectionsChangees || taChange) {
-      const newDate = (updateData.date as Date | undefined) ?? existing.date
-      const seraFait = (updateData.fait as boolean | undefined) ?? existing.fait
-      const nbInj = (updateData.nbInjections as number | undefined) ?? existing.nbInjections ?? 1
-      const intervalleH = (updateData.intervalleInjectionsHeures as number | null | undefined) ?? existing.intervalleInjectionsHeures ?? null
-      const derniere = nbInj > 1 && intervalleH
-        ? new Date(newDate.getTime() + (nbInj - 1) * intervalleH * 3_600_000)
-        : newDate
-      updateData.finAttenteLait = seraFait && taLaitEffectif
-        ? addDays(derniere, taLaitEffectif)
-        : null
-      updateData.finAttenteViande = seraFait && taViandeEffectif
-        ? addDays(derniere, taViandeEffectif)
-        : null
-      updateData.finAttenteOeufs = seraFait && taOeufsEffectif
-        ? addDays(derniere, taOeufsEffectif)
-        : null
+    // Délais finaux : ceux du corps, sinon ceux du soin. Relus SOUS le verrou
+    // (`delaisSousVerrou`) pour le contrôle ADV88 et les fenêtres d'attente.
+    const delaisFinauxSoin = (stockes: Pick<SoinAnimal, 'tempsAttenteLaitJ' | 'tempsAttenteViandeJ' | 'tempsAttenteOeufsJ'>) => ({
+      tempsAttenteLaitJ: updateData.tempsAttenteLaitJ !== undefined ? updateData.tempsAttenteLaitJ : stockes.tempsAttenteLaitJ,
+      tempsAttenteViandeJ: updateData.tempsAttenteViandeJ !== undefined ? updateData.tempsAttenteViandeJ : stockes.tempsAttenteViandeJ,
+      tempsAttenteOeufsJ: updateData.tempsAttenteOeufsJ !== undefined ? updateData.tempsAttenteOeufsJ : stockes.tempsAttenteOeufsJ,
+    })
+    // Valeurs finales du soin (corps, sinon valeurs stockées) soumises à la
+    // règle des délais : type, produit, cible.
+    const soinFinal = (stocke: Pick<SoinAnimal, 'type' | 'produitId' | 'animalId' | 'lotId'>) => ({
+      type: updateData.type ?? stocke.type,
+      produitId: updateData.produitId !== undefined ? updateData.produitId : stocke.produitId,
+      animalId: updateData.animalId !== undefined ? updateData.animalId : stocke.animalId,
+      lotId: updateData.lotId !== undefined ? updateData.lotId : stocke.lotId,
+    })
+
+    // ADV88 (contre-revue 2026-11-15) — un soin médicamenteux sans médicament
+    // de la pharmacie ne devient « fait » qu'avec les délais d'attente exigés
+    // à la création (viande toujours, lait pour une cible laitière, œufs pour
+    // des pondeuses) : ceux du corps, sinon ceux déjà stockés. Valeurs finales
+    // du soin (type, produit, cible) ; cible relue dans l'exploitation du
+    // propriétaire. Ce refus anticipé (sur `existing`, lu avant le verrou)
+    // n'est qu'une économie : la règle fait foi sous le verrou, sur le soin
+    // relu (une correction concurrente du type, du produit, de la cible ou des
+    // délais a pu aboutir entre-temps).
+    if (fait === true && !existing.fait) {
+      const refus = await refusDelaisValidationSoin(prisma, session.user.id, soinFinal(existing), delaisFinauxSoin(existing))
+      if (refus) {
+        const { status, ...corps } = refus
+        return NextResponse.json(corps, { status })
+      }
     }
 
     const soin = await prisma.$transaction(async (tx) => {
@@ -748,10 +417,42 @@ export async function PATCH(request: NextRequest) {
       // la transaction), deux « Fait » envoyés ensemble voyaient chacun un soin
       // non fait et décomptaient chacun la pharmacie, alors qu'une annulation
       // n'en rend qu'une.
+      // ADV88 (revues QA115 / ADV116) : le type, le produit, la cible et les
+      // délais se relisent aussi sous le mutex, et la règle des délais se
+      // rejoue sur ces valeurs à toute transition effective vers « fait ».
       const courant = await tx.soinAnimal.findFirst({
         where: { id, userId: session!.user.id },
-        select: { fait: true, quantitePreleveeStock: true },
+        select: {
+          fait: true, quantitePreleveeStock: true, type: true, produitId: true, animalId: true, lotId: true,
+          tempsAttenteLaitJ: true, tempsAttenteViandeJ: true, tempsAttenteOeufsJ: true,
+        },
       }) ?? existing
+      const delaisSousVerrou = delaisFinauxSoin(courant)
+      if (fait === true && !courant.fait) {
+        const refus = await refusDelaisValidationSoin(tx, session!.user.id, soinFinal(courant), delaisSousVerrou)
+        if (refus) throw new RefusDelaisSousVerrou(refus)
+      }
+      const taLaitEffectif = delaisSousVerrou.tempsAttenteLaitJ
+      const taViandeEffectif = delaisSousVerrou.tempsAttenteViandeJ
+      const taOeufsEffectif = delaisSousVerrou.tempsAttenteOeufsJ
+      if (dateChangee || faitChange || injectionsChangees || taChange) {
+        const newDate = (updateData.date as Date | undefined) ?? existing.date
+        const seraFait = (updateData.fait as boolean | undefined) ?? existing.fait
+        const nbInj = (updateData.nbInjections as number | undefined) ?? existing.nbInjections ?? 1
+        const intervalleH = (updateData.intervalleInjectionsHeures as number | null | undefined) ?? existing.intervalleInjectionsHeures ?? null
+        const derniere = nbInj > 1 && intervalleH
+          ? new Date(newDate.getTime() + (nbInj - 1) * intervalleH * 3_600_000)
+          : newDate
+        updateData.finAttenteLait = seraFait && taLaitEffectif
+          ? addDays(derniere, taLaitEffectif)
+          : null
+        updateData.finAttenteViande = seraFait && taViandeEffectif
+          ? addDays(derniere, taViandeEffectif)
+          : null
+        updateData.finAttenteOeufs = seraFait && taOeufsEffectif
+          ? addDays(derniere, taOeufsEffectif)
+          : null
+      }
       const devientRealise = fait === true && !courant.fait && courant.quantitePreleveeStock <= 0
       const devientPlanifie = fait === false && courant.fait && courant.quantitePreleveeStock > 0
       if (fait === false && courant.fait) {
@@ -870,6 +571,10 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: soin })
   } catch (error) {
+    if (error instanceof RefusDelaisSousVerrou) {
+      const { status, ...corps } = error.refus
+      return NextResponse.json(corps, { status })
+    }
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/soins error:', error)
     if (error instanceof Error && error.message.startsWith('STOCK_MEDICAMENT_INSUFFISANT:')) {
