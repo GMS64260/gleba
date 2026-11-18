@@ -456,19 +456,46 @@ function QualiteView() {
   const [lignes, setLignes] = React.useState<LigneQualite[]>([])
   const [troupeau, setTroupeau] = React.useState<TroupeauQualite | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [erreur, setErreur] = React.useState(false)
+  const [tentative, setTentative] = React.useState(0)
   const [fenetre, setFenetre] = React.useState(180)
   const [masquerSansMesure, setMasquerSansMesure] = React.useState(true)
 
   React.useEffect(() => {
-    setLoading(true)
-    fetch(`/api/elevage/qualite-lait?fenetre=${fenetre}`)
-      .then((r) => r.json())
-      .then((j) => {
-        setLignes(j.data || [])
+    let controller: AbortController | undefined
+    const charger = async () => {
+      controller?.abort()
+      const requete = new AbortController()
+      controller = requete
+      setLoading(true)
+      setErreur(false)
+      setLignes([])
+      setTroupeau(null)
+      try {
+        const reponse = await fetch(`/api/elevage/qualite-lait?fenetre=${fenetre}`, {
+          signal: requete.signal,
+          cache: "no-store",
+        })
+        if (!reponse.ok) throw new Error("Chargement des analyses refusé")
+        const j = await reponse.json()
+        if (!Array.isArray(j?.data)) throw new Error("Réponse des analyses invalide")
+        // Vérifier aussi après lecture du corps : il peut finir après l’annulation.
+        if (requete.signal.aborted) return
+        setLignes(j.data)
         setTroupeau(j.troupeau || null)
-      })
-      .finally(() => setLoading(false))
-  }, [fenetre])
+      } catch {
+        if (!requete.signal.aborted) setErreur(true)
+      } finally {
+        if (!requete.signal.aborted) setLoading(false)
+      }
+    }
+    void charger()
+    window.addEventListener("gleba:exploitation-changee", charger)
+    return () => {
+      controller?.abort()
+      window.removeEventListener("gleba:exploitation-changee", charger)
+    }
+  }, [fenetre, tentative])
 
   const visibles = masquerSansMesure ? lignes.filter((l) => l.nbMesures > 0) : lignes
 
@@ -488,6 +515,7 @@ function QualiteView() {
           </div>
           <div className="flex items-end gap-2">
             <select
+              aria-label="Période des analyses"
               className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
               value={fenetre}
               onChange={(e) => setFenetre(parseInt(e.target.value, 10))}
@@ -541,7 +569,14 @@ function QualiteView() {
         )}
 
         {loading ? (
-          <div className="text-sm text-slate-500">Chargement…</div>
+          <div role="status" className="text-sm text-slate-500">Chargement…</div>
+        ) : erreur ? (
+          <div role="alert" className="space-y-2 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            <p>Impossible de charger les analyses de qualité du lait. Réessayez dans un instant.</p>
+            <Button type="button" variant="outline" onClick={() => setTentative((n) => n + 1)}>
+              Réessayer
+            </Button>
+          </div>
         ) : visibles.length === 0 ? (
           <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">
             Aucune analyse de lait saisie sur la période. Renseignez la numération cellulaire (et TB/TP) lors de la
