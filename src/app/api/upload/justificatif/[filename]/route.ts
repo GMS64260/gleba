@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+import { estNomJustificatif } from "@/lib/comptabilite/justificatif"
 
-const SAFE_FILENAME = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(pdf|jpg|png)$/i
 const MIME_BY_EXT: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", png: "image/png" }
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ filename: string }> }) {
@@ -11,7 +11,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ fi
   if (error) return error
 
   const { filename } = await context.params
-  if (!SAFE_FILENAME.test(filename)) {
+  if (!estNomJustificatif(filename)) {
     return NextResponse.json({ error: "Justificatif invalide" }, { status: 400 })
   }
 

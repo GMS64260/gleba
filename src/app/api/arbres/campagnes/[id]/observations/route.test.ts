@@ -6,13 +6,20 @@ const mocks = vi.hoisted(() => ({
   campagne: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  lister: vi.fn(),
+  verrou: vi.fn(),
+  historique: [] as { id: number; date: Date; tauxReprise: number | null }[],
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.auth }))
-vi.mock("@/lib/prisma", () => ({ default: {
-  campagnePlantation: { findFirst: mocks.campagne, update: mocks.update },
-  observationCampagne: { create: mocks.create },
-} }))
+vi.mock("@/lib/prisma", () => {
+  const db = {
+    campagnePlantation: { findFirst: mocks.campagne, update: mocks.update },
+    observationCampagne: { create: mocks.create, findMany: mocks.lister },
+    $queryRaw: mocks.verrou,
+  }
+  return { default: { ...db, $transaction: async (action: (tx: typeof db) => Promise<unknown>) => action(db) } }
+})
 
 import { POST } from "./route"
 
@@ -24,9 +31,16 @@ const champs = ["nbVivants", "nbMorts", "nbManquants", "tauxReprise", "hauteurMo
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.historique.length = 0
   mocks.auth.mockResolvedValue({ error: null, session: { user: { id: "ferme-test" } } })
   mocks.campagne.mockResolvedValue({ id: 17, nombrePlants: 100, statut: "plantation", datePlantationReelle: new Date("2026-01-15") })
-  mocks.create.mockImplementation(async ({ data }) => ({ id: 29, ...data }))
+  mocks.verrou.mockResolvedValue([{ id: 17 }])
+  mocks.lister.mockImplementation(async () => mocks.historique)
+  mocks.create.mockImplementation(async ({ data }) => {
+    const observation = { id: 29 + mocks.historique.length, ...data }
+    mocks.historique.push(observation)
+    return observation
+  })
 })
 
 describe("POST observation de campagne — valeurs numériques", () => {
@@ -49,7 +63,10 @@ describe("POST observation de campagne — valeurs numériques", () => {
     const res = await post(vide === undefined ? {} : Object.fromEntries(champs.map((champ) => [champ, vide])))
     expect(res.status).toBe(201)
     expect(await res.json()).toMatchObject(Object.fromEntries(champs.map((champ) => [champ, null])))
-    expect(mocks.update).not.toHaveBeenCalled()
+    expect(mocks.update).toHaveBeenCalledWith({
+      where: { id: 17, userId: "ferme-test" },
+      data: { tauxReprise: null, dateDernObservation: null },
+    })
   })
 
   it("calcule le taux à partir des plants plantés et conserve les décimales", async () => {

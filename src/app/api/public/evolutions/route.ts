@@ -8,6 +8,7 @@
 
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { signatureEvolution } from "@/lib/evolutions/signature"
 
 export const dynamic = "force-dynamic"
 
@@ -32,8 +33,7 @@ export async function GET() {
     votes: e._count.votes,
     hasVoted: false,
     author: {
-      id: "",
-      name: e.user.name?.trim() || "Membre de Gleba",
+      name: signatureEvolution(e.user.name),
       isMe: false,
     },
   }))

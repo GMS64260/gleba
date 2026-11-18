@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { BesoinsBoutique } from "@/components/elevage/BesoinsBoutique"
 import { useAccesService } from "@/hooks/use-acces-service"
 import { ConteneurPage } from "@/components/shell/PageEntete"
 import { LayoutGrid } from "lucide-react"
@@ -389,6 +390,7 @@ export function Accueil() {
             }
           />
         <ConteneurPage className="space-y-4 pt-6 pb-28 lg:pb-8">
+          <BesoinsBoutique recharge={tentative} />
 
           {edition && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-lin bg-sauge-doux px-4 py-2.5 text-[13.5px] accueil-entree" role="region" aria-label="Personnaliser l'accueil">

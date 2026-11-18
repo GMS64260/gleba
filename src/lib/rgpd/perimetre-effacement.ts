@@ -18,10 +18,10 @@
  *
  * Module pur (aucun import Prisma) : importable par l'écran en phase 2.
  *
- * Schéma complet et schéma public : la table classe les 181 modèles du schéma
+ * Schéma complet et schéma public : la table classe tous les modèles du schéma
  * complet. Dix-neuf d'entre eux (caisse sécurisée, stock physique :
  * `MODELES_ZONE_PRIVEE`) n'existent que dans la zone privée et manquent au
- * schéma public (162 modèles). Le contrôle accepte leur absence seulement
+ * schéma public. Le contrôle accepte leur absence seulement
  * quand elle est totale (schéma public) ; une absence partielle reste une
  * anomalie. Le document est le même dans les deux dépôts (livraison du
  * 2026-11-16 : ce module, son test et le document sont publiés).
@@ -467,6 +467,8 @@ export const PERIMETRE_EFFACEMENT = {
   Parametre: instance('systeme', 'Réglages de l’instance.'),
   GenericCache: effacer('systeme', 'Cache technique mixte : caches partagés (météo par coordonnées arrondies, Hub’Eau, SoilGrids, alertes du journal d’erreurs) et traces d’envoi des notifications propres au compte.', { rattachement: 'cle', condition: 'Seules les clés `notif:envoyee:<userId>:…` (traces d’envoi d’alertes, qui peuvent citer une planche ou une culture ; expiration à la fin du jour d’alerte, sinon sept jours) sont propres au compte : la phase 2 les sélectionne par ce préfixe et les efface avec les données. Les autres clés sont partagées entre comptes, hors périmètre, et expirent seules (`purgeExpired`).' }),
   MeteoCache: instance('systeme', 'Cache météo par coordonnées.'),
+  ClimatMaille: instance('systeme', 'Mailles SAFRAN de Météo-France (8 km), partagées entre exploitations, et état technique de leur import.', { condition: 'Seul le centre de la maille est enregistré : aucun identifiant de compte ou de parcelle, aucune coordonnée précise de parcelle. La localisation de l’exploitation reste dans `ParcelleGeo`, classé à effacer. Un effacement individuel ne supprime pas cet historique commun.' }),
+  ClimatMailleAnnee: instance('systeme', 'Températures quotidiennes publiques SAFRAN, par année et par maille partagée.', { condition: 'Rattachées uniquement à `ClimatMaille` par `mailleId` (CASCADE), sans lien vers un compte ou une parcelle. Même périmètre partagé que la maille.' }),
   ApiError: instance('systeme', 'Journal des erreurs serveur (purge vers trente jours).', { aValider: 'Les messages d’erreur peuvent contenir des données saisies : purge à trente jours suffisante ?' }),
   EvenementAbonnement: instance('systeme', 'File des événements Stripe de l’abonnement Gleba.'),
   CaisseCle: instance('caisse', 'Clés publiques de signature du registre (propres à l’instance).'),

@@ -9,7 +9,8 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { enrichirMiroirsReglements } from '@/lib/comptabilite/projection-reglements'
 import { deviseCouranteExploitation } from '@/lib/comptabilite/devise-reglement'
-import { monnaieVente } from '@/lib/comptabilite/devise-vente'
+import { monnaieVente, SELECT_CONTEXTE_FISCAL_VENTE } from '@/lib/comptabilite/devise-vente'
+import { sommerParDevise, totalSiUneDevise } from '@/lib/comptabilite/totaux-devise'
 import { cleMiroirReglement } from '@/lib/comptabilite/cle-reglement'
 import { suiviReglementActif } from '@/lib/comptabilite/suivi-reglement-source'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
@@ -50,16 +51,15 @@ export async function GET(request: NextRequest) {
       if (dateFin) where.date.lte = new Date(dateFin)
     }
 
-    const [ventes, stats, exploitation] = await Promise.all([
+    const [ventes, ventesStats, exploitation] = await Promise.all([
       prisma.venteManuelle.findMany({
         where,
         orderBy: { date: 'desc' },
         take: limit,
       }),
-      prisma.venteManuelle.aggregate({
+      prisma.venteManuelle.findMany({
         where,
-        _sum: { montant: true },
-        _count: true,
+        select: { montant: true, ...SELECT_CONTEXTE_FISCAL_VENTE },
       }),
       prisma.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } }),
     ])
@@ -67,12 +67,17 @@ export async function GET(request: NextRequest) {
     const deviseCourante = deviseCouranteExploitation(exploitation)
     const lignes = (await enrichirMiroirsReglements(userId, 'vente', ventes))
       .map((v) => ({ ...v, monnaie: monnaieVente(v, deviseCourante) }))
+    // Même devise que les lignes, sur tout le filtre indépendamment de limit.
+    const totalParDevise = sommerParDevise(
+      ventesStats, v => monnaieVente(v, deviseCourante), v => v.montant, deviseCourante,
+    )
 
     return NextResponse.json({
       data: lignes,
       stats: {
-        total: stats._sum.montant || 0,
-        count: stats._count,
+        total: totalSiUneDevise(totalParDevise),
+        totalParDevise,
+        count: ventesStats.length,
       },
     })
   } catch (error) {
