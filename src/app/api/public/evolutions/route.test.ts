@@ -16,8 +16,19 @@ describe("identité publique des propositions", () => {
     }])
     const response = await GET()
     const data = await response.json()
-    expect(data.evolutions[0].author).toEqual({ id: "", name: "Membre de Gleba", isMe: false })
+    expect(data.evolutions[0].author).toEqual({ name: "Contributeur", isMe: false })
     expect(JSON.stringify(data)).not.toContain("identite-privee")
     expect(mocks.findMany.mock.calls[0][0].include.user.select).toEqual({ name: true })
+  })
+
+  it.each(["", "  ", "Éleveuse du test"])("applique la même signature aux visiteurs pour %j", async (name) => {
+    mocks.findMany.mockResolvedValue([{
+      id: "proposition-test", titre: "Une proposition", description: "Un besoin produit",
+      categorie: "GENERAL", statut: "PROPOSEE", adminNote: null,
+      createdAt: new Date("2026-11-18T12:00:00Z"),
+      user: { name }, _count: { votes: 2 },
+    }])
+    const data = await (await GET()).json()
+    expect(data.evolutions[0].author).toEqual({ name: name.trim() ? name : "Contributeur", isMe: false })
   })
 })

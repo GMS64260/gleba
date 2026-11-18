@@ -45,10 +45,13 @@ import { jourLocalISO } from "@/lib/jour-civil"
 import {
   construirePayloadAlerteUrgente,
   envoyerPushUtilisateur,
+  pushConfigure,
 } from "@/lib/push"
 
 /** Nombre maximal d'emails envoyés par utilisateur et par scan (anti-spam). */
 const MAX_EMAILS_PAR_UTILISATEUR = 15
+/** Même plafond pour les alertes urgentes, quel que soit le canal accepté. */
+const MAX_ALERTES_URGENTES_PAR_UTILISATEUR = 15
 
 /**
  * Résout le désabonnement du destinataire : ces emails sont récurrents et non
@@ -82,14 +85,9 @@ async function chargerPrefsNotifAvecFallback(user: DestinataireNotification): Pr
   }
 }
 
-/** Les notifications sont-elles activées ? (défaut : oui si SMTP configuré). */
+/** Activation globale ; chaque envoi vérifie ensuite ses propres transports. */
 export async function notificationsEnabled(): Promise<boolean> {
-  const enabled = await getSetting("notif.enabled")
-  if (!enabled) return false
-  // Même prédicat que `sendMail` (issue #32) : sans SMTP, chaque envoi lèverait
-  // désormais, et un scan de 100 comptes remplirait le journal d'erreurs de
-  // non-incidents. On ne scanne donc pas du tout.
-  return smtpConfigure()
+  return Boolean(await getSetting("notif.enabled"))
 }
 
 /**
@@ -97,7 +95,7 @@ export async function notificationsEnabled(): Promise<boolean> {
  * dangereuses sur les 48 h à venir et email chaque nouvelle alerte.
  */
 export async function envoyerAlertesMeteoTempsReel(): Promise<number> {
-  if (!(await notificationsEnabled())) return 0
+  if (!(await notificationsEnabled()) || !(await smtpConfigure())) return 0
   await nettoyerAlertesEnvoyees()
   await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()
@@ -171,9 +169,12 @@ async function traiterMeteoUtilisateur(user: DestinataireNotification): Promise<
 /**
  * Scan temps réel des actions urgentes : irrigations probablement inutiles,
  * associations incompatibles, tâches en retard.
+ * Retourne le nombre d'alertes acceptées par au moins un canal durant ce scan.
  */
 export async function envoyerAlertesUrgentes(): Promise<number> {
   if (!(await notificationsEnabled())) return 0
+  const [mailPret, pushPret] = await Promise.all([smtpConfigure(), pushConfigure()])
+  if (!mailPret && !pushPret) return 0
   await nettoyerAlertesEnvoyees()
   await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()
@@ -192,25 +193,32 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
       )
       if (urgentes.length === 0) continue
 
-      // Résolu seulement quand il y a réellement quelque chose à envoyer :
-      // getOrCreateUnsubscribeToken peut ÉCRIRE (création du token au premier
-      // usage), inutile de le faire à chaque scan pour tout le monde.
-      const { user: destinataire, headers } = await avecDesabonnement(user)
+      // Le push seul n'a pas besoin de créer un jeton de désabonnement mail.
+      let desabonnement: Awaited<ReturnType<typeof avecDesabonnement>> | undefined
       let envoyees = 0
       for (const alerte of urgentes) {
-        if (envoyees >= MAX_EMAILS_PAR_UTILISATEUR) {
+        if (envoyees >= MAX_ALERTES_URGENTES_PAR_UTILISATEUR) {
           console.warn(`[notifications] Cap anti-spam atteint pour ${user.email}`)
           break
         }
+        // La clé historique reste celle du mail. Le push a son propre
+        // acquittement persistant, toujours cloisonné par utilisateur.
         const cle = `${user.id}:${alerte.key}`
-        if (await alerteDejaEnvoyee(cle)) continue
+        const clePush = `${user.id}:push:${alerte.key}`
+        const envoyerMail = mailPret && !(await alerteDejaEnvoyee(cle))
+        const envoyerPush = pushPret && !(await alerteDejaEnvoyee(clePush))
+        if (!envoyerMail && !envoyerPush) continue
         let emailEnvoye = false
-        try {
-          const { subject, html } = alerteUrgenteEmail(destinataire, alerte)
-          await sendMail({ to: user.email, subject, html, headers })
-          emailEnvoye = true
-        } catch (error) {
-          console.error(`[notifications] Envoi alerte urgente échoué pour ${user.id}:`, error)
+        if (envoyerMail) {
+          try {
+            desabonnement ??= await avecDesabonnement(user)
+            const { user: destinataire, headers } = desabonnement
+            const { subject, html } = alerteUrgenteEmail(destinataire, alerte)
+            await sendMail({ to: user.email, subject, html, headers })
+            emailEnvoye = true
+          } catch (error) {
+            console.error(`[notifications] Envoi alerte urgente échoué pour ${user.id}:`, error)
+          }
         }
 
         // L'alerte est scellée dès que l'email a été livré, AVANT le push :
@@ -219,17 +227,20 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
         // 2026-11-12, SEC-05).
         if (emailEnvoye) {
           await marquerAlerteEnvoyee(cle)
-          envoyees++
         }
 
-        try {
-          // Chaque abonnement est borné par son propre délai (`push-reseau.ts`) :
-          // un service push muet ne tient plus le scan des comptes suivants.
-          await envoyerPushUtilisateur(user.id, construirePayloadAlerteUrgente(alerte))
-        } catch (error) {
-          // Une panne push ne doit jamais empêcher la livraison email ni le scan.
-          console.error(`[notifications] Envoi push urgent échoué pour ${user.id}:`, error)
+        let pushAccepte = false
+        if (envoyerPush) {
+          try {
+            // Chaque abonnement est borné par son propre délai (`push-reseau.ts`).
+            pushAccepte = (await envoyerPushUtilisateur(user.id, construirePayloadAlerteUrgente(alerte))) > 0
+            if (pushAccepte) await marquerAlerteEnvoyee(clePush)
+          } catch (error) {
+            // Une panne push ne doit jamais empêcher la livraison email ni le scan.
+            console.error(`[notifications] Envoi push urgent échoué pour ${user.id}:`, error)
+          }
         }
+        if (emailEnvoye || pushAccepte) envoyees++
       }
       total += envoyees
     } catch (error) {
@@ -249,7 +260,7 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
  * la conséquence est un courriel en double chez 115 comptes.
  */
 export async function envoyerResumeQuotidien(): Promise<number> {
-  if (!(await notificationsEnabled())) return 0
+  if (!(await notificationsEnabled()) || !(await smtpConfigure())) return 0
   await nettoyerAlertesEnvoyees()
   await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()

@@ -193,8 +193,8 @@ export default function ParcellesPage() {
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
 
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <Link href="/">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
@@ -206,14 +206,14 @@ export default function ParcellesPage() {
               <h1 className="text-xl font-bold">Parcelles</h1>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-3">
             <Link href="/jardin/carte">
               <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
                 <MapIcon className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Carte</span>
+                <span>Carte</span>
               </Button>
             </Link>
-            <span className="text-sm text-muted-foreground">
+            <span className="min-w-0 whitespace-normal break-words text-sm text-muted-foreground">
               {data.length} parcelle{data.length > 1 ? "s" : ""} {totalSurface > 0 && `\u2022 ${totalSurface.toFixed(2)} ha total`}
             </span>
           </div>

@@ -336,10 +336,15 @@ export default function FacturesPage() {
     }
   }, [selectedYear])
 
+  // Une mutation de créance doit actualiser les deux vues, y compris lorsque
+  // l'onglet Impayées n'est pas affiché au moment de son succès.
+  const rafraichirFactures = React.useCallback(async () => {
+    await Promise.all([fetchFacturesEmises(), fetchImpayees()])
+  }, [fetchFacturesEmises, fetchImpayees])
+
   React.useEffect(() => {
-    fetchImpayees()
-    fetchFacturesEmises()
-  }, [fetchImpayees, fetchFacturesEmises])
+    void rafraichirFactures()
+  }, [rafraichirFactures])
 
   // QA 2026-05-15 — Bug #13 : "Télécharger PDF" sans effet sur certains
   // navigateurs. L'ancienne implémentation créait un `<a download>` qui
@@ -404,7 +409,7 @@ export default function FacturesPage() {
       })
       if (res.ok) {
         toast({ title: successMsg })
-        fetchFacturesEmises()
+        void rafraichirFactures()
       } else {
         const p = await res.json().catch(() => null)
         toast({ variant: "destructive", title: "Erreur", description: p?.error || "Changement de statut impossible" })
@@ -554,8 +559,8 @@ export default function FacturesPage() {
         client: '', adresse: '', clientId: '', sansFiche: false, objet: '', notes: '',
         dateLivraison: '', livraisonDifferente: false, adresseLivraison: '', codePostalLivraison: '', villeLivraison: '', paysLivraison: 'France',
       })
-      // Recharge la liste & ouvre le PDF
-      fetchFacturesEmises()
+      // Actualise les factures et les créances, puis ouvre le PDF.
+      void rafraichirFactures()
       ouvrirApercu(`/api/comptabilite/factures/${json.data.id}/pdf`, `Facture ${json.data.numero ?? ''}`.trim())
       changerOnglet('emises')
     } catch (err) {
@@ -647,7 +652,7 @@ export default function FacturesPage() {
         montant: "",
         tauxTVA: "5.5",
       })
-      fetchFacturesEmises()
+      void rafraichirFactures()
       // Ouvre le PDF généré côté serveur (mentions légales + snapshot émetteur).
       ouvrirApercu(`/api/comptabilite/factures/${created.id}/pdf`, `Facture ${created.numero ?? ""}`.trim())
     } catch (err) {
@@ -673,7 +678,7 @@ export default function FacturesPage() {
               <h1 className="text-xl font-bold">Devis et facturation</h1>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchImpayees}><RefreshCw className="h-4 w-4" /></Button>
+          <Button variant="outline" size="sm" onClick={rafraichirFactures}><RefreshCw className="h-4 w-4" /></Button>
         </div>
       </header>
 
@@ -712,8 +717,8 @@ export default function FacturesPage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="devis"><DocumentsCommerciaux type="devis" onFacture={() => { fetchFacturesEmises(); fetchImpayees(); changerOnglet('emises') }} /></TabsContent>
-          <TabsContent value="livraisons"><DocumentsCommerciaux type="livraison" onFacture={() => { fetchFacturesEmises(); fetchImpayees(); changerOnglet('emises') }} /></TabsContent>
+          <TabsContent value="devis"><DocumentsCommerciaux type="devis" onFacture={() => { void rafraichirFactures(); changerOnglet('emises') }} /></TabsContent>
+          <TabsContent value="livraisons"><DocumentsCommerciaux type="livraison" onFacture={() => { void rafraichirFactures(); changerOnglet('emises') }} /></TabsContent>
 
           {/* Onglet Impayées */}
           <TabsContent value="impayees">
@@ -803,7 +808,7 @@ export default function FacturesPage() {
                               {item.monnaie !== undefined ? (item.monnaie === null ? "—" : formatMontantDevise(item.montant, item.monnaie)) : item.source === 'Facture' ? formatPiece(item.montant, item.emetteurSnapshot, item.date) : formatMontant(item.montant)}
                             </TableCell>
                             <TableCell>
-                              <ReglementsDialog type={item.source} id={item.id} onChange={() => { fetchImpayees(); fetchFacturesEmises() }} />
+                              <ReglementsDialog type={item.source} id={item.id} onChange={rafraichirFactures} />
                             </TableCell>
                           </TableRow>
                         )
@@ -910,7 +915,7 @@ export default function FacturesPage() {
                             }}>Retour en stock</Button>)}
                             <div className="flex flex-wrap items-center justify-end gap-1">
                               {['emise', 'payee'].includes(f.statut) && <EnvoyerDocument type="facture" id={f.id} numero={f.numero} />}
-                              {f.type !== 'avoir' && ['emise', 'payee'].includes(f.statut) && <ReglementsDialog type="Facture" id={f.id} onChange={() => { fetchImpayees(); fetchFacturesEmises() }} />}
+                              {f.type !== 'avoir' && ['emise', 'payee'].includes(f.statut) && <ReglementsDialog type="Facture" id={f.id} onChange={rafraichirFactures} />}
                               {f.statut === "emise" && (
                                 <>
 

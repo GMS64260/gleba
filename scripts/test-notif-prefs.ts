@@ -87,7 +87,7 @@ async function main() {
 
     // Le pipeline réel ne doit donc envoyer aucune alerte urgente à l'utilisateur cible.
     const envois = await envoyerAlertesUrgentes()
-    console.log(`Pipeline urgent exécuté : ${envois} envoi(s) pour les autres destinataires éventuels.`)
+    console.log(`Pipeline urgent exécuté : ${envois} alerte(s) acceptée(s) par au moins un canal pour les autres destinataires éventuels.`)
 
     // (c) Réactive tous les types pour ne pas modifier durablement le compte de test.
     await prisma.userPreference.upsert({

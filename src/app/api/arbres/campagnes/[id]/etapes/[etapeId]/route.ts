@@ -11,6 +11,7 @@ import { createDepenseFromCampagnePlantation } from "@/lib/auto-compta"
 import { invalidateKpi } from "@/lib/kpi/cache"
 import { verrouillerReglements } from "@/lib/comptabilite/verrou-reglements"
 import { ErreurReglement } from "@/lib/comptabilite/monnaie"
+import { resoudrePlantationEtape } from "@/lib/verger/plantation-etape"
 
 interface Params {
   params: Promise<{ id: string; etapeId: string }>
@@ -36,23 +37,32 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   const body = await request.json()
   const userId = session!.user.id
-  // Seul un changement de « fait » sur l'étape Plantation touche la campagne.
-  const toucheLaPlantation = body.fait !== undefined && (body.type ?? existing.type) === "plantation"
-
   try {
     const { etape, miroirRegenere } = await prisma.$transaction(async (tx) => {
-      // Revue Codex du 2026-11-12 (COM-05) : même verrou que le PUT de la
-      // campagne, pris avant toute écriture, pour que la date de plantation
-      // et le miroir comptable de son coût changent ensemble.
-      if (toucheLaPlantation) await verrouillerReglements(tx, userId)
+      // COM-05 : même ordre que les règlements et le PUT campagne. Relire
+      // après verrouillage : la première lecture ne prouve que l'existence.
+      await verrouillerReglements(tx, userId)
+      await tx.$queryRaw`SELECT id FROM campagnes_plantation WHERE id = ${campagneId} AND user_id = ${userId} FOR UPDATE`
+      await tx.$queryRaw`SELECT id FROM etapes_campagne WHERE id = ${eId} AND campagne_id = ${campagneId} AND user_id = ${userId} FOR UPDATE`
+      const courante = await tx.etapeCampagne.findFirst({ where: { id: eId, campagneId, userId } })
+      const campagne = await tx.campagnePlantation.findFirst({
+        where: { id: campagneId, userId },
+        select: { statut: true, datePlantationReelle: true },
+      })
+      if (!courante || !campagne) return { etape: null, miroirRegenere: false }
+      const plantation = resoudrePlantationEtape(courante, campagne, {
+        type: body.type,
+        fait: body.fait,
+        dateRealisation: body.dateRealisation !== undefined ? (body.dateRealisation ? new Date(body.dateRealisation) : null) : undefined,
+      })
       const etape = await tx.etapeCampagne.update({
-        where: { id: eId },
+        where: { id: eId, campagneId, userId },
         data: {
           type: body.type !== undefined ? body.type : undefined,
           ordre: body.ordre !== undefined ? body.ordre : undefined,
           description: body.description !== undefined ? (body.description || null) : undefined,
           datePrevue: body.datePrevue !== undefined ? (body.datePrevue ? new Date(body.datePrevue) : null) : undefined,
-          dateRealisation: body.dateRealisation !== undefined ? (body.dateRealisation ? new Date(body.dateRealisation) : null) : undefined,
+          dateRealisation: plantation.dateRealisation,
           fait: body.fait !== undefined ? body.fait : undefined,
           cout: body.cout !== undefined ? (body.cout ? parseFloat(body.cout) : null) : undefined,
           dureeMinutes: body.dureeMinutes !== undefined ? (body.dureeMinutes ? parseInt(body.dureeMinutes) : null) : undefined,
@@ -64,49 +74,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
         },
       })
 
-      // Tickets cmsog4sbz + cmsog61e5 — le cycle de vie de la campagne suit
-      // l'étape Plantation : cocher l'étape renseigne datePlantationReelle (et
-      // avance le statut s'il est encore amont), la décocher annule cette date si
-      // elle en provenait, et ramène le statut à "planifiee".
-      if (etape.type !== "plantation" || body.fait === undefined) return { etape, miroirRegenere: false }
-      const campagne = await tx.campagnePlantation.findFirst({
+      if (!plantation.campagne) return { etape, miroirRegenere: false }
+      const source = await tx.campagnePlantation.update({
         where: { id: campagneId, userId },
-        select: { statut: true, datePlantationReelle: true },
+        data: plantation.campagne,
       })
-      if (!campagne) return { etape, miroirRegenere: false }
-      let source: Awaited<ReturnType<typeof tx.campagnePlantation.update>> | null = null
-      if (body.fait === true) {
-        source = await tx.campagnePlantation.update({
-          where: { id: campagneId },
-          data: {
-            datePlantationReelle: etape.dateRealisation ?? new Date(),
-            // Statuts (cf. schema.prisma) : planifiee → prep_sol → plantation
-            // → suivi → terminee / echec. On n'avance que depuis un statut
-            // amont, sans écraser un statut déjà aval (suivi, terminee…).
-            ...(campagne.statut === "planifiee" || campagne.statut === "prep_sol"
-              ? { statut: "plantation" }
-              : {}),
-          },
-        })
-      } else if (
-        campagne.datePlantationReelle &&
-        existing.dateRealisation &&
-        campagne.datePlantationReelle.getTime() === existing.dateRealisation.getTime()
-      ) {
-        // datePlantationReelle provenait de cette étape (mêmes dates) : on la
-        // retire. Le statut redescend à "planifiee" sauf s'il est terminal
-        // (terminee / echec), acté explicitement par l'utilisateur.
-        source = await tx.campagnePlantation.update({
-          where: { id: campagneId },
-          data: {
-            datePlantationReelle: null,
-            ...(campagne.statut === "terminee" || campagne.statut === "echec"
-              ? {}
-              : { statut: "planifiee" }),
-          },
-        })
-      }
-      if (!source) return { etape, miroirRegenere: false }
       // COM-05 : la dépense miroir du coût de la campagne est datée par la
       // plantation réelle, sinon prévue, sinon la création. Sans cette
       // régénération, le FEC et les indicateurs gardaient l'ancienne date,
@@ -120,7 +92,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         createdAt: source.createdAt,
       }, tx)
       return { etape, miroirRegenere: true }
-    })
+    }, { isolationLevel: "ReadCommitted" })
+    if (!etape) return NextResponse.json({ error: "Étape non trouvée" }, { status: 404 })
     if (miroirRegenere) invalidateKpi(userId)
     return NextResponse.json(etape)
   } catch (err) {

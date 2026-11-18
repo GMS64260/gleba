@@ -13,7 +13,7 @@
 
 ## Résumé
 
-181 modèles Prisma classés : 69 à effacer, 93 à conserver, 0 à anonymiser, 19 hors périmètre. 45 modèles portent un point à valider par Guillaume.
+183 modèles Prisma classés : 69 à effacer, 93 à conserver, 0 à anonymiser, 21 hors périmètre. 45 modèles portent un point à valider par Guillaume.
 
 Aucune anonymisation n’est proposée pour ce geste, qui garde le compte : la reprise des référentiels partagés par « Communauté Gleba » et la signature « Ancien membre » des versions publiées s’appliquent à la suppression du compte (`reprendreReferentielCommunaute`, `src/lib/account-lifecycle.ts`).
 
@@ -303,6 +303,8 @@ Aucune anonymisation n’est proposée pour ce geste, qui garde le compte : la r
 | `Parametre` | Hors périmètre | instance | Réglages de l’instance. | — | — | — | — |
 | `GenericCache` | Effacer | cle | Cache technique mixte : caches partagés (météo par coordonnées arrondies, Hub’Eau, SoilGrids, alertes du journal d’erreurs) et traces d’envoi des notifications propres au compte. Seules les clés `notif:envoyee:<userId>:…` (traces d’envoi d’alertes, qui peuvent citer une planche ou une culture ; expiration à la fin du jour d’alerte, sinon sept jours) sont propres au compte : la phase 2 les sélectionne par ce préfixe et les efface avec les données. Les autres clés sont partagées entre comptes, hors périmètre, et expirent seules (`purgeExpired`). | — | — | — | — |
 | `MeteoCache` | Hors périmètre | instance | Cache météo par coordonnées. | — | — | — | — |
+| `ClimatMaille` | Hors périmètre | instance | Mailles SAFRAN de Météo-France (8 km), partagées entre exploitations, et état technique de leur import. Seul le centre de la maille est enregistré : aucun identifiant de compte ou de parcelle, aucune coordonnée précise de parcelle. La localisation de l’exploitation reste dans `ParcelleGeo`, classé à effacer. Un effacement individuel ne supprime pas cet historique commun. | — | — | — | — |
+| `ClimatMailleAnnee` | Hors périmètre | instance | Températures quotidiennes publiques SAFRAN, par année et par maille partagée. Rattachées uniquement à `ClimatMaille` par `mailleId` (CASCADE), sans lien vers un compte ou une parcelle. Même périmètre partagé que la maille. | — | — | — | — |
 | `ApiError` | Hors périmètre | instance | Journal des erreurs serveur (purge vers trente jours). | — | — | — | Oui |
 | `EvenementAbonnement` | Hors périmètre | instance | File des événements Stripe de l’abonnement Gleba. | — | — | — | — |
 
