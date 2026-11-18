@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { lireNombreObservation, NombreObservationInvalide } from "@/lib/verger/nombre-observation"
+import { enregistrerObservationReprise } from "@/lib/verger/chronologie-reprise"
+import { ErreurVerger } from "@/lib/verger/erreur"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -105,8 +107,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
-  const observation = await prisma.observationCampagne.create({
-    data: {
+  try {
+    const observation = await enregistrerObservationReprise(prisma, {
       userId: session!.user.id,
       campagneId,
       date,
@@ -118,19 +120,12 @@ export async function POST(request: NextRequest, { params }: Params) {
       vigueur: body.vigueur || null,
       problemes: body.problemes || null,
       notes: body.notes || null,
-    },
-  })
-
-  // Mise à jour de la campagne avec dernière observation
-  if (tauxReprise !== null) {
-    await prisma.campagnePlantation.update({
-      where: { id: campagneId },
-      data: {
-        tauxReprise,
-        dateDernObservation: date,
-      },
     })
+    return NextResponse.json(observation, { status: 201 })
+  } catch (error) {
+    if (error instanceof ErreurVerger) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    throw error
   }
-
-  return NextResponse.json(observation, { status: 201 })
 }

@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
+import { signatureEvolution } from "@/lib/evolutions/signature"
 import { evolutionSchema, EVOLUTION_STATUTS, EVOLUTION_CATEGORIES } from "@/lib/validations/evolution"
 import prisma from "@/lib/prisma"
 import type { Prisma } from "@prisma/client"
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
   const evolutions = await prisma.evolution.findMany({
     where,
     include: {
-      user: { select: { id: true, name: true, email: true } },
+      user: { select: { id: true, name: true } },
       _count: { select: { votes: true } },
       votes: { where: { userId: getActeurId(session) }, select: { id: true } },
     },
@@ -55,8 +56,7 @@ export async function GET(request: Request) {
     votes: e._count.votes,
     hasVoted: e.votes.length > 0,
     author: {
-      id: e.user.id,
-      name: e.user.name || e.user.email.split("@")[0],
+      name: signatureEvolution(e.user.name),
       isMe: e.user.id === getActeurId(session),
     },
   }))

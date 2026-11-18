@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { refusVentilationFournie } from '@/lib/comptabilite/ventilation-ttc'
 import { modeReglementSchema } from './reglement'
+import { pjUrlSchema } from './justificatif'
 
 const JOURNAUX = ['VE', 'AC', 'BQ', 'CA', 'OD'] as const
 
@@ -24,7 +25,7 @@ const venteManuelleBase = z.object({
   journal: z.enum(JOURNAUX).optional().default('VE'),
   modeReglement: modeReglementSchema,
   numeroPiece: z.string().max(50).nullable().optional(),
-  pjUrl: z.string().url().nullable().optional().or(z.literal('')),
+  pjUrl: pjUrlSchema,
 })
 
 /**

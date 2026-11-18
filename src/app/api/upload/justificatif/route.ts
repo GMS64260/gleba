@@ -24,6 +24,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
 import { dossierEnvoi, extensionReelle, refusEnvoiFichier } from "@/lib/upload-garde"
+import { PREFIXE_JUSTIFICATIF } from "@/lib/comptabilite/justificatif"
 
 const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED_MIME: Record<string, string> = {
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
   await writeFile(path.join(dir, filename), buffer)
   const empreinteSha256 = createHash("sha256").update(buffer).digest("hex")
 
-  const url = `/api/upload/justificatif/${filename}`
+  const url = `${PREFIXE_JUSTIFICATIF}${filename}`
   const originalName = (file as File).name || `justificatif.${ext}`
 
   return NextResponse.json({

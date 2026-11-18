@@ -70,7 +70,7 @@ interface Evolution {
   createdAt: string
   votes: number
   hasVoted: boolean
-  author: { id: string; name: string; isMe: boolean }
+  author: { name: string; isMe: boolean }
 }
 
 const CATEGORIES: Record<
