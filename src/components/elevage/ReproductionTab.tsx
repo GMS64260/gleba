@@ -313,6 +313,10 @@ const TYPES_CONDUITE = [
   "IA",
 ] as const
 
+function nouveauFormulaireCampagne() {
+  return { nom: "", typeConduite: "Monte naturelle", especeAnimaleId: "", dateDebut: todayLocalISO(), dateFin: "", objectifMiseBas: "", notes: "" }
+}
+
 function CampagnesSubTab() {
   const { toast } = useToast()
   const filiereSel = useFiliereSelection()
@@ -320,9 +324,13 @@ function CampagnesSubTab() {
   const [especes, setEspeces] = React.useState<{ id: string; nom: string }[]>([])
   const [loading, setLoading] = React.useState(true)
   const [open, setOpen] = React.useState(false)
-  const EMPTY = { nom: "", typeConduite: "Monte naturelle", especeAnimaleId: "", dateDebut: todayLocalISO(), dateFin: "", objectifMiseBas: "", notes: "" }
-  const [form, setForm] = React.useState(EMPTY)
+  const [form, setForm] = React.useState(nouveauFormulaireCampagne)
   const [saving, setSaving] = React.useState(false)
+
+  const changerOuverture = (ouvert: boolean) => {
+    if (ouvert) setForm(nouveauFormulaireCampagne())
+    setOpen(ouvert)
+  }
 
   const reload = React.useCallback(() => {
     setLoading(true)
@@ -365,8 +373,7 @@ function CampagnesSubTab() {
         toast({ variant: "destructive", title: "Erreur", description: j.error || "Échec" })
       } else {
         toast({ title: "Campagne créée" })
-        setOpen(false)
-        setForm(EMPTY)
+        changerOuverture(false)
         reload()
       }
     } finally {
@@ -395,7 +402,7 @@ function CampagnesSubTab() {
               réussite par groupe. Rattachez-y les saillies dans l’onglet Saillies.
             </CardDescription>
           </div>
-          <Button onClick={() => setOpen(true)}>
+          <Button onClick={() => changerOuverture(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Nouvelle campagne
           </Button>
@@ -462,7 +469,7 @@ function CampagnesSubTab() {
         )}
       </CardContent>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={changerOuverture}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Nouvelle campagne de lutte</DialogTitle>
@@ -508,7 +515,7 @@ function CampagnesSubTab() {
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+            <Button variant="outline" onClick={() => changerOuverture(false)}>Annuler</Button>
             <Button onClick={submit} disabled={saving}>{saving ? "…" : "Créer"}</Button>
           </div>
         </DialogContent>
