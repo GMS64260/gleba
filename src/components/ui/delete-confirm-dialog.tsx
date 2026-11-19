@@ -62,7 +62,7 @@ interface Props {
   /** Texte additionnel (ex: avertissement spécifique) */
   warning?: string
   /** Callback appelé quand l'utilisateur confirme */
-  onConfirm: () => Promise<void> | void
+  onConfirm: () => Promise<void | boolean> | void | boolean
   /**
    * Optionnel : callback "Archiver" — quand fourni, un bouton "Archiver
    * (conserver l'historique)" remplace la perte irréversible. Utile pour
@@ -90,8 +90,8 @@ export function DeleteConfirmDialog({
   const handleConfirm = async () => {
     setLoading(true)
     try {
-      await onConfirm()
-      onOpenChange(false)
+      const confirme = await onConfirm()
+      if (confirme !== false) onOpenChange(false)
     } finally {
       setLoading(false)
     }

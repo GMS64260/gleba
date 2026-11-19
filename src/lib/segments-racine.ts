@@ -17,7 +17,7 @@ export const SEGMENTS_RACINE: ReadonlySet<string> = new Set([
   "robots.txt", "sitemap.xml", "manifest.json", ".well-known",
   "1c943f7c7006d54211c7143b25a23aa8.txt",
   // Zone privée, absente d'un clone public mais présente dans l'image.
-  "boutique", "feedback",
+  "boutique", "feedback", "caisse",
   // Application et pages publiques (`src/app`, groupes déployés).
   "admin", "aide", "apercu", "aujourdhui", "cgv", "communaute", "comptabilite",
   "conditions-service", "confidentialite", "dashboard", "desabonnement",

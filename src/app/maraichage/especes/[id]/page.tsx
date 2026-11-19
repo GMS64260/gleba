@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useExploitation } from "@/hooks/use-exploitation"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
 import { useSession } from "next-auth/react"
@@ -100,7 +101,7 @@ import {
 interface MonStock {
   stockNet: number
   unite: UniteQuantite
-  detail: { inventaire: number; recoltes: number; consommations: number; sortiesCommerciales?: number }
+  detail: { inventaire: number; recoltes: number; consommations: number; sortiesCommerciales?: number; transfertsBoutique?: number }
   autresUnites: Partial<Record<UniteQuantite, number>>
   inventaire: number | null
   dateInventaire: string | null
@@ -152,6 +153,8 @@ export default function EditEspecePage() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const currentUserId = (session?.user as { id?: string } | undefined)?.id
+  const { contexte } = useExploitation()
+  const proprietaireId = contexte?.tenantId
   const [familles, setFamilles] = React.useState<{ id: string }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -222,14 +225,14 @@ export default function EditEspecePage() {
   const actions = useReferentielActions("/api/varietes", reloadVarietes, toast)
 
   const varietesAffichees = React.useMemo(() => {
-    const filtrees = filtrerParOrigine(varietes, filtreOrigine, currentUserId)
+    const filtrees = filtrerParOrigine(varietes, filtreOrigine, proprietaireId)
     if (!triParNote) return filtrees
     return [...filtrees].sort((a, b) => {
       const sa = a.avisStats?.nbAvis ? a.avisStats.scoreCommunautaire : -1
       const sb = b.avisStats?.nbAvis ? b.avisStats.scoreCommunautaire : -1
       return sb - sa || (a.nom ?? a.id).localeCompare(b.nom ?? b.id)
     })
-  }, [varietes, triParNote, filtreOrigine, currentUserId])
+  }, [varietes, triParNote, filtreOrigine, proprietaireId])
 
   const form = useForm<UpdateEspeceInput>({
     resolver: zodResolver(updateEspeceSchema),
@@ -1542,6 +1545,8 @@ export default function EditEspecePage() {
                           : monStock.dateInventaire
                             ? `Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}, puis ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés et ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0), monStock.unite)} sortis.`
                             : `Sans comptage manuel : ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés en stock, ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0), monStock.unite)} sortis.`}{" "}
+                        {!!monStock?.detail.transfertsBoutique && <>Solde des transferts avec la boutique : {monStock.detail.transfertsBoutique > 0 ? '+' : ''}{formatQuantite(monStock.detail.transfertsBoutique, monStock.unite)}. </>}
+                        Comptez les produits restés à la ferme, hors boutique.{" "}
                         Même stock que{" "}
                         <Link href="/maraichage/stocks" className="underline">
                           Stocks &gt; Récoltes
@@ -1726,6 +1731,7 @@ export default function EditEspecePage() {
                                   entree={v}
                                   nom={v.nom ?? v.id}
                                   currentUserId={currentUserId}
+                                  proprietaireId={proprietaireId}
                                   actions={actions}
                                   showRemove={false}
                                   signalerRefType="VARIETE"

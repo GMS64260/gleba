@@ -19,6 +19,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 
 /** Ce que porte une source de rendement, catalogue ou ferme. */
 export interface SourceRendement {
@@ -71,9 +72,10 @@ export function rendementEffectif(
 export async function chargerSurchargesRendement(
   userId: string,
   especeIds?: string[],
+  db: Pick<Prisma.TransactionClient, 'userStockEspece'> = prisma,
 ): Promise<Map<string, SourceRendement>> {
   if (especeIds && especeIds.length === 0) return new Map()
-  const lignes = await prisma.userStockEspece.findMany({
+  const lignes = await db.userStockEspece.findMany({
     where: {
       userId,
       ...(especeIds ? { especeId: { in: especeIds } } : {}),

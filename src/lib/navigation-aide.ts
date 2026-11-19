@@ -11,6 +11,7 @@ export interface CibleAide {
 
 export const CIBLES_AIDE: readonly CibleAide[] = [
   ...ENTREES_NAVIGATION.map(({ href, libelle, id }) => ({ href, libelle, menu: id })),
+  { href: "/boutique?tab=vitrine", libelle: "Site vitrine", menu: "boutique", onglet: "vitrine", suite: "Site vitrine" },
   { href: "/tracabilite", libelle: "Registre phytosanitaire", menu: "interventions", suite: "Registre phyto complet" },
   { href: "/parametres/equipe", libelle: "Équipe", menu: "parametres", suite: "Équipe, devise et unités › Gérer l’équipe" },
   { href: "/parametres?rubrique=abonnement", libelle: "Abonnement", menu: "parametres", suite: "Abonnement" },

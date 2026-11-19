@@ -7,6 +7,12 @@
 
 import { celluleCsv } from "@/lib/csv-cellule"
 import * as React from "react"
+import { useDevise } from "@/hooks/use-devise"
+import { formatMontantDevise } from "@/lib/format-utils"
+import { deviseCommuneDesSeries, libellesTotauxParDevise, soustraireParDevise, type TotalDevise } from "@/lib/comptabilite/totaux-devise"
+import { chargerStatsComptables } from "@/lib/comptabilite/stats-client"
+import { groupesRapport, libelleDevise, MODULES_RAPPORT, type GroupeRapport, type StatsRapport } from "@/lib/comptabilite/rapport-devises"
+import type { Devise } from "@/lib/territoires"
 import { urlApercu } from "@/lib/apercu-document"
 import Link from "next/link"
 import { ArrowLeft, Download, RefreshCw, TrendingUp, TrendingDown, Wallet, PieChart, BarChart3, FileSpreadsheet, Calendar, Percent, Info, FileText } from "lucide-react"
@@ -36,38 +42,47 @@ import {
 import { ResponsiveContainer } from "@/components/ui/responsive-container"
 import { kpiCardClass } from "@/lib/kpi-theme"
 import { getAvailableYears } from "@/components/year-selector"
+import { TvaAPreciser } from "@/components/comptabilite/TvaAPreciser"
 
-interface Stats {
-  revenus: number
-  depenses: number
-  benefice: number
-  margePercent: number
-  revenusParModule: { potager: number; verger: number; elevage: number; autre: number }
-  depensesParModule: { potager: number; verger: number; elevage: number; autre: number }
+/**
+ * Réponse de GET /api/comptabilite/stats (lot devise-totaux-api) : un total
+ * historique vaut `null` dès que deux devises coexistent ; son voisin
+ * `…ParDevise` porte alors un total par devise, jamais additionnés.
+ */
+interface Stats extends StatsRapport {
+  margePercent: number | null
   // BUG #2 — sous-totaux non payés (info, charges engagées non décaissées)
-  depensesNonPayees?: number
+  depensesNonPayees?: number | null
+  depensesNonPayeesParDevise?: TotalDevise[]
   nbDepensesNonPayees?: number
-  revenusNonPayes?: number
+  revenusNonPayes?: number | null
   nbRevenusNonPayes?: number
   coherenceCheck?: {
-    revenusSsot: number
-    revenusSommeModules: number
-    revenusEcart: number
-    depensesSsot: number
-    depensesSommeModules: number
-    depensesEcart: number
+    revenusSsot: number | null
+    revenusSsotParDevise?: TotalDevise[]
+    revenusSommeModules: number | null
+    revenusSommeModulesParDevise?: TotalDevise[]
+    revenusEcart: number | null
+    revenusEcartParDevise?: TotalDevise[]
+    depensesSsot: number | null
+    depensesSsotParDevise?: TotalDevise[]
+    depensesSommeModules: number | null
+    depensesSommeModulesParDevise?: TotalDevise[]
+    depensesEcart: number | null
+    depensesEcartParDevise?: TotalDevise[]
     /** QA cmsw9dcrd — Σ avoirs de l'exercice. */
-    avoirsExercice?: number
+    avoirsExercice?: number | null
     /** Ticket cmvflua2x — d'où vient le total des revenus (somme = revenusSsot). */
     revenusComposition?: {
       ventes: number
       facturesRattachees: number
       facturesSansVente: number
       avoirs: number
-    }
+    } | null
     /** Ticket cmsx69cuc — Σ des coûts analytiques (soins, aliments, fertilisation). */
     depensesAnalytiques?: number
-  }
+    depensesAnalytiquesParDevise?: TotalDevise[]
+  } | null
 }
 
 /** Ligne de GET /api/comptabilite/revenus ou /depenses, telle qu'exportée en CSV. */
@@ -77,15 +92,19 @@ interface LigneTransaction {
   categorie: string
   description: string
   montant: number
+  /** Devise figée de la ligne ; absente : devise courante ; `null` : inconnue. */
+  monnaie?: Devise | null
   client?: string | null
   fournisseur?: string | null
   paye: boolean | null
 }
 
 interface ChartData {
-  mensuel: { mois: string; revenus: number; depenses: number; benefice: number }[]
-  revenusParCategorie: { categorie: string; montant: number; couleur: string }[]
-  depensesParCategorie: { categorie: string; montant: number; couleur: string }[]
+  // `null` : l'exercice compte deux devises.
+  mensuel: { mois: string; revenus: number | null; depenses: number | null; benefice: number | null; revenusParDevise?: TotalDevise[]; depensesParDevise?: TotalDevise[]; beneficeParDevise?: TotalDevise[] }[]
+  // `montant: null` : le graphique compte deux devises (voir `montantParDevise`).
+  revenusParCategorie: { categorie: string; montant: number | null; montantParDevise?: TotalDevise[]; couleur: string }[]
+  depensesParCategorie: { categorie: string; montant: number | null; montantParDevise?: TotalDevise[]; couleur: string }[]
 }
 
 // DEV1 #5 — Bilan PCG distinct du compte de résultat.
@@ -118,6 +137,7 @@ interface BilanData {
 }
 
 interface TVAData {
+  historique?: { regimesEnregistres: string[]; contexteDifferent: boolean; lignesSansContexte: number }
   periode: {
     annee: number
     trimestre: number | null
@@ -180,11 +200,23 @@ const INFERENCE_LABELS: Record<string, string> = {
 }
 
 export default function RapportsPage() {
+  const devise = useDevise()
+  const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
+  // Lot devise-totaux-api, tour 2 — chaque montant dans SA devise ; un total
+  // historique `null` (deux devises) n'est jamais affiché comme un zéro.
+  const formatEn = (value: number, monnaie: Devise | null) =>
+    monnaie ? formatMontantDevise(value, monnaie) : "Montant indisponible : devise historique inconnue"
+  const totauxEnLignes = (parDevise: TotalDevise[] | undefined, total: number | null | undefined) =>
+    (parDevise?.length
+      ? libellesTotauxParDevise(parDevise.map(t => ({ monnaie: t.monnaie, montant: t.total })), devise)
+      : [total == null ? "—" : formatMontant(total)]
+    ).map((l, i) => <span key={i} className="block">{l}</span>)
   const { toast } = useToast()
   // DEV1 #5 — Onglet par défaut renommé : ce qui s'appelait "bilan" est en
   // réalité un compte de résultat. Le vrai bilan est dans un onglet séparé.
   const [activeTab, setActiveTab] = React.useState("compte-de-resultat")
   const [bilanData, setBilanData] = React.useState<BilanData | null>(null)
+  const [erreurBilan, setErreurBilan] = React.useState('')
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [stats, setStats] = React.useState<Stats | null>(null)
@@ -212,6 +244,7 @@ export default function RapportsPage() {
   const [revenus, setRevenus] = React.useState<LigneTransaction[]>([])
   const [depenses, setDepenses] = React.useState<LigneTransaction[]>([])
   const [tvaData, setTvaData] = React.useState<TVAData | null>(null)
+  const [erreurTva, setErreurTva] = React.useState('')
   const [selectedTrimestre, setSelectedTrimestre] = React.useState<string>("all")
 
   // QA cmsqltuok — SSOT des exercices : même plage que le dashboard Comptabilité,
@@ -230,8 +263,9 @@ export default function RapportsPage() {
     setIsLoading(true)
     try {
       const tvaParam = selectedTrimestre !== 'all' ? `&trimestre=${selectedTrimestre}` : ''
-      const [statsRes, revRes, depRes, tvaRes, bilanRes] = await Promise.all([
-        fetch(`/api/comptabilite/stats?year=${selectedYear}`),
+      const [statsData, revRes, depRes, tvaRes, bilanRes] = await Promise.all([
+        // Contrat devise garanti, y compris dans le dépôt public (stats-client.ts).
+        chargerStatsComptables<{ stats: Stats; charts: ChartData }>(selectedYear),
         fetch(`/api/comptabilite/revenus?year=${selectedYear}&limit=500`),
         fetch(`/api/comptabilite/depenses?year=${selectedYear}&limit=500`),
         fetch(`/api/comptabilite/tva?year=${selectedYear}${tvaParam}`),
@@ -240,11 +274,12 @@ export default function RapportsPage() {
       ])
       if (seq !== fetchSeq.current) return
 
-      if (statsRes.ok) {
-        const data = await statsRes.json()
-        if (seq !== fetchSeq.current) return
-        setStats(data.stats)
-        setCharts(data.charts)
+      if (statsData) {
+        setStats(statsData.stats)
+        setCharts(statsData.charts)
+      } else {
+        setStats(null)
+        setCharts(null)
       }
       if (revRes.ok) {
         const data = await revRes.json()
@@ -260,14 +295,30 @@ export default function RapportsPage() {
         const data = await bilanRes.json()
         if (seq !== fetchSeq.current) return
         setBilanData(data)
+        setErreurBilan('')
+      } else {
+        const data = await bilanRes.json().catch(() => null)
+        if (seq !== fetchSeq.current) return
+        setBilanData(null)
+        setErreurBilan(typeof data?.error === 'string' ? data.error : 'Le bilan ne peut pas être chargé. Réessayez.')
       }
       if (tvaRes.ok) {
         const data = await tvaRes.json()
         if (seq !== fetchSeq.current) return
         setTvaData(data)
+        setErreurTva('')
+      } else {
+        const data = await tvaRes.json().catch(() => null)
+        if (seq !== fetchSeq.current) return
+        setTvaData(null)
+        setErreurTva(typeof data?.error === 'string' ? data.error : 'Les montants de TVA ne peuvent pas être chargés. Réessayez.')
       }
     } catch {
       if (seq === fetchSeq.current) {
+        setStats(null); setCharts(null); setRevenus([]); setDepenses([])
+        setTvaData(null); setBilanData(null)
+        setErreurBilan('La connexion ne permet pas de vérifier le bilan. Réessayez.')
+        setErreurTva('La connexion ne permet pas de vérifier les montants de TVA. Réessayez.')
         toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
       }
     } finally {
@@ -282,10 +333,6 @@ export default function RapportsPage() {
     if (yearHydrated) fetchData()
   }, [yearHydrated, fetchData])
 
-  const formatEuro = (value: number) => {
-    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
-  }
-
   // DEV1 #5 — Le type 'bilan' historique exporte en réalité un compte de
   // résultat synthétique. Le bouton est conservé sous son ancien nom de
   // type pour compatibilité, mais le filename émis devient
@@ -295,34 +342,36 @@ export default function RapportsPage() {
     let filename = ''
 
     if (type === 'revenus') {
-      csv = 'Date;Module;Catégorie;Description;Montant;Client;Payé\n'
+      csv = 'Date;Module;Catégorie;Description;Montant;Devise;Client;Payé\n'
       revenus.forEach(r => {
-        csv += `${new Date(r.date).toLocaleDateString('fr-FR')};${celluleCsv(r.module)};${celluleCsv(r.categorie)};${celluleCsv(r.description)};${r.montant};${celluleCsv(r.client || '')};${r.paye ? 'Oui' : 'Non'}\n`
+        csv += `${new Date(r.date).toLocaleDateString('fr-FR')};${celluleCsv(r.module)};${celluleCsv(r.categorie)};${celluleCsv(r.description)};${r.montant};${libelleDevise(r.monnaie === undefined ? devise : r.monnaie)};${celluleCsv(r.client || '')};${r.paye ? 'Oui' : 'Non'}\n`
       })
       filename = `revenus_${selectedYear}.csv`
     } else if (type === 'depenses') {
-      csv = 'Date;Module;Catégorie;Description;Montant;Fournisseur;Payé\n'
+      csv = 'Date;Module;Catégorie;Description;Montant;Devise;Fournisseur;Payé\n'
       depenses.forEach(d => {
-        csv += `${new Date(d.date).toLocaleDateString('fr-FR')};${celluleCsv(d.module)};${celluleCsv(d.categorie)};${celluleCsv(d.description)};${d.montant};${celluleCsv(d.fournisseur || '')};${d.paye === null ? 'N/A' : d.paye ? 'Oui' : 'Non'}\n`
+        csv += `${new Date(d.date).toLocaleDateString('fr-FR')};${celluleCsv(d.module)};${celluleCsv(d.categorie)};${celluleCsv(d.description)};${d.montant};${libelleDevise(d.monnaie === undefined ? devise : d.monnaie)};${celluleCsv(d.fournisseur || '')};${d.paye === null ? 'N/A' : d.paye ? 'Oui' : 'Non'}\n`
       })
       filename = `depenses_${selectedYear}.csv`
     } else {
-      csv = 'Indicateur;Valeur\n'
+      // Une ligne par devise : jamais de total EUR + XPF ni de « null » écrit.
+      csv = 'Indicateur;Devise;Valeur\n'
       if (stats) {
-        csv += `Revenus totaux;${stats.revenus}\n`
-        csv += `Dépenses totales;${stats.depenses}\n`
-        csv += `Bénéfice;${stats.benefice}\n`
-        csv += `Marge;${stats.margePercent}%\n`
-        csv += `\nRevenus par module;\n`
-        csv += `Maraîchage;${stats.revenusParModule.potager}\n`
-        csv += `Verger;${stats.revenusParModule.verger}\n`
-        csv += `Élevage;${stats.revenusParModule.elevage}\n`
-        csv += `Autre;${stats.revenusParModule.autre}\n`
-        csv += `\nDépenses par module;\n`
-        csv += `Maraîchage;${stats.depensesParModule.potager}\n`
-        csv += `Verger;${stats.depensesParModule.verger}\n`
-        csv += `Élevage;${stats.depensesParModule.elevage}\n`
-        csv += `Autre;${stats.depensesParModule.autre}\n`
+        const groupes = groupesRapport(stats, devise)
+        const libelles: Record<(typeof MODULES_RAPPORT)[number], string> = { potager: 'Maraîchage', verger: 'Verger', elevage: 'Élevage', autre: 'Autre' }
+        for (const g of groupes) {
+          const d = libelleDevise(g.monnaie)
+          csv += `Revenus totaux;${d};${g.revenus}\n`
+          csv += `Dépenses totales;${d};${g.depenses}\n`
+          csv += `Bénéfice;${d};${g.benefice}\n`
+        }
+        if (stats.margePercent !== null && groupes.length === 1) csv += `Marge;;${stats.margePercent}%\n`
+        for (const g of groupes) {
+          csv += `\nRevenus par module;${libelleDevise(g.monnaie)};\n`
+          for (const m of MODULES_RAPPORT) csv += `${libelles[m]};${libelleDevise(g.monnaie)};${g.revenusParModule[m]}\n`
+          csv += `\nDépenses par module;${libelleDevise(g.monnaie)};\n`
+          for (const m of MODULES_RAPPORT) csv += `${libelles[m]};${libelleDevise(g.monnaie)};${g.depensesParModule[m]}\n`
+        }
       }
       filename = `compte-de-resultat_${selectedYear}.csv`
     }
@@ -338,6 +387,17 @@ export default function RapportsPage() {
   }
 
   const COLORS = ['#22c55e', '#84cc16', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899']
+
+  // Onglet Graphiques : un groupe unique (sa devise) ; `null` : plusieurs
+  // devises, graphique indisponible ; `undefined` : rien de chargé.
+  const groupesGraphiques = stats ? groupesRapport(stats, devise) : null
+  const groupeUnique = groupesGraphiques === null || groupesGraphiques.length === 0 ? undefined
+    : groupesGraphiques.length === 1 ? groupesGraphiques[0] : null
+  // Un camembert mono-devise s'affiche dans la devise de ses parts.
+  const formatCamembert = (parts: ChartData['revenusParCategorie']) => (v: number) => {
+    const monnaies = new Set(parts.flatMap(p => (p.montantParDevise ?? []).map(t => t.monnaie)))
+    return monnaies.size === 1 ? formatEn(v, [...monnaies][0]) : formatMontant(v)
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
@@ -401,88 +461,100 @@ export default function RapportsPage() {
           <TabsContent value="compte-de-resultat">
             {isLoading ? (
               <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}</div>
-            ) : stats ? (
+            ) : stats ? (() => {
+              const groupes: GroupeRapport[] = groupesRapport(stats, devise)
+              const cc = stats.coherenceCheck
+              const enLignes = (valeur: (g: GroupeRapport) => number) => groupes.length
+                ? groupes.map((g, i) => <span key={i} className="block">{formatEn(valeur(g), g.monnaie)}</span>)
+                : "—"
+              const unique = groupes.length === 1 ? groupes[0] : null
+              const dettes = (stats.depensesNonPayeesParDevise ?? []).filter(t => t.total > 0)
+              // Écarts de cohérence devise par devise (jamais une somme de deux devises).
+              const ecarts = (parDevise: TotalDevise[] | undefined, total: number | null | undefined, seuil: number) =>
+                (parDevise ?? (total != null ? [{ monnaie: devise, total }] : [])).filter(t => Math.abs(t.total) > seuil)
+              const ecartsRevenus = ecarts(cc?.revenusEcartParDevise, cc?.revenusEcart, 0.005)
+              const ecartsDepenses = ecarts(cc?.depensesEcartParDevise, cc?.depensesEcart, 0.01)
+              const deDevise = (l: TotalDevise[] | undefined, m: Devise | null, repli: number | null | undefined) =>
+                l ? l.find(t => t.monnaie === m)?.total ?? 0 : repli ?? 0
+              const deviseMensuelle = deviseCommuneDesSeries((charts?.mensuel ?? []).flatMap(m => [
+                { valeur: m.revenus, parDevise: m.revenusParDevise },
+                { valeur: m.depenses, parDevise: m.depensesParDevise },
+                { valeur: m.benefice, parDevise: m.beneficeParDevise ?? (m.revenusParDevise && m.depensesParDevise ? soustraireParDevise(m.revenusParDevise, m.depensesParDevise) : undefined) },
+              ]), devise)
+              const mensuelIndisponible = !deviseMensuelle || (charts?.mensuel.some(m => m.revenus === null || m.depenses === null || m.benefice === null) ?? false)
+              const formatGraphique = (v: number) => formatEn(v, deviseMensuelle?.monnaie ?? null)
+              return (
               <div className="space-y-6">
                 {/* BUG #2 (audit compta 2026-05-15) — Bannière explicite si
                     une charge engagée non payée fait partie du total. Plus
-                    aucune exclusion silencieuse. */}
-                {(stats.depensesNonPayees ?? 0) > 0 && (
+                    aucune exclusion silencieuse. Un montant par devise. */}
+                {(dettes.length > 0 || (!stats.depensesNonPayeesParDevise && (stats.depensesNonPayees ?? 0) > 0)) && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2">
                     <Info className="h-4 w-4 mt-0.5 text-amber-700 flex-shrink-0" />
                     <div>
                       <p className="font-semibold">{stats.nbDepensesNonPayees} dépense(s) engagée(s) non encore payée(s)</p>
                       <p className="text-xs mt-0.5">
-                        Le total dépenses ci-dessous inclut {formatEuro(stats.depensesNonPayees ?? 0)} de
+                        Le total dépenses ci-dessous inclut {dettes.length
+                          ? libellesTotauxParDevise(dettes.map(t => ({ monnaie: t.monnaie, montant: t.total })), devise).join(" et ")
+                          : formatMontant(stats.depensesNonPayees ?? 0)} de
                         charges constatées (compta. d&apos;engagement) dont le règlement reste à effectuer.
                         Voir l&apos;onglet Transactions pour le détail.
                       </p>
                     </div>
                   </div>
                 )}
-                {/* BUG #2 — Alerte si la somme des modules ne matche pas la
-                    SSOT (signe d'une vente saisie hors VenteManuelle / Facture).
-                    TICKET cmsoevq3v/cmsoevq3q — restreinte aux REVENUS : côté
-                    dépenses, la ventilation par module inclut VOLONTAIREMENT
-                    des valorisations internes (consommations d'aliments,
-                    fertilisations…) qui ne sont pas des charges comptables ;
-                    l'écart y est attendu et expliqué par le bandeau discret
-                    ci-dessous, pas par une alerte rouge. */}
                 {/* Ticket cmvflua2x (2026-10-19) — les revenus par module sont
-                    désormais la ventilation de la SSOT elle-même (mêmes ventes,
-                    mêmes factures, avoirs déduits du module de leur facture
-                    d'origine) : leur somme égale la carte Revenus au centime.
-                    L'ancien bandeau disait « Incohérence » sans dire d'où
-                    venait l'écart ; s'il en réapparaissait un, il est chiffré
-                    et la composition du total est nommée. */}
-                {stats.coherenceCheck && Math.abs(stats.coherenceCheck.revenusEcart) > 0.005 && (() => {
-                  const cc = stats.coherenceCheck!
-                  const comp = cc.revenusComposition
-                  return (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex items-start gap-2">
-                      <Info className="h-4 w-4 mt-0.5 text-red-700 flex-shrink-0" />
-                      <div>
-                        <p className="font-semibold">
-                          Écart de {formatEuro(Math.abs(cc.revenusEcart))} entre le total des revenus et la somme des modules
-                        </p>
-                        <p className="text-xs mt-0.5">
-                          Total des revenus {formatEuro(cc.revenusSsot)} ; somme des modules {formatEuro(cc.revenusSommeModules)}.
-                          {comp && (
-                            <> Composition du total : ventes {formatEuro(comp.ventes)}, factures rattachées à une vente {formatEuro(comp.facturesRattachees)}, factures sans vente rattachée {formatEuro(comp.facturesSansVente)}, avoirs {formatEuro(comp.avoirs)}.</>
-                          )}
-                          {" "}La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
-                        </p>
-                      </div>
+                    la ventilation de la SSOT elle-même : leur somme égale la
+                    carte Revenus au centime. S'il réapparaissait un écart, il
+                    est chiffré devise par devise et la composition est nommée. */}
+                {ecartsRevenus.length > 0 && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex items-start gap-2">
+                    <Info className="h-4 w-4 mt-0.5 text-red-700 flex-shrink-0" />
+                    <div>
+                      {ecartsRevenus.map(e => {
+                        const comp = groupes.find(g => g.monnaie === e.monnaie)?.composition ?? null
+                        return (
+                          <React.Fragment key={String(e.monnaie)}>
+                            <p className="font-semibold">
+                              Écart de {formatEn(Math.abs(e.total), e.monnaie)} entre le total des revenus et la somme des modules
+                            </p>
+                            <p className="text-xs mt-0.5">
+                              Total des revenus {formatEn(deDevise(cc?.revenusSsotParDevise, e.monnaie, cc?.revenusSsot), e.monnaie)} ;
+                              somme des modules {formatEn(deDevise(cc?.revenusSommeModulesParDevise, e.monnaie, cc?.revenusSommeModules), e.monnaie)}.
+                              {comp && (
+                                <> Composition du total : ventes {formatEn(comp.ventes, e.monnaie)}, factures rattachées à une vente {formatEn(comp.facturesRattachees, e.monnaie)}, factures sans vente rattachée {formatEn(comp.facturesSansVente, e.monnaie)}, avoirs {formatEn(comp.avoirs, e.monnaie)}.</>
+                              )}
+                              {" "}La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
+                            </p>
+                          </React.Fragment>
+                        )
+                      })}
                     </div>
-                  )
-                })()}
-                {/* TICKET cmsoevq3v/cmsoevq3q — le coherenceCheck de l'API
-                    n'était pas affiché ici : la « somme des modules » (qui
-                    additionne l'achat d'aliment comptable ET la valorisation
-                    analytique de sa consommation) se lisait comme un total
-                    comptable → double comptage apparent (ex. 7 417,80 vs
-                    6 483,80). Bandeau discret, purement explicatif — le calcul
-                    de la ventilation n'est PAS modifié. */}
-                {stats.coherenceCheck && Math.abs(stats.coherenceCheck.depensesEcart) > 0.01 && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex items-start gap-2">
-                    <Info className="h-4 w-4 mt-0.5 text-slate-500 flex-shrink-0" />
-                  {/* Ticket cmsx69cuc — l'explication restait générale, donc
-                      inopposable à un contrôle : l'écart est désormais chiffré
-                      et rapproché des valorisations internes, au centime. */}
-                  <p className="text-xs">
-                    Dépenses — ventilation analytique par module : {formatEuro(stats.coherenceCheck.depensesSommeModules)} ;
-                    total comptable : {formatEuro(stats.coherenceCheck.depensesSsot)}.
-                    {(() => {
-                      const analytiques = stats.coherenceCheck?.depensesAnalytiques ?? null
-                      const ecart = Math.abs(stats.coherenceCheck?.depensesEcart ?? 0)
-                      if (analytiques !== null && Math.abs(analytiques - ecart) < 0.01) {
-                        return ` L'écart de ${formatEuro(analytiques)} est exactement la valorisation interne des soins, consommations d'aliments et fertilisations : ce sont des coûts analytiques, pas des charges comptables.`
-                      }
-                      return " Les valorisations internes (consommations d'aliments, fertilisations…) ne sont pas des charges comptables : l'écart entre les deux n'est pas une anomalie."
-                    })()}
-                  </p>
                   </div>
                 )}
-                {/* Résumé */}
+                {/* TICKET cmsoevq3v/cmsoevq3q puis cmsx69cuc — bandeau discret,
+                    l'écart des dépenses est chiffré et rapproché des
+                    valorisations internes, au centime et devise par devise. */}
+                {ecartsDepenses.length > 0 && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex items-start gap-2">
+                    <Info className="h-4 w-4 mt-0.5 text-slate-500 flex-shrink-0" />
+                    <div>
+                      {ecartsDepenses.map(e => {
+                        const analytiques = deDevise(cc?.depensesAnalytiquesParDevise, e.monnaie, cc?.depensesAnalytiques)
+                        return (
+                          <p key={String(e.monnaie)} className="text-xs">
+                            Dépenses — ventilation analytique par module : {formatEn(deDevise(cc?.depensesSommeModulesParDevise, e.monnaie, cc?.depensesSommeModules), e.monnaie)} ;
+                            total comptable : {formatEn(deDevise(cc?.depensesSsotParDevise, e.monnaie, cc?.depensesSsot), e.monnaie)}.
+                            {Math.abs(analytiques - Math.abs(e.total)) < 0.01
+                              ? ` L'écart de ${formatEn(analytiques, e.monnaie)} est exactement la valorisation interne des soins, consommations d'aliments et fertilisations : ce sont des coûts analytiques, pas des charges comptables.`
+                              : " Les valorisations internes (consommations d'aliments, fertilisations…) ne sont pas des charges comptables : l'écart entre les deux n'est pas une anomalie."}
+                          </p>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {/* Résumé — un montant par devise, jamais de somme ni de zéro inventé. */}
                 <div className="grid gap-4 md:grid-cols-4">
                   <Card className={kpiCardClass("revenu")}>
                     <CardHeader className="pb-2">
@@ -492,7 +564,7 @@ export default function RapportsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{formatEuro(stats.revenus)}</p>
+                      <p className="text-3xl font-bold">{stats.revenusParDevise ? enLignes(g => g.revenus) : totauxEnLignes(undefined, stats.revenus)}</p>
                     </CardContent>
                   </Card>
                   <Card className={kpiCardClass("depense")}>
@@ -503,34 +575,42 @@ export default function RapportsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{formatEuro(stats.depenses)}</p>
+                      <p className="text-3xl font-bold">{stats.depensesParDevise ? enLignes(g => g.depenses) : totauxEnLignes(undefined, stats.depenses)}</p>
                     </CardContent>
                   </Card>
-                  <Card className={kpiCardClass(stats.benefice >= 0 ? "revenu" : "depense")}>
+                  <Card className={kpiCardClass(unique && unique.benefice < 0 ? "depense" : "revenu")}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         <Wallet className="h-4 w-4" />
-                        {stats.benefice >= 0 ? 'Bénéfice' : 'Perte'}
+                        {unique ? (unique.benefice >= 0 ? 'Bénéfice' : 'Perte') : 'Résultat par devise'}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{formatEuro(Math.abs(stats.benefice))}</p>
+                      <p className="text-3xl font-bold">
+                        {unique ? formatEn(Math.abs(unique.benefice), unique.monnaie) : enLignes(g => g.benefice)}
+                      </p>
                     </CardContent>
                   </Card>
-                  <Card className={kpiCardClass(stats.margePercent >= 0 ? "revenu" : "depense")}>
+                  <Card className={kpiCardClass((stats.margePercent ?? 0) >= 0 ? "revenu" : "depense")}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Marge</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{stats.margePercent}%</p>
+                      {stats.margePercent === null ? (
+                        <>
+                          <p className="text-3xl font-bold">—</p>
+                          <p className="text-xs text-muted-foreground">Indisponible : revenus et dépenses en devises différentes</p>
+                        </>
+                      ) : (
+                        <p className="text-3xl font-bold">{stats.margePercent}%</p>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Détail par module — TICKET cmsoevq3v/cmsoevq3q : renommé
-                    « ventilation analytique » car la colonne Dépenses mêle
-                    charges comptables et valorisations internes ; son TOTAL
-                    n'est pas le total comptable du dashboard. */}
+                {/* Détail par module — TICKET cmsoevq3v/cmsoevq3q : « ventilation
+                    analytique » (valorisations internes incluses). Un tableau par
+                    devise : une colonne n'additionne jamais deux devises. */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Ventilation analytique par module</CardTitle>
@@ -540,109 +620,111 @@ export default function RapportsPage() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Module</TableHead>
-                          <TableHead className="text-right">Revenus</TableHead>
-                          <TableHead className="text-right">Dépenses</TableHead>
-                          <TableHead className="text-right">Résultat</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(() => {
-                          // BUG #1 (audit comptable 2026-05-15) — La ligne TOTAL
-                          // affichait `stats.revenus / stats.depenses / stats.benefice`
-                          // (variables globales issues de `getKpiCompta`) qui
-                          // PEUVENT diverger de la somme des cellules de la colonne
-                          // (ex. dépenses N/A non payées exclues du KPI global mais
-                          // visibles ligne à ligne). Le comptable lisait alors
-                          // « 0 + 0 + 1 230 + 2 755 = 3 985 » avec un TOTAL à 2 755 €.
-                          //
-                          // Désormais on calcule le TOTAL en sommant LITTÉRALEMENT
-                          // les cellules visibles à l'écran. Si écart vs KPI
-                          // global → bannière d'avertissement explicite.
-                          const modules = ['potager', 'verger', 'elevage', 'autre'] as const
-                          const rows = modules.map((mod) => {
-                            const rev = stats.revenusParModule[mod] || 0
-                            const dep = stats.depensesParModule[mod] || 0
-                            return { mod, rev, dep, res: rev - dep }
-                          })
-                          const totalRevenus = rows.reduce((s, r) => s + r.rev, 0)
-                          const totalDepenses = rows.reduce((s, r) => s + r.dep, 0)
-                          const totalResultat = totalRevenus - totalDepenses
-                          return (
-                            <>
+                    {groupes.length === 0 && <p className="text-sm text-muted-foreground">Ventilation indisponible.</p>}
+                    {groupes.map((g) => {
+                      // BUG #1 (audit comptable 2026-05-15) — le TOTAL somme
+                      // LITTÉRALEMENT les cellules visibles (de cette devise).
+                      const rows = MODULES_RAPPORT.map((mod) => {
+                        const rev = g.revenusParModule[mod]
+                        const dep = g.depensesParModule[mod]
+                        return { mod, rev, dep, res: rev - dep }
+                      })
+                      const totalRevenus = rows.reduce((s, r) => s + r.rev, 0)
+                      const totalDepenses = rows.reduce((s, r) => s + r.dep, 0)
+                      const totalResultat = totalRevenus - totalDepenses
+                      return (
+                        <div key={String(g.monnaie)} className="mb-4 last:mb-0">
+                          {groupes.length > 1 && (
+                            <p className="mb-2 text-sm font-medium">Montants en {g.monnaie === 'EUR' ? 'euros (€)' : g.monnaie === 'XPF' ? 'francs Pacifique (F)' : 'devise historique inconnue'}</p>
+                          )}
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Module</TableHead>
+                                <TableHead className="text-right">Revenus</TableHead>
+                                <TableHead className="text-right">Dépenses</TableHead>
+                                <TableHead className="text-right">Résultat</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
                               {rows.map((r) => (
                                 <TableRow key={r.mod}>
                                   <TableCell className="font-medium capitalize">{r.mod}</TableCell>
-                                  <TableCell className="text-right text-green-600">{formatEuro(r.rev)}</TableCell>
-                                  <TableCell className="text-right text-red-600">{formatEuro(r.dep)}</TableCell>
+                                  <TableCell className="text-right text-green-600">{formatEn(r.rev, g.monnaie)}</TableCell>
+                                  <TableCell className="text-right text-red-600">{formatEn(r.dep, g.monnaie)}</TableCell>
                                   <TableCell className={`text-right font-bold ${r.res >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                                    {formatEuro(r.res)}
+                                    {formatEn(r.res, g.monnaie)}
                                   </TableCell>
                                 </TableRow>
                               ))}
                               <TableRow className="border-t-2">
                                 <TableCell className="font-bold">TOTAL</TableCell>
-                                <TableCell className="text-right font-bold text-green-600">{formatEuro(totalRevenus)}</TableCell>
-                                <TableCell className="text-right font-bold text-red-600">{formatEuro(totalDepenses)}</TableCell>
+                                <TableCell className="text-right font-bold text-green-600">{formatEn(totalRevenus, g.monnaie)}</TableCell>
+                                <TableCell className="text-right font-bold text-red-600">{formatEn(totalDepenses, g.monnaie)}</TableCell>
                                 <TableCell className={`text-right font-bold ${totalResultat >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                                  {formatEuro(totalResultat)}
+                                  {formatEn(totalResultat, g.monnaie)}
                                 </TableCell>
                               </TableRow>
-                            </>
-                          )
-                        })()}
-                      </TableBody>
-                    </Table>
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )
+                    })}
                     {/* Ticket cmvflua2x — d'où viennent les revenus des
-                        modules : une facture saisie sans vente métier n'a pas
-                        de module, elle est rangée en « Autre », et un avoir se
-                        déduit du module de sa facture d'origine. */}
-                    {(() => {
-                      const comp = stats.coherenceCheck?.revenusComposition
+                        modules : une facture saisie sans vente métier est rangée
+                        en « Autre », un avoir se déduit du module de sa facture
+                        d'origine. Une phrase par devise. */}
+                    {groupes.map((g) => {
+                      const comp = g.composition
                       if (!comp || (Math.abs(comp.facturesSansVente) < 0.005 && Math.abs(comp.avoirs) < 0.005)) return null
                       const parts: string[] = []
                       if (Math.abs(comp.facturesSansVente) >= 0.005) {
-                        parts.push(`« Autre » comprend ${formatEuro(comp.facturesSansVente)} de factures sans vente rattachée (saisies dans Factures)`)
+                        parts.push(`« Autre » comprend ${formatEn(comp.facturesSansVente, g.monnaie)} de factures sans vente rattachée (saisies dans Factures)`)
                       }
                       if (Math.abs(comp.avoirs) >= 0.005) {
-                        parts.push(`les avoirs (${formatEuro(comp.avoirs)}) sont déduits du module de leur facture d'origine`)
+                        parts.push(`les avoirs (${formatEn(comp.avoirs, g.monnaie)}) sont déduits du module de leur facture d'origine`)
                       }
                       return (
-                        <p className="mt-3 text-xs text-muted-foreground" data-testid="revenus-composition">
-                          Revenus par module : ventilation du total des revenus ({formatEuro(stats.revenus)}). {parts.join(" ; ")}.
+                        <p key={String(g.monnaie)} className="mt-3 text-xs text-muted-foreground" data-testid="revenus-composition">
+                          Revenus par module : ventilation du total des revenus ({formatEn(g.revenus, g.monnaie)}). {parts.join(" ; ")}.
                         </p>
                       )
-                    })()}
+                    })}
                   </CardContent>
                 </Card>
 
-                {/* Graphique évolution mensuelle */}
+                {/* Graphique évolution mensuelle : indisponible en multi-devise
+                    (deux unités sur un même axe), sinon dans la devise des données. */}
                 {charts?.mensuel && (
                   <Card>
                     <CardHeader>
                       <CardTitle>Évolution mensuelle</CardTitle>
                     </CardHeader>
                     <CardContent>
+                      {mensuelIndisponible ? (
+                        <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                          Graphique indisponible : montants en devises différentes (voir les totaux par devise)
+                        </div>
+                      ) : (
                       <ResponsiveContainer width="100%" height={300}>
                         <LineChart data={charts.mensuel}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="mois" />
-                          <YAxis tickFormatter={(v) => `${v}€`} />
-                          <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                          <YAxis tickFormatter={(v) => formatGraphique(Number(v))} />
+                          <Tooltip formatter={(value) => [formatGraphique(Number(value || 0)), '']} />
                           <Legend />
                           <Line type="monotone" dataKey="revenus" name="Revenus" stroke="#22c55e" strokeWidth={2} />
                           <Line type="monotone" dataKey="depenses" name="Dépenses" stroke="#ef4444" strokeWidth={2} />
                           <Line type="monotone" dataKey="benefice" name="Bénéfice" stroke="#3b82f6" strokeWidth={2} />
                         </LineChart>
                       </ResponsiveContainer>
+                      )}
                     </CardContent>
                   </Card>
                 )}
               </div>
-            ) : (
+              )
+            })() : (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
                   Aucune donnée disponible
@@ -681,7 +763,7 @@ export default function RapportsPage() {
                         {bilanData.diagnostic.severity === 'error'
                           ? 'Bilan déséquilibré — anomalie comptable'
                           : bilanData.diagnostic.severity === 'warning'
-                          ? `Bilan équilibré via le compte 47x (${formatEuro(bilanData.diagnostic.ecart)})`
+                          ? `Bilan équilibré via le compte 47x (${formatMontant(bilanData.diagnostic.ecart)})`
                           : 'Écart d\'arrondi'}
                       </p>
                       {bilanData.diagnostic.reasons.length > 0 && (
@@ -701,7 +783,7 @@ export default function RapportsPage() {
                       <CardTitle className="flex items-center justify-between">
                         <span>ACTIF</span>
                         <span className="text-base text-muted-foreground">
-                          {formatEuro(bilanData.totalActif)}
+                          {formatMontant(bilanData.totalActif)}
                         </span>
                       </CardTitle>
                       <CardDescription>Ce que possède l&apos;exploitation</CardDescription>
@@ -721,7 +803,7 @@ export default function RapportsPage() {
                               <div className="text-xs text-muted-foreground">215x · matériel agricole</div>
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              {formatEuro(bilanData.actif.immobilisations)}
+                              {formatMontant(bilanData.actif.immobilisations)}
                             </TableCell>
                           </TableRow>
                           <TableRow>
@@ -730,7 +812,7 @@ export default function RapportsPage() {
                               <div className="text-xs text-muted-foreground">31x · semences, intrants <span className="italic">(à valoriser)</span></div>
                             </TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground">
-                              {formatEuro(bilanData.actif.stocks)}
+                              {formatMontant(bilanData.actif.stocks)}
                             </TableCell>
                           </TableRow>
                           <TableRow>
@@ -739,7 +821,7 @@ export default function RapportsPage() {
                               <div className="text-xs text-muted-foreground">411 · factures et ventes non payées</div>
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              {formatEuro(bilanData.actif.creances)}
+                              {formatMontant(bilanData.actif.creances)}
                             </TableCell>
                           </TableRow>
                           <TableRow>
@@ -748,12 +830,12 @@ export default function RapportsPage() {
                               <div className="text-xs text-muted-foreground">512 · banque <span className="italic">(à saisir manuellement)</span></div>
                             </TableCell>
                             <TableCell className="text-right font-mono text-muted-foreground">
-                              {formatEuro(bilanData.actif.disponibilites)}
+                              {formatMontant(bilanData.actif.disponibilites)}
                             </TableCell>
                           </TableRow>
                           <TableRow className="border-t-2 font-bold">
                             <TableCell>Total ACTIF</TableCell>
-                            <TableCell className="text-right font-mono">{formatEuro(bilanData.totalActif)}</TableCell>
+                            <TableCell className="text-right font-mono">{formatMontant(bilanData.totalActif)}</TableCell>
                           </TableRow>
                         </TableBody>
                       </Table>
@@ -766,7 +848,7 @@ export default function RapportsPage() {
                       <CardTitle className="flex items-center justify-between">
                         <span>PASSIF</span>
                         <span className="text-base text-muted-foreground">
-                          {formatEuro(bilanData.totalPassif)}
+                          {formatMontant(bilanData.totalPassif)}
                         </span>
                       </CardTitle>
                       <CardDescription>Comment l&apos;actif est financé</CardDescription>
@@ -786,7 +868,7 @@ export default function RapportsPage() {
                               <div className="text-xs text-muted-foreground">101 · capital social</div>
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              {formatEuro(bilanData.passif.capital)}
+                              {formatMontant(bilanData.passif.capital)}
                             </TableCell>
                           </TableRow>
                           <TableRow>
@@ -795,7 +877,7 @@ export default function RapportsPage() {
                               <div className="text-xs text-muted-foreground">12 · pivot Actif/Passif</div>
                             </TableCell>
                             <TableCell className={`text-right font-mono font-bold ${bilanData.passif.resultatExercice >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                              {formatEuro(bilanData.passif.resultatExercice)}
+                              {formatMontant(bilanData.passif.resultatExercice)}
                             </TableCell>
                           </TableRow>
                           <TableRow>
@@ -804,7 +886,7 @@ export default function RapportsPage() {
                               <div className="text-xs text-muted-foreground">401 · dépenses non payées</div>
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              {formatEuro(bilanData.passif.dettesFournisseurs)}
+                              {formatMontant(bilanData.passif.dettesFournisseurs)}
                             </TableCell>
                           </TableRow>
                           <TableRow>
@@ -813,7 +895,7 @@ export default function RapportsPage() {
                               <div className="text-xs text-muted-foreground">4457 − 4456 (solde net)</div>
                             </TableCell>
                             <TableCell className="text-right font-mono">
-                              {formatEuro(bilanData.passif.tvaAPayer)}
+                              {formatMontant(bilanData.passif.tvaAPayer)}
                             </TableCell>
                           </TableRow>
                           {bilanData.passif.ecartEquilibrage !== 0 && (
@@ -823,13 +905,13 @@ export default function RapportsPage() {
                                 <div className="text-xs text-muted-foreground">47x · à reclasser (disponibilités banque, capital…)</div>
                               </TableCell>
                               <TableCell className="text-right font-mono text-amber-700">
-                                {formatEuro(bilanData.passif.ecartEquilibrage)}
+                                {formatMontant(bilanData.passif.ecartEquilibrage)}
                               </TableCell>
                             </TableRow>
                           )}
                           <TableRow className="border-t-2 font-bold">
                             <TableCell>Total PASSIF</TableCell>
-                            <TableCell className="text-right font-mono">{formatEuro(bilanData.totalPassif)}</TableCell>
+                            <TableCell className="text-right font-mono">{formatMontant(bilanData.totalPassif)}</TableCell>
                           </TableRow>
                         </TableBody>
                       </Table>
@@ -852,8 +934,8 @@ export default function RapportsPage() {
               </div>
             ) : (
               <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                  Aucune donnée disponible
+                <CardContent role={erreurBilan ? 'alert' : undefined} className="py-8 text-center text-muted-foreground">
+                  {erreurBilan || 'Aucune donnée disponible'}
                 </CardContent>
               </Card>
             )}
@@ -890,6 +972,13 @@ export default function RapportsPage() {
                   )}
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
+                  {erreurTva && <p role="alert" className="w-full text-sm text-destructive">{erreurTva}</p>}
+                  {tvaData?.historique?.contexteDifferent && (
+                    <p role="status" className="w-full text-sm text-muted-foreground">
+                      Les ventes de cette période conservent leur régime fiscal d’origine. Les paramètres actuels ne changent pas leurs montants.
+                      {tvaData.historique.lignesSansContexte > 0 && ' Certaines écritures anciennes n’archivent pas leur régime : leur traitement reste à vérifier.'}
+                    </p>
+                  )}
                   {/* 2026-08-19 — les documents PDF s'ouvrent dans l'écran
                       d'aperçu : on relit l'aide CA3 avant de la reporter, et le
                       téléchargement reste à un clic. */}
@@ -960,6 +1049,8 @@ export default function RapportsPage() {
                 </CardContent>
               </Card>
 
+              <TvaAPreciser onCorrection={() => { void fetchData() }} />
+
               {isLoading ? (
                 <div className="space-y-4">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-40" />)}</div>
               ) : tvaData ? (
@@ -972,8 +1063,8 @@ export default function RapportsPage() {
                         <CardDescription className="text-xs text-green-600">Sur les ventes</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <p className="text-2xl font-bold text-green-700">{formatEuro(tvaData.collectee.total)}</p>
-                        <p className="text-xs text-green-600 mt-1">Base HT : {formatEuro(tvaData.collectee.baseTotal)}</p>
+                        <p className="text-2xl font-bold text-green-700">{formatMontant(tvaData.collectee.total)}</p>
+                        <p className="text-xs text-green-600 mt-1">Base HT : {formatMontant(tvaData.collectee.baseTotal)}</p>
                       </CardContent>
                     </Card>
 
@@ -983,8 +1074,8 @@ export default function RapportsPage() {
                         <CardDescription className="text-xs text-red-600">Sur les achats</CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <p className="text-2xl font-bold text-red-700">{formatEuro(tvaData.deductible.total)}</p>
-                        <p className="text-xs text-red-600 mt-1">Base HT : {formatEuro(tvaData.deductible.baseTotal)}</p>
+                        <p className="text-2xl font-bold text-red-700">{formatMontant(tvaData.deductible.total)}</p>
+                        <p className="text-xs text-red-600 mt-1">Base HT : {formatMontant(tvaData.deductible.baseTotal)}</p>
                       </CardContent>
                     </Card>
 
@@ -996,7 +1087,7 @@ export default function RapportsPage() {
                       </CardHeader>
                       <CardContent>
                         <p className={`text-3xl font-bold ${tvaData.solde.tvaAPayer > 0 ? 'text-amber-700' : 'text-blue-700'}`}>
-                          {formatEuro(tvaData.solde.tvaAPayer > 0 ? tvaData.solde.tvaAPayer : tvaData.solde.creditTVA)}
+                          {formatMontant(tvaData.solde.tvaAPayer > 0 ? tvaData.solde.tvaAPayer : tvaData.solde.creditTVA)}
                         </p>
                       </CardContent>
                     </Card>
@@ -1021,14 +1112,14 @@ export default function RapportsPage() {
                             {Object.entries(tvaData.collectee.parTaux).map(([taux, data]) => (
                               <TableRow key={taux}>
                                 <TableCell>{taux}%</TableCell>
-                                <TableCell className="text-right">{formatEuro(data.base)}</TableCell>
-                                <TableCell className="text-right font-medium text-green-600">{formatEuro(data.tva)}</TableCell>
+                                <TableCell className="text-right">{formatMontant(data.base)}</TableCell>
+                                <TableCell className="text-right font-medium text-green-600">{formatMontant(data.tva)}</TableCell>
                               </TableRow>
                             ))}
                             <TableRow className="border-t-2 font-bold">
                               <TableCell>Total</TableCell>
-                              <TableCell className="text-right">{formatEuro(tvaData.collectee.baseTotal)}</TableCell>
-                              <TableCell className="text-right text-green-600">{formatEuro(tvaData.collectee.total)}</TableCell>
+                              <TableCell className="text-right">{formatMontant(tvaData.collectee.baseTotal)}</TableCell>
+                              <TableCell className="text-right text-green-600">{formatMontant(tvaData.collectee.total)}</TableCell>
                             </TableRow>
                           </TableBody>
                         </Table>
@@ -1052,14 +1143,14 @@ export default function RapportsPage() {
                             {Object.entries(tvaData.deductible.parTaux).map(([taux, data]) => (
                               <TableRow key={taux}>
                                 <TableCell>{taux}%</TableCell>
-                                <TableCell className="text-right">{formatEuro(data.base)}</TableCell>
-                                <TableCell className="text-right font-medium text-red-600">{formatEuro(data.tva)}</TableCell>
+                                <TableCell className="text-right">{formatMontant(data.base)}</TableCell>
+                                <TableCell className="text-right font-medium text-red-600">{formatMontant(data.tva)}</TableCell>
                               </TableRow>
                             ))}
                             <TableRow className="border-t-2 font-bold">
                               <TableCell>Total</TableCell>
-                              <TableCell className="text-right">{formatEuro(tvaData.deductible.baseTotal)}</TableCell>
-                              <TableCell className="text-right text-red-600">{formatEuro(tvaData.deductible.total)}</TableCell>
+                              <TableCell className="text-right">{formatMontant(tvaData.deductible.baseTotal)}</TableCell>
+                              <TableCell className="text-right text-red-600">{formatMontant(tvaData.deductible.total)}</TableCell>
                             </TableRow>
                           </TableBody>
                         </Table>
@@ -1176,7 +1267,11 @@ export default function RapportsPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {charts.revenusParCategorie.length > 0 ? (
+                    {charts.revenusParCategorie.some(c => c.montant === null) ? (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        Répartition indisponible : montants en devises différentes (voir les totaux par devise)
+                      </div>
+                    ) : charts.revenusParCategorie.length > 0 ? (
                       <ResponsiveContainer width="100%" height={300}>
                         <RechartsPie>
                           <Pie
@@ -1193,7 +1288,7 @@ export default function RapportsPage() {
                               <Cell key={`cell-${index}`} fill={entry.couleur || COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                          <Tooltip formatter={(value) => [formatCamembert(charts.revenusParCategorie)(Number(value || 0)), '']} />
                         </RechartsPie>
                       </ResponsiveContainer>
                     ) : (
@@ -1213,7 +1308,11 @@ export default function RapportsPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {charts.depensesParCategorie.length > 0 ? (
+                    {charts.depensesParCategorie.some(c => c.montant === null) ? (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        Répartition indisponible : montants en devises différentes (voir les totaux par devise)
+                      </div>
+                    ) : charts.depensesParCategorie.length > 0 ? (
                       <ResponsiveContainer width="100%" height={300}>
                         <RechartsPie>
                           <Pie
@@ -1230,7 +1329,7 @@ export default function RapportsPage() {
                               <Cell key={`cell-${index}`} fill={entry.couleur || COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                          <Tooltip formatter={(value) => [formatCamembert(charts.depensesParCategorie)(Number(value || 0)), '']} />
                         </RechartsPie>
                       </ResponsiveContainer>
                     ) : (
@@ -1250,24 +1349,28 @@ export default function RapportsPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {stats ? (
+                    {groupeUnique === undefined ? null : groupeUnique === null ? (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        Graphique indisponible : montants en devises différentes (voir le compte de résultat)
+                      </div>
+                    ) : (
                       <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={[
-                          { module: 'Maraîchage', revenus: stats.revenusParModule.potager, depenses: stats.depensesParModule.potager },
-                          { module: 'Verger', revenus: stats.revenusParModule.verger, depenses: stats.depensesParModule.verger },
-                          { module: 'Élevage', revenus: stats.revenusParModule.elevage, depenses: stats.depensesParModule.elevage },
-                          { module: 'Autre', revenus: stats.revenusParModule.autre, depenses: stats.depensesParModule.autre },
+                          { module: 'Maraîchage', revenus: groupeUnique.revenusParModule.potager, depenses: groupeUnique.depensesParModule.potager },
+                          { module: 'Verger', revenus: groupeUnique.revenusParModule.verger, depenses: groupeUnique.depensesParModule.verger },
+                          { module: 'Élevage', revenus: groupeUnique.revenusParModule.elevage, depenses: groupeUnique.depensesParModule.elevage },
+                          { module: 'Autre', revenus: groupeUnique.revenusParModule.autre, depenses: groupeUnique.depensesParModule.autre },
                         ]}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="module" />
-                          <YAxis tickFormatter={(v) => `${v}€`} />
-                          <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                          <YAxis tickFormatter={(v) => formatEn(Number(v), groupeUnique.monnaie)} />
+                          <Tooltip formatter={(value) => [formatEn(Number(value || 0), groupeUnique.monnaie), '']} />
                           <Legend />
                           <Bar dataKey="revenus" name="Revenus" fill="#22c55e" />
                           <Bar dataKey="depenses" name="Dépenses" fill="#ef4444" />
                         </BarChart>
                       </ResponsiveContainer>
-                    ) : null}
+                    )}
                   </CardContent>
                 </Card>
               </div>

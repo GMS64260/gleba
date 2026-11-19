@@ -27,11 +27,12 @@ import { touchActivity } from "./activity"
 import { headers } from "next/headers"
 import { resoudreContexteExploitation } from "./exploitation/membres"
 import { EN_TETE_MUTATION, requeteEstMutation, valeurEnteteMutation } from "./exploitation/entete-mutation"
-import { refusMutationSiLectureSeule } from "./exploitation/garde-session"
+import { refusModuleChemin, refusMutationSiLectureSeule } from "./exploitation/garde-session"
+import { ENTETE_CHEMIN } from "./abonnement/requetes"
 import type { ModuleId } from "./modules"
 import type { ContexteExploitation, RoleExploitation } from "./exploitation/roles"
 import { refusAbonnementApi } from "./abonnement/serveur"
-import { lireEtatCompte } from "./compte-actif"
+import { lireEtatSession } from "./compte-actif"
 
 export type SessionExploitation = Session & {
   user: Session["user"] & {
@@ -54,10 +55,10 @@ export type SessionExploitation = Session & {
  */
 async function appliquerContexteExploitation(session: Session): Promise<SessionExploitation | null> {
   const acteurId = session.user.id
-  // Rôle et compte actif relus en base : le jeton ne fait pas foi (cf.
-  // `compte-actif.ts`). `null` = session à traiter comme absente.
+  // Rôle, compte actif et version de session relus en base : le jeton ne
+  // fait pas foi (cf. `compte-actif.ts`). `null` = session à traiter comme absente.
   const [etat, contexte] = await Promise.all([
-    lireEtatCompte(acteurId, session.user.impersonatedBy),
+    lireEtatSession(session.user),
     resoudreContexteExploitation(acteurId) as Promise<ContexteExploitation>,
   ])
   if (!etat.actif) return null
@@ -86,6 +87,19 @@ async function appliquerContexteExploitation(session: Session): Promise<SessionE
  * qu'il écrase systématiquement. Hors contexte de requête — cron, script — on
  * répond « non », ces chemins n'ont pas d'acteur en lecture seule.
  */
+/**
+ * Chemin de la requête courante, posé par le middleware (`ENTETE_CHEMIN`,
+ * toujours écrasé, donc non forgeable). `null` hors contexte de requête.
+ */
+async function cheminRequeteCourante(): Promise<string | null> {
+  try {
+    const enTetes = await headers()
+    return enTetes.get(ENTETE_CHEMIN)
+  } catch {
+    return null
+  }
+}
+
 async function requeteCouranteEstMutation(): Promise<boolean> {
   try {
     const enTetes = await headers()
@@ -96,14 +110,24 @@ async function requeteCouranteEstMutation(): Promise<boolean> {
 }
 
 /**
- * Récupère la session courante (Server Component)
+ * Récupère la session courante (Server Component, route publique)
  *
  * Attention : session BRUTE, `user.id` y est l'acteur et non le tenant. À
  * réserver aux usages d'identité. Pour toute donnée métier, passer par
  * `requireAuth` / `requireAuthApi`.
+ *
+ * Une session caduque (compte désactivé ou supprimé, mot de passe posé depuis
+ * la connexion — MC3 —, consultation dont l'administrateur n'est plus valide)
+ * vaut `null`, comme une visite anonyme : les routes publiques qui l'appellent
+ * (consentement aux cookies, référentiel) ne lisent ni n'écrivent plus rien au
+ * nom du compte. Même point de décision que les gardes : `lireEtatSession`.
  */
-export async function getSession() {
-  return await auth()
+export async function getSession(): Promise<Session | null> {
+  const session = await auth()
+  if (!session?.user) return null
+  const etat = await lireEtatSession(session.user)
+  if (!etat.actif) return null
+  return { ...session, user: { ...session.user, role: etat.role } }
 }
 
 /**
@@ -180,6 +204,15 @@ export async function requireAuthApi(request?: Request): Promise<
   )
   if (refus) return { error: refus, session: null }
 
+  // Modules fermés à un membre : même point de décision pour toutes les
+  // routes, lecture ET écriture, avant toute lecture métier. Table unique
+  // chemin → module : `exploitation/modules-chemins.ts`.
+  const refusModule = refusModuleChemin(
+    avecContexte,
+    request ? new URL(request.url).pathname : await cheminRequeteCourante(),
+  )
+  if (refusModule) return { error: refusModule, session: null }
+
   const refusService = await refusAbonnementApi(avecContexte.user.id, request)
   if (refusService) return { error: refusService, session: null }
 
@@ -238,4 +271,5 @@ export {
   getActeurId,
   refusSiLectureSeule,
   refusSiPasProprietaire,
+  refusModuleChemin,
 } from "./exploitation/garde-session"
