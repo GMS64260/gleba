@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FacturesPage from './page'
+import * as anciennete from '@/lib/comptabilite/anciennete-impayees'
 
 const { toast, ouvrirApercu } = vi.hoisted(() => ({ toast: vi.fn(), ouvrirApercu: vi.fn() }))
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast }) }))
@@ -48,6 +49,8 @@ function facture(): FactureFictive {
 
 const fetchMock = vi.fn<typeof fetch>()
 let factures: FactureFictive[]
+let ventes: Array<{ id: number; date: string; type: string; description: string; prixTotal: number; client: string }>
+let ventesManuelles: Array<{ id: number; date: string; categorie: string; description: string; montant: number; monnaie: string; client: string }>
 let refus: string | null
 const lecturesImpayees = () => fetchMock.mock.calls.filter(([url]) => url === '/api/comptabilite/factures?year=all').length
 const lecturesEmises = () => fetchMock.mock.calls.filter(([url]) => url === `/api/comptabilite/factures?year=${new Date().getFullYear()}`).length
@@ -55,6 +58,8 @@ const lecturesEmises = () => fetchMock.mock.calls.filter(([url]) => url === `/ap
 beforeEach(() => {
   vi.clearAllMocks()
   factures = []
+  ventes = []
+  ventesManuelles = []
   refus = null
   window.history.replaceState(null, '', '/comptabilite/factures?tab=impayees')
   window.localStorage.clear()
@@ -96,7 +101,9 @@ beforeEach(() => {
       })
     }
     if (chemin === '/api/exploitation') return Response.json({ data: { regimeTva: 'franchise' } })
-    if (chemin.startsWith('/api/comptabilite/clients') || chemin.startsWith('/api/elevage/ventes?') || chemin.startsWith('/api/comptabilite/ventes-manuelles?')) return Response.json({ data: [] })
+    if (chemin.startsWith('/api/elevage/ventes?')) return Response.json({ data: ventes })
+    if (chemin.startsWith('/api/comptabilite/ventes-manuelles?')) return Response.json({ data: ventesManuelles })
+    if (chemin.startsWith('/api/comptabilite/clients')) return Response.json({ data: [] })
     throw new Error(`Requête inattendue : ${chemin}`)
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -104,6 +111,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
 })
@@ -137,6 +146,59 @@ async function creerAvoir() {
   fireEvent.click(panneau.getByRole('button', { name: "Créer l'avoir" }))
   await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Avoir créé' })))
 }
+
+describe('Impayées : ancienneté civile dans le tableau réel', () => {
+  it.each(['Facture', 'VenteProduit', 'VenteManuelle'] as const)(
+    '%s : après minuit local, jours signés, libellés et couleurs partagent le helper', async (source) => {
+      // En Europe/Paris : 18 novembre 23:30 UTC = 19 novembre 00:30 local.
+      // Fixer TZ au lancement : changer process.env.TZ dans un worker ne suffit pas.
+      const maintenant = new Date(2026, 10, 19, 0, 30)
+      if (process.env.TZ === 'Europe/Paris') expect(maintenant.toISOString()).toBe('2026-11-18T23:30:00.000Z')
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(maintenant)
+      const calcul = vi.spyOn(anciennete, 'ancienneteImpayee')
+      const ecarts = [0, 1, 2, -1, -2, 14, 15, 30, 31]
+      const pieces = ecarts.map((jours, index) => {
+        const date = new Date(Date.UTC(2026, 10, 19 - jours)).toISOString()
+        const client = `Client fictif écart ${jours}`
+        const id = index + 1
+        if (source === 'Facture') {
+          factures.push({ ...facture(), id, numero: `TEST-${id}`, date, clientNom: client })
+        } else if (source === 'VenteProduit') {
+          ventes.push({ id, date, type: 'lait', description: 'Vente fictive', prixTotal: 40, client })
+        } else {
+          ventesManuelles.push({ id, date, categorie: 'autre', description: 'Vente fictive', montant: 120, monnaie: 'EUR', client })
+        }
+        return { jours, date, client }
+      })
+      // La facture du jour conserve son reste dû après un avoir partiel.
+      if (source === 'Facture') factures.push({ ...facture(), id: 100, numero: 'TEST-AV', type: 'avoir', totalTTC: 25, factureOrigineId: 1 })
+      await ouvrir()
+      const verifier = () => {
+        const panneau = within(screen.getByRole('tabpanel'))
+        for (const { jours, date, client } of pieces) {
+          const ligne = panneau.getByRole('row', { name: new RegExp(`${client} `) })
+          const badge = within(ligne).getByText(`${jours} jour${Math.abs(jours) > 1 ? 's' : ''}`)
+          const couleur = jours > 30 ? 'red' : jours > 14 ? 'orange' : 'yellow'
+          expect(badge.className).toContain(`bg-${couleur}-100`)
+          expect(badge.className).toContain(`text-${couleur}-800`)
+          expect(ligne.classList.contains('bg-red-50')).toBe(jours > 30)
+          expect(ligne.classList.contains('bg-orange-50')).toBe(jours > 14 && jours <= 30)
+          const montant = source === 'VenteProduit' ? '40 F' : source === 'VenteManuelle' ? '120,00 €' : jours === 0 ? '75,00 €' : '100,00 €'
+          expect(ligne.textContent?.replace(/\s/g, ' ')).toContain(montant)
+          expect(calcul).toHaveBeenCalledWith(date, maintenant)
+        }
+      }
+      verifier()
+      const appels = fetchMock.mock.calls.length
+      onglet('Factures émises')
+      onglet('Impayées')
+      verifier()
+      expect(fetchMock.mock.calls).toHaveLength(appels)
+      expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true)
+    },
+  )
+})
 
 describe('Factures : actualisation des créances après mutation', () => {
   it('affiche immédiatement 100 EUR après création puis 75 EUR après un avoir de 25 EUR, même avec une exploitation XPF', async () => {

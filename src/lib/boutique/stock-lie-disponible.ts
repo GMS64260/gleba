@@ -6,6 +6,7 @@
  */
 import type { Prisma } from '@prisma/client'
 import { chargerCatalogueStock } from '@/lib/commercial/catalogue-stock'
+import { motifBlocageRattachement } from '@/lib/commercial/engagements-rattachement'
 import { uniteEntiereBoutique } from '@/lib/boutique/unites'
 import { stockEstDenombrable } from '@/lib/commercial/stock-types'
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
@@ -105,6 +106,8 @@ export async function relierProduitAuStock(tx: Prisma.TransactionClient, userId:
   if (brut === null) return tx.produitBoutique.update({ where: { id: produitId }, data: { ...champsStockLie(null), stockLieMode: 'stock' } })
   if (produit.recolteId) throw new ErreurStockLie('Ce produit vend déjà une récolte du maraîchage : créez un autre produit pour vendre un stock de l’élevage.')
   if (produit.stockDispo !== null) throw new ErreurStockLie('Ce produit tient son propre compteur de stock. Passez-le d’abord en « stock illimité » : sa quantité sera ensuite lue dans le stock relié.')
+  const blocage = await motifBlocageRattachement(tx, userId, produitId)
+  if (blocage) throw new ErreurStockLie(blocage)
   const type = (brut as { type?: unknown } | undefined)?.type
   const ref = type === 'oeufs' ? 'stock' : (brut as { ref?: unknown } | undefined)?.ref
   const stock = (await listerStocksLiables(tx, userId)).find((s) => s.type === type && s.ref === ref)

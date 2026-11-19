@@ -71,7 +71,7 @@ describe("creerFacture — identité de l'acheteur figée depuis la fiche", () =
       tx: {
         ...(tx as unknown as Record<string, unknown>),
         client: { findFirst: vi.fn().mockResolvedValue(client) },
-        exploitation: { findUnique: vi.fn().mockResolvedValue(null) },
+        exploitation: { findUnique: vi.fn().mockResolvedValue({ raisonSociale: 'Ferme fictive', adresseSiege: '1 voie fictive', ville: 'Essai', devise: 'EUR', regimeTva: 'reel-normal', indemniteRecouvrement: 40 }) },
         facture: { create },
       } as never,
       create,

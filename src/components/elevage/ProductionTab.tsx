@@ -257,6 +257,9 @@ interface LotStockOeufs {
 }
 
 interface StockTraceOeufs {
+  bilan?: { pondus: number; casses: number; sales: number; sorties: number; ecartPlancher: number }
+  bilanLotsActifs?: { casses: number }
+  bilanPontes21Jours?: { casses: number }
   data: LotStockOeufs[]
   stats: {
     commercialisables: number
@@ -265,6 +268,7 @@ interface StockTraceOeufs {
     stockPhysique: number
     bloquesVeto?: number
     aVenir?: number
+    sortiesVentesFutures?: number
   }
   pontesFutures?: { id: number; datePonte: string; lot: { id: number; nom: string } | null; oeufs: number }[]
 }
@@ -1025,6 +1029,21 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               )}
               <div className="rounded-md border p-2"><strong>{stockTrace.stats.stockPhysique}</strong><br /><span className="text-muted-foreground">stock physique</span></div>
             </div>
+            {stockTrace.bilan && (
+              <p className="text-sm text-muted-foreground">
+                {stockTrace.bilan.pondus} pondus − {stockTrace.bilan.casses} cassés − {stockTrace.bilan.sales} sales − {stockTrace.bilan.sorties} sorties nettes
+                {stockTrace.bilan.ecartPlancher > 0 ? ` + ${stockTrace.bilan.ecartPlancher} (lots surdébités ramenés à zéro, à vérifier)` : ""}
+                {" = "}{stockTrace.stats.stockPhysique} œufs.
+                {stockTrace.bilanLotsActifs ? ` Les lots restants incluent ${stockTrace.bilanLotsActifs.casses} casses déjà déduites.` : ""}
+                {stockTrace.bilanPontes21Jours ? ` Sur les pontes des 21 derniers jours, collectes épuisées incluses : ${stockTrace.bilanPontes21Jours.casses} casses déjà déduites.` : ""}
+              </p>
+            )}
+            {(stockTrace.stats.sortiesVentesFutures ?? 0) > 0 && (
+              <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+                {stockTrace.stats.sortiesVentesFutures} œufs sont déjà déduits pour des ventes datées après aujourd’hui.
+                Ils peuvent encore être physiquement chez vous en attendant la livraison. Vérifiez les dates dans Ventes.
+              </p>
+            )}
             {(stockTrace.stats.aVenir ?? 0) > 0 && (
               <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900" data-testid="pontes-futures">
                 {(() => {

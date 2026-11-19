@@ -248,7 +248,7 @@ describe('POST /api/comptabilite/factures — rattachement à la fiche client', 
           siret: null, siren: null, tvaIntra: null, exonererTVA: true,
         }),
       },
-      exploitation: { findUnique: vi.fn().mockResolvedValue(null) },
+      exploitation: { findUnique: vi.fn().mockResolvedValue({ raisonSociale: 'Ferme fictive', adresseSiege: '1 voie fictive', ville: 'Essai', devise: 'EUR', regimeTva: 'reel-normal', indemniteRecouvrement: 40 }) },
       facture: { create },
     }
     mocks.creerFacture.mockImplementation((_tx: unknown, params: Parameters<typeof reel.creerFacture>[1]) => reel.creerFacture(txReel as never, params))
