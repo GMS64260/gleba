@@ -89,10 +89,6 @@ export async function lireContexteRegistre(
  */
 export type OrigineMention = "saisie" | "deduite"
 
-export function estOrigineMention(v: unknown): v is OrigineMention {
-  return v === "saisie" || v === "deduite"
-}
-
 /** Mention écrite à la création : la saisie prime sur la déduction. */
 export function mentionALaCreation<T>(
   saisie: T | null | undefined,
