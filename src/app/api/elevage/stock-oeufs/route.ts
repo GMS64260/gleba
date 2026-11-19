@@ -4,6 +4,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import { stockRestantLotOeufs } from "@/lib/elevage/stock-oeufs"
 import { computeStockOeufsParLots } from "@/lib/elevage/stock-oeufs-lots"
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 
 const sortieSchema = z.object({
   productionId: z.coerce.number().int().positive(),
@@ -44,7 +45,8 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
-  return prisma.$transaction(async (tx) => {
+  try {
+  return await prisma.$transaction(async (tx) => {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${session.user.id}`}))`
   const production = await tx.productionOeuf.findFirst({
     where: { id: input.productionId, userId: session.user.id },
@@ -82,6 +84,11 @@ export async function POST(request: NextRequest) {
   })
   return NextResponse.json({ data }, { status: 201 })
   })
+  } catch (erreur) {
+    const conflit = messageConflitStockCaisse(erreur)
+    if (conflit) return NextResponse.json({ error: conflit, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
+    throw erreur
+  }
 }
 
 export async function DELETE(request: NextRequest) {
@@ -98,6 +105,12 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Cette sortie vient d’une vente : annulez ou modifiez la vente dans Production > Ventes.' }, { status: 409 })
   }
   if (await prisma.mouvementStockCommercial.count({ where: { userId: session.user.id, mouvementOeufId: id } })) return NextResponse.json({ error: 'Cette sortie est liée à un document commercial. Utilisez Retour en stock sur le bon ou la facture.' }, { status: 409 })
-  await prisma.mouvementStockOeuf.delete({ where: { id } })
+  try {
+    await prisma.mouvementStockOeuf.delete({ where: { id } })
+  } catch (erreur) {
+    const conflit = messageConflitStockCaisse(erreur)
+    if (conflit) return NextResponse.json({ error: conflit, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
+    throw erreur
+  }
   return NextResponse.json({ success: true })
 }

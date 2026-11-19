@@ -110,3 +110,19 @@ vrais composants du VPS ; les stubs publics rendent volontairement `null`.
 3. Si des modèles Prisma sont concernés, les laisser publics tant que
    d'autres modules y font référence — sinon les retirer du schéma.
 4. Documenter ici.
+
+## Caisse de marché : un stub par module importé
+
+La caisse de marché (`/src/lib/caisse`, privée) est importée par des fichiers
+publics. Plutôt que de garder ces fichiers en double (une version publique
+ancienne, une version de production privée), chaque module de la caisse importé
+reçoit un stub public neutre au même chemin ; la production le remplace par le
+vrai module.
+
+| Stub public | Rôle en production | Comportement du stub |
+|---|---|---|
+| `src/lib/caisse/conflit-stock.ts` | Traduit les refus des contrôles de stock de la caisse en messages lisibles | Ne connaît que le conflit d'écriture concurrente |
+
+Un fichier public qui n'importe que des modules ainsi couverts est identique sur
+GitHub et en production.
+

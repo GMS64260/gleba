@@ -1,3 +1,4 @@
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 /**
  * API Routes pour une Espèce spécifique (referentiel global)
  * GET /api/especes/[id] - Détail d'une espece
@@ -21,6 +22,7 @@ import { type UniteQuantite } from '@/lib/recolte/projection'
 import { arrondirQuantites, ajouterQuantite, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
 import { SELECT_FOURNISSEUR_SANS_BANQUE } from '@/lib/comptabilite/fournisseur-public'
+import { ASSOCIATION_ACTIVE } from '@/lib/associations-alertes'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -262,6 +264,8 @@ export async function PUT(
 
     return NextResponse.json(masquerEntree(espece, session!.user.id))
   } catch (error) {
+    const conflitStock = messageConflitStockCaisse(error)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     console.error('PUT /api/especes/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour de l\'espèce' },
@@ -365,12 +369,27 @@ export async function DELETE(
     }
 
     // Suppression (plus aucune variété ni itinéraire attaché à ce stade)
-    await prisma.espece.delete({
-      where: { id },
+    // Ses lignes d'association partent avec elle (clé en cascade). Une règle
+    // qui tombe ainsi à moins de deux membres ne relie plus personne : elle
+    // part aussi, dans la même transaction, plutôt que de rester muette.
+    await prisma.$transaction(async (tx) => {
+      const reglesTouchees = await tx.associationDetail.findMany({
+        where: { especeId: id },
+        select: { associationId: true },
+        distinct: ['associationId'],
+      })
+      await tx.espece.delete({ where: { id } })
+      for (const { associationId } of reglesTouchees) {
+        const membres = await tx.associationDetail.count({ where: { associationId } })
+        // Une règle désactivée est conservée (historique, réactivation).
+        if (membres < 2) await tx.association.deleteMany({ where: { id: associationId, ...ASSOCIATION_ACTIVE } })
+      }
     })
 
     return NextResponse.json({ success: true, deleted: id })
   } catch (error) {
+    const conflitStock = messageConflitStockCaisse(error)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     console.error('DELETE /api/especes/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression de l\'espèce' },
