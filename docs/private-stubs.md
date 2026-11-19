@@ -123,6 +123,9 @@ vrai module.
 |---|---|---|
 | `src/lib/caisse/conflit-stock.ts` | Traduit les refus des contrôles de stock de la caisse en messages lisibles | Ne connaît que le conflit d'écriture concurrente |
 | `src/lib/caisse/reservations.ts` | Lit les lots et quantités emportés au marché, que le stock net retranche | Rien n'est jamais réservé ; les calculs d'unité sont conservés |
+| `src/lib/caisse/conservation.ts` | Refuse la suppression d'un compte ou de ses données tant que des encaissements réels doivent être conservés | Rien à conserver ni à purger |
+| `src/lib/caisse/creances.ts` | Montant restant à régler des tickets de caisse, avoirs déduits | Aucun ticket |
+| `src/lib/caisse/sortie.ts` | Retient la déconnexion tant que des ventes hors ligne ne sont pas synchronisées | Ne retient rien |
 
 Un fichier public qui n'importe que des modules ainsi couverts est identique sur
 GitHub et en production.
