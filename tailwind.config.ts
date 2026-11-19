@@ -160,9 +160,7 @@ const config: Config = {
   		},
   		fontFamily: {
   			// Charte « carnet de ferme », livraison L2 (2026-10-09) : l'interface
-  			// passe sur Geist (locale) et les titres sur Fraunces. Inter et
-  			// Space Grotesk restent chargées jusqu'au retrait L5, après preuve par
-  			// captures de toutes les pages (Geist est un peu plus large qu'Inter).
+        // passe sur Geist (locale) et les titres sur Fraunces.
   			sans: ['var(--font-ui)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
   			heading: ['var(--font-display)', 'Georgia', 'serif'],
   			mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'monospace'],

@@ -418,7 +418,7 @@ type LigneQualite = {
 }
 type TroupeauQualite = {
   fenetreJours: number | null
-  periode?: { mode: "periode" | "fenetre"; start: string; end: string }
+  periode?: { mode: "periode" | "fenetre"; start: string | null; end: string }
   nbSuivis: number
   nbAvecMesure: number
   nbSansMesure: number
@@ -595,7 +595,9 @@ function QualiteView({ year }: { year?: number }) {
         <p className="text-sm text-slate-600" aria-live="polite">
           {glissante ? `Fenêtre glissante de ${mode} jours` : mode === "exercice" ? `Exercice ${annee}` : "Période personnalisée"}
           {troupeau?.periode
-            ? ` : du ${dateQualite(troupeau.periode.start)} au ${dateQualite(troupeau.periode.end)} inclus.`
+            ? troupeau.periode.start === null
+              ? ` : jusqu’au ${dateQualite(troupeau.periode.end)} inclus.`
+              : ` : du ${dateQualite(troupeau.periode.start)} au ${dateQualite(troupeau.periode.end)} inclus.`
             : !glissante && !bornesInvalides ? ` : du ${dateQualite(debut)} au ${dateQualite(fin)} inclus.` : ""}
         </p>
         {/* Synthèse troupeau */}
