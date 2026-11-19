@@ -1,3 +1,4 @@
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 /**
  * API Routes pour une Consommation spécifique
  * DELETE /api/consommations/[id] - Supprimer une consommation
@@ -50,6 +51,8 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, deleted: consommationId })
   } catch (error) {
+    const conflitStock = messageConflitStockCaisse(error)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     console.error('DELETE /api/consommations/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression de la consommation' },

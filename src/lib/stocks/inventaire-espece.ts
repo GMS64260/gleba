@@ -17,10 +17,11 @@
  */
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
-import { verrouillerStockCommercial } from './verrou-commercial'
+import { verrouillerStockCommercial, verrouillerStockNetRecolte } from './verrou-commercial'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { chargerUnitesStock } from '@/lib/stocks/sortie-stock'
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 
 /** Corps reçu d'un client : `stock` null = « plus de comptage manuel ». */
 export const inventaireEspeceSchema = z.object({
@@ -37,7 +38,7 @@ export type EnregistrementInventaire =
       unite: UniteQuantite
       ligne: { inventaire: number | null; dateInventaire: Date | null }
     }
-  | { ok: false; status: 400 | 404; error: string }
+  | { ok: false; status: 400 | 404 | 409; error: string }
 
 /**
  * Une tige, une pièce ou une botte se compte : « 2,5 tiges » est refusé, comme
@@ -77,24 +78,27 @@ export async function enregistrerInventaireEspece(
     return { ok: false, status: 404, error: `Espèce "${especeId}" introuvable` }
   }
 
-  const unite = (await chargerUnitesStock(userId, [espece.id])).get(espece.id) ?? 'kg'
-  const refus = refusInventaire(saisie.stock, unite)
-  if (refus) return { ok: false, status: 400, error: refus }
-
-  const ligne = await prisma.$transaction(async (tx) => {
-    await verrouillerStockCommercial(tx, userId)
-    const comptage =
-      saisie.stock == null
+  try {
+    return await prisma.$transaction(async (tx): Promise<EnregistrementInventaire> => {
+      await verrouillerStockCommercial(tx, userId)
+      await verrouillerStockNetRecolte(tx, userId, espece.id)
+      const unite = (await chargerUnitesStock(userId, [espece.id], tx)).get(espece.id) ?? 'kg'
+      const refus = refusInventaire(saisie.stock, unite)
+      if (refus) return { ok: false, status: 400, error: refus }
+      const comptage = saisie.stock == null
         ? { inventaire: null, dateInventaire: null }
         : { inventaire: saisie.stock, dateInventaire: saisie.dateStock ?? new Date() }
-
-    return tx.userStockEspece.upsert({
-      where: { userId_especeId: { userId, especeId: espece.id } },
-      create: { userId, especeId: espece.id, ...comptage },
-      update: comptage,
-      select: { inventaire: true, dateInventaire: true },
+      const ligne = await tx.userStockEspece.upsert({
+        where: { userId_especeId: { userId, especeId: espece.id } },
+        create: { userId, especeId: espece.id, ...comptage },
+        update: comptage,
+        select: { inventaire: true, dateInventaire: true },
+      })
+      return { ok: true, especeId: espece.id, unite, ligne }
     })
-  })
-
-  return { ok: true, especeId: espece.id, unite, ligne }
+  } catch (error) {
+    const message = messageConflitStockCaisse(error)
+    if (message) return { ok: false, status: 409, error: message }
+    throw error
+  }
 }

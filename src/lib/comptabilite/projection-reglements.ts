@@ -6,6 +6,32 @@ import {
   type IdentiteMiroir,
 } from './cle-reglement'
 import { enCentimes } from './monnaie'
+import prisma from '@/lib/prisma'
+import { chargerMontantsNetsCaisse } from '@/lib/caisse/creances'
+import type { DbReglement } from './cibles-reglement'
+
+async function chargerProjectionMiroirs(
+  userId: string,
+  nature: 'vente' | 'depense',
+  lignes: readonly (IdentiteMiroir & { montant: number })[],
+  cles: string[],
+  borne?: Date,
+) {
+  const lire = async (db: DbReglement) => {
+    const [suivis, nets] = await Promise.all([
+      chargerSoldesReglements(userId, cles, db, borne),
+      nature === 'vente'
+        ? chargerMontantsNetsCaisse(db, userId, lignes, borne)
+        : Promise.resolve(new Map<string, number>()),
+    ])
+    return { suivis, nets }
+  }
+  // Les avoirs et le journal de règlements doivent voir le même remboursement validé.
+  if (nature === 'vente' && lignes.some((l) => l.sourceType === 'caisse' && l.sourceRef)) {
+    return prisma.$transaction(lire, { isolationLevel: 'RepeatableRead' })
+  }
+  return lire(prisma)
+}
 export async function enrichirFacturesReglements<T extends { id: number; totalTTC: number }>(
   userId: string,
   lignes: T[],
@@ -30,18 +56,17 @@ export async function enrichirMiroirsReglements<T extends IdentiteMiroir & { mon
   lignes: T[],
   borne?: Date,
 ) {
-  const suivis = await chargerSoldesReglements(
-    userId,
-    lignes.map((l) => cleMiroirReglement(nature, l)),
-    undefined,
-    borne,
-  )
+  const {suivis,nets}=await chargerProjectionMiroirs(userId,nature,lignes,lignes.map(l=>cleMiroirReglement(nature,l)),borne)
   return lignes.map((l) => {
     const s = suivis.get(cleMiroirReglement(nature, l))
+    const correction=nature==='vente'&&l.sourceType==='caisse_avoir'
+    const original=nature==='vente'&&l.sourceType==='caisse'&&!!l.sourceRef
+    const reference=original?nets.get(l.sourceRef!)??enCentimes(l.montant):enCentimes(l.montant)
     return {
       ...l,
-      montantRegle: s ? s.regleCentimes / 100 : null,
-      resteAPayer: s ? Math.max(0, enCentimes(l.montant) - s.regleCentimes) / 100 : null,
+      ...(correction?{reglementsDisponibles:false}:{}),
+      montantRegle: !correction&&s ? s.regleCentimes / 100 : null,
+      resteAPayer: correction?0:(s||original)?Math.max(0,reference-(s?.regleCentimes??0))/100:null,
     }
   })
 }
@@ -87,22 +112,27 @@ export async function enrichirLignesReglements<
       nature === 'vente' ? MIROIR_VENTE_PAR_SOURCE[l.source] : MIROIR_DEPENSE_PAR_SOURCE[l.source]
     return type ? cleSourceReglement(nature, type, l.sourceId) : ''
   }
-  const suivis = await chargerSoldesReglements(
-    userId,
-    lignes
+  const presents=lignes.flatMap(l=>{
+    const m=(l.source==='VenteManuelle'||l.source==='DepenseManuelle')?parId.get(l.sourceId):null
+    return m?[{...m,montant:l.montant}]:[]
+  })
+  const {suivis,nets}=await chargerProjectionMiroirs(userId,nature,presents,lignes
       .filter((l) => l.comptable !== false)
       .map(cle)
-      .filter(Boolean),
-  )
+      .filter(Boolean))
   return lignes.map((l) => {
     const s = suivis.get(cle(l))
+    const m=l.source==='VenteManuelle'?parId.get(l.sourceId):null
+    const correction=nature==='vente'&&m?.sourceType==='caisse_avoir'
+    const original=nature==='vente'&&m?.sourceType==='caisse'&&!!m.sourceRef
+    const reference=original?nets.get(m!.sourceRef!)??enCentimes(l.montant):enCentimes(l.montant)
     return {
       ...l,
-      reglementsDisponibles: l.reglementsDisponibles ?? !(l.source === 'VenteManuelle' && parId.get(l.sourceId)?.sourceType === 'reservation_elevage'),
-      montantRegle: s ? s.regleCentimes / 100 : null,
+      reglementsDisponibles: correction?false:l.reglementsDisponibles ?? !(l.source === 'VenteManuelle' && parId.get(l.sourceId)?.sourceType === 'reservation_elevage'),
+      montantRegle: !correction&&s ? s.regleCentimes / 100 : null,
       resteAPayer:
-        s && !l.facture && !l.factureId
-          ? Math.max(0, enCentimes(l.montant) - s.regleCentimes) / 100
+        correction?0:(s||original) && !l.facture && !l.factureId
+          ? Math.max(0, reference - (s?.regleCentimes??0)) / 100
           : null,
     }
   })

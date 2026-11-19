@@ -9,18 +9,17 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { z } from 'zod'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
+import { uniteConsommation } from '@/lib/stocks/consommation-unite'
 import { preparerSortieStock } from '@/lib/stocks/sortie-stock'
 import { UNITES_QUANTITE, type UniteQuantite } from '@/lib/recolte/projection'
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
+import { periodeConsommations } from '@/lib/stocks/periode-consommations'
 
 const consommationSchema = z.object({
   date: z.string().datetime().optional(),
   especeId: z.string().min(1),
   quantite: z.number().positive(),
-  /**
-   * Unité AFFICHÉE par l'écran (QA cmvgef6ou) : contrôlée contre celle du
-   * stock, jamais écrite (une consommation se compte dans l'unité du stock
-   * de son espèce, cf. `src/lib/stocks/sortie-stock.ts`).
-   */
+  // Unité validée contre le stock courant, puis figée sur la sortie.
   unite: z.enum(UNITES_QUANTITE as [UniteQuantite, ...UniteQuantite[]]).optional(),
   prix: z.number().min(0).optional(),
   destinationId: z.string().optional(),
@@ -34,16 +33,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const start = searchParams.get('start')
-    const end = searchParams.get('end')
+    const periode = periodeConsommations(searchParams.get('start'), searchParams.get('end'))
+    if (!periode.ok) {
+      return NextResponse.json({ error: periode.error, champ: periode.champ }, { status: 400 })
+    }
     const especeId = searchParams.get('espece')
 
     const consommations = await prisma.consommation.findMany({
       where: {
         userId: session!.user.id,
-        ...(start && end && {
-          date: { gte: new Date(start), lte: new Date(end) }
-        }),
+        ...(periode.date && { date: periode.date }),
         ...(especeId && { especeId })
       },
       include: {
@@ -60,12 +59,11 @@ export async function GET(request: NextRequest) {
     // Calculer stocks nets
     const stocksNet = await calculerStocksNet(session!.user.id, especeId || undefined)
 
-    // Chaque sortie dans l'unité du stock de son espèce (QA cmvgef6ou) : celle
-    // que le stock net lui retranche. L'écran n'a rien à deviner.
+    // Les anciennes lignes sans unité sont des kg, même si le stock a changé.
     return NextResponse.json({
       consommations: consommations.map((c) => ({
         ...c,
-        unite: stocksNet[c.especeId]?.unite ?? 'kg',
+        unite: uniteConsommation(c),
       })),
       stocksNet,
     })
@@ -118,6 +116,7 @@ export async function POST(request: NextRequest) {
       data: {
         ...data,
         especeId: sortie.especeId,
+        unite: sortie.unite,
         date: data.date ? new Date(data.date) : new Date(),
         userId: session!.user.id,
       },
@@ -131,9 +130,11 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ ...consommation, unite: sortie.unite }, { status: 201 })
+    return NextResponse.json(consommation, { status: 201 })
   } catch (error) {
     console.error('POST /api/consommations error:', error)
+    const conflit = messageConflitStockCaisse(error)
+    if (conflit) return NextResponse.json({ error: conflit }, { status: 409 })
     return NextResponse.json(
       { error: 'Erreur lors de la création de la consommation' },
       { status: 500 }

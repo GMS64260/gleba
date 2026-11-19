@@ -21,10 +21,17 @@ vi.mock("@/lib/auto-compta", () => ({ createVenteFromRecolte: vi.fn(), deleteAut
 vi.mock("@/lib/facture-utils", () => ({ creerFacture: mocks.creerFacture, annulerFactureLiee: vi.fn() }))
 vi.mock("@/lib/prisma", () => {
   const tx = {
-    culture: { findUnique: mocks.cultureFindUnique },
+    caisseLot: { findMany: async () => [] },
+    caisseAffectation: { findMany: vi.fn().mockResolvedValue([]) },
+    // Recalage de la récolte faite après redatation (contre-revue adverse 2) :
+    // ces cultures ne sont pas en « récolte faite », rien n'est recalé.
+    culture: { findUnique: mocks.cultureFindUnique, findFirst: vi.fn().mockResolvedValue(null), update: vi.fn() },
     recolte: { findFirst: mocks.recolteFindUnique, update: mocks.recolteUpdate, create: mocks.recolteCreate },
     venteManuelle: { findFirst: vi.fn().mockResolvedValue(null) },
     produitBoutique: { count: vi.fn().mockResolvedValue(0) },
+    // Verdict DAR de la mise en vente : aucun traitement sur ce lot.
+    intervention: { findMany: vi.fn().mockResolvedValue([]) },
+    planche: { findFirst: vi.fn().mockResolvedValue(null) },
     $queryRaw: vi.fn().mockResolvedValue([]),
     $executeRaw: vi.fn().mockResolvedValue(1),
   }
@@ -45,9 +52,7 @@ import { PATCH, PUT } from "./route"
 beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2027-03-01T10:00:00.000Z')) })
 afterAll(() => { vi.useRealTimers() })
 
-// Fuseau de la production : la règle compare des journées civiles de Paris.
-beforeAll(() => { vi.stubEnv("TZ", "Europe/Paris") })
-afterAll(() => { vi.unstubAllEnvs() })
+// Le fuseau est fixé au démarrage de Vitest (Paris et UTC dans les contrôles).
 
 const RECOLTE = {
   id: 1150,
@@ -149,9 +154,9 @@ describe("PUT /api/recoltes/[id] — date de récolte et cycle de la culture", (
 // une autre culture, recalcule son statut bio comme à la création (planche de
 // la culture, à la nouvelle date). Le PUT gardait le statut d'origine.
 describe("PUT /api/recoltes/[id] — statut bio recalculé quand l'origine change", () => {
-  const RECOLTE_AB = { ...RECOLTE, date: new Date("2026-11-11T23:00:00.000Z"), statutBioSnapshot: "AB" }
-  // Planche en conversion depuis le 2023-11-12 (minuit de Paris).
-  const PLANCHE_C1 = { statutBio: "C1", dateDebutConversion: new Date("2023-11-11T23:00:00.000Z") }
+  const RECOLTE_AB = { ...RECOLTE, date: new Date(2026, 10, 12, 0, 30), statutBioSnapshot: "AB" }
+  // Planche en conversion depuis le 2023-11-12 (minuit local).
+  const PLANCHE_C1 = { statutBio: "C1", dateDebutConversion: new Date(2023, 10, 12) }
   const CULTURE_BIO = { ...ZINNIA, dateSemis: new Date("2025-03-01T00:00:00.000Z"), datePlantation: null, planche: PLANCHE_C1 }
 
   beforeEach(() => {
@@ -163,7 +168,7 @@ describe("PUT /api/recoltes/[id] — statut bio recalculé quand l'origine chang
   })
 
   it("redatée du 2026-11-12 au 2025-11-12 : C3, comme à la création", async () => {
-    const res = await modifier({ date: "2025-11-11T23:00:00.000Z" })
+    const res = await modifier({ date: new Date(2025, 10, 12).toISOString() })
     expect(res.status).toBe(200)
     expect(mocks.recolteUpdate.mock.calls[0][0].data.statutBioSnapshot).toBe("C3")
     // Lecture faite après le verrou, scopée au compte.
