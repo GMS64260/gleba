@@ -13,11 +13,15 @@ export type LotVentesFromage = { id: string; typeFromage: string; nbPieces: numb
 export type VenteAtelierFromage = { id: number; lotFromageId: string; date: Date; annule: boolean; factureId: number | null; quantite: number; unite: string; prixTotal: number; poidsKg: number }
 type VenteFacturee = { lotFromageId: string | null; unite: string; quantite: number; prixTotal: number }
 export type LigneRecetteFromage = { articleStockType: string | null; articleStockId: string | null; unite: string; quantite: number; montantTTC: number }
-export type FactureFromage = { id: number; type: string; statut: string; date: Date; factureOrigineId: number | null; totalTTC: number; emetteurSnapshot: unknown; ventesAtelier?: VenteFacturee[]; lignes: LigneRecetteFromage[] }
+export type FactureFromage = { id: number; numero?: string | null; type: string; statut: string; date: Date; factureOrigineId: number | null; totalTTC: number; emetteurSnapshot: unknown; ventesAtelier?: VenteFacturee[]; lignes: LigneRecetteFromage[] }
 export type MouvementVenteFromage = { id: string; lotFromageId: string; date: Date; quantite: number; unite: string; poidsKg: number | null; factureId: number | null; documentId: string | null }
 export type VenteNetteFromage = { lotFromageId: string; typeFromage: string; quantite: number; unite: string; prixTotal: number; kgVendus: number | null; poidsVenduEstime: boolean; avertissementValorisation?: string }
 export type SourcesVentesFromage = { lots: LotVentesFromage[]; atelier: VenteAtelierFromage[]; factures: FactureFromage[]; mouvements: MouvementVenteFromage[] }
 export type PeriodeVentesFromage = { debut: Date; fin: Date }
+/** Pièce dont les recettes n'ont pas pu être réparties : le bilan s'affiche sans elle et la nomme. */
+export type PieceEcarteeFromage = { factureId: number; numero: string | null; type: string; motif: string }
+const MOTIF_VENTILATION = 'Recettes non réparties entre les lots de fromage : le total de la pièce diffère du détail des ventes (port, remise), ou un avoir porte sur plusieurs lots ou unités.'
+const MOTIF_DEVISE = 'Pièce émise dans une autre devise que celle de l’exploitation.'
 const active = (f: FactureFromage) => !['brouillon', 'annulee'].includes(f.statut)
 
 /** Recettes à la date de la vente atelier ou de la pièce ; quantités à la date
@@ -26,8 +30,11 @@ const active = (f: FactureFromage) => !['brouillon', 'annulee'].includes(f.statu
  * Sans mouvement historique, les lignes facturées servent de quantité témoin.
  * En valorisation indicative, une pièce ambiguë neutralise le prix des seuls
  * lots concernés ; elle ne rend pas les stocks physiques inaccessibles.
+ * Avec `ecartees` (bilan économique), une pièce non ventilable n'interrompt
+ * plus le calcul de l'exercice : ses recettes ne sont pas comptées et elle est
+ * ajoutée à la liste, que l'écran affiche avec son numéro et le motif.
  */
-export function projeterVentesFromage(sources: SourcesVentesFromage, devise: Devise, periode?: PeriodeVentesFromage, valorisation = false): VenteNetteFromage[] {
+export function projeterVentesFromage(sources: SourcesVentesFromage, devise: Devise, periode?: PeriodeVentesFromage, valorisation = false, ecartees?: PieceEcarteeFromage[]): VenteNetteFromage[] {
   const dansPeriode = (date: Date) => !periode || (date >= periode.debut && date <= periode.fin)
   const lots = new Map(sources.lots.map(l => [l.id, l]))
   const factures = new Map(sources.factures.filter(f => f.type !== 'avoir').map(f => [f.id, f]))
@@ -125,15 +132,19 @@ export function projeterVentesFromage(sources: SourcesVentesFromage, devise: Dev
     try {
       const source = sourceFacture(f.type === 'avoir' ? f.factureOrigineId ?? f.id : f.id)
       const signe = f.type === 'avoir' ? -1 : 1
-      for (const l of lignesAffectees(f)) {
-        if (l.montantTTC !== 0 && monnaieFacture(f.emetteurSnapshot, f.date) !== devise) throw new ErreurDevisesIncompatibles()
+      const lignes = lignesAffectees(f)
+      // Contrôlé avant toute écriture : une pièce écartée l'est en entier.
+      if (lignes.some(l => l.montantTTC !== 0) && monnaieFacture(f.emetteurSnapshot, f.date) !== devise) throw new ErreurDevisesIncompatibles()
+      for (const l of lignes) {
         const lotId = l.articleStockId!
         const quantite = physiques.has(cle(source, lotId)) ? 0 : signe * l.quantite
         ajouter(source, lotId, l.unite, quantite, signe * l.montantTTC)
       }
     } catch (err) {
-      if (!valorisation || !(err instanceof ErreurVentilationFromage || err instanceof ErreurDevisesIncompatibles)) throw err
-      for (const id of propres) indisponibles.set(id, err.message)
+      if (!(err instanceof ErreurVentilationFromage || err instanceof ErreurDevisesIncompatibles)) throw err
+      if (ecartees) ecartees.push({ factureId: f.id, numero: f.numero ?? null, type: f.type, motif: err instanceof ErreurVentilationFromage ? MOTIF_VENTILATION : MOTIF_DEVISE })
+      else if (valorisation) for (const id of propres) indisponibles.set(id, err.message)
+      else throw err
     }
   }
   for (const [id, message] of indisponibles) {
