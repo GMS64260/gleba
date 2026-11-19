@@ -237,6 +237,8 @@ export async function GET(request: NextRequest) {
       volumeBouillie: i.volumeBouillieLHa ?? null,
       volumeBouillieTotal: i.volumeBouillieLTotal ?? null,
       dar: i.dar ?? null,
+      // Délai recopié du catalogue sur une ligne ancienne : indicatif.
+      darIndicatif: i.darIndicatif === true && i.dar != null,
       temperatureC: i.temperatureC ?? null,
       ventKmh: i.ventKmh ?? null,
       hygrometriePct: i.hygrometriePct ?? null,
@@ -957,7 +959,7 @@ async function buildPdf(
         classification: String(l.classification ?? "—"),
         dose: String(l.dose ?? "—"),
         volumeBouillie: l.volumeBouillie != null ? String(l.volumeBouillie) : "—",
-        dar: l.dar != null ? String(l.dar) : "—",
+        dar: l.dar != null ? `${l.dar}${"darIndicatif" in l && l.darIndicatif ? " (indicatif)" : ""}` : "—",
         meteo,
         operateur: operateurCol,
         justification: justification || "—",

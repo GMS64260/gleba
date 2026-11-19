@@ -40,7 +40,7 @@ export type DelaisSaisis = {
   tempsAttenteOeufsJ?: unknown
 }
 
-const CHAMP: Record<DelaiAttente, keyof DelaisSaisis> = {
+export const CHAMP_DELAI: Record<DelaiAttente, keyof DelaisSaisis> = {
   viande: 'tempsAttenteViandeJ',
   lait: 'tempsAttenteLaitJ',
   oeufs: 'tempsAttenteOeufsJ',
@@ -73,7 +73,7 @@ export function delaiSaisi(valeur: unknown): boolean {
 }
 
 export function delaisManquantsSaisieLibre(requis: readonly DelaiAttente[], saisis: DelaisSaisis): DelaiAttente[] {
-  return requis.filter((d) => !delaiSaisi(saisis[CHAMP[d]]))
+  return requis.filter((d) => !delaiSaisi(saisis[CHAMP_DELAI[d]]))
 }
 
 export const CODE_DELAIS_ATTENTE_REQUIS = 'DELAIS_ATTENTE_REQUIS' as const

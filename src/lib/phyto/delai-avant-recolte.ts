@@ -116,9 +116,11 @@ export function resoudreDar(saisi: number | null | undefined, referentiel: numbe
 
 /**
  * Délai d'une intervention. `darIndicatif` marque les lignes ANCIENNES dont le
- * champ `dar` avait été recopié du catalogue par l'API (avant ce lot, POST
- * /api/interventions écrivait `dar = saisi ?? référentiel`) : leur valeur
- * n'est pas une saisie de l'exploitant, elle reste une indication.
+ * champ `dar` avait été recopié du catalogue par l'API (avant le 2026-11-13,
+ * POST /api/interventions écrivait `dar = saisi ?? référentiel`) : leur valeur
+ * n'est pas une saisie de l'exploitant, elle reste une indication. Le registre
+ * phyto l'affiche de la même façon, « indicatif, à confirmer » (`darAConfirmer`),
+ * et non plus comme un délai déclaré.
  */
 export function darIntervention(i: { dar: number | null; darIndicatif?: boolean | null; produitPhytoRef: { darJours?: number | null } | null }): DarResolu {
   return i.darIndicatif ? resoudreDar(null, i.produitPhytoRef?.darJours ?? i.dar) : resoudreDar(i.dar, i.produitPhytoRef?.darJours)
@@ -181,8 +183,9 @@ export type VerdictDar =
   | { niveau: 'rien' }
 
 const pluriel = (n: number) => `${n} jour${n > 1 ? 's' : ''}`
-const REFERENCE = 'arrêté du 4 mai 2017, art. 3, I'
 const RIEN: VerdictDar = { niveau: 'rien' }
+// Messages : deux phrases au plus, sans référence de texte (le fondement
+// légal est documenté en tête de ce module, pas à l'écran).
 const SUITE_BLOCAGE = 'La récolte reste enregistrée, mais elle ne peut pas être mise en vente.'
 
 /**
@@ -225,7 +228,7 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
     // contraires » de l'AMM. Un délai déclaré plus court est présumé venir de
     // l'AMM, que Gleba ne peut pas vérifier : rappel, pas de blocage.
     if (a.nature === 'amm' && jours < DAR_DEFAUT_LEGAL_JOURS && r < cal.ajouterJours(t, DAR_DEFAUT_LEGAL_JOURS)) {
-      return { niveau: 'informatif', message: `DAR : récolte du ${recolte}, moins de ${DAR_DEFAUT_LEGAL_JOURS} jours après ${produit} (traitement du ${cal.formater(t)}). Le délai saisi de ${pluriel(jours)} est inférieur au délai par défaut de ${DAR_DEFAUT_LEGAL_JOURS} jours (${REFERENCE}) : il ne vaut que si l’AMM du produit le prévoit pour cet usage. Vérifiez-la avant de commercialiser.` }
+      return { niveau: 'informatif', message: `DAR : récolte du ${recolte}, moins de ${DAR_DEFAUT_LEGAL_JOURS} jours après ${produit} (traitement du ${cal.formater(t)}). Un délai de ${pluriel(jours)} ne vaut que si l’étiquette du produit le prévoit pour cet usage.` }
     }
     return RIEN
   }
@@ -250,9 +253,9 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
     // purin) : aucune indication de délai et aucun texte, donc rien.
     if (indicatif === 0 || r >= finRappel) return RIEN
     const indication = finIndicative != null
-      ? ` Le catalogue Gleba indique ${pluriel(indicatif!)} à titre indicatif (soit jusqu’au ${cal.formater(finIndicative)}) : c’est un ordre de grandeur, pas les conditions d’approbation pour votre usage.`
+      ? ` Le catalogue Gleba indique ${pluriel(indicatif!)} à titre indicatif (soit jusqu’au ${cal.formater(finIndicative)}).`
       : ''
-    return { niveau: 'informatif', message: `DAR : délai inconnu, vérifiez les conditions d’approbation de ${produit} (traitement du ${cal.formater(t)}, récolte du ${recolte}). Une substance de base s’emploie dans les conditions de son approbation, qui peuvent fixer un délai avant récolte selon l’usage.${indication} Renseignez ce délai sur le traitement, ou 0 s’il n’y en a pas (cas d’un biostimulant).` }
+    return { niveau: 'informatif', message: `DAR : délai inconnu pour ${produit} (traitement du ${cal.formater(t)}, récolte du ${recolte}).${indication} Renseignez-le sur le traitement, ou 0 s’il n’y en a pas.` }
   }
   // Arrêté du 4 mai 2017, art. 3, I : « Sauf dispositions contraires prévues
   // par les décisions d'autorisation de mise sur le marché, l'utilisation des
@@ -262,7 +265,7 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
   // contraire » de l'AMM : le défaut légal s'applique tant que rien n'est saisi.
   const finDefaut = cal.ajouterJours(t, DAR_DEFAUT_LEGAL_JOURS)
   if (r < finDefaut) {
-    return bloquant(`DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : sauf disposition contraire de son AMM, un produit phytopharmaceutique ne s’utilise pas dans les ${DAR_DEFAUT_LEGAL_JOURS} jours précédant la récolte (${REFERENCE}). Récolte du ${recolte}, avant le ${cal.formater(finDefaut)}. ${SUITE_BLOCAGE} Si l’AMM prévoit un délai plus court, renseignez-le sur le traitement.`, finDefaut, 'defaut_legal')
+    return bloquant(`DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : sans délai saisi, une récolte dans les ${DAR_DEFAUT_LEGAL_JOURS} jours ne peut pas être mise en vente (récolte du ${recolte}, avant le ${cal.formater(finDefaut)}). Si l’étiquette prévoit un délai plus court, renseignez-le sur le traitement.`, finDefaut, 'defaut_legal')
   }
   // Au-delà des 3 jours, plus aucun délai légal connu de Gleba ne s'oppose à
   // la vente : l'AMM peut en imposer un plus long, que seul l'exploitant
@@ -270,9 +273,9 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
   // l'indication du catalogue si elle est plus longue).
   if (r < finRappel) {
     if (finIndicative != null && r < finIndicative) {
-      return { niveau: 'informatif', message: `DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : le délai par défaut de ${DAR_DEFAUT_LEGAL_JOURS} jours est passé, mais le catalogue Gleba indique ${pluriel(indicatif!)} à titre indicatif (soit jusqu’au ${cal.formater(finIndicative)}) et la récolte du ${recolte} tombe avant. Ce n’est qu’un ordre de grandeur : le délai qui s’impose est celui de l’AMM, sur l’étiquette du produit. Vérifiez-le et renseignez-le sur le traitement avant de commercialiser.` }
+      return { niveau: 'informatif', message: `DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : le catalogue Gleba indique ${pluriel(indicatif!)} à titre indicatif (soit jusqu’au ${cal.formater(finIndicative)}) et la récolte du ${recolte} tombe avant. Vérifiez l’étiquette et renseignez le délai sur le traitement.` }
     }
-    return { niveau: 'informatif', message: `DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : le délai par défaut de ${DAR_DEFAUT_LEGAL_JOURS} jours est passé, mais l’AMM peut imposer un délai plus long. Renseignez le DAR du produit pour vérifier la récolte du ${recolte}.` }
+    return { niveau: 'informatif', message: `DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : vérifiez sur l’étiquette que la récolte du ${recolte} respecte le délai, et renseignez-le sur le traitement.` }
   }
   return RIEN
 }
@@ -316,6 +319,21 @@ const SANS_AMM = new Set(['Substance de base / PNPP', 'Biologique (purin/décoct
 const SANS_PRODUIT = new Set(['Mécanique', 'Mécanique/Manuel', 'Prophylaxie'])
 
 /**
+ * Fiches du référentiel sans délai avant récolte, par identifiant (ceux de
+ * `scripts/seed-produits-phyto.ts`) : leur classification « Biocontrôle » les
+ * confond avec les produits pulvérisés.
+ *  - macro-organismes auxiliaires (trichogrammes, coccinelles) : ce ne sont
+ *    pas des produits phytopharmaceutiques (code rural, art. L. 253-6, 1°) ;
+ *  - diffuseurs de phéromones de confusion sexuelle : posés au printemps, ils
+ *    restent dans la parcelle jusqu'à la récolte, sans contact avec elle.
+ * Un délai saisi sur le traitement reste lu, comme pour un geste sans produit.
+ * Toute nouvelle fiche de ce type est à ajouter ici.
+ */
+export const REFERENTIEL_SANS_DELAI: ReadonlySet<string> = new Set([
+  'phyto-trichogramme', 'phyto-coccinelles', 'phyto-pheromones-cydia', 'phyto-pheromones-eudemis',
+])
+
+/**
  * Nature DÉCLARÉE à la saisie d'un produit qui n'a pas de fiche au référentiel
  * (contre-revue CR-DAR-01, tour 2 : « Décoction de prêle » saisie librement
  * passait pour un produit avec AMM). Jamais déduite du nom libre.
@@ -347,8 +365,9 @@ export function natureInterventionDar(i: {
   geste?: string | null
   natureProduit?: string | null
   numAMM?: string | null
-  produitPhytoRef: { classification?: string | null } | null
+  produitPhytoRef: { id?: string | null; classification?: string | null } | null
 }): 'amm' | 'sans_amm' | 'sans_produit' {
+  if (i.produitPhytoRef?.id && REFERENTIEL_SANS_DELAI.has(i.produitPhytoRef.id)) return 'sans_produit'
   const classification = i.produitPhytoRef?.classification ?? null
   if (classification && SANS_PRODUIT.has(classification)) return 'sans_produit'
   if (classification && SANS_AMM.has(classification)) return 'sans_amm'
@@ -361,7 +380,8 @@ export function natureInterventionDar(i: {
   return 'amm'
 }
 
-const METHODES_SANS_PRODUIT = new Set(['mecanique_manuel', 'mecanique', 'prophylaxie'])
+// `macro_organismes` : lâcher d'auxiliaires, pas un produit phytopharmaceutique.
+const METHODES_SANS_PRODUIT = new Set(['mecanique_manuel', 'mecanique', 'prophylaxie', 'macro_organismes'])
 const METHODES_SANS_AMM = new Set(['biologique_purin', 'biologique'])
 const METHODES_PRODUIT = new Set(['chimique_conventionnel', 'chimique_cuivre', 'chimique', 'biocontrole'])
 

@@ -192,12 +192,33 @@ export function evaluerAssociations(
   especesIds: string[],
   contexte: ContexteEspeces = new Map()
 ): AlerteAssociation[] {
+  return evaluerPairesAssociations(associations, especesIds, contexte).map((v) => v.alerte)
+}
+
+/** Verdict d'une paire avec la règle et les deux lignes qui le fondent. */
+export type VerdictPaire<A extends AssociationEvaluable = AssociationEvaluable> = {
+  alerte: AlerteAssociation
+  association: A
+  /** Lignes de la règle qui désignent `alerte.especes[0]` et `[1]`. */
+  details: [A["details"][number], A["details"][number]]
+  justification: string | null
+}
+
+/**
+ * Même évaluation que `evaluerAssociations`, avec la règle retenue : la fiche
+ * espèce en tire ses lignes, pour ne jamais contredire les alertes.
+ */
+export function evaluerPairesAssociations<A extends AssociationEvaluable>(
+  associations: A[],
+  especesIds: string[],
+  contexte: ContexteEspeces = new Map()
+): VerdictPaire<A>[] {
   const uniq = Array.from(new Set(especesIds.map((s) => s.toLowerCase())))
   if (uniq.length < 2) return []
   const alias = uniq.map(aliasMinuscules)
   const familles = uniq.map((e) => contexte.get(e)?.familleId?.toLowerCase() ?? null)
 
-  const parPaire = new Map<string, { alerte: AlerteAssociation; precision: number }>()
+  const parPaire = new Map<string, VerdictPaire<A> & { precision: number }>()
   const triees = [...associations].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   for (const a of triees) {
     const classe = classeAssociation(a.type, a.nom)
@@ -216,7 +237,7 @@ export function evaluerAssociations(
       for (let j = i + 1; j < uniq.length; j++) {
         // Meilleur couple de lignes distinctes ; règle du pivot : sans pivot
         // tous les membres sont reliés, sinon l'un des deux doit être pivot.
-        let meilleur: { x: DetailEvaluable; y: DetailEvaluable; px: number; py: number } | null = null
+        let meilleur: { x: A["details"][number]; y: A["details"][number]; px: number; py: number } | null = null
         for (const lx of lignes[i]) {
           for (const ly of lignes[j]) {
             if (lx.d === ly.d) continue
@@ -246,12 +267,16 @@ export function evaluerAssociations(
           [y, py] as const,
         ].flatMap(([d, p]) => (p === 0 ? [] : [p === 1 ? d.especeId : p === 2 ? texte(d.groupe) : d.familleId]))
         const origine = origines.length ? ` (règle portant sur ${origines.join(" et ")})` : ""
+        const justification = justificationPaire(a, x, y)
         parPaire.set(cle, {
           precision,
+          association: a,
+          details: [x, y],
+          justification,
           alerte: {
             type: classe,
             especes: [uniq[i], uniq[j]],
-            message: `Association ${classe === "defavorable" ? "défavorable" : "favorable"} : ${nom(uniq[i], x, px)} ↔ ${nom(uniq[j], y, py)} — ${justificationPaire(a, x, y) ?? a.nom}${origine}`,
+            message: `Association ${classe === "defavorable" ? "défavorable" : "favorable"} : ${nom(uniq[i], x, px)} ↔ ${nom(uniq[j], y, py)} — ${justification ?? a.nom}${origine}`,
             associationId: a.id,
             notes: a.notes,
             niveau: NIVEAUX[precision],
@@ -260,7 +285,7 @@ export function evaluerAssociations(
       }
     }
   }
-  return Array.from(parPaire.values()).map((v) => v.alerte)
+  return Array.from(parPaire.values()).map(({ alerte, association, details, justification }) => ({ alerte, association, details, justification }))
 }
 
 /**

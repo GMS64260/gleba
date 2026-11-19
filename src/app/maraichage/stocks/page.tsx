@@ -8,6 +8,8 @@
  *   - especeType: 'arbres' | 'legumes' (filtre les varietes par type d'espece)
  */
 
+import { useAffichageProgressif } from "@/hooks/use-affichage-progressif"
+import { AfficherPlus } from "@/components/ui/afficher-plus"
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
@@ -407,6 +409,9 @@ function StocksPageContent() {
     ),
     [data.plants, searches.plants]
   )
+  // Catalogue de plusieurs centaines de variétés : 50 lignes, puis à la demande.
+  const grainesAffichees = useAffichageProgressif(filteredGraines, `graines:${searches.graines}`)
+  const plantsAffiches = useAffichageProgressif(filteredPlants, `plants:${searches.plants}`)
 
   const filteredFertilisants = React.useMemo(
     () => data.fertilisants.filter(item =>
@@ -520,7 +525,7 @@ function StocksPageContent() {
             </Card>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-4 mb-6">
+          <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4 mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
@@ -633,7 +638,7 @@ function StocksPageContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredGraines.map((v) => (
+                    {grainesAffichees.visibles.map((v) => (
                       <TableRow key={v.id}>
                         <TableCell className="font-medium">{v.varieteNom ?? v.id}</TableCell>
                         <TableCell>{v.especeNom ?? v.especeId}</TableCell>
@@ -664,6 +669,7 @@ function StocksPageContent() {
                     )}
                   </TableBody>
                 </Table>
+                <AfficherPlus {...grainesAffichees} nom="variétés" />
               </CardContent>
             </Card>
           </TabsContent>
@@ -694,7 +700,7 @@ function StocksPageContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredPlants.map((v) => (
+                    {plantsAffiches.visibles.map((v) => (
                       <TableRow key={v.id}>
                         <TableCell className="font-medium">{v.varieteNom ?? v.id}</TableCell>
                         <TableCell>{v.especeNom ?? v.especeId}</TableCell>
@@ -724,6 +730,7 @@ function StocksPageContent() {
                     )}
                   </TableBody>
                 </Table>
+                <AfficherPlus {...plantsAffiches} nom="variétés" />
               </CardContent>
             </Card>
           </TabsContent>

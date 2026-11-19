@@ -50,6 +50,7 @@ type Economie = {
     poidsVenduEstime?: boolean
   }[]
   methode: { partGlobaleLaitiere: number; tetesLaitieres: number; tetesTotales: number; note: string }
+  piecesEcartees?: { factureId: number; numero: string | null; type: string; motif: string }[]
 }
 
 const eur = (v: number | null | undefined, digits = 0) =>
@@ -141,6 +142,23 @@ export function EconomieLaitSubTab({ year }: { year?: number } = {}) {
             </div>
           ) : (
             <>
+              {data.piecesEcartees && data.piecesEcartees.length > 0 && (
+                <div role="status" className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="font-medium">
+                    {data.piecesEcartees.length > 1
+                      ? `${data.piecesEcartees.length} pièces ne sont pas comptées dans les recettes de fromage`
+                      : "Une pièce n’est pas comptée dans les recettes de fromage"}
+                    {" "}(prix moyen au kg non calculé pour les fromages concernés)
+                  </p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {data.piecesEcartees.map((piece) => (
+                      <li key={piece.factureId}>
+                        {piece.type === "avoir" ? "Avoir" : "Facture"} {piece.numero ?? `n° ${piece.factureId}`} : {piece.motif}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {/* Indicateurs clés */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <KpiTile

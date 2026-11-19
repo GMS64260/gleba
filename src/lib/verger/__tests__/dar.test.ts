@@ -42,7 +42,7 @@ describe('délai avant récolte des fruits', () => {
     const prele = obs({ produit: 'Décoction de prêle', methodeTraitement: 'biologique_purin' })
     const r = await chargerAvertissementsDarFruits(db([prele]) as never, 'u', [recolte])
     expect(r.get(1)).toHaveLength(1)
-    expect(r.get(1)![0]).toMatch(/délai inconnu, vérifiez les conditions d’approbation de Décoction de prêle/)
+    expect(r.get(1)![0]).toMatch(/délai inconnu pour Décoction de prêle/)
     expect(r.get(1)![0]).not.toMatch(/3 jours|AMM/)
     const nul = await chargerAvertissementsDarFruits(db([{ ...prele, dar: 0 }]) as never, 'u', [recolte])
     expect(nul.get(1)).toEqual([])
@@ -82,7 +82,7 @@ describe('délai avant récolte des fruits', () => {
       expect(quatorze.traitements[0]).toMatchObject({ origineDelai: 'saisi' })
       const prele = (await chargerVerdictsDarFruits(db([], [], [operation({ produit: 'Décoction de prêle', natureProduit: 'substance_base' })]) as never, 'u', [recolte])).get(1)!
       expect(prele.niveau).toBe('informatif')
-      expect(prele.rappels[0]).toMatch(/vérifiez les conditions d’approbation de Décoction de prêle/)
+      expect(prele.rappels[0]).toMatch(/délai inconnu pour Décoction de prêle/)
       const purin = (await chargerVerdictsDarFruits(db([], [], [operation({ produit: 'Purin d’ortie', natureProduit: 'biostimulant' })]) as never, 'u', [recolte])).get(1)!
       expect(purin.niveau).toBe('rien')
     })

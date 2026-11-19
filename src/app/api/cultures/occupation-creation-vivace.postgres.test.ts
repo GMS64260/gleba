@@ -28,7 +28,12 @@ import { creerCulturesBatch } from '@/lib/planification'
 
 const jour = (iso: string) => new Date(iso + 'T00:00:00.000Z')
 
-describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : une nouvelle vivace est évaluée vivace à la création', () => {
+// Même activation que les autres suites PostgreSQL : base jetable `gleba_tests`
+// désignée à la fois par DATABASE_URL et TEST_DATABASE_URL (node scripts/tests-integration.mjs).
+const urlBase = process.env.DATABASE_URL
+const active = !!urlBase && urlBase === process.env.TEST_DATABASE_URL && new URL(urlBase).pathname === '/gleba_tests'
+
+describe.skipIf(!active)('occupation : une nouvelle vivace est évaluée vivace à la création', () => {
   let userId: string, vivaceId: string, annuelleId: string, itpVivaceId: string, itpAnnuelId: string
   let itpSansEspeceId: string, plancheId: string, eteId: string, itpEteId: string
   beforeAll(async () => {

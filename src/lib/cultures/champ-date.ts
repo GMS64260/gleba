@@ -29,12 +29,6 @@ export function jourMoisCourt(valeur: ValeurDate): string | null {
   return jour ? `${jour.slice(8, 10)}/${jour.slice(5, 7)}` : null
 }
 
-/** Jour civil « JJ/MM/AAAA » d'une date stockée ; `null` sans date. */
-export function jourMoisAnnee(valeur: ValeurDate): string | null {
-  const jour = jourCivilStocke(valeur)
-  return jour ? `${jour.slice(8, 10)}/${jour.slice(5, 7)}/${jour.slice(0, 4)}` : null
-}
-
 /**
  * Midi LOCAL du jour civil d'une date stockée : la date à passer à un
  * formateur local (`format` de date-fns, noms de mois compris) ou à comparer à

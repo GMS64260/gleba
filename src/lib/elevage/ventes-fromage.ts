@@ -1,17 +1,17 @@
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { deviseCouranteExploitation } from '@/lib/comptabilite/devise-reglement'
-import { projeterVentesFromage, type PeriodeVentesFromage } from './economie-lait-ventes'
+import { projeterVentesFromage, type PeriodeVentesFromage, type PieceEcarteeFromage } from './economie-lait-ventes'
 
 /** Lecteur commun à Économie du lait, Cave et Comptabilité > Stocks.
  * Les liens techniques de facture ne sont retenus que pour les lots du tenant.
  */
-export async function chargerVentesFromage(userId: string, periode?: PeriodeVentesFromage, options: { lotIds?: string[]; valorisation?: boolean } = {}) {
+export async function chargerVentesFromage(userId: string, periode?: PeriodeVentesFromage, options: { lotIds?: string[]; valorisation?: boolean; ecartees?: PieceEcarteeFromage[] } = {}) {
   // Une facturation concurrente ne peut être lue entre la vente native et sa pièce.
   return prisma.$transaction(tx => lireVentesFromage(tx, userId, periode, options), { isolationLevel: 'RepeatableRead' })
 }
 
-async function lireVentesFromage(db: Prisma.TransactionClient, userId: string, periode: PeriodeVentesFromage | undefined, options: { lotIds?: string[]; valorisation?: boolean }) {
+async function lireVentesFromage(db: Prisma.TransactionClient, userId: string, periode: PeriodeVentesFromage | undefined, options: { lotIds?: string[]; valorisation?: boolean; ecartees?: PieceEcarteeFromage[] }) {
   const lots = await db.lotFromage.findMany({ where: { userId, ...(options.lotIds ? { id: { in: options.lotIds } } : {}) }, select: { id: true, typeFromage: true, nbPieces: true, poidsTotalKg: true } })
   if (!lots.length) return []
   const ids = lots.map(l => l.id)
@@ -30,7 +30,7 @@ async function lireVentesFromage(db: Prisma.TransactionClient, userId: string, p
       { lignes: { some: lienFromage } },
       { ventesProduits: { some: lienAtelier } },
       { factureOrigineRef: { userId, OR: [{ lignes: { some: lienFromage } }, { ventesProduits: { some: lienAtelier } }] } },
-    ] }, select: { id: true, type: true, statut: true, date: true, factureOrigineId: true, totalTTC: true, emetteurSnapshot: true,
+    ] }, select: { id: true, numero: true, type: true, statut: true, date: true, factureOrigineId: true, totalTTC: true, emetteurSnapshot: true,
       ventesProduits: { where: { userId }, select: { lotFromageId: true, unite: true, quantite: true, prixTotal: true } },
       lignes: { select: { articleStockType: true, articleStockId: true, unite: true, quantite: true, montantTTC: true } } } }),
     db.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } }),
@@ -41,5 +41,5 @@ async function lireVentesFromage(db: Prisma.TransactionClient, userId: string, p
     mouvements: mouvements.flatMap(m => m.fromageId == null ? [] : [{ ...m, lotFromageId: m.fromageId,
       factureId: m.facture?.userId === userId ? m.factureId : m.document?.userId === userId && m.document.facture?.userId === userId ? m.document.factureId : null }]),
     factures: factures.map(f => ({ ...f, ventesAtelier: f.ventesProduits })),
-  }, deviseCouranteExploitation(exploitation), periode, options.valorisation)
+  }, deviseCouranteExploitation(exploitation), periode, options.valorisation, options.ecartees)
 }

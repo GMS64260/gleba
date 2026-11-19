@@ -30,30 +30,6 @@ export async function refusRemiseActif(db: Db, userId: string, animalId: number)
 }
 
 /**
- * Passer une fiche « abattu » à la main est un abattage : même garde que
- * `POST /api/elevage/abattages`. Sans elle, le statut se posait sur un animal
- * en délai d'attente viande, sans passer par le contrôle de l'abattage.
- *
- * Rend le corps du refus (409 `ATTENTE_VIANDE_ACTIVE`), ou `null`.
- */
-export async function refusPassageAbattu(
-  db: Prisma.TransactionClient,
-  userId: string,
-  animalId: number,
-  dateSortie: Date,
-): Promise<{ error: string; code?: string; details?: unknown; status: number } | null> {
-  try {
-    await verifierAttenteViande(db, userId, { animalId, lotId: null, date: dateSortie })
-    return null
-  } catch (erreur) {
-    if (erreur instanceof ErreurElevage) {
-      return { error: erreur.message, code: erreur.code, details: erreur.details, status: erreur.status }
-    }
-    throw erreur
-  }
-}
-
-/**
  * La fiche de référence d'une modification : relue DANS la transaction, ligne
  * verrouillée (`FOR UPDATE`), donc après toute requête concurrente déjà validée
  * et à l'abri des suivantes jusqu'à la fin de la transaction.

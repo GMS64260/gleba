@@ -1,8 +1,10 @@
 # Tests d’intégration PostgreSQL
 
-`lourd npm run test:integration` lance les fichiers présents correspondant à
-`src/**/*.integration.test.ts` et `src/**/integration.test.ts` (nom historique de
-la caisse). Aucun inventaire de fichiers privés n’est nécessaire au dépôt public.
+`TEST_DATABASE_URL=… node scripts/tests-integration.mjs` lance les fichiers
+présents correspondant à `src/**/*.integration.test.ts`,
+`src/**/integration.test.ts` (nom historique de la caisse) et
+`src/**/*.postgres.test.ts` (occupation des planches, désactivation des
+associations). Aucun inventaire de fichiers privés n’est nécessaire au dépôt public.
 La base doit être migrée avant le lancement ; le script ne crée ni ne réinitialise
 aucune base. Il refuse une `TEST_DATABASE_URL` absente ou différente d’une base
 PostgreSQL locale (`localhost` ou `127.0.0.1`) nommée exactement `gleba_tests`.
@@ -16,9 +18,14 @@ espions posés sur ses délégués proxy ne doivent pas contaminer une autre sui
 Les gardes propres aux suites restent actives. La suite unitaire `npm test`
 continue d’ignorer les tests PostgreSQL sans leurs variables d’activation.
 
-La CI (`base-neuve`, étape « Integration tests on PostgreSQL ») crée et migre
-`gleba_tests`, puis appelle le même script. Elle conserve ensuite l’exécution
-d’attente lait sur sa base dédiée. Aucun accès externe ni donnée réelle n’est requis.
+La CI (`base-neuve`, étape « Integration tests on the shared PostgreSQL base ») crée et migre
+`gleba_tests`, puis appelle ce script ; elle exécute ensuite l’attente lait sur
+sa base dédiée. Avant le 2026-11-19, la CI ne lançait que l’attente lait et les
+suites `*.postgres.test.ts` dépendaient d’une variable définie nulle part : elles
+n’avaient jamais tourné. Aucun accès externe ni donnée réelle n’est requis.
+
+Le rejeu sous fuseau UTC (`scripts/test-tz.mjs`) n’est branché ni en CI ni dans
+un script npm : il se lance à la main.
 
 ## Suites ignorées sur la base commune
 
@@ -38,6 +45,8 @@ créer et migrer la base correspondante, puis utiliser `DATABASE_URL` identique
 | `verger/__tests__/six-points.integration.test.ts` | Même variable et même garde que le parcours verger | Contre-vérification sur les fixtures du banc verger dédié. |
 | `verger/__tests__/transformation.integration.test.ts` | Même variable et même garde que le parcours verger | Transformations et stocks sur le banc verger dédié. |
 | `verger/__tests__/raccords.integration.test.ts` | `GLEBA_VERGER_RACCORDS_QA_DATABASE_URL=DATABASE_URL`, base `gleba_verger_qa_raccords_<8 hex>` | Raccords entre modules sur un banc synthétique distinct. |
+| `../app/api/associations/migration-famille.postgres.test.ts` | `DATABASE_URL` vers une base `gleba_jetable_*` | Rejoue un SQL qui nettoie le référentiel global des associations. |
+| `../app/api/associations/desactivation.postgres.test.ts` (bloc « base peuplée ») | `GLEBA_PR73_REFERENTIEL_PEUPLE=1` et base `gleba_jetable_*` | Exige le référentiel d’associations de production chargé. |
 | `verger/__tests__/suivi-commercial.integration.test.ts` | `GLEBA_VERGER_BL_QA_DATABASE_URL=DATABASE_URL`, base `gleba_verger_bl_qa_20261028_<8 hex>` | Documents commerciaux et stocks sur un banc distinct. |
 
 Les suites de caisse présentes dans l’arbre privé sont activées par

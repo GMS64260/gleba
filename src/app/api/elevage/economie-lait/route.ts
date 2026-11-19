@@ -27,7 +27,7 @@ import prisma from '@/lib/prisma'
 import { indicateursEconomieLait } from '@/lib/elevage/economie-lait'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { chargerVentesFromage } from '@/lib/elevage/ventes-fromage'
-import { ErreurVentilationFromage } from '@/lib/elevage/economie-lait-ventes'
+import { ErreurVentilationFromage, type PieceEcarteeFromage } from '@/lib/elevage/economie-lait-ventes'
 import { ErreurDevisesIncompatibles } from '@/lib/comptabilite/totaux-devise'
 import { jourCivilStocke } from '@/lib/jour-civil'
 import { estProductionLaitiere } from '@/lib/elevage/cibles-collecte-lait'
@@ -70,6 +70,9 @@ export async function GET(request: NextRequest) {
     const debut = new Date(annee, 0, 1)
     const fin = new Date(annee, 11, 31, 23, 59, 59, 999)
 
+    // Pièces dont les recettes ne se répartissent pas entre les lots : le
+    // bilan s'affiche sans elles et les liste (avant, 422 pour tout l'exercice).
+    const piecesEcartees: PieceEcarteeFromage[] = []
     const [animaux, lots, lotsClos, collectes, fabrications, ventes, consommations, soins, paies, ventesFromage] = await Promise.all([
       // Animaux présents pendant l'exercice : actifs, ou sortis (vendus,
       // réformés, morts) après son début. Une laitière vendue sans collecte
@@ -139,7 +142,7 @@ export async function GET(request: NextRequest) {
         where: { userId, annee },
         select: { montantHT: true, litres: true },
       }),
-      chargerVentesFromage(userId, { debut, fin }),
+      chargerVentesFromage(userId, { debut, fin }, { ecartees: piecesEcartees }),
     ])
 
     // Ensembles laitiers
@@ -289,6 +292,9 @@ export async function GET(request: NextRequest) {
       else e.kgVendus += v.kgVendus
       parType.set(t, e)
     }
+    // Recette incomplète (pièce écartée) : pas de prix moyen pour ce type,
+    // les quantités vendues restant comptées.
+    const typesIncomplets = new Set(piecesEcartees.flatMap((p) => p.typesFromage))
     const fromages = Array.from(parType.entries()).map(([type, e]) => ({
       type,
       volumeLaitL: Math.round(e.volumeLait * 10) / 10,
@@ -299,7 +305,7 @@ export async function GET(request: NextRequest) {
       ca: Math.round(e.ca * 100) / 100,
       kgVendus: e.poidsComplet ? Math.round(e.kgVendus * 1000) / 1000 : null,
       poidsVenduEstime: e.poidsEstime,
-      prixMoyenKg: e.poidsComplet && e.kgVendus > 0 && e.ca > 0 ? Math.round((e.ca / e.kgVendus) * 100) / 100 : null,
+      prixMoyenKg: !typesIncomplets.has(type) && e.poidsComplet && e.kgVendus > 0 && e.ca > 0 ? Math.round((e.ca / e.kgVendus) * 100) / 100 : null,
     }))
 
     return NextResponse.json({
@@ -323,6 +329,7 @@ export async function GET(request: NextRequest) {
       },
       indicateurs: indic,
       fromages: fromages.sort((a, b) => b.ca - a.ca),
+      piecesEcartees,
       methode: {
         partGlobaleLaitiere: Math.round(partGlobaleLaitiere * 1000) / 1000,
         tetesLaitieres,

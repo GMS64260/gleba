@@ -49,6 +49,8 @@ import {
 } from "@/components/ui/sheet"
 import { useToast } from "@/hooks/use-toast"
 import { dateReferenceOperationArbre } from "@/lib/verger/annee-operation"
+import { DelaiTraitementDialog } from "@/components/verger/DelaiTraitementDialog"
+import { delaiTraitementASaisir, type OperationDelai } from "@/lib/verger/delai-traitement"
 
 interface OperationEvent {
   id: number
@@ -127,6 +129,8 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1))
   const goToToday = () => setCurrentMonth(startOfMonth(new Date()))
 
+  const [delaiOp, setDelaiOp] = React.useState<OperationDelai | null>(null)
+
   const handleToggleFait = async (op: OperationEvent) => {
     try {
       const res = await fetch(`/api/arbres/operations/${op.id}`, {
@@ -142,6 +146,11 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
           prev.map((o) => (o.id === op.id ? { ...o, fait: !op.fait } : o))
         )
         toast({ title: op.fait ? "Remis en attente" : "Fait !" })
+        // Traitement coché « fait » sans délai : on le demande sur place.
+        const maj = (await res.json().catch(() => null)) as OperationDelai | null
+        if (!op.fait && maj && delaiTraitementASaisir(maj)) setDelaiOp(maj)
+      } else {
+        toast({ variant: "destructive", title: "Mise à jour refusée" })
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
@@ -195,6 +204,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
 
   return (
     <Card>
+      <DelaiTraitementDialog operation={delaiOp} onClose={() => setDelaiOp(null)} />
       <CardHeader className="pb-2">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <CardTitle className="text-lg flex items-center gap-2">

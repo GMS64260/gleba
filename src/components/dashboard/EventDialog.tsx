@@ -5,6 +5,7 @@
  * Permet de marquer comme fait, voir details, modifier
  */
 
+import { TITRE_AVERTISSEMENT_CULTURE, avertissementsReponse } from "@/lib/cultures/avertissements-reponse"
 import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import Link from "next/link"
@@ -191,6 +192,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
     // Pour les autres types (semis, plantation, irrigation)
     setLoading(true)
+    let avertissements: string[] = []
     try {
       if (event.type === "irrigation") {
         // Marquer l'irrigation planifiée comme faite
@@ -214,14 +216,20 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
           }),
         })
         if (!response.ok) throw new Error("Erreur")
+        avertissements = avertissementsReponse(await response.json().catch(() => null))
       }
 
-      toast({
-        title: "Mis à jour",
-        description: event.fait
-          ? `${config.label} marqué comme non effectué`
-          : `${config.label} marqué comme effectué`,
-      })
+      // Un seul toast est visible à la fois : l'avertissement remplace le succès.
+      if (avertissements.length > 0) {
+        toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: avertissements.join(" · "), duration: 15000 })
+      } else {
+        toast({
+          title: "Mis à jour",
+          description: event.fait
+            ? `${config.label} marqué comme non effectué`
+            : `${config.label} marqué comme effectué`,
+        })
+      }
 
       if (event.type === "irrigation") {
         window.dispatchEvent(new CustomEvent("gleba:irrigation-updated", {

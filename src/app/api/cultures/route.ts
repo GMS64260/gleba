@@ -31,6 +31,8 @@ import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } fro
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { quantiteCultureACreer } from '@/lib/cultures/quantite-plants'
 import { lireAnneeFiltre, lireParametresListe } from '@/lib/cultures/pagination-liste'
+import { ordonnerPourSaisieRecolte } from '@/lib/cultures/tri-recolte'
+import { jourCivilStocke, jourLocalISO } from '@/lib/jour-civil'
 import { aIrriguerALaCreation } from '@/lib/cultures/a-irriguer'
 import { verrouillerOccupationExploitation } from '@/lib/cultures/occupation-modification'
 
@@ -63,6 +65,10 @@ export async function GET(request: NextRequest) {
     // Cultures non terminées seulement (saisie de récolte) : filtrer après
     // coup une page triée par identifiant laissait de côté les plus anciennes.
     const enCours = searchParams.get('enCours') === '1'
+    // Saisie de récolte : prêtes à récolter d'abord, sur l'ensemble des
+    // cultures et non sur la page reçue. `jour` est le jour du navigateur.
+    const triRecolte = searchParams.get('tri') === 'recolte'
+    const jourTri = jourCivilStocke(searchParams.get('jour')) ?? jourLocalISO(new Date())
 
     // Construction du where - FILTRE PAR USER
     const where: Prisma.CultureWhereInput = {
@@ -109,10 +115,20 @@ export async function GET(request: NextRequest) {
       where.AND = [whereEtatCulture(etat)]
     }
 
+    // Tri « récolte » : l'ordre dépend du jour, il se calcule donc sur les
+    // seuls identifiants et dates, puis la page est lue par identifiants.
+    let idsPage: number[] | null = null
+    if (triRecolte) {
+      const toutes = await prisma.culture.findMany({ where, select: { id: true, dateRecolte: true } })
+      idsPage = ordonnerPourSaisieRecolte(toutes, jourTri)
+        .slice(skip, skip + pageSize)
+        .map((c) => c.id)
+    }
+
     // Requête avec comptage
-    const [cultures, total] = await Promise.all([
+    const [lues, total] = await Promise.all([
       prisma.culture.findMany({
-        where,
+        where: idsPage ? { ...where, id: { in: idsPage } } : where,
         include: {
           espece: {
             include: { famille: true },
@@ -130,12 +146,12 @@ export async function GET(request: NextRequest) {
             select: { recoltes: true },
           },
         },
-        orderBy: { [sortBy]: sortOrder },
-        skip,
-        take: pageSize,
+        ...(idsPage ? {} : { orderBy: { [sortBy]: sortOrder }, skip, take: pageSize }),
       }),
       prisma.culture.count({ where }),
     ])
+    const rang = new Map(idsPage?.map((id, index) => [id, index]))
+    const cultures = idsPage ? [...lues].sort((a, b) => rang.get(a.id)! - rang.get(b.id)!) : lues
 
     // Rendement effectif : celui déclaré par la ferme prime sur le catalogue.
     // Résolu ici pour que l'écran de saisie de récolte estime dans la bonne

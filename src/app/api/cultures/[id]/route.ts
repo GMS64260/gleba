@@ -470,7 +470,12 @@ export async function PUT(
         if (erreurFin) return NextResponse.json({ error: erreurFin, champ: 'finRecolte' }, { status: 400 })
       }
 
-      const occupation = await controlerOccupationModification(tx, session!.user.id, existing, datesFinales as Culture)
+      const occupation = await controlerOccupationModification(tx, session!.user.id, existing, datesFinales as Culture,
+        // Fait accompli : une étape cochée, sans date de plan déplacée par le
+        // même envoi (le formulaire renvoie toutes les dates : on compare les jours).
+        { faitAccompli: ETAPES.some((etape) => faitSoumis[etape] === true && !existing[etape])
+          && !(['dateSemis', 'datePlantation', 'dateRecolte', 'finRecolte'] as const).some((champ) =>
+            champ in data && jourCivilStocke(data[champ] as Date | null) !== jourCivilStocke(existing[champ])) })
       if (occupation.refus) return NextResponse.json(occupation.refus, { status: 400 })
       dateWarnings.push(...occupation.warnings)
 
@@ -724,6 +729,9 @@ export async function PATCH(
       // bouton « Annuler le semis fait » de /maraichage/cultures passe ici : sans
       // restitution, cocher puis décocher laissait la date d'exécution en place et
       // le plan était perdu.
+      // Dates fournies par l'appel lui-même : avec elles, cocher une étape
+      // n'est plus un simple fait accompli pour le contrôle d'occupation.
+      const dateFournie = (['dateSemis', 'datePlantation', 'dateRecolte', 'finRecolte'] as const).some((champ) => champ in updateData)
       // La fenêtre de récolte suit une date de récolte déplacée par l'appel
       // (règle de la modification et du report, `finRecolteApresModification`).
       // Avant le recalage d'exécution : marquer une récolte faite ne déplace pas
@@ -792,7 +800,8 @@ export async function PATCH(
       }
 
       const occupation = await controlerOccupationModification(tx, session!.user.id, existing,
-        { ...existing, ...updateData } as Culture)
+        { ...existing, ...updateData } as Culture,
+        { faitAccompli: !dateFournie && ETAPES.some((etape) => updateData[etape] === true && !existing[etape]) })
       if (occupation.refus) return NextResponse.json(occupation.refus, { status: 400 })
 
       const culture = await tx.culture.update({
@@ -801,7 +810,7 @@ export async function PATCH(
       })
       irrigationModifiee = 'derniereIrrigation' in updateData
 
-      return NextResponse.json(culture)
+      return NextResponse.json(occupation.warnings.length > 0 ? { ...culture, warnings: occupation.warnings } : culture)
     }, OPTIONS_TRANSACTION_CULTURE)
     if (reponse.status === 200) {
       // Invalider le cache irrigation si la date d'arrosage a changé

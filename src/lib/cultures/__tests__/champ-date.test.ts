@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 import {
   datesApresChangementItp,
   datesCalculeesEnJoursSeuls,
-  jourMoisAnnee,
   jourMoisCourt,
   valeurChampDate,
 } from '../champ-date'
@@ -17,7 +16,6 @@ interface ResultatsFuseau {
   joursUtcLocaux: number[]
   minuitLocalIso: string
   joursCourts: (string | null)[]
-  jourComplet: string | null
   midi: number[]
   midiAbsent: null
   corps: Record<string, unknown>
@@ -28,7 +26,7 @@ function sousFuseau(tz: string): ResultatsFuseau {
   if (connu) return connu
   const script = `
     const {
-      valeurChampDate, jourMoisCourt, jourMoisAnnee,
+      valeurChampDate, jourMoisCourt,
       midiLocalDuJour, datesCalculeesEnJoursSeuls,
     } = require(process.argv[1])
     const iso = '2027-04-12T00:00:00.000Z'
@@ -39,7 +37,6 @@ function sousFuseau(tz: string): ResultatsFuseau {
       joursUtcLocaux: [iso, '2027-04-12'].map(v => new Date(v).getDate()),
       minuitLocalIso: local.toISOString(),
       joursCourts: [jourMoisCourt(iso), jourMoisCourt(new Date(2027, 0, 1))],
-      jourComplet: jourMoisAnnee(iso),
       midi: [midi.getFullYear(), midi.getMonth(), midi.getDate(), midi.getHours()],
       midiAbsent: midiLocalDuJour(null),
       corps: datesCalculeesEnJoursSeuls({
@@ -83,16 +80,14 @@ describe('valeurChampDate', () => {
   })
 })
 
-describe('jourMoisCourt et jourMoisAnnee', () => {
-  it.each(FUSEAUX)('affichent le jour saisi sous %s', (tz) => {
+describe('jourMoisCourt', () => {
+  it.each(FUSEAUX)('affiche le jour saisi sous %s', (tz) => {
     const resultat = sousFuseau(tz)
     expect(resultat.joursCourts).toEqual(['12/04', '01/01'])
-    expect(resultat.jourComplet).toBe('12/04/2027')
   })
 
-  it('rendent null sans date', () => {
+  it('rend null sans date', () => {
     expect(jourMoisCourt(null)).toBeNull()
-    expect(jourMoisAnnee('')).toBeNull()
   })
 })
 

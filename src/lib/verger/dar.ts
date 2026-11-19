@@ -38,7 +38,7 @@ export async function chargerVerdictsDarFruits(db: Db, userId: string, lots: Lot
       select: { arbreId: true, parcelleId: true, date: true, dar: true, produit: true, numAMM: true, methodeTraitement: true } }),
     db.intervention.findMany({ where: { userId, fait: true, date, type: 'traitement_phyto',
       OR: [{ dar: { gt: 0 } }, { dar: null, produitPhytoRef: { darJours: { gt: 0 } } }, recents], AND: [localisation] },
-      select: { arbreId: true, parcelleId: true, date: true, dar: true, darIndicatif: true, produitPhyto: true, geste: true, natureProduit: true, numAMM: true, produitPhytoRef: { select: { darJours: true, nomCommercial: true, classification: true } } } }),
+      select: { arbreId: true, parcelleId: true, date: true, dar: true, darIndicatif: true, produitPhyto: true, geste: true, natureProduit: true, numAMM: true, produitPhytoRef: { select: { id: true, darJours: true, nomCommercial: true, classification: true } } } }),
     // Revues QA et adverse du tour 2 : les traitements réalisés saisis dans
     // Verger > Opérations (et par l'assistant) figuraient au registre phyto
     // mais pas ici ; une récolte du lendemain restait vendable sans un mot.

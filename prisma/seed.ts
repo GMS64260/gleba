@@ -169,17 +169,26 @@ async function main() {
   // Variétés
   const { normalizeVarieteName } = await import("../src/lib/normalize")
   for (const v of varietes) {
-    await prisma.variete.upsert({
-      where: { id: v.id },
-      update: {},
-      create: {
+    const nomNormalise = normalizeVarieteName(v.id)
+    // L'unicité des variétés officielles porte sur (espèce, nom normalisé),
+    // pas sur l'identifiant : chercher par le seul `id` faisait échouer tout
+    // le seed (P2002) dès qu'une variété officielle de même nom existait sous
+    // un autre identifiant (fusion de doublons, casse ou accent différents),
+    // à chaque démarrage du conteneur, et rien de ce qui suit n'était joué.
+    const existante = await prisma.variete.findFirst({
+      where: { OR: [{ id: v.id }, { userId: null, especeId: v.especeId, nomNormalise }] },
+      select: { id: true },
+    })
+    if (existante) continue
+    await prisma.variete.create({
+      data: {
         id: v.id,
         // `nom` est le libellé AFFICHÉ ; pour une entrée officielle il vaut son
         // identifiant. Il était omis ici alors que les 364 variétés officielles
         // de production le portent toutes : une base neuve était la seule à
         // exposer des variétés sans libellé (constaté le 2026-08-26).
         nom: v.id,
-        nomNormalise: normalizeVarieteName(v.id),
+        nomNormalise,
         especeId: v.especeId,
         fournisseurId: v.fournisseurId || null,
         nbGrainesG: v.nbGrainesG || null,
@@ -192,17 +201,23 @@ async function main() {
 
   // ITPs
   for (const itp of itps) {
-    await prisma.iTP.upsert({
-      where: { id: itp.id },
-      update: {},
-      create: {
+    // Même précaution que pour les variétés : un itinéraire officiel de même
+    // nom sous un autre identifiant n'est pas recréé en double.
+    const cle = normalizeReferentielKey(itp.id)
+    const existant = await prisma.iTP.findFirst({
+      where: { OR: [{ id: itp.id }, { userId: null, nomNormalise: cle }] },
+      select: { id: true },
+    })
+    if (existant) continue
+    await prisma.iTP.create({
+      data: {
         id: itp.id,
         // Le libellé et sa clé de dédup, sans quoi l'entrée est affichée par son
         // identifiant brut et échappe à la recherche normalisée. La migration
         // `catalogue_cle_technique` avait rempli les lignes EXISTANTES ; ce seed,
         // rejoué à chaque démarrage du conteneur, créait sans ces colonnes.
         nom: itp.id,
-        nomNormalise: normalizeReferentielKey(itp.id),
+        nomNormalise: cle,
         especeId: itp.especeId || null,
         semaineSemis: itp.semaineSemis || null,
         semainePlantation: itp.semainePlantation || null,
@@ -227,34 +242,14 @@ async function main() {
     const existing = await prisma.rotationDetail.findFirst({
       where: { rotationId: rd.rotationId, annee: rd.annee },
     })
-    if (!existing) {
+    // Itinéraire non créé plus haut (homonyme officiel sous un autre
+    // identifiant) : le détail est laissé de côté plutôt que d'arrêter le seed.
+    const itinerairePresent = !rd.itpId || (await prisma.iTP.count({ where: { id: rd.itpId } })) > 0
+    if (!existing && itinerairePresent) {
       await prisma.rotationDetail.create({ data: rd })
     }
   }
   console.log(`✓ Rotation Details: ${rotationsDetails.length}`)
-
-  // Planches
-  for (const p of planches) {
-    const existing = await prisma.planche.findFirst({ where: { nom: p.id, userId } })
-    if (!existing) {
-      await prisma.planche.create({
-        data: {
-          nom: p.id,
-          userId,
-          rotationId: p.rotationId || null,
-          largeur: p.largeur || null,
-          longueur: p.longueur || null,
-          surface: p.largeur && p.longueur ? p.largeur * p.longueur : null,
-          posX: p.posX || null,
-          posY: p.posY || null,
-          planchesInfluencees: p.planchesInfluencees || null,
-          ilot: p.ilot || null,
-          notes: p.notes || null,
-        },
-      })
-    }
-  }
-  console.log(`✓ Planches admin: ${planches.length}`)
 
   // Planches DEMO (3 planches simples)
   const planchesDemo = [
@@ -313,6 +308,31 @@ async function main() {
     console.log("\n✅ Seed terminé avec succès!")
     return
   }
+
+  // Planches d'exemple du compte administrateur : derrière la même garde que
+  // les autres données d'exemple, pour qu'un redémarrage ne recrée jamais une
+  // planche que l'administrateur a renommée ou supprimée.
+  for (const p of planches) {
+    const existing = await prisma.planche.findFirst({ where: { nom: p.id, userId } })
+    if (!existing) {
+      await prisma.planche.create({
+        data: {
+          nom: p.id,
+          userId,
+          rotationId: p.rotationId || null,
+          largeur: p.largeur || null,
+          longueur: p.longueur || null,
+          surface: p.largeur && p.longueur ? p.largeur * p.longueur : null,
+          posX: p.posX || null,
+          posY: p.posY || null,
+          planchesInfluencees: p.planchesInfluencees || null,
+          ilot: p.ilot || null,
+          notes: p.notes || null,
+        },
+      })
+    }
+  }
+  console.log(`✓ Planches admin: ${planches.length}`)
 
   for (const p of planchesDemo) {
     await prisma.planche.create({

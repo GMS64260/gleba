@@ -18,7 +18,7 @@ export type TraitementDar = {
   geste?: string | null
   natureProduit?: string | null
   numAMM?: string | null
-  produitPhytoRef: { darJours: number | null; nomCommercial: string | null; classification?: string | null } | null
+  produitPhytoRef: { id?: string | null; darJours: number | null; nomCommercial: string | null; classification?: string | null } | null
 }
 
 const MS_JOUR = 86_400_000
@@ -95,7 +95,7 @@ export async function chargerVerdictsDarLegumes(db: Db, userId: string, lots: Lo
         ...(parcelles.length ? [{ cultureId: null, plancheId: null, arbreId: null, parcelleId: { in: parcelles } }] : []),
       ] }],
     },
-    select: { cultureId: true, plancheId: true, parcelleId: true, arbreId: true, date: true, dar: true, darIndicatif: true, produitPhyto: true, geste: true, natureProduit: true, numAMM: true, produitPhytoRef: { select: { darJours: true, nomCommercial: true, classification: true } } },
+    select: { cultureId: true, plancheId: true, parcelleId: true, arbreId: true, date: true, dar: true, darIndicatif: true, produitPhyto: true, geste: true, natureProduit: true, numAMM: true, produitPhytoRef: { select: { id: true, darJours: true, nomCommercial: true, classification: true } } },
   })
   for (const lot of lots) resultat.set(lot.id, verdictDarLot(lot, traitements))
   return resultat

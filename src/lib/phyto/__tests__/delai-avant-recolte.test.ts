@@ -42,7 +42,7 @@ describe('CR-DAR-01 : substance de base dont le délai avant récolte est inconn
   it('récolte le lendemain d’une décoction de prêle sans DAR : rappel de vérifier les conditions d’approbation', () => {
     const messages = avertissementsDarLot(lot, [traitement({ produitPhyto: 'Décoction de prêle', produitPhytoRef: PRELE })])
     expect(messages).toHaveLength(1)
-    expect(messages[0]).toMatch(/délai inconnu, vérifiez les conditions d’approbation/)
+    expect(messages[0]).toMatch(/délai inconnu pour/)
     expect(messages[0]).toContain('Décoction de prêle')
   })
 
@@ -50,7 +50,7 @@ describe('CR-DAR-01 : substance de base dont le délai avant récolte est inconn
     const message = application('sans_amm', { etat: 'inconnu' }, 1)!
     expect(message).not.toMatch(/AMM/)
     expect(message).not.toMatch(/3 jours/)
-    expect(message).not.toMatch(/arrêté du 4 mai 2017/)
+    expect(message).not.toMatch(/ne peut pas être mise en vente/)
   })
 
   it('le rappel dure le même horizon que celui d’un produit sous AMM, puis cesse', () => {
@@ -68,7 +68,7 @@ describe('CR-DAR-01 : substance de base dont le délai avant récolte est inconn
     // Le délai du catalogue n'est qu'une indication : cité dans le rappel
     // des conditions d'approbation, jamais opposé comme un délai connu.
     const referentiel = avertissementsDarLot(lot, [traitement({ produitPhytoRef: { ...PRELE, darJours: 15 } })])
-    expect(referentiel[0]).toMatch(/vérifiez les conditions d’approbation/)
+    expect(referentiel[0]).toMatch(/délai inconnu pour/)
     expect(referentiel[0]).toContain('Le catalogue Gleba indique 15 jours à titre indicatif')
   })
 
@@ -87,7 +87,7 @@ describe('CR-DAR-01 : substance de base dont le délai avant récolte est inconn
   it('produit sous AMM sans DAR : le défaut légal de 3 jours reste opposé', () => {
     const messages = avertissementsDarLot(lot, [traitement({ produitPhyto: 'Fongicide X' })])
     expect(messages[0]).toMatch(/3 jours/)
-    expect(messages[0]).toMatch(/arrêté du 4 mai 2017/)
+    expect(messages[0]).toMatch(/une récolte dans les 3 jours ne peut pas être mise en vente/)
   })
 
   it('natures : la classification du référentiel et la méthode du verger', () => {
@@ -96,6 +96,46 @@ describe('CR-DAR-01 : substance de base dont le délai avant récolte est inconn
     expect(natureInterventionDar({ produitPhyto: 'Fongicide X', produitPhytoRef: null })).toBe('amm')
     expect(natureObservationDar({ produit: 'Purin d’ortie', methodeTraitement: 'biologique_purin' })).toBe('sans_amm')
     expect(natureObservationDar({ produit: 'Glu', methodeTraitement: 'mecanique_manuel' })).toBe('sans_produit')
+  })
+
+  // Contre-revue du 2026-11-19 : classés « Biocontrôle », les auxiliaires et
+  // les diffuseurs passaient pour des produits pulvérisés sous AMM, et une
+  // récolte dans les trois jours n'était plus vendable.
+  describe('biocontrôle sans délai avant récolte : aucune vente bloquée', () => {
+    const jourJ = (id: string, produit: string) => {
+      const ref = { id, classification: 'Biocontrôle', darJours: null }
+      return verdictDar({ jourTraitement: t0, jourRecolte: t0 + MS_JOUR, dar: darIntervention({ dar: null, produitPhytoRef: ref }),
+        produit, nature: natureInterventionDar({ produitPhyto: null, produitPhytoRef: ref }) }, cal)
+    }
+    it('lâcher de trichogrammes', () => {
+      expect(jourJ('phyto-trichogramme', 'Trichogrammes')).toEqual({ niveau: 'rien' })
+    })
+    it('lâcher de coccinelles', () => {
+      expect(jourJ('phyto-coccinelles', 'Coccinelles')).toEqual({ niveau: 'rien' })
+    })
+    it('pose de diffuseurs de phéromones', () => {
+      expect(jourJ('phyto-pheromones-cydia', 'Phéromones carpocapse')).toEqual({ niveau: 'rien' })
+      expect(jourJ('phyto-pheromones-eudemis', 'Phéromones Eudémis')).toEqual({ niveau: 'rien' })
+    })
+    it('observation du verger en « macro-organismes auxiliaires », produit nommé', () => {
+      expect(natureObservationDar({ produit: 'Chrysopes', methodeTraitement: 'macro_organismes' })).toBe('sans_produit')
+    })
+    it('témoin : un biocontrôle pulvérisé sans délai saisi reste bloquant trois jours', () => {
+      expect(jourJ('phyto-spinosad', 'Spinosad').niveau).toBe('bloquant')
+    })
+  })
+
+  // Contre-revue du 2026-11-19 : les messages faisaient environ 420 caractères
+  // et citaient les arrêtés ; ils tiennent en deux ou trois phrases courtes.
+  it('aucun message ne dépasse 300 caractères ni ne cite un texte', () => {
+    const natures = ['amm', 'sans_amm', 'sans_produit'] as const
+    const delais = [resoudreDar(null, null), resoudreDar(null, 21), resoudreDar(0, null), resoudreDar(14, null)]
+    for (const nature of natures) for (const dar of delais) for (const joursApres of [1, 5, 30]) {
+      const message = avertissementDar({ jourTraitement: t0, jourRecolte: t0 + joursApres * MS_JOUR, dar, produit: 'Bouillie bordelaise', nature }, cal)
+      if (message == null) continue
+      expect(message.length, message).toBeLessThanOrEqual(300)
+      expect(message).not.toMatch(/arrêté|règlement|art\./i)
+    }
   })
 
   describe('CR-DAR-01, tour 2 : nature déclarée d’un produit saisi librement (aucune fiche au référentiel)', () => {
@@ -163,7 +203,7 @@ describe('verdict DAR : bloquant, informatif ou rien', () => {
     const j10 = verdict('amm', generique, 10, 'Bouillie bordelaise')
     expect(j10.niveau).toBe('informatif')
     expect(j10.niveau === 'informatif' && j10.message).toContain('le catalogue Gleba indique 21 jours à titre indicatif (soit jusqu’au 2026-06-22)')
-    expect(j10.niveau === 'informatif' && j10.message).toContain('le délai qui s’impose est celui de l’AMM')
+    expect(j10.niveau === 'informatif' && j10.message).toContain('Vérifiez l’étiquette')
     // Indication dépassée : rappel ordinaire de renseigner le délai, puis rien.
     const j30 = verdict('amm', generique, 30)
     expect(j30.niveau === 'informatif' && j30.message).not.toContain('catalogue')
@@ -233,7 +273,7 @@ describe('verdict DAR : bloquant, informatif ou rien', () => {
   it('produit sous AMM sans DAR : bloquant à J+2 (3 jours par défaut), informatif à J+10', () => {
     const v = verdict('amm', resoudreDar(null, null), 2)
     expect(v).toMatchObject({ niveau: 'bloquant', traitement: { dateTraitement: '2026-06-01', finDelai: '2026-06-04', origineDelai: 'defaut_legal' } })
-    expect(v.niveau === 'bloquant' && v.message).toContain('arrêté du 4 mai 2017, art. 3, I')
+    expect(v.niveau === 'bloquant' && v.message).toContain('une récolte dans les 3 jours ne peut pas être mise en vente')
     expect(verdict('amm', resoudreDar(null, null), 3).niveau).toBe('informatif')
     expect(verdict('amm', resoudreDar(null, null), 10).niveau).toBe('informatif')
     expect(verdict('amm', resoudreDar(null, null), HORIZON_DAR_INCONNU_JOURS)).toEqual({ niveau: 'rien' })

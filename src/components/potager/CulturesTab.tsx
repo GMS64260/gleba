@@ -4,6 +4,7 @@
  * Onglet Cultures - Liste des cultures avec actions rapides
  */
 
+import { TITRE_AVERTISSEMENT_CULTURE, avertissementsReponse } from "@/lib/cultures/avertissements-reponse"
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
@@ -377,7 +378,8 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
           const detail = await response.json().catch(() => null)
           throw new Error(detail?.error || "Erreur")
         }
-        const culture: Partial<CultureWithRelations> = await response.json()
+        const { warnings, ...culture }: Partial<CultureWithRelations> & { warnings?: string[] } = await response.json()
+        const avertissements = avertissementsReponse({ warnings })
         setData((prev) =>
           prev.map((c) => {
             if (c.id !== id) return c
@@ -388,7 +390,12 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
             return updated
           })
         )
-        toast({ title: value ? "Fait !" : "Annulé" })
+        // Un seul toast est visible à la fois : l'avertissement remplace le succès.
+        if (avertissements.length > 0) {
+          toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: avertissements.join(" · "), duration: 15000 })
+        } else {
+          toast({ title: value ? "Fait !" : "Annulé" })
+        }
       } catch (e) {
         toast({
           variant: "destructive",

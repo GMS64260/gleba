@@ -5,6 +5,7 @@
  * Stats, alertes, graphiques, et soins à planifier
  */
 
+import { useSaisieDelaisAttente } from "@/components/elevage/SaisieDelaisAttente"
 import { dateRealisationPourFait } from '@/lib/elevage/date-realisation'
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
@@ -357,6 +358,8 @@ export function DashboardTab({ year }: DashboardTabProps) {
   // soins dus (échéance aujourd'hui ou passée), comme l'annonce BulkActions :
   // la liste montre aussi les 30 jours à venir (revue du 2026-11-04).
   const soinsDus = soins.filter((soin) => soinDu(soin, todayLocalISO()))
+  const { validerSoin, dialogue: dialogueDelais } = useSaisieDelaisAttente()
+  const libelleSoin = (soin: SoinItem) => [soin.type, soin.produit].filter(Boolean).join(' · ')
   const bulkSoinsDone = async () => {
     if (soinsDus.length === 0) return
     const valides = new Set(soinsDus)
@@ -367,16 +370,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
       const res = await Promise.all(
         soinsDus.map((soin) =>
           soin.injectionId
-            ? fetch(`/api/elevage/soins/${soin.id}/injections`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ injectionId: soin.injectionId, statut: 'realisee', dateRealisee: new Date().toISOString() }),
-              })
-            : fetch('/api/elevage/soins', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: soin.id, fait: true, date: new Date().toISOString() }),
-              })
+            ? validerSoin(`/api/elevage/soins/${soin.id}/injections`,
+                { injectionId: soin.injectionId, statut: 'realisee', dateRealisee: new Date().toISOString() }, libelleSoin(soin))
+            : validerSoin('/api/elevage/soins', { id: soin.id, fait: true, date: new Date().toISOString() }, libelleSoin(soin))
         )
       )
       const refuses = res.filter((r) => !r.ok)
@@ -442,18 +438,18 @@ export function DashboardTab({ year }: DashboardTabProps) {
     const dateFait = fait ? undefined : dateRealisationPourFait(echeance)
     if (dateFait === null) return
     try {
-      const response = await fetch('/api/elevage/soins', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: dateFait }),
-      })
-      if (!response.ok) throw new Error('Erreur')
+      const soin = soins.find((s) => s.id === id && !s.injectionId)
+      const response = await validerSoin('/api/elevage/soins', { id, fait: !fait, date: dateFait }, soin && libelleSoin(soin))
+      if (!response.ok) {
+        const corps = await response.json().catch(() => null)
+        throw new Error(typeof corps?.error === 'string' ? corps.error : '')
+      }
       setSoins(prev => prev.filter(s => s.id !== id))
       toast({ title: "Soin marqué comme fait" })
       // Recompte serveur des retards et échéances (bandeau, badge, tuile).
       fetchSoins()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur" })
+    } catch (error) {
+      toast({ variant: "destructive", title: "Soin non enregistré", description: (error instanceof Error && error.message) || "Vérifiez votre connexion puis réessayez." })
     }
   }
 
@@ -462,20 +458,19 @@ export function DashboardTab({ year }: DashboardTabProps) {
     const dateInjection = dateRealisationPourFait(soin.date, 'Cette injection')
     if (dateInjection === null) return
     try {
-      const response = await fetch(`/api/elevage/soins/${soin.id}/injections`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          injectionId: soin.injectionId,
-          statut: 'realisee',
-          dateRealisee: dateInjection,
-        }),
-      })
-      if (!response.ok) throw new Error('Erreur')
+      const response = await validerSoin(`/api/elevage/soins/${soin.id}/injections`, {
+        injectionId: soin.injectionId,
+        statut: 'realisee',
+        dateRealisee: dateInjection,
+      }, libelleSoin(soin))
+      if (!response.ok) {
+        const corps = await response.json().catch(() => null)
+        throw new Error(typeof corps?.error === 'string' ? corps.error : '')
+      }
       toast({ title: "Injection enregistrée" })
       fetchSoins()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur" })
+    } catch (error) {
+      toast({ variant: "destructive", title: "Injection non enregistrée", description: (error instanceof Error && error.message) || "Vérifiez votre connexion puis réessayez." })
     }
   }
 
@@ -511,6 +506,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
 
   return (
     <div className="flex flex-col gap-6">
+      {dialogueDelais}
       {/* Mini-stats */}
       {isLoading ? (
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">

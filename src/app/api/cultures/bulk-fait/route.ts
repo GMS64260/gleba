@@ -7,9 +7,9 @@
  * Marque le champ correspondant (semisFait | plantationFaite | recolteFaite)
  * à true pour les cultures de l'utilisateur.
  *
- * Réponse 200 : { updated, ignores, refusees: [{ id, error }] } — `refusees`
- * liste les cultures dont le recalage de date ferait déborder la planche ;
- * elles ne sont pas modifiées.
+ * Réponse 200 : { updated, ignores, refusees: [{ id, error }], avertissements? }.
+ * Une culture dont le recalage de date fait déborder la planche est enregistrée
+ * (c'est un fait accompli) et signalée dans `avertissements: [{ id, message }]`.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     // elle et laissait un semis fait daté dans le futur. Ordre global des
     // verrous : exploitation PUIS cultures (ids triés), tous deux AVANT la
     // lecture ; le recalage est calculé depuis l'état relu sous ces verrous.
-    const { traitees, refusees } = await prisma.$transaction(async (tx) => {
+    const { traitees, refusees, avertissements } = await prisma.$transaction(async (tx) => {
       await verrouillerOccupationExploitation(tx, session.user.id)
       await verrouillerCultures(tx, session.user.id, ids)
       const concernees = await tx.culture.findMany({
@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
       })
 
       const refusees: Array<{ id: number; error: string }> = []
+      const avertissements: Array<{ id: number; message: string }> = []
       const sansRecalage: number[] = []
       let traitees = 0
       for (const culture of concernees) {
@@ -116,12 +117,14 @@ export async function POST(request: NextRequest) {
           sansRecalage.push(culture.id)
           continue
         }
-        const { refus } = await controlerOccupationModification(tx, session.user.id, culture,
-          { ...culture, ...ecritures })
+        // Un fait accompli s'enregistre : le débordement devient un avertissement.
+        const { refus, warnings } = await controlerOccupationModification(tx, session.user.id, culture,
+          { ...culture, ...ecritures }, { faitAccompli: true })
         if (refus) {
           refusees.push({ id: culture.id, error: refus.error })
           continue
         }
+        for (const message of warnings) avertissements.push({ id: culture.id, message })
         await tx.culture.update({
           where: { id: culture.id, userId: session.user.id },
           data: { [field]: true, ...ecritures },
@@ -136,7 +139,7 @@ export async function POST(request: NextRequest) {
         })
         traitees += sansRecalage.length
       }
-      return { traitees, refusees }
+      return { traitees, refusees, avertissements }
     }, OPTIONS_TRANSACTION_CULTURE)
 
     // La « surface cultivée » des indicateurs compte les cultures dont une étape
@@ -147,6 +150,7 @@ export async function POST(request: NextRequest) {
       updated: traitees,
       ignores: ids.length - traitees - refusees.length,
       refusees,
+      ...(avertissements.length > 0 ? { avertissements } : {}),
     })
   } catch (err) {
     console.error('POST /api/cultures/bulk-fait error:', err)

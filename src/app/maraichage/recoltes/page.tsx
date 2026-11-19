@@ -583,7 +583,7 @@ export default function RecoltesPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4">
           <Card className="border-green-200 bg-green-50">
             <CardContent className="pt-4">
               <div className="flex items-center gap-2 mb-1">

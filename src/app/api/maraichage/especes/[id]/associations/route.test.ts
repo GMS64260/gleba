@@ -10,6 +10,7 @@ vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => ({ default: { association: { findMany: mocks.findMany } } }))
 
 import { GET } from "./route"
+import { evaluerAssociations } from "@/lib/associations-alertes"
 
 type Detail = {
   id: number
@@ -142,7 +143,7 @@ describe("GET /api/maraichage/especes/[id]/associations", () => {
 
     await fiche("Haricot vert")
     const where = mocks.findMany.mock.calls.at(-1)?.[0].where
-    expect(where.details.some.especeId.in).toEqual(expect.arrayContaining(["Haricot vert", "Haricot"]))
+    expect(where.details.some.OR[0].especeId.in).toEqual(expect.arrayContaining(["haricot vert", "haricot"]))
   })
 
   it("ne nomme pas l'espèce personnelle d'un autre compte", async () => {
@@ -157,11 +158,42 @@ describe("GET /api/maraichage/especes/[id]/associations", () => {
     expect((await fiche("Ail")).data.map((d) => d.partenaire)).toEqual(["Oca", "Ma fraise"])
   })
 
+  // Contre-revue du 2026-11-19 : la fiche gardait son propre moteur, où
+  // l'incompatible gagnait toujours. Même paire, mêmes règles : la fiche et
+  // l'alerte de planche rendent le même verdict (la règle la plus précise).
+  it("rend le même verdict que les alertes de planche sur la même paire", async () => {
+    const regles = [
+      asso("chou-fleur-tomate", "Chou-fleur + Tomate", "favorable", [detail("Chou-fleur"), detail("Tomate")]),
+      asso("tomate-contre", "Tomate !", "incompatible", [
+        detail("Tomate", { requise: true }),
+        detail(null, { familleId: "Brassicaceae", groupe: "Chou" }),
+      ]),
+    ]
+    mocks.findMany.mockResolvedValue(regles)
+    const [alerte] = evaluerAssociations(regles, ["Chou-fleur", "Tomate"])
+    expect(alerte.type).toBe("favorable")
+    for (const [sujet, partenaire] of [["Chou-fleur", "Tomate"], ["Tomate", "Chou-fleur"]]) {
+      const ligne = (await fiche(sujet)).data.find((d) => d.partenaireId === partenaire)
+      expect([sujet, ligne?.type, ligne?.associationId]).toEqual([sujet, alerte.type, alerte.associationId])
+    }
+  })
+
+  it("lit une règle de groupe pour une espèce atteinte par alias, sans tenir compte de la casse", async () => {
+    mocks.findMany.mockResolvedValue([
+      asso("tomate-contre", "Tomate !", "incompatible", [
+        detail("tomate", { requise: true }),
+        detail(null, { familleId: "Brassicaceae", groupe: "Chou" }),
+      ]),
+    ])
+    const { data } = await fiche("Chou-fleur")
+    expect(data.map((d) => [d.partenaireId, d.type])).toEqual([["tomate", "defavorable"]])
+  })
+
   it("rend une erreur lisible au lieu de planter", async () => {
     mocks.findMany.mockRejectedValue(new Error("base indisponible"))
     const res = await GET(new NextRequest("http://localhost/x"), { params: Promise.resolve({ id: "100%" }) })
     expect(res.status).toBe(500)
     expect((await res.json()).error).toBeTruthy()
-    expect(mocks.findMany.mock.calls[0][0].where.details.some.especeId.in).toEqual(["100%"])
+    expect(mocks.findMany.mock.calls[0][0].where.details.some.OR[0].especeId.in).toEqual(["100%"])
   })
 })

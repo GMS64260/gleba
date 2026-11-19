@@ -4,6 +4,8 @@
  * Onglet Calendrier & Taches du verger - Stats, graphiques et operations en attente
  */
 
+import { DelaiTraitementDialog } from "@/components/verger/DelaiTraitementDialog"
+import { delaiTraitementASaisir, type OperationDelai } from "@/lib/verger/delai-traitement"
 import * as React from "react"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -488,6 +490,8 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     return { diff, percent: percent.toString(), hasComparatif }
   }, [data?.stats])
 
+  const [delaiOp, setDelaiOp] = React.useState<OperationDelai | null>(null)
+
   const handleMarkDone = async (op: OperationArbre) => {
     try {
       const res = await fetch(`/api/arbres/operations/${op.id}`, {
@@ -498,6 +502,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
       if (res.ok) {
         setOperations((prev) => prev.filter((o) => o.id !== op.id))
         toast({ title: "Fait !" })
+        // Traitement coché « fait » sans délai : on le demande sur place.
+        const maj = (await res.json().catch(() => null)) as OperationDelai | null
+        if (maj && delaiTraitementASaisir(maj)) setDelaiOp(maj)
       } else {
         toast({ variant: "destructive", title: "Validation impossible" })
       }
@@ -508,6 +515,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
 
   return (
     <div className="space-y-6">
+      <DelaiTraitementDialog operation={delaiOp} onClose={() => setDelaiOp(null)} />
       {/* Stats Cards */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Card className={kpiCardClass("neutre")}>

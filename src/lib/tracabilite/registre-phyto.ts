@@ -368,6 +368,11 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         // DAR enregistré seulement : celui du référentiel actuel n'est pas
         // celui qui s'appliquait le jour du traitement (C4).
         dar: intervention.dar ?? null,
+        // Délai recopié du catalogue sur une ligne ancienne : le contrôle de
+        // vente le lit comme une indication (`darIntervention`) ; le registre
+        // l'affiche de même, « indicatif, à confirmer » (écran et PDF), au lieu
+        // de le publier comme un délai déclaré.
+        darAConfirmer: intervention.darIndicatif === true && intervention.dar != null,
         delaiReentree: intervention.delaiReentree || null,
         // QA cmsjirrpv — la ZNT (zone non traitée) est réglementaire et
         // stockée, mais n'était pas restituée à l'écran (seulement à l'export).
@@ -455,6 +460,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       ventKmh: o.ventKmh ?? null,
       hygrometriePct: o.hygrometriePct ?? null,
       dar: o.dar ?? null,
+      darAConfirmer: false,
       delaiReentree: null,
       zntDistanceM: o.zntDistanceM ?? null,
       zntRespectee: o.zntRespectee ?? null,
@@ -541,6 +547,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
       ventKmh: op.ventKmh ?? null,
       hygrometriePct: op.hygrometriePct ?? null,
       dar: op.dar ?? null,
+      darAConfirmer: false,
       delaiReentree: null,
       zntDistanceM: null,
       zntRespectee: null,

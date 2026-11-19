@@ -5,6 +5,7 @@
  * Pattern inspire du CalendrierTab potager
  */
 
+import { useSaisieDelaisAttente } from "@/components/elevage/SaisieDelaisAttente"
 import { dateRealisationPourFait } from '@/lib/elevage/date-realisation'
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
@@ -298,17 +299,15 @@ export function CalendrierTab() {
   // QA #5/#8 — un toucher OUVRE le détail (pas de validation silencieuse).
   const [soinDetail, setSoinDetail] = React.useState<SoinTask | null>(null)
 
+  const { validerSoin, dialogue: dialogueDelais } = useSaisieDelaisAttente()
+
   // Toggle soin fait
   const toggleSoin = async (id: number, fait: boolean, echeance?: string | null) => {
     // Échéance ancienne : la date réelle est demandée, pas l'instant du clic.
     const dateFait = fait ? undefined : dateRealisationPourFait(echeance)
     if (dateFait === null) return
     try {
-      const response = await fetch('/api/elevage/soins', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: dateFait }),
-      })
+      const response = await validerSoin('/api/elevage/soins', { id, fait: !fait, date: dateFait })
       if (!response.ok) {
         // Le serveur dit pourquoi (délais d'attente manquants, motif de
         // réouverture…) : le taire laissait un « Erreur » sans issue.
@@ -331,20 +330,23 @@ export function CalendrierTab() {
     const dateInjection = fait ? null : dateRealisationPourFait(soin.date, 'Cette injection')
     if (!fait && dateInjection === null) return
     try {
-      const response = await fetch(`/api/elevage/soins/${soin.id}/injections`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          injectionId: soin.injectionId,
-          statut: fait ? 'a_faire' : 'realisee',
-          dateRealisee: dateInjection,
-        }),
+      const response = await validerSoin(`/api/elevage/soins/${soin.id}/injections`, {
+        injectionId: soin.injectionId,
+        statut: fait ? 'a_faire' : 'realisee',
+        dateRealisee: dateInjection,
       })
-      if (!response.ok) throw new Error('Erreur')
+      if (!response.ok) {
+        const corps = await response.json().catch(() => null)
+        throw new Error(typeof corps?.error === 'string' ? corps.error : '')
+      }
       toast({ title: fait ? "Injection rouverte" : "Injection enregistrée" })
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur" })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: fait ? "Injection non rouverte" : "Injection non enregistrée",
+        description: (error instanceof Error && error.message) || "Vérifiez votre connexion puis réessayez.",
+      })
     }
   }
 
@@ -391,6 +393,7 @@ export function CalendrierTab() {
 
   return (
     <div className="space-y-6">
+      {dialogueDelais}
       {/* Navigation semaine */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
