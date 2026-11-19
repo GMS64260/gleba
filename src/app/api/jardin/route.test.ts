@@ -50,6 +50,25 @@ describe("GET /api/jardin — cultures en place", () => {
     expect(args.select.cultures.where.OR).toHaveLength(2)
   })
 
+  it.each([2000, 2027, 2200])("accepte l'année %i aux bornes du contrat", async (annee) => {
+    const res = await GET(new NextRequest(`http://localhost/api/jardin?annee=${annee}`))
+    expect(res.status).toBe(200)
+    expect(mocks.plancheFindMany.mock.calls[0][0].select.cultures.where).toEqual({
+      terminee: null,
+      OR: [{ annee }, { espece: { vivace: true } }],
+    })
+  })
+
+  it.each(['', 'all', '1999', '2201', '-2027', '2027.5', '2027abc', '2e3', 'NaN', ' 2027 ', '2027\n'])(
+    "refuse l'année invalide %j sans lecture",
+    async (annee) => {
+      const res = await GET(new NextRequest(`http://localhost/api/jardin?annee=${encodeURIComponent(annee)}`))
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: expect.any(String), champ: 'annee' })
+      expect(mocks.plancheFindMany).not.toHaveBeenCalled()
+    },
+  )
+
   it("membre dont l'adhésion exclut le maraîchage : aucune planche, aucune lecture", async () => {
     mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1", modulesExploitation: ["elevage"] } }, error: null })
     const res = await GET(new NextRequest("http://localhost/api/jardin"))

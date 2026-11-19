@@ -10,6 +10,8 @@ import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
 import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, Grape, CalendarPlus, Copy, Map as MapIcon, MapPin, type LucideIcon } from "lucide-react"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { MenuDuplicationArbre } from "@/components/verger/MenuDuplicationArbre"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -49,7 +51,7 @@ import { Snowflake } from "lucide-react"
 // Ticket cmvnopnsu (2026-10-25) : le calendrier d'entretien est généré à la
 // création (`genererCalendrierEntretien`), ce que le formulaire ne disait pas.
 const AIDE_CALENDRIER_CREATION =
-  "À l'enregistrement, Gleba planifie l'entretien connu pour l'espèce, à partir d'aujourd'hui ou de cette date si elle est à venir. Vous pourrez le recalculer depuis la liste des arbres (écran large)."
+  "À l'enregistrement, Gleba planifie l'entretien connu pour l'espèce, à partir d'aujourd'hui ou de cette date si elle est à venir. Vous pourrez le recalculer depuis les actions de la liste des arbres."
 
 // Types d'arbre : liste unique dans src/lib/verger/types-arbre.ts (QA
 // 2026-10-19, les lianes fruitières manquaient à la création et aux onglets).
@@ -153,6 +155,72 @@ type EspeceApi = Pick<EspeceRef, "id" | "type" | "zonesAdaptees" | "besoinFroid"
 /** Variété telle que renvoyée par `/api/varietes` (champs utilisés ici). */
 type VarieteApi = { id: string; nom?: string | null; especeId: string }
 
+/** Mêmes commandes et callbacks dans la colonne ordinateur et sous le nom sur mobile. */
+function ActionsArbre({ arbre, onGenererCalendrier, onDupliquer, mobile = false }: {
+  arbre: Arbre
+  onGenererCalendrier: (arbre: Arbre) => void
+  onDupliquer: (arbre: Arbre, nombre: number, recopierAchat: boolean) => void
+  mobile?: boolean
+}) {
+  const [open, setOpen] = React.useState(false)
+  const actions = (
+    <div className={mobile ? "grid gap-1" : "flex items-center gap-1"}>
+      <MenuDuplicationArbre arbre={arbre} onDupliquer={(nombre, recopierAchat) => {
+        setOpen(false)
+        onDupliquer(arbre, nombre, recopierAchat)
+      }}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={mobile ? "min-h-11 justify-start" : "h-7 px-2"}
+          onClick={(e) => e.stopPropagation()}
+          title="Dupliquer l'arbre"
+          aria-label={`Dupliquer ${arbre.nom}`}
+        >
+          <Copy className="h-3.5 w-3.5 shrink-0" />
+          {mobile && <span className="ml-2">Dupliquer</span>}
+        </Button>
+      </MenuDuplicationArbre>
+      {arbre.espece && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className={mobile ? "min-h-11 h-auto justify-start whitespace-normal text-left text-purple-600" : "h-7 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"}
+          onClick={(e) => {
+            e.stopPropagation()
+            setOpen(false)
+            onGenererCalendrier(arbre)
+          }}
+          title="Recalculer le calendrier d'entretien"
+          aria-label={`Recalculer le calendrier d'entretien de ${arbre.nom}`}
+        >
+          <CalendarPlus className="h-3.5 w-3.5 shrink-0" />
+          {mobile && <span className="ml-2">Recalculer le calendrier d’entretien</span>}
+        </Button>
+      )}
+    </div>
+  )
+  if (!mobile) return actions
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-1 min-h-11"
+          aria-label={`Actions pour ${arbre.nom}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          Actions
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 max-w-[calc(100vw-2rem)] p-1" onClick={(e) => e.stopPropagation()}>
+        {actions}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function makeColumns(
   onGenererCalendrier: (arbre: Arbre) => void,
   onDupliquer: (arbre: Arbre, nombre: number, recopierAchat: boolean) => void,
@@ -169,6 +237,9 @@ function makeColumns(
           <span className="block text-xs text-muted-foreground md:hidden">
             {[row.original.espece, row.original.variete].filter(Boolean).join(" · ") || "—"}
           </span>
+          <div className="md:hidden">
+            <ActionsArbre arbre={row.original} mobile onGenererCalendrier={onGenererCalendrier} onDupliquer={onDupliquer} />
+          </div>
         </div>
       ),
     },
@@ -265,48 +336,11 @@ function makeColumns(
     {
       id: "calendrier",
       header: "",
-      // Masquée sous 768 px. La fiche de l'arbre ne propose ni la duplication
-      // ni le recalcul du calendrier (constat du 2026-10-25) : sur téléphone,
-      // ces deux gestes ne sont pas accessibles.
+      // Sur téléphone, ces mêmes commandes sont repliées sous le nom.
       meta: { className: "hidden md:table-cell" },
-      cell: ({ row }) => {
-        const arbre = row.original
-        return (
-          <div className="flex items-center gap-1">
-            {/* Friction 2026-10-05 : 52 arbres saisis un par un faute de copie. */}
-            <MenuDuplicationArbre arbre={arbre} onDupliquer={(n, recopierAchat) => onDupliquer(arbre, n, recopierAchat)}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2"
-                onClick={(e) => e.stopPropagation()}
-                title="Dupliquer l'arbre"
-                aria-label={`Dupliquer ${arbre.nom}`}
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
-            </MenuDuplicationArbre>
-            {arbre.espece && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-            onClick={(e) => {
-              e.stopPropagation()
-              onGenererCalendrier(arbre)
-            }}
-            // Ticket cmvnopnsu — le calendrier naît à la création de l'arbre ;
-            // ce bouton le recalcule (opérations automatiques non faites de
-            // l'année), selon la même règle (`planCalendrierEntretien`).
-            title="Recalculer le calendrier d'entretien"
-            aria-label={`Recalculer le calendrier d'entretien de ${arbre.nom}`}
-          >
-            <CalendarPlus className="h-3.5 w-3.5" />
-          </Button>
-            )}
-          </div>
-        )
-      },
+      cell: ({ row }) => (
+        <ActionsArbre arbre={row.original} onGenererCalendrier={onGenererCalendrier} onDupliquer={onDupliquer} />
+      ),
     },
   ]
 }
@@ -320,6 +354,7 @@ export function ArbresTab() {
   const [selectedType, setSelectedType] = React.useState("all")
   const [selectedEtat, setSelectedEtat] = React.useState("vivant")
   const [showDialog, setShowDialog] = React.useState(false)
+  const [arbreToRecalculer, setArbreToRecalculer] = React.useState<Arbre | null>(null)
   const [arbreToDelete, setArbreToDelete] = React.useState<Arbre | null>(null)
   const [especesRef, setEspecesRef] = React.useState<EspeceRef[]>([])
   const [varietesRef, setVarietesRef] = React.useState<VarieteRef[]>([])
@@ -533,8 +568,8 @@ export function ArbresTab() {
   }, [fetchData, toast])
 
   const columns = React.useMemo(
-    () => makeColumns(handleGenererCalendrier, handleDupliquer),
-    [handleGenererCalendrier, handleDupliquer]
+    () => makeColumns(setArbreToRecalculer, handleDupliquer),
+    [handleDupliquer]
   )
 
   // Zone climatique effective de l'utilisateur (pour l'avertissement plantation).
@@ -1063,6 +1098,16 @@ export function ArbresTab() {
           </div>
         </section>
       )}
+
+      <ConfirmDialog
+        open={arbreToRecalculer !== null}
+        onOpenChange={(open) => { if (!open) setArbreToRecalculer(null) }}
+        title="Recalculer le calendrier d'entretien ?"
+        description={`Le calendrier de ${arbreToRecalculer?.nom ?? "cet arbre"} sera recalculé. Les opérations automatiques non réalisées concernées seront remplacées ; les opérations réalisées ou abandonnées seront conservées.`}
+        confirmLabel="Recalculer"
+        variant="warning"
+        onConfirm={async () => { if (arbreToRecalculer) await handleGenererCalendrier(arbreToRecalculer) }}
+      />
 
       {/* Confirmation suppression avec dépendances + alternative d'archivage
           (bug feedback testeur 2026-05-25 cmplk9y7q — la suppression cascade
