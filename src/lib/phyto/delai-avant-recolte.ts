@@ -103,7 +103,7 @@ export const HORIZON_DAR_INCONNU_JOURS = 60
  * défaut de 3 jours (arrêté du 4 mai 2017, art. 3, I).
  */
 export type DarResolu =
-  | { etat: 'connu'; jours: number; source: 'saisi' }
+  | { etat: 'connu'; jours: number; source: 'saisi'; /** Valeur reprise du catalogue sur une ligne ancienne. */ aConfirmer?: boolean }
   | { etat: 'inconnu'; indicatifJours?: number }
 
 const valide = (v: number | null | undefined): v is number => v != null && Number.isFinite(v) && v >= 0
@@ -115,13 +115,22 @@ export function resoudreDar(saisi: number | null | undefined, referentiel: numbe
 }
 
 /**
- * Délai d'une intervention. `darIndicatif` marque les lignes ANCIENNES dont le
- * champ `dar` avait été recopié du catalogue par l'API (avant ce lot, POST
- * /api/interventions écrivait `dar = saisi ?? référentiel`) : leur valeur
- * n'est pas une saisie de l'exploitant, elle reste une indication.
+ * Délai d'une intervention : celui qui est enregistré sur la ligne, le même
+ * que publie le registre phyto. `darIndicatif` marque les lignes ANCIENNES
+ * dont le champ `dar` avait été recopié du catalogue par l'API (avant le
+ * 2026-11-13, POST /api/interventions écrivait `dar = saisi ?? référentiel`),
+ * sans qu'on puisse les distinguer d'une saisie de la même valeur.
+ *
+ * Contre-revue du 2026-11-19 : ces lignes étaient lues comme « délai inconnu »
+ * par le contrôle de vente alors que le registre, son export et l'onglet Santé
+ * publiaient la valeur comme déclarée (hydroxyde de cuivre, 14 jours au
+ * registre, vente acceptée à J+5). Une seule lecture désormais : la valeur de
+ * la ligne s'applique, signalée « à confirmer » ; l'exploitant la corrige ou
+ * la confirme sur le traitement.
  */
 export function darIntervention(i: { dar: number | null; darIndicatif?: boolean | null; produitPhytoRef: { darJours?: number | null } | null }): DarResolu {
-  return i.darIndicatif ? resoudreDar(null, i.produitPhytoRef?.darJours ?? i.dar) : resoudreDar(i.dar, i.produitPhytoRef?.darJours)
+  const resolu = resoudreDar(i.dar, i.produitPhytoRef?.darJours)
+  return i.darIndicatif && resolu.etat === 'connu' ? { ...resolu, aConfirmer: true } : resolu
 }
 
 /**
@@ -203,7 +212,8 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
     const { jours } = a.dar
     const fin = cal.ajouterJours(t, jours)
     if (r < fin) {
-      const constat = `DAR : récolte du ${recolte} avant la fin du délai saisi pour ${produit} (${pluriel(jours)} après le traitement du ${cal.formater(t)}, soit jusqu’au ${cal.formater(fin)}).`
+      const aConfirmer = a.dar.aConfirmer ? ' Ce délai vient du catalogue Gleba : s’il diffère de l’étiquette, corrigez-le sur le traitement.' : ''
+      const constat = `DAR : récolte du ${recolte} avant la fin du délai ${a.dar.aConfirmer ? 'enregistré' : 'saisi'} pour ${produit} (${pluriel(jours)} après le traitement du ${cal.formater(t)}, soit jusqu’au ${cal.formater(fin)}).${aConfirmer}`
       // Geste sans produit : aucun délai légal n'existe ; celui que
       // l'exploitant s'est fixé reste un rappel (pas de blocage hors loi).
       if (a.nature === 'sans_produit') return { niveau: 'informatif', message: `${constat} Vérifiez cette récolte avant de la commercialiser.` }
@@ -316,6 +326,21 @@ const SANS_AMM = new Set(['Substance de base / PNPP', 'Biologique (purin/décoct
 const SANS_PRODUIT = new Set(['Mécanique', 'Mécanique/Manuel', 'Prophylaxie'])
 
 /**
+ * Fiches du référentiel sans délai avant récolte, par identifiant (ceux de
+ * `scripts/seed-produits-phyto.ts`) : leur classification « Biocontrôle » les
+ * confond avec les produits pulvérisés.
+ *  - macro-organismes auxiliaires (trichogrammes, coccinelles) : ce ne sont
+ *    pas des produits phytopharmaceutiques (code rural, art. L. 253-6, 1°) ;
+ *  - diffuseurs de phéromones de confusion sexuelle : posés au printemps, ils
+ *    restent dans la parcelle jusqu'à la récolte, sans contact avec elle.
+ * Un délai saisi sur le traitement reste lu, comme pour un geste sans produit.
+ * Toute nouvelle fiche de ce type est à ajouter ici.
+ */
+export const REFERENTIEL_SANS_DELAI: ReadonlySet<string> = new Set([
+  'phyto-trichogramme', 'phyto-coccinelles', 'phyto-pheromones-cydia', 'phyto-pheromones-eudemis',
+])
+
+/**
  * Nature DÉCLARÉE à la saisie d'un produit qui n'a pas de fiche au référentiel
  * (contre-revue CR-DAR-01, tour 2 : « Décoction de prêle » saisie librement
  * passait pour un produit avec AMM). Jamais déduite du nom libre.
@@ -347,8 +372,9 @@ export function natureInterventionDar(i: {
   geste?: string | null
   natureProduit?: string | null
   numAMM?: string | null
-  produitPhytoRef: { classification?: string | null } | null
+  produitPhytoRef: { id?: string | null; classification?: string | null } | null
 }): 'amm' | 'sans_amm' | 'sans_produit' {
+  if (i.produitPhytoRef?.id && REFERENTIEL_SANS_DELAI.has(i.produitPhytoRef.id)) return 'sans_produit'
   const classification = i.produitPhytoRef?.classification ?? null
   if (classification && SANS_PRODUIT.has(classification)) return 'sans_produit'
   if (classification && SANS_AMM.has(classification)) return 'sans_amm'
@@ -361,7 +387,8 @@ export function natureInterventionDar(i: {
   return 'amm'
 }
 
-const METHODES_SANS_PRODUIT = new Set(['mecanique_manuel', 'mecanique', 'prophylaxie'])
+// `macro_organismes` : lâcher d'auxiliaires, pas un produit phytopharmaceutique.
+const METHODES_SANS_PRODUIT = new Set(['mecanique_manuel', 'mecanique', 'prophylaxie', 'macro_organismes'])
 const METHODES_SANS_AMM = new Set(['biologique_purin', 'biologique'])
 const METHODES_PRODUIT = new Set(['chimique_conventionnel', 'chimique_cuivre', 'chimique', 'biocontrole'])
 

@@ -63,6 +63,7 @@ interface PhytoEntry {
   uniteDose: string | null
   surfaceTraitee: number | null
   dar: number | null
+  darAConfirmer?: boolean
   delaiReentree: number | null
   zntDistanceM: number | null
   zntRespectee: boolean | null
@@ -808,7 +809,17 @@ function PhytoTab({
                   </td>
                   <td className="p-2">
                     {entry.dar !== null ? (
-                      <span>{entry.dar} j</span>
+                      <span>
+                        {entry.dar} j
+                        {entry.darAConfirmer && (
+                          <span
+                            className="ml-1 text-xs text-amber-700"
+                            title="Délai repris du catalogue Gleba : vérifiez-le sur l'étiquette et confirmez-le en modifiant le traitement."
+                          >
+                            à confirmer
+                          </span>
+                        )}
+                      </span>
                     ) : (
                       <ChampAbsent requis={entry.champsManquants.includes("dar")} />
                     )}

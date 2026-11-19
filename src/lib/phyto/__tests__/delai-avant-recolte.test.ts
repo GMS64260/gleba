@@ -98,6 +98,33 @@ describe('CR-DAR-01 : substance de base dont le délai avant récolte est inconn
     expect(natureObservationDar({ produit: 'Glu', methodeTraitement: 'mecanique_manuel' })).toBe('sans_produit')
   })
 
+  // Contre-revue du 2026-11-19 : classés « Biocontrôle », les auxiliaires et
+  // les diffuseurs passaient pour des produits pulvérisés sous AMM, et une
+  // récolte dans les trois jours n'était plus vendable.
+  describe('biocontrôle sans délai avant récolte : aucune vente bloquée', () => {
+    const jourJ = (id: string, produit: string) => {
+      const ref = { id, classification: 'Biocontrôle', darJours: null }
+      return verdictDar({ jourTraitement: t0, jourRecolte: t0 + MS_JOUR, dar: darIntervention({ dar: null, produitPhytoRef: ref }),
+        produit, nature: natureInterventionDar({ produitPhyto: null, produitPhytoRef: ref }) }, cal)
+    }
+    it('lâcher de trichogrammes', () => {
+      expect(jourJ('phyto-trichogramme', 'Trichogrammes')).toEqual({ niveau: 'rien' })
+    })
+    it('lâcher de coccinelles', () => {
+      expect(jourJ('phyto-coccinelles', 'Coccinelles')).toEqual({ niveau: 'rien' })
+    })
+    it('pose de diffuseurs de phéromones', () => {
+      expect(jourJ('phyto-pheromones-cydia', 'Phéromones carpocapse')).toEqual({ niveau: 'rien' })
+      expect(jourJ('phyto-pheromones-eudemis', 'Phéromones Eudémis')).toEqual({ niveau: 'rien' })
+    })
+    it('observation du verger en « macro-organismes auxiliaires », produit nommé', () => {
+      expect(natureObservationDar({ produit: 'Chrysopes', methodeTraitement: 'macro_organismes' })).toBe('sans_produit')
+    })
+    it('témoin : un biocontrôle pulvérisé sans délai saisi reste bloquant trois jours', () => {
+      expect(jourJ('phyto-spinosad', 'Spinosad').niveau).toBe('bloquant')
+    })
+  })
+
   describe('CR-DAR-01, tour 2 : nature déclarée d’un produit saisi librement (aucune fiche au référentiel)', () => {
     const libre = { produitPhyto: 'Décoction de prêle', produitPhytoRef: null }
 
@@ -202,11 +229,13 @@ describe('verdict DAR : bloquant, informatif ou rien', () => {
     expect(darIndicatifApresCorrection({ dar: 21, darIndicatif: false }, { darPresent: true, dar: 21 })).toBe(false)
   })
 
-  it('délai ancien recopié du catalogue (darIndicatif) : indication, pas un délai saisi ; corrigé, il redevient opposable', () => {
+  // Contre-revue du 2026-11-19 : une seule lecture pour le registre et pour la
+  // vente. Le délai enregistré sur une ligne ancienne s'applique, « à confirmer ».
+  it('délai ancien recopié du catalogue (darIndicatif) : la valeur de la ligne s’applique, signalée à confirmer', () => {
     const ref = { darJours: 21 }
-    expect(darIntervention({ dar: 21, darIndicatif: true, produitPhytoRef: ref })).toEqual({ etat: 'inconnu', indicatifJours: 21 })
-    // Fiche du catalogue supprimée depuis : la valeur recopiée reste l'indication.
-    expect(darIntervention({ dar: 21, darIndicatif: true, produitPhytoRef: null })).toEqual({ etat: 'inconnu', indicatifJours: 21 })
+    expect(darIntervention({ dar: 21, darIndicatif: true, produitPhytoRef: ref })).toEqual({ etat: 'connu', jours: 21, source: 'saisi', aConfirmer: true })
+    // Fiche du catalogue supprimée depuis : la valeur de la ligne reste lue.
+    expect(darIntervention({ dar: 21, darIndicatif: true, produitPhytoRef: null })).toEqual({ etat: 'connu', jours: 21, source: 'saisi', aConfirmer: true })
     expect(darIntervention({ dar: 21, darIndicatif: false, produitPhytoRef: ref })).toEqual({ etat: 'connu', jours: 21, source: 'saisi' })
     expect(darIntervention({ dar: null, produitPhytoRef: ref })).toEqual({ etat: 'inconnu', indicatifJours: 21 })
     expect(darIntervention({ dar: null, produitPhytoRef: null })).toEqual({ etat: 'inconnu' })

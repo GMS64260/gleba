@@ -44,9 +44,11 @@ describe('délai avant récolte des légumes', () => {
     expect(generique.niveau).toBe('informatif')
     expect(generique.rappels[0]).toContain('Produit X')
     expect(generique.rappels[0]).toContain('le catalogue Gleba indique 21 jours à titre indicatif')
-    // Ligne ancienne : 21 recopié du catalogue par l'API, marqué indicatif.
+    // Ligne ancienne : 21 recopié du catalogue par l'API. Le registre publie
+    // 21 jours : le contrôle de vente lit la même valeur et dit d'où elle vient.
     const ancien = verdictDarLot(lot, [traitement({ dar: 21, darIndicatif: true, produitPhytoRef: ref })])
-    expect(ancien.niveau).toBe('informatif')
+    expect(ancien.niveau).toBe('bloquant')
+    expect(ancien.blocages[0]).toContain('corrigez-le sur le traitement')
     // Le même délai saisi par l'exploitant bloque la vente.
     expect(verdictDarLot(lot, [traitement({ dar: 21, darIndicatif: false, produitPhytoRef: ref })]).niveau).toBe('bloquant')
     // Dans les 3 jours, le défaut légal bloque quelle que soit l'indication.

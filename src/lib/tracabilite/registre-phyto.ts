@@ -368,6 +368,9 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         // DAR enregistré seulement : celui du référentiel actuel n'est pas
         // celui qui s'appliquait le jour du traitement (C4).
         dar: intervention.dar ?? null,
+        // Délai repris du catalogue sur une ligne ancienne : affiché « à
+        // confirmer », et lu tel quel par le contrôle de vente.
+        darAConfirmer: intervention.darIndicatif === true && intervention.dar != null,
         delaiReentree: intervention.delaiReentree || null,
         // QA cmsjirrpv — la ZNT (zone non traitée) est réglementaire et
         // stockée, mais n'était pas restituée à l'écran (seulement à l'export).
