@@ -122,6 +122,7 @@ vrai module.
 | Stub public | Rôle en production | Comportement du stub |
 |---|---|---|
 | `src/lib/caisse/conflit-stock.ts` | Traduit les refus des contrôles de stock de la caisse en messages lisibles | Ne connaît que le conflit d'écriture concurrente |
+| `src/lib/caisse/reservations.ts` | Lit les lots et quantités emportés au marché, que le stock net retranche | Rien n'est jamais réservé ; les calculs d'unité sont conservés |
 
 Un fichier public qui n'importe que des modules ainsi couverts est identique sur
 GitHub et en production.
