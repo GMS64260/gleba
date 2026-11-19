@@ -5,6 +5,7 @@
  * Permet de marquer comme fait, voir details, modifier
  */
 
+import { TITRE_AVERTISSEMENT_CULTURE, avertissementsReponse } from "@/lib/cultures/avertissements-reponse"
 import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import Link from "next/link"
@@ -214,6 +215,10 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
           }),
         })
         if (!response.ok) throw new Error("Erreur")
+        const avertissements = avertissementsReponse(await response.json().catch(() => null))
+        if (avertissements.length > 0) {
+          toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: avertissements.join(" · "), duration: 15000 })
+        }
       }
 
       toast({

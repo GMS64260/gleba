@@ -470,7 +470,8 @@ export async function PUT(
         if (erreurFin) return NextResponse.json({ error: erreurFin, champ: 'finRecolte' }, { status: 400 })
       }
 
-      const occupation = await controlerOccupationModification(tx, session!.user.id, existing, datesFinales as Culture)
+      const occupation = await controlerOccupationModification(tx, session!.user.id, existing, datesFinales as Culture,
+        { faitAccompli: ETAPES.some((etape) => faitSoumis[etape] === true && !existing[etape]) })
       if (occupation.refus) return NextResponse.json(occupation.refus, { status: 400 })
       dateWarnings.push(...occupation.warnings)
 
@@ -792,7 +793,8 @@ export async function PATCH(
       }
 
       const occupation = await controlerOccupationModification(tx, session!.user.id, existing,
-        { ...existing, ...updateData } as Culture)
+        { ...existing, ...updateData } as Culture,
+        { faitAccompli: ETAPES.some((etape) => updateData[etape] === true && !existing[etape]) })
       if (occupation.refus) return NextResponse.json(occupation.refus, { status: 400 })
 
       const culture = await tx.culture.update({
@@ -801,7 +803,7 @@ export async function PATCH(
       })
       irrigationModifiee = 'derniereIrrigation' in updateData
 
-      return NextResponse.json(culture)
+      return NextResponse.json(occupation.warnings.length > 0 ? { ...culture, warnings: occupation.warnings } : culture)
     }, OPTIONS_TRANSACTION_CULTURE)
     if (reponse.status === 200) {
       // Invalider le cache irrigation si la date d'arrosage a changé

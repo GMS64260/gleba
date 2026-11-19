@@ -5,6 +5,7 @@
  * Combine le calendrier des cultures et la liste des tâches de la semaine
  */
 
+import { TITRE_AVERTISSEMENT_CULTURE, avertissementsReponse } from "@/lib/cultures/avertissements-reponse"
 import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import {
@@ -270,6 +271,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         fetchTaches()
         return
       }
+      const avertissements = avertissementsReponse(await res.json().catch(() => null))
       setTaches((prev) => {
         if (!prev) return prev
         const key = type === "semis" ? "semis" : type === "plantation" ? "plantations" : "recoltes"
@@ -278,7 +280,11 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           [key]: prev[key].map((t) => (t.id === cultureId ? { ...t, fait: !currentValue } : t)),
         }
       })
-      toast({ title: currentValue ? "Annule" : "Fait !" })
+      if (avertissements.length > 0) {
+        toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: avertissements.join(" · "), duration: 15000 })
+      } else {
+        toast({ title: currentValue ? "Annulé" : "Fait !" })
+      }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
     }
@@ -302,11 +308,16 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         body: JSON.stringify({ ids, type }),
       })
       if (!res.ok) throw new Error("Échec")
-      // Une culture dont le recalage ferait déborder la planche est refusée
-      // par le serveur et reste « à faire » : on recharge pour défaire l'affichage optimiste.
+      // Une culture refusée par le serveur reste « à faire » : on recharge pour
+      // défaire l'affichage optimiste. Un débordement de planche, lui, est
+      // enregistré et seulement signalé (`avertissements`).
       const payload = (await res.json().catch(() => null)) as
         | { updated?: number; refusees?: Array<{ id: number; error: string }> }
         | null
+      const avertissements = avertissementsReponse(payload)
+      if (avertissements.length > 0) {
+        toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: [...new Set(avertissements)].join(" · "), duration: 15000 })
+      }
       const refusees = payload?.refusees ?? []
       const faites = payload?.updated ?? ids.length
       if (faites > 0) {
@@ -321,7 +332,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           .join(", ")
         toast({
           variant: "destructive",
-          title: `${refusees.length} tâche${refusees.length > 1 ? "s" : ""} non marquée${refusees.length > 1 ? "s" : ""} : planche pleine`,
+          title: `${refusees.length} tâche${refusees.length > 1 ? "s" : ""} non marquée${refusees.length > 1 ? "s" : ""}`,
           description: `${noms} — ${refusees[0].error}`,
         })
         fetchTaches()

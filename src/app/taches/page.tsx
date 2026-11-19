@@ -5,6 +5,7 @@
  * Affiche les taches urgentes avec actions rapides
  */
 
+import { TITRE_AVERTISSEMENT_CULTURE, avertissementsReponse } from "@/lib/cultures/avertissements-reponse"
 import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import Link from "next/link"
@@ -268,6 +269,7 @@ function TachesContent() {
         const detail = await response.json().catch(() => null)
         throw new Error(detail?.error || "Erreur")
       }
+      const avertissements = avertissementsReponse(await response.json().catch(() => null))
 
       // Mettre a jour localement
       setData(prev => {
@@ -285,10 +287,14 @@ function TachesContent() {
         }
       })
 
-      toast({
-        title: currentValue ? "Annulé" : "Fait !",
-        description: `${type} ${currentValue ? "à refaire" : "terminé"}`,
-      })
+      if (avertissements.length > 0) {
+        toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: avertissements.join(" · "), duration: 15000 })
+      } else {
+        toast({
+          title: currentValue ? "Annulé" : "Fait !",
+          description: `${type} ${currentValue ? "à refaire" : "terminé"}`,
+        })
+      }
     } catch (e) {
       toast({
         variant: "destructive",

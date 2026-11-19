@@ -94,11 +94,10 @@ describe("POST /api/cultures/bulk-fait", () => {
     expect(mocks.findMany).not.toHaveBeenCalled()
   })
 
-  // Contre-revue PR #73 (revue-adv-97) : le recalage d'une étape faite avance
-  // le cycle ; s'il fait déborder la planche, la culture est refusée et non
-  // écrite, les autres du lot passent. Preuve PostgreSQL :
-  // ../occupation-chemins.postgres.test.ts.
-  it("refuse la culture dont le recalage déborde la planche et marque les autres", async () => {
+  // Un fait accompli s'enregistre (contre-revue du 2026-11-19) : le recalage
+  // d'une étape faite avance le cycle ; s'il fait déborder la planche, la
+  // culture est marquée faite quand même et l'écran reçoit un avertissement.
+  it("enregistre la culture dont le recalage déborde la planche et avertit", async () => {
     const dans = (jours: number) => new Date(Date.now() + jours * 86_400_000)
     const pleine = { ...etapesVides, id: 1, plancheId: "p1", itpId: "itp", longueur: 20, nbRangs: 3,
       dateSemis: dans(20), dateRecolte: dans(60) }
@@ -113,18 +112,18 @@ describe("POST /api/cultures/bulk-fait", () => {
     const res = await POST(requete({ ids: [1, 2], type: "semis" }))
     expect(res.status).toBe(200)
     const corps = await res.json()
-    expect(corps).toMatchObject({ updated: 1, ignores: 0 })
-    expect(corps.refusees).toHaveLength(1)
-    expect(corps.refusees[0].id).toBe(1)
-    expect(mocks.update).toHaveBeenCalledTimes(1)
-    expect(mocks.update.mock.calls[0][0].where).toEqual({ id: 2, userId: "exploitation-1" })
+    expect(corps).toMatchObject({ updated: 2, ignores: 0, refusees: [] })
+    expect(corps.avertissements).toHaveLength(1)
+    expect(corps.avertissements[0].id).toBe(1)
+    expect(corps.avertissements[0].message).toMatch(/^Enregistré\. Planche P1 : largeur insuffisante/)
+    expect(mocks.update.mock.calls.map((appel) => appel[0].where.id)).toEqual([1, 2])
     expect(mocks.plancheFindFirst.mock.calls[0][0].where).toEqual({ id: "p1", userId: "exploitation-1" })
   })
 
   // ADV33 (contre-revue PR #73) : l'état final d'une vivace est évalué sans fin
   // de cycle. Vivace prévue à J+20 (3 rangs), sans date de récolte ; voisine :
   // une annuelle de 3 rangs de J-10 à J+5. En place à partir de J+20, la vivace
-  // ne la croise pas ; recalée à J0 elle la côtoie : nouveau dépassement, refus.
+  // ne la croise pas ; recalée à J0 elle la côtoie : nouveau dépassement, signalé.
   // Lue comme une annuelle sans fin de cycle, toutes les voisines comptent avant
   // comme après (prudence) : dépassement hérité non aggravé, elle passait.
   // ADV39 : les voisines successives ne s'additionnent plus (tranches de temps).
@@ -142,15 +141,16 @@ describe("POST /api/cultures/bulk-fait", () => {
 
     mocks.findMany.mockResolvedValue([culture("e-vivace")])
     const vivace = await (await POST(requete({ ids: [1], type: "semis" }))).json()
-    expect(vivace).toMatchObject({ updated: 0, refusees: [{ id: 1 }] })
-    expect(vivace.refusees[0].error).toMatch(/Largeur insuffisante/)
+    expect(vivace).toMatchObject({ updated: 1, refusees: [], avertissements: [{ id: 1 }] })
+    expect(vivace.avertissements[0].message).toMatch(/largeur insuffisante/)
     expect(mocks.especeFindFirst.mock.calls[0][0].where).toEqual({ id: "e-vivace" })
-    expect(mocks.update).not.toHaveBeenCalled()
 
-    // Contrôle positif : la même culture annuelle passe.
+    // Contrôle positif : la même culture annuelle passe sans avertissement.
     mocks.findMany.mockResolvedValue([culture("e-annuelle")])
-    expect(await (await POST(requete({ ids: [1], type: "semis" }))).json()).toMatchObject({ updated: 1, refusees: [] })
-    expect(mocks.update).toHaveBeenCalledTimes(1)
+    const annuelle = await (await POST(requete({ ids: [1], type: "semis" }))).json()
+    expect(annuelle).toMatchObject({ updated: 1, refusees: [] })
+    expect(annuelle.avertissements).toBeUndefined()
+    expect(mocks.update).toHaveBeenCalledTimes(2)
   })
 
   it("refuse un membre en lecture seule sans rien lire", async () => {
