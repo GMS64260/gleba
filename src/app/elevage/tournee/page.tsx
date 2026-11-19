@@ -1,5 +1,6 @@
 "use client"
 
+import { useSaisieDelaisAttente } from "@/components/elevage/SaisieDelaisAttente"
 import { dateRealisationPourFait } from '@/lib/elevage/date-realisation'
 import * as React from "react"
 import Link from "next/link"
@@ -99,6 +100,8 @@ export default function TourneePage() {
     return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline) }
   }, [refresh])
 
+  const { validerSoin, dialogue: dialogueDelais } = useSaisieDelaisAttente()
+
   async function validerEcheance(e: EcheanceAgenda) {
     if (!e.action?.soinId) return
     // Échéance ancienne : la date réelle est demandée, pas l'instant du clic.
@@ -106,16 +109,9 @@ export default function TourneePage() {
     if (dateFait === null) return
     try {
       const res = e.action.injectionId
-        ? await fetch(`/api/elevage/soins/${e.action.soinId}/injections`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ injectionId: e.action.injectionId, statut: 'realisee', dateRealisee: dateFait }),
-          })
-        : await fetch('/api/elevage/soins', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: e.action.soinId, fait: true, date: dateFait }),
-          })
+        ? await validerSoin(`/api/elevage/soins/${e.action.soinId}/injections`,
+            { injectionId: e.action.injectionId, statut: 'realisee', dateRealisee: dateFait })
+        : await validerSoin('/api/elevage/soins', { id: e.action.soinId, fait: true, date: dateFait })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         throw new Error(body?.error || 'Mise à jour impossible')
@@ -174,6 +170,7 @@ export default function TourneePage() {
   }
 
   return <div className="min-h-screen bg-slate-50"><AppHeader current="elevage" /><main className="mx-auto max-w-3xl p-3 sm:p-6 space-y-4">
+    {dialogueDelais}
     <div className="flex flex-wrap items-center justify-between gap-2"><div><Button asChild variant="ghost" size="sm"><Link href="/elevage"><ArrowLeft className="h-4 w-4 mr-1" />Élevage</Link></Button><h1 className="text-2xl font-bold">Tournée du jour</h1><p className="text-sm text-muted-foreground">Actions terrain, acquittables même sans réseau.</p></div><div className="flex gap-2"><Badge variant={online ? 'default' : 'secondary'}>{online ? <Wifi className="h-3 w-3 mr-1" /> : <CloudOff className="h-3 w-3 mr-1" />}{online ? 'En ligne' : 'Hors ligne'}</Badge>{queued > 0 && <Badge variant="outline">{queued} à synchroniser</Badge>}</div></div>
     <div className="flex gap-2">
       <Button variant="outline" onClick={() => refresh()}><RefreshCw className="h-4 w-4 mr-1" />Actualiser</Button>
