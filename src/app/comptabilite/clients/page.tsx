@@ -252,15 +252,15 @@ export default function ClientsPage() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto px-4 py-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-4">
             <Link href="/comptabilite"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Comptabilité</Button></Link>
             <div className="flex items-center gap-2">
               <Users className="h-6 w-6 text-blue-600" />
               <h1 className="text-xl font-bold">Clients</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button><Plus className="h-4 w-4 mr-2" />Nouveau client</Button>
@@ -454,12 +454,12 @@ export default function ClientsPage() {
                 </form>
               </DialogContent>
             </Dialog>
-            <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" aria-label="Actualiser les clients" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto min-w-0 px-4 py-6">
         {/* Stats */}
         {stats && (
           <div className="grid gap-4 md:grid-cols-4 mb-6">
@@ -494,10 +494,10 @@ export default function ClientsPage() {
         )}
 
         {/* Filtres */}
-        <Card className="mb-6">
-          <CardContent className="pt-4">
-            <div className="flex flex-wrap gap-4 items-center">
-              <div className="flex-1 min-w-[200px]">
+        <Card className="mb-6 min-w-0">
+          <CardContent className="min-w-0 pt-4">
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="min-w-0 flex-1 sm:basis-[200px]">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -522,8 +522,8 @@ export default function ClientsPage() {
         </Card>
 
         {/* Liste */}
-        <Card>
-          <CardContent className="p-0">
+        <Card className="min-w-0">
+          <CardContent className="min-w-0 p-0">
             {isLoading ? (
               <div className="p-8 space-y-4">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
             ) : (
