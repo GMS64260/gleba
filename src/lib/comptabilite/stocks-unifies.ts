@@ -583,6 +583,7 @@ export async function computeStocksUnifies(userId: string) {
       stockMin: null,
       alerteBas: false,
       valeur: lot.valorisation,
+      valeurMethode: lot.avertissementValorisation,
     })
   }
 
