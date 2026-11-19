@@ -31,6 +31,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { factureSansTaxe } from '@/lib/territoires'
 import { construireImpayees, type FactureImpayee, type Impayee } from '@/lib/comptabilite/impayees'
+import { ancienneteImpayee } from '@/lib/comptabilite/anciennete-impayees'
 import { projeterDevisesImpayees, ventilerImpayeesParDevise, type ImpayeeEnDevise } from '@/lib/comptabilite/ventilation-impayees'
 import { monnaieFacture } from '@/lib/comptabilite/devise-reglement'
 import { adresseDeFiche, clientDesigneParNom } from '@/lib/comptabilite/rattachement-client'
@@ -390,12 +391,6 @@ export default function FacturesPage() {
     } catch {
       toast({ variant: "destructive", title: `Export ${libelle} impossible`, description: "Erreur réseau" })
     }
-  }
-
-  const daysSince = (dateStr: string) => {
-    const date = new Date(dateStr)
-    const now = new Date()
-    return Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
   }
 
   // Transition de statut d'une facture émise (machine à états côté API :
@@ -786,7 +781,7 @@ export default function FacturesPage() {
                     </TableHeader>
                     <TableBody>
                       {impayees.map((item) => {
-                        const days = daysSince(item.date)
+                        const days = ancienneteImpayee(item.date, new Date())
                         return (
                           <TableRow key={`${item.source}-${item.id}`} className={days > 30 ? "bg-red-50" : days > 14 ? "bg-orange-50" : ""}>
                             {/* QA cmswu9r5x — le numéro était calculé par le
@@ -799,7 +794,7 @@ export default function FacturesPage() {
                                 days > 14 ? "bg-orange-100 text-orange-800" :
                                 "bg-yellow-100 text-yellow-800"
                               }>
-                                {days} jours
+                                {days} jour{Math.abs(days) > 1 ? 's' : ''}
                               </Badge>
                             </TableCell>
                             <TableCell className="max-w-[200px] truncate">{item.description}</TableCell>

@@ -36,6 +36,34 @@ export function stockRestantLotOeufs(input: {
   return Math.max(0, input.quantite - (input.casses ?? 0) - (input.sales ?? 0) - sorties)
 }
 
+/** Bilan de tous les lots à date, y compris ceux déjà épuisés. Les retours
+ * sont des mouvements négatifs ; un ancien surdébit reste signalé au lieu
+ * d'être masqué par le plancher à zéro du stock physique. */
+export function bilanPontesOeufs(pontes: readonly {
+  quantite: number
+  casses?: number | null
+  sales?: number | null
+  mouvementsStock: readonly { type: string; quantite: number }[]
+}[]) {
+  const bilan = { pondus: 0, casses: 0, sales: 0, sorties: 0, ventes: 0, autresSorties: 0, retours: 0, ecartPlancher: 0, stockPhysique: 0 }
+  for (const ponte of pontes) {
+    bilan.pondus += ponte.quantite
+    bilan.casses += ponte.casses ?? 0
+    bilan.sales += ponte.sales ?? 0
+    for (const mouvement of ponte.mouvementsStock) {
+      bilan.sorties += mouvement.quantite
+      if (mouvement.quantite < 0) bilan.retours -= mouvement.quantite
+      else if (mouvement.type === 'vente') bilan.ventes += mouvement.quantite
+      else bilan.autresSorties += mouvement.quantite
+    }
+    bilan.stockPhysique += stockRestantLotOeufs({ ...ponte, sorties: ponte.mouvementsStock })
+  }
+  bilan.ecartPlancher = bilan.stockPhysique - (bilan.pondus - bilan.casses - bilan.sales - bilan.sorties)
+  return bilan
+}
+
+export type BilanPontesOeufs = ReturnType<typeof bilanPontesOeufs>
+
 /** Champs d'une collecte qui pèsent sur son stock ou sa traçabilité. */
 export interface EtatCollecteOeufs {
   quantite: number

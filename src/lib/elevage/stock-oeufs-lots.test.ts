@@ -50,6 +50,24 @@ describe("stock d'œufs par lots — délai d'attente vétérinaire (cmsoeyhs5)"
     mocks.animalFindMany.mockResolvedValue([])
   })
 
+  it('explique tous les flux, conserve les lots épuisés au bilan et signale les ventes futures déjà déduites', async () => {
+    mocks.productionFindMany.mockResolvedValue([
+      { ...ponte(1, '2050-04-01T12:00:00Z'), quantite: 100, casses: 2, mouvementsStock: [{ id: 'epuise', date: new Date('2050-04-02T12:00:00Z'), type: 'vente', quantite: 98 }] },
+      { ...ponte(2, '2050-04-02T12:00:00Z'), quantite: 50, casses: 3, mouvementsStock: [{ id: 'futur', date: new Date('2050-04-11T12:00:00Z'), type: 'vente', quantite: 12 }] },
+      { ...ponte(3, '2050-04-11T12:00:00Z'), quantite: 20 },
+    ])
+    const stock = await computeStockOeufsParLots('ferme-fictive', new Date('2050-04-10T12:00:00Z'))
+    expect(stock.bilan).toMatchObject({ pondus: 150, casses: 5, sorties: 110, stockPhysique: 35, ecartPlancher: 0 })
+    expect(stock.bilanLotsActifs).toMatchObject({ pondus: 50, casses: 3, sorties: 12, stockPhysique: 35 })
+    expect(stock.bilanPontes21Jours).toMatchObject({ pondus: 150, casses: 5, stockPhysique: 35 })
+    expect(stock.stats).toMatchObject({ sortiesVentesFutures: 12, aVenir: 20, stockPhysique: 35 })
+    expect(stock.data[0]).toMatchObject({ quantiteInitiale: 50, casses: 3, sales: 0, restant: 35 })
+    expect(mocks.productionFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'ferme-fictive' },
+      include: expect.objectContaining({ mouvementsStock: expect.objectContaining({ where: { userId: 'ferme-fictive' } }) }),
+    }))
+  })
+
   it("bloque une ponte pendant le délai d'attente œufs d'un soin fait sur le lot", async () => {
     mocks.productionFindMany.mockResolvedValue([ponte(1, "2026-08-11T00:00:00Z")])
     mocks.soinFindMany.mockResolvedValue([soinLot54()])

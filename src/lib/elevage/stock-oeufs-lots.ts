@@ -15,6 +15,7 @@ import {
   datesLotOeufs,
   statutLotOeufs,
   stockRestantLotOeufs,
+  bilanPontesOeufs,
 } from '@/lib/elevage/stock-oeufs'
 import { ciblesAffectees, floorDayUTC } from '@/lib/elevage/attente-lait'
 import { finJourLivraison } from '@/lib/commercial/dates-stock'
@@ -101,6 +102,7 @@ export async function computeStockOeufsParLots(userId: string, now = new Date(),
     include: {
       lot: { select: { id: true, nom: true } },
       mouvementsStock: {
+        where: { userId },
         orderBy: { date: "asc" },
         select: { id: true, date: true, type: true, quantite: true, notes: true },
       },
@@ -160,6 +162,8 @@ export async function computeStockOeufsParLots(userId: string, now = new Date(),
       lot: production.lot,
       calibre: production.calibre,
       quantiteInitiale: production.quantite,
+      casses: production.casses ?? 0,
+      sales: production.sales ?? 0,
       restant,
       limiteVente: dates.limiteVente,
       dcr: dates.dcr,
@@ -173,10 +177,14 @@ export async function computeStockOeufsParLots(userId: string, now = new Date(),
     }
   })
   const actifs = lots.filter((lot) => lot.restant > 0)
+  const idsActifs = new Set(actifs.map((lot) => lot.id))
   const somme = (statut: string) => actifs
     .filter((lot) => lot.statut === statut)
     .reduce((total, lot) => total + lot.restant, 0)
   return {
+    bilan: bilanPontesOeufs(productions),
+    bilanLotsActifs: bilanPontesOeufs(productions.filter((production) => idsActifs.has(production.id))),
+    bilanPontes21Jours: bilanPontesOeufs(productions.filter((production) => statutLotOeufs(production.date, now) === 'commercialisable')),
     data: actifs.sort((a, b) => new Date(a.dcr).getTime() - new Date(b.dcr).getTime()),
     stats: {
       commercialisables: somme("commercialisable"),
@@ -184,6 +192,9 @@ export async function computeStockOeufsParLots(userId: string, now = new Date(),
       perimes: somme("perime"),
       bloquesVeto: somme("bloque_attente_veto"),
       stockPhysique: actifs.reduce((total, lot) => total + lot.restant, 0),
+      sortiesVentesFutures: productions.reduce((total, production) => total + production.mouvementsStock
+        .filter((mouvement) => mouvement.type === 'vente' && mouvement.quantite > 0 && mouvement.date > finJour)
+        .reduce((somme, mouvement) => somme + mouvement.quantite, 0), 0),
       // Hors stock : pontes datées après aujourd'hui (voir plus haut).
       aVenir: pontesFutures.reduce((total, ponte) => total + ponte.oeufs, 0),
     },

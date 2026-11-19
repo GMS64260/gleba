@@ -1,15 +1,18 @@
 /**
  * Reprise des commandes de la boutique passées AVANT que la boutique sache
- * vendre un stock de l'élevage : leurs produits n'étaient reliés à rien, donc
- * rien n'est sorti du stock.
+ * vendre un stock de l'élevage. L'absence de lien ne prouve pas l'absence
+ * d'une sortie manuelle ou d'un ajustement ayant déjà couvert la commande.
  *
  * Par règle, sans rien deviner :
  *  1. un produit est relié seul quand sa catégorie et son unité désignent un
  *     conditionnement sans ambiguïté (œufs : douzaine, demi-douzaine, pièce ;
  *     miel : kg, g). Tout autre produit est laissé tel quel et journalisé ;
- *  2. le lien est figé sur les lignes de commande encore sans lien de ces produits ;
- *  3. chaque ligne d'une commande déjà matérialisée (livrée ou payée) sort son
- *     stock à la date de la commande, tout ou rien ;
+ *  2. un mouvement natif du même stock sans rattachement certain à une ligne
+ *     boutique suspend les lignes historiques, même encore ouvertes : journal `a_rapprocher`,
+ *     sans poser leur lien ni toucher leurs mouvements. Ni les dates, ni les
+ *     quantités, ni les libellés ne suffisent à rapprocher automatiquement ;
+ *  3. hors ambiguïté, le lien est figé et chaque ligne d'une commande déjà
+ *     matérialisée (livrée ou payée) sort à sa date, tout ou rien ;
  *  4. si les lots de cette date ne suffisent plus (des ventes saisies depuis
  *     les ont pris), la ligne sort à la date de la reprise, sur le stock
  *     réellement présent, et le journal le dit (`dateDeRepli`). Si ce stock ne
@@ -19,11 +22,15 @@
  * déjà sortie n'est pas sortie deux fois. À blanc par défaut : tout est joué
  * dans la transaction de l'exploitation, puis annulé.
  */
-import type { PrismaClient } from '@prisma/client'
-import { sortirStockCommercial, verrouillerStockCommercial } from '@/lib/commercial/stock'
+import type { Prisma, PrismaClient } from '@prisma/client'
+import { sortirStockCommercial, verrouillerStocksDesLignes } from '@/lib/commercial/stock'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
-import { champsStockLie, lireModeStockLie, lireStockLie, quantiteStockLie, validerStockLie, type StockLie } from './stock-lie'
+import { PRODUITS_RUCHE } from '@/lib/elevage/produits-ruche'
+import { champsStockLie, cleStockLie, lireModeStockLie, lireStockLie, quantiteStockLie, validerStockLie, type StockLie } from './stock-lie'
 import { listerStocksLiables } from './stock-lie-disponible'
+import { motifBlocageRattachement } from '@/lib/commercial/engagements-rattachement'
+
+type MouvementARapprocher = { source: 'oeufs' | 'ruche'; id: string; productionId: number; type: string; date: string; quantite: number; unite: string }
 
 export type EvenementReprise =
   | { objet: 'produit'; produitId: number; issue: 'relie'; type: string; ref: string; conditionnement: number }
@@ -31,9 +38,17 @@ export type EvenementReprise =
   | { objet: 'ligne'; commandeId: number; ligneId: number; issue: 'lien_fige' }
   | { objet: 'ligne'; commandeId: number; ligneId: number; issue: 'sortie'; quantite: number; unite: string; date: string; dateDeRepli?: true }
   | { objet: 'ligne'; commandeId: number; ligneId: number; issue: 'deja_sortie' }
+  | { objet: 'ligne'; commandeId: number; ligneId: number; issue: 'non_reprise'; raison: 'produit_supprime' | 'unite_modifiee' }
+  | { objet: 'ligne'; commandeId: number; ligneId: number; issue: 'a_rapprocher'; stock: string; raison: string }
   | { objet: 'ligne'; commandeId: number; ligneId: number; issue: 'stock_insuffisant'; quantite: number; date: string; detail: string }
 
-export interface JournalReprise { userId: string; applique: boolean; evenements: EvenementReprise[] }
+export interface JournalReprise {
+  userId: string
+  applique: boolean
+  evenements: EvenementReprise[]
+  /** Mouvements référencés une seule fois par stock, quelle que soit la quantité de lignes suspendues. */
+  rapprochements: Record<string, MouvementARapprocher[]>
+}
 
 /** Conditionnements reconnus sans ambiguïté. Une « boîte » ou une « barquette » n'a pas de contenance fixe. */
 const REGLES: Record<string, { type: 'oeufs' | 'ruche'; ref: string; unites: Record<string, number> }> = {
@@ -54,13 +69,58 @@ export function regleDeRattachement(produit: { categorie: string | null; unite: 
 
 class RepriseABlanc extends Error {}
 
+/** Les verrous natifs doivent être pris avant cette lecture et gardés jusqu'à la fin de la reprise. */
+async function mouvementsARapprocher(tx: Prisma.TransactionClient, userId: string) {
+  // Seule une trace vers une ligne boutique du compte distingue avec certitude
+  // une sortie déjà attribuée. Un BL, une vente d'élevage ou un ajustement peut
+  // avoir couvert une commande historique : aucun rapprochement par ressemblance.
+  const sansLigneBoutique: Prisma.MouvementStockCommercialListRelationFilter = {
+    none: { userId, ligneCommandeBoutique: { commande: { userId } } },
+  }
+  const [oeufs, ruches] = await Promise.all([
+    tx.mouvementStockOeuf.findMany({
+      where: { userId, mouvementsCommerciaux: sansLigneBoutique },
+      select: { id: true, productionId: true, date: true, type: true, quantite: true }, orderBy: { id: 'asc' },
+    }),
+    tx.mouvementStockRuche.findMany({
+      where: { userId, production: { userId }, mouvementsCommerciaux: sansLigneBoutique },
+      select: { id: true, productionId: true, date: true, type: true, quantite: true, production: { select: { produit: true, unite: true } } }, orderBy: { id: 'asc' },
+    }),
+  ])
+  const parStock = new Map<string, MouvementARapprocher[]>()
+  if (oeufs.length) parStock.set('oeufs:stock', oeufs.map(m => ({ ...m, source: 'oeufs', date: m.date.toISOString(), unite: 'pièce' })))
+  for (const { production, ...m } of ruches) {
+    const cle = `ruche:${production.produit}`
+    const mouvements = parStock.get(cle) ?? []
+    mouvements.push({ ...m, source: 'ruche', date: m.date.toISOString(), unite: production.unite })
+    parStock.set(cle, mouvements)
+  }
+  return parStock
+}
+
 /** Reprend une exploitation dans une seule transaction, annulée si `appliquer` est faux. */
-export async function reprendreStockLieExploitation(prisma: PrismaClient, userId: string, appliquer: boolean): Promise<JournalReprise> {
+export async function reprendreStockLieExploitation(prisma: PrismaClient, userId: string, appliquer = false): Promise<JournalReprise> {
   const evenements: EvenementReprise[] = []
+  const rapprochements: JournalReprise['rapprochements'] = {}
   try {
     await prisma.$transaction(async (tx) => {
-      await verrouillerStockCommercial(tx, userId)
+      // Même ordre que les sorties ordinaires : commercial, œufs, ruches triées.
+      // Une sortie manuelle concurrente ne doit pas apparaître entre contrôle et sortie.
+      await verrouillerStocksDesLignes(tx, userId, [
+        { articleStockType: 'oeufs', articleStockId: 'stock', description: 'Œufs', quantite: 0, unite: 'pièce' },
+        ...PRODUITS_RUCHE.map(ref => ({ articleStockType: 'ruche', articleStockId: ref, description: ref, quantite: 0, unite: 'kg' })),
+      ])
       const stocks = await listerStocksLiables(tx, userId)
+      const ambigus = await mouvementsARapprocher(tx, userId)
+      const suspendreSiAmbigu = (commandeId: number, ligneId: number, lie: StockLie) => {
+        const stock = cleStockLie(lie)
+        const mouvements = ambigus.get(stock)
+        if (!mouvements?.length) return false
+        rapprochements[stock] = mouvements
+        evenements.push({ objet: 'ligne', commandeId, ligneId, issue: 'a_rapprocher', stock,
+          raison: 'Des mouvements de ce stock peuvent déjà couvrir cette commande. Voir rapprochements[stock] ; aucune sortie ni attribution automatique.' })
+        return true
+      }
 
       // 1. Rattachement des produits, par règle.
       const produits = await tx.produitBoutique.findMany({ where: { userId, stockLieType: null }, orderBy: { id: 'asc' } })
@@ -76,28 +136,44 @@ export async function reprendreStockLieExploitation(prisma: PrismaClient, userId
         if (!stock?.produit) { evenements.push({ objet: 'produit', produitId: p.id, issue: 'non_relie', raison: 'aucune production enregistrée pour ce stock' }); continue }
         let lie: StockLie
         try { lie = validerStockLie(regle.lie, stock.unite)! } catch { evenements.push({ objet: 'produit', produitId: p.id, issue: 'non_relie', raison: 'conditionnement incompatible avec l’unité du stock' }); continue }
+        const blocage = await motifBlocageRattachement(tx, userId, p.id)
+        if (blocage) { evenements.push({ objet: 'produit', produitId: p.id, issue: 'non_relie', raison: blocage }); continue }
         await tx.produitBoutique.update({ where: { id: p.id }, data: champsStockLie(lie) })
         evenements.push({ objet: 'produit', produitId: p.id, issue: 'relie', ...lie })
       }
 
       // 2. Lien figé sur les lignes encore sans lien des produits reliés.
+      // Les produits supprimés sont aussi lus : aucun lien ne peut être déduit,
+      // mais leur exclusion doit rester visible, même au prochain passage.
       const aFiger = await tx.ligneCommandeBoutique.findMany({
-        where: { stockLieType: null, commande: { userId }, produit: { stockLieType: { not: null } } },
-        include: { produit: true }, orderBy: { id: 'asc' },
+        where: { stockLieType: null, commande: { userId }, OR: [{ produit: null }, { produit: { userId, stockLieType: { not: null } } }] },
+        include: { produit: true, mouvementsStock: { where: { userId, origineRetourId: null }, select: { id: true } } }, orderBy: { id: 'asc' },
       })
       for (const l of aFiger) {
-        const lie = l.produit && lireStockLie(l.produit)
+        if (!l.produit) {
+          evenements.push({ objet: 'ligne', commandeId: l.commandeId, ligneId: l.id, issue: 'non_reprise', raison: 'produit_supprime' })
+          continue
+        }
         // L'unité de la ligne est celle du produit à la commande : si elle a changé depuis, le conditionnement actuel ne la décrit plus.
-        if (!lie || l.unite !== l.produit!.unite) continue
+        if (l.unite !== l.produit.unite) {
+          evenements.push({ objet: 'ligne', commandeId: l.commandeId, ligneId: l.id, issue: 'non_reprise', raison: 'unite_modifiee' })
+          continue
+        }
+        const lie = lireStockLie(l.produit)
+        if (!lie) continue
+        // Laisser le lien nul évite qu'un simple rejeu du paiement ou de la
+        // livraison sorte ensuite cette ligne historique sans rapprochement,
+        // même si son statut n'avait pas été mis à jour après la remise réelle.
+        if (!l.mouvementsStock.length && suspendreSiAmbigu(l.commandeId, l.id, lie)) continue
         // Le mode du produit suit le lien : une ligne ouverte d'un produit « à produire » ne doit pas devenir « stock réel ».
-        await tx.ligneCommandeBoutique.update({ where: { id: l.id }, data: { ...champsStockLie(lie), stockLieMode: lireModeStockLie(l.produit!.stockLieMode) } })
+        await tx.ligneCommandeBoutique.update({ where: { id: l.id }, data: { ...champsStockLie(lie), stockLieMode: lireModeStockLie(l.produit.stockLieMode) } })
         evenements.push({ objet: 'ligne', commandeId: l.commandeId, ligneId: l.id, issue: 'lien_fige' })
       }
 
       // 3. Sortie des lignes des commandes déjà matérialisées, à leur date.
       const commandes = await tx.commandeBoutique.findMany({
         where: { userId, statut: { not: 'annulee' }, OR: [{ statut: 'livree' }, { paiementStatut: 'Confirmé' }, { venteManuelleId: { not: null } }], lignes: { some: { stockLieType: { not: null } } } },
-        include: { lignes: { where: { stockLieType: { not: null } }, orderBy: { id: 'asc' }, include: { mouvementsStock: { where: { origineRetourId: null }, select: { id: true } } } }, venteManuelle: { select: { date: true } } },
+        include: { lignes: { where: { stockLieType: { not: null } }, orderBy: { id: 'asc' }, include: { mouvementsStock: { where: { userId, origineRetourId: null }, select: { id: true } } } }, venteManuelle: { select: { date: true } } },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       })
       // Tout ou rien par ligne : un refus en cours de FIFO ne laisse aucune écriture.
@@ -129,6 +205,7 @@ export async function reprendreStockLieExploitation(prisma: PrismaClient, userId
           if (l.mouvementsStock.length) { evenements.push({ objet: 'ligne', commandeId: c.id, ligneId: l.id, issue: 'deja_sortie' }); continue }
           // « À produire » ne sort qu'à la livraison : une commande payée non livrée attend sa production.
           if (lireModeStockLie(l.stockLieMode) === 'a_produire' && c.statut !== 'livree') continue
+          if (suspendreSiAmbigu(c.id, l.id, lie)) continue
           const r = await sortir(c, l, lie, date)
           if ('refus' in r) enAttente.push({ c, l, lie, date })
           else evenements.push({ objet: 'ligne', commandeId: c.id, ligneId: l.id, issue: 'sortie', ...r, date: jour(date) })
@@ -145,5 +222,5 @@ export async function reprendreStockLieExploitation(prisma: PrismaClient, userId
   } catch (e) {
     if (!(e instanceof RepriseABlanc)) throw e
   }
-  return { userId, applique: appliquer, evenements }
+  return { userId, applique: appliquer, evenements, rapprochements }
 }
