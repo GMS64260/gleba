@@ -1,7 +1,7 @@
 "use client"
-import type { ReactNode } from "react"
+import { Suspense, type ReactNode } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { useAccesService } from "@/hooks/use-acces-service"
 import { operationPermise, PAGES_PROTEGEES } from "@/lib/abonnement/requetes"
@@ -16,6 +16,13 @@ const FACTURATION = [
   { href: "/comptabilite/clients", libelle: "Clients" },
   { href: "/comptabilite/fournisseurs", libelle: "Fournisseurs" },
 ]
+
+/** L'aperçu commercial reste accessible sans ouvrir les fonctions de la boutique. */
+function GardeApercuVitrine({ children, refus }: { children: ReactNode; refus: ReactNode }) {
+  const parametres = useSearchParams()
+  return parametres.get("tab") === "vitrine" ? <>{children}</> : <>{refus}</>
+}
+
 export function GardePageService({ children }: { children: ReactNode }) {
   const { data: session } = useSession()
   const pathname = usePathname()
@@ -29,7 +36,7 @@ export function GardePageService({ children }: { children: ReactNode }) {
   // Le carnet gratuit garde la facturation : l'entrée Comptabilité y mène.
   const facturationSeule = pathname.startsWith("/comptabilite") && acces.facturation
   // Marge basse mobile : la bulle d’avis et la navigation fixes ne recouvrent pas l’appel à l’action.
-  return <main className="mx-auto max-w-3xl px-4 pb-36 pt-10 lg:pb-10">
+  const refus = <main className="mx-auto max-w-3xl px-4 pb-36 pt-10 lg:pb-10">
     {facturationSeule && <section aria-labelledby="titre-facturation" className="mb-10">
       <h1 id="titre-facturation" className="font-display text-3xl text-foret">Vos ventes et vos factures</h1>
       <ul className="mt-5 grid gap-3 sm:grid-cols-3">{FACTURATION.map(l => <li key={l.href}><Link href={l.href} className="flex min-h-20 items-center rounded-xl border border-lin bg-craie p-4 font-medium text-encre hover:border-sauge">{l.libelle}</Link></li>)}</ul>
@@ -38,4 +45,8 @@ export function GardePageService({ children }: { children: ReactNode }) {
     <p className="mt-4 max-w-prose text-base leading-7 text-ardoise">{facturationSeule ? "Tableau de bord, dépenses, banque, TVA, bilan et coûts de production font partie de l’offre Complet, avec l’assistant IA, la météo et la boutique en ligne. Vos données sont conservées et restent exportables." : "Votre carnet gratuit comprend tous vos ateliers et la facturation. L’assistant IA, la météo, la boutique en ligne et la gestion font partie de l’offre Complet. Vos données sont conservées."}</p>
     <Link href="/parametres?section=abonnement" className={`${LIEN} mt-6 bg-sauge text-white hover:bg-foret`}>Voir l’offre Complet</Link>
   </main>
+  if (pathname === "/boutique") {
+    return <Suspense fallback={refus}><GardeApercuVitrine refus={refus}>{children}</GardeApercuVitrine></Suspense>
+  }
+  return refus
 }

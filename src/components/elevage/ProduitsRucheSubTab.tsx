@@ -100,7 +100,7 @@ interface StockRuche {
 interface MouvementStockRuche {
   operationId: string
   date: string
-  type: "vente" | "autoconsommation" | "don" | "destruction" | "retour_commercial"
+  type: "vente" | "autoconsommation" | "don" | "destruction" | "transformation" | "retour_commercial"
   documentCommercial?: boolean
   produit: ProduitRuche
   quantite: number
@@ -134,6 +134,7 @@ const LIBELLES_SORTIE: Record<MouvementStockRuche["type"], string> = {
   autoconsommation: "Autoconsommation",
   don: "Don",
   destruction: "Perte / destruction",
+  transformation: "Départ en transformation",
 }
 
 const formatQuantite = (quantite: number) =>
@@ -449,7 +450,7 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
                   >
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {Object.entries(LIBELLES_SORTIE).filter(([type]) => !['vente', 'retour_commercial'].includes(type)).map(([type, libelle]) => (
+                      {Object.entries(LIBELLES_SORTIE).filter(([type]) => !['vente', 'retour_commercial', 'transformation'].includes(type)).map(([type, libelle]) => (
                         <SelectItem key={type} value={type}>{libelle}</SelectItem>
                       ))}
                     </SelectContent>

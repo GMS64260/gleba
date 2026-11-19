@@ -1,6 +1,6 @@
 import { estFamilleVirement, FAMILLES_VIREMENT } from './familles-virement'
 import prisma from '@/lib/prisma'
-import type { CompteBancaire } from '@prisma/client'
+import type { CompteBancaire, Prisma } from '@prisma/client'
 import {
   auxiliaireClient,
   type FecInputReglement,
@@ -35,9 +35,9 @@ export function verifierDeviseFec(devise: string, attendue: string) {
  * avant toute connexion : 512 porte déjà les ventes pointées payées. Un
  * mouvement ancien jamais rapproché s'exclut depuis Banque avec son motif.
  */
-async function comptesStripeRapproches(userId: string, compteIds: string[], fin: Date) {
+async function comptesStripeRapproches(userId: string, compteIds: string[], fin: Date, db: DbFecReglements) {
   if (!compteIds.length) return new Set<string>()
-  const operations = await prisma.operationBancaire.findMany({
+  const operations = await db.operationBancaire.findMany({
     where: {
       userId,
       compteId: { in: compteIds },
@@ -71,8 +71,14 @@ async function comptesStripeRapproches(userId: string, compteIds: string[], fin:
   }
   return new Set([...encaisses].filter((id) => !incomplets.has(id)))
 }
-export async function chargerFecReglements(userId: string, debut: Date, fin: Date) {
-  const exploitation = await prisma.exploitation.findUnique({
+/**
+ * Client de lecture : `prisma` par défaut, ou la transaction `RepeatableRead`
+ * de l'export FEC, qui lit dans le même instantané les faits de réception de
+ * caisse dont dépend l'absorption de certains règlements.
+ */
+export type DbFecReglements = Pick<Prisma.TransactionClient, 'exploitation' | 'reglement' | 'facture' | 'operationBancaire' | 'virementBancaire'>
+export async function chargerFecReglements(userId: string, debut: Date, fin: Date, db: DbFecReglements = prisma) {
+  const exploitation = await db.exploitation.findUnique({
     where: { userId },
     select: { devise: true, territoire: true },
   })
@@ -84,7 +90,7 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
         'Une opération bancaire modifiée doit être vérifiée dans Comptabilité → Banque avant cet export FEC.',
       )
   }
-  const reglements = await prisma.reglement.findMany({
+  const reglements = await db.reglement.findMany({
     where: {
       userId,
       OR: [{ date: { gte: debut, lte: fin } }, { annuleLe: { gte: debut, lte: fin } }],
@@ -102,7 +108,7 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
     ),
   ]
   const factures = idsFactures.length
-    ? await prisma.facture.findMany({
+    ? await db.facture.findMany({
         where: { userId, id: { in: idsFactures } },
         select: { id: true, clientId: true, clientNom: true },
       })
@@ -140,7 +146,7 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
     }
   })
   const [payouts, virements] = await Promise.all([
-    prisma.operationBancaire.findMany({
+    db.operationBancaire.findMany({
       where: {
         userId,
         date: { gte: debut, lte: fin },
@@ -151,7 +157,7 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
       },
       include: { compte: true },
     }),
-    prisma.virementBancaire.findMany({
+    db.virementBancaire.findMany({
       where: {
         userId,
         OR: [
@@ -175,7 +181,7 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
   ]
   if (
     idsInternes.length &&
-    (await prisma.reglement.count({
+    (await db.reglement.count({
       where: {
         userId,
         date: { lte: fin },
@@ -199,6 +205,7 @@ export async function chargerFecReglements(userId: string, debut: Date, fin: Dat
       ),
     ],
     fin,
+    db,
   )
   const admis = (o: (typeof payouts)[number]) =>
     o.statut === 'comptabilisee' && (!o.compte.connexionStripeId || rapproches.has(o.compteId))

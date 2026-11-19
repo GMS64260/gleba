@@ -15,6 +15,7 @@ import {
 import { NextResponse } from "next/server"
 import { ENTETE_CHEMIN, ENTETE_METHODE } from "@/lib/abonnement/requetes"
 import { CHEMIN_INTROUVABLE, segmentRacineInconnu } from "@/lib/segments-racine"
+import { segmentsUpload } from "@/lib/uploads-chemin"
 
 export default auth((req) => {
   const { pathname } = req.nextUrl
@@ -34,6 +35,16 @@ export default auth((req) => {
   enTetesTransmises.set(ENTETE_METHODE, req.method)
   enTetesTransmises.set(EN_TETE_MUTATION, valeurEnteteMutation(req.method, pathname))
   const suite = () => NextResponse.next({ request: { headers: enTetesTransmises } })
+  // La requête réécrite ne repasse pas par ce middleware : les en-têtes de
+  // contexte doivent déjà décrire la route de DESTINATION. Avec le chemin
+  // d'origine `/uploads/…`, inconnu de la garde d'abonnement, la route
+  // refusait tout le monde (FORMULE_INSUFFISANTE).
+  const reecrireVersRoute = (destination: string) => {
+    const enTetesDestination = new Headers(enTetesTransmises)
+    enTetesDestination.set(ENTETE_CHEMIN, destination)
+    enTetesDestination.set(EN_TETE_MUTATION, valeurEnteteMutation(req.method, destination))
+    return NextResponse.rewrite(new URL(destination, req.nextUrl), { request: { headers: enTetesDestination } })
+  }
 
   // Cible de la réécriture des adresses inconnues (plus bas). En production,
   // la requête réécrite repasse par ce middleware : sans cette sortie, elle
@@ -48,11 +59,43 @@ export default auth((req) => {
     })
   }
 
-  // Compatibilité des anciens justificatifs stockés sous public/uploads :
-  // même authentifié, un utilisateur ne doit jamais lire le dossier d'un autre.
-  const legacyJustificatif = /^\/uploads\/([^/]+)\/justificatifs\//.exec(pathname)
-  if (legacyJustificatif && (!isLoggedIn || legacyJustificatif[1] !== req.auth?.user?.id)) {
-    return new NextResponse(null, { status: 404 })
+  // Fichiers sous public/uploads : les décisions portent sur le chemin DÉCODÉ,
+  // celui que le service statique résout. Sur le chemin brut, `..%2F` faisait
+  // passer la photo d'une autre exploitation pour un fichier de son propre
+  // dossier, et `/u%70loads/…` n'était pas reconnu comme un chemin /uploads
+  // (preuves HTTP du 2026-11-13). Aucune condition préalable sur le chemin
+  // brut : le helper décide. Un chemin ambigu est refusé, quel que soit son
+  // préfixe (remontée `..`, barre oblique inverse, encodage cassé).
+  const upload = segmentsUpload(pathname)
+  if (upload === null) return new NextResponse(null, { status: 404 })
+
+  // Fichiers privés sous public/uploads : jamais servis en direct à une
+  // session. Le middleware (Edge, sans base) ne sait pas si le jeton est encore
+  // valable (compte désactivé, mot de passe posé depuis la connexion — MC3 —),
+  // ni dans quelle exploitation travaille la personne. Toute demande est
+  // confiée à une route serveur qui revalide la session par la même garde que
+  // les API (`requireAuthApi`) puis le dossier (revue adverse du 2026-11-15 :
+  // un cookie révoqué lisait encore les photos de son propre dossier).
+  //  - anciens justificatifs `/uploads/<compte>/justificatifs/<fichier>` :
+  //    ceux de la personne connectée seulement, jamais ceux d'un autre compte ;
+  //  - photos envoyées `/uploads/<exploitation>/<fichier>` : celles de
+  //    l'exploitation en cours ou du propre dossier de la personne
+  //    (revue de sécurité du 2026-11-11).
+  if (upload && upload.length > 2 && upload[1] === "justificatifs") {
+    if (!isLoggedIn || upload.length !== 3 || upload[0] !== req.auth?.user?.id) {
+      return new NextResponse(null, { status: 404 })
+    }
+    return reecrireVersRoute(`/api/upload/ancien-justificatif/${encodeURIComponent(upload[0])}/${encodeURIComponent(upload[2])}`)
+  }
+  if (upload && upload.length === 2 && isLoggedIn) {
+    return reecrireVersRoute(`/api/upload/photo/${encodeURIComponent(upload[0])}/${encodeURIComponent(upload[1])}`)
+  }
+
+  // Sans session, un fichier envoyé suit le renvoi ordinaire vers la connexion,
+  // décidé ici : plus bas, tout se joue sur le chemin brut, où `/u%70loads/…`
+  // ne ressemble pas à `/uploads/…`.
+  if (upload && !isLoggedIn) {
+    return NextResponse.redirect(new URL(urlConnexion(pathname + req.nextUrl.search), req.nextUrl))
   }
 
   // Routes publiques (DEV2 #2 : pages légales accessibles sans login)

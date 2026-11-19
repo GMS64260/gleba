@@ -13,6 +13,7 @@
 
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
+import { OppositionMesureAudience } from "@/components/mesure-audience/OppositionMesureAudience"
 import { Button } from "@/components/ui/button"
 
 export const metadata = {
@@ -151,6 +152,11 @@ export default function ConfidentialitePage() {
             Cookies, dont l&apos;adresse IP conservée sous forme hachée pour la preuve
             du consentement.
           </li>
+          <li>
+            Mesure d&apos;audience des pages publiques, sans cookie : pages vues, site
+            d&apos;origine, type d&apos;appareil, navigateur et langue, avec une
+            adresse IP raccourcie (voir la section 11).
+          </li>
         </ul>
 
         <h3>2.7 Boutique en ligne</h3>
@@ -194,12 +200,33 @@ export default function ConfidentialitePage() {
           l’histoire de la connaissance commune.
         </p>
 
+        <h3>2.10 Projet de site vitrine</h3>
+        <p>
+          Si vous demandez un site vitrine, nous conservons votre
+          projet, le domaine souhaité et le suivi de la proposition dans un dossier privé
+          accessible à Guillaume et à l’équipe Gleba pour échanger avec vous. Votre acceptation de la proposition et votre demande
+          d’activation sont datées et rattachées à votre compte. Ce dossier ne
+          constitue pas une publication du site.
+        </p>
+        <p>
+          Vous pouvez choisir de faire préparer une maquette par l’agent IA. Cette
+          préparation est facultative : le nom, la présentation, les couleurs,
+          le lien de la boutique publiée et les libellés, descriptions, prix, devise et
+          unités de huit produits actifs au maximum sont alors transmis au moteur. Les commandes,
+          données des acheteurs, champs de coordonnées et documents comptables
+          ne sont pas ajoutés à cet envoi. Vérifiez toutefois que les textes de
+          présentation ne contiennent pas d’informations personnelles inutiles.
+          Les fichiers produits restent dans le
+          dossier privé pour une relecture par l’équipe Gleba.
+        </p>
+
         <h2>3. Finalités</h2>
         <ul>
           <li>Fournir les fonctions de gestion agricole que vous utilisez.</li>
           <li>Gérer votre compte, votre authentification et la sécurité du service.</li>
           <li>Produire vos documents réglementaires : registres, traçabilité, comptabilité.</li>
           <li>Traiter les commandes et la facturation des boutiques.</li>
+          <li>Étudier votre demande de site vitrine et, si vous le choisissez, préparer un POC avec l’IA.</li>
           <li>Vous envoyer les e-mails nécessaires au service (vérification d&apos;adresse, réinitialisation de mot de passe, confirmations).</li>
           <li>Vous adresser des informations sur le produit, uniquement si vous ne vous y êtes pas opposé, avec un lien de désabonnement en un clic dans chaque envoi.</li>
           <li>Vous assister en cas de difficulté et corriger les défauts du service, par exemple un relevé bancaire que l&apos;import ne sait pas lire.</li>
@@ -212,10 +239,10 @@ export default function ConfidentialitePage() {
 
         <h2>4. Base légale</h2>
         <ul>
-          <li><strong>Exécution du contrat</strong> : compte, fonctionnalités, commandes.</li>
+          <li><strong>Exécution du contrat et mesures précontractuelles demandées</strong> : compte, fonctionnalités, commandes et demandes de site vitrine.</li>
           <li><strong>Obligation légale</strong> : comptabilité, traçabilité, registres réglementaires.</li>
-          <li><strong>Consentement</strong> : géolocalisation, notifications, cookies de mesure d&apos;audience, assistant IA.</li>
-          <li><strong>Intérêt légitime</strong> : sécurité du service, prévention des abus, assistance et correction des défauts (fichiers de relevés bancaires conservés 30 jours).</li>
+          <li><strong>Consentement</strong> : géolocalisation, notifications, cookies de marketing et de personnalisation, assistant IA et préparation facultative du POC de site vitrine.</li>
+          <li><strong>Intérêt légitime</strong> : sécurité du service, prévention des abus, assistance et correction des défauts (fichiers de relevés bancaires conservés 30 jours), mesure d&apos;audience des pages publiques sans cookie.</li>
         </ul>
 
         <h2>5. Destinataires et sous-traitants</h2>
@@ -244,6 +271,14 @@ export default function ConfidentialitePage() {
             Elles restent privées dans votre conversation Gleba et sont
             supprimées avec celle-ci. Évitez d&apos;y inclure des personnes ou
             des documents personnels sans nécessité.
+          </li>
+          <li>
+            <strong>POC du site vitrine</strong> : si vous demandez explicitement
+            sa préparation, les informations de boutique décrites ci-dessus sont
+            transmises à OpenAI (service Codex, États-Unis) par le moteur Hermes,
+            dans les mêmes conditions de traitement et de transfert que
+            l’assistant IA. La demande de site et l’aperçu fonctionnent sans
+            cette préparation facultative.
           </li>
           <li>
             <strong>Météo, sol et eau</strong> : les coordonnées de la parcelle
@@ -277,6 +312,11 @@ export default function ConfidentialitePage() {
             Cette méthode de connexion est facultative : l&apos;inscription par
             e-mail et mot de passe reste toujours disponible.
           </li>
+          <li>
+            <strong>Mesure d&apos;audience</strong> : Matomo, logiciel libre installé
+            sur un serveur de l&apos;éditeur (hébergé chez IONOS) ;
+            aucune donnée de mesure n&apos;est transmise à un tiers.
+          </li>
         </ul>
 
         <h2>6. Durée de conservation</h2>
@@ -293,6 +333,7 @@ export default function ConfidentialitePage() {
           <li>Fichiers de relevés bancaires importés : 30 jours, puis effacement automatique.</li>
           <li>Journaux de connexion : 12 mois.</li>
           <li>Consentement aux cookies : 13 mois au maximum (délibération CNIL 2020-091).</li>
+          <li>Mesure d&apos;audience : données détaillées 13 mois, puis statistiques globales uniquement.</li>
         </ul>
         <p>
           En cas de suppression de votre compte, ces durées ne s&apos;appliquent plus
@@ -353,7 +394,9 @@ export default function ConfidentialitePage() {
         <p>
           L&apos;application Android est une enveloppe qui affiche le site gleba.fr :
           elle ne collecte rien de plus que ce qui est décrit ci-dessus et ne contient
-          aucun kit publicitaire ni outil de mesure tiers. Elle demande deux
+          aucun kit publicitaire ni outil de mesure tiers. Comme sur le site, les pages
+          publiques affichées sans être connecté font l&apos;objet de la mesure
+          d&apos;audience sans cookie décrite en section 11. Elle demande deux
           autorisations, toutes deux facultatives : la position, pour vous situer sur
           vos parcelles, et les notifications, pour vous alerter sur vos tâches et
           rappels. Vous pouvez les refuser ou les retirer dans les réglages Android.
@@ -362,13 +405,35 @@ export default function ConfidentialitePage() {
         <h2>11. Cookies</h2>
         <p>
           Le site utilise des cookies essentiels, toujours actifs, pour la session, le
-          panier et la sécurité, et, avec votre consentement, des cookies de mesure
-          d&apos;audience, de marketing et de personnalisation. Vous pouvez modifier
-          votre choix à tout moment via le bandeau cookies.
+          panier et la sécurité, et, avec votre consentement, des cookies de marketing
+          et de personnalisation. Vous pouvez modifier votre choix à tout moment via le
+          bandeau cookies.
         </p>
 
+        <h3>Mesure d&apos;audience</h3>
+        <p>
+          Pour savoir comment Gleba est découvert, la fréquentation des pages publiques
+          (accueil, pages de présentation, pages légales, connexion et boutiques
+          publiques) est mesurée avec Matomo, un logiciel libre installé sur un serveur
+          de l&apos;éditeur. Rien n&apos;est mesuré une fois connecté à l&apos;application.
+        </p>
+        <p>
+          La mesure fonctionne sans cookie. Elle porte sur les pages vues, le site ou le
+          moteur de recherche d&apos;origine, le type d&apos;appareil, le navigateur et
+          la langue. L&apos;adresse IP est raccourcie avant tout enregistrement.
+          Les données détaillées sont supprimées au bout de 13 mois ; seules des statistiques globales sont conservées au-delà. Elles ne
+          sont ni transmises à un tiers, ni croisées avec votre compte, ni utilisées
+          pour vous suivre sur d&apos;autres sites.
+        </p>
+        <p>
+          Vous pouvez vous opposer à cette mesure ci-dessous, ou en décochant
+          « Mesure d&apos;audience » dans le bandeau cookies. Le réglage « Ne pas me
+          pister » de votre navigateur est également respecté.
+        </p>
+        <OppositionMesureAudience />
+
         <p className="text-xs text-slate-500 mt-12">
-          Dernière mise à jour : 2026-11-01 — version 2.5.
+          Dernière mise à jour : 2026-11-13 — version 2.7.
         </p>
       </main>
     </div>
