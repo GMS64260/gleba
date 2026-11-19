@@ -27,7 +27,7 @@ const NAVIGATION: Shortcut[] = [
 ]
 
 const ACTIONS: Shortcut[] = [
-  { keys: ["n"], label: "Nouveau (contextuel à la page courante)" },
+  { keys: ["n"], label: "Ouvrir la palette sur les actions disponibles, recherche vidée" },
   { keys: ["Esc"], label: "Fermer un dialogue / la palette" },
   { keys: ["Entrée"], label: "Valider une cellule éditable" },
   { keys: ["Esc"], label: "Annuler une cellule éditable" },
@@ -97,6 +97,9 @@ export default function RaccourcisPage() {
           <CardHeader>
             <CardTitle>Actions courantes</CardTitle>
             <CardDescription>
+              La touche n affiche les actions disponibles selon vos accès, sans création automatique.
+              Choisissez ensuite une action pour ouvrir son parcours de saisie.
+              {" "}
               Sur les cellules éditables, le focus clavier active la saisie inline.
             </CardDescription>
           </CardHeader>
