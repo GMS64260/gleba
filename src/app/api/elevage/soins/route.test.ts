@@ -41,6 +41,7 @@ vi.mock('@/lib/prisma', () => {
 import { GET, PATCH, POST } from './route'
 import prismaMock from '@/lib/prisma'
 import { dateSoinARenvoyer, jourSoin } from '@/lib/elevage/date-soin'
+import { refusDelaisSaisieLibre } from '@/lib/elevage/delais-saisie-libre'
 
 const ERREUR_SAISIE = { nature: 'erreur_saisie', motif: 'Coché « fait » par erreur' }
 
@@ -401,6 +402,31 @@ describe('soins planifies et temps attente lait', () => {
     const body = await response.json()
     expect(body.rappel).toEqual({ id: 2 })
     expect(body.info).toContain('Rappel planifié le 11/11/2026')
+  })
+
+  it('un délai de 0 jour saisi reste saisi sur le soin et sur son rappel, qui se valide ensuite sans refus', async () => {
+    mocks.soinCreate.mockImplementation(async ({ data }) => ({ id: data.fait ? 1 : 2, ...data }))
+
+    const response = await POST(request('POST', {
+      animalId: 7, date: '2026-08-11', type: 'Vermifuge', produit: 'Décoction maison',
+      datePrevue: '2026-09-01', fait: true, tempsAttenteViandeJ: 0, tempsAttenteLaitJ: 0,
+    }))
+
+    expect(response.status).toBe(201)
+    const [soin, rappel] = mocks.soinCreate.mock.calls.map((appel) => appel[0].data)
+    for (const ecrit of [soin, rappel]) {
+      expect(ecrit.tempsAttenteViandeJ).toBe(0)
+      expect(ecrit.tempsAttenteLaitJ).toBe(0)
+      // Non saisi : reste absent, la validation le réclamera.
+      expect(ecrit.tempsAttenteOeufsJ).toBeNull()
+    }
+    // Aucune fenêtre d'attente ne court pour un délai nul.
+    expect(soin.finAttenteViande).toBeNull()
+    expect(soin.finAttenteLait).toBeNull()
+    // La règle de validation (« Fait » sur le rappel) lit ces valeurs stockées.
+    const laitiere = { sexe: 'femelle', especeAnimale: { type: 'caprin', production: 'lait', productions: ['lait'] } }
+    expect(refusDelaisSaisieLibre(rappel, laitiere, rappel, 'validation')).toBeNull()
+    expect(refusDelaisSaisieLibre(rappel, laitiere, { ...rappel, tempsAttenteViandeJ: null }, 'validation')).not.toBeNull()
   })
 
   it('ne crée pas de rappel pour une datePrevue passée (simple trace du retard)', async () => {

@@ -43,13 +43,16 @@ function LectureBesoins({ type, recharge }: Props) {
     return () => { actif = false; controle.abort() }
   }, [recharge, tentative])
   const besoins = lecture.etat === "succes" ? lecture.besoins.filter((b) => type ? b.type === type : b.type === "oeufs" || b.type === "ruche") : []
+  // Rien à produire, ou réponse pas encore arrivée : aucun encadré. Il ouvrait
+  // l’accueil, la production d’œufs et la ruche de chaque exploitation, même
+  // sans boutique, pour dire qu’il n’y avait rien à faire.
+  if (lecture.etat === "chargement" || (lecture.etat === "succes" && !besoins.length)) return null
   return (
     <section aria-label="À produire pour la boutique" className="min-w-0 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
       <h3 className="font-medium">À produire pour la boutique</h3>
-      {lecture.etat === "chargement" && <p role="status">Chargement des besoins…</p>}
       {lecture.etat === "erreur" && <p role="alert">{lecture.message}</p>}
-      {lecture.etat === "succes" && (besoins.length ? <ListeBesoins besoins={besoins} /> : <p>Aucune commande à produire pour la boutique.</p>)}
-      {lecture.etat !== "chargement" && <button type="button" className="mt-2 min-h-11 underline" onClick={() => setTentative((n) => n + 1)}>{lecture.etat === "erreur" ? "Réessayer" : "Actualiser les besoins"}</button>}
+      {lecture.etat === "succes" && <ListeBesoins besoins={besoins} />}
+      <button type="button" className="mt-2 min-h-11 underline" onClick={() => setTentative((n) => n + 1)}>{lecture.etat === "erreur" ? "Réessayer" : "Actualiser les besoins"}</button>
     </section>
   )
 }

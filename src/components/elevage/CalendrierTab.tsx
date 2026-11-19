@@ -309,11 +309,20 @@ export function CalendrierTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, fait: !fait, date: dateFait }),
       })
-      if (!response.ok) throw new Error('Erreur')
-      toast({ title: fait ? "Soin rouvert" : "Soin marque fait !" })
+      if (!response.ok) {
+        // Le serveur dit pourquoi (délais d'attente manquants, motif de
+        // réouverture…) : le taire laissait un « Erreur » sans issue.
+        const corps = await response.json().catch(() => null)
+        throw new Error(typeof corps?.error === 'string' ? corps.error : '')
+      }
+      toast({ title: fait ? "Soin rouvert" : "Soin marqué fait" })
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur" })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: fait ? "Soin non rouvert" : "Soin non enregistré",
+        description: (error instanceof Error && error.message) || "Vérifiez votre connexion puis réessayez.",
+      })
     }
   }
 

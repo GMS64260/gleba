@@ -32,15 +32,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe("lecture partagée : états et cloisonnement", () => {
-  it("distingue chargement et liste vide", async () => {
+  it("n’affiche aucun encadré pendant le chargement ni quand il n’y a rien à produire", async () => {
     let terminer!: (r: Response) => void
     lecture.mockImplementationOnce(() => new Promise((resolve) => { terminer = resolve }))
     render(createElement(BesoinsBoutique))
-    expect(screen.getByRole("status").textContent).toContain("Chargement")
-    expect(screen.queryByText(/Aucune commande/)).toBeNull()
+    expect(lecture).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("region")).toBeNull()
     await act(async () => terminer(reponse([])))
-    expect(screen.getByText(/Aucune commande/)).toBeTruthy()
-    expect(screen.queryByRole("status")).toBeNull()
+    expect(screen.queryByRole("region")).toBeNull()
+    expect(screen.queryByText(/Aucune commande/)).toBeNull()
+  })
+  it("n’affiche aucun encadré quand les besoins ne concernent pas l’atelier affiché", async () => {
+    lecture.mockResolvedValueOnce(reponse([miel]))
+    render(createElement(BesoinsBoutique, { type: "oeufs" }))
+    await waitFor(() => expect(lecture).toHaveBeenCalledTimes(1))
+    await act(async () => {})
+    expect(screen.queryByRole("region")).toBeNull()
   })
   it.each([403, 500])("affiche un échec HTTP %s, puis permet une nouvelle tentative", async (status) => {
     lecture.mockResolvedValueOnce(reponse({}, status))
@@ -92,7 +99,7 @@ describe("lecture partagée : états et cloisonnement", () => {
     lecture.mockImplementationOnce(() => new Promise(() => {}))
     vue.rerender(createElement(BesoinsBoutique))
     expect(screen.queryByText("Besoin nouvelle ferme")).toBeNull()
-    expect(screen.getByRole("status")).toBeTruthy()
+    expect(screen.queryByRole("region")).toBeNull()
   })
   it("purge immédiatement les besoins affichés à la révocation de l’accès", async () => {
     const vue = render(createElement(BesoinsBoutique))
