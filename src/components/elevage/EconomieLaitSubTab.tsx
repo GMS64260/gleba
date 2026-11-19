@@ -59,6 +59,8 @@ export function EconomieLaitSubTab({ year }: { year?: number } = {}) {
   const [annee, setAnnee] = React.useState(year ?? new Date().getFullYear())
   const [data, setData] = React.useState<Economie | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [erreur, setErreur] = React.useState<string | null>(null)
+  const [tentative, setTentative] = React.useState(0)
 
   React.useEffect(() => {
     if (year) setAnnee(year)
@@ -66,13 +68,39 @@ export function EconomieLaitSubTab({ year }: { year?: number } = {}) {
 
   React.useEffect(() => {
     setLoading(true)
+    setErreur(null)
+    let actif = true
     fetch(`/api/elevage/economie-lait?annee=${annee}`)
-      .then((r) => r.json())
-      .then(setData)
-      .finally(() => setLoading(false))
-  }, [annee])
+      .then(async (r) => {
+        const corps = await r.json().catch(() => null)
+        if (!actif) return
+        // Un refus du serveur (pièce non ventilable, devises mêlées…) renvoie
+        // { error } : le lire comme un bilan faisait planter tout l’onglet.
+        if (!r.ok || !corps?.production || !corps?.indicateurs) {
+          setData(null)
+          setErreur(typeof corps?.error === "string" ? corps.error : "Le bilan du lait n’a pas pu être chargé.")
+          return
+        }
+        setData(corps)
+      })
+      .catch(() => {
+        if (!actif) return
+        setData(null)
+        setErreur("Le bilan du lait n’a pas pu être chargé. Vérifiez votre connexion puis réessayez.")
+      })
+      .finally(() => { if (actif) setLoading(false) })
+    return () => { actif = false }
+  }, [annee, tentative])
 
   if (loading) return <div className="text-sm text-slate-500 p-4">Chargement…</div>
+  if (erreur) {
+    return (
+      <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+        <p>{erreur}</p>
+        <button type="button" className="mt-2 min-h-11 underline" onClick={() => setTentative((n) => n + 1)}>Réessayer</button>
+      </div>
+    )
+  }
   if (!data) return <div className="text-sm text-slate-500 p-4">Données indisponibles.</div>
 
   const i = data.indicateurs

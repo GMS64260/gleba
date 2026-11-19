@@ -379,9 +379,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
               })
         )
       )
-      const echecs = res.filter((r) => !r.ok).length
+      const refuses = res.filter((r) => !r.ok)
+      const echecs = refuses.length
       if (echecs > 0) {
-        toast({ variant: 'destructive', title: `${echecs} soin(s) non enregistré(s)`, description: 'Rechargement…' })
+        // Premier motif donné par le serveur (délais d'attente manquants…) :
+        // « Rechargement… » seul ne disait pas quoi corriger.
+        const corps = await refuses[0].json().catch(() => null)
+        const motif = typeof corps?.error === 'string' ? corps.error : 'Ces soins restent à faire.'
+        toast({ variant: 'destructive', title: `${echecs} soin${echecs > 1 ? 's' : ''} non enregistré${echecs > 1 ? 's' : ''}`, description: motif })
         fetchSoins()
       } else {
         toast({ title: `${soins.length} soin(s) marqué(s) comme fait(s)` })
