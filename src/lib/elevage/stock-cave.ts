@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma'
 import { stockDuLotFromage } from '@/lib/elevage/stock-fromage'
-import { valoriserStockFromage } from '@/lib/elevage/cave-fromage'
+import { valoriserVentesFromage } from '@/lib/elevage/economie-lait-ventes'
+import { chargerVentesFromage } from '@/lib/elevage/ventes-fromage'
 
 export interface LotCaveEnStock {
   id: string
@@ -10,6 +11,7 @@ export interface LotCaveEnStock {
   stockKg: number
   /** Estimation au prix constaté des ventes du lot ; `null` sans vente payante. */
   valorisation: number | null
+  avertissementValorisation: string | null
 }
 
 /**
@@ -23,17 +25,18 @@ export async function chargerCaveEnStock(userId: string): Promise<LotCaveEnStock
     where: { userId, etat: { not: 'ecoule' } },
     orderBy: { dateFabrication: 'asc' },
     include: {
-      mouvements: { select: { nbPieces: true, poidsKg: true } },
-      ventesProduit: { where: { annule: false }, select: { quantite: true, unite: true, prixTotal: true } },
+      mouvements: { where: { userId }, select: { nbPieces: true, poidsKg: true } },
     },
   })
+  if (lots.length === 0) return []
+  const ventes = await chargerVentesFromage(userId, undefined, { lotIds: lots.filter(l => stockDuLotFromage(l).restantPieces > 0).map(l => l.id), valorisation: true })
   return lots.flatMap((lot) => {
     const stock = stockDuLotFromage(lot)
     if (stock.restantPieces <= 0) return []
-    const { valorisation } = valoriserStockFromage(
+    const { valorisation, avertissementValorisation } = valoriserVentesFromage(
       { nbPieces: lot.nbPieces, poidsTotalKg: Number(lot.poidsTotalKg) || 0 },
       stock,
-      lot.ventesProduit.map((v) => ({ quantite: Number(v.quantite), unite: v.unite, prixTotal: Number(v.prixTotal) })),
+      ventes.filter(v => v.lotFromageId === lot.id),
     )
     return [{
       id: lot.id,
@@ -42,6 +45,7 @@ export async function chargerCaveEnStock(userId: string): Promise<LotCaveEnStock
       stockPieces: stock.restantPieces,
       stockKg: stock.restantKg,
       valorisation,
+      avertissementValorisation,
     }]
   })
 }

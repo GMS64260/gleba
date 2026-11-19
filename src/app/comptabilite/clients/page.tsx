@@ -66,6 +66,7 @@ interface ClientsStats {
 
 export default function ClientsPage() {
   const { toast } = useToast()
+  const formId = React.useId()
   const [isLoading, setIsLoading] = React.useState(true)
   const [clients, setClients] = React.useState<Client[]>([])
   const [stats, setStats] = React.useState<ClientsStats | null>(null)
@@ -271,8 +272,9 @@ export default function ClientsPage() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <Label>Nom *</Label>
+                      <Label htmlFor={`${formId}-nom`}>Nom *</Label>
                       <Input
+                        id={`${formId}-nom`}
                         value={formData.nom}
                         onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
                         placeholder="Nom du client"
@@ -280,9 +282,9 @@ export default function ClientsPage() {
                       />
                     </div>
                     <div>
-                      <Label>Type</Label>
+                      <Label htmlFor={`${formId}-type`}>Type</Label>
                       <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger id={`${formId}-type`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="particulier">Particulier</SelectItem>
                           <SelectItem value="professionnel">Professionnel</SelectItem>
@@ -295,8 +297,9 @@ export default function ClientsPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <Label>Email</Label>
+                      <Label htmlFor={`${formId}-email`}>Email</Label>
                       <Input
+                        id={`${formId}-email`}
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -304,8 +307,9 @@ export default function ClientsPage() {
                       />
                     </div>
                     <div>
-                      <Label>Téléphone</Label>
+                      <Label htmlFor={`${formId}-telephone`}>Téléphone</Label>
                       <Input
+                        id={`${formId}-telephone`}
                         value={formData.telephone}
                         onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
                         placeholder="06 12 34 56 78"
@@ -314,8 +318,9 @@ export default function ClientsPage() {
                   </div>
 
                   <div>
-                    <Label>Adresse</Label>
+                    <Label htmlFor={`${formId}-adresse`}>Adresse</Label>
                     <Input
+                      id={`${formId}-adresse`}
                       value={formData.adresse}
                       onChange={(e) => setFormData({ ...formData, adresse: e.target.value })}
                       placeholder="Adresse"
@@ -324,16 +329,18 @@ export default function ClientsPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <Label>Code postal</Label>
+                      <Label htmlFor={`${formId}-codePostal`}>Code postal</Label>
                       <Input
+                        id={`${formId}-codePostal`}
                         value={formData.codePostal}
                         onChange={(e) => setFormData({ ...formData, codePostal: e.target.value })}
                         placeholder="75000"
                       />
                     </div>
                     <div>
-                      <Label>Ville</Label>
+                      <Label htmlFor={`${formId}-ville`}>Ville</Label>
                       <Input
+                        id={`${formId}-ville`}
                         value={formData.ville}
                         onChange={(e) => setFormData({ ...formData, ville: e.target.value })}
                         placeholder="Paris"
@@ -346,8 +353,9 @@ export default function ClientsPage() {
                   {(formData.type === 'professionnel' || formData.type === 'association' || formData.type === 'amap') && (
                     <div className="grid gap-4 md:grid-cols-3">
                       <div>
-                        <Label>SIRET</Label>
+                        <Label htmlFor={`${formId}-siret`}>SIRET</Label>
                         <Input
+                          id={`${formId}-siret`}
                           value={formData.siret}
                           onChange={(e) => {
                             const v = e.target.value
@@ -361,22 +369,26 @@ export default function ClientsPage() {
                         />
                       </div>
                       <div>
-                        <Label>SIREN{formData.type === 'professionnel' ? ' *' : ''}</Label>
+                        <Label htmlFor={`${formId}-siren`}>SIREN{formData.type === 'professionnel' ? ' *' : ''}</Label>
                         <Input
+                          id={`${formId}-siren`}
+                          aria-required={formData.type === 'professionnel'}
+                          aria-describedby={formData.type === 'professionnel' ? `${formId}-siren-aide` : undefined}
                           value={formData.siren}
                           onChange={(e) => setFormData({ ...formData, siren: e.target.value })}
                           placeholder="123 456 789"
                           maxLength={11}
                         />
                         {formData.type === 'professionnel' && (
-                          <p className="text-xs text-muted-foreground mt-1">
+                          <p id={`${formId}-siren-aide`} className="text-xs text-muted-foreground mt-1">
                             Requis : identifiant de l&apos;acheteur sur une facture électronique.
                           </p>
                         )}
                       </div>
                       <div>
-                        <Label>N° TVA intracom.</Label>
+                        <Label htmlFor={`${formId}-tvaIntra`}>N° TVA intracom.</Label>
                         <Input
+                          id={`${formId}-tvaIntra`}
                           value={formData.tvaIntra}
                           onChange={(e) => setFormData({ ...formData, tvaIntra: e.target.value.toUpperCase() })}
                           placeholder="FR12 345678901"
@@ -388,9 +400,9 @@ export default function ClientsPage() {
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <Label>Conditions de paiement (jours)</Label>
+                      <Label htmlFor={`${formId}-conditionsPaiement`}>Conditions de paiement (jours)</Label>
                       <Select value={formData.conditionsPaiement} onValueChange={(v) => setFormData({ ...formData, conditionsPaiement: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger id={`${formId}-conditionsPaiement`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="0">Comptant</SelectItem>
                           <SelectItem value="7">7 jours</SelectItem>
@@ -404,18 +416,19 @@ export default function ClientsPage() {
                     <div className="flex items-center gap-2 pt-6">
                       <input
                         type="checkbox"
-                        id="exonererTVA"
+                        id={`${formId}-exonererTVA`}
                         checked={formData.exonererTVA}
                         onChange={(e) => setFormData({ ...formData, exonererTVA: e.target.checked })}
                         className="rounded"
                       />
-                      <Label htmlFor="exonererTVA" className="cursor-pointer">Client exonéré de TVA</Label>
+                      <Label htmlFor={`${formId}-exonererTVA`} className="cursor-pointer">Client exonéré de TVA</Label>
                     </div>
                   </div>
 
                   <div>
-                    <Label>Notes</Label>
+                    <Label htmlFor={`${formId}-notes`}>Notes</Label>
                     <Textarea
+                      id={`${formId}-notes`}
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       placeholder="Notes internes..."

@@ -38,6 +38,8 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: mocks.reconstituerEffectifsLots }))
 
+vi.mock("@/lib/elevage/ventes-fromage", () => ({ chargerVentesFromage: async () => [] }))
+
 import { GET } from "./route"
 
 type LotMock = { id: number; quantiteActuelle: number }

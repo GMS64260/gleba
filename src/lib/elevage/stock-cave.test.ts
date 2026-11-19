@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const findMany = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/prisma', () => ({ default: { lotFromage: { findMany } } }))
 
+vi.mock('@/lib/elevage/ventes-fromage', () => ({ chargerVentesFromage: async () => {
+  const lots = await findMany.getMockImplementation()!()
+  return lots.flatMap((l: { id: string; ventesProduit: object[] }) => l.ventesProduit.map(v => ({ ...v, lotFromageId: l.id })))
+} }))
+
 import { chargerCaveEnStock } from './stock-cave'
 
 const lot = (surcharge: object) => ({
