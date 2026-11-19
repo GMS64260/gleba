@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createElement } from "react"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams("sub=qualite"),
+  useSearchParams: () => new URLSearchParams(window.location.search),
   usePathname: () => "/elevage",
 }))
 vi.mock("next-auth/react", () => ({
@@ -24,6 +24,7 @@ const analyse = (nom: string) => ({
 const reponse = (nom?: string) => Response.json({
   data: nom ? [analyse(nom)] : [],
   troupeau: {
+    periode: { mode: "fenetre", start: "2026-05-23", end: "2026-11-19" },
     fenetreJours: 180, nbSuivis: nom ? 1 : 0, nbAvecMesure: nom ? 1 : 0, nbSansMesure: 0,
     cellulesMoyennes: nom ? 100 : null, tbMoyen: nom ? 40 : null, tpMoyen: nom ? 32 : null,
     nbAlerte: 0, nbSurveillance: 0,
@@ -41,8 +42,14 @@ const changerExploitation = () => act(() => {
 })
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/elevage?sub=qualite")
   window.localStorage.clear()
-  fetchMock.mockReset().mockImplementation(async () => reponse("Analyse courante"))
+  fetchMock.mockReset().mockImplementation(async (url) => {
+    const params = new URL(String(url), "http://localhost").searchParams
+    const json = await reponse("Analyse courante").json()
+    if (params.has("start")) json.troupeau.periode = { mode: "periode", start: params.get("start"), end: params.get("end") }
+    return Response.json(json)
+  })
   vi.stubGlobal("fetch", fetchMock)
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
@@ -97,13 +104,103 @@ describe("Qualité du lait : chargement, erreurs et absence d’analyses", () =>
     render(createElement(LaitSubTab))
     await screen.findByText("Analyse courante")
     expect(Array.from((periode() as HTMLSelectElement).options).map((option) => [option.value, option.text]))
-      .toEqual([["90", "90 jours"], ["180", "180 jours"], ["365", "1 an"]])
-    for (const fenetre of ["90", "365"]) {
+      .toEqual([["90", "90 jours"], ["180", "180 jours"], ["365", "1 an"],
+        ["exercice", `Exercice ${new Date().getFullYear()}`], ["personnalisee", "Période personnalisée"]])
+    for (const fenetre of ["90", "365", "180"]) {
       fireEvent.change(periode(), { target: { value: fenetre } })
       await screen.findByText("Analyse courante")
       expect(fetchMock.mock.lastCall?.[0]).toBe(`/api/elevage/qualite-lait?fenetre=${fenetre}`)
     }
     expect(fetchMock.mock.calls.every(([, options]) => !options?.method || options.method === "GET")).toBe(true)
+  })
+
+  it("une période de plus de deux ans affiche toutes les cibles sorties et les moyennes de la réponse", async () => {
+    render(createElement(LaitSubTab, { year: 2024 }))
+    await screen.findByText("Analyse courante")
+    fireEvent.change(periode(), { target: { value: "personnalisee" } })
+    fireEvent.change(screen.getByLabelText("Début des analyses"), { target: { value: "2020-01-01" } })
+    const historique = await reponse().json()
+    historique.troupeau.periode = { mode: "periode", start: "2020-01-01", end: "2023-12-31" }
+    historique.troupeau.cellulesMoyennes = 237
+    historique.troupeau.tbMoyen = 42.7
+    historique.troupeau.tpMoyen = 31.4
+    historique.data = [
+      { ...analyse("Laitière sortie"), derniere: { date: "2020-06-10T12:00:00Z", cellules: 120, mg: 41, mp: 30 }, moyenneCellules: 123 },
+      { ...analyse("Lot clos"), type: "lot", id: 8, derniere: { date: "2023-11-30T12:00:00Z", cellules: 340, mg: 43, mp: 33 }, moyenneCellules: 351 },
+    ]
+    fetchMock.mockResolvedValueOnce(Response.json(historique))
+    fireEvent.change(screen.getByLabelText("Fin des analyses"), { target: { value: "2023-12-31" } })
+    await screen.findByText("Laitière sortie")
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/elevage/qualite-lait?start=2020-01-01&end=2023-12-31")
+    expect(screen.getByText("Lot clos")).toBeTruthy()
+    expect(screen.getByText("237 k/mL")).toBeTruthy()
+    expect(screen.getByText(/42.7/)).toBeTruthy()
+    expect(screen.getByText(/31.4/)).toBeTruthy()
+    expect(within(screen.getByText("Laitière sortie").closest("tr")!).getByText("123 k/mL")).toBeTruthy()
+    expect(within(screen.getByText("Lot clos").closest("tr")!).getByText("351 k/mL")).toBeTruthy()
+    expect(screen.getByText(/Période personnalisée : du 01\/01\/2020 au 31\/12\/2023 inclus/)).toBeTruthy()
+    expect(new URLSearchParams(window.location.search).get("qualiteStart")).toBe("2020-01-01")
+  })
+
+  it("utilise uniquement l’exercice du module et suit son changement sans revenir à aujourd’hui", async () => {
+    const vue = render(createElement(LaitSubTab, { year: 2021 }))
+    await screen.findByText("Analyse courante")
+    fireEvent.change(periode(), { target: { value: "exercice" } })
+    await screen.findByText("Analyse courante")
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/elevage/qualite-lait?start=2021-01-01&end=2021-12-31")
+    vue.rerender(createElement(LaitSubTab, { year: 2022 }))
+    await screen.findByText("Analyse courante")
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/elevage/qualite-lait?start=2022-01-01&end=2022-12-31")
+    expect((periode() as HTMLSelectElement).value).toBe("exercice")
+    expect(screen.getByText(/Exercice 2022 : du 01\/01\/2022 au 31\/12\/2022 inclus/)).toBeTruthy()
+  })
+
+  it("restaure la période personnalisée, puis le retour à 180 jours après remontage", async () => {
+    window.history.replaceState(null, "", "/elevage?sub=qualite&qualitePeriode=personnalisee&qualiteStart=2019-04-01&qualiteEnd=2022-03-31")
+    const vue = render(createElement(LaitSubTab, { year: 2023 }))
+    await screen.findByText("Analyse courante")
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/elevage/qualite-lait?start=2019-04-01&end=2022-03-31")
+    expect((screen.getByLabelText("Début des analyses") as HTMLInputElement).value).toBe("2019-04-01")
+    fireEvent.change(periode(), { target: { value: "180" } })
+    await screen.findByText("Analyse courante")
+    expect(screen.getByText(/Fenêtre glissante de 180 jours : du 23\/05\/2026 au 19\/11\/2026 inclus/)).toBeTruthy()
+    expect(new URLSearchParams(window.location.search).has("qualiteStart")).toBe(false)
+    vue.unmount()
+    render(createElement(LaitSubTab, { year: 2023 }))
+    await screen.findByText("Analyse courante")
+    expect((periode() as HTMLSelectElement).value).toBe("180")
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/elevage/qualite-lait?fenetre=180")
+  })
+
+  it("une période inversée n’émet aucune lecture ; un refus 400 nomme le champ et reste distinct du vide", async () => {
+    render(createElement(LaitSubTab, { year: 2021 }))
+    await screen.findByText("Analyse courante")
+    fireEvent.change(periode(), { target: { value: "personnalisee" } })
+    await screen.findByText("Analyse courante")
+    const appels = fetchMock.mock.calls.length
+    fireEvent.change(screen.getByLabelText("Début des analyses"), { target: { value: "2022-01-01" } })
+    expect(fetchMock).toHaveBeenCalledTimes(appels)
+    expect(screen.getByRole("alert").textContent).toContain("ordre chronologique")
+    expect(screen.queryByText("Analyse courante")).toBeNull()
+    fetchMock.mockResolvedValueOnce(Response.json({ error: "La date est invalide", champ: "end" }, { status: 400 }))
+    fireEvent.change(screen.getByLabelText("Fin des analyses"), { target: { value: "2022-12-31" } })
+    expect((await screen.findByRole("alert")).textContent).toContain("Fin : La date est invalide")
+    expect(screen.queryByText(/Aucune analyse de lait/)).toBeNull()
+  })
+
+  it("une réponse de l’exercice ancien ne remplace pas la fenêtre glissante ni ses bornes", async () => {
+    const ancienne = differee<Response>()
+    render(createElement(LaitSubTab, { year: 2021 }))
+    await screen.findByText("Analyse courante")
+    fetchMock.mockReturnValueOnce(ancienne.promise)
+    fireEvent.change(periode(), { target: { value: "exercice" } })
+    const signal = fetchMock.mock.lastCall?.[1]?.signal
+    fireEvent.change(periode(), { target: { value: "90" } })
+    expect(signal?.aborted).toBe(true)
+    await screen.findByText("Analyse courante")
+    await act(async () => ancienne.resolve(reponse("Ancien exercice")))
+    expect(screen.queryByText("Ancien exercice")).toBeNull()
+    expect(screen.getByText(/Fenêtre glissante de 90 jours/)).toBeTruthy()
   })
 
   it.each(["succès", "échec HTTP", "rejet réseau"])(
@@ -156,7 +253,8 @@ describe("Qualité du lait : chargement, erreurs et absence d’analyses", () =>
     expect(screen.queryByText(/Aucune analyse de lait/)).toBeNull()
   })
 
-  it("annule la lecture et efface les données au changement d’exploitation sans remontage", async () => {
+  it.each(["180", "personnalisee"])("annule la lecture et efface les données au changement d’exploitation sans remontage (%s)", async (mode) => {
+    if (mode === "personnalisee") window.history.replaceState(null, "", "/elevage?sub=qualite&qualitePeriode=personnalisee&qualiteStart=2020-01-01&qualiteEnd=2023-12-31")
     const ancienne = differee<Response>()
     fetchMock.mockReturnValueOnce(ancienne.promise)
     render(createElement(LaitSubTab))

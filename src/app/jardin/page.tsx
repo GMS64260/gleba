@@ -11,6 +11,10 @@ import { AppHeader } from "@/components/shell/AppHeader"
 import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { useAnneePlanification } from "@/hooks/use-annee-planification"
+import { useExploitation } from "@/hooks/use-exploitation"
+import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
+import { urlPlanJardin } from "@/lib/jardin/url-plan"
 import { Box, CalendarClock, ChevronDown, Download, ExternalLink, Image as ImageIcon, Layers as LayersIcon, Map as MapIcon, Maximize2, Minimize2, Move, RotateCcw, Ruler, Upload, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, Copy } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -325,9 +329,19 @@ const empreinteArbre = ARBRE_PERSISTE.empreinte
 export default function JardinPage() {
   return (
     <React.Suspense fallback={<div className="flex items-center justify-center h-screen">Chargement...</div>}>
-      <JardinContent />
+      <JardinExploitation />
     </React.Suspense>
   )
+}
+
+function JardinExploitation() {
+  const { contexte, contexteConfirme } = useExploitation()
+  if (!contexteConfirme || !contexte?.tenantId) {
+    return <div role="status">Chargement de l’exploitation…</div>
+  }
+  // Les données et les éditions en attente ne traversent jamais un changement
+  // d'exploitation, même si les deux exploitations ont des identifiants communs.
+  return <JardinContent key={contexte.tenantId} />
 }
 
 function JardinContent() {
@@ -347,8 +361,29 @@ function JardinContent() {
     return () => observateur.disconnect()
   }, [])
   const searchParams = useSearchParams()
+  const { annee, annees, definirAnnee, pret: anneePrete } = useAnneePlanification()
+  React.useEffect(() => {
+    if (anneePrete && searchParams.get("annee") !== String(annee)) definirAnnee(annee)
+  }, [anneePrete, annee, definirAnnee, searchParams])
   const [parcelles, setParcelles] = React.useState<ParcelleOption[]>([])
-  const [selectedParcelleId, setSelectedParcelleId] = React.useState<string | null>(null)
+  const [selectedParcelleId, setSelectedParcelleId] = React.useState<string | null>(() => {
+    const parcelle = searchParams.get("parcelle")
+    return parcelle && parcelle !== "all" ? parcelle : null
+  })
+  const definirParcelle = (valeur: string | null) => {
+    setSelectedParcelleId(valeur)
+    const params = new URLSearchParams(window.location.search)
+    params.set("parcelle", valeur ?? "all")
+    window.history.replaceState(null, "", `${window.location.pathname}?${params}`)
+  }
+  const vue = React.useMemo(() => ({
+    annee, parcelle: selectedParcelleId, prete: anneePrete,
+    active: false, planches: 0, orphelines: 0,
+  }), [annee, selectedParcelleId, anneePrete])
+  React.useLayoutEffect(() => {
+    vue.active = true
+    return () => { vue.active = false }
+  }, [vue])
   const settings = useSettings(selectedParcelleId)
   const [planches, setPlanches] = React.useState<PlancheWithCulture[]>([])
   const [objets, setObjets] = React.useState<ObjetJardin[]>([])
@@ -377,7 +412,10 @@ function JardinContent() {
     arbres: new Set<string | number>(),
   })
   const [, setEspeces] = React.useState<Espece[]>([])
-  const [isLoading, setIsLoading] = React.useState(true)
+  const [chargementPlanches, setIsLoading] = React.useState(true)
+  const [vueChargee, setVueChargee] = React.useState<typeof vue | null>(null)
+  const [erreurPlanches, setErreurPlanches] = React.useState(false)
+  const isLoading = chargementPlanches || vueChargee !== vue
   const [scale, setScale] = React.useState(16)
   const [isPlanFullscreen, setIsPlanFullscreen] = React.useState(false)
   const [hasChanges, setHasChanges] = React.useState(false)
@@ -435,7 +473,7 @@ function JardinContent() {
     if (urlAutoSelectDone.current) return
     const p = searchParams.get('parcelle')
     if (p) {
-      setSelectedParcelleId(p)
+      setSelectedParcelleId(p === "all" ? null : p)
       urlAutoSelectDone.current = true
       return
     }
@@ -524,11 +562,15 @@ function JardinContent() {
 
   // Charger les planches
   const fetchPlanches = React.useCallback(async () => {
+    if (!anneePrete || !vue.active) return
+    const tour = ++vue.planches
+    setIsLoading(true)
+    setErreurPlanches(false)
     try {
-      const params = selectedParcelleId ? `?parcelle=${selectedParcelleId}` : ''
-      const response = await fetch(`/api/jardin${params}`)
+      const response = await fetch(urlPlanJardin(annee, selectedParcelleId))
       if (!response.ok) throw new Error("Erreur chargement")
       let data: PlancheWithCulture[] = await response.json()
+      if (!vue.active || tour !== vue.planches) return
 
       // Capturé avant l'auto-positionnement local : les anciennes planches
       // sans coordonnées seront persistées au prochain vrai geste.
@@ -568,6 +610,7 @@ function JardinContent() {
       planchesSauveesRef.current = fusion.etatSauve
       planchesHorsVueRef.current = fusion.horsVue
       setPlanches(fusion.entites)
+      setVueChargee(vue)
       // QA Camille 2026-05-15 — bonus : ne plus marquer `hasChanges`
       // sur un simple repositionnement auto au chargement. Avant,
       // ouvrir /jardin déclenchait un PUT cascade sur toutes les
@@ -576,15 +619,17 @@ function JardinContent() {
       // persisté qu'au prochain mouvement réel (handleSave).
       // if (needsPositioning) marquerChangement()
     } catch {
+      if (!vue.active || tour !== vue.planches) return
+      setErreurPlanches(true)
       toastRef.current({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de charger le plan du jardin"
       })
     } finally {
-      setIsLoading(false)
+      if (vue.active && tour === vue.planches) setIsLoading(false)
     }
-  }, [selectedParcelleId])
+  }, [annee, anneePrete, selectedParcelleId, vue])
 
   // Charger les objets du jardin
   const fetchObjets = React.useCallback(async () => {
@@ -714,10 +759,13 @@ function JardinContent() {
   const [planchesSansParcelle, setPlanchesSansParcelle] = React.useState<{ id: string; nom: string }[]>([])
   const [rattachementEnCours, setRattachementEnCours] = React.useState(false)
   const fetchPlanchesSansParcelle = React.useCallback(async () => {
+    if (!anneePrete || !vue.active) return
+    const tour = ++vue.orphelines
     try {
-      const response = await fetch("/api/jardin?parcelle=none")
+      const response = await fetch(urlPlanJardin(annee, "none"))
       if (!response.ok) return
       const data = await response.json()
+      if (!vue.active || tour !== vue.orphelines) return
       setPlanchesSansParcelle(
         Array.isArray(data)
           ? data.map((p: { id: string; nom: string }) => ({ id: p.id, nom: p.nom }))
@@ -727,7 +775,7 @@ function JardinContent() {
       // Silencieux : sans ce décompte le plan reste utilisable, il perd
       // seulement son explication.
     }
-  }, [])
+  }, [annee, anneePrete, vue])
 
   /** Rattache d'un geste les planches orphelines à la parcelle affichée. */
   const rattacherPlanchesSansParcelle = async () => {
@@ -1136,7 +1184,7 @@ function JardinContent() {
   }, [layers.associations, reglesAssociations, planchesAffichees])
 
   // Données de l'element selectionne
-  const selectedPlancheData = planches.find(p => p.id === selectedPlanche)
+  const selectedPlancheData = isLoading ? undefined : planches.find(p => p.id === selectedPlanche)
   const selectedObjetData = objets.find(o => o.id === selectedObjet)
   const selectedArbreData = arbres.find(a => a.id === selectedArbre)
   const nomSelection = selectedPlancheData?.nom || selectedPlancheData?.id || selectedObjetData?.nom || (selectedObjetData ? labelTypeObjet(selectedObjetData.type) : null) || selectedArbreData?.nom || (selection.length > 1 ? selection.length + ' éléments' : 'Sélection')
@@ -1541,7 +1589,7 @@ function JardinContent() {
     if (selectedParcelleId === null || filtreCourant === parcelleGeoId) {
       return planches.filter(p => (p.parcelleGeoId ?? null) === parcelleGeoId)
     }
-    const response = await fetch(`/api/jardin?parcelle=${parcelleGeoId ?? "none"}`)
+    const response = await fetch(urlPlanJardin(annee, parcelleGeoId ?? "none"))
     if (!response.ok) return []
     const data: PlancheWithCulture[] = await response.json()
     return data
@@ -2259,6 +2307,7 @@ function JardinContent() {
   // Légende des couleurs - toutes les cultures
   const legendItems = React.useMemo(() => {
     const items = new Map<string, { especeId: string; color: string; name: string; count: number }>()
+    if (isLoading) return []
     planches.forEach(p => {
       p.cultures.forEach(c => {
         const espece = c.espece
@@ -2272,7 +2321,7 @@ function JardinContent() {
       })
     })
     return Array.from(items.values()).sort((a, b) => b.count - a.count)
-  }, [planches])
+  }, [planches, isLoading])
 
   // Surbrillance depuis la légende : planches portant chaque espèce
   const planchesParEspece = React.useMemo(() => {
@@ -2318,10 +2367,14 @@ function JardinContent() {
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
       <AppHeader />
-      <PageEntete ref={entetePlanRef} id="jardin" actions={parcelles.length > 0 && (
+      <PageEntete ref={entetePlanRef} id="jardin"
+        description={`Cultures en cours de l’année ${annee} et vivaces`}
+        actions={<>
+          <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
+          {parcelles.length > 0 && (
                 <Select
                   value={selectedParcelleId ?? "all"}
-                  onValueChange={(v) => setSelectedParcelleId(v === "all" ? null : v === "none" ? "none" : v)}
+                  onValueChange={(v) => definirParcelle(v === "all" ? null : v)}
                 >
                   <SelectTrigger className="w-full min-w-0 sm:w-[240px]" aria-label="Parcelle du plan">
                     <SelectValue placeholder="Toutes les parcelles" />
@@ -2336,7 +2389,8 @@ function JardinContent() {
                     <SelectItem value="none">Non assigné</SelectItem>
                   </SelectContent>
                 </Select>
-              )} />
+              )}
+        </>} />
       <div ref={outilsPlanRef} className="sticky top-[var(--app-header-visible-h,var(--app-header-h,0px))] z-30 border-b border-lin bg-craie/95 backdrop-blur-sm">
         <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-end gap-3 px-4 py-3 lg:px-6">
 
@@ -2659,7 +2713,12 @@ function JardinContent() {
                   </button>
                 </div>
               )}
-              {isLoading ? (
+              {erreurPlanches ? (
+                <div role="alert" className="p-4">
+                  Impossible de charger le plan du jardin.
+                  <Button variant="outline" onClick={fetchPlanches}>Réessayer</Button>
+                </div>
+              ) : isLoading ? (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
                   Chargement...
                 </div>
@@ -2761,7 +2820,7 @@ function JardinContent() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setSelectedParcelleId(null)}
+                      onClick={() => definirParcelle(null)}
                       disabled={rattachementEnCours}
                     >
                       Voir toutes les parcelles
@@ -3008,7 +3067,7 @@ function JardinContent() {
                         élément du plan saisi comme planche, faute de type bâti
                         à l'époque. On propose de la reclasser sans perdre son
                         placement.
-                        Attention : `cultures` ne porte ici que l'année courante
+                        Attention : `cultures` ne porte ici que l'année choisie
                         non terminée et les vivaces en place (cf. /api/jardin),
                         ce n'est donc PAS une preuve d'absence d'historique. L'autorité reste la route
                         de conversion, qui refuse dès qu'une culture, une

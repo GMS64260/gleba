@@ -176,7 +176,7 @@ export function ProductionTab({ year }: { year?: number } = {}) {
         <OeufsSubTab year={year} />
       </TabsContent>
       <TabsContent value="lait">
-        <LaitSubTab />
+        <LaitSubTab year={year} />
       </TabsContent>
       <TabsContent value="ruche">
         <ProduitsRucheSubTab year={year} />

@@ -7,8 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-
-const GEO_API_URL = 'https://geo.api.gouv.fr/communes'
+import { GeoApiHttpError, rechercherCommunes } from '@/lib/carte/communes'
 
 // GET /api/carte/communes?q=Besançon
 export async function GET(request: NextRequest) {
@@ -32,35 +31,15 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Construction de l'URL geo.api.gouv.fr
-    const params = new URLSearchParams({
-      nom: q.trim(),
-      fields: 'nom,code,codesPostaux,centre',
-      limit: '10',
-    })
-
-    const url = `${GEO_API_URL}?${params.toString()}`
-
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-      },
-      // Timeout de 10 secondes
-      signal: AbortSignal.timeout(10000),
-    })
-
-    if (!response.ok) {
-      console.error(`GET /api/carte/communes error: API Geo erreur ${response.status}:`, await response.text().catch(() => ''))
+    const communes = await rechercherCommunes(q)
+    return NextResponse.json(communes)
+  } catch (err) {
+    if (err instanceof GeoApiHttpError) {
       return NextResponse.json(
         { error: 'L\'API Geo est temporairement indisponible' },
         { status: 502 }
       )
     }
-
-    const communes = await response.json()
-
-    return NextResponse.json(communes)
-  } catch (err) {
     // Gestion du timeout
     if (err instanceof DOMException && err.name === 'TimeoutError') {
       return NextResponse.json(
