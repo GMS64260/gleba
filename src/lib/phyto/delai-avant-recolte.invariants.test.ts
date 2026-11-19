@@ -23,7 +23,7 @@ describe(`DAR connu, inconnu et geste sans produit — graine ${GRAINE}`, () => 
       const inconnu = verdictDar({ ...application, dar: resoudreDar(null, null) }, calendrier)
       expect(inconnu.niveau).toBe('informatif')
       if (inconnu.niveau === 'informatif') {
-        expect(inconnu.message).toContain('conditions d’approbation')
+        expect(inconnu.message).toContain('délai inconnu pour')
         expect(inconnu.message).not.toMatch(/AMM|3 jours/)
       }
       expect(verdictDar({ ...application, dar: resoudreDar(0, entier(100)) }, calendrier)).toEqual({ niveau: 'rien' })

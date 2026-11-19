@@ -53,6 +53,6 @@ describe('bilan du lait : pièces non ventilables', () => {
     s.atelier[1].factureId = 12
     const ecartees: PieceEcarteeFromage[] = []
     projeterVentesFromage(s, 'EUR', undefined, false, ecartees)
-    expect(ecartees.map((p) => [p.numero, p.motif])).toEqual([['F-2026-0012', expect.stringContaining('autre devise')]])
+    expect(ecartees.map((p) => [p.numero, p.motif])).toEqual([['F-2026-0012', expect.stringContaining('Devise de la pièce')]])
   })
 })

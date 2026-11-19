@@ -814,9 +814,9 @@ function PhytoTab({
                         {entry.darAConfirmer && (
                           <span
                             className="ml-1 text-xs text-amber-700"
-                            title="Délai repris du catalogue Gleba : vérifiez-le sur l'étiquette et confirmez-le en modifiant le traitement."
+                            title="Délai repris du catalogue Gleba, non opposable à la vente : vérifiez-le sur l'étiquette et confirmez-le en modifiant le traitement."
                           >
-                            à confirmer
+                            indicatif, à confirmer
                           </span>
                         )}
                       </span>

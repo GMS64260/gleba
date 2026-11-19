@@ -44,11 +44,9 @@ describe('délai avant récolte des légumes', () => {
     expect(generique.niveau).toBe('informatif')
     expect(generique.rappels[0]).toContain('Produit X')
     expect(generique.rappels[0]).toContain('le catalogue Gleba indique 21 jours à titre indicatif')
-    // Ligne ancienne : 21 recopié du catalogue par l'API. Le registre publie
-    // 21 jours : le contrôle de vente lit la même valeur et dit d'où elle vient.
+    // Ligne ancienne : 21 recopié du catalogue par l'API, marqué indicatif.
     const ancien = verdictDarLot(lot, [traitement({ dar: 21, darIndicatif: true, produitPhytoRef: ref })])
-    expect(ancien.niveau).toBe('bloquant')
-    expect(ancien.blocages[0]).toContain('corrigez-le sur le traitement')
+    expect(ancien.niveau).toBe('informatif')
     // Le même délai saisi par l'exploitant bloque la vente.
     expect(verdictDarLot(lot, [traitement({ dar: 21, darIndicatif: false, produitPhytoRef: ref })]).niveau).toBe('bloquant')
     // Dans les 3 jours, le défaut légal bloque quelle que soit l'indication.
@@ -87,14 +85,14 @@ describe('délai avant récolte des légumes', () => {
       const messages = avertissementsDarLot(lot, [veille({ dar: null })])
       expect(messages).toHaveLength(1)
       expect(messages[0]).toContain('DAR non renseigné pour Fongicide X')
-      expect(messages[0]).toContain('arrêté du 4 mai 2017, art. 3, I')
+      expect(messages[0]).toContain('une récolte dans les 3 jours ne peut pas être mise en vente')
       expect(messages[0]).toContain('avant le 12/06/2026')
     })
 
     it('DAR inconnu, défaut passé : rappelle de renseigner le délai de l’AMM, sans fausse alerte de délai', () => {
       const messages = avertissementsDarLot(lot, [traitement({ dar: null, date: j('2026-06-01') })])
       expect(messages).toHaveLength(1)
-      expect(messages[0]).toContain('le délai par défaut de 3 jours est passé')
+      expect(messages[0]).toContain('vérifiez sur l’étiquette')
     })
 
     it('DAR inconnu au-delà de l’horizon de rappel : plus d’avertissement', () => {
@@ -104,7 +102,7 @@ describe('délai avant récolte des légumes', () => {
     it('zéro saisi et récolte le lendemain : avertit, le zéro ne vaut que si l’AMM le prévoit', () => {
       const messages = avertissementsDarLot(lot, [veille({ dar: 0 })])
       expect(messages).toHaveLength(1)
-      expect(messages[0]).toContain('Le délai saisi de 0 jour est inférieur au délai par défaut de 3 jours')
+      expect(messages[0]).toContain('Un délai de 0 jour ne vaut que si l’étiquette du produit le prévoit')
     })
 
     it('zéro du catalogue : ce n’est pas l’AMM, le défaut légal de 3 jours s’applique', () => {
@@ -126,7 +124,7 @@ describe('délai avant récolte des légumes', () => {
     it('CR-DAR-01 : une substance de base sans délai n’est plus muette, sans se voir opposer les 3 jours', () => {
       const messages = avertissementsDarLot(lot, [veille({ dar: null, produitPhytoRef: { darJours: null, nomCommercial: 'Purin d’ortie', classification: 'Substance de base / PNPP' } })])
       expect(messages).toHaveLength(1)
-      expect(messages[0]).toContain('délai inconnu, vérifiez les conditions d’approbation de Purin d’ortie')
+      expect(messages[0]).toContain('délai inconnu pour Purin d’ortie')
       expect(messages[0]).not.toMatch(/3 jours|AMM/)
     })
 
@@ -134,7 +132,7 @@ describe('délai avant récolte des légumes', () => {
       const prele = { dar: null, produitPhyto: 'Décoction de prêle', produitPhytoRef: null }
       const messages = avertissementsDarLot(lot, [veille({ ...prele, natureProduit: 'substance_base' })])
       expect(messages).toHaveLength(1)
-      expect(messages[0]).toContain('délai inconnu, vérifiez les conditions d’approbation de Décoction de prêle')
+      expect(messages[0]).toContain('délai inconnu pour Décoction de prêle')
       expect(messages[0]).not.toMatch(/3 jours|AMM/)
       // Sans nature déclarée, le même nom reste un produit inconnu : défaut légal de l'AMM.
       expect(avertissementsDarLot(lot, [veille(prele)])[0]).toMatch(/3 jours/)

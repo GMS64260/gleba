@@ -72,7 +72,7 @@ describe.skipIf(!active)('CR-DAR-01 : traitement saisi librement, puis récolte'
 
     const avertissements = await f.recolter()
     expect(avertissements).toHaveLength(1)
-    expect(avertissements[0]).toContain('délai inconnu, vérifiez les conditions d’approbation de Décoction de prêle')
+    expect(avertissements[0]).toContain('délai inconnu pour Décoction de prêle')
     expect(avertissements[0]).not.toMatch(/AMM|3 jours/)
   })
 
@@ -108,7 +108,7 @@ describe.skipIf(!active)('CR-DAR-01 : traitement saisi librement, puis récolte'
     const correction = await modifierIntervention(json('PATCH', '/api/interventions', { id, natureProduit: 'substance_base', motif: 'Nature précisée' }))
     expect(correction.status).toBe(200)
     expect(await prisma.intervention.findFirst({ where: { id, userId: f.userId }, select: { natureProduit: true } })).toEqual({ natureProduit: 'substance_base' })
-    expect((await f.recolter())[0]).toContain('conditions d’approbation')
+    expect((await f.recolter())[0]).toContain('délai inconnu pour')
   })
 
   it('refus : nature inconnue, ou substance de base avec un numéro d’AMM (création et correction)', async () => {

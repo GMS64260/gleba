@@ -285,7 +285,7 @@ export function evaluerPairesAssociations<A extends AssociationEvaluable>(
       }
     }
   }
-  return Array.from(parPaire.values()).map(({ precision: _precision, ...verdict }) => verdict)
+  return Array.from(parPaire.values()).map(({ alerte, association, details, justification }) => ({ alerte, association, details, justification }))
 }
 
 /**

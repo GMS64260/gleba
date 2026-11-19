@@ -21,7 +21,7 @@ export type PeriodeVentesFromage = { debut: Date; fin: Date }
 /** Pièce dont les recettes n'ont pas pu être réparties : le bilan s'affiche sans elle et la nomme. */
 export type PieceEcarteeFromage = { factureId: number; numero: string | null; type: string; motif: string }
 const MOTIF_VENTILATION = 'Recettes non réparties entre les lots de fromage : le total de la pièce diffère du détail des ventes (port, remise), ou un avoir porte sur plusieurs lots ou unités.'
-const MOTIF_DEVISE = 'Pièce émise dans une autre devise que celle de l’exploitation.'
+const MOTIF_DEVISE = 'Devise de la pièce différente de celle de l’exploitation, ou inconnue.'
 const active = (f: FactureFromage) => !['brouillon', 'annulee'].includes(f.statut)
 
 /** Recettes à la date de la vente atelier ou de la pièce ; quantités à la date

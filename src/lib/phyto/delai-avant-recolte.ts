@@ -103,7 +103,7 @@ export const HORIZON_DAR_INCONNU_JOURS = 60
  * défaut de 3 jours (arrêté du 4 mai 2017, art. 3, I).
  */
 export type DarResolu =
-  | { etat: 'connu'; jours: number; source: 'saisi'; /** Valeur reprise du catalogue sur une ligne ancienne. */ aConfirmer?: boolean }
+  | { etat: 'connu'; jours: number; source: 'saisi' }
   | { etat: 'inconnu'; indicatifJours?: number }
 
 const valide = (v: number | null | undefined): v is number => v != null && Number.isFinite(v) && v >= 0
@@ -115,22 +115,15 @@ export function resoudreDar(saisi: number | null | undefined, referentiel: numbe
 }
 
 /**
- * Délai d'une intervention : celui qui est enregistré sur la ligne, le même
- * que publie le registre phyto. `darIndicatif` marque les lignes ANCIENNES
- * dont le champ `dar` avait été recopié du catalogue par l'API (avant le
- * 2026-11-13, POST /api/interventions écrivait `dar = saisi ?? référentiel`),
- * sans qu'on puisse les distinguer d'une saisie de la même valeur.
- *
- * Contre-revue du 2026-11-19 : ces lignes étaient lues comme « délai inconnu »
- * par le contrôle de vente alors que le registre, son export et l'onglet Santé
- * publiaient la valeur comme déclarée (hydroxyde de cuivre, 14 jours au
- * registre, vente acceptée à J+5). Une seule lecture désormais : la valeur de
- * la ligne s'applique, signalée « à confirmer » ; l'exploitant la corrige ou
- * la confirme sur le traitement.
+ * Délai d'une intervention. `darIndicatif` marque les lignes ANCIENNES dont le
+ * champ `dar` avait été recopié du catalogue par l'API (avant le 2026-11-13,
+ * POST /api/interventions écrivait `dar = saisi ?? référentiel`) : leur valeur
+ * n'est pas une saisie de l'exploitant, elle reste une indication. Le registre
+ * phyto l'affiche de la même façon, « indicatif, à confirmer » (`darAConfirmer`),
+ * et non plus comme un délai déclaré.
  */
 export function darIntervention(i: { dar: number | null; darIndicatif?: boolean | null; produitPhytoRef: { darJours?: number | null } | null }): DarResolu {
-  const resolu = resoudreDar(i.dar, i.produitPhytoRef?.darJours)
-  return i.darIndicatif && resolu.etat === 'connu' ? { ...resolu, aConfirmer: true } : resolu
+  return i.darIndicatif ? resoudreDar(null, i.produitPhytoRef?.darJours ?? i.dar) : resoudreDar(i.dar, i.produitPhytoRef?.darJours)
 }
 
 /**
@@ -190,8 +183,9 @@ export type VerdictDar =
   | { niveau: 'rien' }
 
 const pluriel = (n: number) => `${n} jour${n > 1 ? 's' : ''}`
-const REFERENCE = 'arrêté du 4 mai 2017, art. 3, I'
 const RIEN: VerdictDar = { niveau: 'rien' }
+// Messages : deux phrases au plus, sans référence de texte (le fondement
+// légal est documenté en tête de ce module, pas à l'écran).
 const SUITE_BLOCAGE = 'La récolte reste enregistrée, mais elle ne peut pas être mise en vente.'
 
 /**
@@ -212,8 +206,7 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
     const { jours } = a.dar
     const fin = cal.ajouterJours(t, jours)
     if (r < fin) {
-      const aConfirmer = a.dar.aConfirmer ? ' Ce délai vient du catalogue Gleba : s’il diffère de l’étiquette, corrigez-le sur le traitement.' : ''
-      const constat = `DAR : récolte du ${recolte} avant la fin du délai ${a.dar.aConfirmer ? 'enregistré' : 'saisi'} pour ${produit} (${pluriel(jours)} après le traitement du ${cal.formater(t)}, soit jusqu’au ${cal.formater(fin)}).${aConfirmer}`
+      const constat = `DAR : récolte du ${recolte} avant la fin du délai saisi pour ${produit} (${pluriel(jours)} après le traitement du ${cal.formater(t)}, soit jusqu’au ${cal.formater(fin)}).`
       // Geste sans produit : aucun délai légal n'existe ; celui que
       // l'exploitant s'est fixé reste un rappel (pas de blocage hors loi).
       if (a.nature === 'sans_produit') return { niveau: 'informatif', message: `${constat} Vérifiez cette récolte avant de la commercialiser.` }
@@ -235,7 +228,7 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
     // contraires » de l'AMM. Un délai déclaré plus court est présumé venir de
     // l'AMM, que Gleba ne peut pas vérifier : rappel, pas de blocage.
     if (a.nature === 'amm' && jours < DAR_DEFAUT_LEGAL_JOURS && r < cal.ajouterJours(t, DAR_DEFAUT_LEGAL_JOURS)) {
-      return { niveau: 'informatif', message: `DAR : récolte du ${recolte}, moins de ${DAR_DEFAUT_LEGAL_JOURS} jours après ${produit} (traitement du ${cal.formater(t)}). Le délai saisi de ${pluriel(jours)} est inférieur au délai par défaut de ${DAR_DEFAUT_LEGAL_JOURS} jours (${REFERENCE}) : il ne vaut que si l’AMM du produit le prévoit pour cet usage. Vérifiez-la avant de commercialiser.` }
+      return { niveau: 'informatif', message: `DAR : récolte du ${recolte}, moins de ${DAR_DEFAUT_LEGAL_JOURS} jours après ${produit} (traitement du ${cal.formater(t)}). Un délai de ${pluriel(jours)} ne vaut que si l’étiquette du produit le prévoit pour cet usage.` }
     }
     return RIEN
   }
@@ -260,9 +253,9 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
     // purin) : aucune indication de délai et aucun texte, donc rien.
     if (indicatif === 0 || r >= finRappel) return RIEN
     const indication = finIndicative != null
-      ? ` Le catalogue Gleba indique ${pluriel(indicatif!)} à titre indicatif (soit jusqu’au ${cal.formater(finIndicative)}) : c’est un ordre de grandeur, pas les conditions d’approbation pour votre usage.`
+      ? ` Le catalogue Gleba indique ${pluriel(indicatif!)} à titre indicatif (soit jusqu’au ${cal.formater(finIndicative)}).`
       : ''
-    return { niveau: 'informatif', message: `DAR : délai inconnu, vérifiez les conditions d’approbation de ${produit} (traitement du ${cal.formater(t)}, récolte du ${recolte}). Une substance de base s’emploie dans les conditions de son approbation, qui peuvent fixer un délai avant récolte selon l’usage.${indication} Renseignez ce délai sur le traitement, ou 0 s’il n’y en a pas (cas d’un biostimulant).` }
+    return { niveau: 'informatif', message: `DAR : délai inconnu pour ${produit} (traitement du ${cal.formater(t)}, récolte du ${recolte}).${indication} Renseignez-le sur le traitement, ou 0 s’il n’y en a pas.` }
   }
   // Arrêté du 4 mai 2017, art. 3, I : « Sauf dispositions contraires prévues
   // par les décisions d'autorisation de mise sur le marché, l'utilisation des
@@ -272,7 +265,7 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
   // contraire » de l'AMM : le défaut légal s'applique tant que rien n'est saisi.
   const finDefaut = cal.ajouterJours(t, DAR_DEFAUT_LEGAL_JOURS)
   if (r < finDefaut) {
-    return bloquant(`DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : sauf disposition contraire de son AMM, un produit phytopharmaceutique ne s’utilise pas dans les ${DAR_DEFAUT_LEGAL_JOURS} jours précédant la récolte (${REFERENCE}). Récolte du ${recolte}, avant le ${cal.formater(finDefaut)}. ${SUITE_BLOCAGE} Si l’AMM prévoit un délai plus court, renseignez-le sur le traitement.`, finDefaut, 'defaut_legal')
+    return bloquant(`DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : sans délai saisi, une récolte dans les ${DAR_DEFAUT_LEGAL_JOURS} jours ne peut pas être mise en vente (récolte du ${recolte}, avant le ${cal.formater(finDefaut)}). Si l’étiquette prévoit un délai plus court, renseignez-le sur le traitement.`, finDefaut, 'defaut_legal')
   }
   // Au-delà des 3 jours, plus aucun délai légal connu de Gleba ne s'oppose à
   // la vente : l'AMM peut en imposer un plus long, que seul l'exploitant
@@ -280,9 +273,9 @@ export function verdictDar(a: ApplicationDar, cal: CalendrierDar): VerdictDar {
   // l'indication du catalogue si elle est plus longue).
   if (r < finRappel) {
     if (finIndicative != null && r < finIndicative) {
-      return { niveau: 'informatif', message: `DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : le délai par défaut de ${DAR_DEFAUT_LEGAL_JOURS} jours est passé, mais le catalogue Gleba indique ${pluriel(indicatif!)} à titre indicatif (soit jusqu’au ${cal.formater(finIndicative)}) et la récolte du ${recolte} tombe avant. Ce n’est qu’un ordre de grandeur : le délai qui s’impose est celui de l’AMM, sur l’étiquette du produit. Vérifiez-le et renseignez-le sur le traitement avant de commercialiser.` }
+      return { niveau: 'informatif', message: `DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : le catalogue Gleba indique ${pluriel(indicatif!)} à titre indicatif (soit jusqu’au ${cal.formater(finIndicative)}) et la récolte du ${recolte} tombe avant. Vérifiez l’étiquette et renseignez le délai sur le traitement.` }
     }
-    return { niveau: 'informatif', message: `DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : le délai par défaut de ${DAR_DEFAUT_LEGAL_JOURS} jours est passé, mais l’AMM peut imposer un délai plus long. Renseignez le DAR du produit pour vérifier la récolte du ${recolte}.` }
+    return { niveau: 'informatif', message: `DAR non renseigné pour ${produit} (traitement du ${cal.formater(t)}) : vérifiez sur l’étiquette que la récolte du ${recolte} respecte le délai, et renseignez-le sur le traitement.` }
   }
   return RIEN
 }
