@@ -88,7 +88,8 @@ export async function controlerOccupationModification(
   })
   const placeInchangee = avant.terminee == null && champsPlace.every((c) => (apres[c] ?? null) === (avant[c] ?? null))
   if (refus && options.faitAccompli && placeInchangee) {
-    warnings.push(`Enregistré. Planche ${planche.nom} : ${refus.message[0].toLowerCase()}${refus.message.slice(1)} à cette date. Si la culture précédente est finie, terminez-la ; sinon réduisez les rangs de l'une des deux.`)
+    const motif = refus.message ?? 'Largeur insuffisante'
+    warnings.push(`Enregistré. Planche ${planche.nom} : ${motif[0].toLowerCase()}${motif.slice(1)} à cette date. Si la culture précédente est finie, terminez-la ; sinon réduisez les rangs de l'une des deux.`)
     return { warnings, refus: null }
   }
   return { warnings, refus: refus ? {

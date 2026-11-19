@@ -43,6 +43,8 @@ import {
 import { symboleDevise, formatMontantDevise } from "@/lib/format-utils"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { lireArbreOuverture, operationsDeLArbre } from "@/lib/verger/lien-operations-arbre"
+import { DelaiTraitementDialog } from "@/components/verger/DelaiTraitementDialog"
+import { delaiTraitementASaisir, type OperationDelai } from "@/lib/verger/delai-traitement"
 
 const FILTER_STATES = [
   { value: "all", label: "Toutes", icon: Wrench },
@@ -73,6 +75,8 @@ interface OperationArbre {
   type: string
   description: string | null
   produit: string | null
+  dar?: number | null
+  natureProduit?: string | null
   quantite: number | null
   unite: string | null
   cout: number | null
@@ -87,6 +91,7 @@ interface OperationArbre {
 
 function createColumns(
   onToggleFait: (op: OperationArbre) => void,
+  onDelai: (op: OperationArbre) => void,
   devise: import("@/lib/territoires").Devise | null
 ): ColumnDef<OperationArbre>[] {
   return [
@@ -187,6 +192,27 @@ function createColumns(
       accessorKey: "produit",
       header: "Produit",
       cell: ({ getValue }) => getValue() || "-",
+    },
+    {
+      id: "dar",
+      header: "Délai avant récolte",
+      cell: ({ row }) => {
+        const op = row.original
+        if (op.type !== "traitement") return "-"
+        return (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelai(op)
+            }}
+          >
+            {op.dar != null ? `${op.dar} j` : delaiTraitementASaisir(op) ? "À saisir" : "Aucun"}
+          </Button>
+        )
+      },
     },
     {
       id: "quantiteUnite",
@@ -311,6 +337,8 @@ export function OperationsTab({ annee }: OperationsTabProps) {
 
   const coutAnnee = resumeCoutOperations(dataArbre)
 
+  const [delaiOp, setDelaiOp] = React.useState<OperationDelai | null>(null)
+
   const handleToggleFait = React.useCallback(
     async (op: OperationArbre) => {
       // Feedback Marc 2026-05-16 — V2 Bug 2 : la précédente version
@@ -343,6 +371,8 @@ export function OperationsTab({ annee }: OperationsTabProps) {
         }
         const updated = (await res.json().catch(() => null)) as OperationArbre | null
         const suivante: OperationArbre = { ...op, ...(updated ?? {}), fait: updated?.fait ?? nextFait }
+        // Traitement coché « fait » sans délai : on le demande sur place.
+        if (suivante.fait && delaiTraitementASaisir(suivante)) setDelaiOp(suivante)
         // QA 2026-10-19 — réalisée aujourd'hui, une opération prévue une autre
         // année change d'exercice : elle quitte la liste, et on le dit.
         const anneeSuivante = anneeOperationArbre(suivante)
@@ -365,7 +395,7 @@ export function OperationsTab({ annee }: OperationsTabProps) {
     [toast, annee]
   )
 
-  const columns = React.useMemo(() => createColumns(handleToggleFait, devise), [handleToggleFait, devise])
+  const columns = React.useMemo(() => createColumns(handleToggleFait, setDelaiOp, devise), [handleToggleFait, devise])
 
   const resetForm = () => {
     setNewOperation({
@@ -505,6 +535,11 @@ export function OperationsTab({ annee }: OperationsTabProps) {
 
   return (
     <div className="space-y-4">
+      <DelaiTraitementDialog
+        operation={delaiOp}
+        onClose={() => setDelaiOp(null)}
+        onSaved={(maj) => setData((prev) => prev.map((o) => (o.id === maj.id ? { ...o, ...maj } : o)))}
+      />
       {/* Stats cout de l'année (QA 2026-10-19 : suit le sélecteur d'année) */}
       <Card>
         <CardContent className="pt-4 pb-3">
