@@ -14,7 +14,7 @@
  *  - g puis v  → /arbres
  *  - g puis e  → /elevage
  *  - g puis c  → /comptabilite
- *  - n        → bouton "Nouveau" contextuel (déclenche un event custom)
+ *  - n        → palette sur les actions existantes, recherche vidée
  *  - ?        → /raccourcis
  */
 
@@ -91,10 +91,11 @@ export function GlobalSearch() {
           router.push("/raccourcis")
           return
         }
-        // n → event "global:new" (les pages s'y abonnent)
-        if (e.key === "n" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // n → actions existantes, sans recherche ni création automatique.
+        if (e.key === "n" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.isComposing) {
           e.preventDefault()
-          window.dispatchEvent(new CustomEvent("gleba:new"))
+          setQuery("")
+          ouvrirPalette()
           return
         }
         if (e.key === "g") {
