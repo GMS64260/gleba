@@ -16,6 +16,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 import { CHAMPS_DE_SUIVI_SAISIS_VENTE, type ChampSuiviSaisiVente } from './ecriture-derivee'
 
 /** Source affichée → `sourceType` de son miroir de vente (`auto-compta.ts`). */
@@ -64,6 +65,7 @@ function suiviDe(ecriture: Record<string, unknown>): EcritureDeLigne['suivi'] {
 export async function chargerSuiviDesSources(
   userId: string,
   cibles: { sources?: Array<{ sourceType: string; sourceId: number }>; ids?: number[] },
+  db: Pick<Prisma.TransactionClient, 'venteManuelle'> = prisma,
 ): Promise<SuiviDesSources> {
   const ids = [...new Set(cibles.ids ?? [])]
   const idsParType = new Map<string, number[]>()
@@ -79,7 +81,7 @@ export async function chargerSuiviDesSources(
   const resultat: SuiviDesSources = { parSource: new Map(), parId: new Map() }
   if (cles.length === 0) return resultat
 
-  const miroirs = await prisma.venteManuelle.findMany({
+  const miroirs = await db.venteManuelle.findMany({
     where: { userId, auto: true, OR: cles },
     select: { id: true, sourceType: true, sourceId: true, paye: true, ...SELECT_SUIVI },
   })

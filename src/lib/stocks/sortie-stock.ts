@@ -9,14 +9,13 @@
  * `UserStockEspece`, sinon catalogue) et fige celle des récoltes ; le stock net
  * (`calculerStocksNet`) la portait déjà, l'écran et la route l'ignoraient.
  *
- * Une `Consommation` n'a pas de colonne d'unité : elle se compte dans l'unité
- * du stock de son espèce, celle que `calculerStocksNet` lui retranche. C'est
- * la même convention que `UserStockEspece.inventaire` (« dans l'unité de
- * l'espèce »). Ce module est la seule source de cette unité pour le stock net,
- * la route `/api/consommations` et l'assistant (`create_consommation`).
+ * Ce module décide de l’unité à la création pour la route et l’assistant.
+ * Elle est persistée sur Consommation ; une lecture ultérieure ne la redéduit
+ * jamais du stock courant. Les anciennes lignes NULL restent interprétées en kg.
  */
 
 import prisma from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import {
   libelleUniteQuantite,
@@ -33,14 +32,15 @@ import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/ren
 export async function chargerUnitesStock(
   userId: string,
   especeIds: string[],
+  db: Pick<Prisma.TransactionClient, 'espece' | 'userStockEspece'> = prisma,
 ): Promise<Map<string, UniteQuantite>> {
   if (especeIds.length === 0) return new Map()
   const [especes, surcharges] = await Promise.all([
-    prisma.espece.findMany({
+    db.espece.findMany({
       where: { id: { in: especeIds } },
       select: { id: true, rendement: true, uniteRendement: true },
     }),
-    chargerSurchargesRendement(userId, especeIds),
+    chargerSurchargesRendement(userId, especeIds, db),
   ])
   return new Map(
     especes.map((e) => [

@@ -1,3 +1,5 @@
+import type { Devise } from '@/lib/territoires'
+
 /**
  * Créances impayées — source unique de l'onglet Comptabilité > Factures >
  * Impayées.
@@ -28,6 +30,13 @@ export interface Impayee {
   montant: number
   client: string | null
   numero?: string
+  /** Identité figée des factures : la devise courante ne peut pas la remplacer. */
+  emetteurSnapshot?: unknown
+  /**
+   * Devise figée d'une vente manuelle (`monnaieVente`) ; `null` : devise
+   * historique inconnue. Absente : la devise courante s'applique.
+   */
+  monnaie?: Devise | null
 }
 
 /** Une facture telle que renvoyée par GET /api/comptabilite/factures. */
@@ -42,6 +51,7 @@ export interface FactureImpayee {
   totalTTC: number
   montantRegle?: number | null
   factureOrigineId?: number | null
+  emetteurSnapshot?: unknown
 }
 
 /** Une vente de produit telle que renvoyée par GET /api/elevage/ventes. */
@@ -64,9 +74,12 @@ export interface VenteManuelleImpayee {
   description: string
   montant: number
   montantRegle?: number | null
+  resteAPayer?: number | null
   client?: string | null
   auto?: boolean
   sourceType?: string | null
+  /** Devise figée projetée par GET /api/comptabilite/ventes-manuelles. */
+  monnaie?: Devise | null
 }
 
 /** Arrondi au centime : les montants nets passent par une soustraction. */
@@ -106,6 +119,7 @@ export function construireImpayees(sources: {
       montant: net,
       client: f.clientNom ?? null,
       numero: f.numero,
+      emetteurSnapshot: f.emetteurSnapshot,
     })
   }
 
@@ -128,7 +142,7 @@ export function construireImpayees(sources: {
   for (const m of ventesManuelles) {
     // Les ventes d’atelier sont déjà lues ci-dessus depuis VenteProduit.
     if (m.auto && m.sourceType === 'vente_produit') continue
-    const restant = centimes(m.montant - (m.montantRegle ?? 0))
+    const restant = centimes(m.resteAPayer??(m.montant - (m.montantRegle ?? 0)))
     if (restant <= 0) continue
     items.push({
       id: m.id,
@@ -138,9 +152,13 @@ export function construireImpayees(sources: {
       description: m.description,
       montant: restant,
       client: m.client ?? null,
+      ...(m.monnaie !== undefined ? { monnaie: m.monnaie } : {}),
     })
   }
 
   items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   return { items, total: centimes(items.reduce((sum, i) => sum + i.montant, 0)) }
 }
+
+// Implémentation publique unique, partagée avec la page Factures.
+export { ventilerImpayeesParDevise } from './ventilation-impayees'
