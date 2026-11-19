@@ -41,7 +41,12 @@ const jour = (delta: number) => {
   return d
 }
 
-describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait et reporter sous le contrôle commun', () => {
+// Même activation que les autres suites PostgreSQL : base jetable `gleba_tests`
+// désignée à la fois par DATABASE_URL et TEST_DATABASE_URL (npm run test:integration).
+const urlBase = process.env.DATABASE_URL
+const active = !!urlBase && urlBase === process.env.TEST_DATABASE_URL && new URL(urlBase).pathname === '/gleba_tests'
+
+describe.skipIf(!active)('occupation : bulk-fait et reporter sous le contrôle commun', () => {
   let user: User
   let especeId: string, itpId: string, plancheId: string, plancheLibreId: string
   beforeAll(async () => {
@@ -157,7 +162,7 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait
     expect(jourCivilStocke(apres.dateSemis)).toBe(jourCivilStocke(jour(0)))
   })
 
-  it('bulk-fait et un agrandissement PUT concurrents attendent le verrou commun : une seule mutation passe', async () => {
+  it('bulk-fait et un agrandissement PUT concurrents attendent le verrou commun : aucun débordement silencieux', async () => {
     // a seule recalée (0,50 m) tient à côté de b à 1 rang (0,10 m) ; b agrandi
     // à 2 rangs (0,25 m) tient seul ; les deux ensemble débordent.
     const a = await creer(20, 60)
@@ -190,11 +195,15 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait
     }
     const [lot, put] = await Promise.all(reponses)
     const corps = await lot.json()
-    const lotAccepte = corps.updated === 1
     console.log('Concurrence bulk-fait/PUT', { lot: corps, put: put.status })
-    expect(put.status).toBe(lotAccepte ? 400 : 200)
-    expect(corps.refusees.length).toBe(lotAccepte ? 0 : 1)
-    expect((await verdict(a.id)).possible).toBe(true)
+    // Le cochage est un fait accompli : il s'enregistre dans les deux ordres.
+    // Passé le premier, l'agrandissement (planification) est refusé ; passé le
+    // second, il est signalé comme débordement, jamais ignoré.
+    expect(corps.updated).toBe(1)
+    expect(corps.refusees).toEqual([])
+    expect((corps.avertissements ?? []).length).toBe(put.status === 200 ? 1 : 0)
+    expect([200, 400]).toContain(put.status)
+    expect((await lire(a.id)).semisFait).toBe(true)
   })
 })
 
@@ -204,7 +213,7 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait
  * vivaces occupent la planche sans fin. Les deux sondes de la contre-revue sont
  * reprises avec l'attente corrigée, puis le même contrôle par bulk-fait.
  */
-describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : une vivace modifiée est évaluée comme ses voisines', () => {
+describe.skipIf(!active)('occupation : une vivace modifiée est évaluée comme ses voisines', () => {
   let user: User
   let vivaceId: string, annuelleId: string, itpVivaceId: string, itpAnnuelId: string, plancheId: string, plancheLibreId: string
   const jourFixe = (iso: string) => new Date(`${iso}T00:00:00.000Z`)

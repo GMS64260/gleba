@@ -33,7 +33,12 @@ const put = (id: string, body: object) => PUT(
   new NextRequest(`http://localhost/api/associations/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   { params: Promise.resolve({ id }) })
 
-describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('associations désactivées : conservées, exclues, réactivables', () => {
+// Même activation que les autres suites PostgreSQL : base jetable `gleba_tests`
+// désignée à la fois par DATABASE_URL et TEST_DATABASE_URL (npm run test:integration).
+const urlBase = process.env.DATABASE_URL
+const active = !!urlBase && urlBase === process.env.TEST_DATABASE_URL && new URL(urlBase).pathname === '/gleba_tests'
+
+describe.skipIf(!active)('associations désactivées : conservées, exclues, réactivables', () => {
   let user: User
   const suffixe = randomUUID().slice(0, 8)
   const pivot = `Pivot fictif PR73 ${suffixe}`
