@@ -26,7 +26,9 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { indicateursEconomieLait } from '@/lib/elevage/economie-lait'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
-import { poidsMoyenPieceKg, poidsSortieKg, sortieCaveDepuisVente } from '@/lib/elevage/cave-fromage'
+import { chargerVentesFromage } from '@/lib/elevage/ventes-fromage'
+import { ErreurVentilationFromage } from '@/lib/elevage/economie-lait-ventes'
+import { ErreurDevisesIncompatibles } from '@/lib/comptabilite/totaux-devise'
 import { jourCivilStocke } from '@/lib/jour-civil'
 import { estProductionLaitiere } from '@/lib/elevage/cibles-collecte-lait'
 
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
     const debut = new Date(annee, 0, 1)
     const fin = new Date(annee, 11, 31, 23, 59, 59, 999)
 
-    const [animaux, lots, lotsClos, collectes, fabrications, ventes, consommations, soins, paies] = await Promise.all([
+    const [animaux, lots, lotsClos, collectes, fabrications, ventes, consommations, soins, paies, ventesFromage] = await Promise.all([
       // Animaux présents pendant l'exercice : actifs, ou sortis (vendus,
       // réformés, morts) après son début. Une laitière vendue sans collecte
       // dans l'année garde ses consommations et soins affectés au lait ; seules
@@ -120,8 +122,8 @@ export async function GET(request: NextRequest) {
         select: { typeFromage: true, volumeLaitUtiliseL: true, poidsTotalKg: true, nbPieces: true },
       }),
       prisma.venteProduit.findMany({
-        where: { userId, annule: false, date: { gte: debut, lte: fin } },
-        select: { type: true, quantite: true, unite: true, prixTotal: true, lotFromageId: true, lotFromage: { select: { typeFromage: true, nbPieces: true, poidsTotalKg: true } }, mouvementsFromage: { where: { userId }, select: { poidsKg: true } } },
+        where: { userId, lotFromageId: null, annule: false, date: { gte: debut, lte: fin } },
+        select: { type: true, quantite: true, unite: true, prixTotal: true, lotFromageId: true },
       }),
       prisma.consommationAliment.findMany({
         where: { userId, date: { gte: debut, lte: fin } },
@@ -137,6 +139,7 @@ export async function GET(request: NextRequest) {
         where: { userId, annee },
         select: { montantHT: true, litres: true },
       }),
+      chargerVentesFromage(userId, { debut, fin }),
     ])
 
     // Ensembles laitiers
@@ -206,7 +209,6 @@ export async function GET(request: NextRequest) {
     const kgFromage = fabrications.reduce((s, f) => s + Number(f.poidsTotalKg), 0)
 
     // Ventes
-    const ventesFromage = ventes.filter((v) => v.lotFromageId != null)
     const ventesLaitCru = ventes.filter(
       (v) => v.lotFromageId == null && (v.type || '').toLowerCase().includes('lait')
     )
@@ -217,8 +219,7 @@ export async function GET(request: NextRequest) {
       .reduce((s, v) => s + Number(v.quantite), 0)
 
     // Lait livré à la laiterie (paie mensuelle). Exprimé en TTC (× 1,055) pour
-    // rester homogène avec caLaitCru/caFromage (issus de VenteProduit.prixTotal,
-    // traité en TTC) dans la valorisation — sinon la marge mélangeait HT et TTC.
+    // rester homogène avec les recettes de lait cru et de fromage en TTC dans la valorisation — sinon la marge mélangeait HT et TTC.
     // La majoration ne vaut que si l'exploitation collecte la TVA, comme pour
     // l'écriture comptable de la paie : en franchise ou au remboursement
     // forfaitaire, la laiterie verse le hors taxe.
@@ -280,18 +281,12 @@ export async function GET(request: NextRequest) {
       parType.set(t, e)
     }
     for (const v of ventesFromage) {
-      const t = v.lotFromage?.typeFromage || 'Autre'
+      const t = v.typeFromage || 'Autre'
       const e = parType.get(t) || { volumeLait: 0, kg: 0, pieces: 0, ca: 0, kgVendus: 0, poidsComplet: true, poidsEstime: false }
       e.ca += Number(v.prixTotal)
-      // Le prix de vente porte sur le poids sorti, jamais sur toute la
-      // fabrication (une partie peut encore être en cave).
-      const pesee = v.mouvementsFromage?.reduce((s, m) => s + Number(m.poidsKg), 0) ?? 0
-      const sortie = sortieCaveDepuisVente(v.quantite, v.unite)
-      const moyen = v.lotFromage ? poidsMoyenPieceKg({ nbPieces: v.lotFromage.nbPieces, poidsTotalKg: Number(v.lotFromage.poidsTotalKg) }) : null
-      const kg = pesee > 0 ? pesee : sortie.ok ? poidsSortieKg(sortie, moyen) : null
-      if (pesee <= 0 && sortie.ok && sortie.nbPieces > 0 && moyen != null) e.poidsEstime = true
-      if (kg == null || !Number.isFinite(kg) || kg <= 0) e.poidsComplet = false
-      else e.kgVendus += kg
+      if (v.poidsVenduEstime) e.poidsEstime = true
+      if (v.kgVendus == null) e.poidsComplet = false
+      else e.kgVendus += v.kgVendus
       parType.set(t, e)
     }
     const fromages = Array.from(parType.entries()).map(([type, e]) => ({
@@ -337,6 +332,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (err) {
+    if (err instanceof ErreurDevisesIncompatibles || err instanceof ErreurVentilationFromage) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('GET /api/elevage/economie-lait error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }

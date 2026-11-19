@@ -34,6 +34,7 @@ type LotCave = {
   prixConstate: number | null
   unitePrixConstate: "piece" | "kg" | null
   valorisation: number | null
+  avertissementValorisation?: string | null
 }
 const ETAT_BADGE: Record<string, string> = {
   affinage: "bg-amber-100 text-amber-800 border-amber-200",
@@ -223,6 +224,7 @@ export function AffinageSubTab() {
                     </td>
                     <td className="p-2 text-right">
                       {l.valorisation != null ? `${l.valorisation.toLocaleString("fr-FR")} €` : "—"}
+                      {l.avertissementValorisation && <span className="block text-xs text-amber-700">{l.avertissementValorisation}</span>}
                       {l.prixConstate != null && l.unitePrixConstate && (
                         <span className="block text-xs text-slate-500" data-testid="prix-constate">
                           {l.prixConstate.toLocaleString("fr-FR")} €/{l.unitePrixConstate === "piece" ? "pièce" : "kg"}

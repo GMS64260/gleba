@@ -8,6 +8,8 @@
 
 import { NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { ErreurDevisesIncompatibles } from '@/lib/comptabilite/totaux-devise'
+import { ErreurVentilationFromage } from '@/lib/elevage/economie-lait-ventes'
 import { computeStocksUnifies } from '@/lib/comptabilite/stocks-unifies'
 
 export async function GET() {
@@ -18,6 +20,7 @@ export async function GET() {
     const stocks = await computeStocksUnifies(session.user.id)
     return NextResponse.json(stocks)
   } catch (error) {
+    if (error instanceof ErreurDevisesIncompatibles || error instanceof ErreurVentilationFromage) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/comptabilite/stocks error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
