@@ -38,9 +38,6 @@ async function preparer(tx: Tx, userId: string, contenu: ContenuDocument) {
   const client = await tx.client.findFirst({ where: { id: contenu.clientId, userId, actif: true } })
   if (!client) throw new ErreurCommerciale('Choisissez une fiche client active de votre exploitation', 400)
   const emetteur = await snapshotEmetteurForEmission(tx, userId)
-  if (!emetteur?.raisonSociale || !emetteur.adresseSiege || !emetteur.ville) {
-    throw new ErreurCommerciale('Renseignez d’abord l’identité de votre exploitation dans Paramètres > Exploitation', 400)
-  }
   const montants = calculerDocument(await verifierLignesStock(tx, userId, contenu.lignes, dateCivile(contenu.dateLivraison ?? contenu.date)), factureSansTaxe(emetteur.regimeTva) || client.exonererTVA)
   if (montants.totalTTC <= 0 || montants.totalTTC > 1_000_000_000) throw new ErreurCommerciale('Le total doit être positif et inférieur à un milliard', 400)
   return {
@@ -172,7 +169,7 @@ export async function facturerDocuments(userId: string, ids: string[], echeance:
     const premier = docs[0]
     const client = await tx.client.findFirst({ where: { id: premier.clientId!, userId } })
     const emetteur = await snapshotEmetteurForEmission(tx, userId)
-    if (!client || !emetteur || client.exonererTVA !== premier.clientExonere || docs.some((d) => fiscalite(d.emetteurSnapshot as unknown as EmetteurSnapshot) !== fiscalite(emetteur))) {
+    if (!client || client.exonererTVA !== premier.clientExonere || docs.some((d) => fiscalite(d.emetteurSnapshot as unknown as EmetteurSnapshot) !== fiscalite(emetteur))) {
       throw new ErreurCommerciale('L’identité ou le régime fiscal a changé. Révisez les documents avant de facturer, pour conserver les montants convenus.')
     }
     const lignes = docs.flatMap((d) => d.lignes.map((l) => ({

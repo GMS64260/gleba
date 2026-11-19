@@ -6,6 +6,7 @@ import { useDevise } from "@/hooks/use-devise"
  * Onglet Alimentation - Stocks aliments + Consommations + Soins en sous-onglets
  */
 
+import { formulaireConsommationVierge, reduireFormulaireConsommation } from "./consommation-formulaire"
 import { dateRealisationPourFait } from "@/lib/elevage/date-realisation"
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
@@ -569,7 +570,7 @@ interface ConsoStats {
   parAliment: { alimentId: string; nom: string; totalKg: number; count: number }[]
 }
 
-function ConsommationsSubTab({ year }: { year?: number } = {}) {
+export function ConsommationsSubTab({ year }: { year?: number } = {}) {
   const { toast } = useToast()
   const filiereSel = useFiliereSelection()
   const [isLoading, setIsLoading] = React.useState(true)
@@ -587,11 +588,11 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
   const lotsCibles = lots.filter((l) => filiereMatch(filiereSel, l.especeAnimale?.filiere))
   const animauxCibles = animaux.filter((a) => filiereMatch(filiereSel, a.especeAnimale?.filiere))
   const [stats, setStats] = React.useState<ConsoStats | null>(null)
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [{ isDialogOpen, editingConsoId, formData }, dispatchConsoForm] = React.useReducer(
+    reduireFormulaireConsommation, undefined, () => formulaireConsommationVierge(todayLocalISO()),
+  )
   const [filterDateDebut, setFilterDateDebut] = React.useState("")
   const [filterDateFin, setFilterDateFin] = React.useState("")
-  // QA 2026-05-15 — édition par ligne
-  const [editingConsoId, setEditingConsoId] = React.useState<number | null>(null)
   // Bug feedback testeur 2026-05-26 (cmpm6xi6w / cmpmqtzdg) — les alertes
   // de stock étaient des window.confirm() natifs, invisibles des agents
   // de test (« accepté silencieusement »). Migration vers ConfirmDialog
@@ -600,27 +601,14 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
   const [deletingConsoId, setDeletingConsoId] = React.useState<number | null>(null)
   const [isSubmittingConso, setIsSubmittingConso] = React.useState(false)
 
-  const [formData, setFormData] = React.useState({
-    alimentId: "", cible: "tous", lotId: "", animalId: "", date: todayLocalISO(), quantite: "", notes: "",
-  })
-
-  const resetConsoForm = () => {
-    setEditingConsoId(null)
-    setFormData({ alimentId: "", cible: "tous", lotId: "", animalId: "", date: todayLocalISO(), quantite: "", notes: "" })
+  const resetConsoForm = (open = false) => {
+    dispatchConsoForm({ type: open ? "creer" : "fermer", jour: todayLocalISO() })
+    setStockConfirm(null)
   }
 
   const handleEditConso = (c: Consommation) => {
-    setEditingConsoId(c.id)
-    setFormData({
-      alimentId: c.aliment.id,
-      cible: c.animal ? "animal" : c.lot ? "lot" : "tous",
-      lotId: c.lot?.id ? c.lot.id.toString() : "",
-      animalId: c.animal?.id ? c.animal.id.toString() : "",
-      date: c.date.split('T')[0],
-      quantite: c.quantite.toString(),
-      notes: c.notes ?? "",
-    })
-    setIsDialogOpen(true)
+    setStockConfirm(null)
+    dispatchConsoForm({ type: "modifier", consommation: c })
   }
 
   const fetchData = React.useCallback(async () => {
@@ -672,7 +660,6 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
         title: isEdit ? "Consommation mise à jour" : "Consommation enregistrée",
         description: `${formData.quantite} kg`,
       })
-      setIsDialogOpen(false)
       resetConsoForm()
       fetchData()
       return
@@ -818,9 +805,9 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
           <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetConsoForm() }}>
+          <Dialog open={isDialogOpen} onOpenChange={resetConsoForm}>
             <DialogTrigger asChild>
-              <Button size="sm" onClick={() => setEditingConsoId(null)}><Plus className="h-4 w-4 mr-1" />Saisie rapide</Button>
+              <Button size="sm"><Plus className="h-4 w-4 mr-1" />Saisie rapide</Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
@@ -830,7 +817,7 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Aliment *</Label>
-                  <Select value={formData.alimentId} onValueChange={(v) => setFormData(f => ({ ...f, alimentId: v }))}>
+                  <Select value={formData.alimentId} onValueChange={(v) => dispatchConsoForm({ type: "saisir", champs: { alimentId: v } })}>
                     <SelectTrigger><SelectValue placeholder="— Sélectionner un aliment —" /></SelectTrigger>
                     <SelectContent>{aliments.map(a => <SelectItem key={a.id} value={a.id}>{a.nom}</SelectItem>)}</SelectContent>
                   </Select>
@@ -840,11 +827,11 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
                   <div className="grid grid-cols-3 gap-2">
                     {([['tous', 'Global'], ['lot', 'Lot'], ['animal', 'Animal']] as const).map(([value, label]) => (
                       <Button key={value} type="button" size="sm" variant={formData.cible === value ? "default" : "outline"}
-                        onClick={() => setFormData(f => ({ ...f, cible: value, lotId: "", animalId: "" }))}>{label}</Button>
+                        onClick={() => dispatchConsoForm({ type: "saisir", champs: { cible: value, lotId: "", animalId: "" } })}>{label}</Button>
                     ))}
                   </div>
                   {formData.cible === "lot" && (
-                    <Select value={formData.lotId || undefined} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
+                    <Select value={formData.lotId || undefined} onValueChange={(v) => dispatchConsoForm({ type: "saisir", champs: { lotId: v } })}>
                       <SelectTrigger><SelectValue placeholder="Sélectionner un lot" /></SelectTrigger>
                       <SelectContent>{lotsCibles.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})</SelectItem>)}</SelectContent>
                     </Select>
@@ -853,7 +840,7 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
                     <AnimalCombobox
                       animaux={animauxCibles}
                       value={formData.animalId}
-                      onChange={(v) => setFormData(f => ({ ...f, animalId: v }))}
+                      onChange={(v) => dispatchConsoForm({ type: "saisir", champs: { animalId: v } })}
                       placeholder="N° de boucle ou nom…"
                       emptyLabel="Sélectionner un animal"
                     />
@@ -868,11 +855,15 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Date</Label><Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Quantité (kg) *</Label><Input type="number" min="0" step="0.1" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} placeholder="0" /></div>
+                  <div className="space-y-2"><Label>Date</Label><Input type="date" value={formData.date} onChange={(e) => dispatchConsoForm({ type: "saisir", champs: { date: e.target.value } })} /></div>
+                  <div className="space-y-2"><Label>Quantité (kg) *</Label><Input type="number" min="0" step="0.1" value={formData.quantite} onChange={(e) => dispatchConsoForm({ type: "saisir", champs: { quantite: e.target.value } })} placeholder="0" /></div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="conso-notes">Notes</Label>
+                  <Textarea id="conso-notes" value={formData.notes} onChange={(e) => dispatchConsoForm({ type: "saisir", champs: { notes: e.target.value } })} />
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
+                  <Button type="button" variant="outline" onClick={() => resetConsoForm()}>Annuler</Button>
                   <Button type="submit" disabled={isSubmittingConso}>
                     {isSubmittingConso ? "Enregistrement..." : editingConsoId ? "Mettre à jour" : "Enregistrer"}
                   </Button>

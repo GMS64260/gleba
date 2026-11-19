@@ -133,6 +133,22 @@ async function snapshotEmetteur(tx: PrismaTx, userId: string): Promise<EmetteurS
   return snapshotDepuisExploitation(e)
 }
 
+/** Garde commune aux nouvelles émissions et à la préparation des devis/BL.
+ * Ne pas l'appliquer aux exports historiques ni à l'identité d'origine d'un avoir.
+ */
+export async function snapshotEmetteurForEmission(tx: PrismaTx, userId: string): Promise<EmetteurSnapshot> {
+  const emetteur = await snapshotEmetteur(tx, userId)
+  if (!emetteur || !emetteur.raisonSociale?.trim() || !emetteur.adresseSiege?.trim() || !emetteur.ville?.trim()) {
+    throw new ErreurCommerciale('Renseignez d’abord l’identité de votre exploitation dans Paramètres > Exploitation', 400)
+  }
+  // Vérifier la devise enregistrée, sans la déduire du territoire (dont le
+  // helper historique possède un repli EUR réservé à d'autres usages).
+  if (emetteur.devise !== 'EUR' && emetteur.devise !== 'XPF') {
+    throw new ErreurCommerciale('Vérifiez la devise de votre exploitation dans Paramètres > Exploitation : choisissez EUR ou XPF avant d’émettre une facture.', 400)
+  }
+  return emetteur
+}
+
 /**
  * Instantané émetteur d'une pièce à créer ou à émettre, et sa fiscalité.
  *
@@ -156,11 +172,15 @@ export async function emetteurEtFiscalitePiece(
   tx: PrismaTx,
   userId: string,
   piece: { type: string; factureOrigineId?: number | null },
+  etape: 'brouillon' | 'emission' = 'emission',
 ): Promise<{ emetteur: EmetteurSnapshot | null; sansTaxe: boolean }> {
-  if (piece.type !== 'avoir' || !piece.factureOrigineId) {
-    const emetteur = await snapshotEmetteur(tx, userId)
+  if (piece.type !== 'avoir') {
+    const emetteur = etape === 'brouillon'
+      ? await snapshotEmetteur(tx, userId)
+      : await snapshotEmetteurForEmission(tx, userId)
     return { emetteur, sansTaxe: factureSansTaxe(emetteur?.regimeTva) }
   }
+  if (!piece.factureOrigineId) throw new ErreurCommerciale('Un avoir doit référencer sa facture d’origine.', 400)
   const origines = await tx.$queryRaw<Array<{ numero: string; emetteur_snapshot: unknown; date: Date; taxee: boolean }>>`
     SELECT f.numero, f.emetteur_snapshot, f.date,
       (COALESCE(f.total_tva, 0) <> 0 OR EXISTS (
@@ -184,7 +204,7 @@ export async function snapshotEmetteurPiece(
   userId: string,
   piece: { type: string; factureOrigineId?: number | null },
 ): Promise<EmetteurSnapshot | null> {
-  return (await emetteurEtFiscalitePiece(tx, userId, piece)).emetteur
+  return (await emetteurEtFiscalitePiece(tx, userId, piece, 'emission')).emetteur
 }
 
 /** Une seule lecture de l'identité légale pour le snapshot à l'émission et pour les factures sans snapshot (exports). */
@@ -359,7 +379,6 @@ function typeSequence(typeFacture: string): 'FACTURE' | 'AVOIR' | 'DEVIS' {
 // pour la transition brouillon → émise. Les fonctions internes restent privées
 // dans creerFacture ; ces alias publient l'API minimale nécessaire.
 export const reserverProchainNumeroForEmission = reserverProchainNumero
-export const snapshotEmetteurForEmission = snapshotEmetteur
 
 /**
  * Audit compta 2026-06 — annulation symétrique source métier ↔ facture.
@@ -428,6 +447,12 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
   const typeSeq = typeSequence(params.type)
   const statut = params.statut || 'emise'
 
+  // Refuser une nouvelle émission sans identité/devise avant tout numéro.
+  // Un brouillon reste enregistrable ; un avoir reprend toujours son origine.
+  const { emetteur, sansTaxe: emetteurSansTaxe } = await emetteurEtFiscalitePiece(
+    tx, params.userId, params, statut === 'brouillon' ? 'brouillon' : 'emission',
+  )
+
   // POSTREVIEW — Un brouillon ne doit PAS consommer un numéro de séquence,
   // sinon le supprimer crée un trou (viole art. 242 nonies A : numérotation
   // chronologique sans rupture). On lui assigne un numéro temporaire BR-<cuid>
@@ -445,9 +470,6 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
     type: params.type, factureOrigineId: params.factureOrigineId, clientId: params.clientId,
     clientNom: params.clientNom, clientAdresse: params.clientAdresse,
   })
-
-  // Un avoir reprend l'instantané de sa facture d'origine, pas l'identité courante.
-  const { emetteur, sansTaxe: emetteurSansTaxe } = await emetteurEtFiscalitePiece(tx, params.userId, params)
 
   // Audit compta 2026-06 : un émetteur en franchise en base (art. 293 B) ne
   // facture PAS de TVA (TVA facturée à tort = TVA due, art. 283-3 CGI) ;
@@ -496,7 +518,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       mentionsLegales: params.mentionsLegales || null,
       conditionsPaiement: params.conditionsPaiement ?? null,
       mentionsSpecifiques: mentions,
-      // Json? : `null` (pas d'exploitation) est passé tel quel, comme avant.
+      // Seul un brouillon peut rester sans instantané émetteur.
       emetteurSnapshot: emetteur as unknown as Prisma.InputJsonValue,
       categorieOperation: params.categorieOperation || 'biens',
       dateLivraison: params.dateLivraison || null,

@@ -494,7 +494,7 @@ export async function PATCH(request: NextRequest) {
         data.numero = numero
         if (courante.type === 'facture') await sortirStockCommercial(tx, session.user.id, courante.lignes, { factureId: courante.id, numero, date: courante.dateLivraison ?? dateEmission })
         data.date = dateEmission
-        // Json? : `null` (pas d'exploitation) est passé tel quel, comme avant.
+        // La garde partagée a validé l'émission (ou repris l'origine de l'avoir).
         data.emetteurSnapshot = emetteur as unknown as Prisma.InputJsonValue
         Object.assign(data, acheteur.instantane, { clientId: acheteur.clientId, acheteurFigeLe: acheteur.fige ? dateEmission : null })
       }
