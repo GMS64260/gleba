@@ -8,7 +8,7 @@ import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import Link from "next/link"
 import { ArrowLeft, BarChart3, Save } from "lucide-react"
-import { format, differenceInDays } from "date-fns"
+import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,8 @@ import {
 } from "@/lib/recolte/projection"
 import { lienChezMoiEspece } from "@/lib/especes/fiche-url"
 import { midiLocalDuJour } from "@/lib/cultures/champ-date"
+import { estPreteARecolter as estPreteLeJour } from "@/lib/cultures/tri-recolte"
+import { jourLocalISO } from "@/lib/jour-civil"
 import {
   ajouterQuantite,
   formatQuantiteParUnite,
@@ -60,12 +62,7 @@ const NB_SAISIES_AFFICHEES = 5
 
 /** Vérifie si une culture est prête à récolter (dateRecolte dans ±14 jours). */
 function estPreteARecolter(culture: Culture, reference = new Date()): boolean {
-  // Jour civil de la récolte (pas le jour local d'un minuit UTC, qui recule
-  // d'un jour à l'ouest d'UTC).
-  const dateRecolte = midiLocalDuJour(culture.dateRecolte)
-  if (!dateRecolte) return false
-  const diff = differenceInDays(dateRecolte, reference)
-  return diff >= -14 && diff <= 14
+  return estPreteLeJour(culture.dateRecolte, jourLocalISO(reference))
 }
 
 /** Formate une date de recolte pour l'affichage dans le sélecteur */
@@ -133,6 +130,8 @@ export default function SaisieRecoltePage() {
     setTotalPagesCultures(0)
     const params = new URLSearchParams({
       enCours: "1",
+      tri: "recolte",
+      jour: jourLocalISO(new Date()),
       page: String(pageCultures),
       pageSize: String(TAILLE_PAGE_CULTURES),
       search: rechercheCultures.trim(),
@@ -151,20 +150,8 @@ export default function SaisieRecoltePage() {
         const actives = [...new Map<number, Culture>((data.data || []).map((c: Culture) => [c.id, c])).values()].filter(
           (c: Culture) => !c.terminee
         )
-        // Trier : prêtes à récolter en premier, puis par date de recolte
-        actives.sort((a: Culture, b: Culture) => {
-          const aPretes = estPreteARecolter(a)
-          const bPretes = estPreteARecolter(b)
-          if (aPretes && !bPretes) return -1
-          if (!aPretes && bPretes) return 1
-          // Au sein du même groupe, trier par date de recolte (les plus proches d'abord)
-          if (a.dateRecolte && b.dateRecolte) {
-            return new Date(a.dateRecolte).getTime() - new Date(b.dateRecolte).getTime()
-          }
-          if (a.dateRecolte && !b.dateRecolte) return -1
-          if (!a.dateRecolte && b.dateRecolte) return 1
-          return 0
-        })
+        // L'ordre (prêtes à récolter d'abord) vient du serveur, calculé sur
+        // toutes les cultures en cours et non sur cette seule page.
         setCultures(actives)
         setTotalPagesCultures(data.totalPages || 0)
         setEtatCultures("ok")
