@@ -122,7 +122,7 @@ function addDaysIso(iso: string, n: number): string {
   return d.toISOString().split("T")[0]
 }
 
-export function LaitSubTab() {
+export function LaitSubTab({ year }: { year?: number }) {
   // Lien direct (`?sub=cave`, catalogue des stocks) : ouvre ce sous-onglet.
   const ongletUrl = ongletLaitDepuisSub(useSearchParams().get("sub"))
   return (
@@ -168,7 +168,7 @@ export function LaitSubTab() {
         <LactationView />
       </TabsContent>
       <TabsContent value="qualite">
-        <QualiteView />
+        <QualiteView year={year} />
       </TabsContent>
       <TabsContent value="palmares">
         <PalmaresView />
@@ -417,7 +417,8 @@ type LigneQualite = {
   statut: "ok" | "surveillance" | "alerte"
 }
 type TroupeauQualite = {
-  fenetreJours: number
+  fenetreJours: number | null
+  periode?: { mode: "periode" | "fenetre"; start: string; end: string }
   nbSuivis: number
   nbAvecMesure: number
   nbSansMesure: number
@@ -453,13 +454,54 @@ function TendanceIcon({ t }: { t: LigneQualite["tendance"] }) {
   return <span className="text-slate-300">—</span>
 }
 
-function QualiteView() {
+type ModeQualite = "90" | "180" | "365" | "exercice" | "personnalisee"
+function modeQualite(valeur: string | null): ModeQualite {
+  return valeur === "90" || valeur === "365" || valeur === "exercice" || valeur === "personnalisee" ? valeur : "180"
+}
+function dateQualite(date: string): string {
+  return new Date(`${date.slice(0, 10)}T12:00:00Z`).toLocaleDateString("fr-FR", { timeZone: "UTC" })
+}
+
+function QualiteView({ year }: { year?: number }) {
+  const searchParams = useSearchParams()
+  const modeUrl = searchParams.get("qualitePeriode")
+  const startUrl = searchParams.get("qualiteStart")
+  const endUrl = searchParams.get("qualiteEnd")
+  const annee = year ?? new Date().getFullYear()
+  const [mode, setMode] = React.useState(() => modeQualite(modeUrl))
+  const [start, setStart] = React.useState(startUrl ?? `${annee}-01-01`)
+  const [end, setEnd] = React.useState(endUrl ?? `${annee}-12-31`)
+  React.useEffect(() => {
+    setMode(modeQualite(modeUrl))
+    setStart(startUrl ?? `${annee}-01-01`)
+    setEnd(endUrl ?? `${annee}-12-31`)
+  }, [modeUrl, startUrl, endUrl, annee])
+  const choisir = (nouveauMode: ModeQualite, debut = start, fin = end) => {
+    setMode(nouveauMode)
+    setStart(debut)
+    setEnd(fin)
+    const params = new URLSearchParams(window.location.search)
+    params.set("qualitePeriode", nouveauMode)
+    if (nouveauMode === "personnalisee") {
+      params.set("qualiteStart", debut)
+      params.set("qualiteEnd", fin)
+    } else {
+      params.delete("qualiteStart")
+      params.delete("qualiteEnd")
+    }
+    updateDashboardSearchParams(params, "replace")
+  }
+  const glissante = mode === "90" || mode === "180" || mode === "365"
+  const debut = mode === "exercice" ? `${annee}-01-01` : start
+  const fin = mode === "exercice" ? `${annee}-12-31` : end
+  const bornesInvalides = !glissante && (!debut || !fin || debut > fin)
+  const parametres = glissante ? `fenetre=${mode}` : new URLSearchParams({ start: debut, end: fin }).toString()
+
   const [lignes, setLignes] = React.useState<LigneQualite[]>([])
   const [troupeau, setTroupeau] = React.useState<TroupeauQualite | null>(null)
   const [loading, setLoading] = React.useState(true)
-  const [erreur, setErreur] = React.useState(false)
+  const [erreur, setErreur] = React.useState<string | null>(null)
   const [tentative, setTentative] = React.useState(0)
-  const [fenetre, setFenetre] = React.useState(180)
   const [masquerSansMesure, setMasquerSansMesure] = React.useState(true)
 
   React.useEffect(() => {
@@ -469,23 +511,34 @@ function QualiteView() {
       const requete = new AbortController()
       controller = requete
       setLoading(true)
-      setErreur(false)
+      setErreur(null)
       setLignes([])
       setTroupeau(null)
+      if (bornesInvalides) {
+        setErreur("Renseignez une date de début et une date de fin dans l’ordre chronologique.")
+        setLoading(false)
+        return
+      }
       try {
-        const reponse = await fetch(`/api/elevage/qualite-lait?fenetre=${fenetre}`, {
+        const reponse = await fetch(`/api/elevage/qualite-lait?${parametres}`, {
           signal: requete.signal,
           cache: "no-store",
         })
-        if (!reponse.ok) throw new Error("Chargement des analyses refusé")
         const j = await reponse.json()
+        if (!reponse.ok) {
+          if (reponse.status === 400 && typeof j?.error === "string") {
+            if (!requete.signal.aborted) setErreur(`${j.champ === "start" ? "Début : " : j.champ === "end" ? "Fin : " : ""}${j.error}`)
+            return
+          }
+          throw new Error("Chargement des analyses refusé")
+        }
         if (!Array.isArray(j?.data)) throw new Error("Réponse des analyses invalide")
         // Vérifier aussi après lecture du corps : il peut finir après l’annulation.
         if (requete.signal.aborted) return
         setLignes(j.data)
         setTroupeau(j.troupeau || null)
       } catch {
-        if (!requete.signal.aborted) setErreur(true)
+        if (!requete.signal.aborted) setErreur("Impossible de charger les analyses de qualité du lait. Réessayez dans un instant.")
       } finally {
         if (!requete.signal.aborted) setLoading(false)
       }
@@ -496,7 +549,7 @@ function QualiteView() {
       controller?.abort()
       window.removeEventListener("gleba:exploitation-changee", charger)
     }
-  }, [fenetre, tentative])
+  }, [parametres, bornesInvalides, tentative])
 
   const visibles = masquerSansMesure ? lignes.filter((l) => l.nbMesures > 0) : lignes
 
@@ -514,24 +567,40 @@ function QualiteView() {
               Seuils adaptés à la filière — la chèvre a une numération de base naturellement plus haute que la vache.
             </CardDescription>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex min-w-0 flex-wrap items-end gap-2">
             <select
               aria-label="Période des analyses"
               className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
-              value={fenetre}
-              onChange={(e) => setFenetre(parseInt(e.target.value, 10))}
+              value={mode}
+              onChange={(e) => choisir(modeQualite(e.target.value))}
             >
               <option value={90}>90 jours</option>
               <option value={180}>180 jours</option>
               <option value={365}>1 an</option>
+              <option value="exercice">Exercice {annee}</option>
+              <option value="personnalisee">Période personnalisée</option>
             </select>
+            {mode === "personnalisee" && <>
+              <label className="text-sm">Début inclus
+                <Input aria-label="Début des analyses" type="date" value={start} onChange={(e) => choisir(mode, e.target.value, end)} className="w-40" />
+              </label>
+              <label className="text-sm">Fin incluse
+                <Input aria-label="Fin des analyses" type="date" value={end} onChange={(e) => choisir(mode, start, e.target.value)} className="w-40" />
+              </label>
+            </>}
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <p className="text-sm text-slate-600" aria-live="polite">
+          {glissante ? `Fenêtre glissante de ${mode} jours` : mode === "exercice" ? `Exercice ${annee}` : "Période personnalisée"}
+          {troupeau?.periode
+            ? ` : du ${dateQualite(troupeau.periode.start)} au ${dateQualite(troupeau.periode.end)} inclus.`
+            : !glissante && !bornesInvalides ? ` : du ${dateQualite(debut)} au ${dateQualite(fin)} inclus.` : ""}
+        </p>
         {/* Synthèse troupeau */}
         {troupeau && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-lg border p-3">
               <div className="text-xs text-slate-500">Cellules moyennes</div>
               <div className="text-xl font-semibold">{fmtCellules(troupeau.cellulesMoyennes)}</div>
@@ -573,7 +642,7 @@ function QualiteView() {
           <div role="status" className="text-sm text-slate-500">Chargement…</div>
         ) : erreur ? (
           <div role="alert" className="space-y-2 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            <p>Impossible de charger les analyses de qualité du lait. Réessayez dans un instant.</p>
+            <p>{erreur}</p>
             <Button type="button" variant="outline" onClick={() => setTentative((n) => n + 1)}>
               Réessayer
             </Button>
