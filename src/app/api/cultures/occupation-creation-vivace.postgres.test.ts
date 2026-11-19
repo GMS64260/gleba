@@ -29,7 +29,7 @@ import { creerCulturesBatch } from '@/lib/planification'
 const jour = (iso: string) => new Date(iso + 'T00:00:00.000Z')
 
 // Même activation que les autres suites PostgreSQL : base jetable `gleba_tests`
-// désignée à la fois par DATABASE_URL et TEST_DATABASE_URL (npm run test:integration).
+// désignée à la fois par DATABASE_URL et TEST_DATABASE_URL (node scripts/tests-integration.mjs).
 const urlBase = process.env.DATABASE_URL
 const active = !!urlBase && urlBase === process.env.TEST_DATABASE_URL && new URL(urlBase).pathname === '/gleba_tests'
 

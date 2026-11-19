@@ -38,13 +38,25 @@ describe('bilan du lait : pièces non ventilables', () => {
     const ecartees: PieceEcarteeFromage[] = []
     const ventes = projeterVentesFromage(sources(), 'EUR', undefined, false, ecartees)
     expect(ecartees).toEqual([
-      { factureId: 11, numero: 'F-2026-0011', type: 'facture', motif: expect.stringContaining('Recettes non réparties') },
+      { factureId: 11, numero: 'F-2026-0011', type: 'facture', motif: expect.stringContaining('Recettes non réparties'), typesFromage: ['Crottin'] },
     ])
     const parLot = Object.fromEntries(ventes.map((v) => [v.lotFromageId, v]))
     expect(parLot.tomme).toMatchObject({ prixTotal: 40, quantite: 2 })
     // Les quantités vendues restent connues ; seule la recette de la pièce manque.
     expect(parLot.crottin).toMatchObject({ prixTotal: 0, quantite: 10 })
     expect(ventes.some((v) => v.avertissementValorisation)).toBe(false)
+  })
+
+  // Contre-revue du lot : l'avoir d'une facture écartée passait par elle et
+  // retranchait 31 € d'une recette qui n'avait pas été comptée.
+  it('écarte aussi l’avoir d’une facture écartée, quel que soit l’ordre de lecture', () => {
+    const s = sources()
+    s.factures.unshift(facture(12, 'A-2026-0012', 31, { type: 'avoir', factureOrigineId: 11,
+      lignes: [{ articleStockType: null, articleStockId: null, unite: 'pièce', quantite: 1, montantTTC: 31 }] }))
+    const ecartees: PieceEcarteeFromage[] = []
+    const ventes = projeterVentesFromage(s, 'EUR', undefined, false, ecartees)
+    expect(ecartees.map((p) => [p.numero, p.type])).toEqual([['F-2026-0011', 'facture'], ['A-2026-0012', 'avoir']])
+    expect(ventes.find((v) => v.lotFromageId === 'crottin')?.prixTotal).toBe(0)
   })
 
   it('écarte aussi une pièce émise dans une autre devise, en entier', () => {

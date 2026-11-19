@@ -242,7 +242,10 @@ async function main() {
     const existing = await prisma.rotationDetail.findFirst({
       where: { rotationId: rd.rotationId, annee: rd.annee },
     })
-    if (!existing) {
+    // Itinéraire non créé plus haut (homonyme officiel sous un autre
+    // identifiant) : le détail est laissé de côté plutôt que d'arrêter le seed.
+    const itinerairePresent = !rd.itpId || (await prisma.iTP.count({ where: { id: rd.itpId } })) > 0
+    if (!existing && itinerairePresent) {
       await prisma.rotationDetail.create({ data: rd })
     }
   }

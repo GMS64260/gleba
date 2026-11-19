@@ -18,7 +18,7 @@ espions posés sur ses délégués proxy ne doivent pas contaminer une autre sui
 Les gardes propres aux suites restent actives. La suite unitaire `npm test`
 continue d’ignorer les tests PostgreSQL sans leurs variables d’activation.
 
-La CI (`base-neuve`, étape « Integration tests on PostgreSQL ») crée et migre
+La CI (`base-neuve`, étape « Integration tests on the shared PostgreSQL base ») crée et migre
 `gleba_tests`, puis appelle ce script ; elle exécute ensuite l’attente lait sur
 sa base dédiée. Avant le 2026-11-19, la CI ne lançait que l’attente lait et les
 suites `*.postgres.test.ts` dépendaient d’une variable définie nulle part : elles

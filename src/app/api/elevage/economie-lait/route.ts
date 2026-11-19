@@ -292,6 +292,9 @@ export async function GET(request: NextRequest) {
       else e.kgVendus += v.kgVendus
       parType.set(t, e)
     }
+    // Recette incomplète (pièce écartée) : pas de prix moyen pour ce type,
+    // les quantités vendues restant comptées.
+    const typesIncomplets = new Set(piecesEcartees.flatMap((p) => p.typesFromage))
     const fromages = Array.from(parType.entries()).map(([type, e]) => ({
       type,
       volumeLaitL: Math.round(e.volumeLait * 10) / 10,
@@ -302,7 +305,7 @@ export async function GET(request: NextRequest) {
       ca: Math.round(e.ca * 100) / 100,
       kgVendus: e.poidsComplet ? Math.round(e.kgVendus * 1000) / 1000 : null,
       poidsVenduEstime: e.poidsEstime,
-      prixMoyenKg: e.poidsComplet && e.kgVendus > 0 && e.ca > 0 ? Math.round((e.ca / e.kgVendus) * 100) / 100 : null,
+      prixMoyenKg: !typesIncomplets.has(type) && e.poidsComplet && e.kgVendus > 0 && e.ca > 0 ? Math.round((e.ca / e.kgVendus) * 100) / 100 : null,
     }))
 
     return NextResponse.json({

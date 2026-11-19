@@ -314,14 +314,15 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
       const payload = (await res.json().catch(() => null)) as
         | { updated?: number; refusees?: Array<{ id: number; error: string }> }
         | null
-      const avertissements = avertissementsReponse(payload)
-      if (avertissements.length > 0) {
-        toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: [...new Set(avertissements)].join(" · "), duration: 15000 })
-      }
+      const avertissements = [...new Set(avertissementsReponse(payload))]
       const refusees = payload?.refusees ?? []
       const faites = payload?.updated ?? ids.length
-      if (faites > 0) {
-        toast({ title: `${faites} tâche${faites > 1 ? "s" : ""} marquée${faites > 1 ? "s" : ""} comme faite${faites > 1 ? "s" : ""}` })
+      // Un seul toast est visible à la fois : l'avertissement porte le décompte.
+      const marquees = `${faites} tâche${faites > 1 ? "s" : ""} marquée${faites > 1 ? "s" : ""} comme faite${faites > 1 ? "s" : ""}`
+      if (avertissements.length > 0) {
+        toast({ title: `${marquees}, planche à vérifier`, description: avertissements.join(" · "), duration: 15000 })
+      } else if (faites > 0) {
+        toast({ title: marquees })
       }
       if (refusees.length > 0) {
         const noms = refusees

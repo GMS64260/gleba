@@ -112,9 +112,10 @@ export function UtilisationPhytoFields({ value, typeIntervention, onChange, erre
       </>}
     </fieldset>
   )
-  if (!replie) return champs
+  if (typeIntervention === "traitement_phyto") return champs
+  // Même structure repliée ou non : le champ qu'on vient de modifier garde le focus.
   return (
-    <details className="min-w-0 text-sm">
+    <details className="min-w-0 text-sm" open={!replie || undefined}>
       <summary className="cursor-pointer text-muted-foreground">Semences ou plants traités ? (registre phyto)</summary>
       <div className="mt-2">{champs}</div>
     </details>

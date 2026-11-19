@@ -31,8 +31,9 @@ export async function verrouillerOccupationExploitation(tx: Prisma.TransactionCl
  * `faitAccompli` : la mutation déclare une étape faite au champ (case « fait »
  * cochée, date recalée au jour réel). Si la place demandée ne change pas, un
  * débordement n'est alors plus un refus mais un avertissement : on n'empêche
- * pas d'enregistrer ce qui a été fait. Création, déplacement, report et
- * changement de rangs restent refusés.
+ * pas d'enregistrer ce qui a été fait. Création, déplacement, report,
+ * changement de rangs et date déplacée dans le même appel restent refusés
+ * (l'appelant ne passe `faitAccompli` que pour un cochage sans autre date).
  */
 export async function controlerOccupationModification(
   tx: Prisma.TransactionClient, userId: string, avant: Etat, apres: Etat,

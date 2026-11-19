@@ -21,7 +21,7 @@ const req = (method: string, data: Record<string, unknown>) => new NextRequest('
 const jour = (date: string) => new Date(`${date}T00:00:00Z`)
 
 // Même activation que les autres suites PostgreSQL : base jetable `gleba_tests`
-// désignée à la fois par DATABASE_URL et TEST_DATABASE_URL (npm run test:integration).
+// désignée à la fois par DATABASE_URL et TEST_DATABASE_URL (node scripts/tests-integration.mjs).
 const urlBase = process.env.DATABASE_URL
 const active = !!urlBase && urlBase === process.env.TEST_DATABASE_URL && new URL(urlBase).pathname === '/gleba_tests'
 

@@ -196,6 +196,18 @@ describe("PUT /api/cultures/[id] — occupation de la planche", () => {
     expect(mocks.cultureUpdate).toHaveBeenCalledTimes(1)
   })
 
+  // Cocher une étape ne couvre pas une date déplacée dans le même envoi : ce
+  // serait une planification passée sous couvert d'un fait accompli.
+  it("refuse le PATCH qui coche le semis fait en déplaçant aussi la récolte sur une voisine", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...stockee, longueur: 20,
+      dateSemis: new Date('2099-10-01'), dateRecolte: new Date('2099-11-01'), _count: { recoltes: 0 } })
+    const res = await PATCH(new NextRequest('http://localhost/api/cultures/1237', {
+      method: 'PATCH', body: JSON.stringify({ semisFait: true, dateRecolte: '2099-12-01' }),
+    }), { params: Promise.resolve({ id: '1237' }) })
+    expect(res.status).toBe(400)
+    expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+  })
+
   it.each([PUT, PATCH])("contrôle les dates de plan restituées après annulation du semis (%s)", async (route) => {
     mocks.cultureFindUnique.mockResolvedValue({ ...stockee, longueur: 20, semisFait: true,
       dateSemis: new Date('2027-10-01'), dateSemisPlan: new Date('2027-04-01'),

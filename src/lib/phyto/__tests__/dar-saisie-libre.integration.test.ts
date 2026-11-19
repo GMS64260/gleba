@@ -63,7 +63,7 @@ describe.skipIf(!active)('CR-DAR-01 : traitement saisi librement, puis récolte'
     return { userId, culture, traiter, recolter }
   }
 
-  it('prêle déclarée substance de base, sans délai : la récolte rappelle les conditions d’approbation, pas l’AMM ni les 3 jours', async () => {
+  it('prêle déclarée substance de base, sans délai : la récolte rappelle le délai inconnu, pas l’AMM ni les 3 jours', async () => {
     const f = await ferme()
     const reponse = await f.traiter({ natureProduit: 'substance_base' })
     expect(reponse.status).toBe(201)

@@ -73,6 +73,12 @@ describe("GET /api/cultures?tri=recolte", () => {
     )
     const corps = await res.json()
     expect(corps.data).toHaveLength(30)
-    expect(corps.data.every((c: { id: number }) => c.id > 10)).toBe(true)
+    const page1 = await (await GET(
+      new NextRequest("http://localhost/api/cultures?enCours=1&tri=recolte&jour=2026-11-19&page=1&pageSize=50"),
+    )).json()
+    const ids = [...page1.data, ...corps.data].map((c: { id: number }) => c.id)
+    expect(new Set(ids).size).toBe(80)
+    // Prêtes (1 à 10), puis à date égale les identifiants décroissants.
+    expect(ids).toEqual([...Array.from({ length: 10 }, (_, i) => 10 - i), ...Array.from({ length: 70 }, (_, i) => 80 - i)])
   })
 })

@@ -370,7 +370,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         dar: intervention.dar ?? null,
         // Délai recopié du catalogue sur une ligne ancienne : le contrôle de
         // vente le lit comme une indication (`darIntervention`) ; le registre
-        // l'affiche et l'exporte de même, « indicatif, à confirmer », au lieu
+        // l'affiche de même, « indicatif, à confirmer » (écran et PDF), au lieu
         // de le publier comme un délai déclaré.
         darAConfirmer: intervention.darIndicatif === true && intervention.dar != null,
         delaiReentree: intervention.delaiReentree || null,

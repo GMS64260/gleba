@@ -380,9 +380,6 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
         }
         const { warnings, ...culture }: Partial<CultureWithRelations> & { warnings?: string[] } = await response.json()
         const avertissements = avertissementsReponse({ warnings })
-        if (avertissements.length > 0) {
-          toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: avertissements.join(" · "), duration: 15000 })
-        }
         setData((prev) =>
           prev.map((c) => {
             if (c.id !== id) return c
@@ -393,7 +390,12 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
             return updated
           })
         )
-        toast({ title: value ? "Fait !" : "Annulé" })
+        // Un seul toast est visible à la fois : l'avertissement remplace le succès.
+        if (avertissements.length > 0) {
+          toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: avertissements.join(" · "), duration: 15000 })
+        } else {
+          toast({ title: value ? "Fait !" : "Annulé" })
+        }
       } catch (e) {
         toast({
           variant: "destructive",

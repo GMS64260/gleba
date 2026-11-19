@@ -19,8 +19,9 @@ export type VenteNetteFromage = { lotFromageId: string; typeFromage: string; qua
 export type SourcesVentesFromage = { lots: LotVentesFromage[]; atelier: VenteAtelierFromage[]; factures: FactureFromage[]; mouvements: MouvementVenteFromage[] }
 export type PeriodeVentesFromage = { debut: Date; fin: Date }
 /** Pièce dont les recettes n'ont pas pu être réparties : le bilan s'affiche sans elle et la nomme. */
-export type PieceEcarteeFromage = { factureId: number; numero: string | null; type: string; motif: string }
+export type PieceEcarteeFromage = { factureId: number; numero: string | null; type: string; motif: string; /** Types de fromage dont la recette est incomplète. */ typesFromage: string[] }
 const MOTIF_VENTILATION = 'Recettes non réparties entre les lots de fromage : le total de la pièce diffère du détail des ventes (port, remise), ou un avoir porte sur plusieurs lots ou unités.'
+const MOTIF_ORIGINE_ECARTEE = 'Avoir d’une pièce elle-même écartée du bilan.'
 const MOTIF_DEVISE = 'Devise de la pièce différente de celle de l’exploitation, ou inconnue.'
 const active = (f: FactureFromage) => !['brouillon', 'annulee'].includes(f.statut)
 
@@ -121,7 +122,11 @@ export function projeterVentesFromage(sources: SourcesVentesFromage, devise: Dev
       montantTTC: f.lignes.length ? libres.reduce((s, l) => s + l.montantTTC, 0) : f.totalTTC }]
   }
 
-  for (const f of sources.factures) {
+  // Factures avant leurs avoirs : l'avoir d'une pièce écartée l'est aussi,
+  // sinon il retrancherait une recette qui n'a pas été comptée.
+  const idsEcartes = new Set<number>()
+  const ordonnees = ecartees ? [...sources.factures].sort((a, b) => Number(a.type === 'avoir') - Number(b.type === 'avoir')) : sources.factures
+  for (const f of ordonnees) {
     if (!active(f) || !dansPeriode(f.date)) continue
     const origine = f.type === 'avoir' ? factures.get(f.factureOrigineId ?? -1) : f
     const origineConcernee = f.type !== 'avoir' || !f.lignes.length || f.lignes.some(l => !l.articleStockType && l.montantTTC !== 0)
@@ -129,6 +134,11 @@ export function projeterVentesFromage(sources: SourcesVentesFromage, devise: Dev
     if (origine && origineConcernee) for (const v of natives(origine)) idsConcernes.add(v.lotFromageId)
     const propres = [...idsConcernes].filter((id): id is string => id != null && lots.has(id))
     if (!propres.length) continue
+    const typesFromage = [...new Set(propres.map(id => lots.get(id)!.typeFromage))]
+    if (ecartees && f.type === 'avoir' && f.factureOrigineId != null && idsEcartes.has(f.factureOrigineId)) {
+      ecartees.push({ factureId: f.id, numero: f.numero ?? null, type: f.type, motif: MOTIF_ORIGINE_ECARTEE, typesFromage })
+      continue
+    }
     try {
       const source = sourceFacture(f.type === 'avoir' ? f.factureOrigineId ?? f.id : f.id)
       const signe = f.type === 'avoir' ? -1 : 1
@@ -142,8 +152,10 @@ export function projeterVentesFromage(sources: SourcesVentesFromage, devise: Dev
       }
     } catch (err) {
       if (!(err instanceof ErreurVentilationFromage || err instanceof ErreurDevisesIncompatibles)) throw err
-      if (ecartees) ecartees.push({ factureId: f.id, numero: f.numero ?? null, type: f.type, motif: err instanceof ErreurVentilationFromage ? MOTIF_VENTILATION : MOTIF_DEVISE })
-      else if (valorisation) for (const id of propres) indisponibles.set(id, err.message)
+      if (ecartees) {
+        idsEcartes.add(f.id)
+        ecartees.push({ factureId: f.id, numero: f.numero ?? null, type: f.type, motif: err instanceof ErreurVentilationFromage ? MOTIF_VENTILATION : MOTIF_DEVISE, typesFromage })
+      } else if (valorisation) for (const id of propres) indisponibles.set(id, err.message)
       else throw err
     }
   }
