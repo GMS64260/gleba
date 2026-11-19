@@ -1,6 +1,7 @@
 /**
  * API Qualité du lait / cellules (PROMPT 20).
  * GET /api/elevage/qualite-lait?fenetre=180
+ * GET /api/elevage/qualite-lait?start=2020-01-01&end=2020-12-31
  *
  * Exploite les analyses déjà saisies sur CollecteLait (cellulesParMl, mgGpl,
  * mpGpl) pour détecter les mammites subcliniques : par animal (et par lot)
@@ -13,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { periodeQualiteLait } from '@/lib/elevage/periode-qualite-lait'
 import {
   analyseQualiteLait,
   categorieCellules,
@@ -35,41 +37,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const fenetre = Math.min(Math.max(parseInt(searchParams.get('fenetre') || '180', 10) || 180, 30), 730)
+    const periode = periodeQualiteLait(searchParams)
+    if (!periode.ok) return NextResponse.json({ error: periode.error, champ: periode.champ }, { status: 400 })
     const userId = session.user.id
-    const since = new Date(Date.now() - fenetre * 86_400_000)
 
-    // Animaux et lots actifs. Une analyse réellement saisie doit rester
-    // visible même si la production de l'espèce n'est pas classée « lait ».
-    const [animaux, lots] = await Promise.all([
-      prisma.animal.findMany({
-        where: { userId, statut: 'actif' },
-        select: {
-          id: true,
-          nom: true,
-          identifiant: true,
-          especeAnimale: {
-            select: { nom: true, production: true, productions: true, categorieReglementaire: true },
-          },
-        },
-      }),
-      prisma.lotAnimaux.findMany({
-        where: { userId, statut: 'actif' },
-        select: {
-          id: true,
-          nom: true,
-          especeAnimale: {
-            select: { nom: true, production: true, productions: true, categorieReglementaire: true },
-          },
-        },
-      }),
-    ])
-
-    // Collectes de la fenêtre portant au moins une analyse
+    // Les mêmes bornes servent aux lignes et à la synthèse, cibles sorties comprises.
     const collectes = await prisma.collecteLait.findMany({
       where: {
         userId,
-        date: { gte: since },
+        date: periode.date,
         OR: [{ cellulesParMl: { not: null } }, { mgGpl: { not: null } }, { mpGpl: { not: null } }],
       },
       select: {
@@ -81,6 +57,35 @@ export async function GET(request: NextRequest) {
         mpGpl: true,
       },
     })
+    const idsAnimaux = [...new Set(collectes.flatMap(c => c.animalId != null ? [c.animalId] : []))]
+    // Une collecte individuelle rattachée à un lot reste une mesure de l'animal.
+    const idsLots = [...new Set(collectes.flatMap(c => c.animalId == null && c.lotId != null ? [c.lotId] : []))]
+
+    // Garder les cibles actives et celles ayant réellement une analyse dans
+    // la période, même sorties ou sans profil laitier. Le tenant reste requis.
+    const [animaux, lots] = await Promise.all([
+      prisma.animal.findMany({
+        where: { userId, OR: [{ statut: 'actif' }, { id: { in: idsAnimaux } }] },
+        select: {
+          id: true,
+          nom: true,
+          identifiant: true,
+          especeAnimale: {
+            select: { nom: true, production: true, productions: true, categorieReglementaire: true },
+          },
+        },
+      }),
+      prisma.lotAnimaux.findMany({
+        where: { userId, OR: [{ statut: 'actif' }, { id: { in: idsLots } }] },
+        select: {
+          id: true,
+          nom: true,
+          especeAnimale: {
+            select: { nom: true, production: true, productions: true, categorieReglementaire: true },
+          },
+        },
+      }),
+    ])
 
     const mesuresParAnimal = new Map<number, MesureQualite[]>()
     const mesuresParLot = new Map<number, MesureQualite[]>()
@@ -142,7 +147,7 @@ export async function GET(request: NextRequest) {
         }
       })
       // Un lot n'apparaît que s'il a des analyses (sinon bruit)
-      .filter((l) => l.nbMesures > 0)
+      .filter((l) => mesuresParLot.has(l.id))
 
     const lignes = [...lignesAnimaux, ...lignesLots].sort((a, b) => {
       const s = POIDS_STATUT[a.statut] - POIDS_STATUT[b.statut]
@@ -161,7 +166,8 @@ export async function GET(request: NextRequest) {
 
     const avecMesure = lignes.filter((l) => l.nbMesures > 0)
     const troupeau = {
-      fenetreJours: fenetre,
+      fenetreJours: periode.fenetreJours,
+      periode: periode.periode,
       nbSuivis: lignes.length,
       nbAvecMesure: avecMesure.length,
       nbSansMesure: lignes.length - avecMesure.length,

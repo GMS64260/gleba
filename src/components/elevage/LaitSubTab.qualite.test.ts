@@ -155,6 +155,17 @@ describe("Qualité du lait : chargement, erreurs et absence d’analyses", () =>
     expect(screen.getByText(/Exercice 2022 : du 01\/01\/2022 au 31\/12\/2022 inclus/)).toBeTruthy()
   })
 
+  it("affiche une borne de fin seule sans inventer ni formater une date de début", async () => {
+    const historique = await reponse("Analyse historique").json()
+    historique.troupeau.periode = { mode: "periode", start: null, end: "2020-12-31" }
+    historique.troupeau.fenetreJours = null
+    fetchMock.mockResolvedValueOnce(Response.json(historique))
+    render(createElement(LaitSubTab))
+    await screen.findByText("Analyse historique")
+    expect(screen.getByText(/jusqu’au 31\/12\/2020 inclus/)).toBeTruthy()
+    expect(screen.queryByText(/01\/01\/1970|Invalid Date/)).toBeNull()
+  })
+
   it("restaure la période personnalisée, puis le retour à 180 jours après remontage", async () => {
     window.history.replaceState(null, "", "/elevage?sub=qualite&qualitePeriode=personnalisee&qualiteStart=2019-04-01&qualiteEnd=2022-03-31")
     const vue = render(createElement(LaitSubTab, { year: 2023 }))

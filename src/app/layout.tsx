@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { BandeauService } from "@/components/abonnement/BandeauService";
 import { FonctionService, GardePageService } from "@/components/abonnement/AccesService";
-import { Space_Grotesk, Inter, JetBrains_Mono, Fraunces } from "next/font/google";
+import { JetBrains_Mono, Fraunces } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 
@@ -21,19 +21,6 @@ import { CoquilleV2 } from "@/components/accueil/CoquilleV2";
 import { GuidageNavigationProvider } from "@/components/shell/GuidageNavigation";
 
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-space-grotesk",
-  display: "swap",
-  weight: ["400", "500", "600", "700"],
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains-mono",
@@ -44,8 +31,7 @@ const jetbrainsMono = JetBrains_Mono({
 // Charte « carnet de ferme » : Geist pour l'interface (fichier local déjà
 // dans le dépôt) et Fraunces pour les titres, exposées sous --font-ui et
 // --font-display. Depuis L2 (2026-10-09), font-sans et font-heading pointent
-// dessus (tailwind.config.ts) ; Inter et Space Grotesk restent chargées
-// jusqu'au retrait L5, prouvé par captures.
+// dessus (tailwind.config.ts).
 const geist = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-ui",
@@ -190,7 +176,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${geist.variable} ${fraunces.variable} font-sans antialiased`}
+        className={`${jetbrainsMono.variable} ${geist.variable} ${fraunces.variable} font-sans antialiased`}
       >
         <SessionProvider>
           <GuidageNavigationProvider>
