@@ -227,7 +227,7 @@ function CreerCulturesContent() {
 
       <main>
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl max-md:[&>*:first-child]:col-span-2 md:grid-cols-3 mb-6">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-muted-foreground">Total prévues</CardTitle>

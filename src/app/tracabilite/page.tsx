@@ -646,7 +646,7 @@ function PhytoTab({
   return (
     <div className="space-y-4">
       {/* Stats summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4">
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-indigo-100">
@@ -913,7 +913,7 @@ function CultureTab({
   return (
     <div className="space-y-4">
       {/* Stats summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4">
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-indigo-100">Total cultures</CardTitle>
@@ -1167,7 +1167,7 @@ function SanitaireTab({
     <div className="space-y-4">
       <AvertissementResumeSanitaire meta={data.meta} />
       {/* Stats summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4">
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-indigo-100">Total soins</CardTitle>

@@ -1,5 +1,7 @@
 "use client"
 
+import { useAffichageProgressif } from "@/hooks/use-affichage-progressif"
+import { AfficherPlus } from "@/components/ui/afficher-plus"
 import { cibleReglementLigne } from "@/lib/comptabilite/cle-reglement"
 import { ReglementsDialog } from "@/components/comptabilite/ReglementsDialog"
 
@@ -341,6 +343,9 @@ function TransactionsPageInner() {
   const [selectedModule, setSelectedModule] = React.useState<string>(
     isTransactionModule(requestedModule) ? requestedModule : "all",
   )
+  // Listes longues (200 lignes sur la démo) : 50 lignes, puis à la demande.
+  const revenusAffiches = useAffichageProgressif(revenus, `revenus:${selectedYear}:${selectedModule}`)
+  const depensesAffichees = useAffichageProgressif(depenses, `depenses:${selectedYear}:${selectedModule}`)
 
   // Form states for manual entry (DEV1 #3 — refonte conforme)
   const [formType, setFormType] = React.useState<ManualTransactionType>(
@@ -1026,7 +1031,7 @@ function TransactionsPageInner() {
             </Card>
 
             {statsRevenus && (
-              <div className="grid gap-4 md:grid-cols-5 mb-6">
+              <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl max-md:[&>*:first-child]:col-span-2 md:grid-cols-5 mb-6">
                 <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-blue-100">Total</CardTitle></CardHeader>
                   <CardContent><p className="text-2xl font-bold">{totauxRevenus(g => g.total)}</p></CardContent>
@@ -1073,7 +1078,7 @@ function TransactionsPageInner() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {revenus.map((r) => (
+                        {revenusAffiches.visibles.map((r) => (
                           <TableRow key={r.id}>
                             <TableCell className="whitespace-nowrap">{new Date(r.date).toLocaleDateString('fr-FR')}</TableCell>
                             <TableCell>
@@ -1116,6 +1121,7 @@ function TransactionsPageInner() {
                         )}
                       </TableBody>
                     </Table>
+                    <AfficherPlus {...revenusAffiches} nom="revenus" />
                   </div>
                 )}
               </CardContent>
@@ -1125,7 +1131,7 @@ function TransactionsPageInner() {
           {/* Onglet Dépenses */}
           <TabsContent value="depenses">
             {statsDepenses && (
-              <div className="grid gap-4 md:grid-cols-5 mb-6">
+              <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl max-md:[&>*:first-child]:col-span-2 md:grid-cols-5 mb-6">
                 <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-red-100">Total comptable</CardTitle></CardHeader>
                   <CardContent><p className="text-2xl font-bold">{totauxDepenses(g => g.total)}</p></CardContent>
@@ -1172,7 +1178,7 @@ function TransactionsPageInner() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {depenses.map((d) => (
+                        {depensesAffichees.visibles.map((d) => (
                           <TableRow key={d.id}>
                             <TableCell className="whitespace-nowrap">{new Date(d.date).toLocaleDateString('fr-FR')}</TableCell>
                             <TableCell>
@@ -1206,6 +1212,7 @@ function TransactionsPageInner() {
                         )}
                       </TableBody>
                     </Table>
+                    <AfficherPlus {...depensesAffichees} nom="dépenses" />
                   </div>
                 )}
               </CardContent>
