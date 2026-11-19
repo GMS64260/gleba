@@ -1029,14 +1029,19 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               )}
               <div className="rounded-md border p-2"><strong>{stockTrace.stats.stockPhysique}</strong><br /><span className="text-muted-foreground">stock physique</span></div>
             </div>
+            {/* Le calcul reste consultable, replié : seule une anomalie (lots
+                surdébités) l'ouvre d'office. */}
             {stockTrace.bilan && (
-              <p className="text-sm text-muted-foreground">
+              <details className="text-sm text-muted-foreground" open={stockTrace.bilan.ecartPlancher > 0 || undefined}>
+              <summary className="cursor-pointer">Détail du calcul du stock</summary>
+              <p className="mt-1">
                 {stockTrace.bilan.pondus} pondus − {stockTrace.bilan.casses} cassés − {stockTrace.bilan.sales} sales − {stockTrace.bilan.sorties} sorties nettes
                 {stockTrace.bilan.ecartPlancher > 0 ? ` + ${stockTrace.bilan.ecartPlancher} (lots surdébités ramenés à zéro, à vérifier)` : ""}
                 {" = "}{stockTrace.stats.stockPhysique} œufs.
                 {stockTrace.bilanLotsActifs ? ` Les lots restants incluent ${stockTrace.bilanLotsActifs.casses} casses déjà déduites.` : ""}
                 {stockTrace.bilanPontes21Jours ? ` Sur les pontes des 21 derniers jours, collectes épuisées incluses : ${stockTrace.bilanPontes21Jours.casses} casses déjà déduites.` : ""}
               </p>
+              </details>
             )}
             {(stockTrace.stats.sortiesVentesFutures ?? 0) > 0 && (
               <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">

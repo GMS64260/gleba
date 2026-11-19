@@ -6,7 +6,7 @@ export default defineConfig({
   test: {
     ...base.test,
     // Globs : les fichiers privés absents du dépôt public ne sont pas requis.
-    include: ['src/**/*.integration.test.ts', 'src/**/integration.test.ts'],
+    include: ['src/**/*.integration.test.ts', 'src/**/integration.test.ts', 'src/**/*.postgres.test.ts'],
     setupFiles: ['./scripts/tests-integration-setup.ts'],
     pool: 'threads',
     poolOptions: { threads: { singleThread: true } },

@@ -4,7 +4,19 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import db from '@/lib/prisma'
 
-describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('migration des associations orphelines', () => {
+// Cette suite rejoue un SQL qui nettoie le référentiel GLOBAL des associations :
+// elle ne tourne jamais sur la base commune `gleba_tests`, seulement sur une
+// base dédiée `gleba_jetable_*` désignée par DATABASE_URL (voir
+// docs/tests-integration.md, « Suites ignorées sur la base commune »).
+const active = (() => {
+  try {
+    return new URL(process.env.DATABASE_URL || '').pathname.startsWith('/gleba_jetable_')
+  } catch {
+    return false
+  }
+})()
+
+describe.skipIf(!active)('migration des associations orphelines', () => {
   beforeAll(() => {
     if (!new URL(process.env.DATABASE_URL || '').pathname.startsWith('/gleba_jetable_')) {
       throw new Error('Base jetable gleba_jetable_* obligatoire : le SQL nettoie le référentiel global')

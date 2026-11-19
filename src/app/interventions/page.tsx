@@ -5,6 +5,8 @@
  * Semis, plantation, traitements, recoltes, etc.
  */
 
+import { useAffichageProgressif } from "@/hooks/use-affichage-progressif"
+import { AfficherPlus } from "@/components/ui/afficher-plus"
 import * as React from "react"
 import { useDevise } from "@/hooks/use-devise"
 import { PageEntete, ConteneurPage } from "@/components/shell/PageEntete"
@@ -857,6 +859,9 @@ export default function InterventionsPage() {
       .filter((ligne) => texteContientTermes(ligne.texte, termes))
       .map((ligne) => ligne.intervention)
   }, [interventions, lignesRecherche, searchText])
+  // Liste longue (près de 300 lignes sur la démo) : 50 lignes, puis à la demande.
+  const interventionsAffichees = useAffichageProgressif(
+    filteredInterventions, `${selectedYear}:${filterType}:${filterFait}:${searchText}`)
 
   // ============================================================
   // Render
@@ -1728,7 +1733,7 @@ export default function InterventionsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredInterventions.map((intervention) => {
+                    {interventionsAffichees.visibles.map((intervention) => {
                       const isExpanded = expandedRow === intervention.id
                       const typeColor = TYPE_COLORS[intervention.type] || TYPE_COLORS.autre
                       const typeLabel = libelleTypeIntervention(intervention.type)
@@ -2017,6 +2022,7 @@ export default function InterventionsPage() {
                     })}
                   </TableBody>
                 </Table>
+                <AfficherPlus {...interventionsAffichees} nom="interventions" />
               </div>
             )}
           </CardContent>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useSaisieDelaisAttente } from "@/components/elevage/SaisieDelaisAttente"
 import { useDevise } from "@/hooks/use-devise"
 
 /**
@@ -1499,6 +1500,8 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     }
   }
 
+  const { validerSoin, dialogue: dialogueDelais } = useSaisieDelaisAttente()
+
   const envoyerInjection = async (
     soinId: number,
     injectionId: string,
@@ -1506,11 +1509,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     titre: string,
   ): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/elevage/soins/${soinId}/injections`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ injectionId, ...corps }),
-      })
+      const res = await validerSoin(`/api/elevage/soins/${soinId}/injections`, { injectionId, ...corps })
       if (!res.ok) {
         const body = await res.json().catch(() => null)
         throw new Error(body?.error || "Mise à jour impossible")
@@ -1759,11 +1758,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       if (!annulation) return
     }
     try {
-      const response = await fetch('/api/elevage/soins', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, fait: !fait, date: dateFait, ...(annulation ? { annulation } : {}) }),
-      })
+      const response = await validerSoin('/api/elevage/soins', { id, fait: !fait, date: dateFait, ...(annulation ? { annulation } : {}) })
       if (!response.ok) {
         const corps = await response.json().catch(() => null)
         throw new Error(corps?.error || 'Mise à jour impossible')
@@ -1777,6 +1772,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   return (
     <div className="space-y-4">
       <DialogueAnnulationSoin requete={requeteAnnulation} onFermer={() => setRequeteAnnulation(null)} />
+      {dialogueDelais}
       {/* Filtres + Actions */}
       <div className="flex flex-wrap items-center gap-3">
         <Select value={filterFait} onValueChange={setFilterFait}>

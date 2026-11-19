@@ -63,6 +63,7 @@ interface PhytoEntry {
   uniteDose: string | null
   surfaceTraitee: number | null
   dar: number | null
+  darAConfirmer?: boolean
   delaiReentree: number | null
   zntDistanceM: number | null
   zntRespectee: boolean | null
@@ -645,7 +646,7 @@ function PhytoTab({
   return (
     <div className="space-y-4">
       {/* Stats summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4">
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-indigo-100">
@@ -808,7 +809,17 @@ function PhytoTab({
                   </td>
                   <td className="p-2">
                     {entry.dar !== null ? (
-                      <span>{entry.dar} j</span>
+                      <span>
+                        {entry.dar} j
+                        {entry.darAConfirmer && (
+                          <span
+                            className="ml-1 text-xs text-amber-700"
+                            title="Délai repris du catalogue Gleba, non opposable à la vente : vérifiez-le sur l'étiquette et confirmez-le en modifiant le traitement."
+                          >
+                            indicatif, à confirmer
+                          </span>
+                        )}
+                      </span>
                     ) : (
                       <ChampAbsent requis={entry.champsManquants.includes("dar")} />
                     )}
@@ -902,7 +913,7 @@ function CultureTab({
   return (
     <div className="space-y-4">
       {/* Stats summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4">
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-indigo-100">Total cultures</CardTitle>
@@ -1156,7 +1167,7 @@ function SanitaireTab({
     <div className="space-y-4">
       <AvertissementResumeSanitaire meta={data.meta} />
       {/* Stats summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4">
         <Card className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-indigo-100">Total soins</CardTitle>

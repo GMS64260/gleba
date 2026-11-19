@@ -341,9 +341,11 @@ export function PremiersPasBanner({ module = "home" }: { module?: ModuleKey }) {
           module === 'comptabilite'
             ? hasData(map.vente) && hasData(map.dep) && hasData(map.cli)
             : false
-        // Auto-masquage uniquement pour les non-démo
-        if (!isDemo && (arr.every((a) => a.done) || aRealActivity)) {
-          localStorage.setItem(hideKey, "true")
+        // Tout est fait : la carte n'a plus rien à dire et disparaît, compte
+        // démo compris (elle occupait le haut de quatre accueils de module).
+        // Le masquage n'est mémorisé que hors démo.
+        if (arr.every((a) => a.done) || (!isDemo && aRealActivity)) {
+          if (!isDemo) localStorage.setItem(hideKey, "true")
           setHidden(true)
         } else {
           setSteps(arr)

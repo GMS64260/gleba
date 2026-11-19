@@ -555,7 +555,7 @@ export default function RapportsPage() {
                   </div>
                 )}
                 {/* Résumé — un montant par devise, jamais de somme ni de zéro inventé. */}
-                <div className="grid gap-4 md:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl md:grid-cols-4">
                   <Card className={kpiCardClass("revenu")}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
@@ -1056,7 +1056,7 @@ export default function RapportsPage() {
               ) : tvaData ? (
                 <>
                   {/* Résumé TVA */}
-                  <div className="grid gap-4 md:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-3 md:gap-4 max-md:[&>*>*]:px-3 max-md:[&>*>*:first-child]:pt-3 max-md:[&>*>*:last-child]:pb-3 max-md:[&_.text-2xl]:text-xl max-md:[&>*:first-child]:col-span-2 md:grid-cols-3">
                     <Card className="border-green-200 bg-green-50">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm text-green-700">TVA Collectée</CardTitle>

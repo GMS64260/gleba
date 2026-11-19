@@ -41,7 +41,12 @@ const jour = (delta: number) => {
   return d
 }
 
-describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait et reporter sous le contrôle commun', () => {
+// Même activation que les autres suites PostgreSQL : base jetable `gleba_tests`
+// désignée à la fois par DATABASE_URL et TEST_DATABASE_URL (node scripts/tests-integration.mjs).
+const urlBase = process.env.DATABASE_URL
+const active = !!urlBase && urlBase === process.env.TEST_DATABASE_URL && new URL(urlBase).pathname === '/gleba_tests'
+
+describe.skipIf(!active)('occupation : bulk-fait et reporter sous le contrôle commun', () => {
   let user: User
   let especeId: string, itpId: string, plancheId: string, plancheLibreId: string
   beforeAll(async () => {
@@ -75,46 +80,40 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait
   }
   const lire = (id: number) => db.culture.findUniqueOrThrow({ where: { id } })
 
-  it('bulk-fait (témoin 1 de revue-adv-97) : le recalage qui déborde est refusé, les autres sont marquées faites', async () => {
+  it('bulk-fait : le recalage qui déborde est enregistré et signalé (un fait accompli s’enregistre)', async () => {
     await creer(-10, 10)
     const c = await creer(20, 60)
     const libre = await creer(20, 60, { plancheId: plancheLibreId })
     expect((await verdict(c.id)).possible).toBe(true)
-    // Contrôle positif : le PATCH unitaire refuse ce même recalage.
-    expect((await PATCH(req('PATCH', { semisFait: true }), params(c.id))).status).toBe(400)
-
     const res = await bulkFait(req('POST', { ids: [c.id, libre.id], type: 'semis' }))
     expect(res.status).toBe(200)
     const corps = await res.json()
-    expect(corps.updated).toBe(1)
-    expect(corps.refusees.map((r: { id: number }) => r.id)).toEqual([c.id])
-    expect(corps.refusees[0].error).toMatch(/planche|largeur/i)
+    expect(corps.updated).toBe(2)
+    expect(corps.refusees).toEqual([])
+    expect(corps.avertissements.map((a: { id: number }) => a.id)).toEqual([c.id])
+    expect(corps.avertissements[0].message).toMatch(/planche|largeur/i)
 
     const apres = await lire(c.id)
-    expect(apres.semisFait).toBe(false)
-    expect(jourCivilStocke(apres.dateSemis)).toBe(jourCivilStocke(c.dateSemis))
-    expect(apres.dateSemisPlan).toBeNull()
-    expect((await verdict(c.id)).possible).toBe(true)
+    expect(apres.semisFait).toBe(true)
+    expect(jourCivilStocke(apres.dateSemis)).toBe(jourCivilStocke(jour(0)))
     const libreApres = await lire(libre.id)
     expect(libreApres.semisFait).toBe(true)
     expect(jourCivilStocke(libreApres.dateSemis)).toBe(jourCivilStocke(jour(0)))
   })
 
-  it('bulk-fait contrôle chaque recalage face aux écritures déjà acceptées du lot', async () => {
+  it('bulk-fait signale chaque recalage face aux écritures déjà faites du lot', async () => {
     // a (20→25) puis b (30→40), traitées dans l'ordre des identifiants. Recalée
     // à aujourd'hui, a (0→25) tient à côté de b encore en place ; b recalée
-    // (0→40) chevauche a TELLE QU'ÉCRITE par le lot : elle est refusée et l'état
-    // final reste valide.
+    // (0→40) chevauche a TELLE QU'ÉCRITE par le lot : elle est enregistrée et
+    // signalée.
     const a = await creer(20, 25)
     const b = await creer(30, 40)
     const res = await bulkFait(req('POST', { ids: [b.id, a.id], type: 'semis' }))
     const corps = await res.json()
-    expect(corps.updated).toBe(1)
-    expect(corps.refusees.map((r: { id: number }) => r.id)).toEqual([b.id])
+    expect(corps.updated).toBe(2)
+    expect(corps.avertissements.map((r: { id: number }) => r.id)).toEqual([b.id])
     expect((await lire(a.id)).semisFait).toBe(true)
-    expect((await lire(b.id)).semisFait).toBe(false)
-    expect((await verdict(a.id)).possible).toBe(true)
-    expect((await verdict(b.id)).possible).toBe(true)
+    expect((await lire(b.id)).semisFait).toBe(true)
   })
 
   it('reporter (témoin 2 de revue-adv-97) : un report vers une planche pleine renvoie 400 sans rien écrire', async () => {
@@ -163,7 +162,7 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait
     expect(jourCivilStocke(apres.dateSemis)).toBe(jourCivilStocke(jour(0)))
   })
 
-  it('bulk-fait et un agrandissement PUT concurrents attendent le verrou commun : une seule mutation passe', async () => {
+  it('bulk-fait et un agrandissement PUT concurrents attendent le verrou commun : aucun débordement silencieux', async () => {
     // a seule recalée (0,50 m) tient à côté de b à 1 rang (0,10 m) ; b agrandi
     // à 2 rangs (0,25 m) tient seul ; les deux ensemble débordent.
     const a = await creer(20, 60)
@@ -196,11 +195,15 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait
     }
     const [lot, put] = await Promise.all(reponses)
     const corps = await lot.json()
-    const lotAccepte = corps.updated === 1
     console.log('Concurrence bulk-fait/PUT', { lot: corps, put: put.status })
-    expect(put.status).toBe(lotAccepte ? 400 : 200)
-    expect(corps.refusees.length).toBe(lotAccepte ? 0 : 1)
-    expect((await verdict(a.id)).possible).toBe(true)
+    // Le cochage est un fait accompli : il s'enregistre dans les deux ordres.
+    // Passé le premier, l'agrandissement (planification) est refusé ; passé le
+    // second, il est signalé comme débordement, jamais ignoré.
+    expect(corps.updated).toBe(1)
+    expect(corps.refusees).toEqual([])
+    expect((corps.avertissements ?? []).length).toBe(put.status === 200 ? 1 : 0)
+    expect([200, 400]).toContain(put.status)
+    expect((await lire(a.id)).semisFait).toBe(true)
   })
 })
 
@@ -210,7 +213,7 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : bulk-fait
  * vivaces occupent la planche sans fin. Les deux sondes de la contre-revue sont
  * reprises avec l'attente corrigée, puis le même contrôle par bulk-fait.
  */
-describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : une vivace modifiée est évaluée comme ses voisines', () => {
+describe.skipIf(!active)('occupation : une vivace modifiée est évaluée comme ses voisines', () => {
   let user: User
   let vivaceId: string, annuelleId: string, itpVivaceId: string, itpAnnuelId: string, plancheId: string, plancheLibreId: string
   const jourFixe = (iso: string) => new Date(`${iso}T00:00:00.000Z`)
@@ -289,7 +292,7 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : une vivac
   it('bulk-fait applique le même contrôle à une vivace : état final évalué vivace, les autres sont faites', async () => {
     // Vivace prévue à J+20, sans date de récolte. Voisine : annuelle de 3 rangs
     // de J-10 à J+5. En place à partir de J+20, la vivace ne la croise pas ;
-    // recalée à J0, elle la côtoie : nouveau dépassement, refus.
+    // recalée à J0, elle la côtoie : nouveau dépassement, signalé.
     // Lue comme une annuelle sans fin de cycle, toutes les voisines comptent
     // avant comme après : dépassement hérité non aggravé, le recalage passait.
     const vivace = await creer(true, jour(20), jour(30), { dateRecolte: null })
@@ -304,12 +307,10 @@ describe.skipIf(process.env.GLEBA_PR73_POSTGRES !== '1')('occupation : une vivac
     const res = await bulkFait(req('POST', { ids: [vivace.id, ...libres.map((c) => c.id)], type: 'semis' }))
     expect(res.status).toBe(200)
     const corps = await res.json()
-    expect(corps.updated).toBe(2)
-    expect(corps.refusees.map((r: { id: number }) => r.id)).toEqual([vivace.id])
-    expect(corps.refusees[0].error).toMatch(/Largeur insuffisante/)
-    const apres = await lire(vivace.id)
-    expect(apres.semisFait).toBe(false)
-    expect(apres.updatedAt.getTime()).toBe(vivace.updatedAt.getTime())
+    expect(corps.updated).toBe(3)
+    expect(corps.avertissements.map((r: { id: number }) => r.id)).toEqual([vivace.id])
+    expect(corps.avertissements[0].message).toMatch(/largeur insuffisante/)
+    expect((await lire(vivace.id)).semisFait).toBe(true)
     for (const libre of libres) expect((await lire(libre.id)).semisFait).toBe(true)
   })
 

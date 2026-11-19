@@ -27,8 +27,17 @@ export async function verrouillerOccupationExploitation(tx: Prisma.TransactionCl
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:creer-cultures:${userId}`}))`
 }
 
+/**
+ * `faitAccompli` : la mutation déclare une étape faite au champ (case « fait »
+ * cochée, date recalée au jour réel). Si la place demandée ne change pas, un
+ * débordement n'est alors plus un refus mais un avertissement : on n'empêche
+ * pas d'enregistrer ce qui a été fait. Création, déplacement, report,
+ * changement de rangs et date déplacée dans le même appel restent refusés
+ * (l'appelant ne passe `faitAccompli` que pour un cochage sans autre date).
+ */
 export async function controlerOccupationModification(
   tx: Prisma.TransactionClient, userId: string, avant: Etat, apres: Etat,
+  options: { faitAccompli?: boolean } = {},
 ) {
   // `especeId` : passer d'une annuelle à une vivace change la période occupée.
   const champsPlace = ['longueur', 'nbRangs', 'plancheId', 'itpId', 'especeId'] as const
@@ -78,6 +87,12 @@ export async function controlerOccupationModification(
     avant: avant.terminee == null && avant.plancheId === apres.plancheId ? etat(avant, espacementAvant, vivaceAvant) : null,
     apres: etat(apres, espacementApres, vivaceApres),
   })
+  const placeInchangee = avant.terminee == null && champsPlace.every((c) => (apres[c] ?? null) === (avant[c] ?? null))
+  if (refus && options.faitAccompli && placeInchangee) {
+    const motif = refus.message ?? 'Largeur insuffisante'
+    warnings.push(`Enregistré. Planche ${planche.nom} : ${motif[0].toLowerCase()}${motif.slice(1)} à cette date. Si la culture précédente est finie, terminez-la ; sinon réduisez les rangs de l'une des deux.`)
+    return { warnings, refus: null }
+  }
   return { warnings, refus: refus ? {
     error: `${refus.message}. Espacement entre rangs de l'itinéraire technique : ${refus.espacementRangs} cm.`,
     suggestions: refus.ajustements.map((a) => a.message), ajustements: refus.ajustements,

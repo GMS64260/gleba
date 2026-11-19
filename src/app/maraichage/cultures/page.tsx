@@ -4,6 +4,7 @@
  * Page Cultures - Liste et gestion des cultures
  */
 
+import { TITRE_AVERTISSEMENT_CULTURE, avertissementsReponse } from "@/lib/cultures/avertissements-reponse"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -356,7 +357,8 @@ function CulturesPageInner() {
         throw new Error(detail?.error || 'Erreur')
       }
 
-      const culture: Partial<CultureWithRelations> = await response.json()
+      const { warnings, ...culture }: Partial<CultureWithRelations> & { warnings?: string[] } = await response.json()
+      const avertissements = avertissementsReponse({ warnings })
       // Garder les relations du GET et reprendre les dates confirmées par le PATCH.
       setData(prev => prev.map(c => {
         if (c.id !== id) return c
@@ -366,10 +368,15 @@ function CulturesPageInner() {
         return updated
       }))
 
-      toast({
-        title: value ? 'Fait !' : 'Annulé',
-        description: `${field.replace(/Fait.*/, '').replace(/Faite.*/, '')} mis à jour`,
-      })
+      // Un seul toast est visible à la fois : l'avertissement remplace le succès.
+      if (avertissements.length > 0) {
+        toast({ title: TITRE_AVERTISSEMENT_CULTURE, description: avertissements.join(" · "), duration: 15000 })
+      } else {
+        toast({
+          title: value ? 'Fait !' : 'Annulé',
+          description: `${field.replace(/Fait.*/, '').replace(/Faite.*/, '')} mis à jour`,
+        })
+      }
     } catch (error) {
       toast({
         variant: 'destructive',

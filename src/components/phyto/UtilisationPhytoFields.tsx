@@ -59,7 +59,10 @@ export function UtilisationPhytoFields({ value, typeIntervention, onChange, erre
     </div>
   )
 
-  return (
+  // Sur un semis ou une plantation ordinaire, la question « semences ou plants
+  // traités ? » reste repliée : elle ne concerne que le registre phyto.
+  const replie = typeIntervention !== "traitement_phyto" && !semences && erreur?.champ !== "utilisationPhyto"
+  const champs = (
     <fieldset className="min-w-0 rounded-lg border p-3 space-y-4">
       <legend className="px-1 text-sm font-semibold">Utilisation phytosanitaire</legend>
       <div className="min-w-0">
@@ -108,5 +111,13 @@ export function UtilisationPhytoFields({ value, typeIntervention, onChange, erre
         </div>}
       </>}
     </fieldset>
+  )
+  if (typeIntervention === "traitement_phyto") return champs
+  // Même structure repliée ou non : le champ qu'on vient de modifier garde le focus.
+  return (
+    <details className="min-w-0 text-sm" open={!replie || undefined}>
+      <summary className="cursor-pointer text-muted-foreground">Semences ou plants traités ? (registre phyto)</summary>
+      <div className="mt-2">{champs}</div>
+    </details>
   )
 }
