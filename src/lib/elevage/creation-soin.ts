@@ -197,6 +197,12 @@ export async function creerSoinAnimal(body: unknown, userId: string) {
       if (tempsOeufs === 0) tempsOeufs = tempsLait
       tempsLait = 0
     }
+    // Un délai de 0 jour SAISI est une information (« aucun délai prescrit ») :
+    // il est conservé tel quel. L'écrire à null le faisait relire comme « non
+    // saisi », et la validation du soin planifié ou de son rappel était refusée
+    // (DELAIS_ATTENTE_REQUIS) alors que l'éleveur avait bien répondu.
+    const delaiStocke = (jours: number, saisi: number | null | undefined) =>
+      jours > 0 || saisi != null ? jours : null
     // PROMPT 30 — un traitement peut compter plusieurs injections (ex. J0/J1/J2).
     // Le délai d'attente court depuis la DERNIÈRE injection.
     const nbInjections = d.nbInjections ?? 1
@@ -265,9 +271,9 @@ export async function creerSoinAnimal(body: unknown, userId: string) {
           notes: d.notes ?? null,
           nbInjections,
           intervalleInjectionsHeures: intervalleH,
-          tempsAttenteLaitJ: tempsLait > 0 ? tempsLait : null,
-          tempsAttenteViandeJ: tempsViande > 0 ? tempsViande : null,
-          tempsAttenteOeufsJ: tempsOeufs > 0 ? tempsOeufs : null,
+          tempsAttenteLaitJ: delaiStocke(tempsLait, d.tempsAttenteLaitJ),
+          tempsAttenteViandeJ: delaiStocke(tempsViande, d.tempsAttenteViandeJ),
+          tempsAttenteOeufsJ: delaiStocke(tempsOeufs, d.tempsAttenteOeufsJ),
           delaiAttenteSource,
           finAttenteLait: finLait,
           finAttenteViande: finViande,
@@ -326,9 +332,9 @@ export async function creerSoinAnimal(body: unknown, userId: string) {
             notes: `Rappel du soin du ${dateSoin.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}`,
             nbInjections,
             intervalleInjectionsHeures: intervalleH,
-            tempsAttenteLaitJ: tempsLait > 0 ? tempsLait : null,
-            tempsAttenteViandeJ: tempsViande > 0 ? tempsViande : null,
-            tempsAttenteOeufsJ: tempsOeufs > 0 ? tempsOeufs : null,
+            tempsAttenteLaitJ: delaiStocke(tempsLait, d.tempsAttenteLaitJ),
+            tempsAttenteViandeJ: delaiStocke(tempsViande, d.tempsAttenteViandeJ),
+            tempsAttenteOeufsJ: delaiStocke(tempsOeufs, d.tempsAttenteOeufsJ),
             delaiAttenteSource,
             // fait=false : fenêtres d'attente nulles tant que non administré,
             // et aucun prélèvement de stock avant validation.

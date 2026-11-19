@@ -241,11 +241,13 @@ export default function DashboardComptabilite() {
   const devise = useDevise()
   const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
   // Un total par devise, jamais additionnés ni réétiquetés (lot devise-totaux-api).
+  // Une ligne par devise seulement quand il y en a plusieurs : un total unique
+  // reste dans sa phrase (« 2 commandes (74,50 €) », « Dont 748,24 € non payés »).
   const totauxParDevise = (parDevise: TotalDeviseApi[] | undefined, total: number | null | undefined) =>
     (parDevise?.length
       ? libellesTotauxParDevise(parDevise.map(t => ({ monnaie: t.monnaie, montant: t.total })), devise)
       : [total == null ? "—" : formatMontant(total)]
-    ).map((l, i) => <span key={i} className="block">{l}</span>)
+    ).map((l, i, tous) => <span key={i} className={tous.length > 1 ? "block" : undefined}>{l}</span>)
   // Montant d'un total mono-devise : dans SA devise (une ferme passée en XPF
   // garde des totaux EUR), jamais réétiqueté dans la devise courante.
   const formatUnique = (parDevise: TotalDeviseApi[] | undefined, valeur: number) => {
