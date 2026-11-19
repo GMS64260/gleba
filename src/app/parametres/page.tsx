@@ -185,10 +185,12 @@ function ParametresContent() {
   const [importing, setImporting] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+  const deleteTriggerRef = React.useRef<HTMLButtonElement>(null)
   const [deleteConfirmation, setDeleteConfirmation] = React.useState('')
   // Suppression du COMPTE (distincte de la suppression des seules données).
   const [deletingAccount, setDeletingAccount] = React.useState(false)
   const [deleteAccountDialogOpen, setDeleteAccountDialogOpen] = React.useState(false)
+  const deleteAccountTriggerRef = React.useRef<HTMLButtonElement>(null)
   const [deleteAccountConfirmation, setDeleteAccountConfirmation] = React.useState('')
   const [deleteAccountPassword, setDeleteAccountPassword] = React.useState('')
   // null = inconnu → on exige le mot de passe par défaut. false = compte créé
@@ -1315,6 +1317,7 @@ function ParametresContent() {
                   </p>
                 </div>
                 <Button
+                  ref={deleteTriggerRef}
                   variant="destructive"
                   onClick={() => {
                     setDeleteConfirmation('')
@@ -1356,6 +1359,7 @@ function ParametresContent() {
                   </p>
                 </div>
                 <Button
+                  ref={deleteAccountTriggerRef}
                   variant="destructive"
                   onClick={() => {
                     setDeleteAccountConfirmation('')
@@ -1398,7 +1402,13 @@ function ParametresContent() {
       <Dialog open={deleteDialogOpen} onOpenChange={(nextOpen) => {
         if (!deleting) setDeleteDialogOpen(nextOpen)
       }}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[460px]">
+        <DialogContent
+          className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[460px]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            deleteTriggerRef.current?.focus()
+          }}
+        >
           <DialogHeader>
             <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-red-100">
               <Trash2 className="h-5 w-5 text-red-700" />
@@ -1438,7 +1448,13 @@ function ParametresContent() {
       <Dialog open={deleteAccountDialogOpen} onOpenChange={(nextOpen) => {
         if (!deletingAccount) setDeleteAccountDialogOpen(nextOpen)
       }}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[460px]">
+        <DialogContent
+          className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[460px]"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            deleteAccountTriggerRef.current?.focus()
+          }}
+        >
           <DialogHeader>
             <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-red-100">
               <Trash2 className="h-5 w-5 text-red-700" />
