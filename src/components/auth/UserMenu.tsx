@@ -5,7 +5,9 @@
  */
 
 import * as React from "react"
-import { signOut } from "next-auth/react"
+import { seDeconnecter } from "@/lib/deconnexion"
+import {avantDeconnexionCaisse} from "@/lib/caisse/sortie"
+import {alertDialog} from "@/lib/global-dialog"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,8 +18,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, Shield, Settings, Megaphone, Store, Inbox } from "lucide-react"
+import { User, LogOut, Shield, Settings, Megaphone, Store, Inbox, MessageSquarePlus } from "lucide-react"
 import { OPEN_FEEDBACK_EVENT } from "@/components/feedback/OpenFeedbackButton"
+import { getEntreeNavigation } from "@/lib/navigation-principale"
 
 interface UserMenuProps {
   user: {
@@ -28,6 +31,14 @@ interface UserMenuProps {
 }
 
 export function UserMenu({ user }: UserMenuProps) {
+  const sortieEnCours=React.useRef(false)
+  async function deconnecter(){
+    if(sortieEnCours.current)return
+    sortieEnCours.current=true
+    try{if(await avantDeconnexionCaisse())await seDeconnecter({callbackUrl:'/login'})}
+    catch{await alertDialog('Le journal de caisse n’a pas pu être vérifié. Retrouvez la caisse pour conserver ou exporter les opérations avant de vous déconnecter.',{title:'Caisse à vérifier'})}
+    finally{sortieEnCours.current=false}
+  }
   const isAdmin = user.role === "ADMIN"
   // Boutique en ligne : module proprietary, masqué dans la build open-source.
   const featureBoutique = process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE === "true"
@@ -61,7 +72,7 @@ export function UserMenu({ user }: UserMenuProps) {
           <Link href="/boutique">
             <DropdownMenuItem className="cursor-pointer">
               <Store className="mr-2 h-4 w-4" />
-              Ma boutique
+              {getEntreeNavigation("boutique").libelle}
             </DropdownMenuItem>
           </Link>
         )}
@@ -72,6 +83,18 @@ export function UserMenu({ user }: UserMenuProps) {
             Communauté
           </DropdownMenuItem>
         </Link>
+
+        <DropdownMenuItem
+          className="cursor-pointer"
+          onSelect={() =>
+            window.dispatchEvent(
+              new CustomEvent(OPEN_FEEDBACK_EVENT, { detail: { view: "send" } }),
+            )
+          }
+        >
+          <MessageSquarePlus className="mr-2 h-4 w-4" />
+          Envoyer un feedback
+        </DropdownMenuItem>
 
         {/* Signalement 2026-10-07 : l'utilisateur cherchait « Mes signalements »
             dans ce menu. Le suivi vit dans le panneau de feedback (onglet
@@ -108,7 +131,7 @@ export function UserMenu({ user }: UserMenuProps) {
 
         <DropdownMenuItem
           className="cursor-pointer text-garance focus:text-garance"
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => void deconnecter()}
         >
           <LogOut className="mr-2 h-4 w-4" />
           Se déconnecter

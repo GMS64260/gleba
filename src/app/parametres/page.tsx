@@ -23,7 +23,7 @@ import { useModules } from '@/hooks/use-modules'
 import { MODULES, MODULE_IDS, type ModuleId } from '@/lib/modules'
 import { useElevageModes } from '@/hooks/use-elevage-modes'
 import { ELEVAGE_MODES, ELEVAGE_MODE_IDS, type ElevageModeId } from '@/lib/elevage-modes'
-import { signOut } from 'next-auth/react'
+import { seDeconnecter } from '@/lib/deconnexion'
 import { confirmDialog } from '@/lib/global-dialog'
 import { todayLocalISO } from '@/lib/format-utils'
 import { useIsDemoAccount } from '@/hooks/use-is-demo'
@@ -657,7 +657,7 @@ function ParametresContent() {
 
       // Le compte n'existe plus : on ferme la session côté client pour éviter
       // de naviguer avec un JWT qui ne référence plus aucun utilisateur.
-      await signOut({ callbackUrl: '/' })
+      await seDeconnecter({ callbackUrl: '/' })
     } catch (err) {
       toast({
         variant: 'destructive',

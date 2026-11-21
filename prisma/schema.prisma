@@ -4489,6 +4489,15 @@ model MesureCapteurJour {
   moyenne   Float    @map("moyenne")
   nombre    Int      @map("nombre")
   unite     String   @map("unite")
+  // CAP-01 (revue Codex du 2026-11-12) : part de la journée restaurée sans son
+  // brut (sauvegarde au-delà du seuil). L'agrégation la combine au brut
+  // présent au lieu de l'écraser. Tout NULL ou tout renseigné : contrainte
+  // CHECK "mesures_capteurs_jours_archive_check" (migration
+  // 20261121190000_agregats_capteurs_archive ; Prisma ne modélise pas CHECK).
+  archiveNombre  Int?   @map("archive_nombre")
+  archiveMin     Float? @map("archive_min")
+  archiveMax     Float? @map("archive_max")
+  archiveMoyenne Float? @map("archive_moyenne")
 
   @@unique([capteurId, grandeur, jour])
   @@map("mesures_capteurs_jours")

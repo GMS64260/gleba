@@ -11,7 +11,9 @@ import { arreterAvantSuppression } from "@/lib/abonnement/stripe"
 import { requireAdminApi, hashPassword } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
 import { REVOCATION_CHANGEMENT_MOT_DE_PASSE } from "@/lib/mot-de-passe-revocation"
+import { reemettreSession } from "@/lib/session-reemission"
 import { reprendreReferentielCommunaute, COMMUNAUTE_USER_ID, supprimerDonneesSansCleEtrangere, supprimerFichiersUtilisateur } from "@/lib/account-lifecycle"
+import { purgerCaisseEntrainementTx, refusConservationCaisse } from "@/lib/caisse/conservation"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -121,6 +123,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       resetPasswordToken?: null
       resetPasswordExpires?: null
       apiToken?: null
+      sessionVersion?: { increment: number }
       role?: "ADMIN" | "USER"
       active?: boolean
       emailVerified?: boolean
@@ -135,16 +138,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (typeof emailVerified === "boolean") updateData.emailVerified = emailVerified
 
     if (password) {
-      if (password.length < 6) {
+      // Même exigence que l'inscription et le changement par le membre (MC5).
+      if (typeof password !== "string" || password.length < 12) {
         return NextResponse.json(
-          { error: "Le mot de passe doit contenir au moins 6 caractères" },
+          { error: "Le mot de passe doit contenir au moins 12 caractères" },
           { status: 400 }
         )
       }
       updateData.password = await hashPassword(password)
       // Un mot de passe posé par l'administrateur révoque, comme les autres
-      // chemins, le lien de réinitialisation en cours et le jeton d'API
-      // (SEC-01, revue Codex du 2026-11-12).
+      // chemins, le lien de réinitialisation en cours, le jeton d'API
+      // (SEC-01, revue Codex du 2026-11-12) et toutes les sessions du compte,
+      // consultations administrateur comprises (MC3).
       Object.assign(updateData, REVOCATION_CHANGEMENT_MOT_DE_PASSE)
     }
 
@@ -160,10 +165,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         active: true,
         emailVerified: true,
         updatedAt: true,
+        sessionVersion: true,
       },
     })
 
-    return NextResponse.json(user)
+    const { sessionVersion, ...rendu } = user
+    const reponse = NextResponse.json(rendu)
+    // L'administrateur qui règle son propre mot de passe garde sa session,
+    // comme depuis Paramètres ; sinon elle tombe à la requête suivante.
+    if (password && getActeurId(session) === id) {
+      await reemettreSession(request, reponse, { acteurId: id, sessionVersion })
+    }
+    return reponse
   } catch (error) {
     console.error("PATCH /api/admin/users/[id] error:", error)
     return NextResponse.json(
@@ -209,6 +222,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Caisse en vente réelle : conservation six ans (LPF L. 102 B, ISCA).
+    const refusCaisse = await refusConservationCaisse(id, "compte")
+    if (refusCaisse) return refusCaisse
+
     await arreterAvantSuppression(id)
 
     // Décision produit #2 — reprise par la communauté : dans une transaction, on
@@ -219,6 +236,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const { reprises } = await prisma.$transaction(
       async (tx) => {
         const r = await reprendreReferentielCommunaute(tx, id)
+        await purgerCaisseEntrainementTx(tx, id)
         await tx.user.delete({ where: { id } })
         await supprimerDonneesSansCleEtrangere(tx, id)
         return r
