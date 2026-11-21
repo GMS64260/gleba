@@ -40,11 +40,11 @@ export async function historiqueDuPoint(lat: number, lng: number): Promise<Histo
   })
 
   if (!connue) {
-    // Deux demandes simultanées de la même maille : la seconde ne crée rien.
-    await prisma.climatMaille.upsert({
-      where: cle,
-      create: { lambx: maille.lambx, lamby: maille.lamby, etat: ETAT_DEMANDEE },
-      update: {},
+    // Insertion atomique : une demande concurrente ne modifie pas la maille
+    // déjà créée, son bail ni les années importées. Les autres erreurs remontent.
+    await prisma.climatMaille.createMany({
+      data: [{ lambx: maille.lambx, lamby: maille.lamby, etat: ETAT_DEMANDEE }],
+      skipDuplicates: true,
     })
     lancerImportEnArrierePlan()
     return { etat: "en_preparation", maille }
