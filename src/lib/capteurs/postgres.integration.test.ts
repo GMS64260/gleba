@@ -278,6 +278,37 @@ describe.skipIf(!testUrl)("capteurs : régressions PostgreSQL", () => {
     expect((await prisma.capteur.findUniqueOrThrow({ where: { id: capteurId } })).userId).toBe(cible)
   })
 
+  // Revue Codex du 2026-11-12, CAP-01 (preuve de Codex sur PostgreSQL 16 :
+  // min 1, max 20, moyenne 10, 100 mesures devenaient 30, 30, 30, 1).
+  it("une mesure tardive complète une journée restaurée sans son brut, sans l'écraser ni compter deux fois", async () => {
+    const hier = new Date(Date.now() - jourMs).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" })
+    await prisma.mesureCapteurJour.create({ data: { capteurId, grandeur: "temperature_air", jour: new Date(hier), min: 1, max: 20, moyenne: 10, nombre: 100, unite: "°C" } })
+    const fichier = await (await exporter(new Request("http://localhost/api/account/export"))).json()
+    expect(fichier.data.MesureCapteur).toEqual([])
+    await prisma.user.delete({ where: { id: session.userId } })
+    const resultat = await importAccount(await nouveauCompte(), fichier)
+    expect(resultat.warnings).toContainEqual(expect.stringContaining("1 journée d'agrégats restaurée sans ses mesures brutes"))
+    expect(await agregats()).toMatchObject([{ nombre: 100, archiveNombre: 100, archiveMin: 1, archiveMax: 20, archiveMoyenne: 10 }])
+
+    await mesure(new Date(`${hier}T10:00:00Z`), 30)
+    expect(await agregerMesuresRecentes()).toBe(1)
+    const [jour] = await agregats()
+    expect(jour).toMatchObject({ min: 1, max: 30, nombre: 101, archiveNombre: 100 })
+    expect(jour.moyenne).toBeCloseTo((10 * 100 + 30) / 101, 9)
+    // Rejouée, l'agrégation ne recompte ni l'archive ni le brut.
+    expect(await agregerMesuresRecentes()).toBe(0)
+    expect((await agregats())[0].nombre).toBe(101)
+  })
+
+  it("une restauration avec son brut ne fige aucune journée", async () => {
+    await mesure(new Date(), 12)
+    await agregerMesuresRecentes()
+    const fichier = await (await exporter(new Request("http://localhost/api/account/export"))).json()
+    await prisma.user.delete({ where: { id: session.userId } })
+    await importAccount(await nouveauCompte(), fichier)
+    expect(await agregats()).toMatchObject([{ nombre: 1, archiveNombre: null }])
+  })
+
   it("sert l'historique annuel d'un capteur muet dont le brut est purgé", async () => {
     await mesure(new Date(Date.now() - 100 * jourMs), 9)
     await agregerEtPurgerMesures()
