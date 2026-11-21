@@ -36,6 +36,7 @@ import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 import { whereAlimentAccessible } from "@/lib/elevage/aliment-accessible"
 import { sansCoordonneesBancaires } from "@/lib/comptabilite/fournisseur-public"
 import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MESURES_BRUTES_EXPORT } from "@/lib/capteurs/connecteurs"
+import { marquerAgregatsSansBrut } from "@/lib/capteurs/agregats"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -898,6 +899,16 @@ export async function importAccount(
       await delegue(tx, 'cibleReglement').update({ where: { id: pk }, data: { cle, ...(reference !== undefined ? { reference: String(reference) } : {}) } })
     }
     if (patched) warnings.push(`${patched} référence(s) différée(s) reconnectée(s).`)
+
+    // Revue Codex du 2026-11-12 (CAP-01) : une journée d'agrégat restaurée
+    // sans aucune mesure brute ce jour-là devient une part archivée. Une
+    // mesure tardive de ce jour la complète au lieu de la remplacer par le
+    // calcul de son seul brut (`src/lib/capteurs/agregats.ts`).
+    const journeesArchivees = await marquerAgregatsSansBrut(tx, userId)
+    if (journeesArchivees) {
+      const pl = journeesArchivees > 1
+      warnings.push(`${journeesArchivees} journée${pl ? "s" : ""} d'agrégats restaurée${pl ? "s" : ""} sans ${pl ? "leurs" : "ses"} mesures brutes : minimum, maximum, moyenne et nombre sont conservés tels quels ; une mesure arrivée en retard pour ${pl ? "ces jours" : "ce jour"} s'y ajoute sans les remplacer.`)
+    }
 
     if (opts.dryRun) {
       throw new RollbackSignal("dry-run")

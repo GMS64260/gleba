@@ -34,10 +34,18 @@ export async function avecVerrouAgregats<T>(action: (tx: Prisma.TransactionClien
  * valeur de séquence par journée proposée, chaque nuit, même inchangée. On met
  * à jour les journées qui diffèrent, puis on n'insère que les absentes ; le
  * verrou consultatif écarte toute écriture concurrente de ces journées.
+ *
+ * Revue Codex du 2026-11-12 (CAP-01) : une journée restaurée sans son brut
+ * porte une part « archive » (`archive_*`, posée par `marquerAgregatsSansBrut`)
+ * qui décrit les mesures absentes du brut. Une mesure tardive de ce jour
+ * (l'ingestion accepte 7 jours de retard) ne remplace plus la journée par le
+ * calcul de son seul brut : `calcul` combine l'archive et le brut présent.
+ * L'archive ne contenant aucune mesure du brut, rien n'est compté deux fois.
+ * La part archivée reste figée ; la journée suit ensuite la purge ordinaire.
  */
 function ecritureAgregats(connecteurId: string) {
   return Prisma.sql`
-    calcul AS (
+    brut AS (
       SELECT m."capteur_id", m."grandeur",
              ((m."mesuree_a" AT TIME ZONE 'UTC') AT TIME ZONE c."fuseau")::date AS "jour",
              min(m."valeur") AS "min", max(m."valeur") AS "max", avg(m."valeur") AS "moyenne",
@@ -47,6 +55,17 @@ function ecritureAgregats(connecteurId: string) {
       JOIN "connecteurs_capteurs" c ON c."id" = cap."connecteur_id"
       WHERE m."grandeur" <> 'vent_direction' AND c."id" = ${connecteurId}
       GROUP BY 1, 2, 3
+    ), calcul AS (
+      SELECT b."capteur_id", b."grandeur", b."jour",
+             CASE WHEN a."archive_nombre" IS NULL THEN b."min" ELSE LEAST(b."min", a."archive_min") END AS "min",
+             CASE WHEN a."archive_nombre" IS NULL THEN b."max" ELSE GREATEST(b."max", a."archive_max") END AS "max",
+             CASE WHEN a."archive_nombre" IS NULL THEN b."moyenne"
+                  ELSE (b."moyenne" * b."nombre" + a."archive_moyenne" * a."archive_nombre") / (b."nombre" + a."archive_nombre") END AS "moyenne",
+             (b."nombre" + COALESCE(a."archive_nombre", 0))::int AS "nombre",
+             b."unite"
+      FROM brut b
+      LEFT JOIN "mesures_capteurs_jours" a
+        ON a."capteur_id" = b."capteur_id" AND a."grandeur" = b."grandeur" AND a."jour" = b."jour"
     ), modifies AS (
       UPDATE "mesures_capteurs_jours" a
       SET "min" = k."min", "max" = k."max", "moyenne" = k."moyenne", "nombre" = k."nombre", "unite" = k."unite"
@@ -142,6 +161,31 @@ export async function purgerMesuresAnciennes(): Promise<number> {
 /** Cron de 03:47 (`notifications/scheduler.ts`). */
 export async function agregerEtPurgerMesures(): Promise<BilanAgregats> {
   return parConnecteur(agregationEtPurge)
+}
+
+/**
+ * CAP-01 — après une restauration de compte : chaque journée d'agrégat sans
+ * aucune mesure brute ce jour-là (brut omis de la sauvegarde au-delà du seuil,
+ * ou déjà purgé avant elle) devient une part archivée, que l'agrégation
+ * combinera à toute mesure tardive au lieu de l'écraser. Une journée dont le
+ * brut a été restauré reste recalculable, sans archive. Les connecteurs au
+ * fuseau hors liste (que `AT TIME ZONE` refuserait) sont laissés tels quels :
+ * le cron ne les agrège pas non plus. Retourne le nombre de journées figées.
+ */
+export async function marquerAgregatsSansBrut(tx: Prisma.TransactionClient, userId: string): Promise<number> {
+  return tx.$executeRaw`
+    UPDATE "mesures_capteurs_jours" a
+    SET "archive_nombre" = a."nombre", "archive_min" = a."min", "archive_max" = a."max", "archive_moyenne" = a."moyenne"
+    FROM "capteurs" cap
+    JOIN "connecteurs_capteurs" c ON c."id" = cap."connecteur_id"
+    WHERE cap."id" = a."capteur_id" AND cap."user_id" = ${userId}
+      AND a."archive_nombre" IS NULL AND a."nombre" > 0
+      AND CASE WHEN c."fuseau" = ANY(${[...FUSEAUX_PROPOSES]}::text[]) THEN NOT EXISTS (
+        SELECT 1 FROM "mesures_capteurs" m
+        WHERE m."capteur_id" = a."capteur_id" AND m."grandeur" = a."grandeur"
+          AND ((m."mesuree_a" AT TIME ZONE 'UTC') AT TIME ZONE c."fuseau")::date = a."jour"
+      ) ELSE false END
+  `
 }
 
 export class HistoriqueNonReconstructibleError extends Error {

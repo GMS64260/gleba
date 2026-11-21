@@ -78,6 +78,22 @@ describe("agrégation et purge nocturnes", () => {
     expect(sql).toMatch(/INSERT INTO "mesures_capteurs_jours"[\s\S]*WHERE NOT EXISTS/)
   })
 
+  // Revue Codex du 2026-11-12, CAP-01 : la journée restaurée sans son brut
+  // était remplacée par le calcul du seul brut présent (une mesure tardive :
+  // 100 mesures d'historique devenaient 1). Le comportement est éprouvé sur
+  // PostgreSQL par `postgres.integration.test.ts` ; ici, le SQL combine la
+  // part archivée et le brut au lieu d'écraser la journée.
+  it("combine la part archivée d'une journée et le brut présent, sans l'écraser", async () => {
+    await agregerMesuresRecentes()
+    const { sql } = requetes()[0]
+    expect(sql).toContain('FROM brut b\n      LEFT JOIN "mesures_capteurs_jours" a')
+    expect(sql).toContain('CASE WHEN a."archive_nombre" IS NULL THEN b."min"')
+    expect(sql).toContain('LEAST(b."min", a."archive_min")')
+    expect(sql).toContain('GREATEST(b."max", a."archive_max")')
+    expect(sql).toContain('(b."nombre" + COALESCE(a."archive_nombre", 0))::int')
+    expect(sql).toContain('(b."moyenne" * b."nombre" + a."archive_moyenne" * a."archive_nombre") / (b."nombre" + a."archive_nombre")')
+  })
+
   it("le rattrapage sans purge suit le même découpage par connecteur", async () => {
     expect(await agregerMesuresRecentes()).toBe(4)
     expect(mocks.transaction).toHaveBeenCalledTimes(3)
