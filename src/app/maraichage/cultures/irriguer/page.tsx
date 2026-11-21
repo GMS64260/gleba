@@ -61,6 +61,7 @@ import {
   type FiltreBesoinEau,
   type FiltreUrgence,
 } from '@/lib/irrigation/page-irriguer'
+import { SourceOpenMeteo } from "@/components/meteo/SourceOpenMeteo"
 
 interface MeteoResume {
   pluie48h: number
@@ -564,6 +565,7 @@ function CulturesIrriguerContent() {
                     </span>
                   )}
                 </div>
+                <SourceOpenMeteo className="mt-1.5" />
               </div>
             </div>
           </div>

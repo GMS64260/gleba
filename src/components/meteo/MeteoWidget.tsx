@@ -25,6 +25,7 @@ import {
   PawPrint,
   Trees,
 } from "lucide-react"
+import { SourceOpenMeteo } from "@/components/meteo/SourceOpenMeteo"
 
 // ============================================================
 // TYPES
@@ -432,14 +433,19 @@ function MeteoWidgetInterne({ parcelleId, lat, lng, compact = false, defaultExpa
             </div>
           </div>
 
-          {/* Source */}
+          {/* Lieu et relevé du jour */}
           <div className="px-3 py-1.5 border-t">
-            <p className="text-[10px] text-slate-300">
-              Source : {data.source} | {data.parcelle.nom} ({data.parcelle.lat.toFixed(2)}, {data.parcelle.lng.toFixed(2)})
+            <p className="text-[11px] leading-4 text-ardoise">
+              {data.source !== "open-meteo" && <>Relevé du jour : {data.source} · </>}
+              {data.parcelle.nom} ({data.parcelle.lat.toFixed(2)}, {data.parcelle.lng.toFixed(2)})
             </p>
           </div>
         </div>
       )}
+
+      {/* Les prévisions viennent toujours d'Open-Meteo, station ou non : la
+          mention reste visible widget replié (popover de l'en-tête). */}
+      <SourceOpenMeteo className="px-3 py-1.5 border-t" />
     </div>
   )
 }
