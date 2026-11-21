@@ -1,3 +1,4 @@
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
@@ -15,6 +16,7 @@ import { Prisma, type VenteProduit } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import {
   StockFromageError,
+  refusVenteFromage,
   recalerEtatLotFromage,
   refusStockFromage,
   stockDuLotFromage,
@@ -129,6 +131,8 @@ export async function GET(request: NextRequest) {
       meta: { year: annee, total: ventes.length },
     })
   } catch (error) {
+    const conflitCaisse = messageConflitStockCaisse(error)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('GET /api/elevage/ventes error:', error)
@@ -231,7 +235,7 @@ export async function POST(request: NextRequest) {
       if (!lot) {
         return NextResponse.json({ error: 'Lot de fromage introuvable dans votre cave.' }, { status: 400 })
       }
-      const refus = refusStockFromage(stockDuLotFromage(lot), sortie.nbPieces, sortie.poidsKg)
+      const refus = refusVenteFromage(lot, date || new Date()) ?? refusStockFromage(stockDuLotFromage(lot), sortie.nbPieces, sortie.poidsKg)
       if (refus) {
         return NextResponse.json({ error: refus }, { status: 409 })
       }
@@ -306,13 +310,16 @@ export async function POST(request: NextRequest) {
       // Contrôle autoritatif sous verrou : le pré-contrôle ci-dessus améliore le
       // message, celui-ci empêche deux requêtes concurrentes de sur-vendre.
       if (fromageSortie) {
-        await verrouillerEtVerifierStockFromage(
+        const { lot: lotVerrouille } = await verrouillerEtVerifierStockFromage(
           tx,
           session.user.id,
           fromageSortie.lotFromageId,
           fromageSortie.nbPieces,
           fromageSortie.poidsKg
         )
+        // Même garde de date que le pré-contrôle, sur le lot relu sous verrou.
+        const refusDate = refusVenteFromage(lotVerrouille, date || new Date())
+        if (refusDate) throw new StockFromageError(refusDate)
       }
       const vente = await tx.venteProduit.create({
         data: {
@@ -449,6 +456,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result, warning }, { status: 201 })
   } catch (error) {
+    const conflitCaisse = messageConflitStockCaisse(error)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
@@ -557,6 +566,8 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    const conflitCaisse = messageConflitStockCaisse(error)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
@@ -784,6 +795,19 @@ export async function PATCH(request: NextRequest) {
       if (aChange) {
         throw new ReglementVenteError('Cette vente a changé. Rechargez la liste avant de la modifier.')
       }
+      // FOOD-01 (revue du 2026-11-11) : corriger le jour d'une vente de fromage
+      // repasse la garde de date de la vente directe, sous le verrou du lot.
+      // Sans elle, une vente saisie dans les règles pouvait être redatée après
+      // la DLC ou avant la fabrication du lot.
+      if (courante.lotFromageId && updateData.date && updateData.date.getTime() !== courante.date.getTime()) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:fromage:${courante.lotFromageId}`}))`
+        const lot = await tx.lotFromage.findFirst({
+          where: { id: courante.lotFromageId, userId },
+          select: { dateFabrication: true, dlc: true },
+        })
+        const refusDate = lot ? refusVenteFromage(lot, updateData.date) : null
+        if (refusDate) throw new StockFromageError(refusDate)
+      }
       if (!courante.factureId) {
         const projection = await verifierPointageDetaille(tx, userId, cleSourceReglement('vente', 'vente_produit', courante.id), updateData.prixTotal ?? courante.prixTotal, typeof updateData.paye === 'boolean' ? updateData.paye : undefined)
         Object.assign(updateData, projection)
@@ -919,10 +943,15 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: vente })
   } catch (error) {
+    const conflitCaisse = messageConflitStockCaisse(error)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ReglementVenteError) return NextResponse.json({ error: error.message }, { status: 409 })
     if (error instanceof StockOeufsVenteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    if (error instanceof StockFromageError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
     if (error instanceof StockRucheError) {

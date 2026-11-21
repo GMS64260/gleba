@@ -1,7 +1,10 @@
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { apresDemain, MESSAGE_RECOLTE_FUTURE } from '@/lib/interventions/date-realisee'
 import { verrouillerRecolteLibre } from '@/lib/commercial/verrou-lot'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
+import { verdictDarLegume } from '@/lib/recolte/dar'
+import { corpsRefusDar, ErreurDarEnCours } from '@/lib/phyto/refus-dar'
 /**
  * API Routes pour une Récolte spécifique
  * GET /api/recoltes/[id] - Détail d'une recolte
@@ -17,7 +20,13 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
-import { jourCivilLocal } from '@/lib/cultures/execution'
+import {
+  OPTIONS_TRANSACTION_CULTURE,
+  SELECT_ETAPES,
+  ecrituresPassageAFait,
+  jourCivilLocal,
+  verrouillerCultures,
+} from '@/lib/cultures/execution'
 import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
@@ -80,6 +89,8 @@ export async function GET(
     // partagée par un autre compte (revue 2026-10-20).
     return NextResponse.json(masquerReferentielsEmbarques(recolte, session!.user.id))
   } catch (error) {
+    const conflitStock = messageConflitStockCaisse(error)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
@@ -103,7 +114,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const userId = session!.user.id
     const data = validation.data
     const resultat = await prisma.$transaction(async tx => {
+      // Contre-revue adverse 2 (2026-11-15) : avancer la date d'une récolte ne
+      // touche pas la clé étrangère, donc n'attendait pas le verrou commun des
+      // étapes de culture. Un PUT culture validé sur l'ancienne première
+      // récolte écrivait ensuite une récolte faite postérieure à celle-ci.
+      // Ordre global : cultures (ancienne et nouvelle) PUIS lot. La culture du
+      // lot est lue sans verrou pour savoir quoi verrouiller, puis revérifiée.
+      const apercu = await tx.recolte.findFirst({ where: { id: recolteId, userId }, select: { cultureId: true } })
+      if (!apercu) throw new ErreurCommerciale('Récolte introuvable', 404)
+      await verrouillerCultures(tx, userId, [apercu.cultureId, data.cultureId ?? apercu.cultureId], 'sansCle')
       const lot = await verrouillerRecolteLibre(tx, userId, recolteId)
+      if (lot.cultureId !== apercu.cultureId) {
+        throw new ErreurCommerciale('Cette récolte vient d’être rattachée à une autre culture. Actualisez la page puis recommencez.', 409)
+      }
       // Pas de date future (comme à la création), sauf si c'est déjà celle du lot :
       // un lot ancien mal daté reste corrigeable sur ses autres champs.
       if (data.date && apresDemain(data.date) && data.date.toISOString().slice(0, 10) !== lot.date.toISOString().slice(0, 10)) {
@@ -152,12 +175,28 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         data: { ...data, ...(statutBioSnapshot !== undefined ? { statutBioSnapshot } : {}) },
         include: { espece: true, culture: true },
       })
+      // Redatée ou rattachée, la récolte peut devenir la première de sa
+      // culture : une récolte faite datée après elle est recalée sur sa date,
+      // même règle que la saisie d'une récolte (`recolte/creation`).
+      if (cultureCible !== lot.cultureId || dateChange) {
+        const etat = await tx.culture.findFirst({
+          where: { id: cultureCible, userId },
+          select: { recolteFaite: true, ...SELECT_ETAPES },
+        })
+        const recalage = etat?.recolteFaite ? ecrituresPassageAFait(etat, 'recolteFaite', dateCible) : {}
+        if (Object.keys(recalage).length > 0) {
+          const culture = await tx.culture.update({ where: { id: cultureCible }, data: recalage })
+          return { ok: true as const, recolte: { ...recolte, culture } }
+        }
+      }
       return { ok: true as const, recolte }
-    })
+    }, OPTIONS_TRANSACTION_CULTURE)
     if (!resultat.ok) return resultat.response
     invalidateKpi(userId)
     return NextResponse.json(masquerReferentielsEmbarques(resultat.recolte, userId))
   } catch (error) {
+    const conflitStock = messageConflitStockCaisse(error)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PUT /api/recoltes/[id] error:', error)
@@ -207,6 +246,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         return refuser('Client introuvable', 400, { champ: 'clientId' })
       }
       if (donnees.creerFacture && existing.factureId) return refuser('Cette récolte est déjà facturée', 409, { factureId: existing.factureId })
+      // Mise en vente (passage à « vendu ») : refusée tant qu'un délai avant
+      // récolte légal court sur ce lot ; un rappel informatif accompagne la
+      // vente sans l'empêcher. Corriger une vente déjà faite n'est pas rejugé.
+      let dar = null
+      if (statut === 'vendu' && existing.statut !== 'vendu') {
+        const plancheId = existing.culture.plancheId
+        const planche = plancheId ? await tx.planche.findFirst({ where: { id: plancheId, userId }, select: { parcelleGeoId: true } }) : null
+        dar = await verdictDarLegume(tx, userId, { id: recolteId, cultureId: existing.cultureId, plancheId, parcelleId: planche?.parcelleGeoId ?? null, date: existing.date })
+        if (dar.niveau === 'bloquant') return { ok: false as const, response: NextResponse.json(corpsRefusDar(new ErreurDarEnCours(dar)), { status: 409 }) }
+      }
       const updateData: Record<string, unknown> = {}
       for (const champ of ['statut','dateVente','prixKg','prixTotal','clientId','clientNom','datePeremption','notes'] as const) {
         if (body[champ] !== undefined) updateData[champ] = donnees[champ]
@@ -277,12 +326,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       })
       if (statut === 'vendu') await createVenteFromRecolte(userId, recolte, tx)
       else if (existing.statut === 'vendu') await deleteAutoEntry('recolte', recolteId, 'vente', userId, tx)
-      return { ok: true as const, recolte }
+      return { ok: true as const, recolte, avertissementsDar: dar?.rappels }
     })
     if (!resultat.ok) return resultat.response
     invalidateKpi(userId)
-    return NextResponse.json(masquerReferentielsEmbarques(resultat.recolte, userId))
+    return NextResponse.json({ ...masquerReferentielsEmbarques(resultat.recolte, userId), ...(resultat.avertissementsDar ? { avertissementsDar: resultat.avertissementsDar } : {}) })
   } catch (error) {
+    const conflitStock = messageConflitStockCaisse(error)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (String(error).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot vient d’être lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
@@ -313,6 +364,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     invalidateKpi(userId)
     return NextResponse.json({ success: true, deleted: recolteId })
   } catch (error) {
+    const conflitStock = messageConflitStockCaisse(error)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('DELETE /api/recoltes/[id] error:', error)
