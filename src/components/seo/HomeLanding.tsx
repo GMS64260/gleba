@@ -36,6 +36,8 @@ import {
   Sprout,
 } from "@/lib/phosphor-icons";
 
+import { filmMatin } from "@/lib/seo/video-matin";
+import { FilmMatinYouTube } from "./FilmMatinYouTube";
 import { ApercuAujourdhui } from "./ApercuAujourdhui";
 import { CLASSES_CTA, CLASSES_CTA_SECONDAIRE } from "./MarketingShell";
 
@@ -382,27 +384,18 @@ export function HomeLanding() {
               <Surtitre>L&apos;écran Aujourd&apos;hui</Surtitre>
               <TitreSection id="titre-aujourdhui">Ouvrir Gleba le matin, savoir quoi faire.</TitreSection>
               <p className="mt-5 text-lg leading-relaxed text-ardoise">
-                Plutôt qu&apos;un tableau de bord à interpréter, une page qui répond à la question du
-                matin. Tout ce qui ne peut pas attendre remonte en tête, quel que soit l&apos;atelier.
+                Le tableau de bord rassemble les tâches du jour. Sur la ferme de démonstration,
+                on consulte l’agent IA avant de semer les fèves, puis on suit une récolte de
+                carottes du jardin à la boutique en ligne.
               </p>
             </div>
             <figure className="min-w-0 lg:col-span-3 lg:row-span-2">
-              <video
-                aria-labelledby="titre-video-matin"
-                className={`aspect-video w-full rounded-xl bg-encre ${FOCUS}`}
-                controls
-                playsInline
-                preload="none"
-                width={1920}
-                height={1080}
-                poster="/videos/un-matin-a-la-ferme.webp"
-              >
-                <source src="/videos/un-matin-a-la-ferme.mp4" type="video/mp4" />
-                <track kind="captions" src="/videos/un-matin-a-la-ferme.fr.vtt" srcLang="fr" label="Français" />
-                <a href="/videos/un-matin-a-la-ferme.mp4">Télécharger la vidéo</a>
-              </video>
-              <figcaption id="titre-video-matin" className="mt-2 text-sm text-ardoise">
-                Un matin à la ferme avec Gleba · 58 secondes
+              <FilmMatinYouTube />
+              <figcaption className="mt-2 text-sm leading-relaxed text-ardoise">
+                <Link href={filmMatin.page} className={`font-semibold text-sauge underline underline-offset-4 ${FOCUS}`}>
+                  {filmMatin.titre}
+                </Link>
+                {" · "}{filmMatin.secondes} s · Vidéo et transcription
               </figcaption>
             </figure>
             <Link href="/login?demo=1" className={`${CLASSES_CTA} justify-self-start lg:col-span-2 lg:self-start`}>

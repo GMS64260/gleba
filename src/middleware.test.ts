@@ -44,7 +44,7 @@ function visiter(url: string): Response {
 }
 
 describe("vidéo de l’accueil public", () => {
-  it.each(["un-matin-a-la-ferme.mp4", "un-matin-a-la-ferme.fr.vtt"])(
+  it.each(["un-matin-a-la-ferme", "un-matin-a-la-ferme.mp4", "un-matin-a-la-ferme.fr.vtt"])(
     "sert %s au visiteur sans session",
     (fichier) => {
       session.courante = null
