@@ -34,6 +34,7 @@ import {
   type NappeIndisponible,
 } from "@/lib/irrigation/meteo-indisponible"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
+import { SourceOpenMeteo } from "@/components/meteo/SourceOpenMeteo"
 
 // ============================================================
 // TYPES
@@ -474,6 +475,7 @@ function IrrigationAdvisorInterne({ parcelleId, lat, lng, scopeLabel }: Irrigati
           )}
         </button>
       )}
+      <SourceOpenMeteo calcul className="border-t border-lin-doux px-4 py-2" />
       </>}
     </div>
   )
