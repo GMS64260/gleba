@@ -1,5 +1,6 @@
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { tauxEtrangerALaFacture } from '@/lib/comptabilite/taux-avoir'
+import { refusPlafondsAvoir } from '@/lib/comptabilite/plafonds-avoir'
 import { ErreurCommerciale } from '@/lib/commercial/regles'
 import { verifierLignesStock, verrouillerStocksDesLignes, sortirStockCommercial } from '@/lib/commercial/stock'
 /**
@@ -270,6 +271,19 @@ export async function POST(request: NextRequest) {
         if ((cumul._sum.totalTTC ?? 0) + d.totalTTC > Number(origine.total_ttc) + 0.01) {
           throw new Error('AVOIR_INVALIDE:Le total des avoirs dépasserait le montant de la facture d’origine')
         }
+        // COM-04 (revue Codex du 2026-11-12) : plafonds par taux, sous le
+        // verrou de l'origine. Un avoir total au seul premier taux d'une
+        // facture multi-taux retirait trop de TVA collectée (solde négatif).
+        const montants = { tauxTVA: true, montantHT: true, montantTVA: true, montantTTC: true, description: true } as const
+        const [lignesOrigine, lignesAvoirs] = await Promise.all([
+          tx.ligneFacture.findMany({ where: { factureId: d.factureOrigineId }, select: montants }),
+          tx.ligneFacture.findMany({
+            where: { facture: { userId, type: 'avoir', factureOrigineId: d.factureOrigineId, statut: { not: 'annulee' } } },
+            select: montants,
+          }),
+        ])
+        const refusPlafond = refusPlafondsAvoir(lignesOrigine, lignesAvoirs, lignesValidees)
+        if (refusPlafond) throw new Error(`AVOIR_INVALIDE:${refusPlafond}`)
       }
       const creee = await creerFacture(tx, {
         cleCreationStock: d.cleCreationStock,
