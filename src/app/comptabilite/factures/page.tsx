@@ -41,6 +41,7 @@ import type { ArticleStockCommercial } from '@/lib/commercial/stock-types'
 import { DocumentsCommerciaux } from '@/components/commercial/DocumentsCommerciaux'
 import { EnvoyerDocument } from '@/components/commercial/EnvoyerDocument'
 import { updateDashboardSearchParams } from '@/lib/dashboard-navigation'
+import { lignesAvoirVentile, ventilationOrigine } from '@/lib/comptabilite/ventilation-avoir'
 
 interface LigneFacture {
   articleStockType?: string | null
@@ -115,6 +116,7 @@ interface FactureEmise {
   factureOrigine?: { id: number; numero: string; clientNom: string } | null
   mouvementsStock?: Array<{ quantite: number }>
   documentsCommerciaux?: Array<{ id: string; numero: string; type: string }>
+  lignes?: Array<{ tauxTVA: number; montantHT: number; montantTVA: number; montantTTC: number }>
 }
 
 /**
@@ -260,6 +262,8 @@ export default function FacturesPage() {
     motif: "",
     montant: "",
     tauxTVA: "5.5",
+    // COM-04 : montant TTC par taux quand la facture d'origine en porte plusieurs.
+    ventilation: {} as Record<string, string>,
   })
   const [savingAvoir, setSavingAvoir] = React.useState(false)
   const origineAvoir = facturesEmises.find((f) => String(f.id) === avoirData.factureOrigineId)
@@ -277,6 +281,13 @@ export default function FacturesPage() {
   const tauxAvoirTVA = parseFloat(avoirData.tauxTVA)
   const montantAvoirHT = Math.round((montantAvoirTTC / (1 + tauxAvoirTVA / 100)) * 100) / 100
   const montantAvoirTVA = Math.round((montantAvoirTTC - montantAvoirHT) * 100) / 100
+  // COM-04 : taux de la facture d'origine choisie (plusieurs taux = saisie par taux).
+  const tauxOrigineAvoir = React.useMemo(
+    () => ventilationOrigine(origineAvoir?.lignes),
+    [origineAvoir],
+  )
+  const avoirMultiTaux = tauxOrigineAvoir.length > 1
+  const avoirVentileSaisi = Object.values(avoirData.ventilation).some((v) => (parseFloat(v) || 0) > 0)
 
   const fetchImpayees = React.useCallback(async () => {
     setIsLoading(true)
@@ -574,13 +585,9 @@ export default function FacturesPage() {
       toast({ variant: "destructive", title: "Facture d'origine requise" })
       return
     }
-    if (!avoirData.motif || !avoirData.montant) {
-      toast({ variant: "destructive", title: "Motif et montant requis" })
-      return
-    }
     const origine = facturesEmises.find(
       (f: { id: number | string }) => String(f.id) === avoirData.factureOrigineId
-    ) as Record<string, unknown> | undefined
+    ) as (FactureEmise & Record<string, unknown>) | undefined
     if (!origine) {
       toast({ variant: "destructive", title: "Facture d'origine introuvable" })
       return
@@ -589,13 +596,54 @@ export default function FacturesPage() {
       toast({ variant: "destructive", title: "Avoir non créé", description: erreurDeviseAvoir })
       return
     }
+    // COM-04 (revue Codex du 2026-11-12) : sur une facture à plusieurs taux,
+    // l'avoir se ventile par taux ; tout mettre au premier taux faussait la TVA.
+    const tauxOrigine = ventilationOrigine(origine.lignes)
+    const multiTaux = tauxOrigine.length > 1
+    const lignesVentilees = multiTaux
+      ? lignesAvoirVentile(
+          tauxOrigine,
+          Object.fromEntries(Object.entries(avoirData.ventilation).map(([t, v]) => [t, parseFloat(v) || 0])),
+          avoirData.motif,
+        )
+      : []
+    if (!avoirData.motif || (multiTaux ? lignesVentilees.length === 0 : !avoirData.montant)) {
+      toast({ variant: "destructive", title: "Motif et montant requis" })
+      return
+    }
 
     setSavingAvoir(true)
     try {
-      const montantTTC = montantAvoirTTC
-      const tauxTVA = tauxAvoirTVA
-      const montantHT = montantAvoirHT
-      const montantTVA = montantAvoirTVA
+      const tauxTVA = parseFloat(avoirData.tauxTVA)
+      const montantSaisi = parseFloat(avoirData.montant)
+      const htSaisi = Math.round((montantSaisi / (1 + tauxTVA / 100)) * 100) / 100
+      // Facture à un seul taux : même construction, pour qu'un avoir total
+      // reprenne les lignes de l'origine (TVA arrondie ligne par ligne).
+      const origineUnTaux = tauxOrigine.length === 1 && tauxOrigine[0].taux === tauxTVA
+      const lignesAvoir = multiTaux
+        ? lignesVentilees
+        : origineUnTaux
+        ? lignesAvoirVentile(tauxOrigine, { [String(tauxTVA)]: montantSaisi }, avoirData.motif, false)
+        : [
+            {
+              description: avoirData.motif,
+              quantite: 1,
+              unite: "lot",
+              prixUnitaire: htSaisi,
+              tauxTVA,
+              montantHT: htSaisi,
+              montantTVA: Math.round((montantSaisi - htSaisi) * 100) / 100,
+              montantTTC: montantSaisi,
+            },
+          ]
+      const somme = (cle: "montantHT" | "montantTVA" | "montantTTC") =>
+        lignesAvoir.reduce((s, l) => s + Math.round(l[cle] * 100), 0) / 100
+      const montantHT = somme("montantHT")
+      const montantTVA = somme("montantTVA")
+      const montantTTC = somme("montantTTC")
+      const totauxParTauxTva = Object.fromEntries(
+        lignesAvoir.map((l) => [String(l.tauxTVA), { ht: l.montantHT, tva: l.montantTVA, ttc: l.montantTTC }]),
+      )
 
       const res = await fetch("/api/comptabilite/factures", {
         method: "POST",
@@ -614,19 +662,8 @@ export default function FacturesPage() {
           totalHT: montantHT,
           totalTVA: montantTVA,
           totalTTC: montantTTC,
-          totauxParTauxTva: { [String(tauxTVA)]: { ht: montantHT, tva: montantTVA, ttc: montantTTC } },
-          lignes: [
-            {
-              description: avoirData.motif,
-              quantite: 1,
-              unite: "lot",
-              prixUnitaire: montantHT,
-              tauxTVA,
-              montantHT,
-              montantTVA,
-              montantTTC,
-            },
-          ],
+          totauxParTauxTva,
+          lignes: lignesAvoir,
         }),
       })
       if (!res.ok) {
@@ -646,6 +683,7 @@ export default function FacturesPage() {
         motif: "",
         montant: "",
         tauxTVA: "5.5",
+        ventilation: {},
       })
       void rafraichirFactures()
       // Ouvre le PDF généré côté serveur (mentions légales + snapshot émetteur).
@@ -1343,7 +1381,7 @@ export default function FacturesPage() {
                       // premier taux si elle en porte plusieurs), plus 5,5 % d'office.
                       const origine = facturesEmises.find((f: { id: number }) => String(f.id) === v) as { lignes?: Array<{ tauxTVA: number }> } | undefined
                       const taux = origine?.lignes?.[0]?.tauxTVA
-                      setAvoirData({ ...avoirData, factureOrigineId: v, ...(taux !== undefined ? { tauxTVA: String(taux) } : {}) })
+                      setAvoirData({ ...avoirData, factureOrigineId: v, ventilation: {}, ...(taux !== undefined ? { tauxTVA: String(taux) } : {}) })
                     }}
                   >
                     <SelectTrigger>
@@ -1382,39 +1420,97 @@ export default function FacturesPage() {
                       onChange={(e) => setAvoirData({ ...avoirData, date: e.target.value })}
                     />
                   </div>
-                  <div>
-                    <Label>Montant TTC ({deviseAvoir ?? "…"}) *</Label>
-                    <Input
-                      type="number"
-                      step={deviseAvoir === "XPF" ? "1" : "0.01"}
-                      value={avoirData.montant}
-                      onChange={(e) => setAvoirData({ ...avoirData, montant: e.target.value })}
-                      placeholder={deviseAvoir === "XPF" ? "0" : "0.00"}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label>Taux TVA (%)</Label>
-                    <Select
-                      value={avoirData.tauxTVA}
-                      onValueChange={(v) => setAvoirData({ ...avoirData, tauxTVA: v })}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {["0", "2.1", "5.5", "10", "20"].map((t) => (
-                          <SelectItem key={t} value={t}>{t} %</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {!avoirMultiTaux && (
+                    <>
+                      <div>
+                        <Label>Montant TTC ({deviseAvoir ?? "…"}) *</Label>
+                        <Input
+                          type="number"
+                          step={deviseAvoir === "XPF" ? "1" : "0.01"}
+                          value={avoirData.montant}
+                          onChange={(e) => setAvoirData({ ...avoirData, montant: e.target.value })}
+                          placeholder={deviseAvoir === "XPF" ? "0" : "0.00"}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label>Taux TVA (%)</Label>
+                        <Select
+                          value={avoirData.tauxTVA}
+                          onValueChange={(v) => setAvoirData({ ...avoirData, tauxTVA: v })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {["0", "2.1", "5.5", "10", "20"].map((t) => (
+                              <SelectItem key={t} value={t}>{t} %</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {Number.isFinite(montantAvoirTTC) && Number.isFinite(montantAvoirHT) && (
+                {!avoirMultiTaux && Number.isFinite(montantAvoirTTC) && Number.isFinite(montantAvoirHT) && (
                   <div aria-label="Aperçu de l'avoir" className="rounded-lg border p-3 text-sm space-y-1">
                     <p>Total HT : <span className="font-medium">{formatPiece(montantAvoirHT, origineAvoir?.emetteurSnapshot, origineAvoir?.date)}</span></p>
                     <p>TVA : <span className="font-medium">{formatPiece(montantAvoirTVA, origineAvoir?.emetteurSnapshot, origineAvoir?.date)}</span></p>
                     <p>Total TTC de l&apos;avoir : <span className="font-semibold">{formatPiece(montantAvoirTTC, origineAvoir?.emetteurSnapshot, origineAvoir?.date)}</span></p>
                   </div>
+                )}
+
+                {avoirMultiTaux && (
+                  <fieldset className="space-y-3 rounded-md border p-3">
+                    <legend className="px-1 text-sm font-medium">Montant TTC par taux de TVA *</legend>
+                    <p className="text-xs text-muted-foreground">
+                      La facture d&apos;origine porte plusieurs taux : l&apos;avoir reprend la même ventilation.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {tauxOrigineAvoir.map((t) => (
+                        <div key={t.taux}>
+                          <Label htmlFor={`avoir-taux-${t.taux}`}>
+                            TVA {t.taux} % <span className="font-normal text-muted-foreground">(origine {t.ttc.toFixed(2).replace(".", ",")}{deviseAvoir ? ` ${deviseAvoir}` : ""} TTC)</span>
+                          </Label>
+                          <Input
+                            id={`avoir-taux-${t.taux}`}
+                            type="number"
+                            inputMode="decimal"
+                            step="0.01"
+                            min="0"
+                            max={t.ttc}
+                            value={avoirData.ventilation[String(t.taux)] ?? ""}
+                            onChange={(e) =>
+                              setAvoirData({ ...avoirData, ventilation: { ...avoirData.ventilation, [String(t.taux)]: e.target.value } })
+                            }
+                            placeholder="0.00"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-sm">
+                      Total TTC de l&apos;avoir :{" "}
+                      <span className="font-semibold">
+                        {formatPiece(
+                          Object.values(avoirData.ventilation).reduce((s, v) => s + Math.round((parseFloat(v) || 0) * 100), 0) / 100,
+                          origineAvoir?.emetteurSnapshot,
+                          origineAvoir?.date,
+                        )}
+                      </span>
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setAvoirData({
+                          ...avoirData,
+                          ventilation: Object.fromEntries(tauxOrigineAvoir.map((t) => [String(t.taux), t.ttc.toFixed(2)])),
+                        })
+                      }
+                    >
+                      Reprendre la facture entière
+                    </Button>
+                  </fieldset>
                 )}
 
                 <div>
@@ -1435,7 +1531,7 @@ export default function FacturesPage() {
 
                 <Button
                   onClick={createAvoir}
-                  disabled={savingAvoir || !!erreurDeviseAvoir || !avoirData.factureOrigineId || !avoirData.motif || !avoirData.montant}
+                  disabled={savingAvoir || !!erreurDeviseAvoir || !avoirData.factureOrigineId || !avoirData.motif || (avoirMultiTaux ? !avoirVentileSaisi : !avoirData.montant)}
                   className="bg-red-600 hover:bg-red-700"
                 >
                   <Printer className="h-4 w-4 mr-2" />
