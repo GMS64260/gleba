@@ -402,7 +402,7 @@ export function HomeLanding() {
                 <a href="/videos/un-matin-a-la-ferme.mp4">Télécharger la vidéo</a>
               </video>
               <figcaption id="titre-video-matin" className="mt-2 text-sm text-ardoise">
-                Un matin à la ferme avec Gleba · 54 secondes
+                Un matin à la ferme avec Gleba · 58 secondes
               </figcaption>
             </figure>
             <Link href="/login?demo=1" className={`${CLASSES_CTA} justify-self-start lg:col-span-2 lg:self-start`}>
