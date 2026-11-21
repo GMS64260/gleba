@@ -49,11 +49,15 @@ public rend `null`, et le vrai composant reste sur le VPS via
 
 `src/lib/auth-utils.ts` est commun aux deux versions. Il appelle
 `src/lib/auth-politique.ts`, dont le contrat est `auth-politique-types.ts`.
-Le dépôt public reçoit à ce chemin le stub `auth-politique.public.ts` :
+Dans le dépôt public, ce chemin réexporte le stub `auth-politique.public.ts` :
 `null` conserve le quota générique par IP. L'assemblage privé remplace ce
 seul module par sa politique par acteur, après validation de la session.
 Les deux versions exportent uniquement `politiqueDebitApi` avec le même type.
-Le vrai module et `src/lib/caisse/auth-politique.test.ts` restent privés.
+Le vrai module et ses tests (`src/lib/auth-politique.test.ts`,
+`src/lib/caisse/auth-politique.test.ts`) vivent dans l'archive privée.
+
+**Ne jamais livrer sans la surcharge privée de ce module** : avec le stub, le
+trafic de la caisse retombe sous le quota par IP et un marché se bloque.
 
 ### 1. ChatPanel / ChatBubble (zone `.gitignore` avec exception)
 
@@ -113,12 +117,16 @@ methode: string): boolean` depuis `src/lib/middleware-extension-caisse.ts`.
 L'assemblage privé conserve ce module pur, sans dépendance Node ni accès en base.
 Les contrôles d'authentification des routes serveur restent en place.
 
-Pour le dépôt public, le manager utilise à ce même chemin le contenu de
+Dans le dépôt public, ce chemin réexporte
 `src/lib/middleware-extension-caisse.public.ts` : mêmes exports et signature,
 retour toujours faux. Le middleware reste identique dans les deux assemblages.
-L'implémentation privée ne doit pas être publiée. `src/middleware.test.ts`
-vérifie l'assemblage privé ; `src/middleware-public.test.ts` exerce le vrai
-stub public avec le middleware.
+Le vrai module et son test vivent dans l'archive privée et remplacent ces deux
+fichiers à l'assemblage. `src/middleware.test.ts` vérifie l'assemblage privé ;
+`src/middleware-public.test.ts` exerce le vrai stub public avec le middleware.
+
+**Ne jamais livrer sans la surcharge privée de ce module** : avec le stub, les
+pages hors ligne de la caisse sont renvoyées vers la connexion et sa clôture
+planifiée reçoit un 401.
 
 Les bancs `scripts/qa/serie-assistant-*.ts` dépendent de la zone privée du VPS.
 Ils sont exclus du typecheck applicatif pour qu'un clone public compile sans
