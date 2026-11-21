@@ -77,7 +77,7 @@
     "react-hook-form": "^7.71.1",
     "react-leaflet": "^4.2.1",
     "recharts": "^3.7.0",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.5",
     "shepherd.js": "^15.2.2",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
