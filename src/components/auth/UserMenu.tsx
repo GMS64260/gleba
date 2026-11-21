@@ -5,7 +5,7 @@
  */
 
 import * as React from "react"
-import { signOut } from "next-auth/react"
+import { seDeconnecter } from "@/lib/deconnexion"
 import {avantDeconnexionCaisse} from "@/lib/caisse/sortie"
 import {alertDialog} from "@/lib/global-dialog"
 import Link from "next/link"
@@ -35,7 +35,7 @@ export function UserMenu({ user }: UserMenuProps) {
   async function deconnecter(){
     if(sortieEnCours.current)return
     sortieEnCours.current=true
-    try{if(await avantDeconnexionCaisse())await signOut({callbackUrl:'/login'})}
+    try{if(await avantDeconnexionCaisse())await seDeconnecter({callbackUrl:'/login'})}
     catch{await alertDialog('Le journal de caisse n’a pas pu être vérifié. Retrouvez la caisse pour conserver ou exporter les opérations avant de vous déconnecter.',{title:'Caisse à vérifier'})}
     finally{sortieEnCours.current=false}
   }

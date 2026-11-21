@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { getActeurId } from '@/lib/exploitation/garde-session'
 import prisma from '@/lib/prisma'
 
 const completeSchema = z.object({
@@ -20,7 +21,11 @@ export async function GET(request: NextRequest) {
     where: { userId: session.user.id, actif: true, prochaineEcheance: { lte: horizon } },
     orderBy: [{ prochaineEcheance: 'asc' }, { priorite: 'desc' }],
   })
-  return NextResponse.json({ data, generatedAt: new Date().toISOString() })
+  // Portée du cache hors connexion (revue Codex SEC-02) : la personne connectée
+  // et l'exploitation lue. Le navigateur ne rattache ses tâches et sa file qu'à
+  // cette portée, jamais à un autre compte.
+  const portee = { acteurId: getActeurId(session), proprietaireId: session.user.id }
+  return NextResponse.json({ data, portee, generatedAt: new Date().toISOString() })
 }
 
 export async function POST(request: NextRequest) {

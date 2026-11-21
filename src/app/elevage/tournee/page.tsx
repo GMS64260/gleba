@@ -15,7 +15,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { ajouterOperation, lireFile, lireTachesCachees, sauverTaches, synchroniserOperations, type TacheTournee } from "@/lib/elevage/offline-tournee"
+import { useSession } from "next-auth/react"
+import { ajouterOperation, lireFile, lireTachesCachees, oublierAutreActeur, sauverTaches, synchroniserOperations, type PorteeTournee, type TacheTournee } from "@/lib/elevage/offline-tournee"
 
 const CATEGORIES: Record<string, string> = {
   alimentation: 'Alimentation',
@@ -66,13 +67,20 @@ export default function TourneePage() {
   const [scanResult, setScanResult] = React.useState<{ id: number; nom: string | null; identifiant: string | null; especeAnimale: { nom: string } } | null>(null)
   const [form, setForm] = React.useState({ titre: '', description: '', categorie: 'controle', priorite: 'normale', prochaineEcheance: localDateTime(), recurrenceJours: '', cible: 'aucune', cibleId: '' })
 
+  // Cache hors connexion rattaché à la personne connectée (revue Codex SEC-02) :
+  // la session, quand elle est lisible, écarte le cache d'un autre compte ; la
+  // portée renvoyée par le serveur rattache les tâches et la file.
+  const { data: session } = useSession()
+  const acteurSession = session?.user?.id ?? null
+  const acteurRef = React.useRef<string | null>(null)
+
   const refresh = React.useCallback(async () => {
     try {
       const res = await fetch('/api/elevage/tournee?jours=7')
       if (!res.ok) throw new Error()
-      const data = (await res.json()).data as TacheTournee[]
-      setTasks(data); await sauverTaches(data)
-    } catch { setTasks(await lireTachesCachees()) }
+      const { data, portee } = await res.json() as { data: TacheTournee[]; portee: PorteeTournee }
+      setTasks(data); await sauverTaches(portee, data)
+    } catch { setTasks(await lireTachesCachees(acteurRef.current)) }
     // Échéances élevage (soins, injections, délais, mises-bas) — mêmes sources
     // que le Dashboard. Best-effort : hors connexion, seules les tâches
     // terrain mises en cache restent disponibles.
@@ -83,8 +91,14 @@ export default function TourneePage() {
         setEcheances(all.filter(e => KINDS_TOURNEE.has(e.kind)))
       }
     } catch { /* hors connexion : section masquée */ }
-    setQueued((await lireFile()).length)
+    setQueued((await lireFile(acteurRef.current)).length)
   }, [])
+
+  React.useEffect(() => {
+    if (!acteurSession || acteurRef.current === acteurSession) return
+    acteurRef.current = acteurSession
+    void oublierAutreActeur(acteurSession).then(refresh)
+  }, [acteurSession, refresh])
 
   React.useEffect(() => {
     setOnline(navigator.onLine)
@@ -94,7 +108,7 @@ export default function TourneePage() {
       if (a.ok) setAnimaux((await a.json()).data)
     })
     if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw-elevage.js')
-    const onOnline = async () => { setOnline(true); await synchroniserOperations(); await refresh() }
+    const onOnline = async () => { setOnline(true); await refresh(); await synchroniserOperations(); await refresh() }
     const onOffline = () => setOnline(false)
     window.addEventListener('online', onOnline); window.addEventListener('offline', onOffline)
     return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline) }
@@ -125,10 +139,13 @@ export default function TourneePage() {
 
   async function terminer(task: TacheTournee) {
     const op = { tacheId: task.id, dateEcheance: task.prochaineEcheance, dateRealisation: new Date().toISOString(), notes: null, clientOperationId: crypto.randomUUID() }
-    await ajouterOperation(op)
+    if (!await ajouterOperation(op)) {
+      toast({ variant: 'destructive', title: 'Tâche non enregistrée', description: 'Rechargez la tournée en ligne avant de la reprendre hors connexion.' })
+      return
+    }
     setTasks(current => current.filter(t => t.id !== task.id))
     if (online) await synchroniserOperations()
-    setQueued((await lireFile()).length)
+    setQueued((await lireFile(acteurRef.current)).length)
     toast({ title: online ? 'Tâche acquittée' : 'Tâche conservée hors connexion', description: online ? undefined : 'Elle sera synchronisée au retour du réseau.' })
     if (online) await refresh()
   }
