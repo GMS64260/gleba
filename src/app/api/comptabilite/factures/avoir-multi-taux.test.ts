@@ -110,8 +110,20 @@ describe('COM-04 : un avoir suit la ventilation par taux de sa facture', () => {
 
   it('ligne d’avoir dont la TVA ne correspond pas à son taux : refusée', async () => {
     const res = await avoir([{ tauxTVA: 20, montantHT: 10, montantTVA: 15, montantTTC: 25 }])
-    // Déjà refusé par le schéma des lignes (400) ; le contrôle serveur le couvre aussi.
-    expect([400, 409]).toContain(res.status)
+    // Refusé par le schéma des lignes, avant toute lecture de l'origine.
+    expect(res.status).toBe(400)
     expect(m.creerFacture).not.toHaveBeenCalled()
+  })
+
+  it('un ancien avoir tout à 20 % n’interdit pas de créditer le reste à 5,5 %', async () => {
+    m.avoirsExistants = [{ tauxTVA: 20, montantHT: 100, montantTVA: 20, montantTTC: 120 }]
+    const res = await avoir([{ tauxTVA: 5.5, montantHT: 100, montantTVA: 5.5, montantTTC: 105.5 }])
+    expect(res.status).toBe(201)
+  })
+
+  it('lignes reprises une à une (TVA arrondie par ligne) : acceptées par le schéma des lignes', async () => {
+    // Huit lignes de 3,50 € HT à 5,5 % : une seule ligne au cumul (28 € HT, 1,52 € de TVA) serait refusée.
+    const res = await avoir(Array.from({ length: 8 }, () => ({ tauxTVA: 5.5, montantHT: 3.5, montantTVA: 0.19, montantTTC: 3.69 })))
+    expect(res.status).toBe(201)
   })
 })

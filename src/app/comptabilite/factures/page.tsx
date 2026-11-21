@@ -617,8 +617,13 @@ export default function FacturesPage() {
       const tauxTVA = parseFloat(avoirData.tauxTVA)
       const montantSaisi = parseFloat(avoirData.montant)
       const htSaisi = Math.round((montantSaisi / (1 + tauxTVA / 100)) * 100) / 100
+      // Facture à un seul taux : même construction, pour qu'un avoir total
+      // reprenne les lignes de l'origine (TVA arrondie ligne par ligne).
+      const origineUnTaux = tauxOrigine.length === 1 && tauxOrigine[0].taux === tauxTVA
       const lignesAvoir = multiTaux
         ? lignesVentilees
+        : origineUnTaux
+        ? lignesAvoirVentile(tauxOrigine, { [String(tauxTVA)]: montantSaisi }, avoirData.motif, false)
         : [
             {
               description: avoirData.motif,
@@ -1464,24 +1469,34 @@ export default function FacturesPage() {
                       {tauxOrigineAvoir.map((t) => (
                         <div key={t.taux}>
                           <Label htmlFor={`avoir-taux-${t.taux}`}>
-                            TVA {t.taux} % <span className="font-normal text-muted-foreground">(origine {formatPiece(t.ttc, origineAvoir?.emetteurSnapshot, origineAvoir?.date)} TTC)</span>
+                            TVA {t.taux} % <span className="font-normal text-muted-foreground">(origine {t.ttc.toFixed(2).replace(".", ",")}{deviseAvoir ? ` ${deviseAvoir}` : ""} TTC)</span>
                           </Label>
                           <Input
                             id={`avoir-taux-${t.taux}`}
                             type="number"
                             inputMode="decimal"
-                            step={deviseAvoir === "XPF" ? "1" : "0.01"}
+                            step="0.01"
                             min="0"
                             max={t.ttc}
                             value={avoirData.ventilation[String(t.taux)] ?? ""}
                             onChange={(e) =>
                               setAvoirData({ ...avoirData, ventilation: { ...avoirData.ventilation, [String(t.taux)]: e.target.value } })
                             }
-                            placeholder={deviseAvoir === "XPF" ? "0" : "0.00"}
+                            placeholder="0.00"
                           />
                         </div>
                       ))}
                     </div>
+                    <p className="text-sm">
+                      Total TTC de l&apos;avoir :{" "}
+                      <span className="font-semibold">
+                        {formatPiece(
+                          Object.values(avoirData.ventilation).reduce((s, v) => s + Math.round((parseFloat(v) || 0) * 100), 0) / 100,
+                          origineAvoir?.emetteurSnapshot,
+                          origineAvoir?.date,
+                        )}
+                      </span>
+                    </p>
                     <Button
                       type="button"
                       variant="outline"
