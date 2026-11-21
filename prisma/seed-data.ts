@@ -159,54 +159,57 @@ export const varietes = [
 // ITPS (Itinéraires Techniques)
 // ============================================================
 
+// Identifiants actuels du référentiel. Les itinéraires ont été renommés par la
+// migration 20260515180000_itp_nomenclature_unifiee ; un seed resté sur les
+// anciens « ITP-… » les recréait en double à côté des fiches renommées.
 export const itps = [
   // Tomates
-  { id: "ITP-Tomate-printemps", especeId: "Tomate", semaineSemis: 8, semainePlantation: 18, semaineRecolte: 28, dureePepiniere: 70, dureeCulture: 150, nbRangs: 2, espacement: 50 },
-  { id: "ITP-Tomate-tardive", especeId: "Tomate", semaineSemis: 12, semainePlantation: 22, semaineRecolte: 32, dureePepiniere: 70, dureeCulture: 140, nbRangs: 2, espacement: 50 },
+  { id: "Tomate-printemps", especeId: "Tomate", semaineSemis: 8, semainePlantation: 18, semaineRecolte: 28, dureePepiniere: 70, dureeCulture: 150, nbRangs: 2, espacement: 50 },
+  { id: "Tomate-automne-tardive", especeId: "Tomate", semaineSemis: 12, semainePlantation: 22, semaineRecolte: 32, dureePepiniere: 70, dureeCulture: 140, nbRangs: 2, espacement: 50 },
 
   // Courgettes
-  { id: "ITP-Courgette", especeId: "Courgette", semaineSemis: 16, semainePlantation: 20, semaineRecolte: 26, dureePepiniere: 28, dureeCulture: 90, nbRangs: 1, espacement: 100 },
+  { id: "Courgette-ete-tardive", especeId: "Courgette", semaineSemis: 16, semainePlantation: 20, semaineRecolte: 26, dureePepiniere: 28, dureeCulture: 90, nbRangs: 1, espacement: 100 },
 
   // Carottes
-  { id: "ITP-Carotte-printemps", especeId: "Carotte", semaineSemis: 12, semaineRecolte: 26, dureeCulture: 100, nbRangs: 5, espacement: 5 },
-  { id: "ITP-Carotte-automne", especeId: "Carotte", semaineSemis: 24, semaineRecolte: 40, dureeCulture: 110, nbRangs: 5, espacement: 5 },
+  { id: "Carotte-printemps-plein-champ", especeId: "Carotte", semaineSemis: 12, semaineRecolte: 26, dureeCulture: 100, nbRangs: 5, espacement: 5 },
+  { id: "Carotte-ete-conservation-plein-champ", especeId: "Carotte", semaineSemis: 24, semaineRecolte: 40, dureeCulture: 110, nbRangs: 5, espacement: 5 },
 
   // Haricots
-  { id: "ITP-Haricot-vert", especeId: "Haricot vert", semaineSemis: 18, semaineRecolte: 28, dureeCulture: 70, nbRangs: 4, espacement: 8 },
-  { id: "ITP-Haricot-sec", especeId: "Haricot sec", semaineSemis: 20, semaineRecolte: 38, dureeCulture: 120, nbRangs: 3, espacement: 10 },
+  { id: "Haricot-vert-ete", especeId: "Haricot vert", semaineSemis: 18, semaineRecolte: 28, dureeCulture: 70, nbRangs: 4, espacement: 8 },
+  { id: "Haricot-ete-sec", especeId: "Haricot sec", semaineSemis: 20, semaineRecolte: 38, dureeCulture: 120, nbRangs: 3, espacement: 10 },
 
   // Salades
-  { id: "ITP-Laitue-printemps", especeId: "Laitue", semaineSemis: 8, semainePlantation: 14, semaineRecolte: 20, dureePepiniere: 42, dureeCulture: 50, nbRangs: 5, espacement: 25 },
-  { id: "ITP-Laitue-ete", especeId: "Laitue", semaineSemis: 20, semainePlantation: 24, semaineRecolte: 30, dureePepiniere: 28, dureeCulture: 45, nbRangs: 5, espacement: 25 },
-  { id: "ITP-Laitue-automne", especeId: "Laitue", semaineSemis: 30, semainePlantation: 34, semaineRecolte: 42, dureePepiniere: 28, dureeCulture: 55, nbRangs: 5, espacement: 25 },
+  { id: "Laitue-printemps", especeId: "Laitue", semaineSemis: 8, semainePlantation: 14, semaineRecolte: 20, dureePepiniere: 42, dureeCulture: 50, nbRangs: 5, espacement: 25 },
+  { id: "Laitue-ete", especeId: "Laitue", semaineSemis: 20, semainePlantation: 24, semaineRecolte: 30, dureePepiniere: 28, dureeCulture: 45, nbRangs: 5, espacement: 25 },
+  { id: "Laitue-automne", especeId: "Laitue", semaineSemis: 30, semainePlantation: 34, semaineRecolte: 42, dureePepiniere: 28, dureeCulture: 55, nbRangs: 5, espacement: 25 },
 
   // Poivrons / Aubergines
-  { id: "ITP-Poivron", especeId: "Poivron", semaineSemis: 6, semainePlantation: 20, semaineRecolte: 30, dureePepiniere: 98, dureeCulture: 150, nbRangs: 2, espacement: 45 },
-  { id: "ITP-Aubergine", especeId: "Aubergine", semaineSemis: 6, semainePlantation: 20, semaineRecolte: 28, dureePepiniere: 98, dureeCulture: 140, nbRangs: 2, espacement: 50 },
+  { id: "Poivron-printemps", especeId: "Poivron", semaineSemis: 6, semainePlantation: 20, semaineRecolte: 30, dureePepiniere: 98, dureeCulture: 150, nbRangs: 2, espacement: 45 },
+  { id: "Aubergine-plein-champ", especeId: "Aubergine", semaineSemis: 6, semainePlantation: 20, semaineRecolte: 28, dureePepiniere: 98, dureeCulture: 140, nbRangs: 2, espacement: 50 },
 
   // Courges
-  { id: "ITP-Butternut", especeId: "Courge butternut", semaineSemis: 16, semainePlantation: 21, semaineRecolte: 38, dureePepiniere: 35, dureeCulture: 120, nbRangs: 1, espacement: 150 },
-  { id: "ITP-Potimarron", especeId: "Potimarron", semaineSemis: 16, semainePlantation: 21, semaineRecolte: 38, dureePepiniere: 35, dureeCulture: 120, nbRangs: 1, espacement: 150 },
+  { id: "Courge-butternut", especeId: "Courge butternut", semaineSemis: 16, semainePlantation: 21, semaineRecolte: 38, dureePepiniere: 35, dureeCulture: 120, nbRangs: 1, espacement: 150 },
+  { id: "Potimarron", especeId: "Potimarron", semaineSemis: 16, semainePlantation: 21, semaineRecolte: 38, dureePepiniere: 35, dureeCulture: 120, nbRangs: 1, espacement: 150 },
 
   // Alliacées
-  { id: "ITP-Oignon", especeId: "Oignon", semaineSemis: 8, semainePlantation: 16, semaineRecolte: 32, dureePepiniere: 56, dureeCulture: 150, nbRangs: 5, espacement: 10 },
-  { id: "ITP-Poireau", especeId: "Poireau", semaineSemis: 8, semainePlantation: 22, semaineRecolte: 40, dureePepiniere: 98, dureeCulture: 180, nbRangs: 4, espacement: 12 },
-  { id: "ITP-Ail", especeId: "Ail", semainePlantation: 42, semaineRecolte: 28, dureeCulture: 240, nbRangs: 5, espacement: 12 },
+  { id: "Oignon-printemps", especeId: "Oignon", semaineSemis: 8, semainePlantation: 16, semaineRecolte: 32, dureePepiniere: 56, dureeCulture: 150, nbRangs: 5, espacement: 10 },
+  { id: "Poireau-printemps", especeId: "Poireau", semaineSemis: 8, semainePlantation: 22, semaineRecolte: 40, dureePepiniere: 98, dureeCulture: 180, nbRangs: 4, espacement: 12 },
+  { id: "Ail-printemps", especeId: "Ail", semainePlantation: 42, semaineRecolte: 28, dureeCulture: 240, nbRangs: 5, espacement: 12 },
 
   // Choux
-  { id: "ITP-Chou-kale", especeId: "Chou kale", semaineSemis: 16, semainePlantation: 22, semaineRecolte: 36, dureePepiniere: 42, dureeCulture: 120, nbRangs: 3, espacement: 40 },
+  { id: "Chou-kale-ete", especeId: "Chou kale", semaineSemis: 16, semainePlantation: 22, semaineRecolte: 36, dureePepiniere: 42, dureeCulture: 120, nbRangs: 3, espacement: 40 },
   // Audit Marc — itinéraire technique aligné sur le référentiel (cycle 90-120j)
-  { id: "ITP-Brocoli", especeId: "Chou brocoli", semaineSemis: 14, semainePlantation: 18, semaineRecolte: 26, dureePepiniere: 42, dureeCulture: 100, nbRangs: 3, espacement: 45 },
+  { id: "Chou-brocoli-ete", especeId: "Chou brocoli", semaineSemis: 14, semainePlantation: 18, semaineRecolte: 26, dureePepiniere: 42, dureeCulture: 100, nbRangs: 3, espacement: 45 },
 
   // Autres
-  { id: "ITP-Epinard", especeId: "Épinard", semaineSemis: 12, semaineRecolte: 20, dureeCulture: 55, nbRangs: 5, espacement: 10 },
-  { id: "ITP-Betterave", especeId: "Betterave", semaineSemis: 14, semaineRecolte: 28, dureeCulture: 100, nbRangs: 4, espacement: 12 },
-  { id: "ITP-Petit-pois", especeId: "Petit pois", semaineSemis: 10, semaineRecolte: 22, dureeCulture: 85, nbRangs: 3, espacement: 5 },
-  { id: "ITP-Radis", especeId: "Radis", semaineSemis: 12, semaineRecolte: 16, dureeCulture: 30, nbRangs: 6, espacement: 3 },
+  { id: "Épinard-printemps", especeId: "Épinard", semaineSemis: 12, semaineRecolte: 20, dureeCulture: 55, nbRangs: 5, espacement: 10 },
+  { id: "Betterave-printemps", especeId: "Betterave", semaineSemis: 14, semaineRecolte: 28, dureeCulture: 100, nbRangs: 4, espacement: 12 },
+  { id: "Petit-pois-printemps", especeId: "Petit pois", semaineSemis: 10, semaineRecolte: 22, dureeCulture: 85, nbRangs: 3, espacement: 5 },
+  { id: "Radis-printemps", especeId: "Radis", semaineSemis: 12, semaineRecolte: 16, dureeCulture: 30, nbRangs: 6, espacement: 3 },
 
   // Engrais verts
-  { id: "ITP-Phacelie", especeId: "Phacélie", semaineSemis: 32, dureeCulture: 60, nbRangs: 1, espacement: 2 },
-  { id: "ITP-Moutarde", especeId: "Moutarde", semaineSemis: 34, dureeCulture: 45, nbRangs: 1, espacement: 2 },
+  { id: "EV-Phacelie-automne", especeId: "Phacélie", semaineSemis: 32, dureeCulture: 60, nbRangs: 1, espacement: 2 },
+  { id: "EV-Moutarde-automne", especeId: "Moutarde", semaineSemis: 34, dureeCulture: 45, nbRangs: 1, espacement: 2 },
 ]
 
 // ============================================================
@@ -221,21 +224,21 @@ export const rotations = [
 
 export const rotationsDetails = [
   // Rotation A
-  { rotationId: "Rotation-4ans-A", itpId: "ITP-Tomate-printemps", annee: 1 },
-  { rotationId: "Rotation-4ans-A", itpId: "ITP-Haricot-vert", annee: 2 },
-  { rotationId: "Rotation-4ans-A", itpId: "ITP-Chou-kale", annee: 3 },
-  { rotationId: "Rotation-4ans-A", itpId: "ITP-Carotte-printemps", annee: 4 },
+  { rotationId: "Rotation-4ans-A", itpId: "Tomate-printemps", annee: 1 },
+  { rotationId: "Rotation-4ans-A", itpId: "Haricot-vert-ete", annee: 2 },
+  { rotationId: "Rotation-4ans-A", itpId: "Chou-kale-ete", annee: 3 },
+  { rotationId: "Rotation-4ans-A", itpId: "Carotte-printemps-plein-champ", annee: 4 },
 
   // Rotation B
-  { rotationId: "Rotation-4ans-B", itpId: "ITP-Carotte-printemps", annee: 1 },
-  { rotationId: "Rotation-4ans-B", itpId: "ITP-Tomate-printemps", annee: 2 },
-  { rotationId: "Rotation-4ans-B", itpId: "ITP-Haricot-vert", annee: 3 },
-  { rotationId: "Rotation-4ans-B", itpId: "ITP-Brocoli", annee: 4 },
+  { rotationId: "Rotation-4ans-B", itpId: "Carotte-printemps-plein-champ", annee: 1 },
+  { rotationId: "Rotation-4ans-B", itpId: "Tomate-printemps", annee: 2 },
+  { rotationId: "Rotation-4ans-B", itpId: "Haricot-vert-ete", annee: 3 },
+  { rotationId: "Rotation-4ans-B", itpId: "Chou-brocoli-ete", annee: 4 },
 
   // Rotation Courges
-  { rotationId: "Rotation-3ans-Courges", itpId: "ITP-Butternut", annee: 1 },
-  { rotationId: "Rotation-3ans-Courges", itpId: "ITP-Haricot-sec", annee: 2 },
-  { rotationId: "Rotation-3ans-Courges", itpId: "ITP-Phacelie", annee: 3 },
+  { rotationId: "Rotation-3ans-Courges", itpId: "Courge-butternut", annee: 1 },
+  { rotationId: "Rotation-3ans-Courges", itpId: "Haricot-ete-sec", annee: 2 },
+  { rotationId: "Rotation-3ans-Courges", itpId: "EV-Phacelie-automne", annee: 3 },
 ]
 
 // ============================================================
@@ -270,33 +273,33 @@ export function generateCultures(userId: string) {
   // 2023
   cultures.push(
     // Tomates 2023
-    { especeId: "Tomate", varieteId: "Tomate-Coeur de Boeuf", itpId: "ITP-Tomate-printemps", plancheId: "A1", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-05-05"), dateRecolte: new Date("2023-07-15"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
-    { especeId: "Tomate", varieteId: "Tomate-Cerise rouge", itpId: "ITP-Tomate-printemps", plancheId: "A1", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-05-05"), dateRecolte: new Date("2023-07-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
-    { especeId: "Tomate", varieteId: "Tomate-Roma", itpId: "ITP-Tomate-tardive", plancheId: "A2", annee: 2023, dateSemis: new Date("2023-03-20"), datePlantation: new Date("2023-06-01"), dateRecolte: new Date("2023-08-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 10, userId },
+    { especeId: "Tomate", varieteId: "Tomate-Coeur de Boeuf", itpId: "Tomate-printemps", plancheId: "A1", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-05-05"), dateRecolte: new Date("2023-07-15"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
+    { especeId: "Tomate", varieteId: "Tomate-Cerise rouge", itpId: "Tomate-printemps", plancheId: "A1", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-05-05"), dateRecolte: new Date("2023-07-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
+    { especeId: "Tomate", varieteId: "Tomate-Roma", itpId: "Tomate-automne-tardive", plancheId: "A2", annee: 2023, dateSemis: new Date("2023-03-20"), datePlantation: new Date("2023-06-01"), dateRecolte: new Date("2023-08-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 10, userId },
 
     // Courgettes 2023
-    { especeId: "Courgette", varieteId: "Courgette-Verte de Milan", itpId: "ITP-Courgette", plancheId: "A3", annee: 2023, dateSemis: new Date("2023-04-15"), datePlantation: new Date("2023-05-20"), dateRecolte: new Date("2023-07-01"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 10, userId },
+    { especeId: "Courgette", varieteId: "Courgette-Verte de Milan", itpId: "Courgette-ete-tardive", plancheId: "A3", annee: 2023, dateSemis: new Date("2023-04-15"), datePlantation: new Date("2023-05-20"), dateRecolte: new Date("2023-07-01"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 10, userId },
 
     // Carottes 2023
-    { especeId: "Carotte", varieteId: "Carotte-Nantaise", itpId: "ITP-Carotte-printemps", plancheId: "B1", annee: 2023, dateSemis: new Date("2023-03-20"), dateRecolte: new Date("2023-07-01"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 8, userId },
-    { especeId: "Carotte", varieteId: "Carotte-Touchon", itpId: "ITP-Carotte-automne", plancheId: "B1", annee: 2023, dateSemis: new Date("2023-06-15"), dateRecolte: new Date("2023-10-10"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 4, userId },
+    { especeId: "Carotte", varieteId: "Carotte-Nantaise", itpId: "Carotte-printemps-plein-champ", plancheId: "B1", annee: 2023, dateSemis: new Date("2023-03-20"), dateRecolte: new Date("2023-07-01"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 8, userId },
+    { especeId: "Carotte", varieteId: "Carotte-Touchon", itpId: "Carotte-ete-conservation-plein-champ", plancheId: "B1", annee: 2023, dateSemis: new Date("2023-06-15"), dateRecolte: new Date("2023-10-10"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 4, userId },
 
     // Haricots 2023
-    { especeId: "Haricot vert", varieteId: "Haricot-Contender", itpId: "ITP-Haricot-vert", plancheId: "A4", annee: 2023, dateSemis: new Date("2023-05-01"), dateRecolte: new Date("2023-07-15"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 10, userId },
+    { especeId: "Haricot vert", varieteId: "Haricot-Contender", itpId: "Haricot-vert-ete", plancheId: "A4", annee: 2023, dateSemis: new Date("2023-05-01"), dateRecolte: new Date("2023-07-15"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 10, userId },
 
     // Salades 2023
-    { especeId: "Laitue", varieteId: "Laitue-Batavia", itpId: "ITP-Laitue-printemps", plancheId: "B3", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-04-05"), dateRecolte: new Date("2023-05-20"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 3, userId },
-    { especeId: "Laitue", varieteId: "Laitue-Feuille de chêne", itpId: "ITP-Laitue-ete", plancheId: "B3", annee: 2023, dateSemis: new Date("2023-05-15"), datePlantation: new Date("2023-06-15"), dateRecolte: new Date("2023-07-25"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 3, userId },
+    { especeId: "Laitue", varieteId: "Laitue-Batavia", itpId: "Laitue-printemps", plancheId: "B3", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-04-05"), dateRecolte: new Date("2023-05-20"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 3, userId },
+    { especeId: "Laitue", varieteId: "Laitue-Feuille de chêne", itpId: "Laitue-ete", plancheId: "B3", annee: 2023, dateSemis: new Date("2023-05-15"), datePlantation: new Date("2023-06-15"), dateRecolte: new Date("2023-07-25"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 3, userId },
 
     // Courges 2023
-    { especeId: "Courge butternut", varieteId: "Courge butternut-Waltham", itpId: "ITP-Butternut", plancheId: "C1", annee: 2023, dateSemis: new Date("2023-04-15"), datePlantation: new Date("2023-05-25"), dateRecolte: new Date("2023-09-20"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 6, userId },
-    { especeId: "Potimarron", varieteId: "Potimarron-Red Kuri", itpId: "ITP-Potimarron", plancheId: "C2", annee: 2023, dateSemis: new Date("2023-04-15"), datePlantation: new Date("2023-05-25"), dateRecolte: new Date("2023-09-25"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 6, userId },
+    { especeId: "Courge butternut", varieteId: "Courge butternut-Waltham", itpId: "Courge-butternut", plancheId: "C1", annee: 2023, dateSemis: new Date("2023-04-15"), datePlantation: new Date("2023-05-25"), dateRecolte: new Date("2023-09-20"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 6, userId },
+    { especeId: "Potimarron", varieteId: "Potimarron-Red Kuri", itpId: "Potimarron", plancheId: "C2", annee: 2023, dateSemis: new Date("2023-04-15"), datePlantation: new Date("2023-05-25"), dateRecolte: new Date("2023-09-25"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 6, userId },
 
     // Oignons 2023
-    { especeId: "Oignon", varieteId: "Oignon-Jaune Paille des Vertus", itpId: "ITP-Oignon", plancheId: "B2", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-04-15"), dateRecolte: new Date("2023-08-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 8, userId },
+    { especeId: "Oignon", varieteId: "Oignon-Jaune Paille des Vertus", itpId: "Oignon-printemps", plancheId: "B2", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-04-15"), dateRecolte: new Date("2023-08-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 8, userId },
 
     // Poireaux 2023
-    { especeId: "Poireau", varieteId: "Poireau-Bleu de Solaise", itpId: "ITP-Poireau", plancheId: "B2", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-06-01"), dateRecolte: new Date("2023-10-05"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 4, userId },
+    { especeId: "Poireau", varieteId: "Poireau-Bleu de Solaise", itpId: "Poireau-printemps", plancheId: "B2", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-06-01"), dateRecolte: new Date("2023-10-05"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 4, userId },
 
     // Fraises 2023 (vivaces)
     { especeId: "Fraisier", varieteId: "Fraise-Mara des Bois", plancheId: "D1", annee: 2023, datePlantation: new Date("2022-09-15"), dateRecolte: new Date("2023-05-20"), plantationFaite: true, recolteFaite: true, terminee: "v", nbRangs: 3, longueur: 4, userId },
@@ -305,50 +308,50 @@ export function generateCultures(userId: string) {
   // 2024
   cultures.push(
     // Tomates 2024
-    { especeId: "Tomate", varieteId: "Tomate-Coeur de Boeuf", itpId: "ITP-Tomate-printemps", plancheId: "A2", annee: 2024, dateSemis: new Date("2024-02-18"), datePlantation: new Date("2024-05-01"), dateRecolte: new Date("2024-07-12"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
-    { especeId: "Tomate", varieteId: "Tomate-Noire de Crimée", itpId: "ITP-Tomate-printemps", plancheId: "A2", annee: 2024, dateSemis: new Date("2024-02-18"), datePlantation: new Date("2024-05-01"), dateRecolte: new Date("2024-07-20"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
-    { especeId: "Tomate", varieteId: "Tomate-Cerise rouge", itpId: "ITP-Tomate-tardive", plancheId: "A3", annee: 2024, dateSemis: new Date("2024-03-15"), datePlantation: new Date("2024-06-01"), dateRecolte: new Date("2024-08-01"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
+    { especeId: "Tomate", varieteId: "Tomate-Coeur de Boeuf", itpId: "Tomate-printemps", plancheId: "A2", annee: 2024, dateSemis: new Date("2024-02-18"), datePlantation: new Date("2024-05-01"), dateRecolte: new Date("2024-07-12"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
+    { especeId: "Tomate", varieteId: "Tomate-Noire de Crimée", itpId: "Tomate-printemps", plancheId: "A2", annee: 2024, dateSemis: new Date("2024-02-18"), datePlantation: new Date("2024-05-01"), dateRecolte: new Date("2024-07-20"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
+    { especeId: "Tomate", varieteId: "Tomate-Cerise rouge", itpId: "Tomate-automne-tardive", plancheId: "A3", annee: 2024, dateSemis: new Date("2024-03-15"), datePlantation: new Date("2024-06-01"), dateRecolte: new Date("2024-08-01"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
 
     // Courgettes 2024
-    { especeId: "Courgette", varieteId: "Courgette-Ronde de Nice", itpId: "ITP-Courgette", plancheId: "A4", annee: 2024, dateSemis: new Date("2024-04-18"), datePlantation: new Date("2024-05-20"), dateRecolte: new Date("2024-07-05"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 10, userId },
+    { especeId: "Courgette", varieteId: "Courgette-Ronde de Nice", itpId: "Courgette-ete-tardive", plancheId: "A4", annee: 2024, dateSemis: new Date("2024-04-18"), datePlantation: new Date("2024-05-20"), dateRecolte: new Date("2024-07-05"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 10, userId },
 
     // Poivrons 2024
-    { especeId: "Poivron", varieteId: "Poivron-Corno di Toro", itpId: "ITP-Poivron", plancheId: "A1", annee: 2024, dateSemis: new Date("2024-02-05"), datePlantation: new Date("2024-05-15"), dateRecolte: new Date("2024-07-25"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
+    { especeId: "Poivron", varieteId: "Poivron-Corno di Toro", itpId: "Poivron-printemps", plancheId: "A1", annee: 2024, dateSemis: new Date("2024-02-05"), datePlantation: new Date("2024-05-15"), dateRecolte: new Date("2024-07-25"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
 
     // Aubergines 2024
-    { especeId: "Aubergine", varieteId: "Aubergine-Violette longue", itpId: "ITP-Aubergine", plancheId: "A1", annee: 2024, dateSemis: new Date("2024-02-05"), datePlantation: new Date("2024-05-15"), dateRecolte: new Date("2024-07-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
+    { especeId: "Aubergine", varieteId: "Aubergine-Violette longue", itpId: "Aubergine-plein-champ", plancheId: "A1", annee: 2024, dateSemis: new Date("2024-02-05"), datePlantation: new Date("2024-05-15"), dateRecolte: new Date("2024-07-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 2, longueur: 5, userId },
 
     // Carottes 2024
-    { especeId: "Carotte", varieteId: "Carotte-Nantaise", itpId: "ITP-Carotte-printemps", plancheId: "B2", annee: 2024, dateSemis: new Date("2024-03-18"), dateRecolte: new Date("2024-06-28"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 4, userId },
-    { especeId: "Carotte", varieteId: "Carotte-Touchon", itpId: "ITP-Carotte-automne", plancheId: "B2", annee: 2024, dateSemis: new Date("2024-06-10"), dateRecolte: new Date("2024-10-05"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 4, userId },
+    { especeId: "Carotte", varieteId: "Carotte-Nantaise", itpId: "Carotte-printemps-plein-champ", plancheId: "B2", annee: 2024, dateSemis: new Date("2024-03-18"), dateRecolte: new Date("2024-06-28"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 4, userId },
+    { especeId: "Carotte", varieteId: "Carotte-Touchon", itpId: "Carotte-ete-conservation-plein-champ", plancheId: "B2", annee: 2024, dateSemis: new Date("2024-06-10"), dateRecolte: new Date("2024-10-05"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 4, userId },
 
     // Haricots 2024
-    { especeId: "Haricot vert", varieteId: "Haricot-Contender", itpId: "ITP-Haricot-vert", plancheId: "A3", annee: 2024, dateSemis: new Date("2024-05-05"), dateRecolte: new Date("2024-07-18"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 5, userId },
-    { especeId: "Haricot sec", varieteId: "Haricot-Coco de Prague", itpId: "ITP-Haricot-sec", plancheId: "C2", annee: 2024, dateSemis: new Date("2024-05-18"), dateRecolte: new Date("2024-09-20"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 6, userId },
+    { especeId: "Haricot vert", varieteId: "Haricot-Contender", itpId: "Haricot-vert-ete", plancheId: "A3", annee: 2024, dateSemis: new Date("2024-05-05"), dateRecolte: new Date("2024-07-18"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 5, userId },
+    { especeId: "Haricot sec", varieteId: "Haricot-Coco de Prague", itpId: "Haricot-ete-sec", plancheId: "C2", annee: 2024, dateSemis: new Date("2024-05-18"), dateRecolte: new Date("2024-09-20"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 6, userId },
 
     // Salades 2024
-    { especeId: "Laitue", varieteId: "Laitue-Batavia", itpId: "ITP-Laitue-printemps", plancheId: "B3", annee: 2024, dateSemis: new Date("2024-02-22"), datePlantation: new Date("2024-04-08"), dateRecolte: new Date("2024-05-22"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 2.5, userId },
-    { especeId: "Laitue", varieteId: "Laitue-Feuille de chêne", itpId: "ITP-Laitue-ete", plancheId: "B3", annee: 2024, dateSemis: new Date("2024-05-18"), datePlantation: new Date("2024-06-18"), dateRecolte: new Date("2024-07-28"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 2.5, userId },
-    { especeId: "Laitue", varieteId: "Laitue-Batavia", itpId: "ITP-Laitue-automne", plancheId: "B3", annee: 2024, dateSemis: new Date("2024-07-28"), datePlantation: new Date("2024-08-25"), dateRecolte: new Date("2024-10-18"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 3, userId },
+    { especeId: "Laitue", varieteId: "Laitue-Batavia", itpId: "Laitue-printemps", plancheId: "B3", annee: 2024, dateSemis: new Date("2024-02-22"), datePlantation: new Date("2024-04-08"), dateRecolte: new Date("2024-05-22"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 2.5, userId },
+    { especeId: "Laitue", varieteId: "Laitue-Feuille de chêne", itpId: "Laitue-ete", plancheId: "B3", annee: 2024, dateSemis: new Date("2024-05-18"), datePlantation: new Date("2024-06-18"), dateRecolte: new Date("2024-07-28"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 2.5, userId },
+    { especeId: "Laitue", varieteId: "Laitue-Batavia", itpId: "Laitue-automne", plancheId: "B3", annee: 2024, dateSemis: new Date("2024-07-28"), datePlantation: new Date("2024-08-25"), dateRecolte: new Date("2024-10-18"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 5, longueur: 3, userId },
 
     // Courges 2024
-    { especeId: "Courge butternut", varieteId: "Courge butternut-Waltham", itpId: "ITP-Butternut", plancheId: "C1", annee: 2024, dateSemis: new Date("2024-04-18"), datePlantation: new Date("2024-05-28"), dateRecolte: new Date("2024-09-22"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 6, userId },
+    { especeId: "Courge butternut", varieteId: "Courge butternut-Waltham", itpId: "Courge-butternut", plancheId: "C1", annee: 2024, dateSemis: new Date("2024-04-18"), datePlantation: new Date("2024-05-28"), dateRecolte: new Date("2024-09-22"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 1, longueur: 6, userId },
 
     // Choux 2024
-    { especeId: "Chou kale", itpId: "ITP-Chou-kale", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-15"), datePlantation: new Date("2024-06-01"), dateRecolte: new Date("2024-09-08"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 4, userId },
-    { especeId: "Chou brocoli", itpId: "ITP-Brocoli", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-01"), datePlantation: new Date("2024-05-18"), dateRecolte: new Date("2024-08-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 4, userId },
+    { especeId: "Chou kale", itpId: "Chou-kale-ete", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-15"), datePlantation: new Date("2024-06-01"), dateRecolte: new Date("2024-09-08"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 4, userId },
+    { especeId: "Chou brocoli", itpId: "Chou-brocoli-ete", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-01"), datePlantation: new Date("2024-05-18"), dateRecolte: new Date("2024-08-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 4, userId },
 
     // Betteraves 2024
-    { especeId: "Betterave", varieteId: "Betterave-Detroit", itpId: "ITP-Betterave", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-05"), dateRecolte: new Date("2024-07-15"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 4, userId },
+    { especeId: "Betterave", varieteId: "Betterave-Detroit", itpId: "Betterave-printemps", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-05"), dateRecolte: new Date("2024-07-15"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 4, userId },
 
     // Petits pois 2024
-    { especeId: "Petit pois", varieteId: "Petit pois-Merveille de Kelvedon", itpId: "ITP-Petit-pois", plancheId: "A4", annee: 2024, dateSemis: new Date("2024-03-08"), dateRecolte: new Date("2024-06-02"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 5, userId },
+    { especeId: "Petit pois", varieteId: "Petit pois-Merveille de Kelvedon", itpId: "Petit-pois-printemps", plancheId: "A4", annee: 2024, dateSemis: new Date("2024-03-08"), dateRecolte: new Date("2024-06-02"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 5, userId },
 
     // Fraises 2024 (vivaces)
     { especeId: "Fraisier", varieteId: "Fraise-Mara des Bois", plancheId: "D1", annee: 2024, dateRecolte: new Date("2024-05-18"), recolteFaite: true, terminee: "v", nbRangs: 3, longueur: 4, userId },
 
     // Engrais vert 2024
-    { especeId: "Phacélie", itpId: "ITP-Phacelie", plancheId: "C2", annee: 2024, dateSemis: new Date("2024-08-10"), semisFait: true, terminee: "x", nbRangs: 1, longueur: 6, notes: "Engrais vert après haricots", userId },
+    { especeId: "Phacélie", itpId: "EV-Phacelie-automne", plancheId: "C2", annee: 2024, dateSemis: new Date("2024-08-10"), semisFait: true, terminee: "x", nbRangs: 1, longueur: 6, notes: "Engrais vert après haricots", userId },
   )
 
   return cultures
