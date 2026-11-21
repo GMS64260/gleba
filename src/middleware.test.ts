@@ -43,6 +43,17 @@ function visiter(url: string): Response {
   return (middleware as unknown as (req: NextRequest) => Response)(new NextRequest(url))
 }
 
+describe("vidéo de l’accueil public", () => {
+  it.each(["un-matin-a-la-ferme.mp4", "un-matin-a-la-ferme.fr.vtt"])(
+    "sert %s au visiteur sans session",
+    (fichier) => {
+      session.courante = null
+      const res = visiter(`https://gleba.fr/videos/${fichier}`)
+      expect(res.headers.get("x-middleware-next")).toBe("1")
+    },
+  )
+})
+
 describe("middleware : lien profond sans session (QA cmvnout4y)", () => {
   it("rejoue le ticket : /elevage?tab=alimentation&sub=soins garde sa requête jusqu'à la page de connexion", () => {
     session.courante = null

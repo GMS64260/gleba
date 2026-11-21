@@ -377,13 +377,37 @@ export function HomeLanding() {
       {/* ═══ 2. Ce que montre l'écran Aujourd'hui ═══ */}
       <section aria-labelledby="titre-aujourdhui" className="border-y border-lin bg-craie px-4 py-20 sm:px-6 lg:py-24">
         <div className="mx-auto max-w-6xl">
-          <div className="max-w-2xl">
-            <Surtitre>L&apos;écran Aujourd&apos;hui</Surtitre>
-            <TitreSection id="titre-aujourdhui">Ouvrir Gleba le matin, savoir quoi faire.</TitreSection>
-            <p className="mt-5 text-lg leading-relaxed text-ardoise">
-              Plutôt qu&apos;un tableau de bord à interpréter, une page qui répond à la question du
-              matin. Tout ce qui ne peut pas attendre remonte en tête, quel que soit l&apos;atelier.
-            </p>
+          <div className="grid items-center gap-x-12 gap-y-6 lg:grid-cols-5">
+            <div className="max-w-2xl lg:col-span-2 lg:self-end">
+              <Surtitre>L&apos;écran Aujourd&apos;hui</Surtitre>
+              <TitreSection id="titre-aujourdhui">Ouvrir Gleba le matin, savoir quoi faire.</TitreSection>
+              <p className="mt-5 text-lg leading-relaxed text-ardoise">
+                Plutôt qu&apos;un tableau de bord à interpréter, une page qui répond à la question du
+                matin. Tout ce qui ne peut pas attendre remonte en tête, quel que soit l&apos;atelier.
+              </p>
+            </div>
+            <figure className="min-w-0 lg:col-span-3 lg:row-span-2">
+              <video
+                aria-labelledby="titre-video-matin"
+                className={`aspect-video w-full rounded-xl bg-encre ${FOCUS}`}
+                controls
+                playsInline
+                preload="none"
+                width={1920}
+                height={1080}
+                poster="/videos/un-matin-a-la-ferme.webp"
+              >
+                <source src="/videos/un-matin-a-la-ferme.mp4" type="video/mp4" />
+                <track kind="captions" src="/videos/un-matin-a-la-ferme.fr.vtt" srcLang="fr" label="Français" />
+                <a href="/videos/un-matin-a-la-ferme.mp4">Télécharger la vidéo</a>
+              </video>
+              <figcaption id="titre-video-matin" className="mt-2 text-sm text-ardoise">
+                Un matin à la ferme avec Gleba · 54 secondes
+              </figcaption>
+            </figure>
+            <Link href="/login?demo=1" className={`${CLASSES_CTA} justify-self-start lg:col-span-2 lg:self-start`}>
+              Essayer la démo <ArrowRight aria-hidden className="h-4 w-4" />
+            </Link>
           </div>
           <ol className="mt-14 grid gap-x-12 gap-y-0 md:grid-cols-2">
             {AUJOURDHUI.map(({ icone: Icone, titre, texte }) => (
