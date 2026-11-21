@@ -9,6 +9,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import { getUserId, refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
 import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from '@/lib/demo-garde'
 import { supprimerMesuresBrutesDuCompte } from '@/lib/capteurs/agregats'
+import { refusConservationCaisse } from '@/lib/caisse/conservation'
 
 export async function DELETE() {
   const { error, session } = await requireAuthApi()
@@ -24,6 +25,11 @@ export async function DELETE() {
     // visiteur pouvait vider la ferme de démonstration pour tous les suivants.
     const refusDemo = await refusSiCompteDemo(userId, MESSAGES_REFUS_DEMO.viderDonnees)
     if (refusDemo) return refusDemo
+
+    // Caisse en vente réelle de moins de six ans : ses recettes, stocks et
+    // pièces liées se conservent (LPF L. 102 B, ISCA). Refus explicite.
+    const refusCaisse = await refusConservationCaisse(userId, 'donnees')
+    if (refusCaisse) return refusCaisse
 
     // Seules les livraisons (bons, factures) lient un lot à un document à
     // conserver ; une perte ou un usage interne du verger part avec son lot.

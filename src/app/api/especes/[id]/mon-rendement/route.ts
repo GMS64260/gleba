@@ -1,3 +1,4 @@
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 /**
  * Rendement, unité et objectif annuel PROPRES À LA FERME, pour une espèce.
  *
@@ -133,6 +134,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       rendementEffectif: rendementEffectif(espece, ligne),
     })
   } catch (err) {
+    const conflitStock = messageConflitStockCaisse(err)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     console.error('PUT /api/especes/[id]/mon-rendement error:', err)
     return NextResponse.json({ error: 'Erreur lors de l\'enregistrement' }, { status: 500 })
   }
@@ -170,6 +173,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       rendementEffectif: rendementEffectif(espece, null),
     })
   } catch (err) {
+    const conflitStock = messageConflitStockCaisse(err)
+    if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     console.error('DELETE /api/especes/[id]/mon-rendement error:', err)
     return NextResponse.json({ error: 'Erreur lors de la remise à zéro' }, { status: 500 })
   }

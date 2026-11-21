@@ -7,6 +7,7 @@
  *       perdent leur statut "disponible").
  */
 
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -125,6 +126,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (err) {
+    const conflitCaisse = messageConflitStockCaisse(err)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (err instanceof LaitIndisponibleError) return NextResponse.json(corpsLaitIndisponible(err.alerte), { status: 422 })
     if (err instanceof ErreurElevage) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('POST /api/elevage/lots-fromage error:', err)
@@ -156,6 +159,8 @@ export async function DELETE(request: NextRequest) {
     })
     return NextResponse.json({ success: true })
   } catch (err) {
+    const conflitCaisse = messageConflitStockCaisse(err)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (err instanceof ErreurElevage) return NextResponse.json({ error: err.message }, { status: err.status })
     console.error('DELETE /api/elevage/lots-fromage error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })

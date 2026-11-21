@@ -6,6 +6,7 @@
  * DELETE /api/elevage/production-ruche?id= - Supprimer une récolte
  */
 
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
@@ -190,6 +191,8 @@ export async function GET(request: NextRequest) {
       meta: lecture.meta,
     })
   } catch (cause) {
+    const conflitCaisse = messageConflitStockCaisse(cause)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     console.error("GET /api/elevage/production-ruche error:", cause)
     return NextResponse.json(
       { error: "Erreur lors de la récupération des produits de la ruche" },
@@ -250,6 +253,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: production }, { status: 201 })
   } catch (cause) {
+    const conflitCaisse = messageConflitStockCaisse(cause)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     console.error("POST /api/elevage/production-ruche error:", cause)
     return NextResponse.json({ error: "Impossible d’enregistrer la récolte" }, { status: 500 })
   }
@@ -368,6 +373,8 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: production })
   } catch (cause) {
+    const conflitCaisse = messageConflitStockCaisse(cause)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (cause instanceof StockRucheError) {
       return NextResponse.json({ error: cause.message }, { status: cause.status })
     }
@@ -417,6 +424,8 @@ export async function DELETE(request: NextRequest) {
     })
     return NextResponse.json({ success: true })
   } catch (cause) {
+    const conflitCaisse = messageConflitStockCaisse(cause)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (cause instanceof StockRucheError) {
       return NextResponse.json({ error: cause.message }, { status: cause.status })
     }

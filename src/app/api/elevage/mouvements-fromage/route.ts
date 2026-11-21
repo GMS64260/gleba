@@ -4,6 +4,7 @@
  * Contrôle que la sortie ne dépasse pas le stock restant du lot.
  */
 
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -82,6 +83,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: mouvement }, { status: 201 })
   } catch (err) {
+    const conflitCaisse = messageConflitStockCaisse(err)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (err instanceof StockFromageError) {
       return NextResponse.json({ error: err.message }, { status: err.status })
     }

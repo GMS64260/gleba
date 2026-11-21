@@ -1,3 +1,5 @@
+import { lotsReservesCaisse, resteLot } from '@/lib/caisse/reservations'
+import {verrouillerStockCommercial} from '@/lib/stocks/verrou-commercial'
 import type { Prisma } from "@prisma/client"
 import { OEUFS_PAR_UNITE, oeufsDepuisUnite } from "@/lib/stocks-helpers"
 import { statutLotOeufs, stockRestantLotOeufs } from "./stock-oeufs"
@@ -53,6 +55,7 @@ export async function synchroniserStockOeufsVente(
     unite: string
   },
 ): Promise<number> {
+  await verrouillerStockCommercial(tx,input.userId)
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:stock-oeufs:${input.userId}`}))`
   const marqueur = marqueurVenteOeufs(input.venteId)
   await tx.mouvementStockOeuf.deleteMany({
@@ -78,17 +81,22 @@ export async function synchroniserStockOeufsVente(
   // Ticket cmsoeyhs5 — les pontes sous délai d'attente vétérinaire (soin avec
   // finAttenteOeufs) ne sont pas vendables : même règle que computeStockOeufsParLots.
   const blocagesVeto = await blocagesVetoPontes(tx, input.userId, productions)
+  const reserves = await lotsReservesCaisse(tx, input.userId)
+  const reserve = reserves.filter(l => l.ponteId !== null).reduce((q, l) => q + resteLot(l), 0)
+  const disponibleTotal=productions.filter(p=>!blocagesVeto.has(p.id)&&statutLotOeufs(p.date,input.date)==='commercialisable').reduce((q,p)=>q+Math.max(0,stockRestantLotOeufs({quantite:p.quantite,casses:p.casses,sales:p.sales,sorties:p.mouvementsStock})-reserves.filter(l=>l.ponteId===p.id).reduce((r,l)=>r+resteLot(l),0)),0)
+  if(reserve>0&&restantAVentiler>disponibleTotal)throw new StockOeufsVenteError(`Le stock disponible hors marché est de ${disponibleTotal} œuf(s). ${reserve} œuf(s) restent réservés aux marchés.`,409)
+
 
   for (const production of productions) {
     if (restantAVentiler === 0) break
     if (blocagesVeto.has(production.id)) continue
     if (statutLotOeufs(production.date, input.date) !== "commercialisable") continue
-    const disponible = stockRestantLotOeufs({
+    const disponible = Math.max(0, stockRestantLotOeufs({
       quantite: production.quantite,
       casses: production.casses,
       sales: production.sales,
       sorties: production.mouvementsStock,
-    })
+    }) - reserves.filter(l => l.ponteId === production.id).reduce((q, l) => q + resteLot(l), 0))
     if (disponible <= 0) continue
 
     const sortie = Math.min(disponible, restantAVentiler)
