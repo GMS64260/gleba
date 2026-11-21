@@ -8,8 +8,10 @@ import type { TacheTournee } from "@/lib/elevage/offline-tournee"
 
 vi.mock("@/components/shell/AppHeader", () => ({ AppHeader: () => null }))
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }))
+vi.mock("next-auth/react", () => ({ useSession: () => ({ data: { user: { id: "u1" } }, status: "authenticated" }) }))
 vi.mock("@/lib/elevage/offline-tournee", () => ({
   ajouterOperation: vi.fn(),
+  oublierAutreActeur: vi.fn().mockResolvedValue(undefined),
   lireFile: vi.fn().mockResolvedValue([]),
   lireTachesCachees: vi.fn().mockResolvedValue([]),
   sauverTaches: vi.fn().mockResolvedValue(undefined),
