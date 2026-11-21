@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 
 import { CLASSES_LIEN_DISCRET } from "./boutons"
 import { Tuile } from "./Tuile"
+import { SourceOpenMeteo } from "@/components/meteo/SourceOpenMeteo"
 
 /** Sous-ensemble de `GET /api/meteo?parcelleId=` (MeteoPrevision). */
 export interface PrevisionSemaine {
@@ -101,6 +102,7 @@ export function TuileSemaine({ meteo, chargement, erreur, rang }: TuileSemainePr
           })}
         </ol>
       )}
+      {!chargement && <SourceOpenMeteo className="px-3 pb-3" />}
     </Tuile>
   )
 }
