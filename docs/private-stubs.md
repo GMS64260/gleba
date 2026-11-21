@@ -45,6 +45,16 @@ public rend `null`, et le vrai composant reste sur le VPS via
 
 ## Comment ça marche
 
+### Politique de débit des API
+
+`src/lib/auth-utils.ts` est commun aux deux versions. Il appelle
+`src/lib/auth-politique.ts`, dont le contrat est `auth-politique-types.ts`.
+Le dépôt public reçoit à ce chemin le stub `auth-politique.public.ts` :
+`null` conserve le quota générique par IP. L'assemblage privé remplace ce
+seul module par sa politique par acteur, après validation de la session.
+Les deux versions exportent uniquement `politiqueDebitApi` avec le même type.
+Le vrai module et `src/lib/caisse/auth-politique.test.ts` restent privés.
+
 ### 1. ChatPanel / ChatBubble (zone `.gitignore` avec exception)
 
 Le `.gitignore` ignore tout `/src/components/chat/*` **sauf** ces deux
@@ -95,6 +105,20 @@ publique reçoit un fetch vers ces routes, elle répond 404, ce qui est
 le comportement souhaité (la feature n'est pas disponible).
 
 ## Checklist pour ajouter une nouvelle zone privée
+
+### Extension du middleware
+
+`src/middleware.ts` importe `estExceptionMiddleware(pathname: string,
+methode: string): boolean` depuis `src/lib/middleware-extension-caisse.ts`.
+L'assemblage privé conserve ce module pur, sans dépendance Node ni accès en base.
+Les contrôles d'authentification des routes serveur restent en place.
+
+Pour le dépôt public, le manager utilise à ce même chemin le contenu de
+`src/lib/middleware-extension-caisse.public.ts` : mêmes exports et signature,
+retour toujours faux. Le middleware reste identique dans les deux assemblages.
+L'implémentation privée ne doit pas être publiée. `src/middleware.test.ts`
+vérifie l'assemblage privé ; `src/middleware-public.test.ts` exerce le vrai
+stub public avec le middleware.
 
 Les bancs `scripts/qa/serie-assistant-*.ts` dépendent de la zone privée du VPS.
 Ils sont exclus du typecheck applicatif pour qu'un clone public compile sans

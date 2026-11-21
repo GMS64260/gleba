@@ -11,6 +11,7 @@ import { useAccesService } from "@/hooks/use-acces-service"
 import * as React from "react"
 import { CloudRain, Droplets, House, Loader2, TrendingUp, CalendarDays } from "lucide-react"
 import type { PluviometriePlancheResponse } from "@/app/api/meteo/pluviometrie/route"
+import { SourceOpenMeteo } from "@/components/meteo/SourceOpenMeteo"
 
 interface Props {
   plancheId: string
@@ -278,6 +279,8 @@ function PluviometriePlancheInterne({ plancheId }: Props) {
           <PluieBarChart historique={historique} previsions={previsions} />
         </div>
       )}
+
+      <SourceOpenMeteo />
     </div>
   )
 }
