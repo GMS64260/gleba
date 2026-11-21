@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useAccesService } from "@/hooks/use-acces-service"
 import { etatCulture } from "@/lib/cultures/etat"
 import type { PluviometrieBulkItem } from "@/app/api/meteo/pluviometrie-bulk/route"
+import { SourceOpenMeteo } from "@/components/meteo/SourceOpenMeteo"
 
 const CULTURE_ETATS = [
   { value: "all", label: "Toutes", icon: Leaf },
@@ -563,13 +564,16 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
           ) : (
             <Droplets className="h-4 w-4 text-amber-600 flex-shrink-0" />
           )}
-          <span>
-            <strong>{pluieResume.total7j} mm</strong> de pluie cumulée sur 7 j
-            {pluieResume.joursSansPluie > 0 && (
-              <> · {pluieResume.joursSansPluie} jour{pluieResume.joursSansPluie > 1 ? "s" : ""} sans pluie</>
-            )}
-            <span className="text-muted-foreground"> (moyenne {pluieResume.nbPlanches} planches plein air)</span>
-          </span>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+            <span>
+              <strong>{pluieResume.total7j} mm</strong> de pluie cumulée sur 7 j
+              {pluieResume.joursSansPluie > 0 && (
+                <> · {pluieResume.joursSansPluie} jour{pluieResume.joursSansPluie > 1 ? "s" : ""} sans pluie</>
+              )}
+              <span className="text-muted-foreground"> (moyenne {pluieResume.nbPlanches} planches plein air)</span>
+            </span>
+            <SourceOpenMeteo as="span" className="sm:ml-auto" />
+          </div>
         </div>
       )}
 
