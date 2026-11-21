@@ -6,7 +6,8 @@
  * modifiable, et propose de quitter (déconnexion de la session consultée).
  */
 
-import { useSession, signOut } from "next-auth/react"
+import { useSession } from "next-auth/react"
+import { seDeconnecter } from "@/lib/deconnexion"
 import { Eye, LogOut } from "lucide-react"
 
 export function ImpersonationBanner() {
@@ -24,7 +25,7 @@ export function ImpersonationBanner() {
         </span>
         <span className="hidden sm:inline text-amber-900/80">· lecture seule (aucune modification possible)</span>
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => void seDeconnecter({ callbackUrl: "/login" })}
           className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-amber-950/10 px-2.5 py-1 font-medium hover:bg-amber-950/20"
         >
           <LogOut className="h-3.5 w-3.5" />
