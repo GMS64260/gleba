@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   consommationCreate: vi.fn(),
   consommationFindMany: vi.fn(),
   mouvementStockCommercialFindMany: vi.fn(),
+  mouvementSourceStockRecolteFindMany: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -31,6 +32,7 @@ vi.mock('@/lib/prisma', () => ({
     consommation: { create: mocks.consommationCreate, findMany: mocks.consommationFindMany },
     // Sorties commerciales (livraisons, factures directes) que le stock net retranche.
     mouvementStockCommercial: { findMany: mocks.mouvementStockCommercialFindMany },
+    mouvementSourceStockRecolte: { findMany: mocks.mouvementSourceStockRecolteFindMany },
   },
 }))
 
@@ -78,6 +80,7 @@ beforeEach(() => {
   mocks.recolteFindMany.mockResolvedValue([])
   mocks.consommationFindMany.mockResolvedValue([])
   mocks.mouvementStockCommercialFindMany.mockResolvedValue([])
+  mocks.mouvementSourceStockRecolteFindMany.mockResolvedValue([])
   mocks.consommationCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: 9,
     ...data,
@@ -87,7 +90,7 @@ beforeEach(() => {
 })
 
 describe('POST /api/consommations — unité du stock', () => {
-  it("enregistre 1 tige de dahlia dans l'unité du stock, sans colonne ni conversion", async () => {
+  it("enregistre 1 tige de dahlia avec son unité figée, sans conversion", async () => {
     // Corps exact de l'écran : JSON.stringify retire les champs undefined.
     const res = await POST(post({ especeId: 'Dahlia', quantite: 1, unite: 'tige' }))
 
@@ -97,7 +100,7 @@ describe('POST /api/consommations — unité du stock', () => {
     expect(corps.quantite).toBe(1)
     const data = mocks.consommationCreate.mock.calls[0][0].data
     expect(data).toMatchObject({ especeId: 'Dahlia', quantite: 1, userId: 'u1' })
-    expect(data).not.toHaveProperty('unite')
+    expect(data).toHaveProperty('unite', 'tige')
     // Espèce lue dans le référentiel visible du compte.
     expect(mocks.especeFindFirst).toHaveBeenCalledWith({
       where: { AND: [{ id: 'Dahlia' }, VISIBLE_U1] },
@@ -199,12 +202,14 @@ describe('espèce sans stock enregistré : écran et route disent la même unit�
 })
 
 describe('GET /api/consommations — unité de chaque sortie', () => {
-  it("porte l'unité du stock de l'espèce, celle que le stock net retranche", async () => {
+  it("conserve les unités enregistrées et interprète NULL en kg", async () => {
     mocks.consommationFindMany.mockImplementation(async (args: { where: { especeId?: string } }) =>
       args.where.especeId
-        ? [{ quantite: args.where.especeId === 'Dahlia' ? 1 : 0.5 }] // sorties retranchées par le stock net
+        ? [{ quantite: args.where.especeId === 'Dahlia' ? 1 : 0.5, unite: args.where.especeId === 'Dahlia' ? 'tige' : null }] // sorties retranchées par le stock net
         : [
-            { id: 1, especeId: 'Dahlia', quantite: 1 },
+            { id: 1, especeId: 'Dahlia', quantite: 1, unite: 'tige' },
+            { id: 3, especeId: 'Dahlia', quantite: 2.5, unite: 'kg' },
+            { id: 4, especeId: 'Dahlia', quantite: 0.5, unite: null },
             { id: 2, especeId: 'Tomate', quantite: 0.5 },
           ],
     )
@@ -223,7 +228,7 @@ describe('GET /api/consommations — unité de chaque sortie', () => {
     const res = await GET(new NextRequest('http://localhost/api/consommations'))
 
     const corps = await res.json()
-    expect(corps.consommations.map((c: { unite: string }) => c.unite)).toEqual(['tige', 'kg'])
+    expect(corps.consommations.map((c: { unite: string }) => c.unite)).toEqual(['tige', 'kg', 'kg', 'kg'])
     expect(corps.stocksNet.Dahlia).toMatchObject({ unite: 'tige', stockNet: 18 })
     expect(corps.stocksNet.Tomate).toMatchObject({ unite: 'kg', stockNet: 4.5 })
   })

@@ -21,6 +21,7 @@ import { reprendreReferentielCommunaute, supprimerFichiersUtilisateur, COMMUNAUT
 import { sendMail, accountDeletedEmail } from "@/lib/mail"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { MESSAGES_REFUS_DEMO, refusSiCompteDemo } from "@/lib/demo-garde"
+import { purgerCaisseEntrainementTx, refusConservationCaisse } from "@/lib/caisse/conservation"
 
 /**
  * GET /api/account — état du compte pour l'écran Paramètres.
@@ -127,6 +128,11 @@ export async function DELETE(request: NextRequest) {
     // confirmation explicite « SUPPRIMER » côté client tiennent lieu de garde
     // (même niveau d'exigence que la politique Google Play).
 
+    // Caisse en vente réelle : conservation six ans (LPF L. 102 B, ISCA).
+    // Refus explicite AVANT l'arrêt de l'abonnement et toute suppression.
+    const refusCaisse = await refusConservationCaisse(userId, "compte")
+    if (refusCaisse) return refusCaisse
+
     await arreterAvantSuppression(userId)
 
     // Même contrat que la suppression admin : les entrées de référentiel
@@ -135,6 +141,9 @@ export async function DELETE(request: NextRequest) {
     await prisma.$transaction(
       async (tx) => {
         await reprendreReferentielCommunaute(tx, userId)
+        // Seules les données de caisse d'entraînement partent ; un fait réel
+        // fait échouer la transaction (fonction SQL et clés RESTRICT).
+        await purgerCaisseEntrainementTx(tx, userId)
         await tx.user.delete({ where: { id: userId } })
         await supprimerDonneesSansCleEtrangere(tx, userId)
       },

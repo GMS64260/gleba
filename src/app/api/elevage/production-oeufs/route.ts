@@ -5,6 +5,7 @@
  * PATCH /api/elevage/production-oeufs - Modifier une production
  */
 
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -167,6 +168,8 @@ export async function GET(request: NextRequest) {
       meta: { year: annee, total: productions.length },
     })
   } catch (error) {
+    const conflitCaisse = messageConflitStockCaisse(error)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     console.error('GET /api/elevage/production-oeufs error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
@@ -299,6 +302,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: production }, { status: 201 })
   } catch (error) {
+    const conflitCaisse = messageConflitStockCaisse(error)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     console.error('POST /api/elevage/production-oeufs error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
@@ -433,6 +438,8 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: production })
   } catch (error) {
+    const conflitCaisse = messageConflitStockCaisse(error)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof CollecteIntrouvableError) {
       return NextResponse.json({ error: 'Production non trouvée' }, { status: 404 })
     }
@@ -487,6 +494,8 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    const conflitCaisse = messageConflitStockCaisse(error)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof CollecteEntameeError) {
       return NextResponse.json({ error: error.message, code: 'STOCK_OEUFS_MOUVEMENTS_EXISTANTS' }, { status: 409 })
     }

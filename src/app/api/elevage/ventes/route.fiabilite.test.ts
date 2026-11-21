@@ -163,6 +163,31 @@ describe('Fiabilité des ventes élevage', () => {
     })
   })
 
+  it.each([
+    ['après la date limite de consommation', '2026-10-31', 'date limite de consommation'],
+    ['avant la fabrication du lot', '2026-09-30', 'fabriqué le 01/10/2026'],
+  ])('refuse de redater une vente de fromage %s, sans toucher la vente ni la cave (FOOD-01)', async (_cas, jour, extrait) => {
+    Object.assign(courante, { type: 'fromage', unite: 'piece', quantite: 2, lotFromageId: 'lot-1' })
+    m.lotFromage.mockResolvedValue({ dateFabrication: new Date('2026-10-01'), dlc: new Date('2026-10-30') })
+    const res = await PATCH(request('PATCH', { id: 11, date: jour }))
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain(extrait)
+    expect(m.lotFromage).toHaveBeenCalledWith({
+      where: { id: 'lot-1', userId: 'review' },
+      select: { dateFabrication: true, dlc: true },
+    })
+    expect(m.venteUpdate).not.toHaveBeenCalled()
+    expect(m.mouvementFromageUpdate).not.toHaveBeenCalled()
+    expect(courante.date).toEqual(new Date('2026-10-28T10:00:00Z'))
+  })
+
+  it('redate une vente de fromage le jour même de la DLC', async () => {
+    Object.assign(courante, { type: 'fromage', unite: 'piece', quantite: 2, lotFromageId: 'lot-1' })
+    m.lotFromage.mockResolvedValue({ dateFabrication: new Date('2026-10-01'), dlc: new Date('2026-10-30') })
+    expect((await PATCH(request('PATCH', { id: 11, date: '2026-10-30' }))).status).toBe(200)
+    expect(m.mouvementFromageUpdate).toHaveBeenCalledTimes(1)
+  })
+
   it('arrondit le total au centime, à la correction comme à la saisie', async () => {
     Object.assign(courante, { type: 'viande', unite: 'kg' })
     expect((await PATCH(request('PATCH', { id: 11, quantite: 0.347, prixUnitaire: 24.9 }))).status).toBe(200)

@@ -1,5 +1,7 @@
+import { lotsReservesCaisse, resteLot } from '@/lib/caisse/reservations'
+import {verrouillerStockCommercial} from '@/lib/stocks/verrou-commercial'
 import type { Prisma } from '@prisma/client'
-import { EPSILON_KG, stockLotFromage, type StockLotFromage } from './cave-fromage'
+import { EPSILON_KG, arrondirKg, poidsSortieKg, stockLotFromage, type StockLotFromage } from './cave-fromage'
 
 export class StockFromageError extends Error {
   constructor(message: string, public readonly status = 409) {
@@ -33,8 +35,11 @@ export async function verrouillerEtVerifierStockFromage(
   userId: string,
   lotFromageId: string,
   nbPieces: number,
-  poidsKg: number
+  poidsKg: number,
+  sessionCaisseId?:string,
+  poidsExplicite = false,
 ) {
+  await verrouillerStockCommercial(tx,userId)
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:fromage:${lotFromageId}`}))`
 
   const lot = await tx.lotFromage.findFirst({
@@ -43,11 +48,47 @@ export async function verrouillerEtVerifierStockFromage(
   })
   if (!lot) throw new StockFromageError('Lot de fromage introuvable dans votre cave.', 404)
 
-  const stock = stockDuLotFromage(lot)
-  const refus = refusStockFromage(stock, nbPieces, poidsKg)
+  const physique = stockDuLotFromage(lot)
+  const reserves = (await lotsReservesCaisse(tx, userId, sessionCaisseId)).filter(l => l.fromageId === lotFromageId)
+  const reserve = reserves.reduce((q, l) => q + resteLot(l), 0)
+  const poidsReserve = reserves.reduce((q, l) => q + Number((l.poidsMg ?? BigInt(0)) - (l.poidsConsommeMg ?? BigInt(0))) / 1_000_000, 0)
+  const stock={...physique,restantPieces:Math.max(0,physique.restantPieces-reserve),restantKg:Math.max(0,arrondirKg(physique.restantKg-poidsReserve))}
+  const moyenne = physique.suiviPoids ? Number(lot.poidsTotalKg) / lot.nbPieces : null
+  const sortiBrut = lot.mouvements.reduce((q, m) => q + poidsSortieKg({ nbPieces: m.nbPieces, poidsKg: Number(m.poidsKg) || 0 }, moyenne), 0)
+  const poidsImplicite = moyenne === null ? 0 : arrondirKg(arrondirKg(sortiBrut + nbPieces * moyenne) - arrondirKg(sortiBrut))
+  const poidsDemande = poidsKg > 0 || poidsExplicite ? poidsKg
+    : poidsReserve > 0 && nbPieces > 0 ? poidsImplicite : 0
+  const refus = refusStockFromage(stock, nbPieces, poidsDemande)
   if (refus) throw new StockFromageError(refus)
 
   return { lot, stock }
+}
+
+const jourParis = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })
+const jourLisible = (d: Date) => d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })
+
+/**
+ * Refus d'une VENTE de fromage que sa date interdit, null si elle passe : une
+ * vente datée avant la fabrication du lot, ou après sa date limite de
+ * consommation (DLC, limite sanitaire). Comparaison au jour, à Paris.
+ *
+ * Volontairement limité à ces deux cas (revue du 2026-11-11) : la DLUO
+ * dépassée et l'état « affinage » ne bloquent pas la vente directe tant que la
+ * règle métier n'est pas tranchée. Les sorties pour perte ou don ne passent
+ * pas par ici : un lot périmé doit pouvoir sortir de la cave.
+ */
+export function refusVenteFromage(
+  lot: { dateFabrication: Date; dlc: Date | null },
+  dateVente: Date,
+): string | null {
+  const jour = jourParis(dateVente)
+  if (jour < jourParis(lot.dateFabrication)) {
+    return `Ce lot a été fabriqué le ${jourLisible(lot.dateFabrication)} : la vente ne peut pas être datée avant sa fabrication.`
+  }
+  if (lot.dlc && jour > jourParis(lot.dlc)) {
+    return `La date limite de consommation de ce lot (${jourLisible(lot.dlc)}) est dépassée à la date de la vente : il ne peut plus être vendu. Sortez-le de la cave en perte.`
+  }
+  return null
 }
 
 /** Message de refus d'une sortie qui dépasse le stock, null si elle passe. */

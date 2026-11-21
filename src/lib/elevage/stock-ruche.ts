@@ -1,3 +1,5 @@
+import { lotsReservesCaisse, lotsArticleCaisse, resteLot, atomesLot, consommerLotCaisse } from '@/lib/caisse/reservations'
+import {verrouillerStockCommercial} from '@/lib/stocks/verrou-commercial'
 import type { Prisma } from "@prisma/client"
 import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import { randomUUID } from "node:crypto"
@@ -11,6 +13,7 @@ import {
 } from "./produits-ruche"
 
 const EPSILON = 1e-6
+type TypeSortieStockRuche = 'vente' | 'autoconsommation' | 'don' | 'destruction' | 'transformation'
 
 export class StockRucheError extends Error {
   constructor(message: string, readonly status = 409) {
@@ -106,15 +109,18 @@ async function ventilerSortieFifo(
     unite: UniteProduitRuche
     date: Date
     quantite: number
-    type: "vente" | "autoconsommation" | "don" | "destruction"
+    type: TypeSortieStockRuche
     venteProduitId?: number | null
     operationId: string
     notes?: string | null
+    sessionCaisseId?: string
+    caisseArticleId?: string
   },
 ) {
   if (!Number.isFinite(input.quantite) || input.quantite <= 0) {
     throw new StockRucheError("La quantité de sortie doit être positive.", 400)
   }
+  await verrouillerStockCommercial(tx,input.userId)
   await verrouillerStockRuche(tx, input.userId, input.produit)
 
   if (input.venteProduitId) {
@@ -136,6 +142,10 @@ async function ventilerSortieFifo(
     include: { mouvementsStock: { select: { quantite: true } } },
   })
 
+  const reserves = await lotsReservesCaisse(tx, input.userId, input.sessionCaisseId)
+  if (input.sessionCaisseId && !input.caisseArticleId) throw new StockRucheError('Identifiez le produit affecté à cette caisse.', 400)
+  const propres = input.sessionCaisseId ? await lotsArticleCaisse(tx, input.userId, input.sessionCaisseId, input.caisseArticleId!) : null
+
   for (const production of productions) {
     if (restantGrammes <= EPSILON) break
     if (!(UNITES_PRODUITS_RUCHE as readonly string[]).includes(production.unite)) continue
@@ -145,10 +155,14 @@ async function ventilerSortieFifo(
       (somme, mouvement) => somme + mouvement.quantite,
       0,
     )
-    const disponibleGrammes = Math.max(
+    const reserve = reserves.filter(l => l.rucheId === production.id).reduce((q, l) => q + resteLot(l), 0)
+    const propre = propres?.find(l => l.rucheId === production.id)
+    if (propres && !propre) continue
+    const physiqueDisponible = Math.max(
       0,
-      (production.quantite - dejaSorti) * facteurProduction,
+      (production.quantite - dejaSorti - reserve) * facteurProduction,
     )
+    const disponibleGrammes = propre ? Math.min(physiqueDisponible, resteLot(propre) * facteurProduction) : physiqueDisponible
     if (disponibleGrammes <= EPSILON) continue
 
     const sortieGrammes = Math.min(disponibleGrammes, restantGrammes)
@@ -166,6 +180,7 @@ async function ventilerSortieFifo(
         notes: input.notes ?? null,
       },
     })
+    if (propre) await consommerLotCaisse(tx, input.userId, propre.id, atomesLot(quantite, uniteProduction))
     restantGrammes -= sortieGrammes
   }
 
@@ -223,8 +238,10 @@ export async function sortirStockRuche(
     unite: UniteProduitRuche
     date: Date
     quantite: number
-    type: "vente" | "autoconsommation" | "don" | "destruction"
+    type: TypeSortieStockRuche
     notes?: string | null
+    sessionCaisseId?: string
+    caisseArticleId?: string
   },
 ) {
   const operationId = randomUUID()

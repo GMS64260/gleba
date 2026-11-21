@@ -4,6 +4,7 @@
  * et comptabilité restent dans la même transaction.
  */
 
+import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
@@ -45,6 +46,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, operationId }, { status: 201 })
   } catch (cause) {
+    const conflitCaisse = messageConflitStockCaisse(cause)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (cause instanceof StockRucheError) {
       return NextResponse.json({ error: cause.message }, { status: cause.status })
     }
@@ -97,6 +100,8 @@ export async function DELETE(request: NextRequest) {
     })
     return NextResponse.json({ success: true })
   } catch (cause) {
+    const conflitCaisse = messageConflitStockCaisse(cause)
+    if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     console.error("DELETE /api/elevage/stock-ruche error:", cause)
     return NextResponse.json({ error: "Impossible de supprimer la sortie" }, { status: 500 })
   }
