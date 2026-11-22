@@ -58,6 +58,9 @@ export async function GET(request: NextRequest) {
         ...produit,
         tempsAttenteLaitJ: delaisEffectifs.tempsAttenteLaitJ,
         tempsAttenteViandeJ: delaisEffectifs.tempsAttenteViandeJ,
+        // Résolu pour l'espèce comme le lait et la viande (FB-7YARYN) : sans cela le
+        // formulaire recevait toujours le 0 du produit de base.
+        tempsAttenteOeufsJ: delaisEffectifs.tempsAttenteOeufsJ,
         delaiAttenteSource: delaisEffectifs.source,
         couvertAmmPourEspece: delaisEffectifs.couvertAmm,
       }

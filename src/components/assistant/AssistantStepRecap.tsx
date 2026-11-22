@@ -229,7 +229,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
 
       toast({
         title: "Culture créée",
-        description: `La culture de ${espece?.id || culture.especeId} a été créée`,
+        description: `La culture de ${espece?.nom || espece?.id || culture.especeId} a été créée`,
       })
 
       onSuccess(plancheId || undefined, newCulture.id)

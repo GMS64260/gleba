@@ -45,6 +45,8 @@ import {
 } from "@/lib/assistant-helpers"
 import type { EspeceData, ITPData, VarieteData, CultureData } from "./AssistantDialog"
 import { nomAffichableItp } from "@/lib/itp-label"
+import { nomEspece } from "@/lib/especes/affichage"
+import { especeCorrespondRecherche } from "@/lib/especes/recherche"
 
 // ---------------------------------------------------------------------------
 // Props
@@ -233,13 +235,7 @@ export function AssistantStepPlante({
     }
 
     if (search) {
-      const searchLower = search.toLowerCase()
-      result = result.filter(
-        (e) =>
-          e.id.toLowerCase().includes(searchLower) ||
-          e.nomLatin?.toLowerCase().includes(searchLower) ||
-          e.categorie?.toLowerCase().includes(searchLower)
-      )
+      result = result.filter((e) => especeCorrespondRecherche(e, search))
     }
 
     return result
@@ -524,7 +520,7 @@ export function AssistantStepPlante({
                     className="cursor-pointer hover:bg-amber-100"
                     onClick={() => handleEspeceSelect(e)}
                   >
-                    {getCategorie(e.type).emoji} {e.id}
+                    {getCategorie(e.type).emoji} {nomEspece(e)}
                   </Badge>
                 ))}
               </div>
@@ -563,7 +559,7 @@ export function AssistantStepPlante({
                         <div className="flex items-center gap-3">
                           <span className="text-xl">{cat.emoji}</span>
                           <div>
-                            <div className="font-medium">{e.id}</div>
+                            <div className="font-medium">{nomEspece(e)}</div>
                             {e.nomLatin && (
                               <div className="text-xs text-muted-foreground italic">
                                 {e.nomLatin}
@@ -899,7 +895,7 @@ export function AssistantStepPlante({
                                     </div>
                                     <div>
                                       <div className="font-medium flex items-center gap-2">
-                                        {v.id}
+                                        {v.nom ?? v.id}
                                         {v.bio && (
                                           <Badge
                                             variant="outline"

@@ -52,6 +52,7 @@ export async function chargerAttentesConsolidees(
       tempsAttenteOeufsJ: true,
       nbInjections: true,
       intervalleInjectionsHeures: true,
+      injections: { select: { numero: true, datePrevue: true, dateRealisee: true, statut: true } },
       animal: { select: { id: true, nom: true, identifiant: true } },
       lot: { select: { id: true, nom: true } },
       produitVeterinaire: { select: { nom: true } },
@@ -73,6 +74,7 @@ export async function chargerAttentesConsolidees(
     tempsAttenteOeufsJ: s.tempsAttenteOeufsJ,
     nbInjections: s.nbInjections,
     intervalleInjectionsHeures: s.intervalleInjectionsHeures,
+    injections: s.injections,
     cibleLabel: s.animal
       ? s.animal.identifiant || s.animal.nom || `#${s.animal.id}`
       : s.lot

@@ -233,6 +233,11 @@ function isTransactionTab(value: string | null): value is TransactionTab {
   return value !== null && TRANSACTION_TABS.includes(value as TransactionTab)
 }
 
+/** Journal comptable proposé pour une saisie manuelle : ventes ou achats. */
+function journalParDefaut(type: ManualTransactionType): string {
+  return type === "vente" ? "VE" : "AC"
+}
+
 function isManualTransactionType(value: string | null): value is ManualTransactionType {
   return value === "vente" || value === "depense"
 }
@@ -365,7 +370,11 @@ function TransactionsPageInner() {
     paye: true,
     // DEV1 #3 — nouveaux champs réglementaires
     tauxTVA: "5.5",
-    journal: "VE",
+    // FB-XI4PM0 : le journal part du type demandé par le lien. Arrivé par
+    // « ?type=depense », le formulaire naissait en « VE » puis basculait en
+    // « AC » au montage ; le sélecteur répondait par une valeur vide, et la
+    // dépense était refusée (« Données invalides »).
+    journal: journalParDefaut(isManualTransactionType(requestedType) ? requestedType : "vente"),
     modeReglement: "",
     numeroPiece: "",
     pjUrl: "",
@@ -668,9 +677,10 @@ function TransactionsPageInner() {
   // DEV1 #3 — Synchroniser le journal par défaut avec le type d'opération.
   React.useEffect(() => {
     setFormData((prev) => {
-      const defaultJournal = formType === "vente" ? "VE" : "AC"
-      // Ne change que si l'utilisateur n'a pas explicitement choisi autre chose.
-      if (prev.journal === "VE" || prev.journal === "AC") {
+      const defaultJournal = journalParDefaut(formType)
+      // Ne change que si l'utilisateur n'a pas explicitement choisi autre chose
+      // (un journal vide n'est pas un choix).
+      if (prev.journal !== defaultJournal && (prev.journal === "VE" || prev.journal === "AC" || prev.journal === "")) {
         return { ...prev, journal: defaultJournal }
       }
       return prev
@@ -772,7 +782,7 @@ function TransactionsPageInner() {
 
     const commonExtras = {
       tauxTVA,
-      journal: formData.journal,
+      journal: formData.journal || journalParDefaut(formType),
       modeReglement: formData.modeReglement || null,
       numeroPiece: formData.numeroPiece || null,
       pjUrl: formData.pjUrl || null,
@@ -825,7 +835,7 @@ function TransactionsPageInner() {
           module: "potager",
           paye: true,
           tauxTVA: "5.5",
-          journal: formType === "vente" ? "VE" : "AC",
+          journal: journalParDefaut(formType),
           modeReglement: "",
           numeroPiece: "",
           pjUrl: "",
@@ -1322,7 +1332,9 @@ function TransactionsPageInner() {
                       <Label>Journal *</Label>
                       <Select
                         value={formData.journal}
-                        onValueChange={(v) => setFormData({ ...formData, journal: v })}
+                        // Le sélecteur peut émettre une valeur vide quand la sienne
+                        // change sans clic : elle ne remplace jamais un journal.
+                        onValueChange={(v) => { if (v) setFormData((prev) => ({ ...prev, journal: v })) }}
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
