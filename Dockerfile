@@ -34,6 +34,13 @@ ENV NODE_ENV=production
 ARG NEXT_PUBLIC_FEATURE_BOUTIQUE=false
 ENV NEXT_PUBLIC_FEATURE_BOUTIQUE=$NEXT_PUBLIC_FEATURE_BOUTIQUE
 
+# Mesure d'audience (docs/mesure-audience.md). Vides par défaut : aucune mesure,
+# aucune requête sortante. Lues au `next build`, comme toute variable NEXT_PUBLIC_*.
+ARG NEXT_PUBLIC_MATOMO_URL=
+ARG NEXT_PUBLIC_MATOMO_SITE_ID=
+ENV NEXT_PUBLIC_MATOMO_URL=$NEXT_PUBLIC_MATOMO_URL
+ENV NEXT_PUBLIC_MATOMO_SITE_ID=$NEXT_PUBLIC_MATOMO_SITE_ID
+
 RUN npx prisma generate
 # Le contrôle TypeScript du référentiel dépasse le tas V8 implicite de 2 Go.
 # Ce plafond concerne le compilateur ; le builder garde ses limites Docker.

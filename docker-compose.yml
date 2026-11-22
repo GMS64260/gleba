@@ -24,6 +24,9 @@ services:
       args:
         # Activé via .env privé du serveur ; défaut "false" (build open-source).
         NEXT_PUBLIC_FEATURE_BOUTIQUE: ${NEXT_PUBLIC_FEATURE_BOUTIQUE:-false}
+        # Mesure d'audience : sans ces deux valeurs dans .env, rien n'est mesuré.
+        NEXT_PUBLIC_MATOMO_URL: ${NEXT_PUBLIC_MATOMO_URL:-}
+        NEXT_PUBLIC_MATOMO_SITE_ID: ${NEXT_PUBLIC_MATOMO_SITE_ID:-}
     container_name: gleba_app
     restart: unless-stopped
     environment:
