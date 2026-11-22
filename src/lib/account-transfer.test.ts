@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   createMany: vi.fn(),
   findMany: vi.fn(),
+  findFirst: vi.fn(),
   count: vi.fn(),
 }))
 
@@ -16,6 +17,7 @@ vi.mock("@/lib/prisma", () => {
       if (name === "$executeRaw") return async () => 0
       return {
         findMany: (args: unknown) => mocks.findMany(name, args),
+        findFirst: (args: unknown) => mocks.findFirst(name, args),
         count: (args: unknown) => mocks.count(name, args),
         create: (args: { data: Record<string, unknown> }) => mocks.create(name, args),
         createMany: (args: { data: Array<Record<string, unknown>>; skipDuplicates?: boolean }) => mocks.createMany(name, args),
@@ -293,5 +295,33 @@ describe("import d'un compte : aucun rattachement à l'entrée privée d'un autr
     expect(liees).not.toContain("espece-privee-tiers")
     expect(liees).toEqual(expect.arrayContaining(["espece-partagee-tiers", "espece-officielle", "espece-perso"]))
     expect(resultat.warnings.join(" ")).toContain("1 référence(s) du fichier n'existent pas")
+  })
+
+  // FB-GJLDGZ : une espèce personnelle du fichier, absente ou invisible sur le
+  // compte cible, était traitée comme introuvable ; ses cultures étaient
+  // abandonnées sous « Restauration réussie ».
+  it("recrée pour le compte une espèce personnelle du fichier et y rattache ses cultures", async () => {
+    mocks.findFirst.mockResolvedValue(null)
+    const resultat = await importAccount("importateur", {
+      format: "2.0", exportDate: "2026-11-22", appVersion: "test", sourceUserId: "source", stats: {},
+      data: {
+        Espece: [
+          { id: "cmespecesource", nom: "Tomate de la ferme", nomNormalise: "tomate de la ferme", userId: "source", partageCommunaute: true },
+          { id: "espece-privee-tiers", nom: "Recopiée d'un tiers", nomNormalise: "recopiee d un tiers", userId: "tiers", partageCommunaute: false },
+        ],
+        Culture: [{ id: 1, especeId: "cmespecesource", annee: 2026 }, { id: 2, especeId: "espece-privee-tiers", annee: 2026 }],
+      },
+    } as never)
+    const creees = mocks.create.mock.calls.filter(([name]) => name === "espece").map(([, { data }]) => data)
+    expect(creees).toHaveLength(2)
+    for (const espece of creees) {
+      // Toujours une copie du compte, privée, sous un nouvel identifiant : jamais l'entrée d'un autre.
+      expect(espece).toMatchObject({ userId: "importateur", partageCommunaute: false })
+      expect(["cmespecesource", "espece-privee-tiers"]).not.toContain(espece.id)
+    }
+    const liees = mocks.create.mock.calls.filter(([name]) => name === "culture").map(([, { data }]) => data.especeId)
+    expect(liees).toEqual(creees.map((e) => e.id))
+    expect(resultat.imported.Espece).toBe(2)
+    expect(resultat.warnings.join(" ")).not.toContain("n'existent pas")
   })
 })
