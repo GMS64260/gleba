@@ -79,6 +79,13 @@ const repondre = (statut = 200) => vi.fn(async (_url: string, init: { body: stri
   return { ok: statut < 400, status: statut }
 })
 
+/** Serveur de la tournée : la lecture rend la portée de la session, l'envoi répond `statut`. */
+const serveur = (portee: { acteurId: string; proprietaireId: string }, statut = 200) => vi.fn(async (_url: string, init?: { method?: string; body?: string }) => {
+  if (init?.method !== 'POST') return { ok: true, status: 200, json: async () => ({ data: [], portee }) }
+  if (statut < 400) envoyes.push(JSON.parse(init.body!).tacheId)
+  return { ok: statut < 400, status: statut }
+})
+
 beforeEach(() => {
   base = { version: 0, magasins: new Map() }
   envoyes.length = 0
@@ -191,6 +198,64 @@ describe('SEC-02 — cache propre à une personne et une exploitation', () => {
     expect(await t.lireTachesCachees()).toEqual([])
     expect(await t.lireFile()).toEqual([])
     expect(await t.ajouterOperation(op('A'))).toBe(false)
+  })
+
+  it('avant la déconnexion, la file part si le serveur confirme sa portée', async () => {
+    const premiere = await charger()
+    await premiere.sauverTaches(A, [tache('A')])
+    await premiere.ajouterOperation(op('A'))
+    // Autre page que la tournée : aucune portée confirmée dans ce module.
+    const menu = await charger()
+    vi.stubGlobal('fetch', serveur(A))
+    expect(await menu.envoyerFileAvantDeconnexion()).toEqual({ restantes: 0, cause: null })
+    expect(envoyes).toEqual(['A'])
+    expect(await menu.lireFile()).toEqual([])
+  })
+
+  it('avant la déconnexion, la file d’une autre portée n’est ni envoyée ni annoncée', async () => {
+    const premiere = await charger()
+    await premiere.sauverTaches(A, [tache('A')])
+    await premiere.ajouterOperation(op('A'))
+    const menu = await charger()
+    vi.stubGlobal('fetch', serveur(B))
+    expect(await menu.envoyerFileAvantDeconnexion()).toEqual({ restantes: 0, cause: null })
+    expect(envoyes).toEqual([])
+    expect((await menu.lireFile()).length).toBe(1)
+  })
+
+  it('avant la déconnexion, sans réseau ou sur refus du serveur, ce qui reste est compté', async () => {
+    const t = await charger()
+    await t.sauverTaches(A, [tache('A'), tache('B')])
+    await t.ajouterOperation(op('A'))
+    await t.ajouterOperation(op('B'))
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    expect(await t.envoyerFileAvantDeconnexion()).toEqual({ restantes: 2, cause: 'reseau' })
+    vi.stubGlobal('fetch', serveur(A, 500))
+    expect(await t.envoyerFileAvantDeconnexion()).toEqual({ restantes: 2, cause: 'refus' })
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401 })))
+    expect(await t.envoyerFileAvantDeconnexion()).toEqual({ restantes: 2, cause: 'refus' })
+    expect((await t.lireFile()).length).toBe(2)
+  })
+
+  it('avant la déconnexion, la portée confirmée pour l’envoi ne reste pas acquise à la page', async () => {
+    const premiere = await charger()
+    await premiere.sauverTaches(A, [tache('A')])
+    await premiere.ajouterOperation(op('A'))
+    const menu = await charger()
+    vi.stubGlobal('fetch', serveur(A, 500))
+    expect(await menu.envoyerFileAvantDeconnexion()).toEqual({ restantes: 1, cause: 'refus' })
+    vi.stubGlobal('fetch', repondre())
+    expect(await menu.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 1 })
+    expect(envoyes).toEqual([])
+  })
+
+  it('avant la déconnexion, une file vide ne demande rien au serveur', async () => {
+    const t = await charger()
+    await t.sauverTaches(A, [tache('A')])
+    const fetchVide = vi.fn()
+    vi.stubGlobal('fetch', fetchVide)
+    expect(await t.envoyerFileAvantDeconnexion()).toEqual({ restantes: 0, cause: null })
+    expect(fetchVide).not.toHaveBeenCalled()
   })
 
   it('efface l’ancien cache commun (clés tasks et queue) à la mise à niveau', async () => {
