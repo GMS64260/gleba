@@ -94,25 +94,37 @@ export default function TourneePage() {
     setQueued((await lireFile(acteurRef.current)).length)
   }, [])
 
+  // Lecture puis envoi de la file restée en attente : sans cela, une tâche validée
+  // hors réseau ne partait qu'à un retour du réseau vécu page ouverte, ou à la
+  // validation suivante. Rouvrir la tournée en ligne suffit maintenant.
+  const actualiser = React.useCallback(async () => {
+    await refresh()
+    if (!navigator.onLine) return
+    try {
+      const { envoyees } = await synchroniserOperations()
+      if (envoyees > 0) await refresh()
+    } catch { /* base locale illisible : la file reste pour la prochaine fois */ }
+  }, [refresh])
+
   React.useEffect(() => {
     if (!acteurSession || acteurRef.current === acteurSession) return
     acteurRef.current = acteurSession
-    void oublierAutreActeur(acteurSession).then(refresh)
-  }, [acteurSession, refresh])
+    void oublierAutreActeur(acteurSession).then(actualiser)
+  }, [acteurSession, actualiser])
 
   React.useEffect(() => {
     setOnline(navigator.onLine)
-    void refresh()
+    void actualiser()
     void Promise.all([fetch('/api/elevage/lots'), fetch('/api/elevage/animaux?statut=actif')]).then(async ([l, a]) => {
       if (l.ok) setLots((await l.json()).data)
       if (a.ok) setAnimaux((await a.json()).data)
     })
     if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw-elevage.js')
-    const onOnline = async () => { setOnline(true); await refresh(); await synchroniserOperations(); await refresh() }
+    const onOnline = () => { setOnline(true); void actualiser() }
     const onOffline = () => setOnline(false)
     window.addEventListener('online', onOnline); window.addEventListener('offline', onOffline)
     return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline) }
-  }, [refresh])
+  }, [refresh, actualiser])
 
   const { validerSoin, dialogue: dialogueDelais } = useSaisieDelaisAttente()
 
@@ -190,7 +202,7 @@ export default function TourneePage() {
     {dialogueDelais}
     <div className="flex flex-wrap items-center justify-between gap-2"><div><Button asChild variant="ghost" size="sm"><Link href="/elevage"><ArrowLeft className="h-4 w-4 mr-1" />Élevage</Link></Button><h1 className="text-2xl font-bold">Tournée du jour</h1><p className="text-sm text-muted-foreground">Actions terrain, acquittables même sans réseau.</p></div><div className="flex gap-2"><Badge variant={online ? 'default' : 'secondary'}>{online ? <Wifi className="h-3 w-3 mr-1" /> : <CloudOff className="h-3 w-3 mr-1" />}{online ? 'En ligne' : 'Hors ligne'}</Badge>{queued > 0 && <Badge variant="outline">{queued} à synchroniser</Badge>}</div></div>
     <div className="flex gap-2">
-      <Button variant="outline" onClick={() => refresh()}><RefreshCw className="h-4 w-4 mr-1" />Actualiser</Button>
+      <Button variant="outline" onClick={() => actualiser()}><RefreshCw className="h-4 w-4 mr-1" />Actualiser</Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-1" />Nouvelle tâche</Button></DialogTrigger>
         <DialogContent>

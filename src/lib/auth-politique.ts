@@ -1,7 +1,6 @@
-import type { PolitiqueDebitApi } from "./auth-politique-types"
-
-/** Surcharge privée : le trafic de caisse est plafonné par personne authentifiée. */
-export const politiqueDebitApi: PolitiqueDebitApi = (request) => {
-  if (!request || !/^\/api\/caisse(?:\/|$)/.test(new URL(request.url).pathname)) return null
-  return { prefixeCle: "caisse:", windowMs: 15 * 60 * 1000, max: 2000 }
-}
+/**
+ * Politique de débit des API : version publique, neutre.
+ * L'assemblage privé remplace ce module par sa politique par personne
+ * authentifiée (docs/private-stubs.md). Ne rien ajouter ici.
+ */
+export { politiqueDebitApi } from "./auth-politique.public"

@@ -1,6 +1,6 @@
-/** Extension privée pure, compatible Edge. Les routes gardent leur authentification serveur. */
-export function estExceptionMiddleware(pathname: string, methode: string): boolean {
-  return pathname === "/caisse/manifest.webmanifest"
-    || pathname === "/caisse/hors-ligne"
-    || (pathname === "/api/caisse/clotures/planifiee" && methode === "POST")
-}
+/**
+ * Extension du middleware : version publique, sans exception supplémentaire.
+ * L'assemblage privé remplace ce module par ses propres exceptions
+ * (docs/private-stubs.md). Ne rien ajouter ici.
+ */
+export { estExceptionMiddleware } from "./middleware-extension-caisse.public"

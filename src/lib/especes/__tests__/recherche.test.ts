@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   correspondEspece,
+  especeCorrespondRecherche,
   distanceEdition,
   normaliserRecherche,
   scoreEspece,
@@ -103,5 +104,26 @@ describe("scoreEspece — classement", () => {
 
   it("ne renvoie jamais de score sur un nom vide", () => {
     expect(scoreEspece("", "chou")).toBe(0)
+  })
+})
+
+describe("especeCorrespondRecherche — liste de l'assistant Semer", () => {
+  const perso = { id: "cmwidentifianttechnique", nom: "Tomate de la ferme", nomLatin: "Solanum lycopersicum" }
+
+  it("retrouve une espèce personnelle par son nom", () => {
+    expect(especeCorrespondRecherche(perso, "tomate de la")).toBe(true)
+    expect(especeCorrespondRecherche({ id: "cmw1", nom: "Mâche du jardin" }, "mache")).toBe(true)
+  })
+
+  it("ne cherche pas dans l'identifiant technique d'une espèce personnelle", () => {
+    expect(especeCorrespondRecherche(perso, "cmwidentifiant")).toBe(false)
+  })
+
+  it("retrouve une espèce officielle par son identifiant lisible, son nom latin ou sa catégorie", () => {
+    const officielle = { id: "Carotte", nom: null, nomLatin: "Daucus carota", categorie: "Légume racine" }
+    expect(especeCorrespondRecherche(officielle, "carot")).toBe(true)
+    expect(especeCorrespondRecherche(officielle, "daucus")).toBe(true)
+    expect(especeCorrespondRecherche(officielle, "legume rac")).toBe(true)
+    expect(especeCorrespondRecherche(officielle, "poireau")).toBe(false)
   })
 })
