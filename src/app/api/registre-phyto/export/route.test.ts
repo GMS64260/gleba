@@ -211,3 +211,13 @@ describe("export CSV du registre phytosanitaire", () => {
     expect(lignes.some((l) => l.includes("Rectifications et suppressions"))).toBe(false)
   })
 })
+
+describe("export PDF du registre phytosanitaire", () => {
+  it("un registre d'un seul traitement tient sur une page, pied compris", async () => {
+    const reponse = await GET(new NextRequest("http://localhost/api/registre-phyto/export?from=2026-01-01&to=2026-12-31&format=pdf"))
+    expect(reponse.status).toBe(200)
+    const pdf = Buffer.from(await reponse.arrayBuffer()).toString("latin1")
+    // Le pied, écrit dans la marge basse, ouvrait deux pages de plus.
+    expect((pdf.match(/\/Type \/Page\b/g) ?? []).length).toBe(1)
+  })
+})

@@ -801,6 +801,11 @@ async function buildPdf(
 
     const drawFooter = (pageNum: number) => {
       const pageBottom = doc.page.height - 38
+      // Le pied s'écrit dans la marge basse. Avec la marge en place, PDFKit jugeait
+      // chaque ligne hors page et ouvrait une page neuve : un registre d'une page
+      // sortait en trois, le pied seul sur les deux dernières.
+      const margeBasse = doc.page.margins.bottom
+      doc.page.margins.bottom = 0
       doc
         .fontSize(7)
         .fillColor("#64748b")
@@ -815,6 +820,7 @@ async function buildPdf(
         pageBottom + 10,
         { width: doc.page.width - 60, align: "center" }
       )
+      doc.page.margins.bottom = margeBasse
     }
 
     // ── EN-TÊTE ──
