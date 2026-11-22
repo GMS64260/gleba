@@ -96,13 +96,21 @@ async function exportPdfTexte(userId: string, from: string, to: string) {
   expect(reponse.status).toBe(200)
   const pdf = Buffer.from(await reponse.arrayBuffer())
   const morceaux: string[] = []
-  for (const m of pdf.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)) {
-    try {
-      const flux = inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1')
-      morceaux.push([...flux.matchAll(/<([0-9a-f]+)>/gi)].map((h) => Buffer.from(h[1], 'hex').toString('latin1')).join(''))
-    } catch {
-      // Flux non compressé (polices, métadonnées) : sans texte de page.
-    }
+  // PDFKit écrit « stream\n », les octets compressés puis « \nendstream ». Un `\r?`
+  // devant `\nendstream` avalait le dernier octet compressé quand il valait 0x0D
+  // (une fois sur 256) : la page disparaissait et le test échouait au hasard.
+  for (const m of pdf.toString('latin1').matchAll(/<<\n((?:\/[^\n]*\n)*?)>>\nstream\n([\s\S]*?)\nendstream/g)) {
+    // Flux non compressé (polices, métadonnées) : sans texte de page. Un flux
+    // compressé illisible fait échouer le test au lieu de disparaître.
+    if (!m[1].includes('/Filter /FlateDecode')) continue
+    const flux = inflateSync(Buffer.from(m[2], 'latin1')).toString('latin1')
+    morceaux.push([...flux.matchAll(/<([0-9a-f]+)>/gi)].map((h) => Buffer.from(h[1], 'hex').toString('latin1')).join(''))
+  }
+  expect(morceaux.length, 'aucun flux de page décodé').toBeGreaterThan(0)
+  // Chaque page porte son pied, et aucune page ne contient que lui.
+  for (const page of morceaux.map(compact)) {
+    expect(page, 'page sans pied').toMatch(/Page\d+\/\d+/)
+    expect(page.startsWith("Registred'utilisationdesproduits"), 'page réduite à son pied').toBe(false)
   }
   return compact(morceaux.join(''))
 }
