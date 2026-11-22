@@ -32,6 +32,7 @@ import { TableRow } from "@/components/ui/table"
 import Economie from "./elevage/economie/page"
 import { OperationsTab } from "@/components/verger/OperationsTab"
 import { DataTable } from "@/components/tables/DataTable"
+import { LivraisonLaitSubTab } from "@/components/elevage/LivraisonLaitSubTab"
 
 function texte(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node)
@@ -74,6 +75,32 @@ describe.each(surfaces)("devise des écrans B4 — $nom", ({ rendre, etats }) =>
     const rendu = texte(rendre())
     expect(rendu).toContain("—")
     expect(rendu).not.toMatch(/€|\d[\u00a0\u202f ]F/)
+  })
+})
+
+// Défaut D11 de l'équipe debug : la prime et la pénalité d'une paie du lait
+// étaient arrondies à l'unité, sans devise ; la ligne ne se recomposait plus.
+describe("paie du lait : primes et pénalités au centime", () => {
+  const paie = { id: "paie-fictive", annee: 2026, mois: 3, litres: 5234.5, prixBaseMille: "712.40", primeQualite: "38.74", penalite: "104.69", montantHT: "3663.11", laiterie: null }
+  const rendre = (devise: string | null) => {
+    m.devise = devise
+    m.etats = [2026, [], [paie], { montantTotal: 3663.11, litresTotal: 5234.5, prixMoyenMille: 699.8 }, null]
+    m.index = 0
+    return normaliser(texte(LivraisonLaitSubTab()))
+  }
+
+  it("garde les centimes en euros, avec le signe et la devise", () => {
+    const rendu = rendre("EUR")
+    expect(rendu).toContain("+38,74 €")
+    expect(rendu).toContain("−104,69 €")
+    expect(rendu).toContain("3 663,11 €")
+  })
+
+  it("laisse le formateur arrondir en francs Pacifique, et n'invente pas de devise", () => {
+    const xpf = rendre("XPF")
+    expect(xpf).toContain("+39 F")
+    expect(xpf).toContain("−105 F")
+    expect(rendre(null)).not.toMatch(/[+−]\d/)
   })
 })
 

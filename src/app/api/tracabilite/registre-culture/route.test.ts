@@ -28,7 +28,7 @@ vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/prisma", () => {
   const db = {
     iTP: { findMany: mocks.itpFindMany },
-    espece: { findMany: mocks.especeFindMany },
+    espece: { findMany: mocks.especeFindMany, findUnique: async () => ({ nom: "Courge", userId: null, partageCommunaute: false }) },
     planche: { findMany: mocks.plancheFindMany },
     culture: { findFirst: mocks.cultureFindFirst, create: mocks.cultureCreate, findMany: mocks.cultureFindMany },
     intervention: { findMany: mocks.interventionFindMany },

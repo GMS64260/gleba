@@ -22,11 +22,6 @@ type Tx = Prisma.TransactionClient | PrismaClient
 export async function ensurePlaceholderVariete(especeId: string, tx: Tx = prisma): Promise<string> {
   const placeholderId = `${especeId}${PLACEHOLDER_VARIETE_SUFFIX}`
 
-  const existing = await tx.variete.findFirst({
-    where: { especeId, isPlaceholder: true },
-    select: { id: true },
-  })
-  if (existing) return existing.id
 
   // Nom affiché : pour une espèce du catalogue Gleba, l'id EST le nom lisible ;
   // pour une espèce perso, l'id est un cuid et le libellé vit dans `nom`.
@@ -36,6 +31,16 @@ export async function ensurePlaceholderVariete(especeId: string, tx: Tx = prisma
     where: { id: especeId },
     select: { nom: true, userId: true, partageCommunaute: true },
   })
+  // La variété « Non spécifiée » appartient au même propriétaire que son espèce
+  // (officielle pour une espèce officielle). Sans ce filtre, une variété privée
+  // marquée ainsi sur une espèce officielle ou partagée captait les cultures
+  // sans variété de tous les comptes.
+  const existing = await tx.variete.findFirst({
+    where: { especeId, isPlaceholder: true, userId: espece?.userId ?? null },
+    select: { id: true },
+  })
+  if (existing) return existing.id
+
   const nomEspece = espece?.nom ?? especeId
   // La clé de dédup se calcule sur le LIBELLÉ affiché, pas sur l'identifiant :
   // pour une espèce perso, l'id est un cuid, donc la clé valait
