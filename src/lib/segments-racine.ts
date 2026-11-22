@@ -12,7 +12,7 @@ export const SEGMENTS_RACINE: ReadonlySet<string> = new Set([
   // Interne Next et API (l'API garde son 401 JSON).
   "_next", "api",
   // Dossiers de `public` (fichiers servis par Next).
-  "uploads", "csv-templates", "models", "fonts", "screenshots",
+  "uploads", "csv-templates", "models", "fonts", "screenshots", "videos",
   // Fichiers à la racine non exclus par le matcher.
   "robots.txt", "sitemap.xml", "manifest.json", ".well-known",
   "1c943f7c7006d54211c7143b25a23aa8.txt",

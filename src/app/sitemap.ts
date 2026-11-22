@@ -1,4 +1,5 @@
 import { MetadataRoute } from "next";
+import { filmMatin } from "@/lib/seo/video-matin";
 import prisma from "@/lib/prisma";
 
 // Le sitemap dépend de la base (boutiques publiques) : on le génère au runtime
@@ -37,9 +38,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const corePages: MetadataRoute.Sitemap = [
     {
       url: baseUrl,
-      lastModified: vitrineUpdatedAt,
+      lastModified: filmMatin.publication,
       changeFrequency: "weekly",
       priority: 1.0,
+    },
+    {
+      url: filmMatin.canonical,
+      lastModified: filmMatin.publication,
+      videos: [{
+        title: filmMatin.titre,
+        description: filmMatin.description,
+        thumbnail_loc: filmMatin.imageUrl,
+        content_loc: filmMatin.contentUrl,
+        player_loc: filmMatin.lecteurYouTube,
+        duration: filmMatin.secondes,
+        publication_date: filmMatin.publication,
+      }],
     },
     // /login retiré du sitemap : formulaire pur, noindex. La home "/" est désormais la landing publique.
     {
