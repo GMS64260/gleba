@@ -47,6 +47,9 @@ export function LivraisonLaitSubTab() {
   const devise = useDevise()
   const symbole = devise === null ? "—" : symboleDevise(devise)
   const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
+  // Primes et pénalités de la paie : montants en devise sur le mois, affichés
+  // par ce même formateur. Un arrondi local à l'unité leur faisait perdre les
+  // centimes, et la ligne ne se recomposait plus (défaut D11 de l'équipe debug).
   const { toast } = useToast()
   const [annee, setAnnee] = React.useState(new Date().getFullYear())
   const [livraisons, setLivraisons] = React.useState<Livraison[]>([])
@@ -197,8 +200,8 @@ export function LivraisonLaitSubTab() {
                       <td className="p-2 font-medium">{MOIS[p.mois - 1]}</td>
                       <td className="p-2 text-right">{Number(p.litres).toLocaleString("fr-FR")}</td>
                       <td className="p-2 text-right">{formatMontant(Number(p.prixBaseMille))}</td>
-                      <td className="p-2 text-right text-emerald-700">{Number(p.primeQualite) > 0 ? `+${Number(p.primeQualite).toFixed(0)}` : Number(p.primeQualite).toFixed(0)}</td>
-                      <td className="p-2 text-right text-red-700">{Number(p.penalite) > 0 ? `−${Number(p.penalite).toFixed(0)}` : "0"}</td>
+                      <td className="p-2 text-right text-emerald-700">{devise === null ? "—" : `${Number(p.primeQualite) > 0 ? "+" : ""}${formatMontant(Number(p.primeQualite))}`}</td>
+                      <td className="p-2 text-right text-red-700">{devise === null ? "—" : `${Number(p.penalite) > 0 ? "−" : ""}${formatMontant(Number(p.penalite))}`}</td>
                       <td className="p-2 text-right font-semibold">{formatMontant(Number(p.montantHT))}</td>
                       <td className="p-2 text-right"><Button variant="ghost" size="sm" onClick={() => delPaie(p)}><Trash2 className="h-4 w-4" /></Button></td>
                     </tr>

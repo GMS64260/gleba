@@ -34,6 +34,9 @@ import { Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 import { whereAlimentAccessible } from "@/lib/elevage/aliment-accessible"
+import {
+  champProprietaire, PLAFOND_REFERENTIELS_RECREES, recreerReferentielPersonnel, referentielsUtilises, remapperCompositionRation,
+} from "@/lib/portabilite/referentiels-personnels"
 import { sansCoordonneesBancaires } from "@/lib/comptabilite/fournisseur-public"
 import { FUSEAU_PAR_DEFAUT, FUSEAUX_PROPOSES, RETENTION_MESURES_JOURS, SEUIL_MESURES_BRUTES_EXPORT } from "@/lib/capteurs/connecteurs"
 import { marquerAgregatsSansBrut } from "@/lib/capteurs/agregats"
@@ -135,6 +138,19 @@ interface DelegueDynamique {
   createMany: (args: { data: Row[]; skipDuplicates?: boolean }) => Promise<{ count: number }>
   upsert: (args: { where: Row; create: Row; update: Row }) => Promise<Row>
   update: (args: { where: Row; data: Row }) => Promise<Row>
+}
+
+/**
+ * Colonnes d'identifiant sans relation Prisma qui désignent un référentiel :
+ * elles suivent la copie quand une entrée personnelle est recréée (FB-GJLDGZ).
+ */
+const REFERENTIELS_HORS_RELATION: Readonly<Record<string, readonly RelMeta[]>> = {
+  ProphylaxieElevage: [{ fkField: "especeAnimaleId", targetModel: "EspeceAnimale", nullable: true }],
+}
+
+/** Écriture d'un référentiel personnel recréé : un refus de la base remonte tel quel. */
+function ecrireReferentiel<T>(_modele: string, _reference: unknown, ecriture: () => Promise<T>): Promise<T> {
+  return ecriture()
 }
 
 function delegue(client: unknown, nom: string): DelegueDynamique {
@@ -593,6 +609,17 @@ export async function importAccount(
     const pending: PendingPatch[] = []
     const referencesStock: { delegate: string; pkField: string; newPk: unknown; type: string; oldId: string }[] = []
 
+    // Entrées de référentiel utiles au compte, copies déjà faites et plafond
+    // de la recréation des référentiels personnels (FB-GJLDGZ).
+    const referentielsUtiles = referentielsUtilises(
+      [...manifest.values()].filter((m) => m.klass !== "excluded").map((m) => ({
+        name: m.name, referentiel: m.klass === "referential", pkField: m.pkField, relations: [...m.rels, ...(REFERENTIELS_HORS_RELATION[m.name] ?? [])],
+      })),
+      data,
+    )
+    const copiesDuCompte = new Map<string, Set<unknown>>()
+    let referentielsRecrees = 0
+
     // 1) RÉFÉRENTIELS — upsert par id (préservé). idMap = identité.
     // Sécurité (audit 2026-07 #21) : les référentiels sont GLOBAUX et partagés.
     // Seul un admin peut les écraser ; un import de compte utilisateur ne
@@ -638,7 +665,59 @@ export async function importAccount(
             const pk = ligne[meta.pkField as string]
             map.set(pk, pk)
           }
-          const manquantes = pks.length - presentes.length
+          // FB-GJLDGZ : les entrées PERSONNELLES du fichier qui ne sont pas
+          // visibles ici (compte vierge de la même instance, autre instance)
+          // sont recréées pour ce compte, privées et sous un nouvel identifiant.
+          // Sans cela, toute ligne qui en dépend par une référence obligatoire
+          // (culture, récolte, stock, animal) rendait la restauration impossible.
+          const proprietaire = champProprietaire(meta.name, meta.estCommunautaire)
+          let recreees = 0
+          if (proprietaire) {
+            const ecritures = delegue as unknown as Parameters<typeof recreerReferentielPersonnel>[0]["delegue"]
+            for (const row of rows) {
+              const ancien = row[meta.pkField as string]
+              if (ancien === null || ancien === undefined || map.has(ancien)) continue
+              if (row[proprietaire] === null || row[proprietaire] === undefined) continue
+              // Seulement ce qui sert au compte : ses propres entrées et celles que
+              // ses données utilisent. Le reste du catalogue partagé de l'instance
+              // d'origine, embarqué par l'export, n'est pas recopié.
+              if (row[proprietaire] !== payload?.sourceUserId && !referentielsUtiles.get(meta.name)?.has(ancien)) continue
+              if (referentielsRecrees >= PLAFOND_REFERENTIELS_RECREES) {
+                if (referentielsRecrees === PLAFOND_REFERENTIELS_RECREES) {
+                  referentielsRecrees++
+                  warnings.push(`Plus de ${PLAFOND_REFERENTIELS_RECREES} entrées personnelles de référentiel dans ce fichier : les suivantes ne sont pas recréées.`)
+                }
+                continue
+              }
+              const copie = await ecrireReferentiel(meta.name, ancien, () => recreerReferentielPersonnel({
+                modele: meta.name,
+                delegue: ecritures,
+                pkField: meta.pkField as string,
+                donnees: buildScalarData(meta, row),
+                proprietaire,
+                utilisateurCible: userId,
+                relations: meta.rels,
+                resoudre: (modeleCible, ancienId) => idMap.get(modeleCible)?.get(ancienId),
+                estDuCompte: (modeleCible, id) => copiesDuCompte.get(modeleCible)?.has(id) ?? false,
+              }))
+              if (!copie) continue
+              map.set(ancien, copie.id)
+              const copies = copiesDuCompte.get(meta.name) ?? copiesDuCompte.set(meta.name, new Set()).get(meta.name)!
+              copies.add(copie.id)
+              if (!copie.reprise) { recreees++; referentielsRecrees++ }
+              if (copie.reprisePeriode) {
+                warnings.push(`${meta.name} : « ${String(row.nom ?? "").slice(0, 80)} » occupe la même période qu'un itinéraire déjà présent sur ce compte pour cette espèce ; cet itinéraire existant est repris.`)
+              }
+              if (copie.renomme) {
+                warnings.push(`${meta.name} : « ${String(row.nom ?? "").slice(0, 80)} » existe déjà sur cette instance ; votre copie est restaurée sous le nom « ${copie.renomme.slice(0, 100)} ».`)
+              }
+            }
+            if (recreees) {
+              imported[meta.name] = recreees
+              skipped[meta.name] = rows.length - recreees
+            }
+          }
+          const manquantes = pks.filter((pk) => !map.has(pk)).length
           if (manquantes > 0) {
             warnings.push(
               `${meta.name} : ${manquantes} référence(s) du fichier n'existent pas sur cette instance. Les lignes qui en dépendaient sont créées sans cette référence plutôt que perdues.`
@@ -781,6 +860,18 @@ export async function importAccount(
         if (unresolvedRequired) {
           skip++
           continue
+        }
+
+        // Colonnes d'identifiant sans relation Prisma qui visent un référentiel.
+        for (const rel of REFERENTIELS_HORS_RELATION[meta.name] ?? []) {
+          const ancien = createData[rel.fkField]
+          if (ancien !== null && ancien !== undefined) createData[rel.fkField] = idMap.get(rel.targetModel)?.get(ancien) ?? null
+        }
+        // Composition d'une ration : ses aliments suivent les copies recréées.
+        if (meta.name === "PlanRation") {
+          const { composition, nonResolus } = remapperCompositionRation(createData.composition, (ancien) => idMap.get("Aliment")?.get(ancien))
+          createData.composition = composition
+          if (nonResolus) warnings.push(`Ration « ${String(row.nom ?? "").slice(0, 80)} » : ${nonResolus} aliment(s) indisponible(s) sur ce compte, à choisir de nouveau.`)
         }
 
         if (meta.name === 'MesureCapteur') {
