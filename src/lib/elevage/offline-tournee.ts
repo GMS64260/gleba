@@ -164,14 +164,22 @@ let synchronisation: Promise<unknown> = Promise.resolve()
  * la portée n'a pas changé entre-temps ; celles ajoutées pendant l'envoi restent.
  */
 export function synchroniserOperations(): Promise<{ envoyees: number; restantes: number }> {
+  return synchroniserSous(() => porteeConfirmee)
+}
+
+/** Délai d'un appel réseau, quand le navigateur sait le poser. */
+const delai = (ms: number) => (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined)
+
+function synchroniserSous(lirePortee: () => PorteeTournee | null): Promise<{ envoyees: number; restantes: number }> {
   const executer = async () => {
-    const portee = porteeConfirmee
+    const portee = lirePortee()
     const etat = await lireEtat()
     if (!portee || !etat || !memePortee(etat.portee, portee)) return { envoyees: 0, restantes: etat?.queue.length ?? 0 }
     const acquittees = new Set<string>()
     for (const op of etat.queue) {
       try {
-        const res = await fetch('/api/elevage/tournee', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(op) })
+        // Un envoi coupé par le délai reste en file ; rejoué, le serveur ne l'enregistre qu'une fois.
+        const res = await fetch('/api/elevage/tournee', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(op), signal: delai(10_000) })
         if (res.ok || res.status === 409) acquittees.add(op.clientOperationId)
       } catch { /* hors connexion : l'opération reste en file */ }
     }
@@ -185,6 +193,48 @@ export function synchroniserOperations(): Promise<{ envoyees: number; restantes:
   const suite = synchronisation.then(executer, executer)
   synchronisation = suite.catch(() => undefined)
   return suite
+}
+
+/**
+ * Ce que la purge de la déconnexion ferait perdre : nombre d'acquittements restés
+ * en file et raison. `reseau` : le serveur est injoignable (la déconnexion ne
+ * peut pas aboutir non plus) ; `refus` : le serveur a répondu sans les accepter.
+ */
+export type FileAvantDeconnexion = { restantes: number; cause: 'reseau' | 'refus' | null }
+
+/**
+ * Avant une déconnexion voulue : envoie ce qui peut l'être et rend ce qui reste.
+ *
+ * La purge de la déconnexion effaçait la file sans prévenir : des tâches validées
+ * hors réseau, puis une déconnexion depuis le menu sans repasser par la tournée,
+ * et les validations disparaissaient. La file ne part que si le serveur confirme
+ * la portée à laquelle elle est rattachée (SEC-02). Celle d'une autre portée ne
+ * peut plus partir sous cette session : elle n'est pas comptée, la purge
+ * l'efface. Ne lève jamais et rend la main en 20 s au plus.
+ */
+export async function envoyerFileAvantDeconnexion(): Promise<FileAvantDeconnexion> {
+  const rien: FileAvantDeconnexion = { restantes: 0, cause: null }
+  if (typeof indexedDB === 'undefined') return rien
+  let nombre = 0
+  try {
+    const etat = await Promise.race([lireEtat(), new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))])
+    if (!etat || !Array.isArray(etat.queue) || etat.queue.length === 0) return rien
+    nombre = etat.queue.length
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return { restantes: nombre, cause: 'reseau' }
+    let res: Response
+    try {
+      res = await fetch('/api/elevage/tournee?jours=0', { signal: delai(6000) })
+    } catch { return { restantes: nombre, cause: 'reseau' } }
+    if (!res.ok) return { restantes: nombre, cause: 'refus' }
+    const { portee } = await res.json() as { portee?: PorteeTournee }
+    if (!portee || !memePortee(etat.portee, portee)) return rien
+    const restantes = await Promise.race([
+      synchroniserSous(() => portee).then((r) => r.restantes),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 12_000)),
+    ])
+    if (restantes === null) return { restantes: nombre, cause: 'reseau' }
+    return { restantes, cause: restantes > 0 ? 'refus' : null }
+  } catch { return { restantes: nombre, cause: nombre > 0 ? 'reseau' : null } }
 }
 
 /**
