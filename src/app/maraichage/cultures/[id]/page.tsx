@@ -86,6 +86,12 @@ export default function EditCulturePage() {
   const [varietes, setVarietes] = React.useState<{ id: string; nom: string | null; especeId: string }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null; type?: string | null }[]>([])
+  // FB-S9UM9T : une étape faite ne se décoche pas tant que la culture porte des
+  // récoltes (le serveur le refuse) ; la case est verrouillée et dit pourquoi.
+  const [etapesVerrouillees, setEtapesVerrouillees] = React.useState<{
+    recoltes: number
+    etapes: { semisFait: boolean; plantationFaite: boolean; recolteFaite: boolean }
+  }>({ recoltes: 0, etapes: { semisFait: false, plantationFaite: false, recolteFaite: false } })
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   // Empêcher l'auto-remplissage au chargement initial
@@ -164,6 +170,15 @@ export default function EditCulturePage() {
       .then(([especesData, planchesData, cultureData]) => {
         setEspeces(especesData.data || [])
         setPlanches(planchesData.data || [])
+        const nombreRecoltes = Array.isArray(cultureData.recoltes) ? cultureData.recoltes.length : 0
+        setEtapesVerrouillees({
+          recoltes: nombreRecoltes,
+          etapes: {
+            semisFait: nombreRecoltes > 0 && Boolean(cultureData.semisFait),
+            plantationFaite: nombreRecoltes > 0 && Boolean(cultureData.plantationFaite),
+            recolteFaite: nombreRecoltes > 0 && Boolean(cultureData.recolteFaite),
+          },
+        })
 
         // Signalement 2026-09-25 — une culture dont on avait changé l'espèce
         // gardait la variété et l'ITP de l'ancienne (un « Navet » en variété
@@ -831,6 +846,7 @@ export default function EditCulturePage() {
                           <Checkbox
                             checked={field.value}
                             onCheckedChange={field.onChange}
+                            disabled={etapesVerrouillees.etapes.semisFait}
                           />
                         </FormControl>
                         <FormLabel className="!mt-0">Semis fait</FormLabel>
@@ -847,6 +863,7 @@ export default function EditCulturePage() {
                           <Checkbox
                             checked={field.value}
                             onCheckedChange={field.onChange}
+                            disabled={etapesVerrouillees.etapes.plantationFaite}
                           />
                         </FormControl>
                         <FormLabel className="!mt-0">Plantation faite</FormLabel>
@@ -863,6 +880,7 @@ export default function EditCulturePage() {
                           <Checkbox
                             checked={field.value}
                             onCheckedChange={field.onChange}
+                            disabled={etapesVerrouillees.etapes.recolteFaite}
                           />
                         </FormControl>
                         <FormLabel className="!mt-0">Récolte faite</FormLabel>
@@ -870,6 +888,15 @@ export default function EditCulturePage() {
                     )}
                   />
                 </div>
+                {etapesVerrouillees.recoltes > 0 && Object.values(etapesVerrouillees.etapes).some(Boolean) && (
+                  <p className="text-sm text-muted-foreground">
+                    {etapesVerrouillees.recoltes > 1
+                      ? `${etapesVerrouillees.recoltes} récoltes sont enregistrées`
+                      : "1 récolte est enregistrée"}
+                    {" "}sur cette culture : une étape faite ne peut plus être décochée. Pour revenir en
+                    arrière, supprimez d&apos;abord les récoltes dans Maraîchage &gt; Récoltes.
+                  </p>
+                )}
 
                 <FormField
                   control={form.control}

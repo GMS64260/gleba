@@ -121,3 +121,20 @@ export function scoreEspece(nom: string, requete: string): number {
 export function correspondEspece(nom: string, requete: string): boolean {
   return scoreEspece(nom, requete) > 0
 }
+
+/**
+ * Recherche d'une espèce dans une liste déjà chargée (assistant Semer) : par
+ * son nom d'affichage, son nom latin ou sa catégorie. Jamais par son
+ * identifiant : celui d'une espèce personnelle est technique (cuid).
+ */
+export function especeCorrespondRecherche(
+  espece: { id: string; nom?: string | null; nomLatin?: string | null; categorie?: string | null },
+  requete: string
+): boolean {
+  const q = normaliserRecherche(requete)
+  if (!q) return true
+  if (correspondEspece(espece.nom ?? espece.id, requete)) return true
+  return [espece.nomLatin, espece.categorie].some(
+    (champ) => !!champ && normaliserRecherche(champ).includes(q)
+  )
+}

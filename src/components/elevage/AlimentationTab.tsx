@@ -10,6 +10,7 @@ import { useDevise } from "@/hooks/use-devise"
 import { formulaireConsommationVierge, reduireFormulaireConsommation } from "./consommation-formulaire"
 import { dateRealisationPourFait } from "@/lib/elevage/date-realisation"
 import * as React from "react"
+import { preremplirDelaisDepuisCatalogue } from "@/lib/elevage/preremplissage-delais-soin"
 import { useSearchParams } from "next/navigation"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
@@ -1129,6 +1130,10 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   // QA 2026-05-15 — édition par ligne
   const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
+  // Lu dans le rechargement du référentiel, qui ne doit pas se relancer à
+  // chaque ouverture de formulaire (FB-7YARYN).
+  const editingSoinIdRef = React.useRef<number | null>(null)
+  editingSoinIdRef.current = editingSoinId
   const [datationInjection, setDatationInjection] = React.useState<
     { soinId: number; injectionId: string; numero: number; valeur: string; marquerFaite: boolean } | null
   >(null)
@@ -1393,17 +1398,8 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       .then((payload) => {
         const data = payload.data ?? []
         setProduits(data)
-        setFormData((current) => {
-          if (!current.produitId) return current
-          const produit = data.find((item: { id: string }) => item.id === current.produitId)
-          if (!produit) return current
-          return {
-            ...current,
-            tempsAttenteLaitJ: String(produit.tempsAttenteLaitJ),
-            tempsAttenteOeufsJ: produit.tempsAttenteOeufsJ ? String(produit.tempsAttenteOeufsJ) : "",
-            tempsAttenteViandeJ: String(produit.tempsAttenteViandeJ),
-          }
-        })
+        setFormData((current) =>
+          preremplirDelaisDepuisCatalogue(current, data, editingSoinIdRef.current !== null))
       })
       .catch(() => {
         toast({

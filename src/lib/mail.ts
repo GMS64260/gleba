@@ -257,7 +257,8 @@ interface CommandeBoutiqueEmailArgs {
   clientEmail: string
   clientTelephone: string | null
   total: number
-  devise?: Devise | null
+  /** Obligatoire : sans devise, chaque montant du courriel s'écrit « — » (FB-AW89OE). */
+  devise: Devise | null
   lignes: Array<{ nom: string; quantite: number; unite: string; prixUnitaire: number; total: number }>
   modeLivraison: string | null
   dateRetraitSouhaitee: Date | null
@@ -589,7 +590,8 @@ interface CommandeClientEmailArgs {
   suiviToken: string
   clientNom: string
   total: number
-  devise?: Devise | null
+  /** Obligatoire : sans devise, chaque montant du courriel s'écrit « — » (FB-AW89OE). */
+  devise: Devise | null
   lignes: Array<{ nom: string; quantite: number; unite: string; prixUnitaire: number; total: number }>
   modesPaiement: string | null
   modeLivraison: string | null
@@ -729,7 +731,8 @@ interface CommandeStatutEmailArgs {
   suiviToken: string
   clientNom: string
   statut: string
-  devise?: Devise | null
+  /** Obligatoire : sans devise, chaque montant du courriel s'écrit « — » (FB-AW89OE). */
+  devise: Devise | null
   total: number
   modesPaiement: string | null
 }

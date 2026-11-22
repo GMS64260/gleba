@@ -35,6 +35,7 @@ import {
   verrouillerCultures,
 } from '@/lib/cultures/execution'
 import type { ChampDateEtape, ChampEtape, EtatDatesEtapes } from '@/lib/cultures/execution'
+import { LIBELLE_ETAPE, refusAnnulationEtapes } from '@/lib/cultures/annulation-etape'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
@@ -233,6 +234,7 @@ export async function PUT(
           id: cultureId,
           userId: session!.user.id,
         },
+        include: { _count: { select: { recoltes: true } } },
       })
 
       if (!existing) {
@@ -353,6 +355,17 @@ export async function PUT(
         plantationFaite: data.plantationFaite,
         recolteFaite: data.recolteFaite,
       }
+      // FB-S9UM9T : la fiche renvoie toujours les trois cases. Décocher une
+      // étape faite sur une culture qui porte des récoltes contredisait le
+      // registre de récolte sans aucun refus, alors que les actions rapides
+      // (PATCH) le refusent. Seul le passage de « fait » à « non fait » compte :
+      // une case déjà décochée renvoyée telle quelle ne bloque rien.
+      const etapesDecochees = ETAPES.filter((etape) => faitSoumis[etape] === false && existing[etape])
+      const refusAnnulation = etapesDecochees.length > 0
+        ? refusAnnulationEtapes(etapesDecochees, existing._count.recoltes)
+        : null
+      if (refusAnnulation) return NextResponse.json(refusAnnulation, { status: 409 })
+
       const ecrituresEtapes: Record<string, Date | null> = {}
       for (const champEtape of ETAPES) {
         const champDate = CHAMP_DATE_ETAPE[champEtape]
@@ -656,11 +669,6 @@ export async function PATCH(
       // source de vérité : on refuse de le contredire plutôt que de recalculer un
       // état faux.
       const ETAPES = ['semisFait', 'plantationFaite', 'recolteFaite'] as const
-      const LIBELLE_ETAPE: Record<string, string> = {
-        semisFait: 'le semis',
-        plantationFaite: 'la plantation',
-        recolteFaite: 'la récolte',
-      }
       const etapesAnnulees = ETAPES.filter((e) => e in updateData && updateData[e] === false)
 
       // QA cmsoaedw2 — un ITP en semis direct (pas de semaine de plantation) n'a
@@ -687,18 +695,10 @@ export async function PATCH(
         )
       }
 
-      if (etapesAnnulees.length > 0 && existing._count.recoltes > 0) {
-        const n = existing._count.recoltes
-        return NextResponse.json(
-          {
-            error: `Cette culture porte ${n} récolte${n > 1 ? 's' : ''} enregistrée${n > 1 ? 's' : ''}`
-              + ` : ${etapesAnnulees.map((e) => LIBELLE_ETAPE[e]).join(' et ')} ne peut pas être annulé`
-              + ` sans contredire le registre de récolte. Supprimez d'abord les récoltes concernées.`,
-            recoltes: n,
-          },
-          { status: 409 }
-        )
-      }
+      const refusAnnulation = etapesAnnulees.length > 0
+        ? refusAnnulationEtapes(etapesAnnulees, existing._count.recoltes)
+        : null
+      if (refusAnnulation) return NextResponse.json(refusAnnulation, { status: 409 })
 
       // Cohérence du cycle : annuler une étape amont en laissant une étape aval
       // marquée faite produit un état incohérent, sauf si le même appel annule

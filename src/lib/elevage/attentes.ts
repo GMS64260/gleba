@@ -17,6 +17,7 @@
  */
 
 import { jourCivilStocke } from '@/lib/jour-civil'
+import { derniereInjectionActive, type InjectionEtat } from '@/lib/elevage/injections'
 
 export interface SoinAttenteRow {
   id: number
@@ -33,6 +34,8 @@ export interface SoinAttenteRow {
   tempsAttenteOeufsJ?: number | null
   nbInjections: number | null
   intervalleInjectionsHeures: number | null
+  /** Injections réellement saisies du protocole : elles priment sur le calendrier théorique. */
+  injections?: InjectionEtat[]
   /** Libellés pré-résolus (côté requête) pour éviter un 2ᵉ round-trip. */
   cibleLabel: string
   cibleNom: string | null
@@ -83,11 +86,18 @@ function addDays(d: Date, days: number): Date {
 }
 
 /**
- * Date effective de la dernière injection d'une ligne : date d'administration
- * (ou date prévue si planifiée) étendue de (nbInjections − 1) × intervalle si un
- * protocole multi-injections est saisi sur la ligne (cf. PROMPT 30).
+ * Date effective de la dernière injection d'une ligne.
+ *
+ * FB-J1F5VX : les injections saisies font foi, comme pour la fin d'attente
+ * stockée sur le soin (`fenetresAttenteDepuisInjections`). Le calendrier
+ * théorique (date du soin + (nbInjections − 1) × intervalle) ignorait une
+ * injection faite en retard : le tableau de bord annonçait la remise en vente
+ * plus tôt que la fiche du soin et que les gardes de vente. Il ne reste que le
+ * repli des soins sans ligne d'injection.
  */
 function derniereInjectionLigne(s: SoinAttenteRow): Date {
+  const reelle = s.injections?.length ? derniereInjectionActive(s.injections) : null
+  if (reelle) return reelle
   const base = s.fait ? s.date : s.datePrevue ?? s.date
   const n = s.nbInjections ?? 1
   const h = s.intervalleInjectionsHeures
