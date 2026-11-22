@@ -14,7 +14,7 @@ import {
   includeDetailsEvaluation,
   whereAssociationsConcernant,
 } from './associations-alertes'
-import { assemblerAssociations } from './associations-voisinage'
+import { assemblerAssociations, semainesRecolteEffectives } from './associations-voisinage'
 import { semainesDeRecolte } from './cultures/fenetre-recolte'
 import { appliquerDecalageItp, decalageItpPourLecteur } from './calendrier-climat'
 import { datesDepuisItp, semaineVersDate } from './cultures/dates-itp'
@@ -88,6 +88,11 @@ export interface CulturePrevue {
    * disponible.
    */
   cultureDateRecolte: Date | null
+  /**
+   * Fin de récolte enregistrée sur la culture (dérivée de l'itinéraire à la
+   * création, ou prolongée à la main). Null pour une suggestion de rotation.
+   */
+  cultureFinRecolte: Date | null
   ilot: string | null
   rotationId: string | null
   rotationAnnee: number // Annee dans le cycle (1, 2, 3...)
@@ -479,6 +484,7 @@ export async function getCulturesPrevuesEtEtapesNonSuivies(
           dateSemis: true,
           datePlantation: true,
           dateRecolte: true,
+          finRecolte: true,
           longueur: true,
           quantite: true,
           nbRangs: true,
@@ -632,6 +638,7 @@ export async function getCulturesPrevuesEtEtapesNonSuivies(
         cultureLongueur: cultureExistante?.longueur ?? null,
         cultureQuantite: cultureExistante?.quantite ?? null,
         cultureDateRecolte: cultureExistante?.dateRecolte ?? null,
+        cultureFinRecolte: cultureExistante?.finRecolte ?? null,
         ilot: deriveIlot(planche.ilot, planche.nom),
         rotationId: planche.rotationId,
         rotationAnnee: detail.annee,
@@ -762,6 +769,7 @@ export async function getCulturesPrevuesEtEtapesNonSuivies(
         cultureLongueur: culture.longueur,
         cultureQuantite: culture.quantite ?? null,
         cultureDateRecolte: culture.dateRecolte ?? null,
+        cultureFinRecolte: culture.finRecolte ?? null,
         ilot: planche ? deriveIlot(planche.ilot, planche.nom) : null,
         rotationId: planche?.rotationId ?? null,
         // 0 = planche sans rotation. Si elle en a une, on expose sa position
@@ -1576,7 +1584,13 @@ export async function getAssociations(
       semaineSemis: c.semaineSemis,
       semainePlantation: c.semainePlantation,
       semaineRecolte: c.semaineRecolte,
-      semainesRecolte: c.itpId ? recolteParItp.get(c.itpId) ?? null : null,
+      // FB D10 : la fin de récolte enregistrée fait foi ; la durée de
+      // l'itinéraire n'est que le repli d'une culture sans fin connue.
+      semainesRecolte: semainesRecolteEffectives(
+        c.cultureDateRecolte,
+        c.cultureFinRecolte,
+        c.itpId ? recolteParItp.get(c.itpId) ?? null : null
+      ),
     })),
     planches,
     alertes,

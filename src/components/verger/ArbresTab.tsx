@@ -621,6 +621,13 @@ export function ArbresTab() {
     return filtered
   }, [selectedType, data, filtreCompletude])
 
+  // FB-AJYAIU : lignes que le tableau affiche réellement, recherche comprise.
+  // La planche d'étiquettes partait de `filteredData` et imprimait donc tous
+  // les arbres de l'onglet, quelle que soit la recherche.
+  const [arbresAffiches, setArbresAffiches] = React.useState<Arbre[] | null>(null)
+  const arbresEtiquettes = arbresAffiches ?? filteredData
+  const etiquettesImprimables = arbresEtiquettes.length > 0 && arbresEtiquettes.length <= 60
+
   // QA cmvgddn3l (2026-10-20) — « prunier » en minuscules n'ouvrait que
   // « Aucun » porte-greffe : la liste, les variétés et l'avertissement de zone
   // se résolvaient sur le libellé brut alors que la sauvegarde relie la saisie
@@ -996,25 +1003,30 @@ export function ArbresTab() {
         </Button>
         {/* Bug #8 — Planche A4 QR codes pour étiqueter les arbres.
             Lien désactivé si sélection vide ou > 60 arbres (limite de la
-            planche) plutôt que d'imprimer silencieusement TOUS les arbres. */}
+            planche) plutôt que d'imprimer silencieusement TOUS les arbres. 
+            FB-AJYAIU : la planche suit les lignes affichées par le tableau,
+            recherche comprise, et non la liste d'avant la recherche. */}
         <a
-          href={urlApercu(
-            `/api/verger/etiquettes-planche?ids=${filteredData.map((a) => a.id).join(",")}`,
-            `Étiquettes QR — ${filteredData.length} arbre${filteredData.length > 1 ? "s" : ""}`,
-          )}
+          // Sans cible valable, pas de href : le lien n'est plus activable au clavier.
+          href={etiquettesImprimables
+            ? urlApercu(
+                `/api/verger/etiquettes-planche?ids=${arbresEtiquettes.map((a) => a.id).join(",")}`,
+                `Étiquettes QR — ${arbresEtiquettes.length} arbre${arbresEtiquettes.length > 1 ? "s" : ""}`,
+              )
+            : undefined}
           target="_blank"
           rel="noreferrer"
-          aria-disabled={filteredData.length === 0 || filteredData.length > 60}
+          aria-disabled={!etiquettesImprimables}
           className={`ml-auto inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 ${
-            filteredData.length === 0 || filteredData.length > 60
+            !etiquettesImprimables
               ? "pointer-events-none opacity-50"
               : ""
           }`}
           title={
-            filteredData.length === 0
+            arbresEtiquettes.length === 0
               ? "Aucun arbre dans la sélection filtrée"
-              : filteredData.length > 60
-                ? "Planche limitée à 60 arbres : affinez les filtres pour réduire la sélection"
+              : arbresEtiquettes.length > 60
+                ? "Planche limitée à 60 arbres : affinez la recherche ou les filtres pour réduire la sélection"
                 : "Imprimer une planche A4 d'étiquettes QR codes (6 par page)"
           }
         >
@@ -1026,6 +1038,7 @@ export function ArbresTab() {
         columns={columns}
         data={filteredData}
         isLoading={isLoading}
+        onFilteredRowsChange={setArbresAffiches}
         showPagination={true}
         pageSize={50}
         // QA cmsp5yry4 — largeur forcée seulement à partir de md : en mobile les
