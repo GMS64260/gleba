@@ -93,6 +93,38 @@ describe('consoliderAttentes — cas QA animal 253 (Engemycin sur 3 jours)', () 
     expect(res[0].finAttenteViande?.toISOString()).toBe(D('2026-04-13').toISOString())
   })
 
+  // FB-J1F5VX : 3 injections /24 h à partir du 10/11, la 3e faite le 14/11 au
+  // lieu du 12/11. Le tableau de bord annonçait la fin du délai lait au 19/11.
+  it('fait courir le délai depuis la dernière injection réellement faite', () => {
+    const protocole = row({
+      id: 91, produit: 'Pénijectyl', traitementLabel: 'Pénijectyl', date: D('2026-11-10'), fait: true,
+      nbInjections: 3, intervalleInjectionsHeures: 24, tempsAttenteLaitJ: 7, tempsAttenteViandeJ: 28,
+    })
+    const injections = [
+      { numero: 1, datePrevue: D('2026-11-10'), dateRealisee: D('2026-11-10'), statut: 'realisee' },
+      { numero: 2, datePrevue: D('2026-11-11'), dateRealisee: D('2026-11-11'), statut: 'realisee' },
+      { numero: 3, datePrevue: D('2026-11-12'), dateRealisee: D('2026-11-14'), statut: 'realisee' },
+    ]
+    const [sansLignes] = consoliderAttentes([protocole], D('2026-11-15'))
+    expect(sansLignes.finAttenteLait?.toISOString()).toBe(D('2026-11-19').toISOString())
+    const [res] = consoliderAttentes([{ ...protocole, injections }], D('2026-11-15'))
+    expect(res.derniereInjection.toISOString()).toBe(D('2026-11-14').toISOString())
+    expect(res.finAttenteLait?.toISOString()).toBe(D('2026-11-21').toISOString())
+    expect(res.finAttenteViande?.toISOString()).toBe(D('2026-12-12').toISOString())
+  })
+
+  it("ne compte pas une injection annulée dans le délai", () => {
+    const [res] = consoliderAttentes([{
+      ...row({ id: 92, date: D('2026-11-10'), fait: true, nbInjections: 3, intervalleInjectionsHeures: 24, tempsAttenteLaitJ: 7 }),
+      injections: [
+        { numero: 1, datePrevue: D('2026-11-10'), dateRealisee: D('2026-11-10'), statut: 'realisee' },
+        { numero: 2, datePrevue: D('2026-11-11'), dateRealisee: D('2026-11-11'), statut: 'realisee' },
+        { numero: 3, datePrevue: D('2026-11-12'), dateRealisee: null, statut: 'annulee' },
+      ],
+    }], D('2026-11-12'))
+    expect(res.finAttenteLait?.toISOString()).toBe(D('2026-11-18').toISOString())
+  })
+
   it('deux animaux différents → deux échéances distinctes', () => {
     const soins: SoinAttenteRow[] = [
       row({ id: 100, animalId: 1, cibleLabel: 'A1' }),

@@ -95,7 +95,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function ouvrir(culture: Partial<typeof cultureInitiale> = {}, renduLent = false) {
+async function ouvrir(culture: Partial<typeof cultureInitiale> & { recoltes?: unknown[] } = {}, renduLent = false) {
   const cultureChargee = differee<Response>()
   const planchesChargees = differee<Response>()
   fetchMock.mockImplementation(async (input, init) => {
@@ -189,6 +189,21 @@ describe("fiche culture : effets du formulaire d'édition", () => {
     await ouvrir(faits)
     choisir("Itinéraire technique (ITP)", "itp-hiver")
     expect(await enregistrer()).toMatchObject({ itpId: "itp-hiver", ...dates })
+  })
+
+  it("FB-S9UM9T : verrouille les étapes faites quand des récoltes sont enregistrées, et dit pourquoi", async () => {
+    await ouvrir({ semisFait: true, recolteFaite: true, recoltes: [{ id: 1, statut: "vendu" }, { id: 2, statut: "en_stock" }] })
+    expect((screen.getByRole("checkbox", { name: "Récolte faite" }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("checkbox", { name: "Semis fait" }) as HTMLButtonElement).disabled).toBe(true)
+    // Une étape pas encore faite reste libre.
+    expect((screen.getByRole("checkbox", { name: "Plantation faite" }) as HTMLButtonElement).disabled).toBe(false)
+    expect(screen.getByText(/2 récoltes sont enregistrées/)).toBeTruthy()
+  })
+
+  it("laisse décocher une étape faite quand la culture ne porte aucune récolte", async () => {
+    await ouvrir({ recolteFaite: true })
+    expect((screen.getByRole("checkbox", { name: "Récolte faite" }) as HTMLButtonElement).disabled).toBe(false)
+    expect(screen.queryByText(/enregistrée/)).toBeNull()
   })
 
   it("ne recale pas une récolte faite après une modification manuelle du début de cycle", async () => {

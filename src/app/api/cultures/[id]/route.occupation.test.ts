@@ -219,6 +219,29 @@ describe("PUT /api/cultures/[id] — occupation de la planche", () => {
     expect(mocks.cultureUpdate).not.toHaveBeenCalled()
   })
 
+  // FB-S9UM9T : la fiche culture (PUT) décochait « Récolte faite » sur une
+  // culture qui portait des récoltes, dont une vendue ; seul le PATCH refusait.
+  it.each([PUT, PATCH])("refuse d'annuler la récolte d'une culture qui porte des récoltes (%s)", async (route) => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...stockee, longueur: 20, semisFait: true, recolteFaite: true,
+      dateSemis: new Date('2026-04-01'), dateRecolte: new Date('2026-07-01'), _count: { recoltes: 2 } })
+    const res = await route(new NextRequest('http://localhost/api/cultures/1237', {
+      method: route === PUT ? 'PUT' : 'PATCH', body: JSON.stringify({ recolteFaite: false }),
+    }), { params: Promise.resolve({ id: '1237' }) })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ recoltes: 2, error: expect.stringContaining('2 récoltes enregistrées') })
+    expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+  })
+
+  it("laisse le formulaire renvoyer une case déjà décochée sur une culture qui porte des récoltes", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...stockee, longueur: 20, semisFait: false, recolteFaite: true,
+      dateSemis: new Date('2026-04-01'), dateRecolte: new Date('2026-07-01'), _count: { recoltes: 2 } })
+    const res = await PUT(new NextRequest('http://localhost/api/cultures/1237', {
+      method: 'PUT', body: JSON.stringify({ semisFait: false, recolteFaite: true, notes: 'Note de test' }),
+    }), { params: Promise.resolve({ id: '1237' }) })
+    expect(res.status).toBe(200)
+    expect(mocks.cultureUpdate).toHaveBeenCalledTimes(1)
+  })
+
   it("refuse la mutation lorsque la lecture de l'occupation échoue", async () => {
     mocks.plancheFindFirst.mockRejectedValue(new Error('Lecture indisponible'))
     expect((await modifier({ longueur: 20 })).status).toBe(500)
