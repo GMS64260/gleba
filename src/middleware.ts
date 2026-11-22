@@ -103,7 +103,9 @@ export default auth((req) => {
     "/login", "/register", "/mot-de-passe-oublie", "/reset-password",
     "/communaute", "/referentiel", "/glossaire", "/licence",
     "/robots.txt", "/sitemap.xml", "/manifest.json",
-    "/videos/un-matin-a-la-ferme", "/videos/un-matin-a-la-ferme.mp4", "/videos/un-matin-a-la-ferme.fr.vtt",
+    // Films publics : la page et ses fichiers (public/videos). Une adresse
+    // inconnue sous /videos reçoit le 404 de Next, pas la page de connexion.
+    "/videos",
     "/.well-known/assetlinks.json", "/feedback",
     "/1c943f7c7006d54211c7143b25a23aa8.txt",
     "/desabonnement",

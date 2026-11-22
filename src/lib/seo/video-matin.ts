@@ -4,11 +4,13 @@ const youtubeId = "3VFIKsS3Ins";
 
 export const filmMatin = {
   titre: "Un matin à la ferme avec Gleba",
-  description: "Sur la ferme de démonstration, l’agent IA conseille sur le semis des fèves. Suivez ensuite les 8 kg de carottes de la planche B10 jusqu’au stock et à la boutique en ligne.",
+  description: "Sur la ferme de démonstration, l’agent IA conseille sur le semis des fèves. Suivez ensuite 8 kg de carottes de la planche B10 jusqu’au stock et à la boutique.",
   page,
   canonical: baseUrl + page,
   affiche: page + ".webp",
-  imageUrl: baseUrl + page + ".webp",
+  // Image de partage (réseaux, moteurs) : JPEG 1200×630 comme le reste du site.
+  // L’affiche du lecteur reste en WebP.
+  imageUrl: baseUrl + page + ".jpg",
   fichier: page + ".mp4",
   contentUrl: baseUrl + page + ".mp4",
   sousTitres: page + ".fr.vtt",

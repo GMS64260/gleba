@@ -145,7 +145,7 @@ describe("mesure des seules pages publiques sans session", () => {
     expect(requete).toHaveBeenCalledTimes(1)
   })
 
-  it.each(["/boutique/ferme", "/boutique/ferme/produit/12", "/tarifs", "/"])("conserve la page publique %s", (chemin) => {
+  it.each(["/boutique/ferme", "/boutique/ferme/produit/12", "/tarifs", "/videos/un-matin-a-la-ferme", "/"])("conserve la page publique %s", (chemin) => {
     expect(estPageMesuree(chemin)).toBe(true)
   })
 

@@ -52,6 +52,16 @@ describe("vidéo de l’accueil public", () => {
       expect(res.headers.get("x-middleware-next")).toBe("1")
     },
   )
+
+  it.each(["/videos", "/videos/inconnue", "/videos/inconnue.mp4"])(
+    "laisse %s au 404 de Next au lieu de renvoyer vers la connexion",
+    (chemin) => {
+      session.courante = null
+      const res = visiter(`https://gleba.fr${chemin}`)
+      expect(res.headers.get("location")).toBeNull()
+      expect(res.headers.get("x-middleware-next")).toBe("1")
+    },
+  )
 })
 
 describe("middleware : lien profond sans session (QA cmvnout4y)", () => {

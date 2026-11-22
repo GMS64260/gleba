@@ -396,6 +396,8 @@ export function HomeLanding() {
                   {filmMatin.titre}
                 </Link>
                 {" · "}{filmMatin.secondes} s · Vidéo et transcription
+                {" · "}La lecture charge le lecteur de YouTube (Google) :{" "}
+                <Link href="/confidentialite" className={`underline underline-offset-4 ${FOCUS}`}>confidentialité</Link>
               </figcaption>
             </figure>
             <Link href="/login?demo=1" className={`${CLASSES_CTA} justify-self-start lg:col-span-2 lg:self-start`}>

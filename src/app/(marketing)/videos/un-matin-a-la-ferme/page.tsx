@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     url: film.canonical,
     title: film.titre,
     description: film.description,
-    images: [{ url: film.imageUrl, width: 1280, height: 720, alt: film.titre }],
+    images: [{ url: film.imageUrl, width: 1200, height: 630, alt: film.titre }],
     videos: [{ url: film.contentUrl, type: "video/mp4", width: 1920, height: 1080 }],
   },
   twitter: { card: "summary_large_image", title: film.titre, description: film.description, images: [film.imageUrl] },
