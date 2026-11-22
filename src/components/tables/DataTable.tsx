@@ -96,6 +96,10 @@ interface DataTableProps<TData, TValue> {
   // des pages du jeu filtré) et un rappel pour vider la sélection.
   enableRowSelection?: boolean
   bulkActions?: (selectedRows: TData[], clearSelection: () => void) => React.ReactNode
+  // Lignes réellement affichables après la recherche et les filtres du tableau
+  // (toutes pages confondues). Sert aux actions calculées hors du tableau, qui
+  // sinon ignorent la recherche (FB-AJYAIU). Passer un rappel stable (setState).
+  onFilteredRowsChange?: (rows: TData[]) => void
 }
 
 export function DataTable<TData, TValue>({
@@ -124,6 +128,7 @@ export function DataTable<TData, TValue>({
   tableClassName,
   enableRowSelection = false,
   bulkActions,
+  onFilteredRowsChange,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -242,6 +247,11 @@ export function DataTable<TData, TValue>({
     getPaginationRowModel: getPaginationRowModel(),
     manualPagination: !!onPaginationChange,
   })
+
+  const lignesFiltrees = table.getFilteredRowModel().rows
+  React.useEffect(() => {
+    onFilteredRowsChange?.(lignesFiltrees.map((row) => row.original))
+  }, [lignesFiltrees, onFilteredRowsChange])
 
   return (
     <div className="space-y-4">

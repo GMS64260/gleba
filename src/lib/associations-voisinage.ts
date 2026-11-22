@@ -119,6 +119,28 @@ export function periodeOccupation(c: CultureVoisinage): [number, number] | null 
 }
 
 /**
+ * Durée de récolte à retenir pour l'occupation, en semaines.
+ *
+ * Une fin de récolte enregistrée sur la culture fait foi, même prolongée à la
+ * main au-delà de l'itinéraire : sans elle, une culture maintenue en place
+ * était réputée partie et ses voisines n'étaient plus comparées à elle (les
+ * associations défavorables disparaissaient de l'écran). La durée de
+ * l'itinéraire ne sert que de repli, quand la culture n'a pas de fin connue
+ * ou que cette fin ne dépasse pas le début de la récolte.
+ */
+export function semainesRecolteEffectives(
+  dateRecolte: Date | null | undefined,
+  finRecolte: Date | null | undefined,
+  semainesItineraire: number | null
+): number | null {
+  if (!dateRecolte || !finRecolte) return semainesItineraire
+  const jours = (finRecolte.getTime() - dateRecolte.getTime()) / 86_400_000
+  // Une fin qui ne dépasse pas le début ne dit rien de la durée : repli.
+  if (jours <= 0) return semainesItineraire
+  return Math.ceil(jours / 7)
+}
+
+/**
  * Deux cultures sont-elles sur le terrain en même temps ? `null` quand une des
  * périodes est inconnue : l'appelant choisit la prudence.
  */

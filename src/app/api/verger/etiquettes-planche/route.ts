@@ -50,6 +50,18 @@ export async function GET(request: NextRequest) {
       .filter((n) => !Number.isNaN(n))
   }
 
+  // FB-AJYAIU : une liste demandée mais vide ou illisible ne vaut pas « tous
+  // les arbres » ; au-delà de la planche, on refuse plutôt que de tronquer.
+  if (idsParam !== null && ids.length === 0) {
+    return NextResponse.json({ error: "Aucun arbre à étiqueter dans cette sélection.", champ: "ids" }, { status: 400 })
+  }
+  if (ids.length > MAX_ARBRES) {
+    return NextResponse.json(
+      { error: `La planche est limitée à ${MAX_ARBRES} arbres : réduisez la sélection.`, champ: "ids" },
+      { status: 400 },
+    )
+  }
+
   const where: Record<string, unknown> = { userId: session.user.id }
   if (ids.length > 0) {
     where.id = { in: ids.slice(0, MAX_ARBRES) }

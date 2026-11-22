@@ -131,3 +131,39 @@ describe("ArbresTab : actions communes au téléphone et à l’ordinateur", () 
     expect(ecritures()).toHaveLength(0)
   })
 })
+
+// FB-AJYAIU : la planche d'étiquettes partait de la liste d'avant la recherche.
+describe("ArbresTab : la planche d'étiquettes suit la recherche", () => {
+  const poirier = { ...arbre, id: 72, nom: "Poirier témoin", espece: "Poirier" }
+  const idsPlanche = () => {
+    const lien = screen.getByText(/Planche QR codes/).closest("a")!
+    const href = lien.getAttribute("href")
+    return href ? decodeURIComponent(href).match(/ids=([0-9,]*)/)?.[1] ?? "" : null
+  }
+
+  beforeEach(() => {
+    fetchMock.mockImplementation(async (url) => {
+      if (String(url).startsWith("/api/arbres?")) return Response.json([arbre, poirier])
+      if (String(url).startsWith("/api/arbres/lots")) return Response.json([])
+      if (String(url) === "/api/carte") return Response.json([])
+      return Response.json({ data: [] })
+    })
+  })
+
+  it("n'envoie que les arbres trouvés, puis tous une fois la recherche vidée", async () => {
+    await afficher()
+    await waitFor(() => expect(idsPlanche()).toBe("71,72"))
+    const recherche = screen.getByPlaceholderText("Rechercher un arbre...")
+    fireEvent.change(recherche, { target: { value: "Poirier" } })
+    await waitFor(() => expect(idsPlanche()).toBe("72"))
+    fireEvent.change(recherche, { target: { value: "" } })
+    await waitFor(() => expect(idsPlanche()).toBe("71,72"))
+  })
+
+  it("n'offre aucun lien activable quand la recherche ne trouve rien", async () => {
+    await afficher()
+    fireEvent.change(screen.getByPlaceholderText("Rechercher un arbre..."), { target: { value: "introuvable" } })
+    await waitFor(() => expect(idsPlanche()).toBeNull())
+    expect(screen.getByText(/Planche QR codes/).closest("a")!.getAttribute("aria-disabled")).toBe("true")
+  })
+})

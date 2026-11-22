@@ -7,6 +7,7 @@ import {
   coinsPlanche,
   distancePlanches,
   liaisonEntrePlanches,
+  semainesRecolteEffectives,
   type CultureVoisinage,
   type PlancheGeo,
 } from "./associations-voisinage"
@@ -85,6 +86,34 @@ describe("cohabitent", () => {
     expect(cohabitent(culture("A", "Ail", 42, 26), culture("B", "Mâche", 45, 50))).toBe(true)
     expect(cohabitent(radis, culture("B", "Tomate", 20, null))).toBeNull()
     expect(cohabitent(radis, culture("B", "Tomate", 12, 30, null))).toBeNull()
+  })
+})
+
+// D10 : ail récolté le 01/06 (S23), itinéraire à 3 semaines (fin S26), fin de
+// récolte prolongée à la main au 03/08 (S32) ; haricot planté S28. L'écran
+// des associations ne les voyait plus cohabiter.
+describe("semainesRecolteEffectives", () => {
+  const debut = new Date("2026-06-01T00:00:00Z")
+  const prolongee = new Date("2026-08-03T00:00:00Z")
+
+  it("retient la fin de récolte enregistrée, même au-delà de l'itinéraire", () => {
+    expect(semainesRecolteEffectives(debut, prolongee, 3)).toBe(9)
+    const ail = (semaines: number | null) => culture("A", "Ail", 10, 23, semaines)
+    const haricot = culture("B", "Haricot", 28, 34, 4)
+    expect(cohabitent(ail(3), haricot)).toBe(false)
+    expect(cohabitent(ail(semainesRecolteEffectives(debut, prolongee, 3)), haricot)).toBe(true)
+  })
+
+  it("connaît l'occupation d'une culture dont l'itinéraire n'a pas de durée de récolte", () => {
+    expect(semainesRecolteEffectives(debut, prolongee, null)).toBe(9)
+  })
+
+  it("retombe sur l'itinéraire sans fin enregistrée ou quand la fin ne dépasse pas le début", () => {
+    expect(semainesRecolteEffectives(debut, null, 3)).toBe(3)
+    expect(semainesRecolteEffectives(null, prolongee, 3)).toBe(3)
+    expect(semainesRecolteEffectives(null, null, null)).toBeNull()
+    expect(semainesRecolteEffectives(prolongee, debut, 3)).toBe(3)
+    expect(semainesRecolteEffectives(debut, debut, 3)).toBe(3)
   })
 })
 
