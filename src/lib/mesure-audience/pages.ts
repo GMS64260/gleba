@@ -15,6 +15,7 @@ const PAGES_MESUREES = [
   "/logiciel-potager",
   "/carnet-de-culture", "/plan-de-ferme",
   "/registre-phytosanitaire-numerique", "/comparatif-logiciels-maraichage",
+  "/videos/un-matin-a-la-ferme",
 ]
 
 export function estPageMesuree(chemin: string): boolean {

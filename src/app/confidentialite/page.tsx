@@ -317,6 +317,20 @@ export default function ConfidentialitePage() {
             sur un serveur de l&apos;éditeur (hébergé chez IONOS) ;
             aucune donnée de mesure n&apos;est transmise à un tiers.
           </li>
+          <li>
+            <strong>Vidéo de présentation</strong> : sur la page d&apos;accueil, le
+            film « Un matin à la ferme avec Gleba » est lu par YouTube, service de
+            Google (Google Ireland Ltd). Rien n&apos;est chargé depuis YouTube tant
+            que vous ne cliquez pas sur « Lire avec YouTube ». Après ce clic, le
+            lecteur s&apos;ouvre en mode de confidentialité renforcée
+            (youtube-nocookie.com) et YouTube reçoit votre adresse IP, des
+            informations techniques sur votre navigateur et l&apos;adresse de notre
+            site. Google peut traiter ces données aux États-Unis, hors de
+            l&apos;Union européenne ; leur usage relève de sa propre politique de
+            confidentialité. Le même film est diffusé depuis nos serveurs, sans
+            YouTube, sur sa page{" "}
+            <Link href="/videos/un-matin-a-la-ferme">Un matin à la ferme avec Gleba</Link>.
+          </li>
         </ul>
 
         <h2>6. Durée de conservation</h2>
@@ -410,6 +424,16 @@ export default function ConfidentialitePage() {
           bandeau cookies.
         </p>
 
+        <h3>Vidéo YouTube</h3>
+        <p>
+          Le lecteur YouTube de la page d&apos;accueil n&apos;est chargé qu&apos;au
+          clic sur « Lire avec YouTube » : aucun cookie ni autre traceur de YouTube
+          n&apos;est déposé avant. Une fois la vidéo lancée, YouTube peut lire ou
+          enregistrer des informations sur votre appareil (cookies ou stockage du
+          navigateur) selon ses propres règles, que Gleba ne contrôle pas. Ce choix
+          n&apos;est pas mémorisé : à chaque visite, la vidéo attend un nouveau clic.
+        </p>
+
         <h3>Mesure d&apos;audience</h3>
         <p>
           Pour savoir comment Gleba est découvert, la fréquentation des pages publiques
@@ -433,7 +457,7 @@ export default function ConfidentialitePage() {
         <OppositionMesureAudience />
 
         <p className="text-xs text-slate-500 mt-12">
-          Dernière mise à jour : 2026-11-13 — version 2.7.
+          Dernière mise à jour : 2026-11-22 — version 2.8.
         </p>
       </main>
     </div>

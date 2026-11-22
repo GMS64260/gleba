@@ -2,7 +2,6 @@
 import { describe, expect, it } from "vitest"
 import type { Metadata } from "next"
 
-import { OG_IMAGE } from "./og"
 
 /**
  * Garde-fous SEO des pages publiques (constats du 2026-10-10 sur gleba.fr) :
@@ -12,7 +11,7 @@ import { OG_IMAGE } from "./og"
  *   de partage, le nom du site et la locale disparaissaient.
  */
 
-const pagesMetier = import.meta.glob<{ metadata: Metadata }>("/src/app/\\(marketing\\)/*/page.tsx", { eager: true })
+const pagesMetier = import.meta.glob<{ metadata: Metadata }>("/src/app/\\(marketing\\)/**/page.tsx", { eager: true })
 const autres: Record<string, () => Promise<{ metadata: Metadata }>> = {
   "": () => import("@/app/page"),
   "/communaute": () => import("@/app/communaute/layout"),
@@ -27,7 +26,8 @@ const autres: Record<string, () => Promise<{ metadata: Metadata }>> = {
 }
 
 function cheminDe(fichier: string): string {
-  return "/" + fichier.split("/").at(-2)
+  // Pages imbriquées comprises (/videos/<film>) : tout le chemin sous (marketing).
+  return fichier.replace(/^\/src\/app\/\(marketing\)/, "").replace(/\/page\.tsx$/, "")
 }
 
 function titreDe(m: Metadata): string {
@@ -41,7 +41,14 @@ function verifier(chemin: string, m: Metadata) {
   expect(m.alternates?.canonical, `canonical de ${chemin || "/"}`).toBe(`https://gleba.fr${chemin}`)
   const og = m.openGraph as { images?: unknown[]; siteName?: string; locale?: string } | undefined
   if (og) {
-    expect(og.images, `image de partage de ${chemin || "/"}`).toContainEqual(OG_IMAGE)
+    // Une page peut porter sa propre image (film), mais toujours un PNG ou un
+    // JPEG du site en 1200×630 : le WebP est mal lu par plusieurs réseaux.
+    const images = (og.images ?? []) as { url?: string; width?: number; height?: number }[]
+    expect(images.length, `image de partage de ${chemin || "/"}`).toBeGreaterThan(0)
+    for (const image of images) {
+      expect(image.url, `image de partage de ${chemin || "/"}`).toMatch(/^https:\/\/gleba\.fr\/.+\.(?:png|jpe?g)$/)
+      expect([image.width, image.height], `dimensions de ${image.url}`).toEqual([1200, 630])
+    }
     expect(og.siteName).toBe("Gleba")
     expect(og.locale).toBe("fr_FR")
   }
