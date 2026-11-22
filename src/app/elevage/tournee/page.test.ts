@@ -15,7 +15,7 @@ vi.mock("@/lib/elevage/offline-tournee", () => ({
   lireFile: vi.fn().mockResolvedValue([]),
   lireTachesCachees: vi.fn().mockResolvedValue([]),
   sauverTaches: vi.fn().mockResolvedValue(undefined),
-  synchroniserOperations: vi.fn(),
+  synchroniserOperations: vi.fn().mockResolvedValue({ envoyees: 0, restantes: 0 }),
 }))
 
 const fetchMock = vi.fn<typeof fetch>()

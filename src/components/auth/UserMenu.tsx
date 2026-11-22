@@ -5,7 +5,7 @@
  */
 
 import * as React from "react"
-import { seDeconnecter } from "@/lib/deconnexion"
+import { avantDeconnexionTournee, seDeconnecter } from "@/lib/deconnexion"
 import {avantDeconnexionCaisse} from "@/lib/caisse/sortie"
 import {alertDialog} from "@/lib/global-dialog"
 import Link from "next/link"
@@ -35,8 +35,15 @@ export function UserMenu({ user }: UserMenuProps) {
   async function deconnecter(){
     if(sortieEnCours.current)return
     sortieEnCours.current=true
-    try{if(await avantDeconnexionCaisse())await seDeconnecter({callbackUrl:'/login'})}
-    catch{await alertDialog('Le journal de caisse n’a pas pu être vérifié. Retrouvez la caisse pour conserver ou exporter les opérations avant de vous déconnecter.',{title:'Caisse à vérifier'})}
+    try{
+      let caisseVerifiee=false
+      try{caisseVerifiee=await avantDeconnexionCaisse()}
+      catch{await alertDialog('Le journal de caisse n’a pas pu être vérifié. Retrouvez la caisse pour conserver ou exporter les opérations avant de vous déconnecter.',{title:'Caisse à vérifier'})}
+      if(!caisseVerifiee||!await avantDeconnexionTournee())return
+      // Une déconnexion qui n'aboutit pas (réseau coupé) n'est pas un défaut de caisse.
+      try{await seDeconnecter({callbackUrl:'/login'})}
+      catch{await alertDialog('La déconnexion n’a pas abouti. Vérifiez le réseau puis réessayez.',{title:'Déconnexion impossible'})}
+    }
     finally{sortieEnCours.current=false}
   }
   const isAdmin = user.role === "ADMIN"
