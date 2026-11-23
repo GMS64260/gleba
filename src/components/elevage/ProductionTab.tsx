@@ -1502,7 +1502,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
       )}
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des ventes affichées" />
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="h-4 w-4" />
@@ -1969,7 +1969,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
       })()}
 
       {/* Actions + filtre */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           {especesUniques.length > 1 && (
             <>
@@ -1998,7 +1998,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
             </>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des abattages affichés" />
           <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="h-4 w-4" />

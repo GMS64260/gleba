@@ -71,6 +71,8 @@ interface RevenusDevise {
   count: number
   total: number
   parModule: Record<string, number>
+  /** Ventes passées par la boutique, déjà comptées dans les ateliers (revenus seulement). */
+  boutique?: number
 }
 
 /** Agrégats renvoyés par GET /api/comptabilite/revenus et /depenses. */
@@ -1063,7 +1065,7 @@ function TransactionsPageInner() {
                     389 € de revenus boutique n'apparaissaient nulle part. */}
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Boutique</CardTitle></CardHeader>
-                  <CardContent><p className="text-xl font-bold text-teal-600">{totauxRevenus(g => g.parModule?.boutique || 0)}</p></CardContent>
+                  <CardContent><p className="text-xl font-bold text-teal-600">{totauxRevenus(g => g.boutique || 0)}</p><p className="text-xs text-muted-foreground">déjà comptée dans les ateliers</p></CardContent>
                 </Card>
               </div>
             )}

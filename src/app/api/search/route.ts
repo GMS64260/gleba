@@ -56,7 +56,9 @@ export async function GET(request: NextRequest) {
   if (q.length < 2) return NextResponse.json({ items: [] })
 
   const userId = session.user.id
-  const like = { contains: q, mode: 'insensitive' as const }
+  // FB-SQGWSG : « %_ » est du texte saisi. Sans échappement, il devenait un
+  // joker et remontait tous les arbres, parcelles, animaux, clients…
+  const like = contientLitteral(q)
   const likeLitteral = contientLitteral(q)
   const cle = normalizeReferentielKey(q)
   // Une clé vide ne doit jamais devenir `contains: ''` (toutes les lignes).

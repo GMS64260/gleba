@@ -197,6 +197,7 @@ export async function DELETE(
       select: { _count: { select: {
         recoltesArbres: true, productionsBois: true, interventionsPhyto: true, observationsPhyto: true,
         planches: true, arbres: true, lotsArbres: true, lotsAnimaux: true, animaux: true, capteurs: true, objetsJardin: true,
+        campagnesPlantation: true,
       } } },
     })
     const usages = usagesParcelle(compte?._count ?? {})

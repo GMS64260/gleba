@@ -280,10 +280,6 @@ function TachesContent() {
           [key]: prev[key].map(t =>
             t.id === cultureId ? { ...t, fait: !currentValue } : t
           ),
-          stats: {
-            ...prev.stats,
-            [`${type}sFaits`]: prev.stats[`${type}sFaits` as keyof typeof prev.stats] + (currentValue ? -1 : 1),
-          },
         }
       })
 
@@ -549,21 +545,21 @@ function TachesContent() {
             <div className="bg-orange-50 rounded-lg p-2 text-center">
               <Sprout className="h-4 w-4 mx-auto text-orange-600 mb-1" />
               <p className="text-lg font-bold text-orange-700">
-                {data.stats.semisPrevus - data.stats.semisFaits}
+                {data.semis.filter((t) => !t.fait).length}
               </p>
               <p className="text-xs text-orange-600">Semis</p>
             </div>
             <div className="bg-green-50 rounded-lg p-2 text-center">
               <Leaf className="h-4 w-4 mx-auto text-green-600 mb-1" />
               <p className="text-lg font-bold text-green-700">
-                {data.stats.plantationsPrevues - data.stats.plantationsFaites}
+                {data.plantations.filter((t) => !t.fait).length}
               </p>
               <p className="text-xs text-green-600">Plantations</p>
             </div>
             <div className="bg-purple-50 rounded-lg p-2 text-center">
               <Package className="h-4 w-4 mx-auto text-purple-600 mb-1" />
               <p className="text-lg font-bold text-purple-700">
-                {data.stats.recoltesPrevues - data.stats.recoltesFaites}
+                {data.recoltes.filter((t) => !t.fait).length}
               </p>
               <p className="text-xs text-purple-600">Récoltes</p>
             </div>

@@ -793,8 +793,8 @@ function ParametresContent() {
               <h4 className="text-sm font-medium text-slate-900 mb-3">Dimensions du plan</h4>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Largeur (m)</label>
-                  <input
+                  <label htmlFor="jardin-planWidth" className="block text-sm text-slate-600 mb-1">Largeur (m)</label>
+                  <input id="jardin-planWidth"
                     type="number"
                     name="planWidth"
                     value={settings.planWidth}
@@ -805,8 +805,8 @@ function ParametresContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Hauteur (m)</label>
-                  <input
+                  <label htmlFor="jardin-planHeight" className="block text-sm text-slate-600 mb-1">Hauteur (m)</label>
+                  <input id="jardin-planHeight"
                     type="number"
                     name="planHeight"
                     value={settings.planHeight}
@@ -817,8 +817,8 @@ function ParametresContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Grille (m)</label>
-                  <input
+                  <label htmlFor="jardin-gridSize" className="block text-sm text-slate-600 mb-1">Grille (m)</label>
+                  <input id="jardin-gridSize"
                     type="number"
                     name="gridSize"
                     value={settings.gridSize}
@@ -839,8 +839,8 @@ function ParametresContent() {
               </h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Largeur (m)</label>
-                  <input
+                  <label htmlFor="jardin-defaultPlancheLargeur" className="block text-sm text-slate-600 mb-1">Largeur (m)</label>
+                  <input id="jardin-defaultPlancheLargeur"
                     type="number"
                     name="defaultPlancheLargeur"
                     value={settings.defaultPlancheLargeur}
@@ -852,8 +852,8 @@ function ParametresContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Longueur (m)</label>
-                  <input
+                  <label htmlFor="jardin-defaultPlancheLongueur" className="block text-sm text-slate-600 mb-1">Longueur (m)</label>
+                  <input id="jardin-defaultPlancheLongueur"
                     type="number"
                     name="defaultPlancheLongueur"
                     value={settings.defaultPlancheLongueur}

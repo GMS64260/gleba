@@ -28,6 +28,7 @@ export const DUREE_GESTATION_DEFAUTS: Record<string, number> = {
   // Volailles : couvaison
   poule: 21,
   cane: 28,
+  canard: 28,
   oie: 30,
   caille: 17,
   dinde: 28,
@@ -50,13 +51,26 @@ export function dureeGestationEspece(espece: {
   id: string
   type?: string | null
   dureeGestation?: number | null
+  dureeCouvaison?: number | null
 }): number | null {
+  const id = espece.id.toLowerCase()
+  // FB-Q7PXKT : une volaille n'a pas de gestation mais une couvaison, et ses
+  // identifiants sont des déclinaisons (`poule_pondeuse`, `poule_marans`) qui
+  // ne correspondaient à aucun défaut : la saillie d'une poule était refusée
+  // avec un conseil impossible à suivre (champ masqué, espèce officielle).
   return (
     espece.dureeGestation ??
-    DUREE_GESTATION_DEFAUTS[espece.id.toLowerCase()] ??
+    (estVolaille(espece) ? espece.dureeCouvaison : null) ??
+    DUREE_GESTATION_DEFAUTS[id] ??
+    DUREE_GESTATION_DEFAUTS[id.split('_')[0]] ??
     DUREE_GESTATION_DEFAUTS[(espece.type || '').toLowerCase()] ??
     null
   )
+}
+
+/** Espèce qui couve : la « gestation » est une couvaison, sans tarissement. */
+export function estVolaille(espece: { type?: string | null }): boolean {
+  return (espece.type || '').toLowerCase() === 'volaille'
 }
 
 /**

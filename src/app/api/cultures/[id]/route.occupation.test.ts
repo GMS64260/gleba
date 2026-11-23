@@ -232,6 +232,19 @@ describe("PUT /api/cultures/[id] — occupation de la planche", () => {
     expect(mocks.cultureUpdate).not.toHaveBeenCalled()
   })
 
+  // FB-EYRRO5 : la fiche (PUT) annulait le semis d'une culture plantée et
+  // récoltée (sans ligne de récolte) ; seul le PATCH gardait le cycle cohérent.
+  it.each([PUT, PATCH])("refuse d'annuler le semis tant que la plantation et la récolte restent faites (%s)", async (route) => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...stockee, longueur: 20, semisFait: true, plantationFaite: true, recolteFaite: true,
+      dateSemis: new Date('2026-04-01'), datePlantation: new Date('2026-05-01'), dateRecolte: new Date('2026-07-01'), _count: { recoltes: 0 } })
+    const res = await route(new NextRequest('http://localhost/api/cultures/1237', {
+      method: route === PUT ? 'PUT' : 'PATCH', body: JSON.stringify({ semisFait: false, plantationFaite: true, recolteFaite: true }),
+    }), { params: Promise.resolve({ id: '1237' }) })
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain("Annulez d'abord la plantation et la récolte")
+    expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+  })
+
   it("laisse le formulaire renvoyer une case déjà décochée sur une culture qui porte des récoltes", async () => {
     mocks.cultureFindUnique.mockResolvedValue({ ...stockee, longueur: 20, semisFait: false, recolteFaite: true,
       dateSemis: new Date('2026-04-01'), dateRecolte: new Date('2026-07-01'), _count: { recoltes: 2 } })
