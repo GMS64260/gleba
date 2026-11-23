@@ -385,7 +385,7 @@ export function PremiersPasBanner({ module = "home" }: { module?: ModuleKey }) {
               </h3>
               <p className="text-sm text-slate-600 mt-0.5">
                 {allDone
-                  ? "Vous maîtrisez les bases du module. Explorez les fonctionnalités avancées via le tour guidé."
+                  ? "Vous maîtrisez les bases du module. Explorez maintenant les fonctionnalités avancées."
                   : "Cliquez sur une ligne pour accéder directement au formulaire correspondant."}
               </p>
             </div>

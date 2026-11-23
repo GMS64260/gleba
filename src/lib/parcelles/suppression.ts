@@ -8,8 +8,12 @@
  * suffisait.
  *
  *  - traces (récoltes, bois, traitements, observations) : suppression refusée ;
- *  - rattachements vivants (planches, arbres, lots, animaux, capteurs,
- *    objets) : suppression possible après confirmation explicite.
+ *  - lots d'arbres : suppression refusée aussi, leur clé étrangère est en
+ *    `Restrict` (le message promettait un détachement, la base répondait 500) ;
+ *  - rattachements vivants (planches, arbres, lots d'animaux, animaux,
+ *    capteurs, objets, campagnes de plantation) : suppression possible après
+ *    confirmation explicite. Le compte annoncé est celui du serveur, seul à
+ *    voir tout ce que la suppression détache (FB-YV1HCU).
  */
 export type UsagesParcelle = {
   traces: Record<string, number>
@@ -28,10 +32,11 @@ export const LIBELLES_USAGE: Record<string, string> = {
   animaux: 'animal(aux)',
   capteurs: 'capteur(s)',
   objetsJardin: 'objet(s) du plan',
+  campagnesPlantation: 'campagne(s) de plantation',
 }
 
-export const CLES_TRACES = ['recoltesArbres', 'productionsBois', 'interventionsPhyto', 'observationsPhyto'] as const
-export const CLES_RATTACHEMENTS = ['planches', 'arbres', 'lotsArbres', 'lotsAnimaux', 'animaux', 'capteurs', 'objetsJardin'] as const
+export const CLES_TRACES = ['recoltesArbres', 'productionsBois', 'interventionsPhyto', 'observationsPhyto', 'lotsArbres'] as const
+export const CLES_RATTACHEMENTS = ['planches', 'arbres', 'lotsAnimaux', 'animaux', 'capteurs', 'objetsJardin', 'campagnesPlantation'] as const
 
 const nonNuls = (compte: Record<string, number>, cles: readonly string[]) =>
   Object.fromEntries(cles.filter((c) => (compte[c] ?? 0) > 0).map((c) => [c, compte[c]]))
@@ -51,7 +56,7 @@ export function refusSuppressionParcelle(usages: UsagesParcelle, confirme: boole
   if (Object.keys(usages.traces).length > 0) {
     return {
       code: 'PARCELLE_TRACEE',
-      error: `Cette parcelle porte ${decrireUsages(usages.traces)} : elle est leur origine et ne peut pas être supprimée. Renommez-la ou gardez-la telle quelle.`,
+      error: `Cette parcelle porte ${decrireUsages(usages.traces)} : elle ne peut pas être supprimée tant qu'ils s'y rattachent. Renommez-la ou gardez-la telle quelle.`,
     }
   }
   if (Object.keys(usages.rattachements).length > 0 && !confirme) {

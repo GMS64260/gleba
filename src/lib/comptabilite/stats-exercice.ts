@@ -6,9 +6,9 @@
 import prisma from '@/lib/prisma'
 import { bucketModuleCompta } from '@/lib/comptabilite/modules'
 import { getKpiCompta } from '@/lib/kpi'
-import { bornesExerciceKpi, chargerLignesDepensesDevise, chargerMensuelComptaParDevise } from '@/lib/kpi/compta'
+import { bornesExerciceKpi, chargerLignesDepensesDevise, chargerMensuelComptaParDevise, STATUTS_FACTURE_HORS_VENTES } from '@/lib/kpi/compta'
 import { monnaieImpayee, ventilerImpayeesParDevise } from '@/lib/comptabilite/ventilation-impayees'
-import { deviseCouranteExploitation } from '@/lib/comptabilite/devise-reglement'
+import { deviseCouranteExploitation, monnaieFacture } from '@/lib/comptabilite/devise-reglement'
 import { monnaieVente, monnaieCommande, SELECT_CONTEXTE_FISCAL_VENTE } from '@/lib/comptabilite/devise-vente'
 import {
   chargerDevisesDossiers,
@@ -22,6 +22,7 @@ import {
 } from '@/lib/comptabilite/devise-ecritures'
 import { estPresent, soustraireParDevise, sommerParDevise, totalSiUneDevise, type TotalDevise } from '@/lib/comptabilite/totaux-devise'
 import type { Devise } from '@/lib/territoires'
+import { montantBoisAvoir } from '@/lib/comptabilite/avoirs-bois'
 import { chargerEncoursCompta } from '@/lib/comptabilite/encours'
 import { STATUTS_COMMANDES_EN_ATTENTE } from '@/lib/comptabilite/alertes'
 
@@ -66,12 +67,26 @@ const LABELS_CATEGORIE_DEPENSE: Record<string, string> = {
   prestation: 'Prestations',
   veterinaire: 'Vétérinaire',
   alimentation: 'Alimentation animale',
+  aliments: 'Alimentation animale',
+  fertilisants: 'Engrais et amendements',
   achats: 'Achats d’animaux',
   animal_vivant: 'Achats d’animaux',
   msa: 'Cotisations MSA',
   main_oeuvre: 'Main d’œuvre',
   abonnement: 'Abonnements',
   autre: 'Autre',
+}
+
+/**
+ * Libellé d'une catégorie de dépense, le même à la liste, au CSV et au
+ * graphique. Une catégorie inconnue garde son nom : elle ne devient jamais
+ * « Autre » (signalement FB-6PQOC4).
+ */
+export function libelleCategorieDepense(categorie: string | null | undefined): string {
+  const cle = (categorie ?? '').trim()
+  if (!cle) return LABELS_CATEGORIE_DEPENSE.autre
+  return LABELS_CATEGORIE_DEPENSE[cle] ||
+    cle.charAt(0).toUpperCase() + cle.slice(1).replace(/_/g, ' ')
 }
 
 /** Ventes automatiques reprises au graphique par catégorie (aucune table brute ne les porte). */
@@ -445,6 +460,34 @@ export async function calculerStatsExercice(userId: string, year: number, asOf: 
     type === 'pollen' ? 'Pollen' :
     type === 'gelee_royale' ? 'Gelée royale' :
     type === 'autre_ruche' ? 'Autre produit de la ruche' : type
+  // Avoirs de l'exercice sur une facture qui porte du bois : la part « Bois »
+  // suit le total et le module Verger, qui les déduisent déjà (FB-8Y5FFX).
+  const avoirsBois = await prisma.facture.findMany({
+    where: {
+      userId, type: 'avoir', statut: { notIn: STATUTS_FACTURE_HORS_VENTES },
+      date: { gte: startOfYear, lte: endOfYear },
+      factureOrigineRef: { productionsBois: { some: {} } },
+    },
+    select: {
+      totalTTC: true, date: true, emetteurSnapshot: true,
+      lignes: { select: { montantTTC: true, articleStockType: true } },
+      factureOrigineRef: { select: {
+        lignes: { select: { articleStockType: true } },
+        _count: { select: { ventesProduits: true, abattages: true, recoltesArbres: true, commandesBoutique: true } },
+      } },
+    },
+  })
+  const partsAvoirsBois = avoirsBois.map((a) => {
+    const origine = a.factureOrigineRef
+    const origineToutBois = !!origine
+      && Object.values(origine._count).every((n) => n === 0)
+      && origine.lignes.every((l) => !l.articleStockType || l.articleStockType === 'bois')
+    return {
+      categorie: 'Bois', couleur: COLORS.bois,
+      montant: -montantBoisAvoir({ totalTTC: a.totalTTC, lignes: a.lignes, origineToutBois }),
+      monnaie: monnaieFacture(a.emetteurSnapshot, a.date),
+    }
+  }).filter((p) => p.montant !== 0)
   const partsCategorie: Array<{ categorie: string; montant: number; couleur: string; monnaie: Devise | null }> = [
     ...ventesElevage.map((v) => ({
       categorie: libelleTypeElevage(v.type),
@@ -464,6 +507,7 @@ export async function calculerStatsExercice(userId: string, year: number, asOf: 
       categorie: 'Bois', montant: b.prixVente || 0, couleur: COLORS.bois,
       monnaie: monnaieVenteBrute(monnaiesVentes, { sourceType: 'production_bois', id: b.id }, devise),
     })),
+    ...partsAvoirsBois,
     ...ventesManuellesParCategorie.map((v) => ({
       categorie: libelleCategorieVente(v.categorie),
       montant: v.montant || 0,
@@ -493,8 +537,7 @@ export async function calculerStatsExercice(userId: string, year: number, asOf: 
   // Dépenses par catégorie — mêmes charges que le total comptable, chacune
   // dans la devise de son dossier de règlement (sinon devise courante).
   const depensesParCategorie = ventilerCategories(depensesComptables.map((d) => ({
-    categorie: LABELS_CATEGORIE_DEPENSE[d.categorie] ||
-               d.categorie.charAt(0).toUpperCase() + d.categorie.slice(1).replace(/_/g, ' '),
+    categorie: libelleCategorieDepense(d.categorie),
     montant: d.montant,
     couleur: COLORS[d.categorie as keyof typeof COLORS] || COLORS.autre,
     monnaie: d.monnaie,

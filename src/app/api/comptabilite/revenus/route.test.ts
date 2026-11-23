@@ -36,6 +36,9 @@ describe('Transactions et périmètre comptable commun',()=>{
   expect(a.stats.total).toBe(26)
   const tous=await (await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=2026'))).json()
   expect(tous.stats.total).toBe(68);expect(tous.data).toHaveLength(3)
+  // FB-ZWKWJM : la tuile Boutique lisait `parModule.boutique`, clé inexistante.
+  expect(tous.stats.parDevise[0]).toMatchObject({boutique:42,parModule:{potager:42,verger:0,elevage:0,autre:26}})
+  expect(j.stats.parDevise[0].boutique).toBe(42)
  })
  it.each(['boutique',' BoUtIqUe '])('inclut les ventes manuelles historiques de module %s',async module=>{
   mocks.ventes.mockResolvedValue([{...miroirs[0],id:104,auto:false,sourceType:null,sourceId:null,module,categorie:'legumes',montant:21}])
@@ -95,7 +98,7 @@ describe('Transactions et périmètre comptable commun',()=>{
    {id:62,numero:'AV-QA-62',date,type:'avoir',statut:'emise',clientNom:'Client fictif',objet:null,totalTTC:52.75,factureOrigineId:61,emetteurSnapshot:{devise:'EUR',territoire:'METROPOLE'},lignes:[],_count:{}}]
   mocks.factures.mockImplementation(async(q:{select?:{totalTTC?:boolean}})=>q.select?.totalTTC?fs:fs.map(f=>({id:f.id,numero:f.numero})))
   const j=await (await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=2026'))).json()
-  expect(j.stats.parDevise).toEqual([{monnaie:'EUR',count:2,total:52.75,parModule:expect.objectContaining({autre:52.75,potager:0})}])
+  expect(j.stats.parDevise).toEqual([{monnaie:'EUR',count:2,total:52.75,boutique:0,parModule:expect.objectContaining({autre:52.75,potager:0})}])
  })
  it.each([null, {}])('facture ancienne sans identité monétaire (%o) : ligne et total EUR sur ferme XPF', async emetteurSnapshot => {
   mocks.exploitation.mockResolvedValue({devise:'XPF',territoire:'NOUVELLE_CALEDONIE'})
@@ -103,7 +106,7 @@ describe('Transactions et périmètre comptable commun',()=>{
   mocks.factures.mockResolvedValue([{id:63,numero:'F-ANCIENNE',date,type:'facture',statut:'emise',clientNom:null,objet:null,totalTTC:105.5,factureOrigineId:null,emetteurSnapshot,lignes:[],_count:{}}])
   const j=await (await GET(new NextRequest('http://localhost/api/comptabilite/revenus?year=2026'))).json()
   expect(j.data[0].monnaie).toBe('EUR')
-  expect(j.stats.parDevise).toEqual([{monnaie:'EUR',count:1,total:105.5,parModule:expect.objectContaining({autre:105.5})}])
+  expect(j.stats.parDevise).toEqual([{monnaie:'EUR',count:1,total:105.5,boutique:0,parModule:expect.objectContaining({autre:105.5})}])
  })
  it('ventile EUR, XPF et devise inconnue sans les additionner, sur tout le périmètre et par module',async()=>{
   mocks.exploitation.mockResolvedValue({devise:'XPF',territoire:'NOUVELLE_CALEDONIE'})

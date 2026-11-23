@@ -199,6 +199,9 @@ const INFERENCE_LABELS: Record<string, string> = {
   fertilisations: 'Fertilisations (20 %)',
 }
 
+/** Les exports écrivent tout l'exercice, pas la première page de la liste (FB-U56YHR). */
+const LIMITE_EXPORT = 5000
+
 export default function RapportsPage() {
   const devise = useDevise()
   const formatMontant = (value: number) => devise === null ? "—" : formatMontantDevise(value, devise)
@@ -243,6 +246,14 @@ export default function RapportsPage() {
   const [charts, setCharts] = React.useState<ChartData | null>(null)
   const [revenus, setRevenus] = React.useState<LigneTransaction[]>([])
   const [depenses, setDepenses] = React.useState<LigneTransaction[]>([])
+  // FB-PS990R — exercice dont les lignes et la synthèse sont réellement en
+  // mémoire. Tant qu'il diffère de l'année choisie (chargement en cours ou en
+  // échec), aucun export : le fichier porterait le nom d'une année et les
+  // montants d'une autre.
+  const [exerciceCharge, setExerciceCharge] = React.useState<number | null>(null)
+  // FB-U56YHR — nombre de lignes de l'exercice selon le serveur : un export
+  // plus court que ce compte est annoncé comme partiel.
+  const [totalLignes, setTotalLignes] = React.useState({ revenus: 0, depenses: 0 })
   const [tvaData, setTvaData] = React.useState<TVAData | null>(null)
   const [erreurTva, setErreurTva] = React.useState('')
   const [selectedTrimestre, setSelectedTrimestre] = React.useState<string>("all")
@@ -261,13 +272,14 @@ export default function RapportsPage() {
   const fetchData = React.useCallback(async () => {
     const seq = ++fetchSeq.current
     setIsLoading(true)
+    setExerciceCharge(null)
     try {
       const tvaParam = selectedTrimestre !== 'all' ? `&trimestre=${selectedTrimestre}` : ''
       const [statsData, revRes, depRes, tvaRes, bilanRes] = await Promise.all([
         // Contrat devise garanti, y compris dans le dépôt public (stats-client.ts).
         chargerStatsComptables<{ stats: Stats; charts: ChartData }>(selectedYear),
-        fetch(`/api/comptabilite/revenus?year=${selectedYear}&limit=500`),
-        fetch(`/api/comptabilite/depenses?year=${selectedYear}&limit=500`),
+        fetch(`/api/comptabilite/revenus?year=${selectedYear}&limit=${LIMITE_EXPORT}`),
+        fetch(`/api/comptabilite/depenses?year=${selectedYear}&limit=${LIMITE_EXPORT}`),
         fetch(`/api/comptabilite/tva?year=${selectedYear}${tvaParam}`),
         // DEV1 #5 — Bilan ACTIF/PASSIF
         fetch(`/api/comptabilite/bilan?year=${selectedYear}`),
@@ -285,11 +297,22 @@ export default function RapportsPage() {
         const data = await revRes.json()
         if (seq !== fetchSeq.current) return
         setRevenus(data.data || [])
+        setTotalLignes((t) => ({ ...t, revenus: Number(data.stats?.count) || 0 }))
+      } else {
+        setRevenus([])
       }
       if (depRes.ok) {
         const data = await depRes.json()
         if (seq !== fetchSeq.current) return
         setDepenses(data.data || [])
+        setTotalLignes((t) => ({ ...t, depenses: Number(data.stats?.count) || 0 }))
+      } else {
+        setDepenses([])
+      }
+      if (statsData && revRes.ok && depRes.ok) {
+        setExerciceCharge(selectedYear)
+      } else {
+        toast({ variant: "destructive", title: "Erreur", description: `Les données de l'exercice ${selectedYear} n'ont pas pu être chargées. Les exports sont suspendus : réessayez.` })
       }
       if (bilanRes.ok) {
         const data = await bilanRes.json()
@@ -337,7 +360,14 @@ export default function RapportsPage() {
   // résultat synthétique. Le bouton est conservé sous son ancien nom de
   // type pour compatibilité, mais le filename émis devient
   // `compte-de-resultat_AAAA.csv` (plus exact réglementairement).
+  const exportPret = !isLoading && exerciceCharge === selectedYear
+  const libelleLignes = (lues: number, total: number) =>
+    !exportPret ? "Chargement de l'exercice…"
+      : total > lues ? `${lues} transactions sur ${total} : export partiel`
+      : `${lues} transactions`
+
   const exportCSV = (type: 'revenus' | 'depenses' | 'bilan') => {
+    if (!exportPret) return
     let csv = ''
     let filename = ''
 
@@ -1395,7 +1425,7 @@ export default function RapportsPage() {
                   <CardDescription>Synthèse revenus, dépenses, résultat par module</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button onClick={() => exportCSV('bilan')} className="w-full">
+                  <Button onClick={() => exportCSV('bilan')} className="w-full" disabled={!exportPret}>
                     <Download className="h-4 w-4 mr-2" />
                     Exporter CSV
                   </Button>
@@ -1408,10 +1438,10 @@ export default function RapportsPage() {
                     <TrendingUp className="h-6 w-6 text-green-600" />
                   </div>
                   <CardTitle>Revenus {selectedYear}</CardTitle>
-                  <CardDescription>{revenus.length} transactions</CardDescription>
+                  <CardDescription>{libelleLignes(revenus.length, totalLignes.revenus)}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button onClick={() => exportCSV('revenus')} className="w-full" variant="outline">
+                  <Button onClick={() => exportCSV('revenus')} className="w-full" variant="outline" disabled={!exportPret}>
                     <Download className="h-4 w-4 mr-2" />
                     Exporter CSV
                   </Button>
@@ -1424,10 +1454,10 @@ export default function RapportsPage() {
                     <TrendingDown className="h-6 w-6 text-red-600" />
                   </div>
                   <CardTitle>Dépenses {selectedYear}</CardTitle>
-                  <CardDescription>{depenses.length} transactions</CardDescription>
+                  <CardDescription>{libelleLignes(depenses.length, totalLignes.depenses)}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button onClick={() => exportCSV('depenses')} className="w-full" variant="outline">
+                  <Button onClick={() => exportCSV('depenses')} className="w-full" variant="outline" disabled={!exportPret}>
                     <Download className="h-4 w-4 mr-2" />
                     Exporter CSV
                   </Button>

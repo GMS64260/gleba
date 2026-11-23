@@ -35,7 +35,7 @@ import {
   verrouillerCultures,
 } from '@/lib/cultures/execution'
 import type { ChampDateEtape, ChampEtape, EtatDatesEtapes } from '@/lib/cultures/execution'
-import { LIBELLE_ETAPE, refusAnnulationEtapes } from '@/lib/cultures/annulation-etape'
+import { refusAnnulationEtapes, refusCycleIncoherent } from '@/lib/cultures/annulation-etape'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
@@ -365,6 +365,14 @@ export async function PUT(
         ? refusAnnulationEtapes(etapesDecochees, existing._count.recoltes)
         : null
       if (refusAnnulation) return NextResponse.json(refusAnnulation, { status: 409 })
+      // FB-EYRRO5 : même garde de cycle que les actions rapides. Seule une
+      // étape que cet envoi décoche est jugée : une culture ancienne déjà
+      // incohérente reste modifiable sur ses autres champs.
+      const refusCycle = refusCycleIncoherent(
+        etapesDecochees,
+        (etape) => faitSoumis[etape] ?? Boolean(existing[etape])
+      )
+      if (refusCycle) return NextResponse.json(refusCycle, { status: 409 })
 
       const ecrituresEtapes: Record<string, Date | null> = {}
       for (const champEtape of ETAPES) {
@@ -706,19 +714,8 @@ export async function PATCH(
       const resteraFaite = (champ: (typeof ETAPES)[number]) =>
         champ in updateData ? updateData[champ] === true : Boolean(existing[champ])
 
-      for (const annulee of etapesAnnulees) {
-        const aval = ETAPES.slice(ETAPES.indexOf(annulee) + 1).filter(resteraFaite)
-        if (aval.length > 0) {
-          return NextResponse.json(
-            {
-              error: `Annulez d'abord ${aval.map((e) => LIBELLE_ETAPE[e]).join(' et ')}`
-                + ` : le cycle ne peut pas revenir avant ${LIBELLE_ETAPE[annulee]}`
-                + ` tant qu'une étape postérieure reste marquée faite.`,
-            },
-            { status: 409 }
-          )
-        }
-      }
+      const refusCycle = refusCycleIncoherent(etapesAnnulees, resteraFaite)
+      if (refusCycle) return NextResponse.json(refusCycle, { status: 409 })
 
       // QA cmsp66tdm — une étape marquée faite ne peut pas rester datée dans le
       // futur : cliquer une tâche planifiée au 15/08 le 11/08 enregistrait « Semis

@@ -2786,7 +2786,7 @@ function JardinContent() {
                   (10 rem) sous le premier ; à 375 px le texte du premier se
                   replie, dépasse 10 rem et le second le recouvrait, boutons
                   compris. Empilés en flux, chacun prend sa hauteur. */}
-              <div className="pointer-events-none absolute left-1/2 top-3 z-20 flex w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 flex-col gap-2 [&>*]:pointer-events-auto">
+              <div className={`pointer-events-none absolute left-1/2 z-20 flex w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 flex-col gap-2 [&>*]:pointer-events-auto ${isPlanFullscreen ? "top-[4.5rem] xl:top-3" : "top-3"}`}>
               {/* Planches invisibles parce que non rattachées. Le plan filtré par
                   parcelle ne peut pas les montrer ; sans ce bandeau l'écran est
                   vide et muet — c'est ce qu'a vu un compte réel le 2026-08-17,

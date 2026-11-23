@@ -358,7 +358,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
           <div className="text-center py-8 text-muted-foreground">Chargement...</div>
         ) : campagne ? (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="flex h-auto w-full flex-wrap gap-y-1 sm:grid sm:grid-cols-4">
               <TabsTrigger value="apercu">Aperçu</TabsTrigger>
               <TabsTrigger value="etapes">Étapes ({campagne.etapes.length})</TabsTrigger>
               <TabsTrigger value="suivi">Suivi reprise ({campagne.observations.length})</TabsTrigger>

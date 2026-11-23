@@ -59,9 +59,9 @@ export async function GET(request: NextRequest) {
     const moduleFiltre = moduleDemande && !filtreBoutique ? bucketModuleCompta(moduleDemande) : null
     // Boutique désigne le canal de vente, indépendamment de l'atelier
     // d'imputation. Garder les mêmes sources pour les lignes et les totaux.
-    const ventesRetenues = filtreBoutique ? ventes.filter(v =>
-      v.auto ? v.sourceType === 'commande_boutique' : v.module?.trim().toLowerCase() === 'boutique',
-    ) : ventes
+    const estVenteBoutique = (v: (typeof ventes)[number]) =>
+      v.auto ? v.sourceType === 'commande_boutique' : v.module?.trim().toLowerCase() === 'boutique'
+    const ventesRetenues = filtreBoutique ? ventes.filter(estVenteBoutique) : ventes
     const facturesRetenues = filtreBoutique ? [] : factures
     const deviseCourante = deviseCouranteExploitation(exploitation)
     // Certains anciens miroirs boutique n'ont pas le nom de leur commande.
@@ -98,19 +98,29 @@ export async function GET(request: NextRequest) {
     })
     const filtrees = (moduleFiltre ? lignes.filter(l => l.module === moduleFiltre) : lignes)
       .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id))
-    const limite = Math.min(1000, Math.max(1, Number(params.get('limit')) || 200))
+    const limite = Math.min(5000, Math.max(1, Number(params.get('limit')) || 200))
     const page = filtrees.slice(0, limite)
     const suivi = await chargerSuiviDesLignes(userId, page)
     const data = await enrichirLignesReglements(userId, 'vente', page.map(l => ({ ...l, ...suivi.get(l.id) })), ventes)
     // Totaux par devise sur tout le périmètre (avant pagination) : une pièce
     // garde sa devise figée, jamais celle, courante, de la ferme.
+    const ventesDuPerimetre = moduleFiltre ? ventesRetenues.filter(v => moduleDeVente(v) === moduleFiltre) : ventesRetenues
     const parDevise = ventilerRevenusParDevise(
-      moduleFiltre ? ventesRetenues.filter(v => moduleDeVente(v) === moduleFiltre) : ventesRetenues,
+      ventesDuPerimetre,
       moduleFiltre ? facturesRetenues.filter(f => (f.moduleSource ?? 'autre') === moduleFiltre) : facturesRetenues,
       deviseVente,
       f => monnaieFacture(f.emetteurSnapshot, f.date),
       deviseCourante,
-    ).map(({ monnaie, count, total, parModule }) => ({ monnaie, count, total, parModule }))
+    ).map(({ monnaie, count, total, parModule }) => ({
+      monnaie, count, total, parModule,
+      // Boutique est un canal de vente, pas un atelier : ses ventes sont déjà
+      // rangées dans `parModule` (légumes au potager, le reste en « autre »).
+      // Ce sous-total, le même que celui du filtre Boutique, alimente la tuile
+      // qui lisait une clé `parModule.boutique` inexistante (FB-ZWKWJM).
+      boutique: Math.round(ventesDuPerimetre
+        .filter(v => estVenteBoutique(v) && deviseVente(v) === monnaie)
+        .reduce((somme, v) => somme + (Number(v.montant) || 0), 0) * 100) / 100,
+    }))
     // Contrat (lot devise-totaux-api) : chaque total a un voisin `…ParDevise`
     // et vaut `null` dès que deux devises coexistent.
     const multiDevise = parDevise.length > 1
