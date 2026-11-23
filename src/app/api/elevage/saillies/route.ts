@@ -19,6 +19,7 @@ import { saillieSchema, updateSaillieSchema } from '@/lib/validations/saillie'
 import {
   dateMiseBasAttendue,
   dateTarissementPrevue,
+  estVolaille,
   detecterConsanguinite,
   dureeGestationEspece,
 } from '@/lib/reproduction'
@@ -106,13 +107,15 @@ export async function POST(request: NextRequest) {
     const duree = dureeGestationEspece(femelle.especeAnimale)
     if (!duree) {
       return NextResponse.json(
-        { error: `Durée de gestation inconnue pour l'espèce ${femelle.especeAnimale.nom}. Configurez-la dans Espèces.` },
+        { error: estVolaille(femelle.especeAnimale)
+          ? `Durée de couvaison inconnue pour l'espèce ${femelle.especeAnimale.nom}. Renseignez-la dans Espèces (une espèce du référentiel se copie d'abord en espèce personnelle).`
+          : `Durée de gestation inconnue pour l'espèce ${femelle.especeAnimale.nom}. Configurez-la dans Espèces.` },
         { status: 400 }
       )
     }
 
     const dateMb = dateMiseBasAttendue(data.date, duree)
-    const dateTar = dateTarissementPrevue(dateMb, femelle.especeAnimale.production)
+    const dateTar = estVolaille(femelle.especeAnimale) ? null : dateTarissementPrevue(dateMb, femelle.especeAnimale.production)
 
     // Détection consanguinité (informative, non bloquante)
     let consanguinite: number[] = []
@@ -222,7 +225,7 @@ export async function PATCH(request: NextRequest) {
       if (duree) {
         const dateMb = dateMiseBasAttendue(updates.date, duree)
         data.dateMiseBasAttendue = dateMb
-        data.dateTarissementPrevue = dateTarissementPrevue(dateMb, espece.production)
+        data.dateTarissementPrevue = estVolaille(espece) ? null : dateTarissementPrevue(dateMb, espece.production)
       }
     }
     const saillie = await prisma.saillie.update({ where: { id }, data })

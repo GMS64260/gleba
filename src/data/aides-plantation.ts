@@ -186,6 +186,9 @@ export const AIDES_PLANTATION: DispositifAide[] = [
     actif: true,
   },
   // ============ VERGERS ============
+  // Source : décision FranceAgriMer INTV-SIIF-2026-33 du 24 juin 2026 (appel à
+  // projets 2026, plantations 2026-2027 et 2027-2028), art. 3.2 et 4.2. Les
+  // travaux d'arrachage y sont inéligibles (signalement FB-V71OVA).
   {
     id: "fam_vergers",
     nom: "Aide à la rénovation des vergers (FranceAgriMer)",
@@ -194,14 +197,17 @@ export const AIDES_PLANTATION: DispositifAide[] = [
     typesEligibles: ["verger"],
     publicCible: "agriculteurs",
     description:
-      "Soutien à l'arrachage et à la replantation de vergers (pommiers, poiriers, abricotiers, cerisiers, pêchers, etc.).",
+      "Aide à la plantation de vergers : préparation du sol, plantation, palissage réalisé la même campagne et achat des plants. Les travaux d'arrachage ne sont pas aidés ; un arrachage imposé par l'État (Sharka, ECA…) ouvre seulement une majoration et une priorité.",
     conditions: [
       "Producteur professionnel",
+      "Siège d'exploitation en France métropolitaine",
+      "Demande déposée avant tout début des travaux (commande ou devis signé compris)",
       "Variétés inscrites au cahier des charges",
       "Densité minimale exigée",
     ],
-    tauxAide: "Forfait à l'hectare selon espèce",
-    url: "https://www.franceagrimer.fr/",
+    tauxAide: "20 % des dépenses éligibles HT, majoré de 10 % pour les jeunes agriculteurs et nouveaux installés et de 5 % dans certains cas (Sharka ou ECA, bio ou HVE…)",
+    url: "https://www.franceagrimer.fr/aides/renovation-des-vergers-arboricoles-campagnes-20262027-et-20272028",
+    echeance: "Appel à projets annuel ; celui de 2026 était à valider au plus tard le 31 juillet ou le 8 septembre 2026 selon l'espèce",
     actif: true,
   },
   // ============ EUROPEEN ============
@@ -260,7 +266,9 @@ export const AIDES_PLANTATION: DispositifAide[] = [
     montantIndicatif: "30-60 % HT, plafond ~80 k€",
   },
 
-  // Source : Agence Bio + DRAAF. CAB = aide à la conversion (C1-C2-C3).
+  // Source : notice CAB, campagne 2026 (version DGPE du 27/04/2026, § 2
+  // Montants). CAB = aide à la conversion. Le maraîchage est à 900 €/ha, pas
+  // 350 (signalement FB-5J3M23) ; 450 €/ha pour les légumes de plein champ.
   {
     id: "cab",
     nom: "CAB — Aide à la Conversion en Agriculture Biologique",
@@ -275,8 +283,9 @@ export const AIDES_PLANTATION: DispositifAide[] = [
       "Contrôle annuel par organisme certificateur agréé",
       "Engagement de 5 ans",
       "Soumis aux plafonds de minimis dans certains cas",
+      "Annuité d'au moins 300 € la première année",
     ],
-    tauxAide: "300 à 900 €/ha/an selon catégorie (maraîchage ~ 350 €, arbo ~ 900 €, PPAM ~ 350 €)",
+    tauxAide: "Par hectare et par an selon la culture (notice 2026) : maraîchage et arboriculture 900 €, cultures légumières de plein champ 450 €, cultures annuelles et vigne 350 €, PPAM 350 € (lavande, lavandin…) ou 900 € (autres), prairies associées à un élevage 130 €",
     plafond: "Pas de plafond strict mais dégressivité possible si surface importante",
     url: "https://www.agencebio.org/vos-outils/financements-aides-fiscalite/aides-bio/",
     actif: true,

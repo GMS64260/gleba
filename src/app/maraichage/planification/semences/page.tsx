@@ -477,7 +477,7 @@ function SemencesContent() {
         "Mode",
         "Surface (m²)",
         "Nb plants",
-        "Graines nec. (g)",
+        appliquerMarge ? "Graines nec. (g), marge comprise" : "Graines nec. (g), sans marge",
         "Caïeux nec.",
         "Stock (g)",
         "Stock (unités)",
@@ -485,17 +485,19 @@ function SemencesContent() {
         "À commander (caïeux)",
         "Statut",
       ],
-      ...data.map((b) => [
+      // FB-Z16HNP : le fichier suit le réglage « Marge sécurité » de l'écran.
+      // Un besoin compté en unités (caïeux, plants) n'a pas de marge à retirer.
+      ...data.map((b) => ({ b, graines: appliquerMarge || besoinEnUnites(b) ? b.grainesNecessaires : brutGraines(b) })).map(({ b, graines }) => [
         b.especeNom ?? b.especeId,
         b.varieteNom ?? b.varieteId ?? "",
         b.mode,
         b.surfaceTotale.toFixed(1),
         b.nbPlants,
-        b.grainesNecessaires.toFixed(1),
+        graines.toFixed(1),
         b.besoinCaieux,
         b.stockActuel.toFixed(1),
         b.stockUnites,
-        b.aCommander.toFixed(1),
+        (appliquerMarge || besoinEnUnites(b) ? b.aCommander : Math.max(0, graines - b.stockActuel)).toFixed(1),
         b.caieuxACommander,
         b.statut,
       ]),
@@ -811,7 +813,7 @@ function SemencesContent() {
         )}
 
         <Tabs defaultValue="graines">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto gap-y-1">
             <TabsTrigger value="graines">
               Graines nécessaires
               {stats && (

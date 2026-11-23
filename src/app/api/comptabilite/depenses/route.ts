@@ -13,6 +13,7 @@ import { chargerSuiviDesDepenses, MIROIR_DEPENSE_PAR_SOURCE } from '@/lib/compta
 import { deviseCouranteExploitation } from '@/lib/comptabilite/devise-reglement'
 import { chargerDevisesDossiers, cleDossierDepense, cleDossierDepenseSource } from '@/lib/comptabilite/devise-ecritures'
 import { sommerParDevise } from '@/lib/comptabilite/totaux-devise'
+import { libelleCategorieDepense } from '@/lib/comptabilite/stats-exercice'
 import type { Devise } from '@/lib/territoires'
 
 export async function GET(request: NextRequest) {
@@ -203,6 +204,35 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    // FB-U56YHR — un lot ou un animal acheté sans date d'arrivée est compté
+    // dans les rapports à la date figée de son miroir comptable, mais le
+    // filtre sur `dateArrivee` ne le laissait jamais entrer dans la liste.
+    // On le reprend à la date de ce miroir : liste et rapports disent pareil.
+    const miroirsSansDate = await prisma.depenseManuelle.findMany({
+      where: {
+        userId, auto: true, date: { gte: startOfYear, lte: endOfYear },
+        sourceType: { in: ['achat_animal', 'achat_animal_individuel'] },
+      },
+      select: { sourceType: true, sourceId: true, date: true },
+    })
+    const dateMiroir = (type: string) => new Map(
+      miroirsSansDate.filter((m) => m.sourceType === type && m.sourceId != null).map((m) => [m.sourceId!, m.date]),
+    )
+    const datesLots = dateMiroir('achat_animal')
+    const datesAnimaux = dateMiroir('achat_animal_individuel')
+    const [lotsSansDate, animauxSansDate] = await Promise.all([
+      datesLots.size ? prisma.lotAnimaux.findMany({
+        where: { userId, id: { in: [...datesLots.keys()] }, dateArrivee: null, prixAchatTotal: { not: null } },
+        include: { especeAnimale: { select: { nom: true } } },
+      }) : [],
+      datesAnimaux.size ? prisma.animal.findMany({
+        where: { userId, id: { in: [...datesAnimaux.keys()] }, dateArrivee: null, prixAchat: { not: null }, prixAchatInclusDansLot: false },
+        include: { especeAnimale: { select: { nom: true } } },
+      }) : [],
+    ])
+    achatsLots.push(...lotsSansDate)
+    achatsAnimaux.push(...animauxSansDate)
+
     // Transformer en format unifié
     type UnifiedExpense = {
       id: string
@@ -338,7 +368,7 @@ export async function GET(request: NextRequest) {
         source: 'LotAnimaux',
         sourceId: l.id,
         module: 'elevage',
-        date: (l.dateArrivee || l.createdAt).toISOString(),
+        date: (l.dateArrivee || datesLots.get(l.id) || l.createdAt).toISOString(),
         description: `Achat lot ${l.nom || l.especeAnimale.nom} (${l.quantiteInitiale})`,
         quantite: l.quantiteInitiale,
         unite: 'unité',
@@ -358,7 +388,7 @@ export async function GET(request: NextRequest) {
         source: 'Animal',
         sourceId: a.id,
         module: 'elevage',
-        date: (a.dateArrivee || a.createdAt).toISOString(),
+        date: (a.dateArrivee || datesAnimaux.get(a.id) || a.createdAt).toISOString(),
         description: `Achat ${a.nom || a.especeAnimale.nom}`,
         quantite: 1,
         unite: 'unité',
@@ -449,10 +479,7 @@ export async function GET(request: NextRequest) {
         modeReglement: d.modeReglement ?? null,
         numeroPiece: d.numeroPiece ?? null,
         tauxTVA: d.tauxTVA ?? null,
-        categorie: d.categorie === 'materiel' ? 'Matériel' :
-                   d.categorie === 'carburant' ? 'Carburant' :
-                   d.categorie === 'main_oeuvre' ? 'Main d\'oeuvre' :
-                   d.categorie === 'abonnement' ? 'Abonnement' : 'Autre',
+        categorie: libelleCategorieDepense(d.categorie),
         comptable: d.comptable,
       })
     })

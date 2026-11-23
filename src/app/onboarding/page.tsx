@@ -500,14 +500,14 @@ export default function OnboardingPage() {
   }
 
   const navigation = (opts: { onSuivant: () => void; suivantLabel?: string; passer?: boolean }) => (
-    <div className="flex justify-between px-6 pb-6">
+    <div className="flex flex-wrap justify-between gap-2 px-6 pb-6">
       {indexEtape > 0 ? (
         <Button variant="outline" onClick={precedente} disabled={saving}>
           <ChevronLeft className="h-4 w-4 mr-1" />
           Précédent
         </Button>
       ) : <span />}
-      <div className="flex gap-2">
+      <div className="ml-auto flex flex-wrap justify-end gap-2">
         {opts.passer && (
           <Button variant="ghost" onClick={suivante} disabled={saving}>
             <SkipForward className="h-4 w-4 mr-1" />
@@ -632,8 +632,8 @@ export default function OnboardingPage() {
                     </div>
                   )}
                   <div>
-                    <Label>Zone climatique</Label>
-                    <select
+                    <Label htmlFor="onboarding-zoneClimatique">Zone climatique</Label>
+                    <select id="onboarding-zoneClimatique"
                       className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white"
                       value={s.zoneChoisie}
                       onChange={(e) => set("zoneChoisie", e.target.value as ZoneClimat | "auto")}
@@ -741,8 +741,8 @@ export default function OnboardingPage() {
                         <Input type="number" inputMode="decimal" placeholder="Largeur (m)" value={s.plancheLargeur} onChange={(e) => set("plancheLargeur", e.target.value)} />
                       </div>
                       <div className="flex items-center gap-2">
-                        <Label className="text-xs text-muted-foreground shrink-0">Type de sol</Label>
-                        <select className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm" value={s.plancheSol} onChange={(e) => set("plancheSol", e.target.value as OnboardingState["plancheSol"])}>
+                        <Label htmlFor="onboarding-plancheSol" className="text-xs text-muted-foreground shrink-0">Type de sol</Label>
+                        <select id="onboarding-plancheSol" className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm" value={s.plancheSol} onChange={(e) => set("plancheSol", e.target.value as OnboardingState["plancheSol"])}>
                           {TYPES_SOL_ONBOARDING.map((t) => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </div>
@@ -831,8 +831,8 @@ export default function OnboardingPage() {
                       <ErreurChamp id="facturation-raisonSociale-erreur" message={erreursFacturation.raisonSociale} />
                     </div>
                     <div>
-                      <Label>Forme juridique</Label>
-                      <select className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.formeJuridique} onChange={(e) => set("formeJuridique", e.target.value)}>
+                      <Label htmlFor="onboarding-formeJuridique">Forme juridique</Label>
+                      <select id="onboarding-formeJuridique" className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.formeJuridique} onChange={(e) => set("formeJuridique", e.target.value)}>
                         <option value="EI">Entreprise individuelle</option>
                         <option value="GAEC">GAEC</option>
                         <option value="EARL">EARL</option>
@@ -844,8 +844,8 @@ export default function OnboardingPage() {
                     </div>
                   </div>
                   <div>
-                    <Label>Territoire</Label>
-                    <select className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.territoire} onChange={(e) => onTerritoireChange(e.target.value)}>
+                    <Label htmlFor="onboarding-territoire">Territoire</Label>
+                    <select id="onboarding-territoire" className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.territoire} onChange={(e) => onTerritoireChange(e.target.value)}>
                       {CODES_TERRITOIRES.map((c) => (
                         <option key={c} value={c}>{TERRITOIRES[c].label}</option>
                       ))}
@@ -928,16 +928,16 @@ export default function OnboardingPage() {
                   </div>
                   <div className="grid md:grid-cols-2 gap-3">
                     <div>
-                      <Label>Régime fiscal</Label>
-                      <select className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.regimeFiscal} onChange={(e) => set("regimeFiscal", e.target.value)}>
+                      <Label htmlFor="onboarding-regimeFiscal">Régime fiscal</Label>
+                      <select id="onboarding-regimeFiscal" className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.regimeFiscal} onChange={(e) => set("regimeFiscal", e.target.value)}>
                         <option value="micro-BA">Micro-BA</option>
                         <option value="reel-simplifie">Réel simplifié</option>
                         <option value="reel-normal">Réel normal</option>
                       </select>
                     </div>
                     <div>
-                      <Label>Régime TVA</Label>
-                      <select className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.regimeTva} onChange={(e) => set("regimeTva", e.target.value)}>
+                      <Label htmlFor="onboarding-regimeTva">Régime TVA</Label>
+                      <select id="onboarding-regimeTva" className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.regimeTva} onChange={(e) => set("regimeTva", e.target.value)}>
                         {terr.regimesTva.map((r) => (
                           <option key={r} value={r}>{LABELS_REGIME_TVA[r]}</option>
                         ))}

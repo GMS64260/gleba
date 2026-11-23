@@ -10,6 +10,7 @@ import { ArrowLeft, BookOpen, HelpCircle, Keyboard, MessageSquare, Map, BookCopy
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { RelancerTours } from "@/components/relancer-tours"
+import { GUIDED_TOURS_ENABLED } from "@/lib/guided-tours"
 
 export const metadata = {
   title: "Centre d'aide — Gleba",
@@ -23,10 +24,12 @@ const FAQ = [
         q: "Comment configurer mon exploitation après l'onboarding ?",
         a: "Rendez-vous dans Paramètres > Exploitation pour modifier raison sociale, SIRET, régime fiscal/TVA, coordonnées bancaires et mentions de pied de facture.",
       },
-      {
+      // FB-6U2C9A : les visites guidées sont coupées (`GUIDED_TOURS_ENABLED`) ;
+      // l'aide ne propose de les relancer que si elles peuvent démarrer.
+      ...(GUIDED_TOURS_ENABLED ? [{
         q: "Comment relancer le tour guidé d'un module ?",
         a: "Chaque module a son propre tour Shepherd.js. Utilisez les boutons « Relancer le tour » au bas de cette page (Maraîchage, Verger, Élevage, Comptabilité).",
-      },
+      }] : []),
       {
         q: "Comment naviguer rapidement ?",
         a: "Cmd/Ctrl + K ouvre la recherche globale. Le préfixe `g` puis `m/v/e/c` bascule entre modules. La touche `?` ouvre la page raccourcis. Voir /raccourcis pour la liste complète.",
@@ -171,7 +174,7 @@ export default function AidePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        {GUIDED_TOURS_ENABLED && <Card>
           <CardHeader>
             <CardTitle>Tour guidé</CardTitle>
             <CardDescription>
@@ -181,7 +184,7 @@ export default function AidePage() {
           <CardContent>
             <RelancerTours />
           </CardContent>
-        </Card>
+        </Card>}
 
         <Card>
           <CardHeader>

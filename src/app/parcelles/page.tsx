@@ -152,7 +152,16 @@ export default function ParcellesPage() {
     setDialogOpen(true)
   }
 
+  // FB-YV1HCU — ce que la suppression détache est annoncé par le serveur, seul
+  // à tout compter (arbres morts, objets du plan, capteurs, campagnes…). Le
+  // dialogue additionnait trois compteurs de la liste et en annonçait moins.
+  const [avertissementSuppression, setAvertissementSuppression] = React.useState<string | null>(null)
+  const fermerSuppression = () => {
+    setDeletingParcelle(null)
+    setAvertissementSuppression(null)
+  }
   const handleDelete = (row: ParcelleWithRelations) => {
+    setAvertissementSuppression(null)
     setDeletingParcelle(row)
   }
 
@@ -160,18 +169,21 @@ export default function ParcellesPage() {
     if (!deletingParcelle) return
     setIsDeleting(true)
     try {
-      // Le dialogue a déjà annoncé les entités détachées : confirmation portée
-      // à la route, qui refuse quand même une parcelle d'origine de récoltes
-      // ou de traitements.
-      const res = await fetch(`/api/parcelles/${deletingParcelle.id}?confirme=1`, { method: "DELETE" })
+      // Premier envoi sans confirmation : si la parcelle porte des éléments,
+      // la route répond 409 avec leur décompte, affiché avant le second envoi.
+      const res = await fetch(`/api/parcelles/${deletingParcelle.id}${avertissementSuppression ? "?confirme=1" : ""}`, { method: "DELETE" })
       if (!res.ok) {
         const refus = await res.json().catch(() => null)
+        if (res.status === 409 && refus?.code === "PARCELLE_RATTACHEE" && !avertissementSuppression) {
+          setAvertissementSuppression(refus.error || "Cette parcelle porte des éléments qui seront détachés.")
+          return
+        }
         toast({ variant: "destructive", title: "Suppression impossible", description: refus?.error || "Impossible de supprimer la parcelle" })
-        setDeletingParcelle(null)
+        fermerSuppression()
         return
       }
       toast({ title: "Parcelle supprimée", description: `"${deletingParcelle.nom}" a été supprimée` })
-      setDeletingParcelle(null)
+      fermerSuppression()
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de supprimer la parcelle" })
@@ -271,25 +283,25 @@ export default function ParcellesPage() {
       />
 
       {/* Dialog de confirmation de suppression */}
-      <Dialog open={!!deletingParcelle} onOpenChange={(v) => !v && setDeletingParcelle(null)}>
+      <Dialog open={!!deletingParcelle} onOpenChange={(v) => !v && fermerSuppression()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Supprimer la parcelle</DialogTitle>
             <DialogDescription>
               Supprimer la parcelle &laquo;{deletingParcelle?.nom}&raquo; ?
-              {deletingParcelle && (deletingParcelle._count.planches + deletingParcelle._count.arbres + deletingParcelle._count.lotsAnimaux) > 0 && (
-                <span className="block mt-2 text-amber-600 font-medium">
-                  Attention : {deletingParcelle._count.planches + deletingParcelle._count.arbres + deletingParcelle._count.lotsAnimaux} entité(s) rattachée(s) seront détachées.
+              {avertissementSuppression && (
+                <span role="alert" className="block mt-2 text-amber-700 font-medium">
+                  {avertissementSuppression}
                 </span>
               )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeletingParcelle(null)} disabled={isDeleting}>
+            <Button variant="outline" onClick={fermerSuppression} disabled={isDeleting}>
               Annuler
             </Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={isDeleting}>
-              {isDeleting ? "Suppression..." : "Supprimer"}
+              {isDeleting ? "Suppression..." : avertissementSuppression ? "Supprimer quand même" : "Supprimer"}
             </Button>
           </DialogFooter>
         </DialogContent>

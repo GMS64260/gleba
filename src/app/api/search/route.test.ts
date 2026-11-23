@@ -47,6 +47,23 @@ beforeEach(() => {
 })
 
 describe('GET /api/search?q=', () => {
+  // FB-SQGWSG : « %_ » remontait tous les arbres et toutes les parcelles.
+  it('traite % et _ comme du texte dans tous les modèles, arbres et parcelles compris', async () => {
+    const arbres = vi.fn(async () => [])
+    const parcelles = vi.fn(async () => [])
+    mocks.db.arbre = { findMany: arbres }
+    mocks.db.parcelleGeo = { findMany: parcelles }
+    const res = await GET(new NextRequest('http://localhost/api/search?q=' + encodeURIComponent('%_')))
+    expect(res.status).toBe(200)
+    expect(arbres).toHaveBeenCalled()
+    expect(parcelles).toHaveBeenCalled()
+    for (const appel of [arbres, parcelles]) {
+      const where = JSON.stringify(appel.mock.calls[0])
+      expect(where).toContain(JSON.stringify('\\%\\_'))
+      expect(where).not.toContain('"contains":"%_"')
+    }
+  })
+
   it('conserve le cloisonnement propriétaire et les modules fermés à un membre', async () => {
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
