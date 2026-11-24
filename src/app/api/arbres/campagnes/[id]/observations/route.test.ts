@@ -74,6 +74,16 @@ describe("POST observation de campagne — valeurs numériques", () => {
     expect(await res.json()).toMatchObject({ nbVivants: 75, nbMorts: 5, nbManquants: null, tauxReprise: 75, hauteurMoyenneCm: 12.5 })
   })
 
+  // D44 (2026-11-24) : 125 vivants sur 100 plants donnaient 125 % de reprise.
+  it("refuse plus de plants vivants que de plants plantés", async () => {
+    const res = await post({ nbVivants: "125" })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ champ: "nbVivants" })
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.update).not.toHaveBeenCalled()
+    expect((await post({ nbVivants: "100" })).status).toBe(201)
+  })
+
   it("conserve le calcul de repli sans nombre de plants renseigné", async () => {
     mocks.campagne.mockResolvedValue({ id: 17, nombrePlants: null, datePlantationReelle: new Date("2026-01-15") })
     const res = await post({ nbVivants: "0", nbMorts: "100" })

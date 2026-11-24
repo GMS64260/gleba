@@ -274,7 +274,7 @@ export default function ITCalendrierPage() {
             <div className="flex flex-col lg:flex-row lg:items-end gap-4">
               {/* Zone climatique */}
               <div className="flex-1">
-                <label className="text-xs font-medium text-slate-700 flex items-center gap-1.5 mb-1">
+                <label htmlFor="calendrier-zone-climatique" className="text-xs font-medium text-slate-700 flex items-center gap-1.5 mb-1">
                   <MapPin className="h-3.5 w-3.5 text-emerald-600" />
                   Zone climatique
                   {savingZone && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -283,7 +283,7 @@ export default function ITCalendrierPage() {
                   value={climat?.source === "manuelle" ? climat.zone ?? "auto" : "auto"}
                   onValueChange={changerZone}
                 >
-                  <SelectTrigger className="w-full md:w-72 bg-white">
+                  <SelectTrigger id="calendrier-zone-climatique" className="w-full md:w-72 bg-white">
                     <SelectValue placeholder="Zone climatique" />
                   </SelectTrigger>
                   <SelectContent>

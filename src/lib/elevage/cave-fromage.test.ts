@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  joursAvantEcheanceCave,
   prixConstateFromage,
   sortieCaveDepuisVente,
   stockLotFromage,
@@ -154,3 +155,19 @@ describe('valorisation du stock de cave', () => {
     expect(valoriserStockFromage(crottins, stock, [{ quantite: 1, unite: 'douzaine', prixTotal: 9 }]).prix).toBeNull()
   })
 })
+
+// D37 (2026-11-24) : la cave annonçait « DLUO dépassée » dès le matin du jour
+// de la DLUO. Jours calendaires à Paris, quelle que soit l'heure du serveur.
+describe("joursAvantEcheanceCave", () => {
+  const dluo = new Date("2026-11-24T00:00:00Z")
+  it.each([
+    ["la veille au soir", "2026-11-23T20:00:00Z", 1],
+    ["le jour même, à 00:30 à Paris", "2026-11-23T23:30:00Z", 0],
+    ["le jour même, le matin", "2026-11-24T09:00:00Z", 0],
+    ["le jour même, à 23:30 à Paris", "2026-11-24T22:30:00Z", 0],
+    ["le lendemain", "2026-11-25T08:00:00Z", -1],
+  ])("%s", (_cas, maintenant, attendu) => {
+    expect(joursAvantEcheanceCave(dluo, new Date(maintenant))).toBe(attendu)
+  })
+})
+

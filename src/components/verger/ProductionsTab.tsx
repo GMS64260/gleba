@@ -156,6 +156,8 @@ interface ProductionBois {
   destination: string | null
   dateVente: string | null
   prixVente: number | null
+  /** Avoirs TTC émis sur la facture de la vente directe du lot. */
+  avoirsTTC?: number
   clientId: number | null
   clientNom: string | null
   factureId: number | null
@@ -1329,7 +1331,7 @@ function ProductionBoisSubTab() {
     return sum + (initial > 0 ? (lot.volumeM3 ?? 0) * vente.quantiteNette / initial : 0)
   }, 0)
   const venduPoids = venduProductions.reduce((sum, p) => sum + (quantiteBois(p).unite === 'kg' ? p.poidsKg ?? 0 : 0), 0) + livraisonsBois.filter(r => r.vente.unite === 'kg').reduce((sum, r) => sum + r.vente.quantiteNette, 0)
-  const totalVentes = venduProductions.reduce((sum, p) => sum + (p.prixVente || 0), 0)
+  const totalVentes = venduProductions.reduce((sum, p) => sum + (p.prixVente || 0) - (p.avoirsTTC || 0), 0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

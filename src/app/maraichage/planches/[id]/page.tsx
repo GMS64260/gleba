@@ -135,23 +135,23 @@ export default function PlancheDetailPage({ params }: PageProps) {
   return (
     <div className="container mx-auto p-6">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
             <Link
               href="/maraichage/planches"
-              className="text-slate-500 hover:text-slate-700"
+              className="shrink-0 text-slate-500 hover:text-slate-700"
             >
               Planches
             </Link>
-            <span className="text-slate-400">/</span>
-            <span className="font-medium text-slate-900">{planche.nom || planche.id}</span>
+            <span className="shrink-0 text-slate-400">/</span>
+            <span className="min-w-0 truncate font-medium text-slate-900">{planche.nom || planche.id}</span>
           </div>
-          <h1 className="mt-2 text-2xl font-bold text-slate-900">
+          <h1 className="mt-2 break-words text-2xl font-bold text-slate-900">
             {planche.nom || `Planche ${planche.id}`}
           </h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex max-w-full flex-wrap gap-2">
           <Link
             href={`/maraichage/cultures/new?plancheId=${encodeURIComponent(planche.id)}`}
             className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"

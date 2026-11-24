@@ -202,3 +202,20 @@ export function lotNeSurExploitation(args: {
   return !args.provenance?.trim()
     && args.datesNaissances.some((date) => memeJourUtc(args.dateArrivee, date))
 }
+
+/**
+ * Destination d'un abattage de lot telle qu'elle s'inscrit au registre : le
+ * numéro de l'établissement s'il est saisi, sinon le lieu. Le numéro ne vit
+ * que sur l'abattage (un abattage individuel le recopie sur l'animal, pas un
+ * abattage de lot) : le registre PDF qui ne lisait que `lieu` imprimait « — ».
+ */
+export function destinationAbattage(abattage: {
+  nEtablissementDestination?: string | null
+  lieu?: string | null
+}): string {
+  const numero = abattage.nEtablissementDestination?.trim()
+  if (numero) return numero
+  const lieu = abattage.lieu?.trim()
+  if (!lieu) return ""
+  return lieu.toLowerCase() === "abattoir" ? "Abattoir" : lieu
+}
