@@ -15,11 +15,12 @@
  *
  * Ce module ne choisit pas entre les deux et n'attribue pas de cause à
  * l'écart : il donne la différence et les seules composantes que les données
- * établissent. Limites connues (revue du 2026-10-25) : un lot daté avant le
- * comptage puis vendu, perdu ou consommé après n'est déduit de Gestion des
- * stocks qu'au comptage suivant (seule la vente est datée, par `dateVente`) ;
- * une récolte datée du jour du comptage ou d'avant n'y est pas ajoutée, même
- * saisie après lui. Pur et sans base : l'écran Récoltes l'importe.
+ * établissent. Limite connue (revue du 2026-10-25) : une récolte datée du jour
+ * du comptage ou d'avant n'y est pas ajoutée, même saisie après lui. Depuis le
+ * modèle de stock unique (lot 2, 2026-11-24), un lot compté puis vendu, perdu,
+ * consommé ou donné après le comptage EN est déduit (`sortiesLotsComptes`) :
+ * ce n'est plus une composante de l'écart. Pur et sans base : l'écran
+ * Récoltes l'importe.
  */
 import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
 import { formatQuantite, formatQuantiteParUnite, type QuantiteParUnite } from '@/lib/recolte/quantites'
@@ -32,14 +33,6 @@ export interface LotEnStock {
   unite: string | null
   /** Lot mis en vente sur la boutique : Gestion des stocks ne le compte pas. */
   enBoutique: boolean
-}
-
-/** Un lot vendu (statut `vendu`, `dateVente` renseignée). */
-export interface LotVendu {
-  date: Date | string
-  dateVente: Date | string
-  quantite: number
-  unite: string | null
 }
 
 /** Ce que la comparaison lit du stock de Gestion des stocks (`StockNet`). */
@@ -60,9 +53,7 @@ export interface ComparaisonStockLots {
   lotsEnStock: number
   /** stockGestion − lotsEnStock, 0 sous le seuil de l'unité. */
   ecart: number
-  /** Lots datés jusqu'au comptage, vendus après lui : non déduits de Gestion des stocks. */
-  vendusDepuisComptage: number
-  /** Sorties saisies dans Consommations (depuis le comptage) : aucun lot ne les porte. */
+  /** Part des sorties de Consommations (depuis le comptage) qu'aucun lot ne couvrait. */
   sortiesConsommations: number
   /** Lots en boutique que Gestion des stocks ne compte pas. */
   lotsEnBoutique: number
@@ -84,7 +75,6 @@ const instant = (d: Date | string) => (d instanceof Date ? d : new Date(d)).getT
 export function comparerStockEtLots(
   stock: StockGestion,
   lotsEnStock: LotEnStock[],
-  lotsVendus: LotVendu[] = [],
 ): ComparaisonStockLots {
   const unite = stock.unite
   const comptage = stock.dateInventaire ? instant(stock.dateInventaire) : null
@@ -106,15 +96,6 @@ export function comparerStockEtLots(
     if (lot.enBoutique && apresComptage) enBoutique += lot.quantite
   }
 
-  let vendus = 0
-  if (comptage != null) {
-    for (const v of lotsVendus) {
-      if (dansUnite(v.unite) && instant(v.date) <= comptage && instant(v.dateVente) > comptage) {
-        vendus += v.quantite
-      }
-    }
-  }
-
   const lotsArrondis = arrondiQuantiteStock(lots)
   const ecart = arrondiQuantiteStock(stock.stockNet - lotsArrondis)
   const garder = (q: number) => (ecartSignificatif(q, unite) ? arrondiQuantiteStock(q) : 0)
@@ -124,7 +105,6 @@ export function comparerStockEtLots(
     dateComptage: stock.dateInventaire,
     lotsEnStock: lotsArrondis,
     ecart: garder(ecart),
-    vendusDepuisComptage: garder(vendus),
     sortiesConsommations: garder(stock.detail.consommations),
     lotsEnBoutique: garder(enBoutique),
     autresUnites: Object.fromEntries(
@@ -150,7 +130,7 @@ const jourFr = (d: Date | string) => (d instanceof Date ? d : new Date(d)).toLoc
 
 /** Phrase de limite, dite une fois sous les comparaisons. */
 export const LIMITE_GESTION_STOCKS =
-  "Gestion des stocks repart du dernier comptage : une récolte datée du jour du comptage ou d'avant n'y est pas ajoutée, et un lot récolté avant le comptage puis vendu, perdu ou consommé n'en est déduit qu'au comptage suivant."
+  "Gestion des stocks repart du dernier comptage : une récolte datée du jour du comptage ou d'avant n'y est pas ajoutée."
 
 /**
  * Ligne d'information d'une espèce et ses compléments, sans cause supposée :
@@ -164,12 +144,9 @@ export function lignesComparaison(c: ComparaisonStockLots): { ligne: string; com
   const ligne = `Gestion des stocks : ${formatQuantite(c.stockGestion, u)} (${comptage}) · lots en stock : ${formatQuantite(c.lotsEnStock, u)} · ${ecart}`
 
   const complements: string[] = []
-  if (c.vendusDepuisComptage) {
-    complements.push(`dont ${formatQuantite(c.vendusDepuisComptage, u)} vendus depuis le comptage, non déduits de Gestion des stocks`)
-  }
   if (c.sortiesConsommations) {
     complements.push(
-      `dont ${formatQuantite(c.sortiesConsommations, u)} de sorties saisies dans Consommations${c.dateComptage ? ' depuis le comptage' : ''}, sur aucun lot`,
+      `dont ${formatQuantite(c.sortiesConsommations, u)} de sorties saisies dans Consommations${c.dateComptage ? ' depuis le comptage' : ''} qu'aucun lot ne couvrait`,
     )
   }
   if (c.lotsEnBoutique) {

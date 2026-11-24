@@ -48,6 +48,8 @@ function transactionComplete() {
   return {
     irrigationPlanifiee: compteur(),
     recolte: compteur(),
+    consommation: compteur(),
+    userStockEspece: { updateMany: vi.fn().mockResolvedValue({ count: 3 }) },
     culture: compteur(),
     fertilisation: compteur(),
     analyseSol: compteur(),
@@ -98,7 +100,7 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.success).toBe(true)
-    expect(json.message).toBe("22 enregistrements supprimés")
+    expect(json.message).toBe("24 enregistrements supprimés")
     expect(mocks.transaction).toHaveBeenCalledTimes(1)
   })
 
@@ -110,6 +112,12 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
     await DELETE()
 
     expect(tx.connecteurCapteurs.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } })
+    // Sorties de stock effacées, comptages remis à zéro sans toucher aux réglages de l'espèce.
+    expect(tx.consommation.deleteMany).toHaveBeenCalledWith({ where: { userId: "u1" } })
+    expect(tx.userStockEspece.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1", OR: [{ inventaire: { not: null } }, { dateInventaire: { not: null } }] },
+      data: { inventaire: null, dateInventaire: null },
+    })
   })
 
   it("supprime d'abord le brut des capteurs par lots, hors de la transaction principale", async () => {
@@ -125,7 +133,7 @@ describe("DELETE /api/user/delete-data — compte réel", () => {
     expect(mocks.executeRaw.mock.invocationCallOrder.at(-1)).toBeLessThan(mocks.transaction.mock.invocationCallOrder[0])
     const json = await res.json()
     expect(json.details.mesuresCapteurs).toBe(LOT_SUPPRESSION_MESURES + 7)
-    expect(json.message).toBe(`${22 + LOT_SUPPRESSION_MESURES + 7} enregistrements supprimés`)
+    expect(json.message).toBe(`${24 + LOT_SUPPRESSION_MESURES + 7} enregistrements supprimés`)
   })
 
   it("garde le refus des invités avant toute lecture", async () => {

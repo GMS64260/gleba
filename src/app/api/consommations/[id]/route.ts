@@ -1,11 +1,11 @@
 import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 /**
  * API Routes pour une Consommation spécifique
- * DELETE /api/consommations/[id] - Supprimer une consommation
+ * DELETE /api/consommations/[id] - Annuler une sortie : ses lots reviennent en stock
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { annulerSortieConsommation } from '@/lib/stocks/sortie-consommation'
 import { requireAuthApi } from '@/lib/auth-utils'
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -29,27 +29,11 @@ export async function DELETE(
       )
     }
 
-    // Vérifier existence et propriété
-    const consommation = await prisma.consommation.findFirst({
-      where: {
-        id: consommationId,
-        userId: session!.user.id,
-      },
-    })
+    // Les lots que la sortie avait pris reviennent en stock, puis la ligne est supprimée.
+    const annulation = await annulerSortieConsommation(session!.user.id, consommationId)
+    if (!annulation.ok) return NextResponse.json({ error: annulation.error }, { status: annulation.status })
 
-    if (!consommation) {
-      return NextResponse.json(
-        { error: `Consommation #${id} non trouvée` },
-        { status: 404 }
-      )
-    }
-
-    // Suppression
-    await prisma.consommation.delete({
-      where: { id: consommationId },
-    })
-
-    return NextResponse.json({ success: true, deleted: consommationId })
+    return NextResponse.json({ success: true, deleted: consommationId, lotsRendus: annulation.lotsRendus })
   } catch (error) {
     const conflitStock = messageConflitStockCaisse(error)
     if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })

@@ -3,8 +3,10 @@
 import { useDevise } from "@/hooks/use-devise"
 
 /**
- * Onglet Consommations - Sorties de stock
- * Ventes, dons, autoconsommation
+ * Onglet Consommations - Sorties de stock hors vente : pertes, dons,
+ * consommation personnelle. Une sortie prend les lots de récolte de l'espèce,
+ * du plus ancien au plus récent ; l'annuler les rend au stock. Une vente se
+ * saisit depuis Récoltes > Stock (recette et facture).
  */
 
 import * as React from "react"
@@ -42,6 +44,10 @@ import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projecti
 import { formatQuantite } from "@/lib/recolte/quantites"
 import { uniteSortieAffichee } from "@/lib/stocks/unite-sortie"
 import { symboleDevise, formatMontantDevise } from "@/lib/format-utils"
+import { jourCivilStocke, jourLocalISO } from "@/lib/jour-civil"
+
+/** Une vente ne se saisit pas ici (recette, facture) : voir Récoltes > Stock. */
+const DESTINATION_VENTE = "Vente"
 
 interface Consommation {
   id: number
@@ -53,6 +59,9 @@ interface Consommation {
   prix: number | null
   destinationId: string | null
   notes: string | null
+  /** Part qu'aucun lot ne couvrait ; null (ligne antérieure) = toute la quantité. */
+  quantiteHorsLots?: number | null
+  _count?: { lots: number }
   espece: {
     id: string
     nom?: string | null
@@ -94,13 +103,15 @@ export function ConsommationsTab() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   // Formulaire
-  const [formData, setFormData] = React.useState({
+  const formulaireVide = () => ({
     especeId: '',
     quantite: '',
     prix: '',
     destinationId: '',
     notes: '',
+    date: jourLocalISO(new Date()),
   })
+  const [formData, setFormData] = React.useState(formulaireVide)
 
   // QA cmvgef6ou — l'unité de la sortie est celle du stock de l'espèce,
   // servie par la route (`calculerStocksNet`) : 19 tiges de dahlia étaient
@@ -174,6 +185,10 @@ export function ConsommationsTab() {
           prix: formData.prix ? parseFloat(formData.prix) : undefined,
           destinationId: formData.destinationId || undefined,
           notes: formData.notes || undefined,
+          // Aujourd'hui (jour du navigateur) : pas de date, le serveur garde
+          // l'instant ; un jour envoyé vaudrait minuit et passerait avant un
+          // comptage du même jour en Outre-mer.
+          date: formData.date && formData.date !== jourLocalISO(new Date()) ? formData.date : undefined,
         }),
       })
 
@@ -181,14 +196,20 @@ export function ConsommationsTab() {
         const err = await response.json()
         throw new Error(err.error)
       }
+      const cree: { lots?: unknown[]; horsLots?: number } = await response.json()
+      const nbLots = cree.lots?.length ?? 0
 
       toast({
         title: "Sortie enregistrée",
-        description: `${formatQuantite(parseFloat(formData.quantite), uniteSaisie)} de ${nomEspece(formData.especeId)}`,
+        description: [
+          `${formatQuantite(parseFloat(formData.quantite), uniteSaisie)} de ${nomEspece(formData.especeId)}`,
+          nbLots > 0 ? `prise sur ${nbLots} lot${nbLots > 1 ? "s" : ""} de récolte` : "aucun lot de récolte disponible",
+          cree.horsLots ? `dont ${formatQuantite(cree.horsLots, uniteSaisie)} sans lot` : null,
+        ].filter(Boolean).join(", "),
       })
 
       setDialogOpen(false)
-      setFormData({ especeId: '', quantite: '', prix: '', destinationId: '', notes: '' })
+      setFormData(formulaireVide())
       fetchData()
     } catch (error) {
       toast({
@@ -203,13 +224,13 @@ export function ConsommationsTab() {
 
   // Supprimer consommation
   const handleDelete = async (id: number) => {
-    if (!(await confirmDialog('Supprimer cette sortie de stock ?'))) return
+    if (!(await confirmDialog("Annuler cette sortie ? Les lots de récolte qu'elle a pris reviennent en stock."))) return
 
     try {
       const response = await fetch(`/api/consommations/${id}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Erreur suppression')
 
-      toast({ title: "Sortie supprimée" })
+      toast({ title: "Sortie annulée" })
       fetchData()
     } catch {
       toast({
@@ -273,7 +294,7 @@ export function ConsommationsTab() {
               <DialogHeader>
                 <DialogTitle>Enregistrer une sortie de stock</DialogTitle>
                 <DialogDescription>
-                  Vente, don, autoconsommation...
+                  Perte, don ou consommation personnelle : les lots de récolte de l&apos;espèce sont pris du plus ancien au plus récent. Une vente se saisit depuis Récoltes &gt; Stock.
                 </DialogDescription>
               </DialogHeader>
 
@@ -329,13 +350,24 @@ export function ConsommationsTab() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="date-sortie">Jour de la sortie</Label>
+                  <Input
+                    id="date-sortie"
+                    type="date"
+                    max={jourLocalISO(new Date())}
+                    value={formData.date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="destination">Destination</Label>
                   <Select value={formData.destinationId} onValueChange={(v) => setFormData(prev => ({ ...prev, destinationId: v }))}>
-                    <SelectTrigger>
+                    <SelectTrigger id="destination">
                       <SelectValue placeholder="Choisir une destination" />
                     </SelectTrigger>
                     <SelectContent>
-                      {destinations.map(d => (
+                      {destinations.filter(d => d.id !== DESTINATION_VENTE).map(d => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.id} {d.description && `- ${d.description}`}
                         </SelectItem>
@@ -393,12 +425,18 @@ export function ConsommationsTab() {
                     )}
                     <span className="font-medium break-words">{conso.espece.nom ?? conso.especeId}</span>
                     <Badge variant="secondary" className="text-xs">
-                      {format(new Date(conso.date), "dd MMM yyyy", { locale: fr })}
+                      {format(new Date(`${jourCivilStocke(conso.date) ?? jourLocalISO(new Date(conso.date))}T12:00:00`), "dd MMM yyyy", { locale: fr })}
                     </Badge>
                   </div>
 
                   <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                     <span className="font-medium text-red-600">- {formatQuantite(conso.quantite, conso.unite ?? "kg")}</span>
+                    {(conso._count?.lots ?? 0) > 0 && (
+                      <span className="text-xs">
+                        sur {conso._count!.lots} lot{conso._count!.lots > 1 ? "s" : ""}
+                        {conso.quantiteHorsLots ? `, dont ${formatQuantite(conso.quantiteHorsLots, conso.unite ?? "kg")} sans lot` : ""}
+                      </span>
+                    )}
                     {conso.prix && (
                       <span className="text-green-600">{formatMontant(conso.prix)}</span>
                     )}
@@ -420,6 +458,8 @@ export function ConsommationsTab() {
                 <Button
                   size="sm"
                   variant="ghost"
+                  aria-label="Annuler la sortie"
+                  title="Annuler la sortie : ses lots reviennent en stock"
                   onClick={() => handleDelete(conso.id)}
                   className="text-red-600 hover:text-red-700 hover:bg-red-50"
                 >

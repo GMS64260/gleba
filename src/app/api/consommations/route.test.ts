@@ -20,21 +20,34 @@ const mocks = vi.hoisted(() => ({
   consommationFindMany: vi.fn(),
   mouvementStockCommercialFindMany: vi.fn(),
   mouvementSourceStockRecolteFindMany: vi.fn(),
+  recolteUpdate: vi.fn(),
+  recolteCreate: vi.fn(),
+  consommationUpdate: vi.fn(),
+  consommationFindUniqueOrThrow: vi.fn(),
+  destinationFindUnique: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock('@/lib/prisma', () => ({
-  default: {
+vi.mock('@/lib/prisma', () => {
+  const db: Record<string, unknown> = {
     espece: { findFirst: mocks.especeFindFirst, findMany: mocks.especeFindMany },
     userStockEspece: { findMany: mocks.userStockEspeceFindMany },
     produitBoutique: { findMany: mocks.produitBoutiqueFindMany },
-    recolte: { findMany: mocks.recolteFindMany },
-    consommation: { create: mocks.consommationCreate, findMany: mocks.consommationFindMany },
+    recolte: { findMany: mocks.recolteFindMany, update: mocks.recolteUpdate, create: mocks.recolteCreate },
+    consommation: {
+      create: mocks.consommationCreate, findMany: mocks.consommationFindMany,
+      update: mocks.consommationUpdate, findUniqueOrThrow: mocks.consommationFindUniqueOrThrow,
+    },
+    destination: { findUnique: mocks.destinationFindUnique },
     // Sorties commerciales (livraisons, factures directes) que le stock net retranche.
     mouvementStockCommercial: { findMany: mocks.mouvementStockCommercialFindMany },
     mouvementSourceStockRecolte: { findMany: mocks.mouvementSourceStockRecolteFindMany },
-  },
-}))
+    $executeRaw: vi.fn(async () => 1),
+    $queryRaw: vi.fn(async () => []),
+  }
+  db.$transaction = async (fn: (tx: unknown) => unknown) => fn(db)
+  return { default: db }
+})
 
 import { GET, POST } from './route'
 import { appliquerSurcharges } from '@/lib/recolte/rendement-effectif'
@@ -81,12 +94,23 @@ beforeEach(() => {
   mocks.consommationFindMany.mockResolvedValue([])
   mocks.mouvementStockCommercialFindMany.mockResolvedValue([])
   mocks.mouvementSourceStockRecolteFindMany.mockResolvedValue([])
-  mocks.consommationCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
-    id: 9,
-    ...data,
-    espece: { id: data.especeId, nom: data.especeId, couleur: null, prixKg: null },
+  let creee: Record<string, unknown> = {}
+  mocks.consommationCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+    creee = { id: 9, ...data }
+    return { id: 9 }
+  })
+  mocks.consommationUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+    creee = { ...creee, ...data }
+    return creee
+  })
+  mocks.consommationFindUniqueOrThrow.mockImplementation(async () => ({
+    ...creee,
+    espece: { id: creee.especeId, nom: creee.especeId, couleur: null, prixKg: null },
     destination: null,
   }))
+  mocks.destinationFindUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({ id: where.id }))
+  mocks.recolteCreate.mockImplementation(async () => ({ id: 500 }))
+  mocks.recolteUpdate.mockImplementation(async () => ({}))
 })
 
 describe('POST /api/consommations — unité du stock', () => {

@@ -101,7 +101,7 @@ import {
 interface MonStock {
   stockNet: number
   unite: UniteQuantite
-  detail: { inventaire: number; recoltes: number; consommations: number; sortiesCommerciales?: number; transfertsBoutique?: number }
+  detail: { inventaire: number; recoltes: number; consommations: number; sortiesCommerciales?: number; sortiesLotsComptes?: number; transfertsBoutique?: number }
   autresUnites: Partial<Record<UniteQuantite, number>>
   inventaire: number | null
   dateInventaire: string | null
@@ -1543,8 +1543,8 @@ export default function EditEspecePage() {
                         {monStock == null
                           ? "Aucun stock suivi pour cette espèce chez vous : saisissez un comptage, ou enregistrez une récolte."
                           : monStock.dateInventaire
-                            ? `Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}, puis ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés et ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0), monStock.unite)} sortis.`
-                            : `Sans comptage manuel : ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés en stock, ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0), monStock.unite)} sortis.`}{" "}
+                            ? `Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}, puis ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés et ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0) + (monStock.detail.sortiesLotsComptes || 0), monStock.unite)} sortis.`
+                            : `Sans comptage manuel : ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés en stock, ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0) + (monStock.detail.sortiesLotsComptes || 0), monStock.unite)} sortis.`}{" "}
                         {!!monStock?.detail.transfertsBoutique && <>Solde des transferts avec la boutique : {monStock.detail.transfertsBoutique > 0 ? '+' : ''}{formatQuantite(monStock.detail.transfertsBoutique, monStock.unite)}. </>}
                         Comptez les produits restés à la ferme, hors boutique.{" "}
                         Même stock que{" "}

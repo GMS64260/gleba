@@ -1,15 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { preparerSortieLot } from '@/lib/recolte/sortie-lot'
+import { jourSortie, preparerSortieLot } from '@/lib/recolte/sortie-lot'
 
 const maintenant = new Date('2026-11-24T10:00:00Z')
 const lot = { quantite: 10, unite: 'kg' as string | null, date: new Date('2026-11-20T06:00:00Z') }
 const jour = (iso: string) => new Date(`${iso}T00:00:00.000Z`)
 
 describe('preparerSortieLot', () => {
-  it('sans quantité ni date : le lot entier, au jour de Paris, stocké à minuit UTC', () => {
-    expect(preparerSortieLot(lot, {}, maintenant)).toEqual({ ok: true, quantite: 10, reliquat: 0, date: jour('2026-11-24') })
-    // 23:30 UTC le 24 = 00:30 à Paris le 25.
-    expect(preparerSortieLot(lot, {}, new Date('2026-11-24T23:30:00Z'))).toMatchObject({ date: jour('2026-11-25') })
+  it('sans quantité ni date : le lot entier, à l’instant présent (sortie du jour)', () => {
+    expect(preparerSortieLot(lot, {}, maintenant)).toEqual({ ok: true, quantite: 10, reliquat: 0, date: maintenant })
+    // 23:30 UTC le 24 = 00:30 à Paris le 25 : c'est aujourd'hui à Paris.
+    const minuitPasse = new Date('2026-11-24T23:30:00Z')
+    expect(preparerSortieLot(lot, {}, minuitPasse)).toMatchObject({ date: minuitPasse })
+  })
+
+  it('une sortie d’un jour passé est un jour seul, stocké à minuit UTC ; celle d’aujourd’hui garde l’instant', () => {
+    expect(preparerSortieLot(lot, { dateSortie: jour('2026-11-22') }, maintenant)).toMatchObject({ date: jour('2026-11-22') })
+    expect(preparerSortieLot(lot, { dateSortie: jour('2026-11-24') }, maintenant)).toMatchObject({ date: maintenant })
+  })
+
+  it('jourSortie relit les deux formes au jour de Paris', () => {
+    expect(jourSortie(jour('2026-11-22'))).toBe('2026-11-22')
+    expect(jourSortie(new Date('2026-11-24T23:30:00Z'))).toBe('2026-11-25')
   })
 
   it('partielle : le reliquat est arrondi au millième', () => {
@@ -38,7 +49,7 @@ describe('preparerSortieLot', () => {
     const le = (iso: string) => preparerSortieLot(lot, { quantiteSortie: 1, dateSortie: jour(iso) }, maintenant)
     expect(le('2026-11-19')).toMatchObject({ ok: false, champ: 'dateSortie' })
     expect(le('2026-11-20')).toMatchObject({ ok: true, date: jour('2026-11-20') })
-    expect(le('2026-11-24')).toMatchObject({ ok: true })
+    expect(le('2026-11-24')).toMatchObject({ ok: true, date: maintenant })
     expect(le('2026-11-25')).toMatchObject({ ok: true })
     expect(le('2026-11-26')).toMatchObject({ ok: false, champ: 'dateSortie' })
   })
