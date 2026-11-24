@@ -51,7 +51,6 @@ vi.mock("@/lib/prisma", () => ({
 }))
 vi.mock("@/lib/stocks-helpers", () => ({
   calculerStocksNet: vi.fn(),
-  chargerComparaisonsStockLots: vi.fn(async () => ({})),
   // Lots hors stock de l'espèce (boutique) : rendus par le test au besoin.
   chargerIdsRecoltesHorsStock: mocks.idsHorsStock,
 }))

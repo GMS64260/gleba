@@ -118,7 +118,7 @@ export async function sortirParLots(
     const marque = { statut: sortie.statut, dateSortie: sortie.date, consommationId: sortie.consommationId }
     if (lot.stockDisponibleCommercial != null) {
       // Lot lié à un document : sortie par le journal. Un écart d'inventaire est
-      // saisi à l'instant du comptage, qui le compte déjà (`dateEffetStockCommercial`).
+      // daté et saisi à l'instant du comptage qui l'a constaté.
       const mouvement = await tx.mouvementStockCommercial.create({
         data: {
           userId, nature: sortie.statut, recolteId: lot.id, articleStockType: 'recolte', articleStockId: String(lot.id),
@@ -137,8 +137,7 @@ export async function sortirParLots(
       // La part sortie d'abord (hors stock), puis le lot réduit : le stock de
       // l'espèce ne passe jamais, entre deux écritures, sous ce qu'il vaudra à
       // la fin (les gardes de la caisse le contrôlent à chaque ligne). Même
-      // date ET même instant de saisie que le lot : une part de lot compté reste
-      // comptée (`sortiesLotsComptes` départage par la saisie).
+      // date ET même instant de saisie que le lot : la part garde son histoire.
       const part = await tx.recolte.create({
         data: {
           userId, especeId: lot.especeId, cultureId: lot.cultureId, date: lot.date, createdAt: lot.createdAt,

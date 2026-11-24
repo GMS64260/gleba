@@ -15,7 +15,7 @@ import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import { chargerCaveEnStock } from '@/lib/elevage/stock-cave'
 import prisma from '@/lib/prisma'
 import { disponibleCommercial, quantiteBois } from '@/lib/commercial/stock-types'
-import { calculerStockOeufs, OEUFS_PAR_UNITE } from '@/lib/stocks-helpers'
+import { calculerStockOeufs, chargerIdsRecoltesHorsStock, OEUFS_PAR_UNITE } from '@/lib/stocks-helpers'
 import { arrondiQuantiteStock, computeStocksTotaux, moyennePrix } from '@/lib/stocks/agregation'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
@@ -117,15 +117,16 @@ export async function computeStocksUnifies(userId: string) {
       orderBy: { fertilisantId: 'asc' },
     }),
 
-    // Récoltes potager en stock
-    prisma.recolte.findMany({
-      where: { userId, statut: 'en_stock', produitsBoutique: { none: {} } },
+    // Récoltes potager en stock : les lots du stock de l'espèce (même règle
+    // boutique que lui, `chargerIdsRecoltesHorsStock`), à leur reste.
+    chargerIdsRecoltesHorsStock(userId).then((horsStock) => prisma.recolte.findMany({
+      where: { userId, statut: 'en_stock', ...(horsStock.length > 0 && { id: { notIn: horsStock } }) },
       include: {
         // userId + uniteRendement : la règle de valorisation distingue la
         // fiche d'une espèce personnelle (dans son unité) du catalogue (€/kg).
         espece: { select: { id: true, nom: true, prixKg: true, userId: true, uniteRendement: true } },
       },
-    }),
+    })),
 
     // BUG #8 (QA Camille 2026-05-15) — Cultures Maraîchage actives non
     // encore récoltées : on les remonte comme « stock en cours » pour

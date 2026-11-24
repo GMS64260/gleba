@@ -1,10 +1,9 @@
 /**
- * Revue du 2026-10-20 (QA cmvgef6ou) — une `Consommation` n'a pas d'unité :
- * elle est relue dans l'unité COURANTE du stock de son espèce. Une récolte
- * garde la sienne (`Recolte.unite`) et passe dans `autresUnites` quand la ferme
- * change l'unité ; une sortie enregistrée avant ce changement (2,5 kg) est,
- * elle, retranchée du stock de tiges. Aucune ligne de ce type en base au
- * 2026-10-20 (2 sorties au total, espèce pesée) : défaut latent, pas de reprise.
+ * Revue du 2026-10-20 (QA cmvgef6ou) — une sortie de 2,5 kg enregistrée avant
+ * que la ferme ne compte ses dahlias en tiges ne doit pas retirer de tiges.
+ * Depuis le modèle de stock unique (L4.2, 2026-11-24), le stock est la somme
+ * des lots : une sortie ne compte qu'à travers les lots qu'elle a pris, dans
+ * leur unité. Le cas témoin, longtemps en attente, passe.
  */
 import { describe, expect, it, vi } from 'vitest'
 
@@ -29,11 +28,7 @@ vi.mock('@/lib/prisma', () => ({
 import { calculerStocksNet } from '@/lib/stocks-helpers'
 
 describe('revue cmvgef6ou — sortie en kg antérieure à un passage en tiges', () => {
-  // Cas témoin volontairement en attente (`skip`) : le corriger demande une
-  // colonne d'unité sur `consommations` (migration additive, décision à
-  // prendre, voir le vault Gleba-motifs-bugs § « Une quantité sans unité en
-  // base »). Retirer le `skip` dès que la colonne existe.
-  it.skip("ne retranche pas 2,5 kg d'un stock de tiges", async () => {
+  it("ne retranche pas 2,5 kg d'un stock de tiges", async () => {
     // La ferme a déclaré « mes dahlias se comptent en tiges » APRÈS une sortie
     // de 2,5 kg et une récolte de 4 kg ; puis 20 tiges ont été récoltées.
     mocks.userStockEspeceFindMany.mockImplementation(async (args: { where: { OR?: unknown } }) =>
@@ -46,8 +41,8 @@ describe('revue cmvgef6ou — sortie en kg antérieure à un passage en tiges', 
     )
     mocks.produitBoutiqueFindMany.mockResolvedValue([])
     mocks.recolteFindMany.mockResolvedValue([
-      { quantite: 4, unite: 'kg' },
-      { quantite: 20, unite: 'tige' },
+      { especeId: 'Dahlia', quantite: 4, unite: 'kg', stockDisponibleCommercial: null },
+      { especeId: 'Dahlia', quantite: 20, unite: 'tige', stockDisponibleCommercial: null },
     ])
     mocks.consommationFindMany.mockResolvedValue([{ quantite: 2.5 }])
 
@@ -55,7 +50,7 @@ describe('revue cmvgef6ou — sortie en kg antérieure à un passage en tiges', 
 
     // Récolte en kg : bien mise à part.
     expect(stocks.Dahlia.autresUnites).toEqual({ kg: 4 })
-    // Sortie en kg : constaté 17,5 tiges.
+    // Sortie en kg sans lot : aucune tige retirée (régression : 17,5 tiges).
     expect(stocks.Dahlia).toMatchObject({ unite: 'tige', stockNet: 20 })
   })
 })

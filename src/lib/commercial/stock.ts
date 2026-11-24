@@ -103,7 +103,7 @@ export async function sortirStockCommercial(tx: Tx, userId: string, lignes: Lign
         const lot = await tx.recolte.findFirstOrThrow({ where: { id: Number(a.id), userId } })
         const net = (await calculerStocksNet(userId, lot.especeId, tx))[lot.especeId]
         const disponibleNet = net?.unite === a.unite ? net.stockNet : net?.autresUnites[a.unite as keyof typeof net.autresUnites]
-        if (disponibleNet != null && l.quantite > disponibleNet + 1e-6) throw new ErreurCommerciale(`Le stock net de ${a.nom} est de ${disponibleNet} ${a.unite} après inventaire et consommations. Rapprochez vos lots avant cette livraison.`)
+        if (disponibleNet != null && l.quantite > disponibleNet + 1e-6) throw new ErreurCommerciale(`Le stock de ${a.nom} est de ${disponibleNet} ${a.unite} (somme de ses lots en stock) : cette livraison le dépasse. Recomptez le stock de l’espèce s’il est plus grand.`)
         modifie = await tx.$executeRaw`UPDATE recoltes SET stock_disponible_commercial = COALESCE(stock_disponible_commercial, quantite) - ${l.quantite} WHERE id = ${Number(a.id)} AND user_id = ${userId} AND statut = 'en_stock' AND date <= ${dateLimite} AND NOT EXISTS (SELECT 1 FROM produits_boutique p WHERE p.user_id = ${userId} AND p.recolte_id = ${Number(a.id)}) AND COALESCE(stock_disponible_commercial, quantite) >= ${l.quantite}`
         trace.recolteId = Number(a.id)
       } else if (a.type === 'fruit') {

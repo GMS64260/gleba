@@ -79,9 +79,10 @@ interface StockNetData {
   /** Unité du stock (kg, tige, pièce, botte) : celle de l'espèce pour la ferme. */
   unite?: UniteQuantite
   detail: {
+    /** Chiffre du dernier comptage (affichage). */
     inventaire: number
-    recoltes: number
-    consommations: number
+    /** Nombre de lots en stock : le stock est la somme de leurs restes. */
+    lots: number
   }
 }
 
