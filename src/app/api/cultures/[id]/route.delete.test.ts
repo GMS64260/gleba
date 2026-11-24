@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   venteDeleteMany: vi.fn(),
   invalidateKpi: vi.fn(),
   interventionCount: vi.fn(),
+  lotsSortisCount: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -34,7 +35,7 @@ vi.mock('@/lib/prisma', () => {
     mouvementStockCommercial: { count: mocks.stockCommercialCount },
     intervention: { count: mocks.interventionCount },
     culture: { findFirst: mocks.cultureFindUnique, delete: mocks.cultureDelete },
-    recolte: { findMany: mocks.recolteFindMany },
+    recolte: { findMany: mocks.recolteFindMany, count: mocks.lotsSortisCount },
     venteManuelle: { findMany: mocks.venteFindMany, deleteMany: mocks.venteDeleteMany },
   }
   return { default: { $transaction: (callback: (client: typeof tx) => unknown) => callback(tx) } }
@@ -52,6 +53,8 @@ beforeEach(() => {
   vi.clearAllMocks()
     mocks.stockCommercialCount.mockResolvedValue(0)
   mocks.interventionCount.mockResolvedValue(0)
+  // Lots pris par une sortie de Consommations : aucun par défaut.
+  mocks.lotsSortisCount.mockResolvedValue(0)
   mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
   mocks.cultureFindUnique.mockResolvedValue({ id: 42, especeId: 'Tomate', userId: 'user-1' })
   mocks.venteFindMany.mockResolvedValue([])
@@ -104,6 +107,19 @@ it('refuse de supprimer une culture portant un lot livré par BL, même non fact
   expect(res.status).toBe(409)
   expect((await res.json()).error).toContain('bons ou factures')
   expect(mocks.cultureDelete).not.toHaveBeenCalled()
+})
+
+describe('DELETE /api/cultures/[id] — lots sortis par Consommations (modèle de stock unique)', () => {
+  it('refuse en 409 tant qu’une récolte de la culture est rattachée à une sortie, sans rien supprimer', async () => {
+    mocks.lotsSortisCount.mockResolvedValue(1)
+    mocks.recolteFindMany.mockResolvedValue([])
+    mocks.venteFindMany.mockResolvedValue([])
+    const res = await supprimer()
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/Consommations/)
+    expect(mocks.lotsSortisCount).toHaveBeenCalledWith({ where: { userId: 'user-1', cultureId: 42, consommationId: { not: null } } })
+    expect(mocks.cultureDelete).not.toHaveBeenCalled()
+  })
 })
 
 describe('DELETE /api/cultures/[id] — traitements phytosanitaires (revue du 2026-11-04)', () => {

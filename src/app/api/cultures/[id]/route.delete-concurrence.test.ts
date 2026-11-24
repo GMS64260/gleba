@@ -50,6 +50,8 @@ vi.mock('@/lib/prisma', () => {
     recolte: {
       findMany: async ({ where }: { where: { cultureId: number; userId: string } }) =>
         etat.recoltes.filter((r) => r.cultureId === where.cultureId && r.userId === where.userId).map((r) => ({ ...r })),
+      // Lots pris par une sortie de Consommations : aucun dans ces scénarios.
+      count: async () => 0,
     },
     venteManuelle: {
       findMany: async ({ where }: { where: { userId: string; sourceId: { in: number[] } } }) =>

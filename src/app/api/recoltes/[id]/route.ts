@@ -17,7 +17,7 @@ import prisma from '@/lib/prisma'
 import { modePaiementDepuisReglement } from '@/lib/validations/reglement'
 import { updateRecolteSchema, recoltePatchSchema } from '@/lib/validations'
 import { estSortieRecolte } from '@/lib/validations/recolte'
-import { preparerSortieLot } from '@/lib/recolte/sortie-lot'
+import { jourSortie, preparerSortieLot } from '@/lib/recolte/sortie-lot'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
@@ -41,6 +41,10 @@ type RouteParams = { params: Promise<{ id: string }> }
 // calculerStocksNet (baseline manuel + récoltes en stock − consommations),
 // ce qui supprime le double comptage (audit #28). Les anciens appels à
 // ajusterInventaireEspece ont donc été retirés.
+
+/** Un lot pris par une sortie de Consommations ne se rend au stock que par elle. */
+const MESSAGE_SORTIE_CONSOMMATION =
+  'Ce lot a été sorti par une sortie saisie dans Stocks > Consommations : annulez-la là-bas, ses lots reviendront en stock.'
 
 // GET /api/recoltes/[id]
 export async function GET(
@@ -137,8 +141,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (data.quantite != null && (lot.unite ?? 'kg') !== 'kg' && !Number.isInteger(data.quantite)) {
         throw new ErreurCommerciale('Indiquez une quantité entière dans l’unité de ce lot.', 400)
       }
+      if (lot.consommationId != null && (
+        (data.quantite !== undefined && data.quantite !== lot.quantite) ||
+        (data.especeId !== undefined && data.especeId !== lot.especeId) ||
+        (data.cultureId !== undefined && data.cultureId !== lot.cultureId) ||
+        (data.date !== undefined && jourSortie(data.date) !== jourSortie(lot.date))
+      )) throw new ErreurCommerciale(MESSAGE_SORTIE_CONSOMMATION, 409)
       // Une ligne sortie (perte, consommation, don) ne se redate pas après son jour de sortie.
-      if (data.date && lot.dateSortie && data.date.toISOString().slice(0, 10) > lot.dateSortie.toISOString().slice(0, 10)) {
+      if (data.date && lot.dateSortie && jourSortie(data.date) > jourSortie(lot.dateSortie)) {
         throw new ErreurCommerciale('Ce lot est sorti du stock avant cette date. Remettez-le en stock ou choisissez une date antérieure à sa sortie.', 400)
       }
       if (lot.statut === 'vendu' && (
@@ -248,6 +258,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       const nouvelleSortie = estSortieRecolte(body.statut) && existing.statut !== body.statut
       if ((donnees.quantiteSortie != null || donnees.dateSortie != null) && !nouvelleSortie) {
         return refuser('La quantité et le jour de sortie ne valent que pour une perte, une consommation personnelle ou un don.', 400)
+      }
+      // Lot pris par une sortie de Consommations : elle seule le rend au stock.
+      if (existing.consommationId != null && body.statut !== undefined && body.statut !== existing.statut) {
+        return refuser(MESSAGE_SORTIE_CONSOMMATION, 409)
       }
       if (nouvelleSortie && existing.statut !== 'en_stock') {
         return refuser('Ce lot est déjà sorti du stock. Actualisez les récoltes.', 409)
@@ -386,6 +400,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const userId = session!.user.id
     const resultat = await prisma.$transaction(async tx => {
       const recolte = await verrouillerRecolteLibre(tx, userId, recolteId)
+      if (recolte.consommationId != null) throw new ErreurCommerciale(MESSAGE_SORTIE_CONSOMMATION, 409)
       if (recolte.factureId) {
         const liee = await annulerFactureLiee(tx, userId, recolte.factureId)
         if (!liee.ok) return liee

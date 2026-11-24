@@ -1463,6 +1463,9 @@ model Recolte {
   dateVente         DateTime? @map("date_vente")
   // Jour de la sortie hors vente (perte, consommation personnelle, don) ; null sinon.
   dateSortie        DateTime? @map("date_sortie")
+  // Sortie saisie dans Consommations qui a pris ce lot : l'annuler le rend au stock.
+  consommationId    Int?      @map("consommation_id")
+  consommation      Consommation? @relation(fields: [consommationId], references: [id], onDelete: SetNull)
   // Prix PAR UNITÉ de la récolte (€/kg, €/tige, €/botte…). Le nom historique
   // dit « Kg » ; il est conservé pour ne pas réécrire la chaîne comptable, mais
   // l'unité de référence est `unite`, pas le kilo.
@@ -1487,6 +1490,7 @@ model Recolte {
   @@index([cultureId, date])
   @@index([date])
   @@index([statut])
+  @@index([consommationId])
   @@index([statutBioSnapshot], map: "recoltes_statut_bio_idx")
   @@map("recoltes")
   temoignagesAvis TemoignageRecolte[]
@@ -1535,8 +1539,11 @@ model Consommation {
   quantite      Float        @map("quantite") // dans l’unité figée ci-dessous
   unite         String?      // kg | tige | piece | botte ; NULL historique = kg
   prix          Float?       @map("prix") // € total
+  // Part qu'aucun lot de récolte ne couvrait ; NULL (ligne antérieure) = toute la quantité.
+  quantiteHorsLots Float?    @map("quantite_hors_lots")
   notes         String?      @map("notes")
   createdAt     DateTime     @default(now()) @map("created_at")
+  lots          Recolte[]
 
   @@index([userId])
   @@index([especeId])

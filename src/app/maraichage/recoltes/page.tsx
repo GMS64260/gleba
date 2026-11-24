@@ -10,7 +10,7 @@ import { useDevise } from "@/hooks/use-devise"
 import * as React from "react"
 import Link from "next/link"
 import { format, differenceInCalendarDays } from "date-fns"
-import { jourLocalISO } from "@/lib/jour-civil"
+import { jourCivilStocke, jourLocalISO } from "@/lib/jour-civil"
 import { SelectNatif } from "@/components/ui/select-natif"
 import { fr } from "date-fns/locale"
 import { ArrowLeft, BarChart3, Package, ShoppingCart, Euro, Trash2, AlertTriangle, Plus, RefreshCw, FileText, Clock, Timer } from "lucide-react"
@@ -108,6 +108,8 @@ interface RecolteWithRelations extends PieceAvecDevise {
   dateVente: string | null
   /** Jour d'une sortie hors vente (perte, consommation personnelle, don). */
   dateSortie?: string | null
+  /** Sortie saisie dans Stocks > Consommations qui a pris ce lot : elle seule le rend au stock. */
+  consommationId?: number | null
   prixKg: number | null
   prixTotal: number | null
   clientId: number | null
@@ -503,7 +505,8 @@ export default function RecoltesPage() {
         body: JSON.stringify({
           statut: sortieData.motif,
           quantiteSortie: quantite,
-          dateSortie: sortieData.date || undefined,
+          // Aujourd'hui (jour du navigateur) : pas de date, le serveur garde l'instant.
+          dateSortie: sortieData.date && sortieData.date !== jourLocalISO(new Date()) ? sortieData.date : undefined,
           ...(sortieData.notes.trim() ? { notes: sortieData.notes.trim() } : {}),
         }),
       })
@@ -972,7 +975,8 @@ export default function RecoltesPage() {
                         <TableRow key={r.id}>
                           {/* Jour civil stocké : `new Date(r.date)` reculait d'un jour à l'ouest d'UTC. */}
                           <TableCell>{format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
-                          <TableCell>{r.dateSortie ? format(jourLocal(r.dateSortie), "dd/MM/yyyy", { locale: fr }) : "-"}</TableCell>
+                          {/* Jour seul (minuit UTC) ou instant d'une sortie du jour : `jourCivilStocke` lit les deux. */}
+                          <TableCell>{r.dateSortie ? format(jourLocal(jourCivilStocke(r.dateSortie) ?? r.dateSortie), "dd/MM/yyyy", { locale: fr }) : "-"}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={MOTIFS_SORTIE[r.statut as MotifSortie]?.badge ?? ""}>
                               {MOTIFS_SORTIE[r.statut as MotifSortie]?.libelle ?? r.statut}
@@ -986,9 +990,13 @@ export default function RecoltesPage() {
                           <TableCell className="text-muted-foreground">{r.notes || "-"}</TableCell>
                           <TableCell><BoutonPartagerRecolte recolteId={r.id} /></TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => handleRemettreEnStock(r)}>
-                              Remettre en stock
-                            </Button>
+                            {r.consommationId != null ? (
+                              <span className="text-xs text-muted-foreground">Via Stocks &gt; Consommations</span>
+                            ) : (
+                              <Button variant="ghost" size="sm" onClick={() => handleRemettreEnStock(r)}>
+                                Remettre en stock
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}

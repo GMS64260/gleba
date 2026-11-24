@@ -13,20 +13,30 @@ import { estAuMillieme } from '@/lib/stocks/milliemes'
 
 const EPSILON = 1e-9
 
+/**
+ * Date enregistrée d'une sortie du jour `jour` : l'instant présent si c'est
+ * aujourd'hui (à Paris), pour qu'une sortie saisie après un comptage du même
+ * jour vienne bien après lui ; sinon le jour seul, à minuit UTC, comme la date
+ * d'une récolte saisie. `jourSortie` relit les deux formes.
+ */
+export function instantSortie(jour: string, maintenant: Date = new Date()): Date {
+  return jour === dateIsoFacture(maintenant) ? maintenant : new Date(`${jour}T00:00:00.000Z`)
+}
+
 export type SortieLotPreparee =
   | { ok: true; quantite: number; reliquat: number; date: Date }
   | { ok: false; error: string; champ: 'quantiteSortie' | 'dateSortie' }
 
 /**
- * Jour civil « AAAA-MM-JJ » d'une date du lot ou de la saisie : un jour seul
- * est stocké à minuit UTC et se lit tel quel ; un instant se lit à Paris.
+ * Jour civil « AAAA-MM-JJ » d'une date du lot, de la saisie ou d'une sortie : un
+ * jour seul est stocké à minuit UTC et se lit tel quel ; un instant se lit à Paris.
  */
-const jourCivil = (date: Date): string =>
+export const jourSortie = (date: Date): string =>
   date.getUTCHours() === 0 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0
     ? date.toISOString().slice(0, 10)
     : dateIsoFacture(date)
 
-const lendemain = (jour: string): string =>
+export const lendemain = (jour: string): string =>
   new Date(Date.parse(`${jour}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10)
 
 export function preparerSortieLot(
@@ -58,8 +68,8 @@ export function preparerSortieLot(
   // lendemain de Paris). Borne haute avec un jour de marge, pour la même
   // raison que `apresDemain` ; l'écran, lui, borne au jour du navigateur.
   const aujourdhui = dateIsoFacture(maintenant)
-  const jourLot = jourCivil(lot.date)
-  const jour = saisie.dateSortie ? jourCivil(saisie.dateSortie) : (jourLot > aujourdhui ? jourLot : aujourdhui)
+  const jourLot = jourSortie(lot.date)
+  const jour = saisie.dateSortie ? jourSortie(saisie.dateSortie) : (jourLot > aujourdhui ? jourLot : aujourdhui)
   if (jour < jourLot) {
     return { ok: false, error: 'La sortie ne peut pas être antérieure à la récolte du lot.', champ: 'dateSortie' }
   }
@@ -68,6 +78,5 @@ export function preparerSortieLot(
   }
   // Arrondi au millième : le reliquat d'un lot pesé ne porte pas la bavure du flottant.
   const reliquat = lotEntier ? 0 : Math.round((lot.quantite - quantite) * 1000) / 1000
-  // Le jour de sortie est un jour seul, stocké à minuit UTC comme la date d'une récolte saisie.
-  return { ok: true, quantite, reliquat: reliquat > EPSILON ? reliquat : 0, date: new Date(`${jour}T00:00:00.000Z`) }
+  return { ok: true, quantite, reliquat: reliquat > EPSILON ? reliquat : 0, date: instantSortie(jour, maintenant) }
 }

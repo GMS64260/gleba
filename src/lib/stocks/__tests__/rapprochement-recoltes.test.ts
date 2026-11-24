@@ -38,31 +38,20 @@ describe('comparerStockEtLots', () => {
   it('ticket : 7,5 kg contre 8 kg de lots, écart de −0,5 kg sans cause supposée', () => {
     const c = comparerStockEtLots(radisCompte, quatreLots)
 
-    expect(c).toMatchObject({ stockGestion: 7.5, lotsEnStock: 8, ecart: -0.5, vendusDepuisComptage: 0 })
+    expect(c).toMatchObject({ stockGestion: 7.5, lotsEnStock: 8, ecart: -0.5 })
     expect(lignesComparaison(c)).toEqual({
       ligne: 'Gestion des stocks : 7,5 kg (comptage du 25/10/2026) · lots en stock : 8 kg · écart : −0,5 kg',
       complements: [],
     })
   })
 
-  it('revue : un lot daté avant le comptage et vendu après est nommé, pas pris pour un ajustement', () => {
-    // Le lot du 05/10 est vendu le 26/10 : Gestion des stocks reste à 7,5 kg
-    // (le comptage l'a absorbé), les lots en stock tombent à 6 kg.
-    const enStock = quatreLots.slice(1)
-    const vendus = [{ date: quatreLots[0].date, dateVente: new Date('2026-10-26T10:00:00.000Z'), quantite: 2, unite: null }]
-
-    const c = comparerStockEtLots(radisCompte, enStock, vendus)
-
-    expect(c).toMatchObject({ lotsEnStock: 6, ecart: 1.5, vendusDepuisComptage: 2 })
-    const { ligne, complements } = lignesComparaison(c)
-    expect(ligne).toBe('Gestion des stocks : 7,5 kg (comptage du 25/10/2026) · lots en stock : 6 kg · écart : +1,5 kg')
-    expect(complements).toEqual(['dont 2 kg vendus depuis le comptage, non déduits de Gestion des stocks'])
-    expect([ligne, ...complements].join(' ')).not.toMatch(/ajustement/i)
-  })
-
-  it("une vente datée avant le comptage (le comptage l'a déjà vue) n'est pas nommée", () => {
-    const vendus = [{ date: quatreLots[0].date, dateVente: new Date('2026-10-20T10:00:00.000Z'), quantite: 2, unite: null }]
-    expect(comparerStockEtLots(radisCompte, quatreLots, vendus).vendusDepuisComptage).toBe(0)
+  it('lot compté puis vendu après le comptage : déduit de Gestion des stocks, l’écart ne bouge pas', () => {
+    // Modèle de stock unique, lot 2 : le lot du 05/10 vendu le 26/10 est
+    // retranché du stock compté (7,5 − 2 = 5,5) ; il n'explique plus d'écart.
+    const c = comparerStockEtLots({ ...radisCompte, stockNet: 5.5 }, quatreLots.slice(1))
+    expect(c).toMatchObject({ stockGestion: 5.5, lotsEnStock: 6, ecart: -0.5 })
+    expect(c).not.toHaveProperty('vendusDepuisComptage')
+    expect(lignesComparaison(c).complements).toEqual([])
   })
 
   it('récolte saisie le jour du comptage, après lui : écart dit, aucune composante inventée', () => {
@@ -70,7 +59,7 @@ describe('comparerStockEtLots', () => {
     // stocks, qui ne l'ajoute pas ; elle est bien en stock côté lots.
     const c = comparerStockEtLots(radisCompte, [...quatreLots, lot('2026-10-25', 3)])
 
-    expect(c).toMatchObject({ lotsEnStock: 11, ecart: -3.5, vendusDepuisComptage: 0, lotsEnBoutique: 0 })
+    expect(c).toMatchObject({ lotsEnStock: 11, ecart: -3.5, lotsEnBoutique: 0 })
     expect(lignesComparaison(c).complements).toEqual([])
     expect(LIMITE_GESTION_STOCKS).toContain("une récolte datée du jour du comptage ou d'avant n'y est pas ajoutée")
   })
@@ -86,7 +75,7 @@ describe('comparerStockEtLots', () => {
     expect(lignesComparaison(c)).toEqual({
       ligne: 'Gestion des stocks : 6,8 kg (sans comptage) · lots en stock : 9,5 kg · écart : −2,7 kg',
       complements: [
-        'dont 1,2 kg de sorties saisies dans Consommations, sur aucun lot',
+        "dont 1,2 kg de sorties saisies dans Consommations qu'aucun lot ne couvrait",
         'dont 1,5 kg de lots en boutique, hors Gestion des stocks',
       ],
     })
