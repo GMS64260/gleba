@@ -16,6 +16,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { modePaiementDepuisReglement } from '@/lib/validations/reglement'
 import { updateRecolteSchema, recoltePatchSchema } from '@/lib/validations'
+import { estSortieRecolte } from '@/lib/validations/recolte'
+import { preparerSortieLot } from '@/lib/recolte/sortie-lot'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
@@ -135,6 +137,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (data.quantite != null && (lot.unite ?? 'kg') !== 'kg' && !Number.isInteger(data.quantite)) {
         throw new ErreurCommerciale('Indiquez une quantité entière dans l’unité de ce lot.', 400)
       }
+      // Une ligne sortie (perte, consommation, don) ne se redate pas après son jour de sortie.
+      if (data.date && lot.dateSortie && data.date.toISOString().slice(0, 10) > lot.dateSortie.toISOString().slice(0, 10)) {
+        throw new ErreurCommerciale('Ce lot est sorti du stock avant cette date. Remettez-le en stock ou choisissez une date antérieure à sa sortie.', 400)
+      }
       if (lot.statut === 'vendu' && (
         (data.quantite !== undefined && data.quantite !== lot.quantite) ||
         (data.especeId !== undefined && data.especeId !== lot.especeId) ||
@@ -236,12 +242,30 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (donnees.quantiteVendue != null && donnees.quantiteVendue > existing.quantite + 1e-9) {
         return refuser('La quantité vendue dépasse la quantité disponible du lot.', 400, { champ: 'quantiteVendue' })
       }
+      // Sortie hors vente (perte, consommation personnelle, don) : en tout ou
+      // partie, à son jour. Seul un lot en stock sort ; un lot déjà sorti se
+      // remet d'abord en stock.
+      const nouvelleSortie = estSortieRecolte(body.statut) && existing.statut !== body.statut
+      if ((donnees.quantiteSortie != null || donnees.dateSortie != null) && !nouvelleSortie) {
+        return refuser('La quantité et le jour de sortie ne valent que pour une perte, une consommation personnelle ou un don.', 400)
+      }
+      if (nouvelleSortie && existing.statut !== 'en_stock') {
+        return refuser('Ce lot est déjà sorti du stock. Actualisez les récoltes.', 409)
+      }
+      // Même règle dans l'autre sens : une perte ou un don ne devient pas une
+      // vente sans repasser par le stock (sinon le motif d'origine se perd).
+      if (body.statut === 'vendu' && estSortieRecolte(existing.statut)) {
+        return refuser('Remettez ce lot en stock avant de le vendre.', 409)
+      }
+      const sortie = nouvelleSortie ? preparerSortieLot(existing, donnees) : null
+      if (sortie && !sortie.ok) return refuser(sortie.error, 400, { champ: sortie.champ })
       let quantiteVendue = donnees.quantiteVendue ?? existing.quantite
       if (Math.abs(quantiteVendue - existing.quantite) <= 1e-9) quantiteVendue = existing.quantite
       if (statut === 'vendu' && (existing.unite ?? 'kg') !== 'kg' && !Number.isInteger(quantiteVendue)) {
         return refuser(`Un nombre entier de ${libelleUniteQuantite(existing.unite as UniteQuantite, 2)} est attendu.`, 400, { champ: 'quantiteVendue' })
       }
-      const reliquat = statut === 'vendu' && existing.statut === 'en_stock' ? existing.quantite - quantiteVendue : 0
+      const reliquat = sortie?.ok ? sortie.reliquat
+        : statut === 'vendu' && existing.statut === 'en_stock' ? existing.quantite - quantiteVendue : 0
       if (donnees.clientId != null && !await tx.client.findFirst({ where: { id: donnees.clientId, userId }, select: { id: true } })) {
         return refuser('Client introuvable', 400, { champ: 'clientId' })
       }
@@ -312,13 +336,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         })
         updateData.factureId = facture.id
       }
+      if (sortie?.ok) {
+        updateData.dateSortie = sortie.date
+        // La note de la sortie s'ajoute à celle du lot au lieu de l'effacer.
+        if (typeof donnees.notes === 'string' && donnees.notes && existing.notes) {
+          updateData.notes = `${existing.notes} · ${donnees.notes}`.slice(0, 5000)
+        }
+      }
+      // Remis en stock ou vendu : le jour de sortie ne décrit plus le lot.
+      else if (body.statut !== undefined && !estSortieRecolte(statut)) updateData.dateSortie = null
       if (reliquat > 0) {
-        updateData.quantite = quantiteVendue
+        updateData.quantite = sortie?.ok ? sortie.quantite : quantiteVendue
         await tx.recolte.create({ data: {
           userId, especeId: existing.especeId, cultureId: existing.cultureId,
           date: existing.date, quantite: reliquat, unite: existing.unite, statut: 'en_stock',
           datePeremption: existing.datePeremption, statutBioSnapshot: existing.statutBioSnapshot,
-          notes: `Reliquat non vendu de la récolte #${recolteId}`,
+          // Le reste d'une sortie garde la note du lot : c'est le même produit.
+          notes: sortie?.ok ? existing.notes ?? `Reliquat de la récolte #${recolteId}` : `Reliquat non vendu de la récolte #${recolteId}`,
         } })
       }
       const recolte = await tx.recolte.update({ where: { id: recolteId }, data: updateData,
