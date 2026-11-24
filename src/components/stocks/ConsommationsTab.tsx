@@ -203,8 +203,7 @@ export function ConsommationsTab() {
         title: "Sortie enregistrée",
         description: [
           `${formatQuantite(parseFloat(formData.quantite), uniteSaisie)} de ${nomEspece(formData.especeId)}`,
-          nbLots > 0 ? `prise sur ${nbLots} lot${nbLots > 1 ? "s" : ""} de récolte` : "aucun lot de récolte disponible",
-          cree.horsLots ? `dont ${formatQuantite(cree.horsLots, uniteSaisie)} sans lot` : null,
+          `prise sur ${nbLots} lot${nbLots > 1 ? "s" : ""} de récolte`,
         ].filter(Boolean).join(", "),
       })
 

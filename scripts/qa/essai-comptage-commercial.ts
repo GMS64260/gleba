@@ -47,10 +47,13 @@ async function main() {
     const e2 = await db.espece.create({ data: { userId: u.id, nom: 'Journal après comptage', uniteRendement: 'kg_m2' } })
     const c2 = await db.culture.create({ data: { userId: u.id, especeId: e2.id } })
     const r2 = await db.recolte.create({ data: { userId: u.id, especeId: e2.id, cultureId: c2.id, quantite: 10, unite: 'kg', stockDisponibleCommercial: 8, date: new Date(Date.now() - 172800000) } })
+    // Modèle de stock unique, L4.1 : un comptage antidaté est refusé (il ne
+    // pourrait plus aligner les lots) ; le scénario du journal repris après un
+    // comptage du matin n'a plus d'objet.
     const comptage = new Date(hier.getTime() + 3 * 3600000)
-    await enregistrerInventaireEspece(u.id, e2.id, { stock: 10, dateStock: comptage })
-    await db.mouvementStockCommercial.create({ data: { userId: u.id, recolteId: r2.id, articleStockType: 'recolte', articleStockId: String(r2.id), sourceNom: 'Journal ancien QA', quantite: 2, unite: 'kg', date: hier, createdAt: new Date(hier.getTime() + 4 * 3600000) } })
-    assert.equal((await calculerStocksNet(u.id, e2.id))[e2.id].stockNet, 8)
+    const antidate = await enregistrerInventaireEspece(u.id, e2.id, { stock: 10, dateStock: comptage })
+    assert.equal(antidate.ok, false)
+    void r2
     console.log('Comptage commercial : ancien journal midi→comptage6→net6, sortie après comptage, retours, historique et ancien journal après-midi validés.')
   } finally { await db.user.delete({ where: { id: u.id } }); await db.$disconnect() }
 }

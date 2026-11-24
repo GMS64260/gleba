@@ -42,6 +42,8 @@ vi.mock('@/lib/prisma', () => {
     // Sorties commerciales (livraisons, factures directes) que le stock net retranche.
     mouvementStockCommercial: { findMany: mocks.mouvementStockCommercialFindMany },
     mouvementSourceStockRecolte: { findMany: mocks.mouvementSourceStockRecolteFindMany },
+    // Réservations de la caisse de marché (version privée de `quantitesCaisse`) : aucune.
+    caisseAffectation: { findMany: vi.fn(async () => []) },
     $executeRaw: vi.fn(async () => 1),
     $queryRaw: vi.fn(async () => []),
   }
@@ -113,7 +115,34 @@ beforeEach(() => {
   mocks.recolteUpdate.mockImplementation(async () => ({}))
 })
 
+/**
+ * L4.1 : une sortie doit être couverte par les lots. Ces scénarios portent sur
+ * l'unité : chaque espèce a un lot libre assez grand, dans l'unité demandée.
+ */
+function lotsSuffisants() {
+  // La requête des lots à sortir (`sortirParLots`) lit `createdAt` ; le calcul du stock, non.
+  mocks.recolteFindMany.mockImplementation(async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, boolean> }) =>
+    select?.createdAt
+      ? [{ id: 77, quantite: 100, unite: typeof where.unite === 'string' ? where.unite : 'kg', date: new Date('2026-01-10T00:00:00.000Z'),
+          cultureId: 3, especeId: where.especeId, datePeremption: null, statutBioSnapshot: null, notes: null,
+          createdAt: new Date('2026-01-10T08:00:00.000Z'), stockDisponibleCommercial: null }]
+      : [])
+}
+
+describe('POST /api/consommations — sortie non couverte par les lots (L4.1)', () => {
+  it('refuse en 409 en disant ce qui peut sortir, sans rien garder', async () => {
+    const res = await POST(post({ especeId: 'Tomate', quantite: 2, unite: 'kg' }))
+    expect(res.status).toBe(409)
+    const corps = await res.json()
+    expect(corps.error).toMatch(/^Stock insuffisant dans les lots de récolte : 0 kg peut sortir/)
+    expect(corps.champ).toBe('quantite')
+    expect(mocks.consommationUpdate).not.toHaveBeenCalled()
+  })
+})
+
 describe('POST /api/consommations — unité du stock', () => {
+  beforeEach(lotsSuffisants)
+
   it("enregistre 1 tige de dahlia avec son unité figée, sans conversion", async () => {
     // Corps exact de l'écran : JSON.stringify retire les champs undefined.
     const res = await POST(post({ especeId: 'Dahlia', quantite: 1, unite: 'tige' }))
@@ -191,6 +220,7 @@ describe('POST /api/consommations — unité du stock', () => {
  * `/api/especes` (`appliquerSurcharges`) : on rejoue sa lecture.
  */
 describe('espèce sans stock enregistré : écran et route disent la même unité', () => {
+  beforeEach(lotsSuffisants)
   async function uniteAfficheeParLEcran(especeId: string) {
     // 1. Ce que l'écran charge (fetchData) : sorties et stocks nets...
     const lecture = await (await GET(new NextRequest('http://localhost/api/consommations'))).json()
