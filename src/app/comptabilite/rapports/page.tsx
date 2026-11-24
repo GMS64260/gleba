@@ -594,7 +594,7 @@ export default function RapportsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{stats.revenusParDevise ? enLignes(g => g.revenus) : totauxEnLignes(undefined, stats.revenus)}</p>
+                      <p className="text-xl md:text-3xl font-bold">{stats.revenusParDevise ? enLignes(g => g.revenus) : totauxEnLignes(undefined, stats.revenus)}</p>
                     </CardContent>
                   </Card>
                   <Card className={kpiCardClass("depense")}>
@@ -605,7 +605,7 @@ export default function RapportsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{stats.depensesParDevise ? enLignes(g => g.depenses) : totauxEnLignes(undefined, stats.depenses)}</p>
+                      <p className="text-xl md:text-3xl font-bold">{stats.depensesParDevise ? enLignes(g => g.depenses) : totauxEnLignes(undefined, stats.depenses)}</p>
                     </CardContent>
                   </Card>
                   <Card className={kpiCardClass(unique && unique.benefice < 0 ? "depense" : "revenu")}>
@@ -616,7 +616,7 @@ export default function RapportsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">
+                      <p className="text-xl md:text-3xl font-bold">
                         {unique ? formatEn(Math.abs(unique.benefice), unique.monnaie) : enLignes(g => g.benefice)}
                       </p>
                     </CardContent>
@@ -628,11 +628,11 @@ export default function RapportsPage() {
                     <CardContent>
                       {stats.margePercent === null ? (
                         <>
-                          <p className="text-3xl font-bold">—</p>
+                          <p className="text-xl md:text-3xl font-bold">—</p>
                           <p className="text-xs text-muted-foreground">Indisponible : revenus et dépenses en devises différentes</p>
                         </>
                       ) : (
-                        <p className="text-3xl font-bold">{stats.margePercent}%</p>
+                        <p className="text-xl md:text-3xl font-bold">{stats.margePercent}%</p>
                       )}
                     </CardContent>
                   </Card>
