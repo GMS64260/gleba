@@ -269,3 +269,119 @@ describe("PATCH /api/recoltes/[id] — vente d'une récolte comptée en tiges (Q
     expect(mocks.recolteUpdate).not.toHaveBeenCalled()
   })
 })
+
+// Modèle de stock unique, lot 1 (2026-11-24) : une perte, une consommation
+// personnelle ou un don sort d'un lot en tout ou partie, à son jour. La partie
+// sortie garde la ligne, le reste redevient un lot en stock.
+describe("PATCH /api/recoltes/[id] — sortie hors vente, partielle et datée", () => {
+  const LOT = {
+    ...RECOLTE,
+    quantite: 10,
+    unite: "kg",
+    statut: "en_stock",
+    factureId: null,
+    datePeremption: null,
+    statutBioSnapshot: "AB",
+    espece: { id: "Zinnia", nom: "Zinnia" },
+    culture: { variete: null },
+  }
+  const sortir = (body: Record<string, unknown>) =>
+    PATCH(
+      new Request("http://localhost/api/recoltes/1150", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }) as never,
+      { params: Promise.resolve({ id: "1150" }) },
+    )
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1" } } })
+    mocks.recolteFindUnique.mockResolvedValue(LOT)
+    mocks.recolteUpdate.mockResolvedValue({ id: 1150 })
+  })
+
+  it("don de 3 kg sur 10 : 3 kg sortent à leur jour, 7 kg restent en stock", async () => {
+    const res = await sortir({ statut: "don", quantiteSortie: 3, dateSortie: "2027-02-10" })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).toMatchObject({
+      statut: "don", quantite: 3, dateSortie: new Date("2027-02-10T00:00:00.000Z"),
+    })
+    expect(mocks.recolteCreate.mock.calls[0][0].data).toMatchObject({
+      userId: "u1", especeId: "Zinnia", cultureId: 1174, date: LOT.date, quantite: 7, unite: "kg",
+      statut: "en_stock", statutBioSnapshot: "AB",
+    })
+  })
+
+  it("sans quantité : le lot entier sort, sans reliquat, daté du jour", async () => {
+    const res = await sortir({ statut: "perte" })
+    expect(res.status).toBe(200)
+    const data = mocks.recolteUpdate.mock.calls[0][0].data
+    expect(data).toMatchObject({ statut: "perte", dateSortie: new Date("2027-03-01T00:00:00.000Z") })
+    expect(data).not.toHaveProperty("quantite")
+    expect(mocks.recolteCreate).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["plus que le lot", { statut: "perte", quantiteSortie: 10.5 }, "quantiteSortie"],
+    ["avant la récolte du lot", { statut: "perte", quantiteSortie: 1, dateSortie: "2027-01-19" }, "dateSortie"],
+    ["après demain", { statut: "consomme", quantiteSortie: 1, dateSortie: "2027-03-03" }, "dateSortie"],
+  ])("refuse une sortie %s", async (_cas, body, champ) => {
+    const res = await sortir(body)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ champ })
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+    expect(mocks.recolteCreate).not.toHaveBeenCalled()
+  })
+
+  it("refuse une fraction de botte", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...LOT, unite: "botte" })
+    const res = await sortir({ statut: "don", quantiteSortie: 2.5 })
+    expect(res.status).toBe(400)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("refuse de sortir un lot déjà sorti", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...LOT, statut: "perte" })
+    const res = await sortir({ statut: "don", quantiteSortie: 1 })
+    expect(res.status).toBe(409)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("refuse une quantité de sortie hors d'une sortie", async () => {
+    const res = await sortir({ statut: "en_stock", quantiteSortie: 1 })
+    expect(res.status).toBe(400)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("refuse de vendre un lot sorti sans le remettre en stock", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...LOT, statut: "don", dateSortie: new Date("2027-02-10T00:00:00.000Z") })
+    const res = await sortir({ statut: "vendu", dateVente: "2027-02-20", prixKg: 2, clientNom: "Marché" })
+    expect(res.status).toBe(409)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("refuse de passer une vente en perte sans la remettre en stock", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...LOT, statut: "vendu", prixKg: 2, prixTotal: 20, dateVente: new Date("2027-02-01T00:00:00.000Z"), clientNom: "Marché" })
+    const res = await sortir({ statut: "perte" })
+    expect(res.status).toBe(409)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("la note de la sortie s'ajoute à celle du lot, que le reste conserve", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...LOT, notes: "Planche 4, pour AMAP" })
+    const res = await sortir({ statut: "don", quantiteSortie: 3, notes: "Restos" })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data.notes).toBe("Planche 4, pour AMAP · Restos")
+    expect(mocks.recolteCreate.mock.calls[0][0].data.notes).toBe("Planche 4, pour AMAP")
+  })
+
+  it("remise en stock : le jour de sortie est effacé", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...LOT, statut: "don", dateSortie: new Date("2027-02-10T00:00:00.000Z") })
+    const res = await sortir({ statut: "en_stock" })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).toMatchObject({ statut: "en_stock", dateSortie: null })
+    expect(mocks.recolteCreate).not.toHaveBeenCalled()
+  })
+})

@@ -25,7 +25,16 @@ export const updateRecolteSchema = recolteSchema.extend({ date: z.coerce.date() 
  * respectée. Le but : interdire qu'une « vente fantôme » se crée et fausse
  * tous les KPI (CA moyen, marge, etc.).
  */
-export const statutRecolteEnum = z.enum(['en_stock', 'vendu', 'consomme', 'perte', 'a_completer'])
+export const statutRecolteEnum = z.enum(['en_stock', 'vendu', 'consomme', 'perte', 'don', 'a_completer'])
+
+/**
+ * Sorties de stock hors vente : la partie sortie garde la ligne, le reste
+ * redevient un lot en stock (même scission que la vente partielle).
+ */
+export const STATUTS_SORTIE_RECOLTE = ['perte', 'consomme', 'don'] as const
+export type StatutSortieRecolte = (typeof STATUTS_SORTIE_RECOLTE)[number]
+export const estSortieRecolte = (statut: unknown): statut is StatutSortieRecolte =>
+  (STATUTS_SORTIE_RECOLTE as readonly unknown[]).includes(statut)
 
 export const recoltePatchSchema = z.object({
   statut: statutRecolteEnum.optional(),
@@ -35,6 +44,9 @@ export const recoltePatchSchema = z.object({
   // Vente partielle : quantité réellement vendue (≤ quantité de la récolte).
   // Le reliquat reste en stock (la route PATCH scinde la récolte).
   quantiteVendue: z.number().positive().nullable().optional(),
+  // Sortie partielle hors vente (perte, consommation personnelle, don) et son jour.
+  quantiteSortie: z.number().positive().nullable().optional(),
+  dateSortie: z.coerce.date().nullable().optional(),
   // Recolte.clientId est un Int en base (FK Client.id) — le front envoie un
   // number. L'ancien z.string() faisait échouer TOUT PATCH de vente avec un
   // client existant sélectionné (400 silencieux).

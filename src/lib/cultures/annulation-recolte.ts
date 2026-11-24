@@ -8,6 +8,7 @@ const LIBELLE_STATUT: Record<string, [string, string]> = {
   vendu: ['vendue', 'vendues'],
   consomme: ['consommée', 'consommées'],
   perte: ['perdue', 'perdues'],
+  don: ['donnée', 'données'],
   a_completer: ['à compléter', 'à compléter'],
 }
 
