@@ -4,9 +4,12 @@
  *
  * La consommation est l'en-tête de la sortie (espèce, quantité, jour,
  * destination, prix, note) ; les lots qu'elle a pris lui restent rattachés
- * (`sortirParLots`) et reviennent en stock si elle est annulée. Seule la part
- * qu'aucun lot ne couvre (`quantiteHorsLots`) est retranchée du stock de
- * l'espèce par la consommation elle-même.
+ * (`sortirParLots`) et reviennent en stock si elle est annulée.
+ *
+ * Modèle de stock unique, L4.1 (2026-11-24) : une sortie que les lots libres
+ * ne couvrent pas entièrement est REFUSÉE (409). Le stock d'une espèce va
+ * devenir la somme de ses lots : une part « hors lots » le ferait mentir.
+ * `quantiteHorsLots` reste à 0 ; les lignes antérieures gardent la leur.
  *
  * Une vente ne passe pas par ici : elle crée une recette et, au besoin, une
  * facture, depuis le lot vendu (Récoltes > Stock) ou un bon de livraison.
@@ -19,11 +22,25 @@ import { preparerSortieStock } from '@/lib/stocks/sortie-stock'
 import { rendreLotsConsommation, sortirParLots, type LotSorti } from '@/lib/stocks/sortie-lots'
 import { verrouillerStockCommercial, verrouillerStockNetRecolte } from '@/lib/stocks/verrou-commercial'
 import type { StatutSortieRecolte } from '@/lib/validations/recolte'
-import type { UniteQuantite } from '@/lib/recolte/projection'
+import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { invalidateKpi } from '@/lib/kpi/cache'
 
 /** Destination « Vente » du référentiel : refusée ici, voir `MESSAGE_VENTE_PAR_LOT`. */
 export const DESTINATION_VENTE = 'Vente'
+
+/** Une sortie dépasse ce que les lots libres de l'espèce peuvent céder. */
+class StockLotsInsuffisant extends Error {
+  constructor(readonly disponible: number) {
+    super('STOCK_LOTS_INSUFFISANT')
+  }
+}
+
+export function messageStockLotsInsuffisant(disponible: number, unite: UniteQuantite): string {
+  const q = `${disponible.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ${libelleUniteQuantite(unite, disponible)}`
+  return `Stock insuffisant dans les lots de récolte : ${q} peuvent sortir d'ici (lots en stock, récoltés au plus tard ce jour). `
+    + 'Un lot lié à un bon ou à une facture, publié en boutique ou emporté au marché se sort par son document. '
+    + 'Si le stock réel est plus grand, enregistrez la récolte manquante ou recomptez le stock.'
+}
 
 export const MESSAGE_VENTE_PAR_LOT =
   'Une vente se saisit depuis Récoltes > Stock (bouton Vendre) ou par un bon de livraison : elle y crée la recette et, au besoin, la facture. Consommations enregistre les pertes, les dons et la consommation personnelle.'
@@ -119,11 +136,16 @@ export async function enregistrerSortieConsommation(
       statut,
       consommationId: consommation.id,
     })
-    if (parLots.horsLots > 0) {
-      await tx.consommation.update({ where: { id: consommation.id }, data: { quantiteHorsLots: parLots.horsLots } })
-    }
+    // Tout ou rien : la transaction annule la consommation et les lots déjà pris.
+    if (parLots.horsLots > 0) throw new StockLotsInsuffisant(parLots.couvert)
     return { consommationId: consommation.id, ...parLots }
+  }).catch((erreur: unknown) => {
+    if (erreur instanceof StockLotsInsuffisant) return erreur
+    throw erreur
   })
+  if (resultat instanceof StockLotsInsuffisant) {
+    return { ok: false, status: 409, error: messageStockLotsInsuffisant(resultat.disponible, preparation.unite), champ: 'quantite' }
+  }
   invalidateKpi(userId)
   return {
     ok: true,

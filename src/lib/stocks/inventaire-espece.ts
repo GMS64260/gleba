@@ -42,6 +42,14 @@ export type AjustementLots =
   /** Le comptage trouve moins : la différence sort des lots libres (écart d'inventaire). */
   | { type: 'ecart'; quantite: number; sortiSurLots: number; nonSorti: number }
 
+/** Le comptage trouve moins que les lots, mais une part ne peut pas sortir d'ici. */
+class ComptageNonAlignable extends Error {
+  constructor(nonSorti: number, unite: UniteQuantite) {
+    const q = `${nonSorti.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ${libelleUniteQuantite(unite, nonSorti)}`
+    super(`Ce comptage trouve moins que les lots, mais ${q} de l'écart sont sur des lots liés à un bon ou à une facture, publiés en boutique ou emportés au marché : ils ne peuvent pas sortir d'ici. Recomptez après le retour du marché, ou corrigez par le document.`)
+  }
+}
+
 /** Corps reçu d'un client : `stock` null = « plus de comptage manuel ». */
 export const inventaireEspeceSchema = z.object({
   stock: z.number().finite().min(0).nullable(),
@@ -105,6 +113,11 @@ export async function enregistrerInventaireEspece(
       const unite = (await chargerUnitesStock(userId, [espece.id], tx)).get(espece.id) ?? 'kg'
       const refus = refusInventaire(saisie.stock, unite)
       if (refus) return { ok: false, status: 400, error: refus }
+      // L4.1 : un comptage aligne les lots à l'instant où il est fait ; antidaté,
+      // il ne pourrait plus les aligner (ils ont pu bouger depuis).
+      if (saisie.stock != null && saisie.dateStock) {
+        return { ok: false, status: 400, error: 'Données invalides — dateStock : un comptage se fait au jour même ; recomptez le stock maintenant.' }
+      }
       const comptage = saisie.stock == null
         ? { inventaire: null, dateInventaire: null }
         : { inventaire: saisie.stock, dateInventaire: saisie.dateStock ?? new Date() }
@@ -114,14 +127,16 @@ export async function enregistrerInventaireEspece(
         update: comptage,
         select: { inventaire: true, dateInventaire: true },
       })
-      // Un comptage antidaté (par l'API seulement) ne touche pas les lots : ils
-      // ont pu bouger depuis la date annoncée.
-      const ajustement: AjustementLots = saisie.stock != null && !saisie.dateStock
+      const ajustement: AjustementLots = saisie.stock != null
         ? await ajusterLotsAuComptage(tx, userId, espece.id, unite, saisie.stock, comptage.dateInventaire!)
         : { type: 'aucun' }
+      // L4.1 : un comptage qui ne peut pas aligner tous les lots (une part est
+      // liée à un bon, publiée ou emportée au marché) est refusé en entier.
+      if (ajustement.type === 'ecart' && ajustement.nonSorti > 0) throw new ComptageNonAlignable(ajustement.nonSorti, unite)
       return { ok: true, especeId: espece.id, unite, ligne, ajustement }
     })
   } catch (error) {
+    if (error instanceof ComptageNonAlignable) return { ok: false, status: 409, error: error.message }
     const message = messageConflitStockCaisse(error)
     if (message) return { ok: false, status: 409, error: message }
     throw error

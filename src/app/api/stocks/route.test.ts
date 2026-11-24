@@ -43,6 +43,8 @@ vi.mock("@/lib/prisma", () => ({
       recolte: { findMany: mocks.lotsFindMany, create: mocks.lotCreate, update: mocks.lotUpdate },
       // Lots en boutique, hors stock de l'espèce : aucun.
       produitBoutique: { findMany: vi.fn(async () => []) },
+      // Réservations de la caisse de marché (version privée de `quantitesCaisse`) : aucune.
+      caisseAffectation: { findMany: vi.fn(async () => []) },
     }),
   },
 }))
@@ -223,18 +225,24 @@ describe("PATCH /api/stocks — comptage de stock d'une espèce (type recolte)",
     expect(mocks.lotUpdate).not.toHaveBeenCalled()
   })
 
-  it("un comptage antidaté ne touche pas les lots", async () => {
-    mocks.lotsFindMany.mockResolvedValue([])
-    await patch({ type: "recolte", id: "Dahlia", stock: 4, dateStock: "2026-10-01" })
-    expect(mocks.lotsFindMany).not.toHaveBeenCalled()
+  // L4.1 : un comptage aligne les lots à l'instant où il est fait.
+  it("refuse un comptage antidaté, sans rien écrire", async () => {
+    const response = await patch({ type: "recolte", id: "Dahlia", stock: 4, dateStock: "2026-10-01" })
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/dateStock/)
+    expect(mocks.userStockEspeceUpsert).not.toHaveBeenCalled()
     expect(mocks.lotCreate).not.toHaveBeenCalled()
   })
 
-  it("une date fournie date le comptage", async () => {
-    const response = await patch({ type: "recolte", id: "Dahlia", stock: 4, dateStock: "2026-10-01" })
-    expect(response.status).toBe(200)
-    const args = mocks.userStockEspeceUpsert.mock.calls[0][0]
-    expect(args.update.dateInventaire).toEqual(new Date("2026-10-01"))
+  it("refuse un comptage dont une part de l'écart est sur des lots qui ne sortent pas d'ici", async () => {
+    // 10 tiges en lots, dont 6 entamées par un bon : on en compte 2, il faudrait en sortir 8.
+    mocks.lotsFindMany.mockImplementation(async ({ where }: { where: { stockDisponibleCommercial?: null } }) =>
+      'stockDisponibleCommercial' in where
+        ? [{ id: 1, quantite: 4, unite: "tige", date: new Date("2026-10-01T00:00:00.000Z"), cultureId: 3, especeId: "Dahlia", datePeremption: null, statutBioSnapshot: null, notes: null, createdAt: new Date("2026-10-01T08:00:00.000Z") }]
+        : [{ quantite: 4, stockDisponibleCommercial: null }, { quantite: 10, stockDisponibleCommercial: 6 }])
+    const response = await patch({ type: "recolte", id: "Dahlia", stock: 2 })
+    expect(response.status).toBe(409)
+    expect((await response.json()).error).toMatch(/4 tiges de l'écart sont sur des lots liés à un bon/)
   })
 
   it("2,5 tiges : refus 400 qui nomme `stock`, rien d'écrit", async () => {
