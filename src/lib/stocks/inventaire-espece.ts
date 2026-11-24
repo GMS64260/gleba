@@ -46,7 +46,7 @@ export type AjustementLots =
 class ComptageNonAlignable extends Error {
   constructor(nonSorti: number, unite: UniteQuantite) {
     const q = `${nonSorti.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ${libelleUniteQuantite(unite, nonSorti)}`
-    super(`Ce comptage trouve moins que les lots, mais ${q} de l'écart sont sur des lots liés à un bon ou à une facture, publiés en boutique ou emportés au marché : ils ne peuvent pas sortir d'ici. Recomptez après le retour du marché, ou corrigez par le document.`)
+    super(`Ce comptage trouve moins que les lots, mais ${q} de l'écart ${nonSorti > 1 ? 'sont réservés' : 'est réservé'} au marché en cours : la part emportée ne sort pas d'ici. Recomptez après la clôture du marché.`)
   }
 }
 
@@ -116,11 +116,11 @@ export async function enregistrerInventaireEspece(
       // L4.1 : un comptage aligne les lots à l'instant où il est fait ; antidaté,
       // il ne pourrait plus les aligner (ils ont pu bouger depuis).
       if (saisie.stock != null && saisie.dateStock) {
-        return { ok: false, status: 400, error: 'Données invalides — dateStock : un comptage se fait au jour même ; recomptez le stock maintenant.' }
+        return { ok: false, status: 400, error: 'Données invalides — dateStock : un comptage vaut pour l’instant où il est fait ; recomptez sans date.' }
       }
       const comptage = saisie.stock == null
         ? { inventaire: null, dateInventaire: null }
-        : { inventaire: saisie.stock, dateInventaire: saisie.dateStock ?? new Date() }
+        : { inventaire: saisie.stock, dateInventaire: new Date() }
       const ligne = await tx.userStockEspece.upsert({
         where: { userId_especeId: { userId, especeId: espece.id } },
         create: { userId, especeId: espece.id, ...comptage },
@@ -130,8 +130,8 @@ export async function enregistrerInventaireEspece(
       const ajustement: AjustementLots = saisie.stock != null
         ? await ajusterLotsAuComptage(tx, userId, espece.id, unite, saisie.stock, comptage.dateInventaire!)
         : { type: 'aucun' }
-      // L4.1 : un comptage qui ne peut pas aligner tous les lots (une part est
-      // liée à un bon, publiée ou emportée au marché) est refusé en entier.
+      // L4.1 : un comptage qui ne peut pas aligner tous les lots (une part de
+      // l'écart est réservée au marché en cours) est refusé en entier.
       if (ajustement.type === 'ecart' && ajustement.nonSorti > 0) throw new ComptageNonAlignable(ajustement.nonSorti, unite)
       return { ok: true, especeId: espece.id, unite, ligne, ajustement }
     })
@@ -154,8 +154,9 @@ export async function enregistrerInventaireEspece(
  *   différence (choix B du 2026-11-24 : une cave tenue par comptage, sans
  *   récolte saisie, garde son stock). Daté et saisi à l'instant du comptage :
  *   le comptage le compte déjà, et sa sortie future s'en retranchera.
- * - Moins que les lots : la différence sort des lots LIBRES, du plus ancien au
- *   plus récent, au statut « écart d'inventaire », à l'instant du comptage.
+ * - Moins que les lots : la différence sort des lots LIBRES, du plus récent au
+ *   plus ancien (le stock reste aux plus anciens, comme au catalogue de la
+ *   caisse), au statut « écart d'inventaire », à l'instant du comptage.
  *   Ce que les lots libres ne couvrent pas (lots entamés, réservés au marché)
  *   reste un écart, dit par la comparaison stock / lots.
  */
@@ -196,6 +197,9 @@ export async function ajusterLotsAuComptage(
   }
   const sortie = await sortirParLots(tx, userId, {
     especeId, unite, quantite: -ecart, date, statut: STATUT_ECART_INVENTAIRE, consommationId: null, dateMax: date,
+    // Le manque se prend sur les lots les plus récents : le stock reste aux plus
+    // anciens, comme le répartit le catalogue de la caisse.
+    ordre: 'recents',
   })
   return { type: 'ecart', quantite: -ecart, sortiSurLots: sortie.couvert, nonSorti: sortie.horsLots }
 }
@@ -207,8 +211,7 @@ export function messageAjustementLots(ajustement: AjustementLots, unite: UniteQu
     return `Lots alignés : ${q(ajustement.quantite)} de plus que les lots enregistrés, ajoutés en lot d'inventaire.`
   }
   if (ajustement.type === 'ecart') {
-    return `Lots alignés : ${q(ajustement.sortiSurLots)} sortis des lots en écart d'inventaire`
-      + (ajustement.nonSorti > 0 ? ` ; ${q(ajustement.nonSorti)} restent sur des lots liés à un document ou réservés au marché.` : '.')
+    return `Lots alignés : ${q(ajustement.sortiSurLots)} sortis des lots en écart d'inventaire.`
   }
   return null
 }

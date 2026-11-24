@@ -35,11 +35,11 @@ class StockLotsInsuffisant extends Error {
   }
 }
 
-export function messageStockLotsInsuffisant(disponible: number, unite: UniteQuantite): string {
+function messageStockLotsInsuffisant(disponible: number, unite: UniteQuantite): string {
   const q = `${disponible.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ${libelleUniteQuantite(unite, disponible)}`
-  return `Stock insuffisant dans les lots de récolte : ${q} peuvent sortir d'ici (lots en stock, récoltés au plus tard ce jour). `
-    + 'Un lot lié à un bon ou à une facture, publié en boutique ou emporté au marché se sort par son document. '
-    + 'Si le stock réel est plus grand, enregistrez la récolte manquante ou recomptez le stock.'
+  return `Stock insuffisant dans les lots de récolte : ${disponible > 1 ? `${q} peuvent sortir` : `${q} peut sortir`} à cette date `
+    + '(lots en stock récoltés au plus tard ce jour, hors part réservée au marché). '
+    + 'Si le stock réel est plus grand, enregistrez la récolte manquante, ou recomptez le stock puis saisissez la sortie au jour du comptage ou après.'
 }
 
 export const MESSAGE_VENTE_PAR_LOT =

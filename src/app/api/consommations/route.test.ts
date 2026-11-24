@@ -120,10 +120,12 @@ beforeEach(() => {
  * l'unité : chaque espèce a un lot libre assez grand, dans l'unité demandée.
  */
 function lotsSuffisants() {
-  mocks.recolteFindMany.mockImplementation(async ({ where }: { where: Record<string, unknown> & { OR?: Array<{ unite: string | null }> } }) =>
-    'stockDisponibleCommercial' in where
+  // La requête des lots à sortir (`sortirParLots`) lit `createdAt` ; le calcul du stock, non.
+  mocks.recolteFindMany.mockImplementation(async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, boolean> }) =>
+    select?.createdAt
       ? [{ id: 77, quantite: 100, unite: typeof where.unite === 'string' ? where.unite : 'kg', date: new Date('2026-01-10T00:00:00.000Z'),
-          cultureId: 3, especeId: where.especeId, datePeremption: null, statutBioSnapshot: null, notes: null, createdAt: new Date('2026-01-10T08:00:00.000Z') }]
+          cultureId: 3, especeId: where.especeId, datePeremption: null, statutBioSnapshot: null, notes: null,
+          createdAt: new Date('2026-01-10T08:00:00.000Z'), stockDisponibleCommercial: null }]
       : [])
 }
 
@@ -132,7 +134,7 @@ describe('POST /api/consommations — sortie non couverte par les lots (L4.1)', 
     const res = await POST(post({ especeId: 'Tomate', quantite: 2, unite: 'kg' }))
     expect(res.status).toBe(409)
     const corps = await res.json()
-    expect(corps.error).toMatch(/^Stock insuffisant dans les lots de récolte : 0 kg peuvent sortir/)
+    expect(corps.error).toMatch(/^Stock insuffisant dans les lots de récolte : 0 kg peut sortir/)
     expect(corps.champ).toBe('quantite')
     expect(mocks.consommationUpdate).not.toHaveBeenCalled()
   })
