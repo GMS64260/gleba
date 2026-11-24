@@ -1540,8 +1540,11 @@ model Consommation {
   quantite      Float        @map("quantite") // dans l’unité figée ci-dessous
   unite         String?      // kg | tige | piece | botte ; NULL historique = kg
   prix          Float?       @map("prix") // € total
-  // Part qu'aucun lot de récolte ne couvrait ; NULL (ligne antérieure) = toute la quantité.
-  quantiteHorsLots Float?    @map("quantite_hors_lots")
+  // Colonne historique (L2 à L4.1 : part qu'aucun lot ne couvrait). Plus lue
+  // depuis que le stock est la somme des lots ; hors du client (L5), retirée
+  // de la base par la livraison suivante (L5b), pour que l'image précédente
+  // lise encore le schéma.
+  quantiteHorsLots Float?    @map("quantite_hors_lots") @ignore
   notes         String?      @map("notes")
   createdAt     DateTime     @default(now()) @map("created_at")
   lots          Recolte[]
