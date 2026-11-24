@@ -22,6 +22,7 @@ type Lot = {
   unite: string | null
   statut: string
   dateVente: Date | null
+  createdAt: Date
 }
 
 const COMPTAGE = new Date("2026-10-25T09:30:00.000Z")
@@ -30,15 +31,18 @@ const base = vi.hoisted(() => ({
   comptage: null as null | { especeId: string; inventaire: number; dateInventaire: Date },
 }))
 
-/** Filtre Prisma minimal : égalité, `in`, `gt`, `notIn`, `equals`. */
+/** Filtre Prisma minimal : égalité, `in`, `gt`, `lte`, `notIn`, `equals`, `OR`, `AND`. */
 function correspond(ligne: Record<string, unknown>, where: Record<string, unknown> = {}): boolean {
   return Object.entries(where).every(([champ, cond]) => {
-    const v = ligne[champ]
+    if (champ === "OR") return (cond as Record<string, unknown>[]).some((w) => correspond(ligne, w))
+    if (champ === "AND") return (cond as Record<string, unknown>[]).every((w) => correspond(ligne, w))
+    const v = ligne[champ] ?? null
     if (cond && typeof cond === "object" && !(cond instanceof Date)) {
       const c = cond as Record<string, unknown>
       if ("in" in c && !(c.in as unknown[]).includes(v)) return false
       if ("notIn" in c && (c.notIn as unknown[]).includes(v)) return false
       if ("gt" in c && !(v instanceof Date && v.getTime() > (c.gt as Date).getTime())) return false
+      if ("lte" in c && !(v instanceof Date && v.getTime() <= (c.lte as Date).getTime())) return false
       if ("equals" in c && v !== c.equals) return false
       return true
     }
@@ -84,6 +88,7 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
     consommation: { findMany: vi.fn(async () => []) },
+    destination: { findUnique: vi.fn(async () => null) },
     // Sorties commerciales (livraisons, factures directes) : aucune dans le ticket.
     mouvementStockCommercial: { findMany: vi.fn(async () => []) },
   },
@@ -106,6 +111,7 @@ describe("GET /api/stocks?type=recoltes — lots comparés au stock (ticket cmvn
       especeId: "Radis",
       date: new Date(`${jour}T00:00:00.000Z`),
       quantite: 2,
+      createdAt: new Date(`${jour}T08:00:00.000Z`),
       unite: null,
       statut: "en_stock",
       dateVente: null,
@@ -123,20 +129,30 @@ describe("GET /api/stocks?type=recoltes — lots comparés au stock (ticket cmvn
       dateComptage: COMPTAGE.toISOString(),
       lotsEnStock: 8,
       ecart: -0.5,
-      vendusDepuisComptage: 0,
       sortiesConsommations: 0,
       lotsEnBoutique: 0,
       autresUnites: {},
     })
   })
 
-  it("revue : lot du 05/10 vendu le 26/10, Gestion des stocks reste à 7,5 kg et la vente est nommée", async () => {
+  it("lot du 05/10 compté puis vendu le 26/10 : déduit de Gestion des stocks (5,5 kg), l'écart reste −0,5 kg", async () => {
     Object.assign(base.lots[0], { statut: "vendu", dateVente: new Date("2026-10-26T10:00:00.000Z") })
 
     const r = await radis()
 
-    expect(r.inventaire).toBe(7.5)
-    expect(r.comparaisonLots).toMatchObject({ lotsEnStock: 6, ecart: 1.5, vendusDepuisComptage: 2 })
+    expect(r.inventaire).toBe(5.5)
+    expect(r.comparaisonLots).toMatchObject({ lotsEnStock: 6, ecart: -0.5 })
+    expect(r.comparaisonLots).not.toHaveProperty("vendusDepuisComptage")
+  })
+
+  it("lot compté puis donné après le comptage : déduit comme une vente ; une vente d'avant le comptage ne l'est pas", async () => {
+    Object.assign(base.lots[0], { statut: "don", dateSortie: new Date("2026-10-27T00:00:00.000Z") })
+    Object.assign(base.lots[1], { statut: "vendu", dateVente: new Date("2026-10-20T00:00:00.000Z") })
+
+    const r = await radis()
+
+    expect(r.inventaire).toBe(5.5)
+    expect(r.comparaisonLots).toMatchObject({ lotsEnStock: 4, ecart: 1.5 })
   })
 
   it("récolte saisie le jour du comptage, après lui : non ajoutée à Gestion des stocks, écart dit tel quel", async () => {
@@ -145,6 +161,8 @@ describe("GET /api/stocks?type=recoltes — lots comparés au stock (ticket cmvn
       userId: "u-demo",
       especeId: "Radis",
       date: new Date("2026-10-25T00:00:00.000Z"),
+      // Saisie après le comptage du jour (09:30 UTC).
+      createdAt: new Date("2026-10-25T10:00:00.000Z"),
       quantite: 3,
       unite: null,
       statut: "en_stock",
@@ -154,7 +172,7 @@ describe("GET /api/stocks?type=recoltes — lots comparés au stock (ticket cmvn
     const r = await radis()
 
     expect(r.inventaire).toBe(7.5)
-    expect(r.comparaisonLots).toMatchObject({ lotsEnStock: 11, ecart: -3.5, vendusDepuisComptage: 0 })
+    expect(r.comparaisonLots).toMatchObject({ lotsEnStock: 11, ecart: -3.5 })
   })
 
   it("sans comptage, les lots font le stock : rien à dire", async () => {
