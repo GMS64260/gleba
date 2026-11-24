@@ -49,13 +49,13 @@ export interface ComparaisonStockLots {
   stockGestion: number
   /** Date du comptage dont Gestion des stocks repart (null = aucun). */
   dateComptage: Date | string | null
-  /** Lots en stock dans l'unité du stock, toutes années, boutique comprise. */
+  /** Lots en stock dans l'unité du stock, toutes années, hors boutique. */
   lotsEnStock: number
   /** stockGestion − lotsEnStock, 0 sous le seuil de l'unité. */
   ecart: number
   /** Part des sorties de Consommations (depuis le comptage) qu'aucun lot ne couvrait. */
   sortiesConsommations: number
-  /** Lots en boutique que Gestion des stocks ne compte pas. */
+  /** Lots en boutique, dits à part : ni Gestion des stocks ni l'écart ne les comptent. */
   lotsEnBoutique: number
   /** Lots en stock dans une autre unité que celle du stock : hors Gestion des stocks. */
   autresUnites: QuantiteParUnite
@@ -70,14 +70,11 @@ export function ecartSignificatif(quantite: number, unite: UniteQuantite): boole
   return Math.abs(quantite) >= seuilEcart(unite)
 }
 
-const instant = (d: Date | string) => (d instanceof Date ? d : new Date(d)).getTime()
-
 export function comparerStockEtLots(
   stock: StockGestion,
   lotsEnStock: LotEnStock[],
 ): ComparaisonStockLots {
   const unite = stock.unite
-  const comptage = stock.dateInventaire ? instant(stock.dateInventaire) : null
   const dansUnite = (u: string | null) => (u ?? 'kg') === unite
 
   let lots = 0
@@ -89,11 +86,11 @@ export function comparerStockEtLots(
       autresUnites[u] = (autresUnites[u] ?? 0) + lot.quantite
       continue
     }
-    lots += lot.quantite
-    // Même règle que `calculerStocksNet` : un lot daté jusqu'au comptage est
-    // remplacé par lui ; seuls les suivants sont exclus au titre de la boutique.
-    const apresComptage = comptage == null || instant(lot.date) > comptage
-    if (lot.enBoutique && apresComptage) enBoutique += lot.quantite
+    // Un lot en boutique n'est jamais dans le stock de l'espèce (le comptage se
+    // fait hors boutique et l'aligne sur ses lots hors boutique, modèle de stock
+    // unique L3) : il est dit à part, jamais pris pour un écart.
+    if (lot.enBoutique) enBoutique += lot.quantite
+    else lots += lot.quantite
   }
 
   const lotsArrondis = arrondiQuantiteStock(lots)
@@ -150,7 +147,7 @@ export function lignesComparaison(c: ComparaisonStockLots): { ligne: string; com
     )
   }
   if (c.lotsEnBoutique) {
-    complements.push(`dont ${formatQuantite(c.lotsEnBoutique, u)} de lots en boutique, hors Gestion des stocks`)
+    complements.push(`lots en boutique, comptés à part : ${formatQuantite(c.lotsEnBoutique, u)}`)
   }
   if (Object.keys(c.autresUnites).length > 0) {
     complements.push(`lots dans une autre unité, hors Gestion des stocks : ${formatQuantiteParUnite(c.autresUnites)}`)

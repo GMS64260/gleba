@@ -90,6 +90,15 @@ export async function chargerIdsRecoltesEnBoutique(userId: string, db: Prisma.Tr
 }
 
 /**
+ * Lots de récolte hors du stock de l'espèce (leur stock vit en boutique) :
+ * même règle que `calculerStocksNet`, pour l'alignement au comptage et la
+ * reprise des lots d'inventaire (modèle de stock unique, L3).
+ */
+export async function chargerIdsRecoltesHorsStock(userId: string, db: Prisma.TransactionClient = prisma): Promise<number[]> {
+  return chargerIdsRecoltesEnBoutique(userId, db)
+}
+
+/**
  * Calcule le stock net pour une ou plusieurs especes (per-user)
  * Stock net = Inventaire (à date inventaire) + Σ Récoltes - Σ Consommations
  */

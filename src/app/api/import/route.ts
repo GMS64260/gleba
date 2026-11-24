@@ -172,7 +172,8 @@ interface ImportData {
   recoltes?: Array<{
     id: number
     especeId: string
-    cultureId: number
+    /** null : lot d'inventaire, né d'un comptage (modèle de stock unique). */
+    cultureId: number | null
     date: string
     quantite: number
     /** kg | tige | piece | botte, tel que l'export l'emporte depuis 2026-08-20. */
@@ -961,8 +962,9 @@ export async function POST(request: NextRequest) {
       )
       for (const item of data.recoltes) {
         // Trouver le nouvel ID de la culture
-        const newCultureId = cultureIdMap.get(item.cultureId)
-        if (!newCultureId) continue // Skip si la culture n'a pas été importée
+        // Un lot d'inventaire n'a pas de culture ; un lot de culture non importée est écarté.
+        const newCultureId = item.cultureId == null ? null : cultureIdMap.get(item.cultureId)
+        if (item.cultureId != null && !newCultureId) continue
 
         const especeExists = await tx.espece.findFirst({
           where: whereReferentielCible(item.especeId, userId, isAdmin),
@@ -983,6 +985,8 @@ export async function POST(request: NextRequest) {
             especeId: item.especeId,
             cultureId: newCultureId,
             date: new Date(item.date),
+            // Lot d'inventaire : saisi à sa date, comme à sa création par le comptage.
+            ...(newCultureId == null ? { createdAt: new Date(item.date) } : {}),
             quantite: item.quantite,
             unite,
             notes: item.notes,

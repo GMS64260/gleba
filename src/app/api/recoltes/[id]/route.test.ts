@@ -45,7 +45,7 @@ vi.mock("@/lib/prisma", () => {
   }
 })
 
-import { PATCH, PUT } from "./route"
+import { DELETE, PATCH, PUT } from "./route"
 
 // Horloge figée après les dates du jeu d'essai : une récolte ne se date pas
 // dans le futur, et ces scénarios datent leurs récoltes jusqu'en janvier 2027.
@@ -406,5 +406,63 @@ describe("PATCH /api/recoltes/[id] — lot pris par une sortie de Consommations"
     expect(res.status).toBe(409)
     expect((await res.json()).error).toMatch(/Consommations/)
     expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+})
+
+// Modèle de stock unique, L3 : un lot d'inventaire (né d'un comptage, sans
+// culture) et un écart d'inventaire ne se corrigent que par un comptage.
+describe("lot d'inventaire et écart d'inventaire", () => {
+  const corps = (body: Record<string, unknown>, method = "PATCH") =>
+    new Request("http://localhost/api/recoltes/1150", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) as never
+  const params = { params: Promise.resolve({ id: "1150" }) }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1" } } })
+  })
+
+  it("refuse de remettre en stock un écart d'inventaire", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, quantite: 2, unite: "kg", statut: "ecart", consommationId: null, factureId: null, espece: { id: "Zinnia", nom: "Zinnia" }, culture: null, cultureId: null })
+    const res = await PATCH(corps({ statut: "en_stock" }), params)
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/comptage/)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("refuse de changer la quantité d'un lot d'inventaire depuis la fiche", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, cultureId: null, culture: null, quantite: 24, unite: "kg", statut: "en_stock", consommationId: null })
+    const res = await PUT(corps({ quantite: 20 }, "PUT"), params)
+    expect(res.status).toBe(409)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("la fiche renvoie le même jour : le lot d'inventaire garde l'instant de son comptage", async () => {
+    const instant = new Date("2027-01-20T15:30:00.000Z")
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, cultureId: null, culture: null, date: instant, quantite: 24, unite: "kg", statut: "en_stock", consommationId: null })
+    mocks.recolteUpdate.mockResolvedValue({ id: 1150 })
+    const res = await PUT(corps({ date: "2027-01-20T00:00:00.000Z", quantite: 24, notes: "Cave nord" }, "PUT"), params)
+    expect(res.status).toBe(200)
+    const data = mocks.recolteUpdate.mock.calls[0][0].data
+    expect(data).not.toHaveProperty("date")
+    expect(data).toMatchObject({ notes: "Cave nord" })
+  })
+
+  it("refuse de supprimer un écart d'inventaire, ou d'écrire ce statut à la main", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, quantite: 2, unite: "kg", statut: "ecart", consommationId: null, factureId: null, espece: { id: "Zinnia", nom: "Zinnia" }, culture: { variete: null } })
+    const suppression = await DELETE(new Request("http://localhost/api/recoltes/1150", { method: "DELETE" }) as never, params)
+    expect(suppression.status).toBe(409)
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, quantite: 2, unite: "kg", statut: "en_stock", consommationId: null, factureId: null, espece: { id: "Zinnia", nom: "Zinnia" }, culture: { variete: null } })
+    const forge = await PATCH(corps({ statut: "ecart" }), params)
+    expect(forge.status).toBe(409)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("vend un lot d'inventaire sans délai de traitement à juger ni variété", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, cultureId: null, culture: null, quantite: 24, unite: "kg", statut: "en_stock", consommationId: null, factureId: null, espece: { id: "Zinnia", nom: "Zinnia" } })
+    mocks.recolteUpdate.mockResolvedValue({ id: 1150, statut: "vendu" })
+    mocks.creerFacture.mockResolvedValue({ id: 78 })
+    const res = await PATCH(corps({ statut: "vendu", dateVente: "2027-02-20", prixKg: 2, prixTotal: 48, quantiteVendue: 24, clientNom: "Marché", creerFacture: true }), params)
+    expect(res.status).toBe(200)
+    expect(mocks.creerFacture.mock.calls[0][1].lignes[0].description).toBe("Zinnia")
   })
 })

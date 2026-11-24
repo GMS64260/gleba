@@ -14,6 +14,10 @@
  * `calculerStocksNet` y ajoute les récoltes en stock et retranche les sorties
  * postérieures à sa date. Il se compte dans l'unité du stock de l'espèce
  * (kg, tige, pièce, botte), la même que `chargerUnitesStock` sert aux sorties.
+ *
+ * Modèle de stock unique, L3 (2026-11-24) : un comptage du jour aligne aussi
+ * les LOTS sur le chiffre compté (`ajusterLotsAuComptage`), pour que la somme
+ * des lots dise la même chose que le comptage.
  */
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
@@ -22,6 +26,21 @@ import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { chargerUnitesStock } from '@/lib/stocks/sortie-stock'
 import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
+import { sortirParLots } from '@/lib/stocks/sortie-lots'
+import { STATUT_ECART_INVENTAIRE } from '@/lib/validations/recolte'
+import { chargerIdsRecoltesHorsStock } from '@/lib/stocks-helpers'
+import type { Prisma } from '@prisma/client'
+
+const EPSILON = 1e-9
+const auMillieme = (q: number) => Math.round(q * 1000) / 1000
+
+/** Ce qu'un comptage a fait des lots de l'espèce. */
+export type AjustementLots =
+  | { type: 'aucun' }
+  /** Le comptage trouve plus que les lots : un lot d'inventaire porte la différence. */
+  | { type: 'lot_inventaire'; quantite: number; lotId: number }
+  /** Le comptage trouve moins : la différence sort des lots libres (écart d'inventaire). */
+  | { type: 'ecart'; quantite: number; sortiSurLots: number; nonSorti: number }
 
 /** Corps reçu d'un client : `stock` null = « plus de comptage manuel ». */
 export const inventaireEspeceSchema = z.object({
@@ -37,6 +56,7 @@ export type EnregistrementInventaire =
       especeId: string
       unite: UniteQuantite
       ligne: { inventaire: number | null; dateInventaire: Date | null }
+      ajustement: AjustementLots
     }
   | { ok: false; status: 400 | 404 | 409; error: string }
 
@@ -94,11 +114,86 @@ export async function enregistrerInventaireEspece(
         update: comptage,
         select: { inventaire: true, dateInventaire: true },
       })
-      return { ok: true, especeId: espece.id, unite, ligne }
+      // Un comptage antidaté (par l'API seulement) ne touche pas les lots : ils
+      // ont pu bouger depuis la date annoncée.
+      const ajustement: AjustementLots = saisie.stock != null && !saisie.dateStock
+        ? await ajusterLotsAuComptage(tx, userId, espece.id, unite, saisie.stock, comptage.dateInventaire!)
+        : { type: 'aucun' }
+      return { ok: true, especeId: espece.id, unite, ligne, ajustement }
     })
   } catch (error) {
     const message = messageConflitStockCaisse(error)
     if (message) return { ok: false, status: 409, error: message }
     throw error
   }
+}
+
+/**
+ * Aligne les lots en stock de l'espèce sur le chiffre compté, à l'instant du
+ * comptage (`date`). Lots comptés : ceux du stock de l'espèce (en stock, dans
+ * son unité, datés au plus tard à l'instant du comptage, hors boutique selon
+ * `chargerIdsRecoltesHorsStock`) ; un lot entamé ou publié avec suivi compte
+ * pour son reste (`stockDisponibleCommercial`).
+ *
+ * - Plus que les lots : un LOT D'INVENTAIRE, sans culture, porte la
+ *   différence (choix B du 2026-11-24 : une cave tenue par comptage, sans
+ *   récolte saisie, garde son stock). Daté et saisi à l'instant du comptage :
+ *   le comptage le compte déjà, et sa sortie future s'en retranchera.
+ * - Moins que les lots : la différence sort des lots LIBRES, du plus ancien au
+ *   plus récent, au statut « écart d'inventaire », à l'instant du comptage.
+ *   Ce que les lots libres ne couvrent pas (lots entamés, réservés au marché)
+ *   reste un écart, dit par la comparaison stock / lots.
+ */
+export async function ajusterLotsAuComptage(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  especeId: string,
+  unite: UniteQuantite,
+  compte: number,
+  date: Date,
+): Promise<AjustementLots> {
+  // Mêmes lots que le stock de l'espèce : hors boutique selon sa règle, datés
+  // au plus tard à l'INSTANT du comptage (le stock ajoute ceux d'après).
+  const horsStock = await chargerIdsRecoltesHorsStock(userId, tx)
+  const lots = await tx.recolte.findMany({
+    where: {
+      userId,
+      especeId,
+      statut: 'en_stock',
+      date: { lte: date },
+      ...(horsStock.length > 0 && { id: { notIn: horsStock } }),
+      ...(unite === 'kg' ? { OR: [{ unite: 'kg' }, { unite: null }] } : { unite }),
+    },
+    select: { quantite: true, stockDisponibleCommercial: true },
+  })
+  const enStock = auMillieme(lots.reduce((somme, l) => somme + (l.stockDisponibleCommercial ?? l.quantite), 0))
+  const ecart = auMillieme(compte - enStock)
+  if (Math.abs(ecart) <= EPSILON) return { type: 'aucun' }
+  if (ecart > 0) {
+    const lot = await tx.recolte.create({
+      data: {
+        userId, especeId, cultureId: null, date, createdAt: date, quantite: ecart, unite, statut: 'en_stock',
+        notes: `Lot d'inventaire : stock compté le ${date.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} au-delà des lots enregistrés.`,
+      },
+      select: { id: true },
+    })
+    return { type: 'lot_inventaire', quantite: ecart, lotId: lot.id }
+  }
+  const sortie = await sortirParLots(tx, userId, {
+    especeId, unite, quantite: -ecart, date, statut: STATUT_ECART_INVENTAIRE, consommationId: null, dateMax: date,
+  })
+  return { type: 'ecart', quantite: -ecart, sortiSurLots: sortie.couvert, nonSorti: sortie.horsLots }
+}
+
+/** Phrase de l'écran après un comptage : ce que les lots sont devenus. */
+export function messageAjustementLots(ajustement: AjustementLots, unite: UniteQuantite): string | null {
+  const q = (n: number) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ${libelleUniteQuantite(unite, n)}`
+  if (ajustement.type === 'lot_inventaire') {
+    return `Lots alignés : ${q(ajustement.quantite)} de plus que les lots enregistrés, ajoutés en lot d'inventaire.`
+  }
+  if (ajustement.type === 'ecart') {
+    return `Lots alignés : ${q(ajustement.sortiSurLots)} sortis des lots en écart d'inventaire`
+      + (ajustement.nonSorti > 0 ? ` ; ${q(ajustement.nonSorti)} restent sur des lots liés à un document ou réservés au marché.` : '.')
+  }
+  return null
 }

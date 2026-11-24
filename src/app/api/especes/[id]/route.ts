@@ -107,6 +107,8 @@ export async function GET(
           userId,
           especeId: espece.id,
           date: { gte: new Date(annee, 0, 1), lte: new Date(annee, 11, 31, 23, 59, 59, 999) },
+          // Récolté seulement : un lot d'inventaire (né d'un comptage, sans culture) n'a pas été récolté.
+          cultureId: { not: null },
         },
         _sum: { quantite: true },
       }),

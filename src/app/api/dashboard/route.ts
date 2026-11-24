@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       prisma.espece.count(),
       prisma.arbre.count({ where: filtreArbresVivants(userId) }),
       prisma.recolte.count({
-        where: { userId, date: { gte: startOfYear, lte: finRecoltes } },
+        where: { userId, date: { gte: startOfYear, lte: finRecoltes }, cultureId: { not: null } },
       }),
     ])
 
@@ -67,6 +67,8 @@ export async function GET(request: NextRequest) {
       where: {
         userId,
         date: { gte: startOfYear, lte: endOfYear },
+        // Récolté seulement : un lot d'inventaire (né d'un comptage, sans culture) n'a pas été récolté.
+        cultureId: { not: null },
       },
       _sum: { quantite: true },
     })
@@ -167,6 +169,7 @@ export async function GET(request: NextRequest) {
       where: {
         userId,
         date: { gte: startOfYear, lte: endOfYear },
+        cultureId: { not: null },
       },
       _sum: { quantite: true },
       orderBy: { _sum: { quantite: "desc" } },
@@ -311,12 +314,12 @@ export async function GET(request: NextRequest) {
     // Agréger par planche
     const plancheStats = new Map<string, { totalKg: number; surface: number }>()
     recoltesAvecPlanche.forEach((r) => {
-      const plancheId = r.culture.plancheId
+      const plancheId = r.culture?.plancheId
       if (!plancheId) return
 
       const existing = plancheStats.get(plancheId) || {
         totalKg: 0,
-        surface: r.culture.planche?.surface || 1,
+        surface: r.culture?.planche?.surface || 1,
       }
       existing.totalKg += r.quantite
       plancheStats.set(plancheId, existing)

@@ -39,7 +39,10 @@ export async function chargerRevenusCultures(userId: string, debut: Date, fin: D
     lies.push(lot); legacyParFacture.set(lot.factureId, lies)
   }
   const resultat = new Map<number, RevenuCulture>()
-  const ajouter = (cultureId: number, revenus: number, quantite = 0, unite: string | null = 'kg') => {
+  // Un lot d'inventaire (sans culture) n'a pas de culture à créditer : sa vente
+  // reste dans les totaux, pas dans le revenu d'une culture.
+  const ajouter = (cultureId: number | null, revenus: number, quantite = 0, unite: string | null = 'kg') => {
+    if (cultureId == null) return
     const r = resultat.get(cultureId) ?? { revenus: 0, quantiteVendueParUnite: {} }
     r.revenus += revenus
     if (quantite) ajouterQuantite(r.quantiteVendueParUnite, (unite ?? 'kg') as UniteQuantite, quantite)

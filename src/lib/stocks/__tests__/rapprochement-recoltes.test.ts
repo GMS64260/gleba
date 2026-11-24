@@ -71,14 +71,22 @@ describe('comparerStockEtLots', () => {
 
     const c = comparerStockEtLots(stock, lots)
 
-    expect(c.ecart).toBe(-2.7)
+    // Les lots en boutique sont dits à part, jamais dans l'écart (L3).
+    expect(c.ecart).toBe(-1.2)
     expect(lignesComparaison(c)).toEqual({
-      ligne: 'Gestion des stocks : 6,8 kg (sans comptage) · lots en stock : 9,5 kg · écart : −2,7 kg',
+      ligne: 'Gestion des stocks : 6,8 kg (sans comptage) · lots en stock : 8 kg · écart : −1,2 kg',
       complements: [
         "dont 1,2 kg de sorties saisies dans Consommations qu'aucun lot ne couvrait",
-        'dont 1,5 kg de lots en boutique, hors Gestion des stocks',
+        'lots en boutique, comptés à part : 1,5 kg',
       ],
     })
+  })
+
+  it('après un comptage, un lot en boutique daté d’avant lui ne fait pas d’écart (modèle de stock unique L3)', () => {
+    const lots = [...quatreLots, lot('2026-10-20', 3, { enBoutique: true })]
+    const c = comparerStockEtLots({ ...radisCompte, stockNet: 8 }, lots)
+    expect(c).toMatchObject({ lotsEnStock: 8, ecart: 0, lotsEnBoutique: 3 })
+    expect(comparaisonADire(c)).toBe(false)
   })
 
   it('tiges : « comptage du … · lots en stock : 20 tiges · écart : +5 tiges »', () => {
