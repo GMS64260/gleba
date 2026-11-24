@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), arbres: vi.fn(), exploitation: vi.fn(), dossiers: vi.fn() }))
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), arbres: vi.fn(), exploitation: vi.fn(), dossiers: vi.fn(), depenses: vi.fn() }))
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.auth }))
 // Garder les vrais helpers de suivi : la simulation de Prisma suffit et
 // évite une fabrique partielle périmée ou un import direct de surcharge privée.
@@ -15,7 +15,7 @@ vi.mock('@/lib/comptabilite/projection-reglements', () => ({
 }))
 vi.mock('@/lib/prisma', () => {
   const modele = (nom: string) => ({
-    findMany: nom === 'arbre' ? mocks.arbres : nom === 'cibleReglement' ? mocks.dossiers : async () => [],
+    findMany: nom === 'arbre' ? mocks.arbres : nom === 'cibleReglement' ? mocks.dossiers : nom === 'depenseManuelle' ? mocks.depenses : async () => [],
     findUnique: nom === 'exploitation' ? mocks.exploitation : async () => null,
   })
   return { default: new Proxy({}, { get: (_, nom: string) => modele(nom) }) }
@@ -28,6 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.exploitation.mockResolvedValue({ devise: 'EUR', territoire: 'METROPOLE' })
   mocks.dossiers.mockResolvedValue([])
+  mocks.depenses.mockResolvedValue([])
   mocks.auth.mockResolvedValue({ error: null, session: { user: { id: 'u1' } } })
   mocks.arbres.mockResolvedValue([{ id: 7, nom: 'Poirier QA', prixAchat: 40, fournisseur: null, dateAchat: null, datePlantation: null, createdAt: creation }])
 })
@@ -47,5 +48,30 @@ describe('GET /api/comptabilite/depenses — achat d’arbre sans date', () => {
       where: expect.objectContaining({ userId: 'u1' }),
     }))
     expect(j.stats.parDevise).toEqual([expect.objectContaining({ monnaie: 'EUR', total: 40 })])
+  })
+})
+
+// FB-7C4K9D (2026-11-24) : les frais de marché d'une clôture de caisse sont un
+// miroir automatique sans table d'origine. Les rapports les comptaient, la
+// liste les écartait avec tous les miroirs.
+describe('GET /api/comptabilite/depenses — miroir automatique sans source relue', () => {
+  it('liste les frais de marché de la caisse, comptés et non modifiables', async () => {
+    mocks.arbres.mockResolvedValue([])
+    const frais = { id: 31, date: new Date('2026-06-06T00:00:00Z'), categorie: 'autre', description: 'Frais de marché', montant: 15, module: null, paye: false, auto: true, sourceType: 'caisse', sourceId: null, sourceRef: 'session-1', comptable: true }
+    mocks.depenses.mockImplementation(async ({ where }: { where: { OR?: unknown } }) => (where.OR ? [frais] : []))
+
+    const j = await (await GET(new NextRequest('http://localhost/api/comptabilite/depenses?year=2026'))).json()
+
+    expect(mocks.depenses.mock.calls[0][0].where.OR).toEqual([
+      { auto: { not: true } },
+      { auto: true, sourceType: { in: ['caisse'] } },
+    ])
+    expect(j.data).toEqual([expect.objectContaining({ source: 'DepenseManuelle', sourceId: 31, description: 'Frais de marché', montant: 15, comptable: true, corrigeable: false })])
+    expect(j.stats.totalComptable).toBe(15)
+    // Le dossier de règlement est celui du miroir (caisse, session), pas celui
+    // d'une saisie manuelle : sinon un règlement posé ailleurs serait ignoré.
+    const cles = JSON.stringify(mocks.dossiers.mock.calls.at(-1)?.[0].where.cle.in)
+    expect(cles).toContain('caisse')
+    expect(cles).toContain('session-1')
   })
 })

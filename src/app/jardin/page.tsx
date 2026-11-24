@@ -112,6 +112,7 @@ import { TYPES_ARBRE, couleurTypeArbre } from "@/lib/verger/types-arbre"
 import { libelleVarieteOption } from "@/lib/verger/variete-arbre"
 import { ChampPorteGreffe } from "@/components/verger/ChampPorteGreffe"
 import { MenuDuplicationArbre } from "@/components/verger/MenuDuplicationArbre"
+import { rangJourAnnee } from "@/lib/dates/jours-civils"
 
 interface PlancheWithCulture {
   id: string
@@ -2695,7 +2696,10 @@ function JardinContent() {
               )}
               {selection.length > 0 && (!detailsMobilesOuverts || isPlanFullscreen) && <Button ref={boutonDetailsRef} type="button" variant="secondary" className="absolute right-3 top-16 z-30 min-h-11 max-w-[calc(100%_-_1.5rem)] lg:hidden" aria-controls="details-selection-plan" aria-expanded={false} onClick={() => { setIsPlanFullscreen(false); setDetailsMobilesOuverts(true) }}>Détails de {nomSelection}</Button>}
               {tool !== 'select' && (
-                <div className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/80 py-1.5 pl-3 pr-1.5 text-xs text-white shadow">
+                // En plein écran, le haut porte la barre de zoom : l'indication la
+                // recouvrait et prenait ses taps (FB-NB73H6). Elle passe en bas,
+                // au-dessus de l'astuce des doigts.
+                <div className={`absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/80 py-1.5 pl-3 pr-1.5 text-xs text-white shadow ${isPlanFullscreen ? "bottom-14" : "top-3"}`}>
                   <span className="whitespace-nowrap">
                     {tool === 'measure'
                       ? "Mesure : touchez 2 points du plan"
@@ -2855,10 +2859,8 @@ function JardinContent() {
                   <input
                     type="range"
                     min={0}
-                    max={364}
-                    value={Math.max(0, Math.min(364, Math.floor(
-                      (dateAffichee.getTime() - new Date(dateAffichee.getFullYear(), 0, 1).getTime()) / 86400000
-                    )))}
+                    max={rangJourAnnee(new Date(dateAffichee.getFullYear(), 11, 31))}
+                    value={rangJourAnnee(dateAffichee)}
                     onChange={(e) => {
                       setDateVue(new Date(dateAffichee.getFullYear(), 0, 1 + parseInt(e.target.value)))
                     }}

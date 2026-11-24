@@ -16,6 +16,13 @@ import { sommerParDevise } from '@/lib/comptabilite/totaux-devise'
 import { libelleCategorieDepense } from '@/lib/comptabilite/stats-exercice'
 import type { Devise } from '@/lib/territoires'
 
+/**
+ * Miroirs comptables automatiques dont aucune table d'origine n'est relue par
+ * cette liste : ils y entrent tels quels. Tout autre miroir reste exclu, sa
+ * source (soin, aliment, intervention, achat…) étant déjà listée.
+ */
+const MIROIRS_SANS_SOURCE_RELUE = ['caisse']
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -194,11 +201,15 @@ export async function GET(request: NextRequest) {
 
       // DepenseManuelle (exclure auto=true pour eviter le double comptage
       // avec les sources brutes SoinAnimal, ConsommationAliment, Intervention, etc.)
+      // Exception : un miroir automatique SANS source relue plus haut n'a que
+      // cette ligne. Les frais de marché d'une clôture de caisse étaient
+      // comptés par les rapports et introuvables ici, donc impossibles à
+      // régler (FB-7C4K9D).
       prisma.depenseManuelle.findMany({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
-          auto: { not: true },
+          OR: [{ auto: { not: true } }, { auto: true, sourceType: { in: MIROIRS_SANS_SOURCE_RELUE } }],
         },
         orderBy: { date: 'desc' },
       }),
@@ -464,9 +475,9 @@ export async function GET(request: NextRequest) {
         id: `depense-${d.id}`,
         source: 'DepenseManuelle',
         sourceId: d.id,
-        // La requête ci-dessus exclut déjà `auto`, toute ligne restante est
-        // une saisie manuelle.
-        corrigeable: true,
+        // Une saisie manuelle se corrige ici ; un miroir automatique (frais
+        // de marché) se corrige à sa source, le serveur refuse de le modifier.
+        corrigeable: !d.auto,
         module: d.module || 'autre',
         date: d.date.toISOString(),
         description: d.description,
@@ -507,9 +518,10 @@ export async function GET(request: NextRequest) {
     // n'ont jamais de règlement.
     const exploitation = await prisma.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } })
     const devise = deviseCouranteExploitation(exploitation)
+    const identitesManuelles = new Map(depensesManuelles.map((d) => [d.id, d]))
     const cleDossier = (e: UnifiedExpense): string | null =>
       e.source === 'DepenseManuelle'
-        ? cleDossierDepense({ id: e.sourceId, auto: false, sourceType: null, sourceId: null, sourceRef: null })
+        ? cleDossierDepense(identitesManuelles.get(e.sourceId) ?? { id: e.sourceId, auto: false, sourceType: null, sourceId: null, sourceRef: null })
         : MIROIR_DEPENSE_PAR_SOURCE[e.source]
           ? cleDossierDepenseSource(MIROIR_DEPENSE_PAR_SOURCE[e.source], e.sourceId)
           : null

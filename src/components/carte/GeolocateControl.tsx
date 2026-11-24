@@ -78,8 +78,11 @@ export default function GeolocateControl() {
     )
   }, [map, marker])
 
+  // bottom-20 : la bulle de l'assistant (48 px, à 1 rem du bas de la carte) est
+  // peinte au-dessus de la carte et recouvrait ce bouton, dont le tap ouvrait
+  // l'assistant (FB-T1CA7P).
   return (
-    <div className="absolute bottom-6 right-3 z-[1000]">
+    <div className="absolute bottom-20 right-3 z-[1000]">
       <button
         type="button"
         onClick={handleGeolocate}

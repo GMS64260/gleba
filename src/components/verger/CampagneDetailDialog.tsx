@@ -561,7 +561,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       <div>
                         <Label className="text-xs">Plants vivants</Label>
-                        <Input type="number" value={obsForm.nbVivants} onChange={(e) => setObsForm({ ...obsForm, nbVivants: e.target.value })} className="h-8" />
+                        <Input type="number" min={0} step={1} max={campagne.nombrePlants ?? undefined} value={obsForm.nbVivants} onChange={(e) => setObsForm({ ...obsForm, nbVivants: e.target.value })} className="h-8" />
                       </div>
                       <div>
                         <Label className="text-xs">Morts</Label>

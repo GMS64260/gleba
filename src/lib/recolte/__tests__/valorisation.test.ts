@@ -19,6 +19,7 @@ import { delegueMemoire, jeuReferentiel, sessionDe, MOI, AUTRE, type Ligne } fro
 const etat = vi.hoisted(() => ({
   recolte: null as unknown,
   culture: null as unknown,
+  lotsTransformes: [] as unknown[],
   requireAuthApi: vi.fn(),
 }))
 
@@ -28,7 +29,8 @@ vi.mock('@/lib/prisma', () => {
   const vide = new Proxy({}, { get: () => vi.fn(async () => []) })
   return {
     default: new Proxy({}, {
-      get: (_cible, modele) => (modele === 'recolte' ? etat.recolte : modele === 'culture' ? etat.culture : vide),
+      get: (_cible, modele) => (modele === 'recolte' ? etat.recolte : modele === 'culture' ? etat.culture
+        : modele === 'lotTransforme' ? { findMany: vi.fn(async () => etat.lotsTransformes) } : vide),
     }),
   }
 })
@@ -254,6 +256,24 @@ describe('Récoltes > Stock et Comptabilité > Stocks unifiés donnent la même 
     expect(somme(dahlias)).toBe(29.4)
     expect(ligne?.valeur).toBe(29.4)
     expect(ligne?.valeurMethode).toBe('au prix de vente moyen (90 jours, 2 ventes)')
+  })
+
+  // FB-NKQ6RK (2026-11-24) : la transformation retire les fruits de leur lot et
+  // rien ne remplaçait la ligne : le jus disparaissait des stocks globaux.
+  it('produits transformés du verger : une ligne par lot, valorisée à son prix unitaire', async () => {
+    etat.lotsTransformes = [
+      { id: 4, produit: 'Jus de pomme', numLot: 'T-2026-004', unite: 'L', stockDisponibleCommercial: 60, prixUnitaire: 3.5 },
+      { id: 5, produit: 'Compote', numLot: 'T-2026-005', unite: 'pot', stockDisponibleCommercial: 12, prixUnitaire: null },
+    ]
+    try {
+      const stocks = (await computeStocksUnifies(MOI)).data
+      expect(stocks.find((s) => s.id === 'transforme-4')).toMatchObject({
+        module: 'verger', categorie: 'Produits transformés', nom: 'Jus de pomme (lot T-2026-004)', stock: 60, unite: 'L', valeur: 210,
+      })
+      expect(stocks.find((s) => s.id === 'transforme-5')).toMatchObject({ stock: 12, valeur: null })
+    } finally {
+      etat.lotsTransformes = []
+    }
   })
 
   it('espèce personnelle en tiges, prix de fiche 1,50 €/tige, aucune vente : 6 tiges = 9,00 €', async () => {

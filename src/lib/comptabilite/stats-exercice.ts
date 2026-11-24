@@ -6,9 +6,9 @@
 import prisma from '@/lib/prisma'
 import { bucketModuleCompta } from '@/lib/comptabilite/modules'
 import { getKpiCompta } from '@/lib/kpi'
-import { bornesExerciceKpi, chargerLignesDepensesDevise, chargerMensuelComptaParDevise, STATUTS_FACTURE_HORS_VENTES } from '@/lib/kpi/compta'
+import { bornesExerciceKpi, chargerLignesDepensesDevise, chargerMensuelComptaParDevise } from '@/lib/kpi/compta'
 import { monnaieImpayee, ventilerImpayeesParDevise } from '@/lib/comptabilite/ventilation-impayees'
-import { deviseCouranteExploitation, monnaieFacture } from '@/lib/comptabilite/devise-reglement'
+import { deviseCouranteExploitation } from '@/lib/comptabilite/devise-reglement'
 import { monnaieVente, monnaieCommande, SELECT_CONTEXTE_FISCAL_VENTE } from '@/lib/comptabilite/devise-vente'
 import {
   chargerDevisesDossiers,
@@ -22,7 +22,7 @@ import {
 } from '@/lib/comptabilite/devise-ecritures'
 import { estPresent, soustraireParDevise, sommerParDevise, totalSiUneDevise, type TotalDevise } from '@/lib/comptabilite/totaux-devise'
 import type { Devise } from '@/lib/territoires'
-import { montantBoisAvoir } from '@/lib/comptabilite/avoirs-bois'
+import { chargerAvoirsBois } from '@/lib/comptabilite/avoirs-bois.server'
 import { chargerEncoursCompta } from '@/lib/comptabilite/encours'
 import { STATUTS_COMMANDES_EN_ATTENTE } from '@/lib/comptabilite/alertes'
 
@@ -462,32 +462,8 @@ export async function calculerStatsExercice(userId: string, year: number, asOf: 
     type === 'autre_ruche' ? 'Autre produit de la ruche' : type
   // Avoirs de l'exercice sur une facture qui porte du bois : la part « Bois »
   // suit le total et le module Verger, qui les déduisent déjà (FB-8Y5FFX).
-  const avoirsBois = await prisma.facture.findMany({
-    where: {
-      userId, type: 'avoir', statut: { notIn: STATUTS_FACTURE_HORS_VENTES },
-      date: { gte: startOfYear, lte: endOfYear },
-      factureOrigineRef: { productionsBois: { some: {} } },
-    },
-    select: {
-      totalTTC: true, date: true, emetteurSnapshot: true,
-      lignes: { select: { montantTTC: true, articleStockType: true } },
-      factureOrigineRef: { select: {
-        lignes: { select: { articleStockType: true } },
-        _count: { select: { ventesProduits: true, abattages: true, recoltesArbres: true, commandesBoutique: true } },
-      } },
-    },
-  })
-  const partsAvoirsBois = avoirsBois.map((a) => {
-    const origine = a.factureOrigineRef
-    const origineToutBois = !!origine
-      && Object.values(origine._count).every((n) => n === 0)
-      && origine.lignes.every((l) => !l.articleStockType || l.articleStockType === 'bois')
-    return {
-      categorie: 'Bois', couleur: COLORS.bois,
-      montant: -montantBoisAvoir({ totalTTC: a.totalTTC, lignes: a.lignes, origineToutBois }),
-      monnaie: monnaieFacture(a.emetteurSnapshot, a.date),
-    }
-  }).filter((p) => p.montant !== 0)
+  const partsAvoirsBois = (await chargerAvoirsBois(userId, { date: { gte: startOfYear, lte: endOfYear } }))
+    .map((a) => ({ categorie: 'Bois', couleur: COLORS.bois, montant: -a.montant, monnaie: a.monnaie }))
   const partsCategorie: Array<{ categorie: string; montant: number; couleur: string; monnaie: Devise | null }> = [
     ...ventesElevage.map((v) => ({
       categorie: libelleTypeElevage(v.type),

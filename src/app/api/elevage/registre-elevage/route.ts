@@ -22,7 +22,7 @@ import {
   acteurReglementaire,
   journaliserEvenementReglementaire,
 } from '@/lib/elevage/audit-reglementaire'
-import { animalNeSurExploitation, empreinteDeclaration } from '@/lib/elevage/declarations-reglementaires'
+import { animalNeSurExploitation, destinationAbattage, empreinteDeclaration } from '@/lib/elevage/declarations-reglementaires'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import {
   dessinerEnteteTableauPdf,
@@ -202,7 +202,7 @@ export async function GET(request: NextRequest) {
       ident: tetes > 0 ? `Lot #${l.id} (×${tetes})` : `Lot #${l.id} (soldé)`,
       lot: l.nom || `Lot #${l.id}`,
       origine: '',
-      destination: '',
+      destination: l.nExploitationDestination || '',
       motif: tetes > 0 ? 'Réforme' : 'Réforme, têtes déjà sorties',
     })
   }
@@ -214,7 +214,7 @@ export async function GET(request: NextRequest) {
       ident: `Lot #${a.lotId} (×${a.quantite})`,
       lot: a.lot?.nom || `Lot #${a.lotId}`,
       origine: '',
-      destination: a.lieu === 'abattoir' ? 'Abattoir' : '',
+      destination: destinationAbattage(a),
       motif: `Abattage${a.destination === 'vente' ? ' (vente)' : a.destination === 'auto_consommation' ? ' (autoconsommation)' : a.destination === 'don' ? ' (don)' : ''}`,
     })
   }

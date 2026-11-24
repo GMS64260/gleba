@@ -203,3 +203,17 @@ const arrondirPrix = (prix: PrixConstateFromage): PrixConstateFromage => ({
   montant: arrondirEuros(prix.montant),
   unite: prix.unite,
 })
+
+const jourParisIso = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })
+
+/**
+ * Jours calendaires (à Paris) avant une DLC ou une DLUO : 0 le jour même,
+ * négatif seulement à partir du lendemain. L'écart d'instants arrondi vers le
+ * bas annonçait « dépassée » dès le matin du jour de l'échéance, alors que la
+ * vente reste permise ce jour-là (`refusVenteFromage`).
+ */
+export function joursAvantEcheanceCave(echeance: Date | string, maintenant: Date = new Date()): number {
+  const jour = Date.parse(jourParisIso(new Date(echeance)))
+  const aujourdhui = Date.parse(jourParisIso(maintenant))
+  return Math.round((jour - aujourdhui) / 86_400_000)
+}

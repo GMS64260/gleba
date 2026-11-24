@@ -90,6 +90,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     throw error
   }
 
+  // D44 (2026-11-24) : 50 vivants sur 40 plants passaient et donnaient 125 % de
+  // reprise, recopiés sur la campagne et dans la moyenne du verger.
+  if (nbVivants !== null && campagne.nombrePlants && campagne.nombrePlants > 0 && nbVivants > campagne.nombrePlants) {
+    return NextResponse.json(
+      {
+        error: `Plus de plants vivants (${nbVivants}) que de plants plantés (${campagne.nombrePlants}) : corrigez le nombre de plants de la campagne ou le comptage.`,
+        champ: "nbVivants",
+      },
+      { status: 400 },
+    )
+  }
+
   // Calcul du taux de reprise si possible
   if (tauxReprise === null && nbVivants !== null) {
     // Audit #12 : le dénominateur du taux de reprise est le nombre de plants

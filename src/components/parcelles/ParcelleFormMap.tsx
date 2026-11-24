@@ -26,6 +26,11 @@ export function ParcelleFormMap({ geometry, onGeometryChange }: ParcelleFormMapP
   const [surface, setSurface] = useState<number | null>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null)
+  // La carte est aussi un état : à la première ouverture, son module arrive
+  // après la géométrie, et l'effet du contour, qui ne lisait que la ref, ne
+  // se relançait jamais. La fiche s'ouvrait sans son contour (FB-1N6BNJ).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [carte, setCarte] = useState<any>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const polygonLayerRef = useRef<any>(null)
 
@@ -40,7 +45,7 @@ export function ParcelleFormMap({ geometry, onGeometryChange }: ParcelleFormMapP
 
   // Afficher le polygone existant sur la carte
   useEffect(() => {
-    const map = mapRef.current
+    const map = carte
     if (!map || isDrawing || isEditing) return
 
     let cancelled = false
@@ -82,11 +87,12 @@ export function ParcelleFormMap({ geometry, onGeometryChange }: ParcelleFormMapP
     }
 
     return () => { cancelled = true }
-  }, [geometry, isDrawing, isEditing])
+  }, [carte, geometry, isDrawing, isEditing])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleMapReady = useCallback((map: any) => {
     mapRef.current = map
+    setCarte(map)
   }, [])
 
   const handleDrawComplete = useCallback((geojson: string) => {

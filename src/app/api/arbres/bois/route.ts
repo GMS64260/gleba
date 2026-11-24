@@ -18,6 +18,7 @@ import { prixFruitApi, dateRecolteApi } from '@/lib/verger/creation-recolte'
 import { ErreurVerger } from '@/lib/verger/erreur'
 import { prochainNumeroLotVerger } from '@/lib/verger/numero-lot'
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
+import { chargerAvoirsBois } from '@/lib/comptabilite/avoirs-bois.server'
 
 // DEV3 #4 — Destinations canoniques (audit Marc 2026-05-14)
 export const DESTINATIONS_BOIS = [
@@ -94,9 +95,23 @@ export async function GET(request: NextRequest) {
 
     const suivi = await chargerSuiviDesLignes(userId, productions.filter(p => p.statut === 'vendu').map(p => ({ id: String(p.id), source: 'ProductionBois', sourceId: p.id, factureId: p.factureId })))
     const commercial = await chargerSuiviCommercialVerger(userId, 'bois', productions.filter(p => p.stockDisponibleCommercial != null).map(p => p.id))
+    // Avoirs des ventes directes facturées : répartis au prorata du prix entre
+    // les lots d'une même facture, pour que la carte « CA Ventes » les déduise
+    // comme les Rapports (FB-6Y9GPS).
+    const vendusFactures = productions.filter(p => p.statut === 'vendu' && p.factureId != null)
+    const avoirs = await chargerAvoirsBois(userId, { factureOrigineIds: [...new Set(vendusFactures.map(p => p.factureId!))] })
+    const avoirsParLot = new Map<number, number>()
+    for (const avoir of avoirs) {
+      const lots = vendusFactures.filter(p => p.factureId === avoir.factureOrigineId)
+      const total = lots.reduce((s, p) => s + (p.prixVente || 0), 0)
+      lots.forEach((p, i) => {
+        const part = total > 0 ? avoir.montant * (p.prixVente || 0) / total : i === 0 ? avoir.montant : 0
+        avoirsParLot.set(p.id, (avoirsParLot.get(p.id) ?? 0) + part)
+      })
+    }
     // `figeCommercial` : seul un BL ou une facture interdit de corriger ou de
     // supprimer le lot ; ses usages internes s'annulent un à un.
-    return NextResponse.json(productions.map(p => ({ ...p, ecriture: suivi.get(String(p.id))?.ecriture, ventesCommerciales: commercial.get(p.id) ?? [],
+    return NextResponse.json(productions.map(p => ({ ...p, avoirsTTC: Math.round((avoirsParLot.get(p.id) ?? 0) * 100) / 100, ecriture: suivi.get(String(p.id))?.ecriture, ventesCommerciales: commercial.get(p.id) ?? [],
       figeCommercial: lotVergerFige(quantiteBois(p), p.stockDisponibleCommercial, p.mouvementsCommerciaux, p._count.mouvementsCommerciaux) })))
   } catch (err) {
     console.error("GET /api/arbres/bois error:", err)
