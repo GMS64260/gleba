@@ -79,7 +79,7 @@ beforeEach(() => {
     'gleba-1': {
       stockNet: 13,
       unite: 'tige',
-      detail: { inventaire: 10, recoltes: 5, consommations: 2 },
+      detail: { inventaire: 10, lots: 3 },
       autresUnites: {},
     },
   })
@@ -94,7 +94,7 @@ describe('GET /api/especes/[id] — stock du compte', () => {
     expect(corps.monStock).toEqual({
       stockNet: 13,
       unite: 'tige',
-      detail: { inventaire: 10, recoltes: 5, consommations: 2 },
+      detail: { inventaire: 10, lots: 3 },
       autresUnites: {},
       inventaire: 10,
       dateInventaire: DATE_COMPTAGE.toISOString(),

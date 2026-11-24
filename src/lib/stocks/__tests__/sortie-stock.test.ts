@@ -113,7 +113,7 @@ describe('calculerStocksNet — stock de dahlias en tiges (démo du 2026-10-20)'
     vi.clearAllMocks()
   })
 
-  it('19 tiges en stock moins 1 tige sortie = 18 tiges, jamais des kilos', async () => {
+  it('somme des restes des lots en tiges : 18 tiges, jamais des kilos', async () => {
     // 1er appel : stocks de la ferme (aucun comptage) ; 2e : surcharges.
     mocks.userStockEspeceFindMany.mockResolvedValue([])
     mocks.especeFindMany.mockImplementation(async (args: { select: Record<string, boolean> }) =>
@@ -122,18 +122,24 @@ describe('calculerStocksNet — stock de dahlias en tiges (démo du 2026-10-20)'
         : [{ id: 'Dahlia' }],
     )
     mocks.produitBoutiqueFindMany.mockResolvedValue([])
+    // Lots en stock (somme de leurs restes, L4.2) : un lot de 10 tiges, un lot
+    // de 9 tiges dont 1 est sortie par un document (reste 8), et un ancien
+    // lot en kilos rendu à part.
     mocks.recolteFindMany.mockResolvedValue([
-      { quantite: 10, unite: 'tige' },
-      { quantite: 9, unite: 'tige' },
+      { especeId: 'Dahlia', quantite: 10, unite: 'tige', stockDisponibleCommercial: null },
+      { especeId: 'Dahlia', quantite: 9, unite: 'tige', stockDisponibleCommercial: 8 },
+      { especeId: 'Dahlia', quantite: 1.25, unite: 'kg', stockDisponibleCommercial: null },
     ])
-    mocks.consommationFindMany.mockResolvedValue([{ quantite: 1 }])
 
     const stocks = await calculerStocksNet('u1')
 
-    expect(stocks.Dahlia).toMatchObject({
+    expect(stocks.Dahlia).toEqual({
       stockNet: 18,
       unite: 'tige',
-      detail: { inventaire: 0, recoltes: 19, consommations: 1 },
+      dateInventaire: null,
+      detail: { inventaire: 0, lots: 2 },
+      autresUnites: { kg: 1.25 },
     })
+    expect(mocks.consommationFindMany).not.toHaveBeenCalled()
   })
 })

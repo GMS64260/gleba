@@ -20,6 +20,7 @@ const etat = vi.hoisted(() => ({
   recolte: null as unknown,
   culture: null as unknown,
   lotsTransformes: [] as unknown[],
+  produitsBoutique: [] as unknown[],
   requireAuthApi: vi.fn(),
 }))
 
@@ -30,7 +31,8 @@ vi.mock('@/lib/prisma', () => {
   return {
     default: new Proxy({}, {
       get: (_cible, modele) => (modele === 'recolte' ? etat.recolte : modele === 'culture' ? etat.culture
-        : modele === 'lotTransforme' ? { findMany: vi.fn(async () => etat.lotsTransformes) } : vide),
+        : modele === 'lotTransforme' ? { findMany: vi.fn(async () => etat.lotsTransformes) }
+        : modele === 'produitBoutique' ? { findMany: vi.fn(async () => etat.produitsBoutique) } : vide),
     }),
   }
 })
@@ -356,8 +358,12 @@ describe('Récoltes > Stock et Comptabilité > Stocks unifiés donnent la même 
 
 it('un lot en boutique, même hors ligne, n’est pas valorisé une seconde fois dans le stock libre', async () => {
   etat.requireAuthApi.mockResolvedValue(sessionDe(MOI))
-  etat.recolte = { ...delegueMemoire([lot(carotte, 10, 'kg', { produitsBoutique: [{ id: 1, actif: false }] })]), groupBy: vi.fn(async () => []) }
+  const enBoutique = lot(carotte, 10, 'kg', { produitsBoutique: [{ id: 1, actif: false }] })
+  etat.recolte = { ...delegueMemoire([enBoutique]), groupBy: vi.fn(async () => []) }
   etat.culture = delegueMemoire([])
+  // Lien à la boutique hors du stock de l'espèce (`chargerIdsRecoltesHorsStock`).
+  etat.produitsBoutique = [{ recolteId: enBoutique.id }]
   const stocks = await computeStocksUnifies(MOI)
+  etat.produitsBoutique = []
   expect(stocks.data.filter(s => s.categorie === 'Récoltes en stock')).toHaveLength(0)
 })

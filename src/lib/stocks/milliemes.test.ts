@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ajouterAuStock, normaliserStock, plafonnerStock, quantiteCanonique, retirerDuStock, stockCouvre } from './milliemes'
+import { ajouterAuStock, milliemesDuReste, normaliserStock, plafonnerStock, quantiteCanonique, retirerDuStock, stockCouvre } from './milliemes'
 
 describe('arithmétique décimale exacte du stock commercial', () => {
   it('2,3 − 0,5 − 1,8 vaut exactement 0', () => {
@@ -91,5 +91,25 @@ describe('plafond de production (contrainte CHECK stock <= production)', () => {
   })
   it('un reliquat sous la production est rendu normalisé (même valeur que la primitive SQL)', () => {
     expect(plafonnerStock(0.1 + 0.2, 2.1)).toBe(0.3)
+  })
+})
+
+// Modèle de stock unique (L4.2) : le stock d'une espèce somme les restes des
+// lots arrondis au millième, comme `floor(reste::numeric * 1000 + 0.5)` en SQL.
+describe('milliemesDuReste', () => {
+  it('arrondit au millième le plus proche, la moitié vers le haut', () => {
+    expect(milliemesDuReste(2.3)).toBe(2300)
+    expect(milliemesDuReste(2.3005)).toBe(2301)
+    expect(milliemesDuReste(2.3004)).toBe(2300)
+    expect(milliemesDuReste(0.0004)).toBe(0)
+    expect(milliemesDuReste(0)).toBe(0)
+  })
+  it('lit un résidu flottant sur la grille avant d’arrondir', () => {
+    expect(milliemesDuReste(0.1 + 0.2)).toBe(300)
+    expect(milliemesDuReste(2.3 - 0.5)).toBe(1800)
+    expect(milliemesDuReste(2.0004999999999997)).toBe(2001)
+  })
+  it('vaut 0 pour une valeur non finie', () => {
+    expect(milliemesDuReste(Number.NaN)).toBe(0)
   })
 })

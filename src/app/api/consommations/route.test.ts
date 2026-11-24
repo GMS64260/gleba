@@ -273,11 +273,12 @@ describe('GET /api/consommations — unité de chaque sortie', () => {
           ? (args.where.id?.in ?? []).map((id) => ({ id, ...CATALOGUE[id] }))
           : [{ id: 'Dahlia' }, { id: 'Tomate' }],
     )
-    mocks.recolteFindMany.mockImplementation(async (args: { where: { especeId: string } }) =>
-      args.where.especeId === 'Dahlia'
-        ? [{ quantite: 10, unite: 'tige' }, { quantite: 9, unite: 'tige' }]
-        : [{ quantite: 5, unite: null }],
-    )
+    // Lots en stock après les sorties : le stock est la somme de leurs restes.
+    mocks.recolteFindMany.mockResolvedValue([
+      { especeId: 'Dahlia', quantite: 10, unite: 'tige', stockDisponibleCommercial: null },
+      { especeId: 'Dahlia', quantite: 8, unite: 'tige', stockDisponibleCommercial: null },
+      { especeId: 'Tomate', quantite: 4.5, unite: null, stockDisponibleCommercial: null },
+    ])
 
     const res = await GET(new NextRequest('http://localhost/api/consommations'))
 

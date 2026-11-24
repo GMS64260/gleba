@@ -14,6 +14,7 @@ import { type UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import { chargerPrixVentesMoyens, valoriserLot } from '@/lib/recolte/valorisation'
+import { chargerIdsRecoltesHorsStock } from '@/lib/stocks-helpers'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
@@ -131,6 +132,11 @@ export async function GET(request: NextRequest) {
       // filtre de l'écran, elle est celle de Comptabilité > Stocks unifiés.
       chargerPrixVentesMoyens(prisma, session!.user.id),
     ])
+    // Lots dont le stock vit en boutique, hors du stock de l'espèce : même
+    // règle que lui. Seul un lot lié à la boutique peut l'être.
+    const horsStock = new Set(
+      recoltes.some((r) => (r.produitsBoutique?.length ?? 0) > 0) ? await chargerIdsRecoltesHorsStock(session!.user.id) : [],
+    )
 
     // Valeur d'un lot EN STOCK par la règle unique (`valoriserLot`) : prix du
     // lot, fiche d'une espèce personnelle dans son unité, vente moyenne dans
@@ -138,6 +144,7 @@ export async function GET(request: NextRequest) {
     // source est toujours dite (`aucune` = non valorisé) ; null = lot sorti.
     const recoltesValorisees = recoltes.map((r) => ({
       ...r,
+      horsStock: horsStock.has(r.id),
       valorisation:
         r.statut === 'en_stock'
           ? valoriserLot(

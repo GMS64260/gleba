@@ -1,4 +1,10 @@
-/** Régression 215 : un comptage daté ne doit pas déduire une seconde fois le BL. */
+/**
+ * Régression 215 : un comptage ne déduit pas une seconde fois un BL déjà livré.
+ * Depuis le modèle de stock unique (L4.2, 2026-11-24), le stock est la somme
+ * des restes des lots et un comptage les aligne à l'instant où il est fait :
+ * une livraison saisie APRÈS le comptage baisse les lots, même datée d'avant
+ * lui (le stock est l'état présent des lots ; un nouveau comptage le corrige).
+ */
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
@@ -38,9 +44,10 @@ async function main() {
     await agirSurDocument(u.id, second.id, 'retourner'); assert.equal(await net(), 6)
     await agirSurDocument(u.id, premier.id, 'retourner'); assert.equal(await net(), 10)
     await enregistrerInventaireEspece(u.id, e.id, { stock: 8 })
+    assert.equal(await net(), 8, 'le comptage aligne les lots (écart de 2 par le journal du lot lié)')
     const historique = await livrer(2, dateIsoFacture(hier))
-    assert.equal(await net(), 8, 'la livraison historique antérieure au comptage n’est pas déduite à nouveau')
-    await agirSurDocument(u.id, historique.id, 'retourner'); assert.equal(await net(), 10)
+    assert.equal(await net(), 6, 'une livraison saisie après le comptage baisse le lot, même datée d’avant')
+    await agirSurDocument(u.id, historique.id, 'retourner'); assert.equal(await net(), 8)
     assert.equal((await db.recolte.findUniqueOrThrow({ where: { id: r.id } })).quantite, 10)
     // Reprise d'un journal ancien créé l'après-midi : date civile AVANT le comptage,
     // mais création APRÈS. Le filtre SQL doit aussi chercher par createdAt.
@@ -54,7 +61,7 @@ async function main() {
     const antidate = await enregistrerInventaireEspece(u.id, e2.id, { stock: 10, dateStock: comptage })
     assert.equal(antidate.ok, false)
     void r2
-    console.log('Comptage commercial : ancien journal midi→comptage6→net6, sortie après comptage, retours, historique et ancien journal après-midi validés.')
+    console.log('Comptage commercial : ancien journal midi→comptage6→net6, sortie après comptage, retours, comptage aligné, livraison saisie après le comptage et comptage antidaté refusé validés.')
   } finally { await db.user.delete({ where: { id: u.id } }); await db.$disconnect() }
 }
 main().catch((e) => { console.error(e); process.exitCode = 1 })

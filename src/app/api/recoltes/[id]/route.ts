@@ -38,8 +38,8 @@ type RouteParams = { params: Promise<{ id: string }> }
 
 // Refonte stock 2026-07 : le compteur UserStockEspece.inventaire n'est plus
 // ajusté à chaque mouvement de récolte. Le stock est recalculé par
-// calculerStocksNet (baseline manuel + récoltes en stock − consommations),
-// ce qui supprime le double comptage (audit #28). Les anciens appels à
+// calculerStocksNet (somme des restes des lots en stock depuis L4.2), ce qui
+// supprime le double comptage (audit #28). Les anciens appels à
 // ajusterInventaireEspece ont donc été retirés.
 
 /** Un écart d'inventaire vient d'un comptage et ne se corrige que par un autre. */

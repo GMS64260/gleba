@@ -67,12 +67,6 @@ import {
   formatQuantiteParUnite,
   type QuantiteParUnite,
 } from "@/lib/recolte/quantites"
-import {
-  comparaisonADire,
-  lignesComparaison,
-  LIMITE_GESTION_STOCKS,
-  type ComparaisonStockLots,
-} from "@/lib/stocks/rapprochement-recoltes"
 
 /** Unité d'une ligne de récolte ; null = kg (lignes antérieures au 2026-08-20). */
 const uniteRecolte = (unite: string | null | undefined): UniteQuantite =>
@@ -102,6 +96,8 @@ interface RecolteWithRelations extends PieceAvecDevise {
   quantite: number
   stockDisponibleCommercial?: number | null
   produitsBoutique?: Array<{ id: number }>
+  /** Lot dont le stock vit en boutique, hors du stock de l'espèce (même règle que lui, servie par `GET /api/recoltes`). */
+  horsStock?: boolean
   /** Unité figée à la saisie ; null = kg (lignes antérieures au 2026-08-20). */
   unite: string | null
   statut: string
@@ -142,15 +138,6 @@ interface Client {
   nom: string
 }
 
-/**
- * Lots d'une espèce comparés au stock de Gestion des stocks
- * (`GET /api/stocks?type=recoltes`, champ `comparaisonLots`).
- */
-interface StockEspece {
-  id: string
-  comparaisonLots: ComparaisonStockLots | null
-}
-
 /** Sorties (ventes, pertes, consommations) chargées au plus, les plus récentes d'abord. */
 const PLAFOND_HISTORIQUE = 1000
 
@@ -178,8 +165,6 @@ export default function RecoltesPage() {
   const [historiqueTronque, setHistoriqueTronque] = React.useState<number | null>(null)
   const [selectedEspece, setSelectedEspece] = React.useState<string>('all')
   const [especes, setEspeces] = React.useState<{ id: string; nom: string | null }[]>([])
-  // null = comparaison non chargée : l'écran n'affiche que ses lots.
-  const [stocksEspeces, setStocksEspeces] = React.useState<StockEspece[] | null>(null)
 
   // Dialog vente
   const [showVenteDialog, setShowVenteDialog] = React.useState(false)
@@ -271,24 +256,8 @@ export default function RecoltesPage() {
     fetchData()
   }, [fetchData])
 
-  // Ticket cmvnpe6ip — comparaison avec Gestion des stocks : toutes espèces
-  // et toutes années, filtrée ici ; chargée une fois, puis après chaque
-  // sortie ou suppression de lot, jamais au changement d'année ou d'espèce.
-  const chargerComparaisons = React.useCallback(async () => {
-    try {
-      const res = await fetch("/api/stocks?type=recoltes")
-      setStocksEspeces(res.ok ? ((await res.json()).data ?? null) : null)
-    } catch {
-      setStocksEspeces(null)
-    }
-  }, [])
-
-  React.useEffect(() => {
-    chargerComparaisons()
-  }, [chargerComparaisons])
-
   // Filtrer par statut
-  const stockRecoltes = data.filter(r => (!r.statut || r.statut === "en_stock") && !r.produitsBoutique?.length && (r.stockDisponibleCommercial ?? r.quantite) > 0).map(r => ({ ...r, quantite: r.stockDisponibleCommercial ?? r.quantite }))
+  const stockRecoltes = data.filter(r => (!r.statut || r.statut === "en_stock") && !r.horsStock && (r.stockDisponibleCommercial ?? r.quantite) > 0).map(r => ({ ...r, quantite: r.stockDisponibleCommercial ?? r.quantite }))
   const venduRecoltes = data.filter(r => r.statut === "vendu")
   // QA 2026-07-30 — L'auto-consommation était rangée avec les pertes : le KPI
   // annonçait « Pertes 0,8 kg » pour une récolte simplement consommée à la
@@ -337,18 +306,6 @@ export default function RecoltesPage() {
       {},
     )
   const stockParUnite = ventiler(stockRecoltes)
-  // Ticket cmvnpe6ip — « En stock » reste la somme des lots, ce qui se vend.
-  // Gestion des stocks repart d'un comptage daté : son écart avec les lots
-  // est dit espèce par espèce, jamais cumulé (un stock négatif en masquerait
-  // un autre), et seulement pour les espèces récoltées sur cet écran.
-  const especesRecoltees = new Set(especes.map((e) => e.id))
-  const comparaisons = (stocksEspeces ?? []).filter(
-    (s): s is StockEspece & { comparaisonLots: ComparaisonStockLots } =>
-      s.comparaisonLots != null &&
-      especesRecoltees.has(s.id) &&
-      (selectedEspece === 'all' || s.id === selectedEspece) &&
-      comparaisonADire(s.comparaisonLots)
-  )
   const venduParUnite = ventiler(venduRecoltes)
   const totalVentes = venduRecoltes.reduce((sum, r) => sum + (r.prixTotal || 0), 0)
   // Ticket cmvnvaal2 — la valeur d'un lot vient du serveur (`valoriserLot`),
@@ -368,7 +325,6 @@ export default function RecoltesPage() {
       const response = await fetch(`/api/recoltes/${id}`, { method: "DELETE" })
       if (response.ok) {
         setData(data.filter(r => r.id !== id))
-        chargerComparaisons()
         toast({ title: "Récolte supprimée" })
       } else {
         const payload = await response.json().catch(() => null)
@@ -470,7 +426,6 @@ export default function RecoltesPage() {
         // Une vente partielle scinde la récolte (reliquat en stock) → on
         // recharge la liste plutôt que de patcher la ligne localement.
         fetchData()
-        chargerComparaisons()
       } else {
         const payload = await res.json().catch(() => null)
         toast({
@@ -517,7 +472,6 @@ export default function RecoltesPage() {
         setSortieRecolte(null)
         toast({ title: MOTIFS_SORTIE[sortieData.motif].fait })
         fetchData()
-        chargerComparaisons()
       } else {
         const payload = await res.json().catch(() => null)
         toast({ variant: "destructive", title: "Erreur", description: payload?.error || "La sortie n'a pas pu être enregistrée" })
@@ -540,7 +494,6 @@ export default function RecoltesPage() {
       if (res.ok) {
         toast({ title: "Lot remis en stock" })
         fetchData()
-        chargerComparaisons()
       } else {
         const payload = await res.json().catch(() => null)
         toast({ variant: "destructive", title: "Erreur", description: payload?.error || "Le lot n'a pas pu être remis en stock" })
@@ -720,38 +673,6 @@ export default function RecoltesPage() {
                 <CardTitle className="text-base">Récoltes en stock</CardTitle>
               </CardHeader>
               <CardContent>
-                {/* Ticket cmvnpe6ip — par espèce : stock de Gestion des stocks,
-                    lots en stock, écart, et seulement les composantes que
-                    les données établissent ; aucune cause supposée. */}
-                {!isLoading && comparaisons.length > 0 && (
-                  <div
-                    role="note"
-                    className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
-                  >
-                    <p className="mb-2 font-medium">Comparaison avec Gestion des stocks (lots de toutes les années)</p>
-                    <ul className="space-y-2">
-                      {comparaisons.map((s) => {
-                        const { ligne, complements } = lignesComparaison(s.comparaisonLots)
-                        return (
-                          <li key={s.id}>
-                            <span className="font-medium">{s.id}</span> : {ligne}
-                            {complements.length > 0 && (
-                              <ul className="ml-5 list-disc">
-                                {complements.map((c) => (
-                                  <li key={c}>{c}</li>
-                                ))}
-                              </ul>
-                            )}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                    <p className="mt-2 text-xs">{LIMITE_GESTION_STOCKS}</p>
-                    <Link href="/maraichage/stocks?tab=recoltes" className="mt-1 inline-block underline">
-                      Voir Gestion des stocks
-                    </Link>
-                  </div>
-                )}
                 {data.some((r) => r.produitsBoutique?.length) && <p className="mb-3 text-sm text-muted-foreground">Les récoltes mises en boutique sont suivies dans leur catalogue. <Link className="text-primary underline" href="/boutique?tab=produits">Voir les stocks boutique</Link></p>}
                 {isLoading || stockRecoltes.length === 0 ? (
                   <p className="text-muted-foreground" role={erreurChargement ? "alert" : undefined}>

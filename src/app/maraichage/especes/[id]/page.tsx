@@ -97,11 +97,17 @@ import {
   type FiltreOrigineValue,
 } from "@/components/referentiel/catalogue-communaute"
 
+/** Ce que somme le stock de l'espèce (modèle de stock unique : la somme des lots). */
+function phraseLotsEnStock(lots: number): string {
+  if (lots === 0) return "Aucun lot en stock."
+  return lots === 1 ? "Somme du lot en stock (son reste)." : `Somme des ${lots} lots en stock (leur reste).`
+}
+
 /** Stock de récolte du compte pour l'espèce (`monStock` de la fiche). */
 interface MonStock {
   stockNet: number
   unite: UniteQuantite
-  detail: { inventaire: number; recoltes: number; consommations: number; sortiesCommerciales?: number; sortiesLotsComptes?: number; transfertsBoutique?: number }
+  detail: { inventaire: number; lots: number }
   autresUnites: Partial<Record<UniteQuantite, number>>
   inventaire: number | null
   dateInventaire: string | null
@@ -1545,10 +1551,9 @@ export default function EditEspecePage() {
                         {monStock == null
                           ? "Aucun stock suivi pour cette espèce chez vous : saisissez un comptage, ou enregistrez une récolte."
                           : monStock.dateInventaire
-                            ? `Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}, puis ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés et ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0) + (monStock.detail.sortiesLotsComptes || 0), monStock.unite)} sortis.`
-                            : `Sans comptage manuel : ${formatQuantite(monStock.detail.recoltes, monStock.unite)} récoltés en stock, ${formatQuantite(monStock.detail.consommations + (monStock.detail.sortiesCommerciales || 0) + (monStock.detail.sortiesLotsComptes || 0), monStock.unite)} sortis.`}{" "}
-                        {!!monStock?.detail.transfertsBoutique && <>Solde des transferts avec la boutique : {monStock.detail.transfertsBoutique > 0 ? '+' : ''}{formatQuantite(monStock.detail.transfertsBoutique, monStock.unite)}. </>}
-                        Comptez les produits restés à la ferme, hors boutique.{" "}
+                            ? `${phraseLotsEnStock(monStock.detail.lots)} Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}.`
+                            : phraseLotsEnStock(monStock.detail.lots)}{" "}
+                        Comptez les produits restés à la ferme, hors boutique, après avoir saisi les récoltes et sorties déjà faites : un comptage aligne les lots sur ce que vous trouvez.{" "}
                         Même stock que{" "}
                         <Link href="/maraichage/stocks" className="underline">
                           Stocks &gt; Récoltes
