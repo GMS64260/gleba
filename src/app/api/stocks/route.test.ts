@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
   lotsFindMany: vi.fn(),
   idsHorsStock: vi.fn(),
+  reserves: vi.fn(),
   lotCreate: vi.fn(),
   lotUpdate: vi.fn(),
   userStockVarieteFindMany: vi.fn(),
@@ -43,6 +44,8 @@ vi.mock("@/lib/prisma", () => ({
       recolte: { findMany: mocks.lotsFindMany, create: mocks.lotCreate, update: mocks.lotUpdate },
       // Lots en boutique, hors stock de l'espèce : aucun.
       produitBoutique: { findMany: vi.fn(async () => []) },
+      // Réservations de la caisse de marché (version privée de `quantitesCaisse`) : aucune.
+      caisseAffectation: { findMany: vi.fn(async () => []) },
     }),
   },
 }))
@@ -52,6 +55,8 @@ vi.mock("@/lib/stocks-helpers", () => ({
   // Lots hors stock de l'espèce (boutique) : rendus par le test au besoin.
   chargerIdsRecoltesHorsStock: mocks.idsHorsStock,
 }))
+// Réservations de la caisse de marché : aucune, sauf dans le cas qui les simule.
+vi.mock("@/lib/caisse/reservations", () => ({ quantitesCaisse: mocks.reserves }))
 vi.mock("@/lib/stocks/sortie-stock", () => ({
   chargerUnitesStock: mocks.chargerUnitesStock,
 }))
@@ -72,6 +77,7 @@ describe("GET /api/stocks", () => {
     mocks.lotsFindMany.mockResolvedValue([])
     mocks.lotCreate.mockResolvedValue({ id: 900 })
     mocks.idsHorsStock.mockResolvedValue([])
+    mocks.reserves.mockResolvedValue(new Map())
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },
@@ -160,6 +166,7 @@ describe("PATCH /api/stocks — comptage de stock d'une espèce (type recolte)",
     mocks.lotsFindMany.mockResolvedValue([])
     mocks.lotCreate.mockResolvedValue({ id: 900 })
     mocks.idsHorsStock.mockResolvedValue([])
+    mocks.reserves.mockResolvedValue(new Map())
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },
@@ -223,18 +230,23 @@ describe("PATCH /api/stocks — comptage de stock d'une espèce (type recolte)",
     expect(mocks.lotUpdate).not.toHaveBeenCalled()
   })
 
-  it("un comptage antidaté ne touche pas les lots", async () => {
-    mocks.lotsFindMany.mockResolvedValue([])
-    await patch({ type: "recolte", id: "Dahlia", stock: 4, dateStock: "2026-10-01" })
-    expect(mocks.lotsFindMany).not.toHaveBeenCalled()
+  // L4.1 : un comptage aligne les lots à l'instant où il est fait.
+  it("refuse un comptage antidaté, sans rien écrire", async () => {
+    const response = await patch({ type: "recolte", id: "Dahlia", stock: 4, dateStock: "2026-10-01" })
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/dateStock/)
+    expect(mocks.userStockEspeceUpsert).not.toHaveBeenCalled()
     expect(mocks.lotCreate).not.toHaveBeenCalled()
   })
 
-  it("une date fournie date le comptage", async () => {
-    const response = await patch({ type: "recolte", id: "Dahlia", stock: 4, dateStock: "2026-10-01" })
-    expect(response.status).toBe(200)
-    const args = mocks.userStockEspeceUpsert.mock.calls[0][0]
-    expect(args.update.dateInventaire).toEqual(new Date("2026-10-01"))
+  it("refuse un comptage dont une part de l'écart est réservée au marché en cours", async () => {
+    // 10 tiges en un lot, dont 8 emportées au marché : on en compte 1, il faudrait en sortir 9 ; 2 seulement sont à la ferme.
+    mocks.reserves.mockResolvedValue(new Map([["recolte:1:tige", 8]]))
+    const lot = { id: 1, quantite: 10, unite: "tige", date: new Date("2026-10-01T00:00:00.000Z"), cultureId: 3, especeId: "Dahlia", datePeremption: null, statutBioSnapshot: null, notes: null, createdAt: new Date("2026-10-01T08:00:00.000Z"), stockDisponibleCommercial: null }
+    mocks.lotsFindMany.mockResolvedValue([lot])
+    const response = await patch({ type: "recolte", id: "Dahlia", stock: 1 })
+    expect(response.status).toBe(409)
+    expect((await response.json()).error).toMatch(/7 tiges de l'écart sont réservés au marché en cours/)
   })
 
   it("2,5 tiges : refus 400 qui nomme `stock`, rien d'écrit", async () => {
