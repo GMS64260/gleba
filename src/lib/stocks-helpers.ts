@@ -1,21 +1,15 @@
 /**
- * Helpers pour la gestion des stocks (multi-tenancy via UserStock*)
- * Calcul du stock net = Inventaire + Récoltes - Consommations
+ * Helpers pour la gestion des stocks (multi-tenancy via UserStock*).
+ * Stock de récolte d'une espèce = somme des restes de ses lots en stock.
  */
 
-import { sortiesLotsComptes } from '@/lib/stocks/sorties-lots-comptes'
 import prisma from '@/lib/prisma'
-import { dateEffetStockCommercial, finJourLivraison } from '@/lib/commercial/dates-stock'
+import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import type { Prisma } from '@prisma/client'
-import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
+import { milliemesDuReste } from '@/lib/stocks/milliemes'
 import type { UniteQuantite } from '@/lib/recolte/projection'
-import { ajouterQuantite, arrondirQuantites, type QuantiteParUnite } from '@/lib/recolte/quantites'
+import type { QuantiteParUnite } from '@/lib/recolte/quantites'
 import { chargerUnitesStock } from '@/lib/stocks/sortie-stock'
-import {
-  comparerStockEtLots,
-  type ComparaisonStockLots,
-  type LotEnStock,
-} from '@/lib/stocks/rapprochement-recoltes'
 import { computeStockOeufsParLots, type StockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 
 /**
@@ -49,25 +43,18 @@ export interface StockNet {
    * nombre seul ne dit plus rien, et l'écran l'étiquetait « kg » en dur.
    */
   unite: UniteQuantite
-  /**
-   * Date du comptage manuel qui sert de point de départ (null = jamais
-   * compté) : les lots récoltés jusqu'à elle sont remplacés par
-   * `detail.inventaire`. Servie pour que l'écran Récoltes explique l'écart
-   * entre ses lots et ce stock (ticket cmvnpe6ip).
-   */
+  /** Date du dernier comptage (null = jamais compté), pour l'affichage. */
   dateInventaire: Date | null
   detail: {
+    /** Chiffre du dernier comptage (0 sans comptage). Le stock ne l'ajoute pas : le comptage a aligné les lots. */
     inventaire: number
-    recoltes: number
-    consommations: number
-    /** Lots comptés au dernier comptage puis sortis après lui (perte, consommation, don, vente). */
-    sortiesLotsComptes?: number
-    sortiesCommerciales?: number
+    /** Nombre de lots en stock dans l'unité du stock. */
+    lots: number
   }
   /**
-   * Récoltes en stock enregistrées dans une AUTRE unité que l'unité courante.
+   * Lots en stock enregistrés dans une AUTRE unité que l'unité courante.
    * Cas réel mais rare : l'espèce a changé d'unité en cours de saison, et les
-   * lignes antérieures gardent la leur (l'unité est figée à la saisie). On les
+   * lots antérieurs gardent la leur (l'unité est figée à la saisie). On les
    * expose à part plutôt que de les additionner à tort ou de les perdre.
    */
   autresUnites: QuantiteParUnite
@@ -76,8 +63,7 @@ export interface StockNet {
 /**
  * Récoltes mises en vente sur la boutique (produit lié à la récolte, y compris hors ligne) :
  * leur stock est suivi par `ProduitBoutique.stockDispo`, le stock de l'espèce
- * ne les compte pas (audit 2026-07 #51). Une seule définition pour le calcul
- * du stock et de sa comparaison avec les lots.
+ * ne les compte pas (audit 2026-07 #51).
  */
 export async function chargerIdsRecoltesEnBoutique(userId: string, db: Prisma.TransactionClient = prisma): Promise<number[]> {
   const produitsBoutique = await db.produitBoutique.findMany({
@@ -90,25 +76,36 @@ export async function chargerIdsRecoltesEnBoutique(userId: string, db: Prisma.Tr
 }
 
 /**
- * Lots de récolte hors du stock de l'espèce (leur stock vit en boutique) :
- * même règle que `calculerStocksNet`, pour l'alignement au comptage et la
- * reprise des lots d'inventaire (modèle de stock unique, L3).
+ * Lots de récolte hors du stock de l'espèce (leur stock vit en boutique). Une
+ * seule règle pour le stock (`calculerStocksNet`), l'alignement au comptage,
+ * l'écran Récoltes et la comptabilité (stocks unifiés).
  */
 export async function chargerIdsRecoltesHorsStock(userId: string, db: Prisma.TransactionClient = prisma): Promise<number[]> {
   return chargerIdsRecoltesEnBoutique(userId, db)
 }
 
 /**
- * Calcule le stock net pour une ou plusieurs especes (per-user)
- * Stock net = Inventaire (à date inventaire) + Σ Récoltes - Σ Consommations
+ * Stock de récolte de chaque espèce (modèle de stock unique, L4.2,
+ * 2026-11-24) : la SOMME DES RESTES DES LOTS en stock, dans l'unité du stock
+ * de l'espèce. Le reste d'un lot est `stockDisponibleCommercial` quand il est
+ * suivi (bon, facture, caisse, boutique), sa quantité sinon.
+ *
+ * Chaque reste est arrondi au millième avant la somme, comme dans son double
+ * SQL `source_recolte_net_milli`, que lisent les gardes de la caisse et de la
+ * boutique : les deux calculs donnent le même nombre.
+ *
+ * Un comptage ne s'ajoute plus au stock : il aligne les lots (écart
+ * d'inventaire ou lot d'inventaire, `ajusterLotsAuComptage`). Son chiffre et
+ * sa date restent servis pour l'affichage. Les lots dont le stock vit en
+ * boutique sont hors du stock (`chargerIdsRecoltesHorsStock`). Les lots d'une
+ * autre unité sont rendus à part (`autresUnites`), jamais additionnés.
  */
 export async function calculerStocksNet(
   userId: string,
   especeId?: string,
   db: Prisma.TransactionClient = prisma
 ): Promise<Record<string, StockNet>> {
-
-  // Récupérer les stocks per-user pour les especes concernées
+  // Espèces suivies : comptées, ou avec des récoltes ou des sorties.
   const userStocks = await db.userStockEspece.findMany({
     where: {
       userId,
@@ -120,12 +117,9 @@ export async function calculerStocksNet(
       dateInventaire: true,
     },
   })
-
-  // Si aucun stock per-user, chercher les especes avec des recoltes/consommations
   const especeIds = userStocks.map(us => us.especeId)
   // `especeId` et `notIn` portent sur la même colonne : les combiner dans un
-  // seul filtre, sinon le second écrasait le premier et un calcul demandé pour
-  // UNE espèce parcourait toutes celles du compte (deux requêtes chacune).
+  // seul filtre, sinon le second écrasait le premier.
   const additionalEspeces = await db.espece.findMany({
     where: {
       id: especeId ? { equals: especeId, notIn: especeIds } : { notIn: especeIds },
@@ -136,144 +130,54 @@ export async function calculerStocksNet(
     },
     select: { id: true },
   })
-
   const allEspeces = [
-    ...userStocks.map(us => ({
-      id: us.especeId,
-      inventaire: us.inventaire,
-      dateInventaire: us.dateInventaire,
-    })),
-    ...additionalEspeces.map(e => ({
-      id: e.id,
-      inventaire: null as number | null,
-      dateInventaire: null as Date | null,
-    })),
+    ...userStocks.map(us => ({ id: us.especeId, inventaire: us.inventaire, dateInventaire: us.dateInventaire })),
+    ...additionalEspeces.map(e => ({ id: e.id, inventaire: null as number | null, dateInventaire: null as Date | null })),
   ]
+  if (allEspeces.length === 0) return {}
 
   // Unité de chaque espèce : celle déclarée par la ferme si elle l'a fait,
-  // celle du catalogue sinon. Même source que la route des sorties de stock
-  // (QA cmvgef6ou) : une consommation se compte dans cette unité.
-  const uniteParEspece = await chargerUnitesStock(userId, allEspeces.map(e => e.id))
+  // celle du catalogue sinon (QA cmvgef6ou).
+  const uniteParEspece = await chargerUnitesStock(userId, allEspeces.map(e => e.id), db)
+  const horsStock = await chargerIdsRecoltesHorsStock(userId, db)
+  const lots = await db.recolte.findMany({
+    where: {
+      userId,
+      statut: 'en_stock',
+      especeId: { in: allEspeces.map(e => e.id) },
+      ...(horsStock.length > 0 && { id: { notIn: horsStock } }),
+    },
+    select: { especeId: true, unite: true, quantite: true, stockDisponibleCommercial: true },
+  })
 
-  // Audit 2026-07 (#51) : une récolte « mise en vente » dans la boutique (liée
-  // à un ProduitBoutique actif) est committée à la boutique — son stock est
-  // suivi par ProduitBoutique.stockDispo. On l'EXCLUT du stock physique loose
-  // pour ne pas la compter deux fois (avant, elle restait « en stock » même
-  // après avoir été vendue en ligne).
-  const recolteIdsEnBoutique = await chargerIdsRecoltesEnBoutique(userId, db)
+  // Millièmes par espèce et par unité ; nombre de lots dans l'unité du stock.
+  const milliemes = new Map<string, Map<UniteQuantite, number>>()
+  const nombreLots = new Map<string, number>()
+  for (const lot of lots) {
+    const m = milliemesDuReste(lot.stockDisponibleCommercial ?? lot.quantite)
+    if (m <= 0) continue
+    const unite = (lot.unite ?? 'kg') as UniteQuantite
+    const parUnite = milliemes.get(lot.especeId) ?? new Map<UniteQuantite, number>()
+    parUnite.set(unite, (parUnite.get(unite) ?? 0) + m)
+    milliemes.set(lot.especeId, parUnite)
+    if (unite === (uniteParEspece.get(lot.especeId) ?? 'kg')) nombreLots.set(lot.especeId, (nombreLots.get(lot.especeId) ?? 0) + 1)
+  }
 
   const result: Record<string, StockNet> = {}
-
   for (const espece of allEspeces) {
-    // Modèle « baseline + événements » (refonte stock 2026-07).
-    // `inventaire`/`dateInventaire` = POINT DE COMPTAGE MANUEL (null si jamais
-    // fait). Le stock net est recalculé ici comme UNIQUE source de vérité :
-    //   net = baseline + Σ récoltes en stock APRÈS le comptage − Σ conso APRÈS.
-    // Les événements AVANT le comptage sont déjà reflétés dans la valeur saisie.
-    // Sans comptage manuel : baseline 0 depuis l'epoch → on somme tout.
-    // (Avant, l'inventaire était AUSSI incrémenté à chaque récolte puis les
-    // récoltes ré-additionnées ici → double comptage, audit #28.)
-    const dateRef = espece.dateInventaire || new Date(0)
-    const baseline = espece.inventaire || 0
-
-    // Récoltes encore en stock, postérieures au comptage, HORS boutique
-    const recoltes = await db.recolte.findMany({
-      where: {
-        especeId: espece.id,
-        userId,
-        statut: 'en_stock',
-        date: { gt: dateRef },
-        ...(recolteIdsEnBoutique.length > 0 && { id: { notIn: recolteIdsEnBoutique } }),
-      },
-      select: { quantite: true, unite: true },
-    })
-    // Ventilation par unité, puis on ne retient dans le stock que l'unité
-    // COURANTE de l'espèce : additionner 12 kg et 120 tiges ne veut rien dire.
     const uniteEspece = uniteParEspece.get(espece.id) ?? 'kg'
-    const recoltesParUnite: QuantiteParUnite = {}
-    for (const r of recoltes) {
-      ajouterQuantite(recoltesParUnite, (r.unite ?? 'kg') as UniteQuantite, r.quantite)
-    }
-    const totalRecoltes = recoltesParUnite[uniteEspece] ?? 0
-    const autresUnites: QuantiteParUnite = { ...recoltesParUnite }
-    delete autresUnites[uniteEspece]
-
-    // Consommations postérieures au comptage
-    const consommations = await db.consommation.findMany({
-      where: {
-        especeId: espece.id,
-        userId,
-        date: { gt: dateRef },
-      },
-      select: { quantite: true, quantiteHorsLots: true },
-    })
-    const sorties = await db.mouvementStockCommercial.findMany({
-      where: { userId, OR: [{ date: { gt: dateRef } }, { createdAt: { gt: dateRef } }], recolte: { especeId: espece.id }, ...(recolteIdsEnBoutique.length ? { recolteId: { notIn: recolteIdsEnBoutique } } : {}) },
-      select: { quantite: true, unite: true, date: true, createdAt: true },
-    })
-    const sortiesApresComptage = sorties.filter(m => dateEffetStockCommercial(m) > dateRef)
-    const totalSorties = sortiesApresComptage.filter(m => m.unite === uniteEspece).reduce((sum, m) => sum + m.quantite, 0)
-    for (const m of sortiesApresComptage.filter(m => m.unite !== uniteEspece)) ajouterQuantite(autresUnites, m.unite as UniteQuantite, -m.quantite)
-    // Seule la part qu'aucun lot ne couvrait : les lots sortis par la
-    // consommation ont déjà quitté le stock (modèle de stock unique, lot 2).
-    const totalConso = consommations.reduce((sum, c) => sum + (c.quantiteHorsLots ?? c.quantite), 0)
-    const sortiesComptees = await sortiesLotsComptes(db, userId, espece.id, espece.dateInventaire, uniteEspece, recolteIdsEnBoutique)
-
+    const parUnite = milliemes.get(espece.id) ?? new Map<UniteQuantite, number>()
+    const autresUnites: QuantiteParUnite = {}
+    for (const [unite, m] of parUnite) if (unite !== uniteEspece) autresUnites[unite] = m / 1000
     result[espece.id] = {
-      // QA cmswu8uva — arrondi métier : la somme flottante affichait
-      // « 10.799999999999999 kg » à l'écran Stocks > Récoltes.
-      stockNet: arrondiQuantiteStock(baseline - sortiesComptees + totalRecoltes - totalConso - totalSorties),
+      stockNet: (parUnite.get(uniteEspece) ?? 0) / 1000,
       unite: uniteEspece,
       dateInventaire: espece.dateInventaire,
-      detail: {
-        inventaire: baseline,
-        recoltes: totalRecoltes,
-        consommations: totalConso,
-        sortiesLotsComptes: sortiesComptees,
-        sortiesCommerciales: totalSorties,
-      },
-      autresUnites: arrondirQuantites(autresUnites),
+      detail: { inventaire: espece.inventaire ?? 0, lots: nombreLots.get(espece.id) ?? 0 },
+      autresUnites,
     }
   }
-
   return result
-}
-
-/**
- * Comparaison, espèce par espèce, du stock de Gestion des stocks
- * (`calculerStocksNet`) et des lots de récolte en stock (ticket cmvnpe6ip,
- * revue du 2026-10-25) : différence et composantes établies par les données,
- * jamais une cause supposée. Deux requêtes quel que soit le nombre d'espèces :
- * lots en stock, lots en boutique.
- */
-export async function chargerComparaisonsStockLots(
-  userId: string,
-  stocks: Record<string, StockNet>,
-): Promise<Record<string, ComparaisonStockLots>> {
-  const especeIds = Object.keys(stocks)
-  if (especeIds.length === 0) return {}
-
-  const [lots, idsBoutique] = await Promise.all([
-    prisma.recolte.findMany({
-      where: { userId, statut: 'en_stock', especeId: { in: especeIds } },
-      select: { id: true, especeId: true, date: true, quantite: true, unite: true, stockDisponibleCommercial: true },
-    }),
-    chargerIdsRecoltesEnBoutique(userId),
-  ])
-  const enBoutique = new Set(idsBoutique)
-
-  const lotsParEspece = new Map<string, LotEnStock[]>()
-  for (const lot of lots) {
-    const liste = lotsParEspece.get(lot.especeId) ?? []
-    liste.push({ date: lot.date, quantite: lot.stockDisponibleCommercial ?? lot.quantite, unite: lot.unite, enBoutique: enBoutique.has(lot.id) })
-    lotsParEspece.set(lot.especeId, liste)
-  }
-  return Object.fromEntries(
-    especeIds.map(id => [
-      id,
-      comparerStockEtLots(stocks[id], lotsParEspece.get(id) ?? []),
-    ]),
-  )
 }
 
 /**

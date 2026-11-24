@@ -137,8 +137,7 @@ export async function sortirParLots(
       // La part sortie d'abord (hors stock), puis le lot réduit : le stock de
       // l'espèce ne passe jamais, entre deux écritures, sous ce qu'il vaudra à
       // la fin (les gardes de la caisse le contrôlent à chaque ligne). Même
-      // date ET même instant de saisie que le lot : une part de lot compté reste
-      // comptée (`sortiesLotsComptes` départage par la saisie).
+      // date ET même instant de saisie que le lot : la part garde son histoire.
       const part = await tx.recolte.create({
         data: {
           userId, especeId: lot.especeId, cultureId: lot.cultureId, date: lot.date, createdAt: lot.createdAt,

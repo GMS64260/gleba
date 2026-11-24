@@ -113,7 +113,7 @@ export async function GET(
         _sum: { quantite: true },
       }),
       // Stock de récolte du compte pour cette espèce, par la même fonction que
-      // Stocks > Récoltes (baseline datée + récoltes en stock − sorties). La
+      // Stocks > Récoltes (somme des restes des lots en stock). La
       // fiche écrivait `Espece.inventaire`, colonne partagée que rien ne lit
       // (revue QA du 2026-10-20) : elle sert désormais le stock DU COMPTE.
       calculerStocksNet(userId, espece.id),

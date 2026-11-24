@@ -803,7 +803,8 @@ function StocksPageContent() {
               <CardHeader>
                 <CardTitle>Inventaire des récoltes</CardTitle>
                 <CardDescription>
-                  Stock de récoltes en conservation. Cliquez sur une valeur pour la modifier.
+                  Stock de récoltes en conservation : la somme des lots en stock de chaque espèce. Cliquez sur une
+                  valeur pour saisir un comptage : les lots s&apos;alignent sur ce que vous avez compté.
                 </CardDescription>
               </CardHeader>
               <CardContent>

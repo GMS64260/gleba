@@ -110,3 +110,16 @@ export function estAuMillieme(quantite: number): boolean {
   const milliemes = Math.round(quantite * 1000)
   return milliemes >= 1 && Math.abs(quantite * 1000 - milliemes) <= 1e-6
 }
+
+/**
+ * Reste d'un lot en millièmes entiers, arrondi au plus proche (la moitié vers
+ * le haut) : pendant de `floor(CAST(reste AS numeric) * 1000 + 0.5)` dans
+ * `source_recolte_net_milli`. Le stock d'une espèce somme ces millièmes lot
+ * par lot (modèle de stock unique, L4.2) ; la valeur est d'abord lue sur la
+ * grille (`normaliserStock`), pour qu'un résidu flottant ne déplace pas
+ * l'arrondi.
+ */
+export function milliemesDuReste(reste: number): number {
+  if (!Number.isFinite(reste)) return 0
+  return Math.floor((surGrille(reste) + GRILLE / 2000) / (GRILLE / 1000))
+}
