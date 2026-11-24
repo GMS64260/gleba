@@ -318,7 +318,7 @@ describe("PATCH /api/recoltes/[id] — sortie hors vente, partielle et datée", 
     const res = await sortir({ statut: "perte" })
     expect(res.status).toBe(200)
     const data = mocks.recolteUpdate.mock.calls[0][0].data
-    expect(data).toMatchObject({ statut: "perte", dateSortie: new Date("2027-03-01T00:00:00.000Z") })
+    expect(data).toMatchObject({ statut: "perte", dateSortie: new Date("2027-03-01T10:00:00.000Z") })
     expect(data).not.toHaveProperty("quantite")
     expect(mocks.recolteCreate).not.toHaveBeenCalled()
   })
@@ -383,5 +383,28 @@ describe("PATCH /api/recoltes/[id] — sortie hors vente, partielle et datée", 
     expect(res.status).toBe(200)
     expect(mocks.recolteUpdate.mock.calls[0][0].data).toMatchObject({ statut: "en_stock", dateSortie: null })
     expect(mocks.recolteCreate).not.toHaveBeenCalled()
+  })
+})
+
+// Modèle de stock unique, lot 2 : un lot pris par une sortie de Consommations
+// ne revient au stock que par l'annulation de cette sortie.
+describe("PATCH /api/recoltes/[id] — lot pris par une sortie de Consommations", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1" } } })
+    mocks.recolteFindUnique.mockResolvedValue({
+      ...RECOLTE, quantite: 2, unite: "kg", statut: "don", consommationId: 42, factureId: null,
+      dateSortie: new Date("2027-02-10T00:00:00.000Z"), espece: { id: "Zinnia", nom: "Zinnia" }, culture: { variete: null },
+    })
+  })
+
+  it("refuse la remise en stock depuis l'écran Récoltes", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/recoltes/1150", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ statut: "en_stock" }) }) as never,
+      { params: Promise.resolve({ id: "1150" }) },
+    )
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/Consommations/)
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
   })
 })

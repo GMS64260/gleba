@@ -66,6 +66,18 @@ export async function compterVentesRecoltesCulture(
   }
 }
 
+/**
+ * Lots de la culture pris par une sortie de Stocks > Consommations : la
+ * cascade les effaçait sous leur sortie, qui ne pouvait plus rien rendre
+ * (modèle de stock unique, lot 2). Le message renvoie vers l'annulation.
+ */
+export async function compterLotsSortisParConsommation(tx: Tx, cultureId: number, userId: string): Promise<number> {
+  return tx.recolte.count({ where: { userId, cultureId, consommationId: { not: null } } })
+}
+
+export const MESSAGE_CULTURE_LOTS_CONSOMMATION =
+  'Des récoltes de cette culture ont été sorties par Stocks > Consommations : annulez d’abord ces sorties (leurs lots reviendront en stock), puis supprimez la culture.'
+
 export function aDesVentes(ventes: VentesRecoltesCulture): boolean {
   return ventes.recoltesVendues > 0
 }
@@ -199,6 +211,10 @@ export async function supprimerCulture(
     const ventes = await compterVentesRecoltesCulture(tx, cultureId, userId)
     if (aDesVentes(ventes)) {
       return { ok: false, status: 409, error: messageSuppressionCultureRefusee(culture, ventes), details: ventes }
+    }
+
+    if (await compterLotsSortisParConsommation(tx, cultureId, userId)) {
+      return { ok: false, status: 409, error: MESSAGE_CULTURE_LOTS_CONSOMMATION }
     }
 
     // Les récoltes partent en cascade (recoltes.culture, ON DELETE CASCADE).

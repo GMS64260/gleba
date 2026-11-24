@@ -62,6 +62,16 @@ export async function DELETE() {
         where: { userId },
       })
 
+      // 2 bis. Sorties de stock et comptages des récoltes : sans leurs lots,
+      // ils laissaient un stock d'espèce sans rien derrière (modèle de stock
+      // unique, 2026-11-24). Les réglages par espèce (rendement, unité, prix)
+      // sont conservés.
+      const consommations = await tx.consommation.deleteMany({ where: { userId } })
+      await tx.userStockEspece.updateMany({
+        where: { userId, OR: [{ inventaire: { not: null } }, { dateInventaire: { not: null } }] },
+        data: { inventaire: null, dateInventaire: null },
+      })
+
       // 3. Cultures (dépendent de planches)
       const cultures = await tx.culture.deleteMany({
         where: { userId },
@@ -108,6 +118,7 @@ export async function DELETE() {
       return {
         irrigations: irrigations.count,
         recoltes: recoltes.count,
+        consommations: consommations.count,
         cultures: cultures.count,
         fertilisations: fertilisations.count,
         analyses: analyses.count,
