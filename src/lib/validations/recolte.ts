@@ -25,7 +25,8 @@ export const updateRecolteSchema = recolteSchema.extend({ date: z.coerce.date() 
  * respectée. Le but : interdire qu'une « vente fantôme » se crée et fausse
  * tous les KPI (CA moyen, marge, etc.).
  */
-export const statutRecolteEnum = z.enum(['en_stock', 'vendu', 'consomme', 'perte', 'don', 'a_completer'])
+// `ecart` (écart d'inventaire) est lu tel quel ; la route refuse de l'écrire à la main.
+export const statutRecolteEnum = z.enum(['en_stock', 'vendu', 'consomme', 'perte', 'don', 'ecart', 'a_completer'])
 
 /**
  * Sorties de stock hors vente : la partie sortie garde la ligne, le reste
@@ -35,6 +36,15 @@ export const STATUTS_SORTIE_RECOLTE = ['perte', 'consomme', 'don'] as const
 export type StatutSortieRecolte = (typeof STATUTS_SORTIE_RECOLTE)[number]
 export const estSortieRecolte = (statut: unknown): statut is StatutSortieRecolte =>
   (STATUTS_SORTIE_RECOLTE as readonly unknown[]).includes(statut)
+
+/**
+ * Écart d'inventaire : la part qu'un comptage n'a pas retrouvée sort des lots
+ * sous ce statut, distinct d'une perte (modèle de stock unique, L3). Jamais
+ * saisi à la main : seul le comptage l'écrit, et seul un nouveau comptage le
+ * corrige.
+ */
+export const STATUT_ECART_INVENTAIRE = 'ecart'
+export type StatutSortieLot = StatutSortieRecolte | typeof STATUT_ECART_INVENTAIRE
 
 export const recoltePatchSchema = z.object({
   statut: statutRecolteEnum.optional(),

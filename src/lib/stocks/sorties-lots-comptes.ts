@@ -15,7 +15,7 @@
  */
 import type { Prisma } from '@prisma/client'
 import { dateIsoFacture } from '@/lib/facture-regles'
-import { STATUTS_SORTIE_RECOLTE } from '@/lib/validations/recolte'
+import { STATUT_ECART_INVENTAIRE, STATUTS_SORTIE_RECOLTE } from '@/lib/validations/recolte'
 
 export async function sortiesLotsComptes(
   db: Pick<Prisma.TransactionClient, 'recolte'>,
@@ -35,7 +35,7 @@ export async function sortiesLotsComptes(
       ...(recolteIdsEnBoutique.length > 0 && { id: { notIn: recolteIdsEnBoutique } }),
       AND: [{
         OR: [
-          { statut: { in: [...STATUTS_SORTIE_RECOLTE] }, dateSortie: { gt: dateComptage } },
+          { statut: { in: [...STATUTS_SORTIE_RECOLTE, STATUT_ECART_INVENTAIRE] }, dateSortie: { gt: dateComptage } },
           { statut: 'vendu', dateVente: { gt: dateComptage } },
         ],
       }],

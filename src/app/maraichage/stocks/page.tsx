@@ -309,9 +309,11 @@ function StocksPageContent() {
         const corps = await response.json().catch(() => null)
         throw new Error(typeof corps?.error === "string" ? corps.error : "Impossible de sauvegarder le stock")
       }
+      // Un comptage de récolte aligne aussi les lots : le serveur dit comment.
+      const corps = await response.json().catch(() => null)
       toast({
         title: "Stock mis à jour",
-        description: `Le stock a été enregistré`,
+        description: typeof corps?.data?.message === "string" ? corps.data.message : "Le stock a été enregistré",
       })
     } catch (e) {
       toast({

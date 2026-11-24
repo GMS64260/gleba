@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { modePaiementDepuisReglement } from '@/lib/validations/reglement'
 import { updateRecolteSchema, recoltePatchSchema } from '@/lib/validations'
-import { estSortieRecolte } from '@/lib/validations/recolte'
+import { estSortieRecolte, STATUT_ECART_INVENTAIRE } from '@/lib/validations/recolte'
 import { jourSortie, preparerSortieLot } from '@/lib/recolte/sortie-lot'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
@@ -41,6 +41,14 @@ type RouteParams = { params: Promise<{ id: string }> }
 // calculerStocksNet (baseline manuel + récoltes en stock − consommations),
 // ce qui supprime le double comptage (audit #28). Les anciens appels à
 // ajusterInventaireEspece ont donc été retirés.
+
+/** Un écart d'inventaire vient d'un comptage et ne se corrige que par un autre. */
+const MESSAGE_ECART_INVENTAIRE =
+  'Cet écart vient d’un comptage du stock : recomptez le stock dans Stocks > Récoltes pour le corriger.'
+
+/** Un lot né d'un comptage se corrige par un comptage. */
+const MESSAGE_LOT_INVENTAIRE =
+  'Ce lot vient d’un comptage du stock, sans récolte d’origine : corrigez-le par un nouveau comptage dans Stocks > Récoltes.'
 
 /** Un lot pris par une sortie de Consommations ne se rend au stock que par elle. */
 const MESSAGE_SORTIE_CONSOMMATION =
@@ -128,7 +136,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       // lot est lue sans verrou pour savoir quoi verrouiller, puis revérifiée.
       const apercu = await tx.recolte.findFirst({ where: { id: recolteId, userId }, select: { cultureId: true } })
       if (!apercu) throw new ErreurCommerciale('Récolte introuvable', 404)
-      await verrouillerCultures(tx, userId, [apercu.cultureId, data.cultureId ?? apercu.cultureId], 'sansCle')
+      await verrouillerCultures(tx, userId, [apercu.cultureId, data.cultureId ?? apercu.cultureId].filter((id): id is number => id != null), 'sansCle')
       const lot = await verrouillerRecolteLibre(tx, userId, recolteId)
       if (lot.cultureId !== apercu.cultureId) {
         throw new ErreurCommerciale('Cette récolte vient d’être rattachée à une autre culture. Actualisez la page puis recommencez.', 409)
@@ -141,6 +149,23 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (data.quantite != null && (lot.unite ?? 'kg') !== 'kg' && !Number.isInteger(data.quantite)) {
         throw new ErreurCommerciale('Indiquez une quantité entière dans l’unité de ce lot.', 400)
       }
+      // Lot d'inventaire (né d'un comptage, sans culture) : il se corrige par un
+      // nouveau comptage, jamais en le rattachant ou en le redatant ici. La fiche
+      // renvoie toujours le jour : le même jour ne redate pas l'instant du lot.
+      if (lot.cultureId == null && data.date !== undefined && jourSortie(data.date) === jourSortie(lot.date)) delete data.date
+      // Écart d'inventaire : le journal d'un comptage ne se réécrit pas.
+      if (lot.statut === STATUT_ECART_INVENTAIRE && (
+        (data.quantite !== undefined && data.quantite !== lot.quantite) ||
+        (data.especeId !== undefined && data.especeId !== lot.especeId) ||
+        (data.cultureId !== undefined && data.cultureId !== lot.cultureId) ||
+        (data.date !== undefined && jourSortie(data.date) !== jourSortie(lot.date))
+      )) throw new ErreurCommerciale(MESSAGE_ECART_INVENTAIRE, 409)
+      if (lot.cultureId == null && (
+        (data.quantite !== undefined && data.quantite !== lot.quantite) ||
+        (data.especeId !== undefined && data.especeId !== lot.especeId) ||
+        data.cultureId !== undefined ||
+        (data.date !== undefined && jourSortie(data.date) !== jourSortie(lot.date))
+      )) throw new ErreurCommerciale(MESSAGE_LOT_INVENTAIRE, 409)
       if (lot.consommationId != null && (
         (data.quantite !== undefined && data.quantite !== lot.quantite) ||
         (data.especeId !== undefined && data.especeId !== lot.especeId) ||
@@ -166,7 +191,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       // figé reste (MAR-04, 2026-11-12, parité avec PUT /api/arbres/recoltes/[id]).
       let statutBioSnapshot: string | null | undefined
       // Vérifier les références après le verrou, dans le même état que l’écriture.
-      if (cultureCible !== lot.cultureId || especeCible !== lot.especeId || dateChange) {
+      if (cultureCible != null && (cultureCible !== lot.cultureId || especeCible !== lot.especeId || dateChange)) {
         const culture = await tx.culture.findUnique({
           where: { id: cultureCible, userId },
           select: {
@@ -194,7 +219,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       // Redatée ou rattachée, la récolte peut devenir la première de sa
       // culture : une récolte faite datée après elle est recalée sur sa date,
       // même règle que la saisie d'une récolte (`recolte/creation`).
-      if (cultureCible !== lot.cultureId || dateChange) {
+      if (cultureCible != null && (cultureCible !== lot.cultureId || dateChange)) {
         const etat = await tx.culture.findFirst({
           where: { id: cultureCible, userId },
           select: { recolteFaite: true, ...SELECT_ETAPES },
@@ -259,6 +284,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if ((donnees.quantiteSortie != null || donnees.dateSortie != null) && !nouvelleSortie) {
         return refuser('La quantité et le jour de sortie ne valent que pour une perte, une consommation personnelle ou un don.', 400)
       }
+      // Écart d'inventaire : seul un comptage l'écrit, seul un nouveau comptage le corrige.
+      if ((existing.statut === STATUT_ECART_INVENTAIRE && body.statut !== undefined && body.statut !== existing.statut)
+        || (body.statut === STATUT_ECART_INVENTAIRE && existing.statut !== STATUT_ECART_INVENTAIRE)) {
+        return refuser(MESSAGE_ECART_INVENTAIRE, 409)
+      }
       // Lot pris par une sortie de Consommations : elle seule le rend au stock.
       if (existing.consommationId != null && body.statut !== undefined && body.statut !== existing.statut) {
         return refuser(MESSAGE_SORTIE_CONSOMMATION, 409)
@@ -289,7 +319,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       // vente sans l'empêcher. Corriger une vente déjà faite n'est pas rejugé.
       let dar = null
       if (statut === 'vendu' && existing.statut !== 'vendu') {
-        const plancheId = existing.culture.plancheId
+        // Lot d'inventaire : ni planche ni traitement connus, aucun délai à juger.
+        const plancheId = existing.culture?.plancheId ?? null
         const planche = plancheId ? await tx.planche.findFirst({ where: { id: plancheId, userId }, select: { parcelleGeoId: true } }) : null
         dar = await verdictDarLegume(tx, userId, { id: recolteId, cultureId: existing.cultureId, plancheId, parcelleId: planche?.parcelleGeoId ?? null, date: existing.date })
         if (dar.niveau === 'bloquant') return { ok: false as const, response: NextResponse.json(corpsRefusDar(new ErreurDarEnCours(dar)), { status: 409 }) }
@@ -329,7 +360,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (statut === 'vendu' && donnees.creerFacture) {
         const totalHT = prixTotal! / 1.055
         const espece = existing.espece.nom ?? existing.espece.id
-        const variete = existing.culture.variete
+        const variete = existing.culture?.variete
         const description = `${espece}${variete ? ` - ${variete.nom ?? variete.id}` : ''}`
         const suivi = await tx.venteManuelle.findFirst({
           where: { userId, auto: true, sourceType: 'recolte', sourceId: recolteId },
@@ -363,7 +394,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         updateData.quantite = sortie?.ok ? sortie.quantite : quantiteVendue
         await tx.recolte.create({ data: {
           userId, especeId: existing.especeId, cultureId: existing.cultureId,
-          date: existing.date, quantite: reliquat, unite: existing.unite, statut: 'en_stock',
+          // Même instant de saisie que le lot : le reste d'un lot compté reste compté.
+          date: existing.date, createdAt: existing.createdAt, quantite: reliquat, unite: existing.unite, statut: 'en_stock',
           datePeremption: existing.datePeremption, statutBioSnapshot: existing.statutBioSnapshot,
           // Le reste d'une sortie garde la note du lot : c'est le même produit.
           notes: sortie?.ok ? existing.notes ?? `Reliquat de la récolte #${recolteId}` : `Reliquat non vendu de la récolte #${recolteId}`,
@@ -401,6 +433,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const resultat = await prisma.$transaction(async tx => {
       const recolte = await verrouillerRecolteLibre(tx, userId, recolteId)
       if (recolte.consommationId != null) throw new ErreurCommerciale(MESSAGE_SORTIE_CONSOMMATION, 409)
+      if (recolte.cultureId == null) throw new ErreurCommerciale(MESSAGE_LOT_INVENTAIRE, 409)
+      if (recolte.statut === STATUT_ECART_INVENTAIRE) throw new ErreurCommerciale(MESSAGE_ECART_INVENTAIRE, 409)
       if (recolte.factureId) {
         const liee = await annulerFactureLiee(tx, userId, recolte.factureId)
         if (!liee.ok) return liee

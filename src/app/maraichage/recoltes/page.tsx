@@ -129,11 +129,12 @@ interface RecolteWithRelations extends PieceAvecDevise {
     prixKg: number | null
     famille: { id: string; couleur: string | null } | null
   }
+  /** null : lot d'inventaire, né d'un comptage du stock, sans culture d'origine. */
   culture: {
     id: number
     variete: { id: string; nom: string | null } | null
     planche: { id: string; nom: string } | null
-  }
+  } | null
 }
 
 interface Client {
@@ -218,7 +219,7 @@ export default function RecoltesPage() {
 
       const [stockRes, historiqueRes, clientsRes] = await Promise.all([
         fetch(`/api/recoltes?statut=en_stock&pageSize=5000${filtres}`),
-        fetch(`/api/recoltes?statut=vendu,consomme,perte,don,a_completer&pageSize=${PLAFOND_HISTORIQUE}${filtres}`),
+        fetch(`/api/recoltes?statut=vendu,consomme,perte,don,ecart,a_completer&pageSize=${PLAFOND_HISTORIQUE}${filtres}`),
         fetch("/api/comptabilite/clients?actif=true"),
       ])
 
@@ -296,7 +297,9 @@ export default function RecoltesPage() {
   const perteRecoltes = data.filter(r => r.statut === "perte")
   const consoPersoRecoltes = data.filter(r => r.statut === "consomme")
   const donRecoltes = data.filter(r => r.statut === "don")
-  const sortiesRecoltes = [...perteRecoltes, ...consoPersoRecoltes, ...donRecoltes]
+  // Écarts d'inventaire : ce qu'un comptage n'a pas retrouvé, à part des pertes.
+  const ecartRecoltes = data.filter(r => r.statut === "ecart")
+  const sortiesRecoltes = [...perteRecoltes, ...consoPersoRecoltes, ...donRecoltes, ...ecartRecoltes]
 
   const clientOptions = React.useMemo(() =>
     clients.map(c => ({ value: c.nom, label: c.nom })),
@@ -683,6 +686,11 @@ export default function RecoltesPage() {
                   dons à part : {formatQuantiteParUnite(ventiler(donRecoltes))}
                 </p>
               )}
+              {ecartRecoltes.length > 0 && (
+                <p className="mt-1 text-xs text-orange-700/80">
+                  écarts d&apos;inventaire à part : {formatQuantiteParUnite(ventiler(ecartRecoltes))}
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -794,7 +802,11 @@ export default function RecoltesPage() {
                               </div>
                             </TableCell>
                             <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
-                            <TableCell>{r.culture?.planche?.nom || "-"}</TableCell>
+                            <TableCell>
+                              {r.culture
+                                ? r.culture.planche?.nom || "-"
+                                : <Badge variant="outline" className="border-slate-300 text-slate-600" title="Lot né d'un comptage du stock, sans récolte d'origine">Comptage</Badge>}
+                            </TableCell>
                             <TableCell className="text-right font-medium text-green-600">
                               {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                             </TableCell>
@@ -860,7 +872,7 @@ export default function RecoltesPage() {
                                 <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => ouvrirSortie(r, "perte")}>
                                   Perte
                                 </Button>
-                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => handleDelete(r.id)}>
+                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null || r.culture == null} title={r.culture == null ? "Lot né d'un comptage : corrigez le stock par un nouveau comptage" : undefined} onClick={() => handleDelete(r.id)}>
                                   <Trash2 className="h-4 w-4 text-red-500" />
                                 </Button>
                               </div>
@@ -978,19 +990,25 @@ export default function RecoltesPage() {
                           {/* Jour seul (minuit UTC) ou instant d'une sortie du jour : `jourCivilStocke` lit les deux. */}
                           <TableCell>{r.dateSortie ? format(jourLocal(jourCivilStocke(r.dateSortie) ?? r.dateSortie), "dd/MM/yyyy", { locale: fr }) : "-"}</TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={MOTIFS_SORTIE[r.statut as MotifSortie]?.badge ?? ""}>
-                              {MOTIFS_SORTIE[r.statut as MotifSortie]?.libelle ?? r.statut}
-                            </Badge>
+                            {r.statut === "ecart" ? (
+                              <Badge variant="outline" className="border-slate-300 text-slate-600">Écart d&apos;inventaire</Badge>
+                            ) : (
+                              <Badge variant="outline" className={MOTIFS_SORTIE[r.statut as MotifSortie]?.badge ?? ""}>
+                                {MOTIFS_SORTIE[r.statut as MotifSortie]?.libelle ?? r.statut}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>{nomEspece({ id: r.especeId, nom: r.espece?.nom })}</TableCell>
                           <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
-                          <TableCell className={`text-right ${r.statut === "perte" ? "text-orange-600" : r.statut === "don" ? "text-violet-700" : "text-sky-700"}`}>
+                          <TableCell className={`text-right ${r.statut === "perte" ? "text-orange-600" : r.statut === "don" ? "text-violet-700" : r.statut === "ecart" ? "text-slate-600" : "text-sky-700"}`}>
                             {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{r.notes || "-"}</TableCell>
                           <TableCell><BoutonPartagerRecolte recolteId={r.id} /></TableCell>
                           <TableCell className="text-right">
-                            {r.consommationId != null ? (
+                            {r.statut === "ecart" ? (
+                              <span className="text-xs text-muted-foreground">Corrigé par un comptage</span>
+                            ) : r.consommationId != null ? (
                               <span className="text-xs text-muted-foreground">Via Stocks &gt; Consommations</span>
                             ) : (
                               <Button variant="ghost" size="sm" onClick={() => handleRemettreEnStock(r)}>

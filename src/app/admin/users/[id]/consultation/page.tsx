@@ -105,12 +105,13 @@ export default async function ConsultationUserPage({ params }: PageProps) {
     prisma.soinAnimal.count({ where: { userId, fait: false } }),
     prisma.culture.count({ where: { userId } }),
     prisma.planche.count({ where: { userId } }),
-    prisma.recolte.count({ where: { userId } }),
+    // Récoltes saisies, sans les lots d'inventaire nés d'un comptage.
+    prisma.recolte.count({ where: { userId, cultureId: { not: null } } }),
     // Ventilé par unité : un compte de fleurs coupées récolte des tiges, pas
     // des kilos, et les additionner ferait un chiffre sans sens.
     prisma.recolte.groupBy({
       by: ["unite"],
-      where: { userId, date: { gte: debutAnnee, lte: finAnnee } },
+      where: { userId, date: { gte: debutAnnee, lte: finAnnee }, cultureId: { not: null } },
       _sum: { quantite: true },
     }),
     prisma.arbre.count({ where: { userId } }),

@@ -747,7 +747,8 @@ export async function computeStocksUnifies(userId: string) {
   // kilos ; les champs `*Texte` sont la vérité affichable (« 12 kg + 360 tiges »).
   const recoltesParStatut = await prisma.recolte.groupBy({
     by: ['statut', 'unite'],
-    where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+    // Récoltes de l'année : sans les lots d'inventaire, nés d'un comptage.
+    where: { userId, date: { gte: startOfYear, lte: endOfYear }, cultureId: { not: null } },
     _sum: { quantite: true },
   })
   const parStatutVentile: Record<string, QuantiteParUnite> = {}

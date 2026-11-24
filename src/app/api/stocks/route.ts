@@ -10,7 +10,7 @@ import prisma from '@/lib/prisma'
 import { calculerStocksNet, chargerComparaisonsStockLots } from '@/lib/stocks-helpers'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { enregistrerStockVariete, stockVarieteSchema } from '@/lib/stocks/stock-variete'
-import { enregistrerInventaireEspece, inventaireEspeceSchema } from '@/lib/stocks/inventaire-espece'
+import { enregistrerInventaireEspece, inventaireEspeceSchema, messageAjustementLots } from '@/lib/stocks/inventaire-espece'
 import { ESPECE_TYPES_MARAICHAGE, ESPECE_TYPES_VERGER } from '@/lib/validations/espece'
 
 // Ticket FB-PMWX8O — le filtre « légumes » énumérait le triplet historique en
@@ -116,7 +116,11 @@ export async function PATCH(request: NextRequest) {
         }
         return NextResponse.json({
           success: true,
-          data: { ...resultat.ligne, especeId: resultat.especeId, unite: resultat.unite },
+          data: {
+            ...resultat.ligne, especeId: resultat.especeId, unite: resultat.unite,
+            ajustement: resultat.ajustement,
+            message: messageAjustementLots(resultat.ajustement, resultat.unite),
+          },
         })
       }
 

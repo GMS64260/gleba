@@ -16,6 +16,7 @@ type Lot = {
   id: number; userId: string; especeId: string; cultureId: number; date: Date; quantite: number; unite: string | null
   statut: string; stockDisponibleCommercial: number | null; enBoutique: boolean; dateSortie: Date | null
   consommationId: number | null; notes: string | null; datePeremption: Date | null; statutBioSnapshot: string | null
+  createdAt: Date
 }
 let lots: Lot[] = []
 let prochainId = 100
@@ -23,7 +24,7 @@ const jour = (iso: string) => new Date(`${iso}T00:00:00.000Z`)
 const lot = (id: number, iso: string, quantite: number, autre: Partial<Lot> = {}): Lot => ({
   id, userId: 'u1', especeId: 'Carotte', cultureId: 7, date: jour(iso), quantite, unite: 'kg', statut: 'en_stock',
   stockDisponibleCommercial: null, enBoutique: false, dateSortie: null, consommationId: null, notes: null,
-  datePeremption: null, statutBioSnapshot: 'AB', ...autre,
+  datePeremption: null, statutBioSnapshot: 'AB', createdAt: new Date(`${iso}T08:00:00.000Z`), ...autre,
 })
 
 type Where = Record<string, unknown> & { OR?: Array<{ unite: string | null }>; statut?: unknown; unite?: string }
@@ -81,6 +82,8 @@ describe('sortirParLots', () => {
     expect(lots.find((l) => l.id === 2)).toMatchObject({ statut: 'don', consommationId: 42, quantite: 2 })
     expect(lots.find((l) => l.id === 100)).toMatchObject({
       statut: 'en_stock', quantite: 3, date: jour('2026-10-01'), cultureId: 7, unite: 'kg', statutBioSnapshot: 'AB', consommationId: null,
+      // Même instant de saisie que le lot d'origine : un reste de lot compté reste compté.
+      createdAt: new Date('2026-10-01T08:00:00.000Z'),
     })
     expect(lots.find((l) => l.id === 3)).toMatchObject({ statut: 'en_stock', quantite: 4 })
   })

@@ -1448,8 +1448,9 @@ model Recolte {
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   especeId          String    @map("espece")
   espece            Espece    @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  cultureId         Int       @map("culture")
-  culture           Culture   @relation(fields: [cultureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Culture d'origine ; NULL = lot d'inventaire, né d'un comptage (modèle de stock unique, L3).
+  cultureId         Int?      @map("culture")
+  culture           Culture?  @relation(fields: [cultureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   date              DateTime  @default(now()) @map("date")
   quantite          Float     @map("quantite") // dans l'unité ci-dessous
   // Unité de la quantité, FIGÉE à la saisie — même principe que statutBioSnapshot.

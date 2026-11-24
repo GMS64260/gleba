@@ -54,7 +54,8 @@ export default function EditRecoltePage() {
   const [recolteInfo, setRecolteInfo] = React.useState<{
     especeId: string
     especeNom?: string
-    cultureId: number
+    /** null : lot d'inventaire, né d'un comptage du stock. */
+    cultureId: number | null
     /**
      * Unité FIGÉE sur la récolte à sa saisie (kg, tige, pièce, botte ; null =
      * kg). La quantité se modifie dans cette unité : « Quantité (kg) » en dur
@@ -244,7 +245,9 @@ export default function EditRecoltePage() {
                     </p>
                     <p className="text-sm">
                       <span className="text-muted-foreground">Culture:</span>{" "}
-                      <span className="font-medium">#{recolteInfo.cultureId}</span>
+                      <span className="font-medium">
+                        {recolteInfo.cultureId != null ? `#${recolteInfo.cultureId}` : "aucune (lot né d'un comptage du stock)"}
+                      </span>
                     </p>
                   </div>
                 )}

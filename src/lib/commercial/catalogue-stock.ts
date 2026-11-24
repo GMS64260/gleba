@@ -46,15 +46,15 @@ export async function chargerCatalogueStock(userId: string, db: DbStockCommercia
   // sort de la liste des lots (`produitsBoutique: none`) ; son produit garde
   // l'avertissement DAR du lot d'origine, sinon il disparaissait du BL.
   const lotsLegumes = [
-    ...recoltes.map(r => ({ id: r.id, cultureId: r.cultureId, plancheId: r.culture.plancheId, parcelleId: r.culture.planche?.parcelleGeoId ?? null, date: r.date })),
-    ...produits.flatMap(p => p.recolte ? [{ id: p.recolte.id, cultureId: p.recolte.cultureId, plancheId: p.recolte.culture.plancheId, parcelleId: p.recolte.culture.planche?.parcelleGeoId ?? null, date: p.recolte.date }] : []),
+    ...recoltes.map(r => ({ id: r.id, cultureId: r.cultureId, plancheId: r.culture?.plancheId ?? null, parcelleId: r.culture?.planche?.parcelleGeoId ?? null, date: r.date })),
+    ...produits.flatMap(p => p.recolte ? [{ id: p.recolte.id, cultureId: p.recolte.cultureId, plancheId: p.recolte.culture?.plancheId ?? null, parcelleId: p.recolte.culture?.planche?.parcelleGeoId ?? null, date: p.recolte.date }] : []),
   ]
   const avertissementsLegumes = await chargerAvertissementsDarLegumes(db, userId, lotsLegumes)
   for (const r of recoltes) {
     const dispo = disponibleCommercial(r)
     if (dispo <= 0 || !frais(r.datePeremption)) continue
     const prix = prixProposeDeVente(valoriserLot({ acteurId: userId, especeId: r.especeId, unite: r.unite, quantite: dispo, prixLot: r.prixKg, espece: r.espece }, prixRecoltes))
-    articles.push({ type: 'recolte', id: String(r.id), nom: `${r.espece.nom || r.especeId}${r.culture.variete?.nom ? ` · ${r.culture.variete.nom}` : ''}`, categorie: 'Récoltes maraîchères', disponible: dispo, unite: r.unite || 'kg', prixTTC: prix, tauxTVA: 5.5, statutBio: r.statutBioSnapshot, dateLot: dateIsoFacture(r.date), href: '/maraichage/recoltes', avertissements: avertissementsLegumes.get(r.id) })
+    articles.push({ type: 'recolte', id: String(r.id), nom: `${r.espece.nom || r.especeId}${r.culture?.variete?.nom ? ` · ${r.culture.variete.nom}` : ''}`, categorie: 'Récoltes maraîchères', disponible: dispo, unite: r.unite || 'kg', prixTTC: prix, tauxTVA: 5.5, statutBio: r.statutBioSnapshot, dateLot: dateIsoFacture(r.date), href: '/maraichage/recoltes', avertissements: avertissementsLegumes.get(r.id) })
   }
   const avertissementsFruits = await chargerAvertissementsDarFruits(db, userId, fruits)
   for (const r of fruits) {

@@ -325,6 +325,8 @@ export default function EditEspecePage() {
         const erreur = await response.json().catch(() => ({}))
         throw new Error(erreur.error || "Enregistrement du stock impossible")
       }
+      const enregistrement = await response.json().catch(() => null)
+      const alignement: string | null = typeof enregistrement?.data?.message === "string" ? enregistrement.data.message : null
       // Le stock net se relit par la fiche (même calcul que Stocks > Récoltes) :
       // un comptage effacé rend aux récoltes antérieures leur place.
       const fiche = await fetch(`/api/especes/${encodeURIComponent(especeId)}`)
@@ -336,7 +338,7 @@ export default function EditEspecePage() {
         title: "Stock enregistré",
         description:
           stock != null
-            ? `Stocks > Récoltes affiche désormais ${formatQuantite(stock.stockNet, stock.unite)}.`
+            ? `Stocks > Récoltes affiche désormais ${formatQuantite(stock.stockNet, stock.unite)}.${alignement ? ` ${alignement}` : ""}`
             : "Plus de comptage manuel pour cette espèce.",
       })
     } catch (error) {
