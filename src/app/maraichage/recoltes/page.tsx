@@ -10,6 +10,8 @@ import { useDevise } from "@/hooks/use-devise"
 import * as React from "react"
 import Link from "next/link"
 import { format, differenceInCalendarDays } from "date-fns"
+import { jourLocalISO } from "@/lib/jour-civil"
+import { SelectNatif } from "@/components/ui/select-natif"
 import { fr } from "date-fns/locale"
 import { ArrowLeft, BarChart3, Package, ShoppingCart, Euro, Trash2, AlertTriangle, Plus, RefreshCw, FileText, Clock, Timer } from "lucide-react"
 
@@ -32,6 +34,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog"
 import {
   Table,
@@ -83,6 +86,14 @@ const uniteRecolte = (unite: string | null | undefined): UniteQuantite =>
 const prixParUnite = (unite: UniteQuantite): string =>
   unite === 'kg' ? 'au kg' : `par ${libelleUniteQuantite(unite, 1)}`
 
+/** Sorties de stock hors vente : la vente, elle, crée une recette. */
+type MotifSortie = "perte" | "consomme" | "don"
+const MOTIFS_SORTIE: Record<MotifSortie, { libelle: string; fait: string; badge: string }> = {
+  perte: { libelle: "Perte", fait: "Perte enregistrée", badge: "border-orange-300 text-orange-700" },
+  consomme: { libelle: "Conso perso", fait: "Consommation perso enregistrée", badge: "border-sky-300 text-sky-700" },
+  don: { libelle: "Don", fait: "Don enregistré", badge: "border-violet-300 text-violet-700" },
+}
+
 interface RecolteWithRelations extends PieceAvecDevise {
   id: number
   especeId: string
@@ -95,6 +106,8 @@ interface RecolteWithRelations extends PieceAvecDevise {
   unite: string | null
   statut: string
   dateVente: string | null
+  /** Jour d'une sortie hors vente (perte, consommation personnelle, don). */
+  dateSortie?: string | null
   prixKg: number | null
   prixTotal: number | null
   clientId: number | null
@@ -177,6 +190,11 @@ export default function RecoltesPage() {
   })
   const [venteSubmitting, setVenteSubmitting] = React.useState(false)
 
+  // Dialog sortie hors vente (perte, consommation personnelle, don)
+  const [sortieRecolte, setSortieRecolte] = React.useState<RecolteWithRelations | null>(null)
+  const [sortieData, setSortieData] = React.useState({ motif: "perte" as MotifSortie, quantite: "", date: "", notes: "" })
+  const [sortieSubmitting, setSortieSubmitting] = React.useState(false)
+
   const years = getAvailableYears()
 
   // Charger les données
@@ -198,7 +216,7 @@ export default function RecoltesPage() {
 
       const [stockRes, historiqueRes, clientsRes] = await Promise.all([
         fetch(`/api/recoltes?statut=en_stock&pageSize=5000${filtres}`),
-        fetch(`/api/recoltes?statut=vendu,consomme,perte,a_completer&pageSize=${PLAFOND_HISTORIQUE}${filtres}`),
+        fetch(`/api/recoltes?statut=vendu,consomme,perte,don,a_completer&pageSize=${PLAFOND_HISTORIQUE}${filtres}`),
         fetch("/api/comptabilite/clients?actif=true"),
       ])
 
@@ -275,7 +293,8 @@ export default function RecoltesPage() {
   // déjà en base (statut « consomme » vs « perte »).
   const perteRecoltes = data.filter(r => r.statut === "perte")
   const consoPersoRecoltes = data.filter(r => r.statut === "consomme")
-  const sortiesRecoltes = [...perteRecoltes, ...consoPersoRecoltes]
+  const donRecoltes = data.filter(r => r.statut === "don")
+  const sortiesRecoltes = [...perteRecoltes, ...consoPersoRecoltes, ...donRecoltes]
 
   const clientOptions = React.useMemo(() =>
     clients.map(c => ({ value: c.nom, label: c.nom })),
@@ -462,56 +481,63 @@ export default function RecoltesPage() {
     }
   }
 
-  const handleMarquerPerte = async (recolte: RecolteWithRelations) => {
-    if (!(await confirmDialog("Marquer cette récolte comme perte ?"))) return
+  const ouvrirSortie = (recolte: RecolteWithRelations, motif: MotifSortie) => {
+    setSortieRecolte(recolte)
+    setSortieData({ motif, quantite: recolte.quantite.toString(), date: jourLocalISO(new Date()), notes: "" })
+  }
 
+  // Sortie en tout ou partie, à son jour : la partie sortie garde la ligne, le
+  // reste redevient un lot en stock (le serveur scinde, comme pour une vente).
+  const handleSortir = async () => {
+    if (!sortieRecolte || sortieSubmitting) return
+    const quantite = parseFloat(sortieData.quantite.replace(",", "."))
+    if (!Number.isFinite(quantite) || quantite <= 0) {
+      toast({ variant: "destructive", title: "Quantité invalide", description: "Indiquez une quantité supérieure à zéro." })
+      return
+    }
+    setSortieSubmitting(true)
     try {
-      const res = await fetch(`/api/recoltes/${recolte.id}`, {
+      const res = await fetch(`/api/recoltes/${sortieRecolte.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: "perte" }),
+        body: JSON.stringify({
+          statut: sortieData.motif,
+          quantiteSortie: quantite,
+          dateSortie: sortieData.date || undefined,
+          ...(sortieData.notes.trim() ? { notes: sortieData.notes.trim() } : {}),
+        }),
       })
-
       if (res.ok) {
-        const updated = await res.json()
-        setData(data.map(r => r.id === updated.id ? updated : r))
+        setSortieRecolte(null)
+        toast({ title: MOTIFS_SORTIE[sortieData.motif].fait })
+        fetchData()
         chargerComparaisons()
-        toast({ title: "Marqué comme perte" })
       } else {
         const payload = await res.json().catch(() => null)
-        toast({
-          variant: "destructive",
-          title: "Erreur",
-          description: payload?.error || "Le changement de statut a échoué",
-        })
+        toast({ variant: "destructive", title: "Erreur", description: payload?.error || "La sortie n'a pas pu être enregistrée" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setSortieSubmitting(false)
     }
   }
 
-  const handleConsommer = async (recolte: RecolteWithRelations) => {
-    if (!(await confirmDialog("Marquer cette récolte comme consommation perso (auto-consommation) ?"))) return
-
+  const handleRemettreEnStock = async (recolte: RecolteWithRelations) => {
+    if (!(await confirmDialog("Remettre ce lot en stock ? La sortie sera annulée."))) return
     try {
       const res = await fetch(`/api/recoltes/${recolte.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: "consomme" }),
+        body: JSON.stringify({ statut: "en_stock" }),
       })
-
       if (res.ok) {
-        const updated = await res.json()
-        setData(data.map(r => r.id === updated.id ? updated : r))
+        toast({ title: "Lot remis en stock" })
+        fetchData()
         chargerComparaisons()
-        toast({ title: "Consommation perso enregistrée" })
       } else {
         const payload = await res.json().catch(() => null)
-        toast({
-          variant: "destructive",
-          title: "Erreur",
-          description: payload?.error || "Le changement de statut a échoué",
-        })
+        toast({ variant: "destructive", title: "Erreur", description: payload?.error || "Le lot n'a pas pu être remis en stock" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -647,6 +673,11 @@ export default function RecoltesPage() {
               {consoPersoRecoltes.length > 0 && (
                 <p className="mt-1 text-xs text-orange-700/80">
                   dont conso perso à part : {formatQuantiteParUnite(ventiler(consoPersoRecoltes))}
+                </p>
+              )}
+              {donRecoltes.length > 0 && (
+                <p className="mt-1 text-xs text-orange-700/80">
+                  dons à part : {formatQuantiteParUnite(ventiler(donRecoltes))}
                 </p>
               )}
             </CardContent>
@@ -817,10 +848,13 @@ export default function RecoltesPage() {
                                   <Euro className="h-4 w-4 mr-1" />
                                   Vendre
                                 </Button>
-                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => handleConsommer(r)}>
+                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => ouvrirSortie(r, "consomme")}>
                                   Conso perso
                                 </Button>
-                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => handleMarquerPerte(r)}>
+                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => ouvrirSortie(r, "don")}>
+                                  Don
+                                </Button>
+                                <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => ouvrirSortie(r, "perte")}>
                                   Perte
                                 </Button>
                                 <Button variant="ghost" size="sm" disabled={r.stockDisponibleCommercial != null} onClick={() => handleDelete(r.id)}>
@@ -916,19 +950,21 @@ export default function RecoltesPage() {
               <CardContent>
                 {sortiesRecoltes.length === 0 ? (
                   <p className="text-muted-foreground" role={erreurChargement ? "alert" : undefined}>
-                    {messageSansLigne("Aucune perte ni consommation personnelle enregistrée")}
+                    {messageSansLigne("Aucune perte, consommation personnelle ni don enregistré")}
                   </p>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date récolte</TableHead>
+                        <TableHead>Sortie le</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Espèce</TableHead>
                         <TableHead>Variété</TableHead>
                         <TableHead className="text-right">Quantité</TableHead>
                         <TableHead>Notes</TableHead>
                         <TableHead>Communauté</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -936,20 +972,24 @@ export default function RecoltesPage() {
                         <TableRow key={r.id}>
                           {/* Jour civil stocké : `new Date(r.date)` reculait d'un jour à l'ouest d'UTC. */}
                           <TableCell>{format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                          <TableCell>{r.dateSortie ? format(jourLocal(r.dateSortie), "dd/MM/yyyy", { locale: fr }) : "-"}</TableCell>
                           <TableCell>
-                            {r.statut === "perte" ? (
-                              <Badge variant="outline" className="border-orange-300 text-orange-700">Perte</Badge>
-                            ) : (
-                              <Badge variant="outline" className="border-sky-300 text-sky-700">Conso perso</Badge>
-                            )}
+                            <Badge variant="outline" className={MOTIFS_SORTIE[r.statut as MotifSortie]?.badge ?? ""}>
+                              {MOTIFS_SORTIE[r.statut as MotifSortie]?.libelle ?? r.statut}
+                            </Badge>
                           </TableCell>
                           <TableCell>{nomEspece({ id: r.especeId, nom: r.espece?.nom })}</TableCell>
                           <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
-                          <TableCell className={`text-right ${r.statut === "perte" ? "text-orange-600" : "text-sky-700"}`}>
+                          <TableCell className={`text-right ${r.statut === "perte" ? "text-orange-600" : r.statut === "don" ? "text-violet-700" : "text-sky-700"}`}>
                             {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{r.notes || "-"}</TableCell>
                           <TableCell><BoutonPartagerRecolte recolteId={r.id} /></TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => handleRemettreEnStock(r)}>
+                              Remettre en stock
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -959,6 +999,67 @@ export default function RecoltesPage() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Dialog Sortie hors vente */}
+        <Dialog open={sortieRecolte !== null} onOpenChange={(ouvert) => { if (!ouvert) setSortieRecolte(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Sortir du stock</DialogTitle>
+              <DialogDescription>Perte, consommation personnelle ou don : la vente se fait par le bouton Vendre.</DialogDescription>
+            </DialogHeader>
+            {sortieRecolte && (
+              <form noValidate className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleSortir() }}>
+                <div className="p-3 bg-orange-50 rounded-lg">
+                  <p className="text-sm text-orange-800">
+                    {nomEspece({ id: sortieRecolte.especeId, nom: sortieRecolte.espece?.nom })} - {formatQuantite(sortieRecolte.quantite, uniteRecolte(sortieRecolte.unite))} en stock
+                    {sortieRecolte.culture?.variete && ` (${sortieRecolte.culture.variete.nom ?? sortieRecolte.culture.variete.id})`}
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="sortie-motif">Motif</Label>
+                  <SelectNatif id="sortie-motif" value={sortieData.motif} onChange={(e) => setSortieData({ ...sortieData, motif: e.target.value as MotifSortie })}>
+                    {(Object.keys(MOTIFS_SORTIE) as MotifSortie[]).map((motif) => (
+                      <option key={motif} value={motif}>{MOTIFS_SORTIE[motif].libelle}</option>
+                    ))}
+                  </SelectNatif>
+                </div>
+                <div className="grid grid-cols-1 gap-4 min-[360px]:grid-cols-2">
+                  <div>
+                    <Label htmlFor="sortie-quantite">Quantité ({libelleUniteQuantite(uniteRecolte(sortieRecolte.unite), 2)})</Label>
+                    <Input
+                      id="sortie-quantite"
+                      type="number"
+                      step={uniteRecolte(sortieRecolte.unite) === "kg" ? "any" : "1"}
+                      min="0"
+                      value={sortieData.quantite}
+                      onChange={(e) => setSortieData({ ...sortieData, quantite: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="sortie-date">Jour de la sortie</Label>
+                    <Input
+                      id="sortie-date"
+                      type="date"
+                      max={jourLocalISO(new Date())}
+                      value={sortieData.date}
+                      onChange={(e) => setSortieData({ ...sortieData, date: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="sortie-notes">Note (facultatif)</Label>
+                  <Input id="sortie-notes" maxLength={500} value={sortieData.notes} onChange={(e) => setSortieData({ ...sortieData, notes: e.target.value })} />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Une sortie partielle laisse le reste du lot en stock. Elle s&apos;annule depuis l&apos;onglet Sorties.
+                </p>
+                <Button type="submit" className="w-full" disabled={sortieSubmitting}>
+                  {sortieSubmitting ? "Enregistrement…" : "Enregistrer la sortie"}
+                </Button>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Dialog Vente */}
         <Dialog open={showVenteDialog} onOpenChange={setShowVenteDialog}>

@@ -1461,6 +1461,8 @@ model Recolte {
   // Statut et vente
   statut            String    @default("en_stock") @map("statut") // "en_stock", "vendu", "consomme", "perte"
   dateVente         DateTime? @map("date_vente")
+  // Jour de la sortie hors vente (perte, consommation personnelle, don) ; null sinon.
+  dateSortie        DateTime? @map("date_sortie")
   // Prix PAR UNITÉ de la récolte (€/kg, €/tige, €/botte…). Le nom historique
   // dit « Kg » ; il est conservé pour ne pas réécrire la chaîne comptable, mais
   // l'unité de référence est `unite`, pas le kilo.

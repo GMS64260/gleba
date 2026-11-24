@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     const statuts = (searchParams.get('statut') || '')
       .split(',')
       .map((s) => s.trim())
-      .filter((s) => ['en_stock', 'vendu', 'consomme', 'perte', 'a_completer'].includes(s))
+      .filter((s) => ['en_stock', 'vendu', 'consomme', 'perte', 'don', 'a_completer'].includes(s))
 
     // Construction du where - FILTRE PAR USER
     const where: Prisma.RecolteWhereInput = {
