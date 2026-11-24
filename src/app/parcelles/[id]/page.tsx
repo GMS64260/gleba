@@ -93,15 +93,15 @@ export default function ParcelleDetailPage({ params }: PageProps) {
     <div className="container mx-auto p-6">
       {/* Breadcrumb + Header */}
       <div className="mb-6">
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/parcelles" className="text-slate-500 hover:text-slate-700">
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <Link href="/parcelles" className="shrink-0 text-slate-500 hover:text-slate-700">
             Parcelles
           </Link>
-          <span className="text-slate-400">/</span>
-          <span className="font-medium text-slate-900">{parcelle.nom}</span>
+          <span className="shrink-0 text-slate-400">/</span>
+          <span className="min-w-0 truncate font-medium text-slate-900">{parcelle.nom}</span>
         </div>
-        <div className="mt-2 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-slate-900">{parcelle.nom}</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="min-w-0 break-words text-2xl font-bold text-slate-900">{parcelle.nom}</h1>
           <Link
             href="/parcelles"
             className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

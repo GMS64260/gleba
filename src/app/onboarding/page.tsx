@@ -579,18 +579,20 @@ export default function OnboardingPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label>Nom de l&apos;exploitation (facultatif)</Label>
+                    <Label htmlFor="onboarding-nomExploitation">Nom de l&apos;exploitation (facultatif)</Label>
                     <Input
+                      id="onboarding-nomExploitation"
                       value={s.nomExploitation}
                       onChange={(e) => set("nomExploitation", e.target.value)}
                       placeholder="Ferme des Trois Chênes"
                     />
                   </div>
                   <div className="relative">
-                    <Label>Commune</Label>
+                    <Label htmlFor="onboarding-commune">Commune</Label>
                     <div className="relative">
                       <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
+                        id="onboarding-commune"
                         className="pl-8"
                         value={s.rechercheCommune}
                         onChange={(e) => {

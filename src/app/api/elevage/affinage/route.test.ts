@@ -2,7 +2,7 @@
  * QA 2026-10-19 — Cave : 2 pièces vendues à 2 €/pièce sur un lot de 4 pièces
  * pour 0,30 kg s'affichaient « 2 pc · 0,3 kg » valorisés 0,60 € (0,3 kg × 2 €).
  */
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 const mocks = vi.hoisted(() => ({
@@ -86,5 +86,33 @@ describe("GET /api/elevage/affinage", () => {
     const tous = await (await GET(new NextRequest("http://localhost/api/elevage/affinage?inclureEcoules=1"))).json()
     expect(tous.data).toHaveLength(2)
     expect(tous.stats.nbLotsMasques).toBe(0)
+  })
+  // D37 (2026-11-24) : « DLUO dépassée » s'affichait dès le matin du jour de
+  // la DLUO (écart d'instants arrondi vers le bas, sans le fuseau de Paris).
+  describe("jours avant l'échéance", () => {
+    afterEach(() => { vi.useRealTimers() })
+
+    it("compte 0 le jour de la DLUO et -1 seulement le lendemain", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] })
+      vi.setSystemTime(new Date("2026-11-24T09:00:00Z"))
+      mocks.lotFindMany.mockResolvedValue([
+        lot({ id: "jour", dluo: new Date("2026-11-24T00:00:00Z") }),
+        lot({ id: "veille", dluo: new Date("2026-11-23T00:00:00Z") }),
+        lot({ id: "demain", dlc: new Date("2026-11-25T00:00:00Z") }),
+      ])
+      const body = await (await GET(new NextRequest("http://localhost/api/elevage/affinage"))).json()
+      expect(body.data.map((l: { id: string; joursRestants: number }) => [l.id, l.joursRestants])).toEqual([
+        ["jour", 0], ["veille", -1], ["demain", 1],
+      ])
+    })
+
+    it("reste au jour de Paris en fin de soirée", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] })
+      // 23:30 UTC le 23 = 00:30 à Paris le 24.
+      vi.setSystemTime(new Date("2026-11-23T23:30:00Z"))
+      mocks.lotFindMany.mockResolvedValue([lot({ dluo: new Date("2026-11-24T00:00:00Z") })])
+      const body = await (await GET(new NextRequest("http://localhost/api/elevage/affinage"))).json()
+      expect(body.data[0].joursRestants).toBe(0)
+    })
   })
 })

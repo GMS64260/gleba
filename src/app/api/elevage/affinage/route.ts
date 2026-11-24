@@ -11,7 +11,7 @@ import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { stockDuLotFromage } from '@/lib/elevage/stock-fromage'
-import { valoriserStockFromage } from '@/lib/elevage/cave-fromage'
+import { joursAvantEcheanceCave, valoriserStockFromage } from '@/lib/elevage/cave-fromage'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     },
   })
 
-  const now = Date.now()
+  const maintenant = new Date()
   const data = lots.map((l) => {
     // Stock et valorisation : règle unique de `cave-fromage.ts`. Une vente à la
     // pièce sans pesée retire le poids moyen d'une pièce, et le prix constaté
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       l.ventesProduit.map((v) => ({ quantite: Number(v.quantite), unite: v.unite, prixTotal: Number(v.prixTotal) })),
     )
     const echeance = l.dlc ?? l.dluo
-    const joursRestants = echeance ? Math.floor((new Date(echeance).getTime() - now) / 86_400_000) : null
+    const joursRestants = echeance ? joursAvantEcheanceCave(echeance, maintenant) : null
 
     return {
       id: l.id,

@@ -688,6 +688,30 @@ export async function computeStocksUnifies(userId: string) {
     })
   })
 
+  // Produits transformés du verger (jus, confitures…) : la transformation retire
+  // les fruits de leur lot, et rien ne les remplaçait ici. 100 kg de pommes
+  // pressés en jus faisaient disparaître la ligne et sa valeur (D47).
+  // Lots datés jusqu'à aujourd'hui, comme le catalogue commercial. Un lot
+  // périmé reste compté tant qu'il n'est pas sorti du stock, comme les fruits.
+  const lotsTransformes = await prisma.lotTransforme.findMany({
+    where: { userId, stockDisponibleCommercial: { gt: 0 }, date: { lte: finJourLivraison(new Date()) } },
+    select: { id: true, produit: true, numLot: true, unite: true, stockDisponibleCommercial: true, prixUnitaire: true },
+    orderBy: [{ produit: 'asc' }, { date: 'asc' }],
+  })
+  for (const t of lotsTransformes) {
+    stocks.push({
+      id: `transforme-${t.id}`,
+      module: 'verger',
+      categorie: 'Produits transformés',
+      nom: `${t.produit} (lot ${t.numLot})`,
+      stock: t.stockDisponibleCommercial,
+      unite: t.unite,
+      stockMin: null,
+      alerteBas: false,
+      valeur: t.prixUnitaire != null ? Math.round(t.stockDisponibleCommercial * t.prixUnitaire * 100) / 100 : null,
+    })
+  }
+
   const produitsBoutique = await prisma.produitBoutique.findMany({ where: { userId, stockDispo: { gt: 0 } } })
   for (const p of produitsBoutique) stocks.push({ id: `boutique-${p.id}`, module: p.recolteId || ['legumes', 'fleurs'].includes(p.categorie || '') ? 'potager' : p.categorie === 'fruits' ? 'verger' : ['viande', 'oeufs', 'miel'].includes(p.categorie || '') ? 'elevage' : 'autre', categorie: 'Stock boutique', nom: p.nom, stock: p.stockDispo!, unite: p.unite, stockMin: null, alerteBas: false, valeur: p.stockDispo! * p.prix })
 

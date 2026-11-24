@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { datesDepuisItp, semaineSemisEffective, type DatesCycle, type SemainesItp } from '@/lib/cultures/dates-itp'
 import { formatSemaine } from '@/lib/assistant-helpers'
 import { jourLocalISO } from '@/lib/jour-civil'
-import { ecartJoursCivils } from './jours-civils'
+import { ecartJoursCivils, rangJourAnnee } from './jours-civils'
 
 // Les dates sont locales au processus : lancer aussi cette suite avec
 // TZ=Europe/Paris pour couvrir les changements d’heure, et avec TZ=UTC.
@@ -54,5 +54,27 @@ describe(`écart en jours civils — ${fuseau}`, () => {
     expect(jourLocalISO(cycle.datePlantation!)).toBe('2026-11-27')
     expect(jourLocalISO(cycle.dateRecolte!)).toBe('2026-12-25')
     expect(cycle.info).toContain('46 j')
+  })
+})
+
+// FB-M89SKJ — le curseur du plan relit le rang du jour qu'il vient de poser :
+// chaque pas doit redonner le rang demandé, changement d'heure compris.
+describe('rangJourAnnee', () => {
+  const tzAvant = process.env.TZ
+  beforeAll(() => { process.env.TZ = 'Europe/Paris' })
+  afterAll(() => {
+    if (tzAvant === undefined) delete process.env.TZ
+    else process.env.TZ = tzAvant
+  })
+
+  it.each([2026, 2027, 2028])('redonne chaque rang posé par le curseur en %i', (annee) => {
+    for (let rang = 0; rang <= 364; rang++) {
+      expect(rangJourAnnee(new Date(annee, 0, 1 + rang))).toBe(rang)
+    }
+  })
+
+  it('compte le 30 mars 2026 au rang 88, après le passage à l’heure d’été', () => {
+    expect(rangJourAnnee(new Date(2026, 2, 30))).toBe(88)
+    expect(rangJourAnnee(new Date(2026, 2, 30, 23, 30))).toBe(88)
   })
 })

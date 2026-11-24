@@ -145,4 +145,24 @@ describe("registre des mouvements PDF", () => {
       ["Lot #71 (×4)", "Réforme"],
     ])
   })
+  // D46 (2026-11-24) : le numéro de l'abattoir d'un abattage de LOT ne vit que
+  // sur l'abattage ; le registre ne lisait que `lieu` et imprimait « — ».
+  it("inscrit l'abattoir saisi pour un abattage de lot et la destination d'un lot réformé", async () => {
+    const espece = { nom: "Poulet de chair" }
+    const reforme = { id: 12, nom: "Poulets été", quantiteInitiale: 20, quantiteActuelle: 3, dateReforme: new Date("2026-09-10T00:00:00Z"), createdAt: new Date("2026-05-01T00:00:00Z"), especeAnimale: espece, nExploitationDestination: "FR 64 123 456" }
+    mocks.lotFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([reforme])
+    mocks.reconstituerEffectifsLots.mockResolvedValue(new Map([[12, { effectifCalcule: 3 }]]))
+    const lot = { id: 12, nom: "Poulets été", especeAnimale: espece }
+    mocks.abattageFindMany.mockResolvedValue([
+      { id: 1, lotId: 12, lot, quantite: 5, date: new Date("2026-07-01T00:00:00Z"), lieu: "Abattoir de Pau", nEtablissementDestination: "FR 64.445.001 CE", destination: "vente" },
+      { id: 2, lotId: 12, lot, quantite: 4, date: new Date("2026-07-08T00:00:00Z"), lieu: "Abattoir", nEtablissementDestination: null, destination: "vente" },
+      { id: 3, lotId: 12, lot, quantite: 2, date: new Date("2026-07-15T00:00:00Z"), lieu: null, nEtablissementDestination: null, destination: "auto_consommation" },
+    ])
+
+    const response = await GET(new NextRequest("http://localhost/api/elevage/registre-elevage?year=2026"))
+    expect(response.status).toBe(200)
+
+    const { lignes } = vi.mocked(empreinteDeclaration).mock.calls[0][0] as { lignes: Array<{ destination: string }> }
+    expect(lignes.map((l) => l.destination)).toEqual(["FR 64.445.001 CE", "Abattoir", "", "FR 64 123 456"])
+  })
 })

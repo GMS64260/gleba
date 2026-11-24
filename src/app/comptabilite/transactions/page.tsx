@@ -700,8 +700,11 @@ function TransactionsPageInner() {
       if (selectedModule && selectedModule !== 'all') params.set('module', selectedModule)
 
       const [revRes, depRes, srcRes] = await Promise.all([
-        fetch(`/api/comptabilite/revenus?${params}`),
-        fetch(`/api/comptabilite/depenses?${params}`),
+        // Tout l'exercice, comme l'export des Rapports : à 200 lignes par défaut,
+        // les plus anciennes écritures manquaient sous des cartes de total qui
+        // les comptent (FB-7C4K9D). L'affichage reste progressif.
+        fetch(`/api/comptabilite/revenus?${params}&limit=5000`),
+        fetch(`/api/comptabilite/depenses?${params}&limit=5000`),
         fetch(`/api/comptabilite/sources?year=${selectedYear}`),
       ])
 
