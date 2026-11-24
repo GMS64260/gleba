@@ -130,7 +130,10 @@ export default async function ReferentielPage({ searchParams }: PageProps) {
             <Stat icon={MapPin} value={itps} label="itinéraires techniques" />
           </div>
 
-          <form className="mt-10 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" action="/referentiel">
+          {/* La clé remonte le formulaire quand les filtres changent : React ne réapplique
+              pas un nouveau defaultValue à un champ déjà monté, et « Effacer les filtres »
+              laissait le type de végétal affiché, repris à la recherche suivante (D40). */}
+          <form key={`${q}|${type}`} className="mt-10 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" action="/referentiel">
             <div className="flex flex-col gap-3 md:flex-row">
               <label className="relative flex-1">
                 <span className="sr-only">Rechercher un végétal</span>
@@ -143,7 +146,7 @@ export default async function ReferentielPage({ searchParams }: PageProps) {
                   className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                 />
               </label>
-              <select name="type" defaultValue={type} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-slate-700 outline-none focus:border-emerald-500">
+              <select name="type" aria-label="Type de végétal" defaultValue={type} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-slate-700 outline-none focus:border-emerald-500">
                 {TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
               <button className="h-11 rounded-xl bg-emerald-700 px-5 font-medium text-white transition hover:bg-emerald-800">Rechercher</button>

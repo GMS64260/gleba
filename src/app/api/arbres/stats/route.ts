@@ -8,6 +8,7 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { filtreArbresVivants, filtreOperationsArbresEnAttente } from "@/lib/verger/arbres-vivants"
 import { TYPES_ARBRE, TYPES_ARBRE_FRUITIERS, estTypeArbre, couleurTypeArbre } from "@/lib/verger/types-arbre"
+import { chargerAvoirsBois } from '@/lib/comptabilite/avoirs-bois.server'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -172,6 +173,16 @@ export async function GET(request: NextRequest) {
       _sum: { volumeM3: true, poidsKg: true, prixVente: true },
       _count: { id: true },
     })
+    // Une vente de bois facturée se corrige par un avoir : la tuile restait au
+    // montant d'origine alors que les Rapports le déduisaient (FB-6Y9GPS).
+    // L'avoir suit son lot, pas sa propre date : la vente est comptée l'année
+    // de production du lot, un avoir de l'année suivante doit s'en déduire là.
+    const lotsFactures = await prisma.productionBois.findMany({
+      where: { userId, date: { gte: startOfYear, lt: endOfYear }, statut: 'vendu', factureId: { not: null } },
+      select: { factureId: true },
+    })
+    const avoirsBoisAnnee = (await chargerAvoirsBois(userId, { factureOrigineIds: [...new Set(lotsFactures.map((l) => l.factureId!))] }))
+      .reduce((somme, a) => somme + a.montant, 0)
 
     // Production bois par mois
     const productionBoisParMois = await prisma.productionBois.groupBy({
@@ -348,7 +359,7 @@ export async function GET(request: NextRequest) {
         recoltesFruitsAnneePrecedente: Math.round((recoltesFruitsLastYear._sum.quantite || 0) * 100) / 100,
         productionBoisAnnee: Math.round((productionBoisYear._sum.volumeM3 || 0) * 100) / 100,
         productionBoisKg: Math.round((productionBoisYear._sum.poidsKg || 0) * 100) / 100,
-        venteBoisAnnee: Math.round((productionBoisYear._sum.prixVente || 0) * 100) / 100,
+        venteBoisAnnee: Math.round(((productionBoisYear._sum.prixVente || 0) - avoirsBoisAnnee) * 100) / 100,
         operationsEnAttente,
         // Bug #6 — Nouveaux KPI Verger (audit Marc 2026-05-14).
         surfaceVergerHa,

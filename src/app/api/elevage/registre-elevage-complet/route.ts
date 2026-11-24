@@ -26,7 +26,7 @@ import {
   type RoleIntervenantElevage,
   type StatutIntervenantElevage,
 } from "@/lib/elevage/cadre-reglementaire"
-import { empreinteDeclaration } from "@/lib/elevage/declarations-reglementaires"
+import { destinationAbattage, empreinteDeclaration } from "@/lib/elevage/declarations-reglementaires"
 import { chargerDeclarationsReglementaires } from "@/lib/elevage/declarations-reglementaires.server"
 import {
   LABELS_TYPE_JUSTIFICATIF_ALIMENT,
@@ -402,7 +402,7 @@ export async function GET(request: NextRequest) {
         espece: lot.especeAnimale.nom,
         cible: `${lot.nom || `Lot #${lot.id}`} ${tetes > 0 ? `×${tetes}` : "(soldé)"}`,
         origine: "",
-        destination: "",
+        destination: lot.nExploitationDestination || "",
         motif: tetes > 0 ? "Réforme / fin de lot" : "Réforme / fin de lot, têtes déjà sorties",
       })
     }
@@ -414,7 +414,7 @@ export async function GET(request: NextRequest) {
       espece: abattage.lot?.especeAnimale.nom || "—",
       cible: `${abattage.lot?.nom || `Lot #${abattage.lotId}`} ×${abattage.quantite}`,
       origine: "",
-      destination: abattage.lieu === "abattoir" ? "Abattoir" : abattage.lieu || "",
+      destination: destinationAbattage(abattage),
       motif: abattage.destination,
     })
   }
