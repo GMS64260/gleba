@@ -6,10 +6,12 @@ export function livraisonFuture(date: Date, maintenant = new Date()) {
 }
 
 /**
- * Le jour civil du BL reste celui imprimé. Pour un mouvement enregistré ce
- * même jour, son effet sur un comptage est son instant réel d'enregistrement.
- * Couvre aussi les journaux 215 déjà datés à midi ; une livraison historique
- * conserve son effet antérieur au comptage, même si elle est saisie plus tard.
+ * Date d'effet d'un mouvement au journal du stock commercial. Le jour civil du
+ * BL reste celui imprimé ; pour un mouvement enregistré ce même jour, l'effet
+ * est son instant réel d'enregistrement (journaux 215 datés à midi compris).
+ * Avant le modèle de stock unique, cette date plaçait le mouvement avant ou
+ * après un comptage ; depuis L4.2 (2026-11-24), le stock est la somme des
+ * restes des lots et cette date ne fait plus que dater le journal.
  */
 export function dateEffetStockCommercial(m: { date: Date; createdAt: Date }) {
   return dateIsoFacture(m.date) === dateIsoFacture(m.createdAt) ? m.createdAt : m.date

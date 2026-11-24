@@ -118,7 +118,7 @@ export async function sortirParLots(
     const marque = { statut: sortie.statut, dateSortie: sortie.date, consommationId: sortie.consommationId }
     if (lot.stockDisponibleCommercial != null) {
       // Lot lié à un document : sortie par le journal. Un écart d'inventaire est
-      // saisi à l'instant du comptage, qui le compte déjà (`dateEffetStockCommercial`).
+      // daté et saisi à l'instant du comptage qui l'a constaté.
       const mouvement = await tx.mouvementStockCommercial.create({
         data: {
           userId, nature: sortie.statut, recolteId: lot.id, articleStockType: 'recolte', articleStockId: String(lot.id),

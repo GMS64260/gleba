@@ -154,13 +154,15 @@ export async function calculerStocksNet(
   const milliemes = new Map<string, Map<UniteQuantite, number>>()
   const nombreLots = new Map<string, number>()
   for (const lot of lots) {
+    // Même somme que le SQL, reste négatif compris (aucun en base : la
+    // validation l'interdit) ; seuls les lots au reste positif sont comptés.
     const m = milliemesDuReste(lot.stockDisponibleCommercial ?? lot.quantite)
-    if (m <= 0) continue
+    if (m === 0) continue
     const unite = (lot.unite ?? 'kg') as UniteQuantite
     const parUnite = milliemes.get(lot.especeId) ?? new Map<UniteQuantite, number>()
     parUnite.set(unite, (parUnite.get(unite) ?? 0) + m)
     milliemes.set(lot.especeId, parUnite)
-    if (unite === (uniteParEspece.get(lot.especeId) ?? 'kg')) nombreLots.set(lot.especeId, (nombreLots.get(lot.especeId) ?? 0) + 1)
+    if (m > 0 && unite === (uniteParEspece.get(lot.especeId) ?? 'kg')) nombreLots.set(lot.especeId, (nombreLots.get(lot.especeId) ?? 0) + 1)
   }
 
   const result: Record<string, StockNet> = {}

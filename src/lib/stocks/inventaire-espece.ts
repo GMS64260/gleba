@@ -10,14 +10,14 @@
  * `enregistrerInventaireEspece`, appelé par `PATCH /api/stocks` (type
  * `recolte`) pour l'écran Stocks et la carte « Chez moi » de la fiche.
  *
- * Sémantique (refonte stock 2026-07) : le comptage est une BASELINE datée ;
- * `calculerStocksNet` y ajoute les récoltes en stock et retranche les sorties
- * postérieures à sa date. Il se compte dans l'unité du stock de l'espèce
- * (kg, tige, pièce, botte), la même que `chargerUnitesStock` sert aux sorties.
- *
- * Modèle de stock unique, L3 (2026-11-24) : un comptage du jour aligne aussi
- * les LOTS sur le chiffre compté (`ajusterLotsAuComptage`), pour que la somme
- * des lots dise la même chose que le comptage.
+ * Sémantique (modèle de stock unique, L3 à L4.2, 2026-11-24) : le stock de
+ * l'espèce est la somme des restes de ses lots ; un comptage les ALIGNE sur le
+ * chiffre compté, à l'instant où il est fait (`ajusterLotsAuComptage`), et
+ * reste servi pour l'affichage. Il se compte dans l'unité du stock de
+ * l'espèce (kg, tige, pièce, botte), celle que `chargerUnitesStock` sert aux
+ * sorties. Une saisie faite APRÈS le comptage change les lots, même datée
+ * d'avant lui : le stock est l'état présent des lots, un nouveau comptage le
+ * corrige (#decision du 2026-11-24, voir le vault, Gleba-maraichage).
  */
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
@@ -29,6 +29,7 @@ import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { sortirParLots } from '@/lib/stocks/sortie-lots'
 import { STATUT_ECART_INVENTAIRE } from '@/lib/validations/recolte'
 import { chargerIdsRecoltesHorsStock } from '@/lib/stocks-helpers'
+import { milliemesDuReste } from '@/lib/stocks/milliemes'
 import type { Prisma } from '@prisma/client'
 
 const EPSILON = 1e-9
@@ -157,8 +158,8 @@ export async function enregistrerInventaireEspece(
  * - Moins que les lots : la différence sort des lots LIBRES, du plus récent au
  *   plus ancien (le stock reste aux plus anciens, comme au catalogue de la
  *   caisse), au statut « écart d'inventaire », à l'instant du comptage.
- *   Ce que les lots libres ne couvrent pas (lots entamés, réservés au marché)
- *   reste un écart, dit par la comparaison stock / lots.
+ *   Si une part de l'écart est réservée au marché en cours, le comptage est
+ *   refusé en entier (`ComptageNonAlignable`, L4.1).
  */
 export async function ajusterLotsAuComptage(
   tx: Prisma.TransactionClient,
@@ -182,7 +183,9 @@ export async function ajusterLotsAuComptage(
     },
     select: { quantite: true, stockDisponibleCommercial: true },
   })
-  const enStock = auMillieme(lots.reduce((somme, l) => somme + (l.stockDisponibleCommercial ?? l.quantite), 0))
+  // Arrondi lot par lot, comme le stock de l'espèce (`calculerStocksNet`) :
+  // après le comptage, le stock vaut exactement le chiffre compté.
+  const enStock = lots.reduce((somme, l) => somme + milliemesDuReste(l.stockDisponibleCommercial ?? l.quantite), 0) / 1000
   const ecart = auMillieme(compte - enStock)
   if (Math.abs(ecart) <= EPSILON) return { type: 'aucun' }
   if (ecart > 0) {

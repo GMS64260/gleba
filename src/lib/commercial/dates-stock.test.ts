@@ -23,7 +23,9 @@ describe('jour civil des sorties commerciales', () => {
   })
 })
 
-describe('effet des journaux sur le comptage manuel', () => {
+// Depuis L4.2 (2026-11-24), cette date ne fait plus que dater le journal : le
+// stock est la somme des lots. Les cas gardent la règle de datation.
+describe('date d’effet des journaux du stock commercial', () => {
   it('un ancien journal daté à midi mais créé avant le comptage ne ressort pas après celui-ci', () => {
     const effet = dateEffetStockCommercial({ date: new Date('2026-10-26T12:00Z'), createdAt: new Date('2026-10-26T09:00Z') })
     expect(effet.toISOString()).toBe('2026-10-26T09:00:00.000Z')

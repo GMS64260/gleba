@@ -1553,7 +1553,7 @@ export default function EditEspecePage() {
                           : monStock.dateInventaire
                             ? `${phraseLotsEnStock(monStock.detail.lots)} Dernier comptage : ${formatQuantite(monStock.detail.inventaire, monStock.unite)} le ${new Date(monStock.dateInventaire).toLocaleDateString("fr-FR")}.`
                             : phraseLotsEnStock(monStock.detail.lots)}{" "}
-                        Comptez les produits restés à la ferme, hors boutique : un comptage aligne les lots sur ce que vous trouvez.{" "}
+                        Comptez les produits restés à la ferme, hors boutique, après avoir saisi les récoltes et sorties déjà faites : un comptage aligne les lots sur ce que vous trouvez.{" "}
                         Même stock que{" "}
                         <Link href="/maraichage/stocks" className="underline">
                           Stocks &gt; Récoltes
