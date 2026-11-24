@@ -24,7 +24,7 @@
 import type { Prisma } from '@prisma/client'
 import { quantitesCaisse } from '@/lib/caisse/reservations'
 import { jourSortie } from '@/lib/recolte/sortie-lot'
-import type { StatutSortieRecolte } from '@/lib/validations/recolte'
+import type { StatutSortieLot } from '@/lib/validations/recolte'
 import type { UniteQuantite } from '@/lib/recolte/projection'
 
 type Tx = Prisma.TransactionClient
@@ -54,8 +54,11 @@ export async function sortirParLots(
     quantite: number
     /** Date enregistrée de la sortie (`instantSortie`). */
     date: Date
-    statut: StatutSortieRecolte
-    consommationId: number
+    statut: StatutSortieLot
+    /** Sortie de Consommations qui prend les lots ; null pour un écart d'inventaire. */
+    consommationId: number | null
+    /** Écart d'inventaire : lots datés au plus tard à cet INSTANT (le comptage), pas au jour. */
+    dateMax?: Date
   },
 ): Promise<SortieParLots> {
   const jour = jourSortie(sortie.date)
@@ -71,12 +74,13 @@ export async function sortirParLots(
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
     select: {
       id: true, quantite: true, unite: true, date: true, cultureId: true, especeId: true,
-      datePeremption: true, statutBioSnapshot: true, notes: true,
+      datePeremption: true, statutBioSnapshot: true, notes: true, createdAt: true,
     },
   })
   const reserves = candidats.length ? await quantitesCaisse(tx, userId) : new Map<string, number>()
   const lots = candidats.filter(
-    (l) => jourSortie(l.date) <= jour && l.quantite > EPSILON && !reserves.get(`recolte:${l.id}:${l.unite ?? 'kg'}`),
+    (l) => (sortie.dateMax ? l.date <= sortie.dateMax : jourSortie(l.date) <= jour)
+      && l.quantite > EPSILON && !reserves.get(`recolte:${l.id}:${l.unite ?? 'kg'}`),
   )
   if (lots.length) {
     await tx.$queryRaw`SELECT id FROM recoltes WHERE id = ANY(${lots.map((l) => l.id)}::int[]) AND user_id = ${userId} FOR UPDATE`
@@ -96,7 +100,9 @@ export async function sortirParLots(
       // gardes de la caisse le contrôlent à chaque ligne).
       const reliquat = await tx.recolte.create({
         data: {
-          userId, especeId: lot.especeId, cultureId: lot.cultureId, date: lot.date,
+          // Même date ET même instant de saisie que le lot : le reste d'un lot
+          // compté reste compté (`sortiesLotsComptes` départage par la saisie).
+          userId, especeId: lot.especeId, cultureId: lot.cultureId, date: lot.date, createdAt: lot.createdAt,
           quantite: auMillieme(lot.quantite - prise), unite: lot.unite, statut: 'en_stock',
           datePeremption: lot.datePeremption, statutBioSnapshot: lot.statutBioSnapshot,
           // Le reste est le même produit : il garde la note du lot.

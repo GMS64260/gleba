@@ -95,6 +95,16 @@ describe('POST /api/cultures/[id]/annuler-recolte', () => {
     })
   })
 
+  // Modèle de stock unique, L3 : un écart d'inventaire (journal d'un comptage)
+  // ne retient pas l'annulation ; il part avec les lots de la culture.
+  it('efface avec la culture un écart d’inventaire sans la retenir', async () => {
+    mocks.recolteFindMany.mockResolvedValue([{ id: 1, statut: 'en_stock' }, { id: 2, statut: 'ecart' }])
+    mocks.verrou.mockImplementation(async (_tx: unknown, _userId: string, id: number) => ({ id, statut: id === 2 ? 'ecart' : 'en_stock' }))
+    const res = await annuler()
+    expect(res.status).toBe(200)
+    expect(mocks.recolteDelete).toHaveBeenCalledTimes(2)
+  })
+
   it('un lot suivi par un bon de livraison refuse toute l’annulation (409 du verrou commercial)', async () => {
     mocks.recolteFindMany.mockResolvedValue([{ id: 1, statut: 'en_stock' }])
     mocks.verrou.mockRejectedValue(new ErreurCommerciale('Ce lot est lié à un document commercial.'))

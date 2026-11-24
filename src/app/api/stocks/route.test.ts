@@ -4,6 +4,10 @@ import { ESPECE_TYPES_MARAICHAGE } from "@/lib/validations/espece"
 
 const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
+  lotsFindMany: vi.fn(),
+  idsHorsStock: vi.fn(),
+  lotCreate: vi.fn(),
+  lotUpdate: vi.fn(),
   userStockVarieteFindMany: vi.fn(),
   varieteFindMany: vi.fn(),
   fertilisantFindMany: vi.fn(),
@@ -33,13 +37,20 @@ vi.mock("@/lib/prisma", () => ({
     // du stock commercial (`verrouillerStockCommercial`, deux `$executeRaw`).
     $transaction: (callback: (tx: unknown) => unknown) => callback({
       $executeRaw: vi.fn(),
+      $queryRaw: vi.fn(async () => []),
       userStockEspece: { upsert: mocks.userStockEspeceUpsert },
+      // Lots de l'espèce, alignés sur le comptage (modèle de stock unique, L3).
+      recolte: { findMany: mocks.lotsFindMany, create: mocks.lotCreate, update: mocks.lotUpdate },
+      // Lots en boutique, hors stock de l'espèce : aucun.
+      produitBoutique: { findMany: vi.fn(async () => []) },
     }),
   },
 }))
 vi.mock("@/lib/stocks-helpers", () => ({
   calculerStocksNet: vi.fn(),
   chargerComparaisonsStockLots: vi.fn(async () => ({})),
+  // Lots hors stock de l'espèce (boutique) : rendus par le test au besoin.
+  chargerIdsRecoltesHorsStock: mocks.idsHorsStock,
 }))
 vi.mock("@/lib/stocks/sortie-stock", () => ({
   chargerUnitesStock: mocks.chargerUnitesStock,
@@ -58,6 +69,9 @@ const visibleVarietes = {
 describe("GET /api/stocks", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.lotsFindMany.mockResolvedValue([])
+    mocks.lotCreate.mockResolvedValue({ id: 900 })
+    mocks.idsHorsStock.mockResolvedValue([])
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },
@@ -143,6 +157,9 @@ describe("PATCH /api/stocks — comptage de stock d'une espèce (type recolte)",
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.lotsFindMany.mockResolvedValue([])
+    mocks.lotCreate.mockResolvedValue({ id: 900 })
+    mocks.idsHorsStock.mockResolvedValue([])
     mocks.requireAuthApi.mockResolvedValue({
       error: null,
       session: { user: { id: "user-1" } },
@@ -172,6 +189,45 @@ describe("PATCH /api/stocks — comptage de stock d'une espèce (type recolte)",
 
     const corps = await response.json()
     expect(corps.data).toMatchObject({ inventaire: 19, especeId: "Dahlia", unite: "tige" })
+  })
+
+  // Modèle de stock unique, L3 : le comptage du jour aligne les lots.
+  it("19 tiges comptées, 12 en lots : un lot d'inventaire de 7 tiges, sans culture, daté et saisi à l'instant du comptage", async () => {
+    mocks.lotsFindMany.mockResolvedValue([
+      { quantite: 10, stockDisponibleCommercial: null },
+      { quantite: 4, stockDisponibleCommercial: 2 },
+    ])
+    const response = await patch({ type: "recolte", id: "Dahlia", stock: 19 })
+    expect(response.status).toBe(200)
+    const lot = mocks.lotCreate.mock.calls[0][0].data
+    const comptage = mocks.userStockEspeceUpsert.mock.calls[0][0].update.dateInventaire
+    expect(lot).toMatchObject({ userId: "user-1", especeId: "Dahlia", cultureId: null, quantite: 7, unite: "tige", statut: "en_stock", date: comptage, createdAt: comptage })
+    const corps = await response.json()
+    expect(corps.data.ajustement).toEqual({ type: "lot_inventaire", quantite: 7, lotId: 900 })
+    expect(corps.data.message).toMatch(/7 tiges de plus que les lots enregistrés/)
+  })
+
+  it("le comptage ne lit que les lots du stock : hors boutique, datés jusqu'à son instant", async () => {
+    mocks.idsHorsStock.mockResolvedValue([41, 42])
+    await patch({ type: "recolte", id: "Dahlia", stock: 19 })
+    const where = mocks.lotsFindMany.mock.calls[0][0].where
+    const comptage = mocks.userStockEspeceUpsert.mock.calls[0][0].update.dateInventaire
+    expect(where).toMatchObject({ userId: "user-1", especeId: "Dahlia", statut: "en_stock", id: { notIn: [41, 42] }, date: { lte: comptage } })
+  })
+
+  it("comptage égal aux lots : rien n'est créé ni sorti", async () => {
+    mocks.lotsFindMany.mockResolvedValue([{ date: new Date("2026-10-01T00:00:00.000Z"), quantite: 19, stockDisponibleCommercial: null }])
+    const response = await patch({ type: "recolte", id: "Dahlia", stock: 19 })
+    expect((await response.json()).data.ajustement).toEqual({ type: "aucun" })
+    expect(mocks.lotCreate).not.toHaveBeenCalled()
+    expect(mocks.lotUpdate).not.toHaveBeenCalled()
+  })
+
+  it("un comptage antidaté ne touche pas les lots", async () => {
+    mocks.lotsFindMany.mockResolvedValue([])
+    await patch({ type: "recolte", id: "Dahlia", stock: 4, dateStock: "2026-10-01" })
+    expect(mocks.lotsFindMany).not.toHaveBeenCalled()
+    expect(mocks.lotCreate).not.toHaveBeenCalled()
   })
 
   it("une date fournie date le comptage", async () => {

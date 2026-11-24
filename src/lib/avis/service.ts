@@ -83,18 +83,18 @@ async function recolteProprietaire(db: Base, recolteId: number, acteur: string, 
   const espece = await db.espece.findFirst({ where: { id: r.especeId, AND: [visibiliteReferentielPublic] }, select: { id: true, nom: true } })
   if (espece) {
     cibles.push({ refType: 'ESPECE', refId: espece.id, nom: nomPublic(espece) })
-    if (r.culture.varieteId) {
+    if (r.culture?.varieteId) {
       const v = await db.variete.findFirst({ where: { id: r.culture.varieteId, especeId: r.especeId, AND: [visibiliteEnfantPublic()] }, select: { id: true, nom: true } })
       if (v) cibles.push({ refType: 'VARIETE', refId: v.id, nom: nomPublic(v) })
     }
-    if (r.culture.itpId) {
+    if (r.culture?.itpId) {
       const itp = await db.iTP.findFirst({ where: { id: r.culture.itpId, especeId: r.especeId, actif: true, AND: [visibiliteEnfantPublic()] },
         select: { id: true, nom: true, userId: true, especeId: true, typePlanche: true, modeDemarrage: true } })
       if (itp) cibles.push({ refType: 'ITP', refId: itp.id, nom: nomAffichableItp({ ...itp, espece }) })
     }
   }
   const empreinte = createHash('sha256').update(JSON.stringify({ id: r.id, date: r.date.toISOString(), quantite: r.quantite, unite,
-    especeId: r.especeId, varieteId: r.culture.varieteId, itpId: r.culture.itpId, cibles })).digest('hex')
+    especeId: r.especeId, varieteId: r.culture?.varieteId ?? null, itpId: r.culture?.itpId ?? null, cibles })).digest('hex')
   return { r, unite, cibles, empreinte }
 }
 export async function apercuPartageRecolte(recolteId: number, acteur: string, tenant: string): Promise<VuePartageRecolte> {

@@ -105,19 +105,20 @@ async function computeKpiMaraichage(
     // les accompagne, pour que les écrans puissent afficher le reste.
     prisma.recolte.groupBy({
       by: ['unite'],
-      where: { userId, date: { gte: startOfYear, lte: upperBound } },
+      // Récolté seulement : un lot d'inventaire (né d'un comptage) n'a pas été récolté.
+      where: { userId, date: { gte: startOfYear, lte: upperBound }, cultureId: { not: null } },
       _sum: { quantite: true },
     }),
 
     prisma.recolte.groupBy({
       by: ['unite'],
-      where: { userId, date: { gte: startOfYearN1, lte: asOfN1 } },
+      where: { userId, date: { gte: startOfYearN1, lte: asOfN1 }, cultureId: { not: null } },
       _sum: { quantite: true },
     }),
 
     prisma.recolte.groupBy({
       by: ['unite'],
-      where: { userId, date: { gte: startOfYearN1, lte: endOfYearN1 } },
+      where: { userId, date: { gte: startOfYearN1, lte: endOfYearN1 }, cultureId: { not: null } },
       _sum: { quantite: true },
     }),
 

@@ -56,7 +56,7 @@ async function chargerLots(ctx: Contexte): Promise<Lot[]> {
   if (recoltes.length) {
     for (const r of await prisma.recolte.findMany({ where: { userId: ctx.userId, id: { in: recoltes } }, include: { espece: { select: { nom: true } }, culture: { select: { variete: { select: { id: true, nom: true } } } } } })) {
       const espece = r.espece.nom || r.especeId
-      const variete = r.culture.variete?.nom || r.culture.variete?.id || null
+      const variete = r.culture?.variete?.nom || r.culture?.variete?.id || null
       lots.push({ type: "recolte", id: String(r.id), jour: jj(r.date), nom: espece, detail: variete && !variete.toLowerCase().startsWith(espece.toLowerCase()) ? `${espece} ${variete}` : (variete ?? espece), numLot: null, unite: r.unite || "kg", poidsPiece: null })
     }
   }

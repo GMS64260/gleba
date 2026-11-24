@@ -36,6 +36,9 @@ class Refus extends Error {
   }
 }
 
+
+/** Statuts de lot qu'une annulation de récolte efface avec la culture. */
+const LIBRES_A_L_ANNULATION: readonly string[] = ['en_stock', 'ecart']
 export async function POST(_request: NextRequest, { params }: RouteParams) {
   const { error, session } = await requireAuthApi()
   if (error) return error
@@ -67,7 +70,8 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
         where: { cultureId, userId },
         select: { id: true, statut: true },
       })
-      const retenues = recoltes.filter((r) => r.statut != null && r.statut !== 'en_stock')
+      // Un écart d'inventaire (journal d'un comptage) part avec les lots de la culture.
+      const retenues = recoltes.filter((r) => r.statut != null && !LIBRES_A_L_ANNULATION.includes(r.statut))
       if (retenues.length > 0) throw new Refus(messageRecoltesRetenues(retenues.map((r) => r.statut!)), 409)
 
       // Lots suivis par un bon, une facture ou la boutique : le verrou refuse
@@ -80,7 +84,7 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       // première suppression.
       const relues: Awaited<ReturnType<typeof verrouillerRecolteLibre>>[] = []
       for (const r of recoltes) relues.push(await verrouillerRecolteLibre(tx, userId, r.id))
-      const devenuesRetenues = relues.filter((r) => r.statut != null && r.statut !== 'en_stock')
+      const devenuesRetenues = relues.filter((r) => r.statut != null && !LIBRES_A_L_ANNULATION.includes(r.statut))
       if (devenuesRetenues.length > 0) throw new Refus(messageRecoltesRetenues(devenuesRetenues.map((r) => r.statut!)), 409)
       for (const r of relues) {
         await deleteAutoEntry('recolte', r.id, 'vente', userId, tx)

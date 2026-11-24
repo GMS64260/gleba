@@ -4,7 +4,8 @@ import { agregerVerdictsDar, darIntervention, HORIZON_DAR_INCONNU_JOURS, natureI
 
 type Db = Pick<Prisma.TransactionClient, 'intervention'>
 type DbBoutique = Pick<Prisma.TransactionClient, 'intervention' | 'produitBoutique'>
-export type LotLegume = { id: number; cultureId: number; plancheId: string | null; parcelleId?: string | null; date: Date }
+/** `cultureId` nul : lot d'inventaire, né d'un comptage, sans planche ni traitement connu. */
+export type LotLegume = { id: number; cultureId: number | null; plancheId: string | null; parcelleId?: string | null; date: Date }
 export type TraitementDar = {
   cultureId: number | null
   plancheId: string | null
@@ -70,7 +71,7 @@ export function avertissementsDarLot(lot: LotLegume, traitements: TraitementDar[
 export async function chargerVerdictsDarLegumes(db: Db, userId: string, lots: LotLegume[]): Promise<Map<number, VerdictDarLot>> {
   const resultat = new Map<number, VerdictDarLot>()
   if (!lots.length) return resultat
-  const cultures = [...new Set(lots.map((l) => l.cultureId))]
+  const cultures = [...new Set(lots.flatMap((l) => (l.cultureId != null ? [l.cultureId] : [])))]
   const planches = [...new Set(lots.flatMap((l) => (l.plancheId ? [l.plancheId] : [])))]
   const parcelles = [...new Set(lots.flatMap((l) => (l.parcelleId ? [l.parcelleId] : [])))]
   const dernierJour = Math.max(...lots.map((l) => minuitDuJour(l.date)))
@@ -128,7 +129,7 @@ export async function chargerVerdictsDarProduitsBoutique(db: DbBoutique, userId:
     select: { id: true, recolte: { select: { id: true, cultureId: true, date: true, culture: { select: { plancheId: true, planche: { select: { parcelleGeoId: true } } } } } } },
   })
   const lots = produits.flatMap((p) => p.recolte
-    ? [{ id: p.recolte.id, cultureId: p.recolte.cultureId, plancheId: p.recolte.culture.plancheId, parcelleId: p.recolte.culture.planche?.parcelleGeoId ?? null, date: p.recolte.date }]
+    ? [{ id: p.recolte.id, cultureId: p.recolte.cultureId, plancheId: p.recolte.culture?.plancheId ?? null, parcelleId: p.recolte.culture?.planche?.parcelleGeoId ?? null, date: p.recolte.date }]
     : [])
   const verdicts = await chargerVerdictsDarLegumes(db, userId, lots)
   for (const p of produits) if (p.recolte) resultat.set(p.id, verdicts.get(p.recolte.id) ?? VERDICT_DAR_LOT_RIEN)

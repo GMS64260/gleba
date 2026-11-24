@@ -76,6 +76,8 @@ export async function getRecoltesAnneeAggregat(
     where: {
       userId,
       date: { gte: startOfYear, lte: endOfYear },
+      // Récolté seulement : un lot d'inventaire (né d'un comptage) n'a pas été récolté.
+      cultureId: { not: null },
     },
     select: {
       quantite: true,
