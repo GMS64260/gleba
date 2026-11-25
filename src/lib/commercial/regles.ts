@@ -7,6 +7,11 @@ export const TYPES_DOCUMENT = ['devis', 'livraison'] as const
 export const LABELS_STATUT: Record<string, string> = {
   brouillon: 'Brouillon', emis: 'Émis', accepte: 'Accepté', refuse: 'Refusé', livre: 'Livré', retourne: 'Retourné', annule: 'Annulé',
 }
+/**
+ * Statuts d'un bon dont `dateLivraison` est la date réelle posée par « Marquer
+ * livré » : le retour en stock garde cette date, la livraison a bien eu lieu.
+ */
+export const STATUTS_LIVRAISON_EFFECTUEE: readonly string[] = ['livre', 'retourne']
 export const dateCivileSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue : AAAA-MM-JJ').refine((s) => {
   const d = new Date(`${s}T12:00:00Z`)
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === s && s >= '2000-01-01' && s <= '2200-12-31'

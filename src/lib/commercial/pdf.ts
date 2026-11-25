@@ -4,7 +4,7 @@ import type { EmetteurSnapshot } from '@/lib/facture-utils'
 import { dateIsoFacture } from '@/lib/facture-regles'
 import { formatPrixUnitaire } from '@/lib/comptabilite/prix-unitaire'
 import { mentionFiscale } from '@/lib/territoires'
-import { LABELS_STATUT } from './regles'
+import { LABELS_STATUT, STATUTS_LIVRAISON_EFFECTUEE } from './regles'
 import type { DocumentComplet } from './service'
 
 /** Documents commerciaux : aucune mention de facture ou de paiement acquis. */
@@ -42,7 +42,7 @@ export function genererPdfCommercial(d: DocumentComplet): Promise<Buffer> {
       d.clientTvaIntra ? `TVA ${d.clientTvaIntra}` : ''].filter(Boolean).join('\n'))
     texte(d.objet, 12, true)
     if (d.dateValidite) texte(`Offre valable jusqu’au ${date(d.dateValidite)} inclus.`)
-    if (d.dateLivraison) texte(`${d.statut === 'livre' ? 'Livraison effectuée' : 'Livraison prévue'} le ${date(d.dateLivraison)}`)
+    if (d.dateLivraison) texte(`${STATUTS_LIVRAISON_EFFECTUEE.includes(d.statut) ? 'Livraison effectuée' : 'Livraison prévue'} le ${date(d.dateLivraison)}`)
     if (d.adresseLivraison) texte(`Adresse de livraison : ${d.adresseLivraison}`)
     if (d.devisOrigine) texte(`Devis d’origine : ${d.devisOrigine.numero}`)
     const entete = () => {
