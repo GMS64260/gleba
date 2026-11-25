@@ -195,15 +195,19 @@ export function ConsommationsTab() {
         const err = await response.json()
         throw new Error(err.error)
       }
-      const cree: { lots?: unknown[] } = await response.json()
+      const cree: { lots?: unknown[]; avertissementComptage?: string } = await response.json()
       const nbLots = cree.lots?.length ?? 0
+      // Sortie datée du jour du dernier comptage ou d'avant : dit dans le même
+      // toast (un seul visible à la fois), qui reste plus longtemps.
+      const comptage = typeof cree.avertissementComptage === "string" ? cree.avertissementComptage : null
 
       toast({
         title: "Sortie enregistrée",
         description: [
           `${formatQuantite(parseFloat(formData.quantite), uniteSaisie)} de ${nomEspece(formData.especeId)}`,
           `prise sur ${nbLots} lot${nbLots > 1 ? "s" : ""} de récolte`,
-        ].filter(Boolean).join(", "),
+        ].filter(Boolean).join(", ") + (comptage ? `. ${comptage}` : ""),
+        ...(comptage ? { duration: 30_000 } : {}),
       })
 
       setDialogOpen(false)

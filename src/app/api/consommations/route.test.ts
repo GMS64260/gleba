@@ -219,6 +219,22 @@ describe('POST /api/consommations — unité du stock', () => {
  * L'écran prend désormais, sans stock, l'unité effective servie par
  * `/api/especes` (`appliquerSurcharges`) : on rejoue sa lecture.
  */
+describe('POST /api/consommations — sortie peut-être déjà comptée (décision B du 2026-11-25)', () => {
+  beforeEach(lotsSuffisants)
+
+  it('signale une sortie datée du jour du dernier comptage ou d’avant, sans la refuser', async () => {
+    mocks.userStockEspeceFindMany.mockImplementation(async (args: { where: { OR?: unknown; dateInventaire?: unknown } }) =>
+      args.where.dateInventaire ? [{ especeId: 'Tomate', dateInventaire: new Date('2026-11-18T09:00:00.000Z') }] : [])
+    const avant = await POST(post({ especeId: 'Tomate', quantite: 1, unite: 'kg', date: '2026-11-17' }))
+    expect(avant.status).toBe(201)
+    expect((await avant.json()).avertissementComptage).toBe(
+      'Le stock de Tomate a été compté le 18/11/2026 : ce comptage a peut-être déjà tenu compte de cette sortie. Si elle avait déjà eu lieu, recomptez le stock de l’espèce.')
+    const apres = await POST(post({ especeId: 'Tomate', quantite: 1, unite: 'kg', date: '2026-11-19' }))
+    expect(apres.status).toBe(201)
+    expect((await apres.json()).avertissementComptage).toBeUndefined()
+  })
+})
+
 describe('espèce sans stock enregistré : écran et route disent la même unité', () => {
   beforeEach(lotsSuffisants)
   async function uniteAfficheeParLEcran(especeId: string) {
