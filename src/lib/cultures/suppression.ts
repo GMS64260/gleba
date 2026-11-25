@@ -25,6 +25,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { invalidateKpi } from '@/lib/kpi'
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
+import { compterLignees } from '@/lib/recolte/lignee'
 
 type Tx = Prisma.TransactionClient | PrismaClient
 
@@ -46,7 +47,7 @@ export async function compterVentesRecoltesCulture(
 ): Promise<VentesRecoltesCulture> {
   const recoltes = await tx.recolte.findMany({
     where: { cultureId, userId },
-    select: { id: true, statut: true, factureId: true },
+    select: { id: true, recolteOrigineId: true, statut: true, factureId: true },
   })
   if (recoltes.length === 0) return { recoltes: 0, recoltesVendues: 0, ventes: 0, factures: 0 }
 
@@ -58,9 +59,11 @@ export async function compterVentesRecoltesCulture(
   const avecVente = new Set(ventes.map((v) => v.sourceId))
   const vendues = recoltes.filter((r) => r.statut === 'vendu' || r.factureId != null || avecVente.has(r.id))
 
+  // Récoltes saisies : les parts d'un lot scindé ne comptent qu'une fois, dans
+  // le total comme parmi les vendues (jamais 0 quand des lignes existent).
   return {
-    recoltes: recoltes.length,
-    recoltesVendues: vendues.length,
+    recoltes: compterLignees(recoltes),
+    recoltesVendues: compterLignees(vendues),
     ventes: ventes.length,
     factures: new Set(recoltes.map((r) => r.factureId).filter((id): id is number => id != null)).size,
   }

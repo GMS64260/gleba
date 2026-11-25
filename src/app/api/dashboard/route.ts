@@ -19,6 +19,7 @@ import {
   type QuantiteParUnite,
 } from "@/lib/recolte/quantites"
 import { chargerSurchargesRendement, rendementEffectif } from "@/lib/recolte/rendement-effectif"
+import { compterLignees } from "@/lib/recolte/lignee"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -53,9 +54,12 @@ export async function GET(request: NextRequest) {
     const [especesCount, arbresCount, recoltesCountYear] = await Promise.all([
       prisma.espece.count(),
       prisma.arbre.count({ where: filtreArbresVivants(userId) }),
-      prisma.recolte.count({
+      // Récoltes saisies : les lignées distinctes, pas les lignes (une vente ou
+      // une sortie partielle scinde un lot).
+      prisma.recolte.findMany({
         where: { userId, date: { gte: startOfYear, lte: finRecoltes }, cultureId: { not: null } },
-      }),
+        select: { id: true, recolteOrigineId: true },
+      }).then(compterLignees),
     ])
 
     // Récoltes par mois (annee en cours). Groupé AUSSI par unité : depuis le

@@ -63,6 +63,23 @@ describe('compterVentesRecoltesCulture', () => {
   })
 })
 
+describe('compterVentesRecoltesCulture : lots scindés', () => {
+  it('compte les récoltes saisies : une vente partielle fait deux lignes, une récolte', async () => {
+    const db = baseFactice(
+      [
+        { id: 1, recolteOrigineId: null, statut: 'vendu', factureId: null }, // part vendue (garde l'id)
+        { id: 2, recolteOrigineId: 1, statut: 'en_stock', factureId: null }, // reliquat
+        { id: 3, recolteOrigineId: 1, statut: 'vendu', factureId: null }, // seconde vente du reliquat
+        { id: 4, recolteOrigineId: null, statut: 'en_stock', factureId: null },
+      ],
+      [{ sourceId: 1 }, { sourceId: 3 }]
+    )
+    const ventes = await compterVentesRecoltesCulture(db as never, 42, 'user-1')
+    expect(ventes).toEqual({ recoltes: 2, recoltesVendues: 1, ventes: 2, factures: 0 })
+    expect(aDesVentes(ventes)).toBe(true)
+  })
+})
+
 describe('messageSuppressionCultureRefusee', () => {
   it('nomme les récoltes et les ventes, et renvoie vers la suppression des ventes d’abord', () => {
     expect(
