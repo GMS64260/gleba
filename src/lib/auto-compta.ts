@@ -1082,7 +1082,8 @@ export async function upsertVenteFromReservationElevage(
 /**
  * Cree une DepenseManuelle quand une Fertilisation est enregistrée.
  * Valorisation : coutUnitaire per-user ?? prix per-user ?? prix global.
- * TVA 20 % — aligné sur l'inférence historique de tva.ts.
+ * TVA 20 % inférée (`tvaInferee`), jamais lue sur une facture. Valorisation
+ * interne, comme une consommation d'aliment : ni rapports, ni FEC, ni TVA.
  */
 export async function createDepenseFromFertilisation(
   userId: string,
@@ -1125,6 +1126,11 @@ export async function createDepenseFromFertilisation(
         journal: 'AC',
         module: 'potager',
         paye: true,
+        // Valorisation interne d'un intrant déjà acheté, comme une consommation
+        // d'aliment ou un soin : ni charge comptable ni TVA déductible. L'achat
+        // de l'engrais est la dépense ; le compter ici le doublait (2026-11-25).
+        comptable: false,
+        tvaInferee: true,
         sourceType: 'fertilisation',
         sourceId: fertilisation.id,
         auto: true,
