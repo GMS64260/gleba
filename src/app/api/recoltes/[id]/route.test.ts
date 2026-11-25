@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   recolteUpdate: vi.fn(),
   cultureFindUnique: vi.fn(),
   recolteCreate: vi.fn(),
+  recolteFindMany: vi.fn<(requete: unknown) => Promise<Array<{ id: number }>>>(async () => []),
+  recolteUpdateMany: vi.fn<(requete: unknown) => Promise<{ count: number }>>(async () => ({ count: 0 })),
+  recolteDelete: vi.fn<(requete: unknown) => Promise<object>>(async () => ({})),
   creerFacture: vi.fn(),
 }))
 
@@ -26,7 +29,10 @@ vi.mock("@/lib/prisma", () => {
     // Recalage de la récolte faite après redatation (contre-revue adverse 2) :
     // ces cultures ne sont pas en « récolte faite », rien n'est recalé.
     culture: { findUnique: mocks.cultureFindUnique, findFirst: vi.fn().mockResolvedValue(null), update: vi.fn() },
-    recolte: { findFirst: mocks.recolteFindUnique, update: mocks.recolteUpdate, create: mocks.recolteCreate },
+    recolte: {
+      findFirst: mocks.recolteFindUnique, update: mocks.recolteUpdate, create: mocks.recolteCreate,
+      findMany: mocks.recolteFindMany, updateMany: mocks.recolteUpdateMany, delete: mocks.recolteDelete,
+    },
     venteManuelle: { findFirst: vi.fn().mockResolvedValue(null) },
     produitBoutique: { count: vi.fn().mockResolvedValue(0) },
     // Verdict DAR de la mise en vente : aucun traitement sur ce lot.
@@ -347,7 +353,15 @@ describe("PATCH /api/recoltes/[id] — sortie hors vente, partielle et datée", 
     expect(mocks.recolteCreate.mock.calls[0][0].data).toMatchObject({
       userId: "u1", especeId: "Zinnia", cultureId: 1174, date: LOT.date, quantite: 7, unite: "kg",
       statut: "en_stock", statutBioSnapshot: "AB",
+      // Lignée : le reliquat est une part de la récolte saisie.
+      recolteOrigineId: 1150,
     })
+  })
+
+  it("le reliquat d'une part pointe la récolte saisie, pas la part", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...LOT, recolteOrigineId: 900 })
+    expect((await sortir({ statut: "perte", quantiteSortie: 2, dateSortie: "2027-02-10" })).status).toBe(200)
+    expect(mocks.recolteCreate.mock.calls[0][0].data.recolteOrigineId).toBe(900)
   })
 
   it("sans quantité : le lot entier sort, sans reliquat, daté du jour", async () => {
@@ -507,5 +521,66 @@ describe("lot d'inventaire et écart d'inventaire", () => {
     const res = await PATCH(corps({ statut: "vendu", dateVente: "2027-02-20", prixKg: 2, prixTotal: 48, quantiteVendue: 24, clientNom: "Marché", creerFacture: true }), params)
     expect(res.status).toBe(200)
     expect(mocks.creerFacture.mock.calls[0][1].lignes[0].description).toBe("Zinnia")
+  })
+})
+
+// Lignée des lots (défaut D51) : la part créée par une scission pointe la
+// récolte saisie. Supprimée ou rattachée ailleurs, celle-ci laisse sa lignée à
+// sa part la plus ancienne ; une part rattachée ailleurs redevient une récolte.
+describe("lignée d'une récolte scindée", () => {
+  const params = { params: Promise.resolve({ id: "1150" }) }
+  const SAISIE = { ...RECOLTE, quantite: 7, unite: "kg", statut: "en_stock", consommationId: null, factureId: null, recolteOrigineId: null, espece: { id: "Zinnia", nom: "Zinnia" }, culture: { variete: null } }
+  const AUTRE_CULTURE = { ...ZINNIA, id: 1180 }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
+    mocks.recolteFindUnique.mockResolvedValue(SAISIE)
+    mocks.recolteFindMany.mockResolvedValue([])
+    mocks.cultureFindUnique.mockResolvedValue(AUTRE_CULTURE)
+    mocks.recolteUpdate.mockImplementation(async ({ data }) => ({ ...SAISIE, ...data }))
+  })
+
+  it("supprimée avec trois parts : la plus ancienne hérite, avant la suppression", async () => {
+    mocks.recolteFindMany.mockResolvedValue([{ id: 1151 }, { id: 1152 }, { id: 1153 }])
+    const res = await DELETE(new Request("http://localhost/api/recoltes/1150", { method: "DELETE" }) as never, params)
+    expect(res.status).toBe(200)
+    expect(mocks.recolteFindMany).toHaveBeenCalledWith({ where: { userId: "u1", recolteOrigineId: 1150 }, orderBy: { id: "asc" }, select: { id: true } })
+    expect(mocks.recolteUpdateMany.mock.calls.map(([appel]) => appel)).toEqual([
+      { where: { userId: "u1", recolteOrigineId: 1150, id: { not: 1151 } }, data: { recolteOrigineId: 1151 } },
+      { where: { userId: "u1", id: 1151 }, data: { recolteOrigineId: null } },
+    ])
+    expect(mocks.recolteUpdateMany.mock.invocationCallOrder.at(-1)!).toBeLessThan(mocks.recolteDelete.mock.invocationCallOrder[0])
+  })
+
+  it("supprimée sans part : aucune écriture de lignée", async () => {
+    const res = await DELETE(new Request("http://localhost/api/recoltes/1150", { method: "DELETE" }) as never, params)
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdateMany).not.toHaveBeenCalled()
+    expect(mocks.recolteDelete).toHaveBeenCalledWith({ where: { id: 1150 } })
+  })
+
+  it("une part rattachée à une autre culture redevient une récolte", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...SAISIE, recolteOrigineId: 900 })
+    const res = await modifier({ cultureId: 1180, especeId: "Zinnia", date: "2027-01-20T00:00:00.000Z", quantite: 7 })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data.recolteOrigineId).toBeNull()
+    expect(mocks.recolteUpdateMany).not.toHaveBeenCalled()
+  })
+
+  it("une récolte saisie rattachée ailleurs laisse sa lignée à sa part la plus ancienne", async () => {
+    mocks.recolteFindMany.mockResolvedValue([{ id: 1151 }, { id: 1152 }])
+    const res = await modifier({ cultureId: 1180, especeId: "Zinnia", date: "2027-01-20T00:00:00.000Z", quantite: 7 })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdateMany).toHaveBeenCalledWith({ where: { userId: "u1", recolteOrigineId: 1150, id: { not: 1151 } }, data: { recolteOrigineId: 1151 } })
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).not.toHaveProperty("recolteOrigineId")
+  })
+
+  it("corrigée sans changer de culture : la lignée ne bouge pas", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...SAISIE, recolteOrigineId: 900 })
+    const res = await modifier({ date: "2027-01-20T00:00:00.000Z", quantite: 6, notes: null })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).not.toHaveProperty("recolteOrigineId")
+    expect(mocks.recolteFindMany).not.toHaveBeenCalled()
   })
 })

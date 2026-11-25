@@ -36,6 +36,7 @@ import {
 } from '@/lib/cultures/execution'
 import type { ChampDateEtape, ChampEtape, EtatDatesEtapes } from '@/lib/cultures/execution'
 import { refusAnnulationEtapes, refusCycleIncoherent } from '@/lib/cultures/annulation-etape'
+import { compterRecoltesSaisies } from '@/lib/recolte/lignee'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
@@ -362,7 +363,8 @@ export async function PUT(
       // une case déjà décochée renvoyée telle quelle ne bloque rien.
       const etapesDecochees = ETAPES.filter((etape) => faitSoumis[etape] === false && existing[etape])
       const refusAnnulation = etapesDecochees.length > 0
-        ? refusAnnulationEtapes(etapesDecochees, existing._count.recoltes)
+        // La garde porte sur les lignes ; le nombre annoncé, sur les récoltes saisies.
+        ? refusAnnulationEtapes(etapesDecochees, existing._count.recoltes > 0 ? await compterRecoltesSaisies(tx, cultureId, session!.user.id) : 0)
         : null
       if (refusAnnulation) return NextResponse.json(refusAnnulation, { status: 409 })
       // FB-EYRRO5 : même garde de cycle que les actions rapides. Seule une
@@ -704,7 +706,7 @@ export async function PATCH(
       }
 
       const refusAnnulation = etapesAnnulees.length > 0
-        ? refusAnnulationEtapes(etapesAnnulees, existing._count.recoltes)
+        ? refusAnnulationEtapes(etapesAnnulees, existing._count.recoltes > 0 ? await compterRecoltesSaisies(tx, cultureId, session!.user.id) : 0)
         : null
       if (refusAnnulation) return NextResponse.json(refusAnnulation, { status: 409 })
 

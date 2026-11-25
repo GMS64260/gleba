@@ -46,6 +46,7 @@ import { datesDepuisItp, recolteRecalee } from "@/lib/cultures/dates-itp"
 import { finRecolteApresModification } from "@/lib/cultures/fenetre-recolte"
 import { jourCivilStocke } from "@/lib/jour-civil"
 import { datesApresChangementItp, datesCalculeesEnJoursSeuls, valeurChampDate } from "@/lib/cultures/champ-date"
+import { compterLignees } from "@/lib/recolte/lignee"
 
 /** Valeur du menu « Terminée » pour une culture en cours (Radix refuse la chaîne vide). */
 const NON_TERMINEE = "en-cours"
@@ -170,7 +171,8 @@ export default function EditCulturePage() {
       .then(([especesData, planchesData, cultureData]) => {
         setEspeces(especesData.data || [])
         setPlanches(planchesData.data || [])
-        const nombreRecoltes = Array.isArray(cultureData.recoltes) ? cultureData.recoltes.length : 0
+        // Récoltes saisies : un lot scindé par une sortie partielle reste une récolte.
+        const nombreRecoltes = Array.isArray(cultureData.recoltes) ? compterLignees(cultureData.recoltes) : 0
         setEtapesVerrouillees({
           recoltes: nombreRecoltes,
           etapes: {

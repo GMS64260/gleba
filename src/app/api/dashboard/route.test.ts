@@ -35,7 +35,9 @@ import { GET } from './route'
 const maintenant = new Date(2026, 5, 15, 12)
 const recoltes = [
   { userId: 'ferme-test', date: new Date(2024, 11, 31), quantite: 100 },
-  { userId: 'ferme-test', date: new Date(2025, 0, 1), quantite: 5 },
+  // Une récolte de 5 kg scindée par une sortie partielle : deux lignes, une récolte.
+  { userId: 'ferme-test', date: new Date(2025, 0, 1), quantite: 3 },
+  { userId: 'ferme-test', date: new Date(2025, 0, 1), quantite: 2, recolteOrigineId: 2 },
   { userId: 'ferme-test', date: new Date(2025, 11, 31, 23, 59, 59, 999), quantite: 7 },
   { userId: 'ferme-test', date: new Date(2026, 0, 1), quantite: 11 },
   { userId: 'ferme-test', date: maintenant, quantite: 13 },
@@ -43,7 +45,7 @@ const recoltes = [
   { userId: 'ferme-test', date: new Date(2027, 0, 1), quantite: 19 },
   { userId: 'autre-ferme', date: new Date(2025, 5, 1), quantite: 1000 },
   { userId: 'autre-ferme', date: new Date(2026, 5, 1), quantite: 1000 },
-].map((r) => ({ ...r, unite: 'kg', especeId: 'carotte', espece: null }))
+].map((r, rang) => ({ id: rang + 1, recolteOrigineId: null, ...r, unite: 'kg', especeId: 'carotte', espece: null }))
 
 type FiltreRecoltes = { userId: string; date: { gte: Date; lte: Date } }
 

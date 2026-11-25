@@ -35,6 +35,7 @@ import { ordonnerPourSaisieRecolte } from '@/lib/cultures/tri-recolte'
 import { jourCivilStocke, jourLocalISO } from '@/lib/jour-civil'
 import { aIrriguerALaCreation } from '@/lib/cultures/a-irriguer'
 import { verrouillerOccupationExploitation } from '@/lib/cultures/occupation-modification'
+import { compterLignees } from '@/lib/recolte/lignee'
 
 /** Colonnes de `Culture` sur lesquelles la liste peut être triée. */
 const TRIS_CULTURE = Object.values(Prisma.CultureScalarFieldEnum)
@@ -140,10 +141,7 @@ export async function GET(request: NextRequest) {
             // `unite` : une récolte peut être comptée en tiges, pièces ou
             // bottes depuis le 2026-08-20. Sommer `quantite` sans elle
             // mélangerait les unités dans `totalRecolte`.
-            select: { quantite: true, unite: true },
-          },
-          _count: {
-            select: { recoltes: true },
+            select: { id: true, recolteOrigineId: true, quantite: true, unite: true },
           },
         },
         ...(idsPage ? {} : { orderBy: { [sortBy]: sortOrder }, skip, take: pageSize }),
@@ -170,6 +168,8 @@ export async function GET(request: NextRequest) {
       const effectif = rendementEffectif(culture.espece, surcharges.get(culture.especeId))
       return {
       ...culture,
+      // Récoltes saisies, pas lignes : une sortie partielle scinde un lot.
+      _count: { recoltes: compterLignees(culture.recoltes) },
       espece: culture.espece
         ? {
             ...culture.espece,

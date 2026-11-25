@@ -34,7 +34,8 @@ export async function GET() {
           select: {
             cultures: true,
             planches: true,
-            recoltes: true,
+            // Récoltes saisies : les parts d'un lot scindé ne comptent pas.
+            recoltes: { where: { recolteOrigineId: null } },
           },
         },
       },

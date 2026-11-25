@@ -24,7 +24,11 @@ vi.mock("@/lib/prisma", () => {
       findUnique: mocks.cultureFindUnique,
       update: mocks.cultureUpdate,
     },
-    recolte: { findFirst: mocks.recolteFindFirst },
+    recolte: { findFirst: mocks.recolteFindFirst, findMany: async () => {
+      // Une ligne par récolte comptée sur la culture lue, chacune saisie.
+      const lue = await mocks.cultureFindUnique.mock.results.at(-1)?.value
+      return Array.from({ length: lue?._count?.recoltes ?? 0 }, (_, i) => ({ id: i + 1, recolteOrigineId: null }))
+    } },
   }
   return { default: { $transaction: async (callback: (client: typeof tx) => unknown) => callback(tx) } }
 })

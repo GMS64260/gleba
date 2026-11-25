@@ -11,6 +11,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import { etatCultureHistorique } from '@/lib/cultures/etat'
 import type { UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, formatQuantiteParUnite, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
+import { compterLignees } from '@/lib/recolte/lignee'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -88,6 +89,9 @@ export async function GET(request: NextRequest, { params }: Params) {
           quantite: r.quantite,
           unite: r.unite,
         })),
+        // Récoltes saisies : un lot scindé par une vente ou une sortie partielle
+        // reste une récolte.
+        nombreRecoltes: compterLignees(c.recoltes),
         totalRecolte: partKg(totalParUnite),
         totalRecolteTexte: formatQuantiteParUnite(totalParUnite),
       }
