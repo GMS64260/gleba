@@ -17,6 +17,7 @@ type Lot = {
   statut: string; stockDisponibleCommercial: number | null; enBoutique: boolean; dateSortie: Date | null
   consommationId: number | null; notes: string | null; datePeremption: Date | null; statutBioSnapshot: string | null
   createdAt: Date
+  recolteOrigineId?: number | null
 }
 let lots: Lot[] = []
 let prochainId = 100
@@ -97,8 +98,17 @@ describe('sortirParLots', () => {
       statut: 'don', quantite: 2, date: jour('2026-10-01'), cultureId: 7, unite: 'kg', statutBioSnapshot: 'AB', consommationId: 42,
       // Même instant de saisie que le lot d'origine : une part de lot compté reste comptée.
       createdAt: new Date('2026-10-01T08:00:00.000Z'),
+      // Lignée : la part sortie pointe le lot dont elle vient.
+      recolteOrigineId: 2,
     })
     expect(lots.find((l) => l.id === 3)).toMatchObject({ statut: 'en_stock', quantite: 4 })
+  })
+
+  it('la part sortie d’une part pointe la récolte saisie, pas la part', async () => {
+    lots = [lot(8, '2026-09-01', 10, { recolteOrigineId: 5 })]
+    await sortir(4)
+    expect(lots.find((l) => l.id === 100)).toMatchObject({ quantite: 4, recolteOrigineId: 5 })
+    expect(lots.find((l) => l.id === 8)).toMatchObject({ quantite: 6, recolteOrigineId: 5 })
   })
 
   it('écart d’inventaire : les plus récents d’abord', async () => {

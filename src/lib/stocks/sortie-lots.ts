@@ -94,6 +94,7 @@ export async function sortirParLots(
     select: {
       id: true, quantite: true, unite: true, date: true, cultureId: true, especeId: true,
       datePeremption: true, statutBioSnapshot: true, notes: true, createdAt: true, stockDisponibleCommercial: true,
+      recolteOrigineId: true,
     },
   })
   const reserves = candidats.length ? await quantitesCaisse(tx, userId) : new Map<string, number>()
@@ -144,6 +145,8 @@ export async function sortirParLots(
           quantite: prise, unite: lot.unite, ...marque,
           datePeremption: lot.datePeremption, statutBioSnapshot: lot.statutBioSnapshot,
           notes: lot.notes ?? `Part sortie de la récolte #${lot.id}`,
+          // Lignée : une part de la récolte saisie, pas une récolte de plus.
+          recolteOrigineId: lot.recolteOrigineId ?? lot.id,
         },
         select: { id: true },
       })

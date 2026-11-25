@@ -179,6 +179,8 @@ interface ImportData {
     /** kg | tige | piece | botte, tel que l'export l'emporte depuis 2026-08-20. */
     unite?: string | null
     notes?: string | null
+    /** Récolte saisie dont cette ligne est une part (scission), identifiant de l'export. */
+    recolteOrigineId?: number | null
   }>
   fertilisations?: Array<{
     id: number
@@ -953,6 +955,8 @@ export async function POST(request: NextRequest) {
       // dérive alors comme POST /api/recoltes : rendement effectif de l'espèce
       // chez cet utilisateur (surcharge « Chez moi », sinon catalogue).
       const UNITES_QUANTITE: ReadonlySet<string> = new Set(['kg', 'tige', 'piece', 'botte'])
+      const recolteIdMap = new Map<number, number>()
+      const partsARelier: Array<{ id: number; origine: number }> = []
       const surchargesRendement = await tx.userStockEspece.findMany({
         where: { userId, OR: [{ rendement: { not: null } }, { uniteRendement: { not: null } }] },
         select: { especeId: true, rendement: true, uniteRendement: true },
@@ -979,7 +983,7 @@ export async function POST(request: NextRequest) {
                 rendementEffectif(especeExists, surchargeParEspece.get(item.especeId)).uniteRendement,
               )
 
-        await tx.recolte.create({
+        const cree = await tx.recolte.create({
           data: {
             userId,
             especeId: item.especeId,
@@ -991,8 +995,18 @@ export async function POST(request: NextRequest) {
             unite,
             notes: item.notes,
           },
+          select: { id: true },
         })
+        if (typeof item.id === 'number') recolteIdMap.set(item.id, cree.id)
+        if (item.recolteOrigineId != null) partsARelier.push({ id: cree.id, origine: item.recolteOrigineId })
         stats.recoltes++
+      }
+      // Lignée, en seconde passe : dans le fichier, une part peut précéder la
+      // récolte saisie (identifiants renumérotés par une restauration). Une
+      // origine absente du fichier laisse la part sans lignée.
+      for (const part of partsARelier) {
+        const racine = recolteIdMap.get(part.origine)
+        if (racine != null && racine !== part.id) await tx.recolte.update({ where: { id: part.id }, data: { recolteOrigineId: racine } })
       }
     }
 

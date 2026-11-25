@@ -31,6 +31,7 @@ import {
 } from '@/lib/cultures/execution'
 import { refusPeremptionAvantRecolte, refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
 import { jourCivilStocke } from '@/lib/jour-civil'
+import { cederLaLignee } from '@/lib/recolte/lignee'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import { snapshotStatutBio } from '@/lib/statut-bio'
@@ -224,9 +225,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             : null
         }
       }
+      // Lignée : rattachée à une autre culture ou à une autre espèce, une
+      // récolte saisie laisse ses parts à la plus ancienne d'entre elles.
+      const origineChange = cultureCible !== lot.cultureId || especeCible !== lot.especeId
+      if (origineChange && lot.recolteOrigineId == null) await cederLaLignee(tx, userId, recolteId)
       const recolte = await tx.recolte.update({
         where: { id: recolteId },
-        data: { ...data, ...(statutBioSnapshot !== undefined ? { statutBioSnapshot } : {}) },
+        data: {
+          ...data,
+          ...(statutBioSnapshot !== undefined ? { statutBioSnapshot } : {}),
+          // Rattachée à une autre culture ou à une autre espèce, une part n'est
+          // plus une part de la récolte d'origine : elle redevient une récolte.
+          ...(lot.recolteOrigineId != null && origineChange ? { recolteOrigineId: null } : {}),
+        },
         include: { espece: true, culture: true },
       })
       // Redatée ou rattachée, la récolte peut devenir la première de sa
@@ -413,6 +424,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           userId, especeId: existing.especeId, cultureId: existing.cultureId,
           // Même instant de saisie que le lot : le reste d'un lot compté reste compté.
           date: existing.date, createdAt: existing.createdAt, quantite: reliquat, unite: existing.unite, statut: 'en_stock',
+          // Lignée : le reliquat est une part de la récolte saisie, pas une récolte de plus.
+          recolteOrigineId: existing.recolteOrigineId ?? existing.id,
           datePeremption: existing.datePeremption, statutBioSnapshot: existing.statutBioSnapshot,
           // Le reste d'une sortie garde la note du lot : c'est le même produit.
           notes: sortie?.ok ? existing.notes ?? `Reliquat de la récolte #${recolteId}` : `Reliquat non vendu de la récolte #${recolteId}`,
@@ -457,6 +470,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         if (!liee.ok) return liee
       }
       await deleteAutoEntry('recolte', recolteId, 'vente', userId, tx)
+      // Lignée : la part la plus ancienne devient la récolte saisie des autres.
+      await cederLaLignee(tx, userId, recolteId)
       await tx.recolte.delete({ where: { id: recolteId } })
       return { ok: true as const }
     })

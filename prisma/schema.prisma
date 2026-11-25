@@ -1481,6 +1481,14 @@ model Recolte {
   statutBioSnapshot String?   @map("statut_bio_snapshot") // Conventionnel | C1 | C2 | C3 | AB
   notes             String?   @map("notes")
   createdAt         DateTime  @default(now()) @map("created_at")
+  // Lignée d'une scission : une vente ou une sortie partielle scinde le lot en
+  // deux lignes. La part créée pointe la récolte SAISIE (la racine, jamais une
+  // part intermédiaire) ; NULL = récolte saisie, ou part devenue récolte (sa
+  // racine supprimée ou rattachée ailleurs). Récoltes saisies = lignées distinctes
+  // (`cleLignee`, src/lib/recolte/lignee.ts), pas les lignes.
+  recolteOrigineId  Int?      @map("recolte_origine_id")
+  recolteOrigine    Recolte?  @relation("LigneeRecolte", fields: [recolteOrigineId], references: [id], onDelete: SetNull)
+  partsScindees     Recolte[] @relation("LigneeRecolte")
 
   // Produits boutique issus de cette récolte (bouton "Mettre en vente").
   produitsBoutique ProduitBoutique[]
@@ -1492,6 +1500,7 @@ model Recolte {
   @@index([date])
   @@index([statut])
   @@index([consommationId])
+  @@index([recolteOrigineId])
   @@index([statutBioSnapshot], map: "recoltes_statut_bio_idx")
   @@map("recoltes")
   temoignagesAvis TemoignageRecolte[]
