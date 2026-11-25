@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   depenseCreate: vi.fn(),
   depenseFindFirst: vi.fn(),
   alimentFindUnique: vi.fn(),
+  fertilisantFindUnique: vi.fn(),
   campagneFindFirst: vi.fn(),
   exploitationFindUnique: vi.fn(),
 }))
@@ -27,6 +28,7 @@ vi.mock('@/lib/prisma', () => {
       findFirst: mocks.depenseFindFirst,
     },
     aliment: { findUnique: mocks.alimentFindUnique },
+    fertilisant: { findUnique: mocks.fertilisantFindUnique },
     campagnePlantation: { findFirst: mocks.campagneFindFirst },
     exploitation: { findUnique: mocks.exploitationFindUnique },
   }
@@ -47,6 +49,7 @@ import {
   createDepenseFromOperationArbre,
   createDepenseFromSoinAnimal,
   createDepenseFromConsommationAliment,
+  createDepenseFromFertilisation,
   createVenteFromProductionBois,
   createVenteFromRecolte,
   createVenteFromRecolteArbre,
@@ -194,6 +197,24 @@ describe('invariants auto-compta élevage', () => {
         comptable: false,
         tvaInferee: true,
         sourceType: 'consommation_aliment',
+      }),
+    })
+  })
+
+  // L'engrais est déjà une dépense à son achat : sa consommation est une
+  // valorisation interne, sinon elle le comptait deux fois et déduisait une
+  // TVA sans facture (2026-11-25).
+  it('classe la fertilisation comme coût analytique non déductible', async () => {
+    mocks.fertilisantFindUnique.mockResolvedValue({ prix: 12, userStocks: [] })
+    await createDepenseFromFertilisation('user-1', { id: 40, fertilisantId: 'Compost', quantite: 10 })
+
+    expect(mocks.depenseCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        montant: 120,
+        comptable: false,
+        tvaInferee: true,
+        sourceType: 'fertilisation',
+        sourceId: 40,
       }),
     })
   })
