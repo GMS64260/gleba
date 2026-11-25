@@ -6,6 +6,7 @@ import { prochainNumeroLotVerger } from './numero-lot'
 import { alerteSaisonRecolteArbre, chargerPeriodesRecolteVarietes } from './saison-recolte-arbre'
 import { avertissementsDarFruit } from './dar'
 import { ErreurVerger } from './erreur'
+import { refusPeremptionAvantRecolte } from '@/lib/recolte/date-coherente'
 
 export function dateRecolteApi(valeur: unknown, champ: string, defaut?: Date): Date | null {
   const r = normaliserDateApi(valeur)
@@ -29,6 +30,8 @@ export async function creerRecolteFruit(userId: string, saisie: Record<string, u
   const prixKg = prixFruitApi(saisie.prixKg, 'prixKg')
   const date = dateRecolteApi(saisie.date, 'date', new Date())!
   const datePeremption = dateRecolteApi(saisie.datePeremption, 'datePeremption')
+  const refusPeremption = refusPeremptionAvantRecolte(date, datePeremption)
+  if (refusPeremption) throw new ErreurVerger(refusPeremption, 400, 'datePeremption')
   const texte = (champ: string) => {
     const v = saisie[champ]
     if (v == null || v === '') return null

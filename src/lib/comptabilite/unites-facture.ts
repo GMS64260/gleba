@@ -8,6 +8,13 @@
  * - Liste Rec. 20 + Rec. 21 et usage BT-130, publication mai 2026 :
  *   https://docs.peppol.eu/poacc/billing/3.0/codelist/UNECERec20/
  *   https://docs.peppol.eu/poacc/billing/3.0/syntax/ubl-invoice/cac-InvoiceLine/cbc-InvoicedQuantity/unitCode/
+ * - Relevé du 25/11/2026 sur la même liste Peppol (Rec. 20 révision 11e) :
+ *   G26 = stere, MTQ = cubic metre, DZN = dozen, LS = lump sum, HEA = head ;
+ *   Rec. 21 : BO = Bottle, PT = Pot, JR = Jar, SH = Sachet, BK = Basket,
+ *   PJ = Punnet, BX = Box. « STR » n'existe pas.
+ *   Ce sont les unités que l'application écrit elle-même sur une ligne
+ *   (bois vendu au volume, œufs à la douzaine, abattage, produits
+ *   transformés, boutique, forfait de la saisie libre).
  * Les codes historiques sont conservés. Une botte reste une botte, sans
  * supposer son nombre de tiges. Le libellé agricole accompagne son code.
  */
@@ -26,6 +33,18 @@ const UNIT_CODES: ReadonlyArray<{
   { unite: 'lot', code: 'SET', variantes: ['lots'] },
   { unite: 'tige', code: 'H87', variantes: ['tiges'], description: 'Unité de vente : tige' },
   { unite: 'botte', code: 'XBH', variantes: ['bottes'], description: 'Unité de vente : botte' },
+  { unite: 'stère', code: 'G26', variantes: ['stere', 'stères', 'steres'], description: 'Unité de vente : stère' },
+  { unite: 'm³', code: 'MTQ', variantes: ['m3'] },
+  { unite: 'douzaine', code: 'DZN', variantes: ['douzaines'], description: 'Unité de vente : douzaine' },
+  { unite: 'forfait', code: 'LS', variantes: ['forfaits'] },
+  { unite: 'animal', code: 'HEA', variantes: ['animaux'], description: 'Unité de vente : animal' },
+  { unite: 'bouteille', code: 'XBO', variantes: ['bouteilles'], description: 'Unité de vente : bouteille' },
+  { unite: 'pot', code: 'XPT', variantes: ['pots'], description: 'Unité de vente : pot' },
+  { unite: 'bocal', code: 'XJR', variantes: ['bocaux'], description: 'Unité de vente : bocal' },
+  { unite: 'sachet', code: 'XSH', variantes: ['sachets'], description: 'Unité de vente : sachet' },
+  { unite: 'panier', code: 'XBK', variantes: ['paniers'], description: 'Unité de vente : panier' },
+  { unite: 'barquette', code: 'XPJ', variantes: ['barquettes'], description: 'Unité de vente : barquette' },
+  { unite: 'boîte', code: 'XBX', variantes: ['boite', 'boîtes', 'boites'], description: 'Unité de vente : boîte' },
 ]
 
 // Map exclut aussi les clés héritées d'Object (constructor, __proto__…).

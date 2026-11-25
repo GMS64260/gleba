@@ -153,6 +153,42 @@ describe("PUT /api/recoltes/[id] — date de récolte et cycle de la culture", (
 // MAR-04 (revue Codex du 2026-11-12) : redater une récolte, ou la rattacher à
 // une autre culture, recalcule son statut bio comme à la création (planche de
 // la culture, à la nouvelle date). Le PUT gardait le statut d'origine.
+// Défaut D52 de l'équipe debug : la fiche n'envoie que la date, la péremption
+// du lot n'était jamais relue.
+describe("PUT /api/recoltes/[id] — la péremption ne précède pas la récolte", () => {
+  const PERISSABLE = { ...RECOLTE, datePeremption: new Date("2027-01-21T00:00:00.000Z") }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
+    mocks.recolteFindUnique.mockResolvedValue(PERISSABLE)
+    mocks.cultureFindUnique.mockResolvedValue(ZINNIA)
+    mocks.recolteUpdate.mockImplementation(async ({ data }) => ({ ...PERISSABLE, ...data }))
+  })
+
+  it("refuse de redater la récolte après la péremption du lot", async () => {
+    const res = await modifier({ date: "2027-01-22T00:00:00.000Z", quantite: 25, notes: null })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ champ: "date", error: expect.stringContaining("La péremption (21/01/2027) précède la récolte (22/01/2027)") })
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("accepte une récolte redatée au jour de la péremption", async () => {
+    expect((await modifier({ date: "2027-01-21T00:00:00.000Z", quantite: 25, notes: null })).status).toBe(200)
+  })
+
+  it("refuse une péremption ramenée avant la récolte", async () => {
+    const res = await modifier({ datePeremption: "2027-01-19T00:00:00.000Z" })
+    expect(res.status).toBe(400)
+    expect((await res.json()).champ).toBe("datePeremption")
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("laisse corriger la quantité d'un ancien lot déjà incohérent", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, datePeremption: new Date("2027-01-10T00:00:00.000Z") })
+    expect((await modifier({ date: "2027-01-20T00:00:00.000Z", quantite: 30, notes: null })).status).toBe(200)
+  })
+})
+
 describe("PUT /api/recoltes/[id] — statut bio recalculé quand l'origine change", () => {
   const RECOLTE_AB = { ...RECOLTE, date: new Date(2026, 10, 12, 0, 30), statutBioSnapshot: "AB" }
   // Planche en conversion depuis le 2023-11-12 (minuit local).
@@ -383,6 +419,13 @@ describe("PATCH /api/recoltes/[id] — sortie hors vente, partielle et datée", 
     expect(res.status).toBe(200)
     expect(mocks.recolteUpdate.mock.calls[0][0].data).toMatchObject({ statut: "en_stock", dateSortie: null })
     expect(mocks.recolteCreate).not.toHaveBeenCalled()
+  })
+
+  it("refuse une péremption antérieure à la récolte", async () => {
+    const res = await sortir({ datePeremption: "2027-01-19T00:00:00.000Z" })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ champ: "datePeremption" })
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
   })
 })
 

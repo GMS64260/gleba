@@ -18,8 +18,10 @@ import type { Devise } from '@/lib/territoires'
 
 /**
  * Miroirs comptables automatiques dont aucune table d'origine n'est relue par
- * cette liste : ils y entrent tels quels. Tout autre miroir reste exclu, sa
- * source (soin, aliment, intervention, achat…) étant déjà listée.
+ * cette liste : ils y entrent tels quels. Tout autre miroir est représenté par
+ * sa source (soin, aliment, intervention, achat…) ; il n'entre lui-même dans
+ * la liste que si aucune ligne de l'exercice ne le représente (voir
+ * `miroirsComptables`).
  */
 const MIROIRS_SANS_SOURCE_RELUE = ['caisse']
 
@@ -244,6 +246,22 @@ export async function GET(request: NextRequest) {
     achatsLots.push(...lotsSansDate)
     achatsAnimaux.push(...animauxSansDate)
 
+    // Miroirs comptables automatiques de l'exercice : ce que les rapports, le
+    // FEC et la TVA comptent (`comptable: true`). La liste montre d'ordinaire
+    // leur source ; un miroir que plus aucune ligne ne représente (source
+    // supprimée avec sa planche ou par « Vider mes données », ou datée d'un
+    // autre exercice que son miroir) y entre tel quel plus bas, sans quoi l'exercice affichait
+    // 770 € dans Rapports et aucune dépense ici (défaut D19 de l'équipe debug).
+    const miroirsComptables = await prisma.depenseManuelle.findMany({
+      where: {
+        userId, date: { gte: startOfYear, lte: endOfYear },
+        comptable: true, auto: true, sourceType: { notIn: MIROIRS_SANS_SOURCE_RELUE }, sourceId: { not: null },
+      },
+      orderBy: { date: 'desc' },
+    })
+    const cleMiroir = (sourceType: string, sourceId: number) => `${sourceType}:${sourceId}`
+    const miroirParSource = new Map(miroirsComptables.map((m) => [cleMiroir(m.sourceType!, m.sourceId!), m]))
+
     // Transformer en format unifié
     type UnifiedExpense = {
       id: string
@@ -256,6 +274,8 @@ export async function GET(request: NextRequest) {
        * l'écran n'ait pas à redéduire la règle.
        */
       corrigeable?: boolean
+      /** Miroir comptable listé faute de ligne source sur l'exercice. */
+      sourceAbsente?: boolean
       module: string
       date: string
       description: string
@@ -348,10 +368,15 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Fertilisation -> dépenses (prix per-user avec fallback global)
+    // Fertilisation -> dépenses (prix per-user avec fallback global).
+    // Une fertilisation reprise d'une sauvegarde porte un miroir comptable
+    // (`createDepenseFromFertilisation`) : la ligne suit alors ce miroir, son
+    // montant figé et son caractère comptable, comme les rapports. Sans miroir
+    // c'est un coût interne, valorisé au prix courant.
     fertilisations.forEach(f => {
       const userPrix = f.fertilisant.userStocks?.[0]?.prix ?? f.fertilisant.prix
-      const montant = f.quantite * (userPrix || 0)
+      const miroir = miroirParSource.get(cleMiroir('fertilisation', f.id))
+      const montant = miroir ? miroir.montant : f.quantite * (userPrix || 0)
       if (montant > 0) {
         expenses.push({
           id: `fertilisation-${f.id}`,
@@ -362,12 +387,13 @@ export async function GET(request: NextRequest) {
           description: `${f.fertilisant.id} sur planche ${f.plancheId}`,
           quantite: f.quantite,
           unite: 'kg',
-          prixUnitaire: userPrix,
+          // Le montant d'un miroir est figé au prix du jour de sa création.
+          prixUnitaire: miroir ? (f.quantite > 0 ? miroir.montant / f.quantite : null) : userPrix,
           montant,
           fournisseur: null,
           paye: null,
           categorie: 'Fertilisation',
-          comptable: false,
+          comptable: Boolean(miroir),
         })
       }
     })
@@ -469,6 +495,14 @@ export async function GET(request: NextRequest) {
       })
     })
 
+    // Un miroir comptable que rien ne représente est listé tel quel : jamais
+    // en plus de sa source (elle porterait deux fois le même montant).
+    const sourcesListees = new Set(expenses.flatMap((e) =>
+      MIROIR_DEPENSE_PAR_SOURCE[e.source] ? [cleMiroir(MIROIR_DEPENSE_PAR_SOURCE[e.source], e.sourceId)] : []))
+    const miroirsSansLigne = miroirsComptables.filter((m) => !sourcesListees.has(cleMiroir(m.sourceType!, m.sourceId!)))
+    const idsSansLigne = new Set(miroirsSansLigne.map((m) => m.id))
+    depensesManuelles.push(...miroirsSansLigne)
+
     // DepenseManuelle -> dépenses
     depensesManuelles.forEach(d => {
       expenses.push({
@@ -478,6 +512,7 @@ export async function GET(request: NextRequest) {
         // Une saisie manuelle se corrige ici ; un miroir automatique (frais
         // de marché) se corrige à sa source, le serveur refuse de le modifier.
         corrigeable: !d.auto,
+        ...(idsSansLigne.has(d.id) ? { sourceAbsente: true } : {}),
         module: d.module || 'autre',
         date: d.date.toISOString(),
         description: d.description,
@@ -514,8 +549,8 @@ export async function GET(request: NextRequest) {
     // Devise figée d'une dépense (lot devise-totaux-api, tour 2) : celle de
     // son dossier de règlement, figée au premier règlement. Une dépense sans
     // dossier n'a pas de devise figée : pas de `monnaie`, la devise courante
-    // s'applique. Les coûts analytiques (soins, aliments, fertilisations)
-    // n'ont jamais de règlement.
+    // s'applique. Les coûts analytiques (soins, aliments, fertilisations sans
+    // miroir comptable) n'ont jamais de règlement.
     const exploitation = await prisma.exploitation.findUnique({ where: { userId }, select: { devise: true, territoire: true } })
     const devise = deviseCouranteExploitation(exploitation)
     const identitesManuelles = new Map(depensesManuelles.map((d) => [d.id, d]))
@@ -558,8 +593,11 @@ export async function GET(request: NextRequest) {
     })
     const multiDevise = parDevise.length > 1
     const stats = {
-      // Le total comptable n'additionne jamais une consommation interne à la
-      // facture d'achat qui a approvisionné le stock.
+      // Le total comptable est celui des rapports, du FEC et de la TVA : les
+      // lignes `comptable`. Soins et aliments sont des consommations internes,
+      // jamais ajoutées à la facture d'achat qui a approvisionné le stock. Une
+      // fertilisation reprise d'une sauvegarde fait exception tant que son
+      // miroir est comptable (décision ouverte, voir la note de comptabilité).
       total: multiDevise ? null : comptables.reduce((sum, e) => sum + e.montant, 0),
       totalComptable: multiDevise ? null : comptables.reduce((sum, e) => sum + e.montant, 0),
       totalAnalytique: multiDevise ? null : filtered.filter((e) => !e.comptable).reduce((sum, e) => sum + e.montant, 0),

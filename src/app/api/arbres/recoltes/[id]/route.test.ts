@@ -215,3 +215,43 @@ describe("PUT /api/arbres/recoltes/[id] — saison de la variété", () => {
     expect(mocks.recolteUpdate.mock.calls[0][0].data.notes).toBe("Cueillie à l'échelle")
   })
 })
+
+// Même règle qu'au maraîchage : la péremption ne précède jamais la récolte.
+describe("PUT /api/arbres/recoltes/[id] — la péremption ne précède pas la récolte", () => {
+  const PERISSABLE = { ...RECOLTE, datePeremption: new Date("2026-10-12T00:00:00.000Z") }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u1" } } })
+    mocks.recolteFindUnique.mockResolvedValue(PERISSABLE)
+    mocks.recolteUpdate.mockImplementation(async ({ data }) => ({ ...PERISSABLE, ...Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) }))
+    mocks.recolteCount.mockResolvedValue(0)
+    mocks.parcelleFindUnique.mockResolvedValue({ nom: "Verger" })
+    mocks.parcelleFindFirst.mockResolvedValue({ id: "parc-1", nom: "Verger" })
+  })
+
+  it("refuse de redater la récolte après la péremption du lot, avant toute écriture", async () => {
+    const res = await modifier({ date: "2026-10-13", quantite: 5 })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ champ: "date", error: expect.stringContaining("La péremption (12/10/2026) précède la récolte (13/10/2026)") })
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+    // Aucun numéro de lot consommé par un refus.
+    const { default: db } = await import("@/lib/prisma")
+    expect(db.$queryRaw).not.toHaveBeenCalled()
+  })
+
+  it("accepte la récolte redatée au jour de la péremption", async () => {
+    expect((await modifier({ date: "2026-10-12", quantite: 5 })).status).toBe(200)
+  })
+
+  it("refuse une péremption ramenée avant la récolte", async () => {
+    const res = await modifier({ datePeremption: "2026-10-09", quantite: 5 })
+    expect(res.status).toBe(400)
+    expect((await res.json()).champ).toBe("datePeremption")
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("laisse corriger la quantité d'un ancien lot déjà incohérent", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, datePeremption: new Date("2026-10-05T00:00:00.000Z") })
+    expect((await modifier({ date: "2026-10-10", datePeremption: "2026-10-05", quantite: 7 })).status).toBe(200)
+  })
+})

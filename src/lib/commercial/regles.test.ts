@@ -71,6 +71,13 @@ describe('Documents commerciaux : montants et engagement', () => {
     expect(transitionDocument(devis, 'accepter', new Date('2026-10-31T20:00:00Z'))).toBe('accepte')
     expect(() => transitionDocument(devis, 'accepter', new Date('2026-10-31T23:30:00Z'))).toThrow('expiré')
   })
+  it('ne laisse pas annuler un bon livré : il se retourne, même facturé', () => {
+    const bonLivre = { type: 'livraison', statut: 'livre', dateValidite: null, factureId: null, bonLivraison: null }
+    expect(() => transitionDocument(bonLivre, 'annuler')).toThrow('état')
+    expect(transitionDocument(bonLivre, 'retourner')).toBe('retourne')
+    expect(transitionDocument({ ...bonLivre, factureId: 1 }, 'retourner')).toBe('retourne')
+    expect(transitionDocument({ ...bonLivre, statut: 'emis' }, 'annuler')).toBe('annule')
+  })
   it('fige les documents convertis et refuse les transitions inverses', () => {
     expect(() => transitionDocument({ ...devis, bonLivraison: { id: 'bl' } }, 'annuler')).toThrow('converti')
     expect(() => transitionDocument({ ...devis, factureId: 1 }, 'refuser')).toThrow('converti')

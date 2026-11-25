@@ -29,7 +29,8 @@ import {
   jourCivilLocal,
   verrouillerCultures,
 } from '@/lib/cultures/execution'
-import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
+import { refusPeremptionAvantRecolte, refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { masquerReferentielsEmbarques } from '@/lib/referentiel-embarque'
 import { snapshotStatutBio } from '@/lib/statut-bio'
@@ -185,6 +186,18 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       const especeCible = data.especeId ?? lot.especeId
       const dateCible = data.date ?? lot.date
       const dateChange = data.date !== undefined && jourCivilLocal(data.date) !== jourCivilLocal(lot.date)
+      // La péremption ne précède jamais la récolte. La règle confronte la valeur
+      // reçue à celle du lot (le formulaire n'envoie que la date), et seulement
+      // si l'une des deux change : un lot ancien déjà incohérent reste
+      // corrigeable sur ses autres champs.
+      const peremptionCible = data.datePeremption !== undefined ? data.datePeremption : lot.datePeremption
+      const peremptionChange = data.datePeremption !== undefined && jourCivilStocke(data.datePeremption) !== jourCivilStocke(lot.datePeremption)
+      if (dateChange || peremptionChange) {
+        const refusPeremption = refusPeremptionAvantRecolte(dateCible, peremptionCible)
+        if (refusPeremption) return { ok: false as const, response: NextResponse.json(
+          { error: refusPeremption, champ: dateChange ? 'date' : 'datePeremption' }, { status: 400 },
+        ) }
+      }
       // Statut bio : le corps n'en porte jamais (schéma), il suit l'origine. Redatée
       // ou rattachée à une autre culture, la récolte reprend le calcul de la
       // création (planche de la culture, à la date de récolte) ; sinon le statut
@@ -324,6 +337,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         const planche = plancheId ? await tx.planche.findFirst({ where: { id: plancheId, userId }, select: { parcelleGeoId: true } }) : null
         dar = await verdictDarLegume(tx, userId, { id: recolteId, cultureId: existing.cultureId, plancheId, parcelleId: planche?.parcelleGeoId ?? null, date: existing.date })
         if (dar.niveau === 'bloquant') return { ok: false as const, response: NextResponse.json(corpsRefusDar(new ErreurDarEnCours(dar)), { status: 409 }) }
+      }
+      if (body.datePeremption !== undefined && jourCivilStocke(donnees.datePeremption) !== jourCivilStocke(existing.datePeremption)) {
+        const refusPeremption = refusPeremptionAvantRecolte(existing.date, donnees.datePeremption)
+        if (refusPeremption) return refuser(refusPeremption, 400, { champ: 'datePeremption' })
       }
       const updateData: Record<string, unknown> = {}
       for (const champ of ['statut','dateVente','prixKg','prixTotal','clientId','clientNom','datePeremption','notes'] as const) {

@@ -605,9 +605,12 @@ function CartePageContent() {
           )}
         </div>
 
-        {/* Panneau d'edition (droite) */}
+        {/* Panneau d'edition (droite). Sur téléphone c'est une surcouche qui
+            recouvre le bas de la carte : pendant l'édition du tracé elle est
+            masquée (sans être démontée, la saisie est gardée) pour laisser les
+            poignées recevoir le geste ; la barre du haut porte Valider et Annuler. */}
         {isPanelOpen && (
-          <div className="absolute inset-x-0 bottom-0 z-40 h-[72%] min-h-0 md:static md:h-auto md:w-80 md:shrink-0">
+          <div className={`absolute inset-x-0 bottom-0 z-40 h-[72%] min-h-0 md:static md:h-auto md:w-80 md:shrink-0${isEditing ? " max-md:hidden" : ""}`}>
             <ParcellePanel
               parcelle={selectedParcelle}
               isCreating={isCreating}

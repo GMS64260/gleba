@@ -104,7 +104,7 @@ export function DocumentsCommerciaux({ type, onFacture }: { type: 'devis' | 'liv
       emettre: ['Émettre ce document ?', 'Un numéro définitif sera attribué. Le client, les lignes et les conditions seront figés. Aucun courriel ne part à cette étape.'],
       accepter: ['Enregistrer l’accord du client ?', 'Confirmez avoir reçu son accord et conservez le devis signé ou la preuve de son acceptation.'],
       refuser: ['Enregistrer le refus du client ?', 'Le devis restera consultable dans votre historique.'],
-      annuler: ['Annuler ce document ?', 'Il restera consultable, sans pouvoir être facturé. Si les produits ont été livrés, confirmez leur retour physique : les quantités seront remises en stock.'],
+      annuler: ['Annuler ce document ?', 'Il restera consultable, sans pouvoir être facturé.'],
       retourner: ['Confirmer le retour physique ?', 'Toutes les quantités liées à ce bon seront remises en stock. La facture reste inchangée : émettez un avoir si le client doit être remboursé.'],
     }
     const [titre, description] = descriptions[action]

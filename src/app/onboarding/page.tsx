@@ -738,9 +738,9 @@ export default function OnboardingPage() {
                     <div className="border rounded p-3 space-y-2">
                       <Label className="flex items-center gap-2"><Sprout className="h-4 w-4 text-green-600" /> Première planche de culture</Label>
                       <div className="grid md:grid-cols-4 gap-2">
-                        <Input className="md:col-span-2" placeholder="Nom (ex : Planche 1, Jardin Est)" value={s.plancheNom} onChange={(e) => set("plancheNom", e.target.value)} />
-                        <Input type="number" inputMode="decimal" placeholder="Longueur (m)" value={s.plancheLongueur} onChange={(e) => set("plancheLongueur", e.target.value)} />
-                        <Input type="number" inputMode="decimal" placeholder="Largeur (m)" value={s.plancheLargeur} onChange={(e) => set("plancheLargeur", e.target.value)} />
+                        <Input className="md:col-span-2" aria-label="Nom de la planche" placeholder="Nom (ex : Planche 1, Jardin Est)" value={s.plancheNom} onChange={(e) => set("plancheNom", e.target.value)} />
+                        <Input type="number" inputMode="decimal" aria-label="Longueur de la planche (m)" placeholder="Longueur (m)" value={s.plancheLongueur} onChange={(e) => set("plancheLongueur", e.target.value)} />
+                        <Input type="number" inputMode="decimal" aria-label="Largeur de la planche (m)" placeholder="Largeur (m)" value={s.plancheLargeur} onChange={(e) => set("plancheLargeur", e.target.value)} />
                       </div>
                       <div className="flex items-center gap-2">
                         <Label htmlFor="onboarding-plancheSol" className="text-xs text-muted-foreground shrink-0">Type de sol</Label>
@@ -754,8 +754,8 @@ export default function OnboardingPage() {
                     <div className="border rounded p-3 space-y-2">
                       <Label className="flex items-center gap-2"><TreeDeciduous className="h-4 w-4 text-emerald-700" /> Premier arbre</Label>
                       <div className="grid md:grid-cols-2 gap-2">
-                        <Input placeholder="Espèce (Pommier, Olivier…)" value={s.arbreEspece} onChange={(e) => set("arbreEspece", e.target.value)} />
-                        <Input placeholder="Nom (facultatif : Pommier du fond)" value={s.arbreNom} onChange={(e) => set("arbreNom", e.target.value)} />
+                        <Input aria-label="Espèce du premier arbre" placeholder="Espèce (Pommier, Olivier…)" value={s.arbreEspece} onChange={(e) => set("arbreEspece", e.target.value)} />
+                        <Input aria-label="Nom du premier arbre (facultatif)" placeholder="Nom (facultatif : Pommier du fond)" value={s.arbreNom} onChange={(e) => set("arbreNom", e.target.value)} />
                       </div>
                     </div>
                   )}
@@ -790,6 +790,7 @@ export default function OnboardingPage() {
                                   inputMode="numeric"
                                   min={1}
                                   placeholder="Nb"
+                                  aria-label={`Effectif : ${c.libelle}`}
                                   className="h-8 w-20"
                                   value={s.cheptel[c.especeAnimaleId] ?? ""}
                                   onChange={(e) => set("cheptel", { ...s.cheptel, [c.especeAnimaleId]: e.target.value })}
