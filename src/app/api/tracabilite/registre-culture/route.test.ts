@@ -184,3 +184,43 @@ describe("Registre de culture : semis d'une culture créée depuis la rotation (
     expect(commeLEcran(radis.dates.semis)).toBe("01 juin")
   })
 })
+
+// Défaut D51 de l'équipe debug : une perte de 1 kg sur une récolte de 10 kg
+// scinde le lot en deux lignes de même date, et le cahier listait deux récoltes.
+describe("Registre de culture : une récolte scindée reste une récolte", () => {
+  const recolte = (id: number, quantite: number, statut: string, dateSortie: string | null, unite = "kg") => ({
+    id, date: new Date("2027-11-22T00:00:00.000Z"), quantite, unite, statut,
+    dateSortie: dateSortie ? new Date(dateSortie) : null,
+  })
+  const chronologieDe = async (recoltes: unknown[]) => {
+    const base = ligneRegistre(1, "Radis témoin", { dateSemis: null, datePlantation: null })
+    mocks.cultureFindMany.mockResolvedValue([{ ...base, recoltes }])
+    const registre = await lireRegistre2027()
+    const culture = registre.registre[0]
+    return { culture, evenements: culture.chronologie.map((e: { date: string; type: string; description: string }) => [e.date, e.type, e.description]) }
+  }
+
+  it("garde une seule récolte de 10 kg et date la perte de 1 kg", async () => {
+    const { culture, evenements } = await chronologieDe([
+      recolte(1, 1, "perte", "2027-11-23T00:00:00.000Z"),
+      recolte(2, 9, "en_stock", null),
+    ])
+    expect(evenements).toEqual([
+      ["2027-11-22", "recolte", "Récolte : 10 kg"],
+      ["2027-11-23", "sortie", "Perte : 1 kg"],
+    ])
+    expect(culture.totalRecolte).toBe(10)
+  })
+
+  it("ventile un même jour par unité et ne date pas une sortie sans jour connu", async () => {
+    const { evenements } = await chronologieDe([
+      recolte(1, 2, "don", null),
+      recolte(2, 3, "en_stock", null),
+      recolte(3, 12, "vendu", null, "tige"),
+    ])
+    expect(evenements).toHaveLength(1)
+    expect(evenements[0][2]).toMatch(/^Récolte : .*5 kg/)
+    expect(evenements[0][2]).toContain("12 tiges")
+  })
+})
+
