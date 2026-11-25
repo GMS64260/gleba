@@ -105,8 +105,9 @@ export default async function ConsultationUserPage({ params }: PageProps) {
     prisma.soinAnimal.count({ where: { userId, fait: false } }),
     prisma.culture.count({ where: { userId } }),
     prisma.planche.count({ where: { userId } }),
-    // Récoltes saisies, sans les lots d'inventaire nés d'un comptage.
-    prisma.recolte.count({ where: { userId, cultureId: { not: null } } }),
+    // Récoltes saisies, sans les lots d'inventaire nés d'un comptage ni les
+    // parts d'un lot scindé par une vente ou une sortie partielle.
+    prisma.recolte.count({ where: { userId, cultureId: { not: null }, recolteOrigineId: null } }),
     // Ventilé par unité : un compte de fleurs coupées récolte des tiges, pas
     // des kilos, et les additionner ferait un chiffre sans sens.
     prisma.recolte.groupBy({

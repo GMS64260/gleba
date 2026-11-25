@@ -41,7 +41,8 @@ interface SourceUsage {
 export const SOURCES_USAGE: SourceUsage[] = [
   // Maraîchage
   { table: "cultures", groupe: "maraichage", libelle: "Cultures" },
-  { table: "recoltes", groupe: "maraichage", libelle: "Récoltes" },
+  // Récoltes saisies : les parts d'un lot scindé (vente ou sortie partielle) ne comptent pas.
+  { table: "recoltes", groupe: "maraichage", libelle: "Récoltes", filtre: "recolte_origine_id IS NULL" },
   { table: "interventions", groupe: "maraichage", libelle: "Interventions" },
   { table: "irrigations_planifiees", groupe: "maraichage", libelle: "Irrigations" },
   { table: "fertilisations", groupe: "maraichage", libelle: "Fertilisations" },
