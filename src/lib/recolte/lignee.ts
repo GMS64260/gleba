@@ -62,3 +62,11 @@ export async function cederLaLignee(tx: Prisma.TransactionClient, userId: string
   await tx.recolte.updateMany({ where: { userId, id: heritiere.id }, data: { recolteOrigineId: null } })
   return parts.length
 }
+
+/**
+ * Note que le code écrivait sur la ligne créée par une scission AVANT la
+ * colonne de lignée ; elle cite l'identifiant de la ligne d'origine. Seul
+ * indice d'une scission ancienne (même expression que la reprise,
+ * scripts/reprise-lignee-recoltes.ts).
+ */
+export const NOTE_SCISSION = /^(?:Reliquat non vendu de la récolte|Reliquat de la récolte|Part sortie de la récolte) #(\d{1,9})/
