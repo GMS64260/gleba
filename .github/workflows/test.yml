@@ -66,7 +66,7 @@ jobs:
   base-neuve:
     name: base-neuve
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: postgis/postgis:16-3.4-alpine
@@ -138,3 +138,13 @@ jobs:
           TZ: Europe/Paris
           GLEBA_ATTENTE_LAIT_QA_DATABASE_URL: "postgresql://postgres:gleba_test@localhost:5432/gleba_attente_lait_qa_c1c1c1"
           DATABASE_URL: "postgresql://postgres:gleba_test@localhost:5432/gleba_attente_lait_qa_c1c1c1"
+
+      # Suites d'intégration à base dédiée (règlements, élevage, capteurs,
+      # verger, agroclimat, associations, parcours) : chacune refuse toute base
+      # qui ne porte pas son nom, et aucune n'était lancée avant le 2026-11-25.
+      # Le lanceur crée chaque base depuis un modèle migré une fois, puis la
+      # supprime. Liste : scripts/tests-integration-dedies.mjs.
+      - name: Integration tests on dedicated PostgreSQL bases
+        run: node scripts/tests-integration-dedies.mjs
+        env:
+          TEST_ADMIN_DATABASE_URL: "postgresql://postgres:gleba_test@localhost:5432/gleba_test"

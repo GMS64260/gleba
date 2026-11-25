@@ -27,6 +27,28 @@ n’avaient jamais tourné. Aucun accès externe ni donnée réelle n’est requ
 Le rejeu sous fuseau UTC (`scripts/test-tz.mjs`) n’est branché ni en CI ni dans
 un script npm : il se lance à la main.
 
+## Suites à base dédiée
+
+`node scripts/tests-integration-dedies.mjs [filtre]` lance les suites du tableau
+ci-dessous, chacune sur la base que sa garde de nom exige. Le lanceur migre une
+base modèle une seule fois, crée chaque base par copie du modèle, lance la suite
+puis supprime la base. `TEST_ADMIN_DATABASE_URL` désigne un PostgreSQL local
+(PostGIS) et ne sert qu’à créer et supprimer les bases de la liste `SUITES` du
+script. La CI le lance dans le job `base-neuve` depuis le 2026-11-25 ; avant,
+aucune de ces suites ne tournait. Leur premier lancement a montré trois tests
+périmés (devise des pièces émises depuis le 2026-06-29, refus de vente pendant
+un délai avant récolte), corrigés le même jour, et aucun défaut de l’application.
+
+Les quatre fichiers `src/lib/__tests__/integration/*.postgres.ts`, hors des
+globs, passent par leurs configurations `scripts/qa/vitest-*.config.mjs`.
+Reste hors CI : le bloc « base peuplée » de
+`app/api/associations/desactivation.postgres.test.ts`, qui exige le référentiel
+d’associations de production (`GLEBA_PR73_REFERENTIEL_PEUPLE=1`).
+
+Avec un client Prisma généré depuis un schéma privé (assemblage), ces suites
+échouent sur des colonnes absentes des migrations publiques : générer le client
+du schéma public avant de les lancer.
+
 ## Suites ignorées sur la base commune
 
 Ces suites sont découvertes par les globs, mais restent ignorées sans leur

@@ -58,6 +58,9 @@ async function facture(montant = 100, userId = identite.id) {
       totalTTC: montant,
       statut: 'emise',
       date: new Date('2026-10-27'),
+      // Une pièce émise depuis le 2026-06-29 porte sa devise dans l'instantané
+      // de l'émetteur ; sans elle, sa devise est inconnue et rien ne se rapproche.
+      emetteurSnapshot: { devise: 'EUR' },
     },
   })
 }
@@ -360,6 +363,7 @@ describe.skipIf(!active)('règlements et rapprochement sur PostgreSQL isolé', (
         numero: 'AV-QA-' + randomUUID(),
         type: 'avoir',
         factureOrigineId: f.id,
+        emetteurSnapshot: { devise: 'EUR' },
         statut: 'emise',
         clientNom: 'Client fictif',
         totalHT: 20,

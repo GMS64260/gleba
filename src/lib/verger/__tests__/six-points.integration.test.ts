@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { NextRequest } from 'next/server'
+import type { Prisma } from '@prisma/client'
 
 const auth = vi.hoisted(() => ({ id: '' }))
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: async () => ({ error: null,
@@ -184,7 +185,7 @@ describe.skipIf(!process.env.GLEBA_VERGER_QA_DATABASE_URL)('Contre-vérification
     expect((await suivi())[0]).toMatchObject({ quantiteLivree: 7, quantiteRetournee: 4, quantiteNette: 3, revenuTTC: 21 })
     expect((await db.recolteArbre.findUniqueOrThrow({ where: { id: lot.id } })).stockDisponibleCommercial).toBe(7)
     await db.facture.create({ data: { userId: auth.id, numero: 'A-QA-' + randomUUID(), type: 'avoir',
-      factureOrigineId: facture.id, clientNom: 'Client fictif', date: maintenant, statut: 'emise',
+      factureOrigineId: facture.id, emetteurSnapshot: (facture.emetteurSnapshot ?? { devise: 'EUR' }) as Prisma.InputJsonValue, clientNom: 'Client fictif', date: maintenant, statut: 'emise',
       totalHT: 12, totalTVA: 0, totalTTC: 12,
       lignes: { create: { description: 'Retour du premier BL', quantite: 4, unite: 'kg', prixUnitaire: 3, tauxTVA: 0,
         montantHT: 12, montantTVA: 0, montantTTC: 12, articleStockType: 'fruit', articleStockId: String(lot.id) } } } })
