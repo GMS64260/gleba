@@ -7,9 +7,8 @@
  * (`sortirParLots`) et reviennent en stock si elle est annulée.
  *
  * Modèle de stock unique, L4.1 (2026-11-24) : une sortie que les lots libres
- * ne couvrent pas entièrement est REFUSÉE (409). Le stock d'une espèce va
- * devenir la somme de ses lots : une part « hors lots » le ferait mentir.
- * `quantiteHorsLots` reste à 0 ; les lignes antérieures gardent la leur.
+ * ne couvrent pas entièrement est REFUSÉE (409). Le stock d'une espèce est la
+ * somme de ses lots (L4.2) : une part « hors lots » le ferait mentir.
  *
  * Une vente ne passe pas par ici : elle crée une recette et, au besoin, une
  * facture, depuis le lot vendu (Récoltes > Stock) ou un bon de livraison.
@@ -78,7 +77,6 @@ export type ResultatSortieConsommation =
       unite: UniteQuantite
       quantite: number
       couvert: number
-      horsLots: number
       lots: LotSorti[]
     }
   | { ok: false; status: 400 | 404 | 409; error: string; champ?: string }
@@ -112,15 +110,13 @@ export async function enregistrerSortieConsommation(
   const resultat = await prisma.$transaction(async (tx) => {
     await verrouillerStockCommercial(tx, userId)
     await verrouillerStockNetRecolte(tx, userId, preparation.especeId)
-    // En-tête d'abord, sans part hors lots : le stock de l'espèce ne descend
-    // jamais, pendant l'écriture, sous ce qu'il vaudra une fois la sortie faite.
+    // En-tête d'abord : les lots pris lui sont rattachés.
     const consommation = await tx.consommation.create({
       data: {
         userId,
         especeId: preparation.especeId,
         unite: preparation.unite,
         quantite: saisie.quantite,
-        quantiteHorsLots: 0,
         date,
         destinationId: saisie.destinationId || null,
         prix: saisie.prix ?? null,
@@ -138,7 +134,7 @@ export async function enregistrerSortieConsommation(
     })
     // Tout ou rien : la transaction annule la consommation et les lots déjà pris.
     if (parLots.horsLots > 0) throw new StockLotsInsuffisant(parLots.couvert)
-    return { consommationId: consommation.id, ...parLots }
+    return { consommationId: consommation.id, couvert: parLots.couvert, lots: parLots.lots }
   }).catch((erreur: unknown) => {
     if (erreur instanceof StockLotsInsuffisant) return erreur
     throw erreur
