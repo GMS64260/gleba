@@ -4,7 +4,7 @@ import { createRecolteSchema } from '@/lib/validations/recolte'
 import { snapshotStatutBio } from '@/lib/statut-bio'
 import { ecrituresPassageAFait, verrouillerCultures } from '@/lib/cultures/execution'
 import { invalidateKpi } from '@/lib/kpi'
-import { refusRecolteAvantDebut } from './date-coherente'
+import { refusPeremptionAvantRecolte, refusRecolteAvantDebut } from './date-coherente'
 import { chargerSurchargesRendement, rendementEffectif } from './rendement-effectif'
 import { uniteQuantiteRecolte } from './projection'
 import { chargerAvertissementsDarLegumes } from './dar'
@@ -62,6 +62,8 @@ export async function preparerRecoltes(userId: string, entrees: unknown[], unite
     if (unite !== 'kg' && !Number.isInteger(quantite)) return { ok: false as const, error: `Récolte ${i + 1} : indiquez un nombre entier de ${unite}.` }
     const refus = refusRecolteAvantDebut(culture, donnee.date)
     if (refus) return { ok: false as const, error: refus, champ: 'date' }
+    const refusPeremption = refusPeremptionAvantRecolte(donnee.date, donnee.datePeremption)
+    if (refusPeremption) return { ok: false as const, error: refusPeremption, champ: 'datePeremption' }
     preparees.push({
       culture,
       data: { ...donnee, quantite, unite, userId, statutBioSnapshot: culture.planche ? snapshotStatutBio(culture.planche.statutBio, culture.planche.dateDebutConversion, donnee.date) : null },

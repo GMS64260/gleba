@@ -28,6 +28,18 @@ const UNITES = [
   { variantes: ['lot', 'lots'], code: 'SET' },
   { variantes: ['tige', 'tiges'], code: 'H87' },
   { variantes: ['botte', 'bottes'], code: 'XBH' },
+  { variantes: ['stère', 'stere', 'stères', 'steres'], code: 'G26' },
+  { variantes: ['m³', 'm3'], code: 'MTQ' },
+  { variantes: ['douzaine', 'douzaines'], code: 'DZN' },
+  { variantes: ['forfait', 'forfaits'], code: 'LS' },
+  { variantes: ['animal', 'animaux'], code: 'HEA' },
+  { variantes: ['bouteille', 'bouteilles'], code: 'XBO' },
+  { variantes: ['pot', 'pots'], code: 'XPT' },
+  { variantes: ['bocal', 'bocaux'], code: 'XJR' },
+  { variantes: ['sachet', 'sachets'], code: 'XSH' },
+  { variantes: ['panier', 'paniers'], code: 'XBK' },
+  { variantes: ['barquette', 'barquettes'], code: 'XPJ' },
+  { variantes: ['boîte', 'boite', 'boîtes', 'boites'], code: 'XBX' },
 ]
 
 function varier(unite: string, entier: (borne: number) => number) {

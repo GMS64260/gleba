@@ -5,6 +5,8 @@ import { avertissementsDarFruit } from "@/lib/verger/dar"
 import { modifierVenteVerger } from "@/lib/verger/vente"
 import { corpsRefusDar } from '@/lib/phyto/refus-dar'
 import { ErreurVerger } from "@/lib/verger/erreur"
+import { refusPeremptionAvantRecolte } from '@/lib/recolte/date-coherente'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { etatSortiesLotVerger, NATURE_TRANSFORMATION, reliquatApresCorrection } from "@/lib/verger/sortie-stock"
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
@@ -151,6 +153,24 @@ export async function PUT(request: NextRequest, { params }: Params) {
         }
       }
 
+      // La péremption ne précède jamais la récolte (même règle qu'au maraîchage).
+      // Confrontée à la valeur stockée de l'autre date, en jours civils, et
+      // seulement si l'une des deux change : un ancien lot incohérent reste
+      // corrigeable sur ses autres champs. Levée (et non renvoyée) avant toute
+      // écriture : un `return` validerait la transaction, numéro de lot compris.
+      const nouvellePeremption = body.datePeremption !== undefined
+        ? dateRecolteApi(body.datePeremption, 'datePeremption')
+        : undefined
+      const jourRecolteChange = nouvelleDate !== undefined && jourCivilStocke(nouvelleDate) !== jourCivilStocke(existing.date)
+      const peremptionChange = nouvellePeremption !== undefined && jourCivilStocke(nouvellePeremption) !== jourCivilStocke(existing.datePeremption)
+      if (jourRecolteChange || peremptionChange) {
+        const refusPeremption = refusPeremptionAvantRecolte(
+          nouvelleDate ?? existing.date,
+          nouvellePeremption !== undefined ? nouvellePeremption : existing.datePeremption,
+        )
+        if (refusPeremption) throw new ErreurVerger(refusPeremption, 400, jourRecolteChange ? 'date' : 'datePeremption')
+      }
+
       // Parcelle d'origine : `null` explicite la retire, `undefined` la laisse.
       let nouvelleParcelleId: string | null | undefined
       let nouvelleParcelleNom: string | null = null
@@ -248,9 +268,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
           stockDisponibleCommercial,
           qualite: texteOuNull(body.qualite),
           prixKg: prixFruitApi(body.prixKg, "prixKg"),
-          datePeremption: body.datePeremption !== undefined
-            ? dateRecolteApi(body.datePeremption, 'datePeremption')
-            : undefined,
+          datePeremption: nouvellePeremption,
           notes: texteOuNull(body.notes === undefined ? undefined : retirerMarqueSaison(body.notes)),
           parcelleId: nouvelleParcelleId,
           numLot,
@@ -312,7 +330,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const refusDar = corpsRefusDar(err)
     if (refusDar) return NextResponse.json(refusDar, { status: 409 })
     if (err instanceof ErreurCommerciale) return NextResponse.json({ error: err.message }, { status: err.status })
-    if (err instanceof ErreurVerger || err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
+    if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
+    if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })
     if (String(err).includes('STOCK_COMMERCIAL_LIE')) return NextResponse.json({ error: 'Ce lot est lié à un document commercial. Actualisez les stocks.' }, { status: 409 })
     console.error('PATCH /api/arbres/recoltes/[id] error:', err)
     return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 })

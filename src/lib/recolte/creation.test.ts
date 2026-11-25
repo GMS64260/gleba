@@ -79,6 +79,13 @@ describe('saisie de récoltes du formulaire et de l’assistant', () => {
     expect(mocks.transaction).not.toHaveBeenCalled()
   })
 
+  it('refuse une péremption antérieure à la récolte et accepte le jour même', async () => {
+    const refus = await creerRecoltes('ferme', [{ ...entree, datePeremption: '2026-10-25' }], true)
+    expect(refus).toMatchObject({ ok: false, champ: 'datePeremption', error: expect.stringContaining('La péremption (25/10/2026) précède la récolte (26/10/2026)') })
+    expect(mocks.transaction).not.toHaveBeenCalled()
+    expect((await preparerRecoltes('ferme', [{ ...entree, datePeremption: '2026-10-26' }])).ok).toBe(true)
+  })
+
   it('refuse une récolte datée au-delà de demain, sans rien écrire', async () => {
     const dans5Jours = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10)
     const refus = await preparerRecoltes('ferme', [{ ...entree, date: dans5Jours }])

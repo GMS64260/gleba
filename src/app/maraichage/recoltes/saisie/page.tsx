@@ -417,6 +417,7 @@ export default function SaisieRecoltePage() {
                     id="saisie-recolte-peremption"
                     type="date"
                     name="datePeremption"
+                    min={date || undefined}
                     value={datePeremption}
                     onChange={(e) => setDatePeremption(e.target.value)}
                     onBlur={(e) => {

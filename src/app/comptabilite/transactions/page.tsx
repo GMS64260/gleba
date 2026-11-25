@@ -120,6 +120,8 @@ interface Transaction {
    * réservation) et porter malgré tout le nom de source `VenteManuelle`.
    */
   corrigeable?: boolean
+  /** Écriture générée qu'aucune ligne de l'exercice ne représente (source supprimée ou datée d'un autre exercice). */
+  sourceAbsente?: boolean
   /**
    * Écriture comptable d'une ligne dérivée (ticket cmvgdzsf7, 2026-10-20) :
    * son suivi (règlement, pièce, notes) se modifie ici, montant et date non.
@@ -621,6 +623,10 @@ function TransactionsPageInner() {
           {t.facture.numero}
         </a>
         {" "}: règlement dans <Link href="/comptabilite/factures" className="underline">Factures</Link>
+      </span>
+    ) : t.sourceAbsente ? (
+      <span className="text-xs text-muted-foreground" title="Écriture générée par Gleba dont l'élément d'origine a été supprimé ou est daté d'un autre exercice. Elle reste comptée dans cet exercice.">
+        Générée · sans source sur cet exercice
       </span>
     ) : (
       <span className="text-xs text-muted-foreground" title={`Écriture générée par Gleba : corrigez ${ECRAN_SOURCE[t.source] ?? "sa source"}.`}>

@@ -292,6 +292,7 @@ const TYPE_COLORS: Record<string, { bg: string; border: string; text: string; do
   semis: { bg: "bg-amber-50", border: "border-amber-300", text: "text-amber-700", dot: "bg-amber-500" },
   plantation: { bg: "bg-green-50", border: "border-green-300", text: "text-green-700", dot: "bg-green-500" },
   recolte: { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-700", dot: "bg-emerald-500" },
+  sortie: { bg: "bg-orange-50", border: "border-orange-300", text: "text-orange-700", dot: "bg-orange-500" },
   fertilisation: { bg: "bg-cyan-50", border: "border-cyan-300", text: "text-cyan-700", dot: "bg-cyan-500" },
   traitement_phyto: { bg: "bg-red-50", border: "border-red-300", text: "text-red-700", dot: "bg-red-500" },
   desherbage: { bg: "bg-lime-50", border: "border-lime-300", text: "text-lime-700", dot: "bg-lime-500" },

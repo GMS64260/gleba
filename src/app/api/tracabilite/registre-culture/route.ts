@@ -30,6 +30,14 @@ function jour(date: Date): string {
   return jourCivilStocke(date) ?? ''
 }
 
+/** Sorties de stock hors vente d'un lot de récolte, telles que le cahier les nomme. */
+const LIBELLES_SORTIE: Record<string, string> = {
+  perte: 'Perte',
+  consomme: 'Consommation personnelle',
+  don: 'Don',
+  ecart: 'Écart d’inventaire',
+}
+
 /** Une ligne héritée sans unité compte des kilos (défaut du schéma). */
 function uniteRecolte(unite: string | null | undefined): UniteQuantite {
   return (unite ?? 'kg') as UniteQuantite
@@ -96,6 +104,7 @@ export async function GET(request: NextRequest) {
             quantite: true,
             unite: true,
             statut: true,
+            dateSortie: true,
             prixKg: true,
             prixTotal: true,
             notes: true,
@@ -278,22 +287,39 @@ export async function GET(request: NextRequest) {
           })
         })
 
-        // Recoltes
-        culture.recoltes.forEach((r) => {
+        // Récoltes : un événement par jour de récolte, pas par ligne. Une vente
+        // ou une sortie partielle scinde le lot en plusieurs lignes de même date
+        // (la part sortie et le reliquat), sans lien entre elles : listées une à
+        // une, une récolte de 10 kg dont 1 kg est perdu se lisait « 1 kg » puis
+        // « 9 kg » (défaut D51 de l'équipe debug, 2026-11-25).
+        const recoltesParJour = new Map<string, QuantiteParUnite>()
+        for (const r of culture.recoltes) {
+          const date = jour(r.date)
+          recoltesParJour.set(date, ajouterQuantite(recoltesParJour.get(date) ?? {}, uniteRecolte(r.unite), r.quantite))
+        }
+        for (const [date, quantites] of recoltesParJour) {
+          const arrondies = arrondirQuantites(quantites)
           chronologie.push({
-            date: jour(r.date),
+            date,
             type: 'recolte',
-            description: `Récolte : ${formatQuantite(r.quantite, uniteRecolte(r.unite))}`,
-            details: {
-              quantite: r.quantite,
-              unite: uniteRecolte(r.unite),
-              statut: r.statut,
-              prixKg: r.prixKg,
-              prixTotal: r.prixTotal,
-              notes: r.notes,
-            },
+            description: `Récolte : ${formatQuantiteParUnite(arrondies)}`,
+            details: { quantites: arrondies },
           })
-        })
+        }
+        // Ce qui est sorti du stock sans être vendu, à son jour de sortie (connu
+        // depuis le 2026-11-24 ; une sortie plus ancienne n'a pas de date). La
+        // sortie suit sa récolte : celle d'un lot récolté en décembre et perdu
+        // en janvier se lit dans le cahier de l'année de récolte.
+        for (const r of culture.recoltes) {
+          const libelle = LIBELLES_SORTIE[r.statut]
+          if (!libelle || !r.dateSortie) continue
+          chronologie.push({
+            date: jour(r.dateSortie),
+            type: 'sortie',
+            description: `${libelle} : ${formatQuantite(r.quantite, uniteRecolte(r.unite))}`,
+            details: { quantite: r.quantite, unite: uniteRecolte(r.unite), statut: r.statut },
+          })
+        }
 
         // Trier la chronologie par jour (« AAAA-MM-JJ » : l'ordre du texte est
         // celui des dates ; tri stable, l'ordre d'insertion départage un même jour).

@@ -1006,6 +1006,7 @@ function RecoltesFruitsSubTab() {
                 id="recolte-arbre-peremption"
                 type="date"
                 name="datePeremption"
+                min={newRecolte.date || undefined}
                 value={newRecolte.datePeremption}
                 onChange={(e) => {
                   const datePeremption = e.target.value
