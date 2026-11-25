@@ -71,7 +71,8 @@ async function getUserMetrics(userId: string) {
     }),
     prisma.culture.count({ where: { userId } }),
     prisma.planche.count({ where: { userId } }),
-    prisma.recolte.count({ where: { userId } }),
+    // Récoltes saisies : les parts d'un lot scindé ne comptent pas.
+    prisma.recolte.count({ where: { userId, recolteOrigineId: null } }),
     prisma.arbre.count({ where: { userId } }),
     prisma.animal.count({ where: { userId } }),
     prisma.activityDay.count({
@@ -131,7 +132,7 @@ async function getGlobalMetrics() {
       where: { success: false, createdAt: { gte: last30d } },
     }),
     prisma.culture.count(),
-    prisma.recolte.count(),
+    prisma.recolte.count({ where: { recolteOrigineId: null } }),
   ])
 
   return {

@@ -21,6 +21,8 @@ export interface CultureHistory {
     /** kg | tige | piece | botte ; absent sur une ligne héritée (= kg). */
     unite?: string | null
   }[]
+  /** Récoltes saisies (lignées distinctes) : `recoltes` liste des lots, qu'une sortie partielle scinde. */
+  nombreRecoltes?: number
   /** Part en KILOS seulement ; le total affichable est `totalRecolteTexte`. */
   totalRecolte: number
   /** « 12 kg + 360 tiges » : total ventilé par unité, à afficher tel quel. */

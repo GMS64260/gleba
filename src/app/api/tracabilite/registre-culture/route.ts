@@ -18,6 +18,7 @@ import {
   type QuantiteParUnite,
 } from '@/lib/recolte/quantites'
 import { jourCivilStocke } from '@/lib/jour-civil'
+import { NOTE_SCISSION } from '@/lib/recolte/lignee'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
 
 /**
@@ -105,6 +106,8 @@ export async function GET(request: NextRequest) {
             unite: true,
             statut: true,
             dateSortie: true,
+            recolteOrigineId: true,
+            createdAt: true,
             prixKg: true,
             prixTotal: true,
             notes: true,
@@ -287,20 +290,40 @@ export async function GET(request: NextRequest) {
           })
         })
 
-        // Récoltes : un événement par jour de récolte, pas par ligne. Une vente
-        // ou une sortie partielle scinde le lot en plusieurs lignes de même date
-        // (la part sortie et le reliquat), sans lien entre elles : listées une à
-        // une, une récolte de 10 kg dont 1 kg est perdu se lisait « 1 kg » puis
-        // « 9 kg » (défaut D51 de l'équipe debug, 2026-11-25).
-        const recoltesParJour = new Map<string, QuantiteParUnite>()
+        // Récoltes : un événement par récolte SAISIE, pas par ligne. Une vente
+        // ou une sortie partielle scinde le lot en plusieurs lignes : listées une
+        // à une, une récolte de 10 kg dont 1 kg est perdu se lisait « 1 kg » puis
+        // « 9 kg » (défaut D51 de l'équipe debug, 2026-11-25). Une part suit sa
+        // lignée (`recolteOrigineId`). Une part d'avant la lignée se reconnaît à
+        // la note qui cite son lot, même jour, ou à ce qu'elle garde le jour et
+        // l'instant de saisie de son lot (depuis le 2026-11-24). Deux récoltes
+        // saisies le même jour restent deux événements.
+        const ligneParId = new Map(culture.recoltes.map((r) => [r.id, r]))
+        const saisieDe = (r: (typeof culture.recoltes)[number]): number => {
+          if (r.recolteOrigineId != null) return r.recolteOrigineId
+          const citee = ligneParId.get(Number(NOTE_SCISSION.exec(r.notes ?? '')?.[1]))
+          // La ligne citée est plus ancienne : la remontée se termine toujours.
+          return citee && citee.id < r.id && jour(citee.date) === jour(r.date) ? saisieDe(citee) : r.id
+        }
+        const saisies = new Map<number, { date: string; dateSaisie: string | null; quantites: QuantiteParUnite }>()
+        const saisieParInstant = new Map<string, number>()
         for (const r of culture.recoltes) {
           const date = jour(r.date)
-          recoltesParJour.set(date, ajouterQuantite(recoltesParJour.get(date) ?? {}, uniteRecolte(r.unite), r.quantite))
+          const instant = `${date}|${r.createdAt.getTime()}`
+          const propre = saisieDe(r)
+          const cle = propre !== r.id || saisies.has(propre) ? propre : saisieParInstant.get(instant) ?? propre
+          if (!saisieParInstant.has(instant)) saisieParInstant.set(instant, cle)
+          const saisie = saisies.get(cle) ?? { date, dateSaisie: null, quantites: {} }
+          // Date de la récolte saisie quand elle est lue ; sinon le jour le plus ancien de ses parts.
+          if (r.id === cle) saisie.dateSaisie = date
+          if (date < saisie.date) saisie.date = date
+          ajouterQuantite(saisie.quantites, uniteRecolte(r.unite), r.quantite)
+          saisies.set(cle, saisie)
         }
-        for (const [date, quantites] of recoltesParJour) {
+        for (const { date, dateSaisie, quantites } of saisies.values()) {
           const arrondies = arrondirQuantites(quantites)
           chronologie.push({
-            date,
+            date: dateSaisie ?? date,
             type: 'recolte',
             description: `Récolte : ${formatQuantiteParUnite(arrondies)}`,
             details: { quantites: arrondies },

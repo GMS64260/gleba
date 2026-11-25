@@ -9,6 +9,8 @@ import { NextRequest } from "next/server"
  */
 
 const mocks = vi.hoisted(() => ({
+  /** Lignes de récolte de la culture ; vide = une ligne saisie par récolte comptée. */
+  lignesRecolte: [] as Array<{ id: number; recolteOrigineId: number | null }>,
   requireAuthApi: vi.fn(),
   cultureFindUnique: vi.fn(),
   cultureUpdate: vi.fn(),
@@ -33,7 +35,10 @@ vi.mock("@/lib/prisma", () => {
     $queryRaw: async () => [],
     culture: { findUnique: mocks.cultureFindUnique, update: mocks.cultureUpdate },
     // Instant de passage à « fait » d'une récolte : aucune récolte enregistrée.
-    recolte: { findFirst: async () => null },
+    recolte: { findFirst: async () => null, findMany: async () => mocks.lignesRecolte.length ? mocks.lignesRecolte : await (async () => {
+      const lue = await mocks.cultureFindUnique.mock.results.at(-1)?.value
+      return Array.from({ length: lue?._count?.recoltes ?? 0 }, (_, i) => ({ id: i + 1, recolteOrigineId: null }))
+    })() },
     planche: { findFirst: mocks.plancheFindFirst },
     iTP: { findFirst: mocks.itpFindFirst },
     variete: { findFirst: mocks.varieteFindFirst },
@@ -109,6 +114,7 @@ const modifier = (corps: Record<string, unknown>) =>
 describe("PUT /api/cultures/[id] — occupation de la planche", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.lignesRecolte = []
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "u-demo" } } })
     mocks.cultureFindUnique.mockResolvedValue(stockee)
     mocks.plancheFindFirst.mockResolvedValue(planche([voisine(19)]))
@@ -219,8 +225,22 @@ describe("PUT /api/cultures/[id] — occupation de la planche", () => {
     expect(mocks.cultureUpdate).not.toHaveBeenCalled()
   })
 
+  // Lignée : une récolte de 10 kg dont 1 kg est perdu fait deux lignes, une
+  // seule récolte saisie. Le refus tient (il y a des lignes), le nombre est juste.
+  it.each([PUT, PATCH])("annonce les récoltes saisies, pas les lignes d'un lot scindé (%s)", async (route) => {
+    mocks.lignesRecolte = [{ id: 10, recolteOrigineId: null }, { id: 11, recolteOrigineId: 10 }]
+    mocks.cultureFindUnique.mockResolvedValue({ ...stockee, longueur: 20, semisFait: true, recolteFaite: true,
+      dateSemis: new Date('2026-04-01'), dateRecolte: new Date('2026-07-01'), _count: { recoltes: 2 } })
+    const res = await route(new NextRequest('http://localhost/api/cultures/1237', {
+      method: route === PUT ? 'PUT' : 'PATCH', body: JSON.stringify({ recolteFaite: false }),
+    }), { params: Promise.resolve({ id: '1237' }) })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ recoltes: 1, error: expect.stringContaining('1 récolte enregistrée') })
+  })
+
   // FB-S9UM9T : la fiche culture (PUT) décochait « Récolte faite » sur une
   // culture qui portait des récoltes, dont une vendue ; seul le PATCH refusait.
+
   it.each([PUT, PATCH])("refuse d'annuler la récolte d'une culture qui porte des récoltes (%s)", async (route) => {
     mocks.cultureFindUnique.mockResolvedValue({ ...stockee, longueur: 20, semisFait: true, recolteFaite: true,
       dateSemis: new Date('2026-04-01'), dateRecolte: new Date('2026-07-01'), _count: { recoltes: 2 } })

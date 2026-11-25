@@ -188,9 +188,11 @@ describe("Registre de culture : semis d'une culture créée depuis la rotation (
 // Défaut D51 de l'équipe debug : une perte de 1 kg sur une récolte de 10 kg
 // scinde le lot en deux lignes de même date, et le cahier listait deux récoltes.
 describe("Registre de culture : une récolte scindée reste une récolte", () => {
-  const recolte = (id: number, quantite: number, statut: string, dateSortie: string | null, unite = "kg") => ({
+  // `saisie` : heure de saisie le 22/11 ; une part garde celle de son lot.
+  const recolte = (id: number, quantite: number, statut: string, dateSortie: string | null, unite = "kg", origine: number | null = null, saisie = 8) => ({
     id, date: new Date("2027-11-22T00:00:00.000Z"), quantite, unite, statut,
     dateSortie: dateSortie ? new Date(dateSortie) : null,
+    recolteOrigineId: origine, createdAt: new Date(Date.UTC(2027, 10, 22, saisie)), notes: null as string | null,
   })
   const chronologieDe = async (recoltes: unknown[]) => {
     const base = ligneRegistre(1, "Radis témoin", { dateSemis: null, datePlantation: null })
@@ -212,15 +214,55 @@ describe("Registre de culture : une récolte scindée reste une récolte", () =>
     expect(culture.totalRecolte).toBe(10)
   })
 
-  it("ventile un même jour par unité et ne date pas une sortie sans jour connu", async () => {
+  it("suit la lignée : deux récoltes saisies le même jour restent deux événements", async () => {
+    const { evenements } = await chronologieDe([
+      recolte(1, 1, "perte", "2027-11-23T00:00:00.000Z", "kg", null, 8),
+      recolte(2, 9, "en_stock", null, "kg", 1, 8),
+      recolte(3, 4, "en_stock", null, "kg", null, 17),
+    ])
+    expect(evenements).toEqual([
+      ["2027-11-22", "recolte", "Récolte : 10 kg"],
+      ["2027-11-22", "recolte", "Récolte : 4 kg"],
+      ["2027-11-23", "sortie", "Perte : 1 kg"],
+    ])
+  })
+
+  it("regroupe aussi une part d'avant la lignée, par son instant de saisie, et ne date pas une sortie sans jour connu", async () => {
     const { evenements } = await chronologieDe([
       recolte(1, 2, "don", null),
       recolte(2, 3, "en_stock", null),
-      recolte(3, 12, "vendu", null, "tige"),
+      recolte(3, 12, "vendu", null, "tige", null, 17),
     ])
-    expect(evenements).toHaveLength(1)
-    expect(evenements[0][2]).toMatch(/^Récolte : .*5 kg/)
-    expect(evenements[0][2]).toContain("12 tiges")
+    expect(evenements).toEqual([
+      ["2027-11-22", "recolte", "Récolte : 5 kg"],
+      ["2027-11-22", "recolte", "Récolte : 12 tiges"],
+    ])
+  })
+
+  it("une part redatée reste dans sa récolte, à la date de la récolte saisie", async () => {
+    const { evenements } = await chronologieDe([
+      recolte(1, 6, "en_stock", null),
+      { ...recolte(2, 4, "en_stock", null, "kg", 1), date: new Date("2027-11-20T00:00:00.000Z") },
+    ])
+    expect(evenements).toEqual([["2027-11-22", "recolte", "Récolte : 10 kg"]])
+  })
+
+  // Vente partielle d'avant le 2026-11-24 : le reliquat n'a ni lignée ni
+  // l'instant de saisie de son lot, seulement la note qui le cite.
+  it("relie un ancien reliquat à son lot par sa note, pas une note qui cite un autre jour", async () => {
+    const reliquat = (id: number, quantite: number, cite: number, date = "2027-11-22T00:00:00.000Z") => ({
+      ...recolte(id, quantite, "en_stock", null, "kg", null, 17), date: new Date(date), notes: `Reliquat non vendu de la récolte #${cite}`,
+    })
+    const { evenements } = await chronologieDe([
+      recolte(1, 3, "vendu", null),
+      reliquat(2, 5, 1),
+      { ...recolte(3, 2, "en_stock", null, "kg", null, 18), notes: "Reliquat de la récolte #2" },
+      reliquat(4, 1, 1, "2027-11-24T00:00:00.000Z"),
+    ])
+    expect(evenements).toEqual([
+      ["2027-11-22", "recolte", "Récolte : 10 kg"],
+      ["2027-11-24", "recolte", "Récolte : 1 kg"],
+    ])
   })
 })
 

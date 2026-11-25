@@ -217,7 +217,7 @@ function CultureCard({ culture }: { culture: CultureHistory }) {
             {culture.totalRecolteTexte ?? `${culture.totalRecolte} kg`}
           </div>
           <div className="text-xs text-slate-500">
-            {culture.recoltes.length} récolte{culture.recoltes.length > 1 ? 's' : ''}
+            {culture.nombreRecoltes ?? culture.recoltes.length} récolte{(culture.nombreRecoltes ?? culture.recoltes.length) > 1 ? 's' : ''}
           </div>
         </div>
       )}
