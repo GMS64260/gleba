@@ -368,11 +368,12 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Fertilisation -> dépenses (prix per-user avec fallback global).
-    // Une fertilisation reprise d'une sauvegarde porte un miroir comptable
-    // (`createDepenseFromFertilisation`) : la ligne suit alors ce miroir, son
-    // montant figé et son caractère comptable, comme les rapports. Sans miroir
-    // c'est un coût interne, valorisé au prix courant.
+    // Fertilisation -> dépenses (prix per-user avec fallback global). Coût
+    // interne, valorisé au prix courant : son miroir n'est plus comptable
+    // depuis le 2026-11-25 (`createDepenseFromFertilisation`). Un miroir resté
+    // comptable (il porte un dossier de règlement, ou vient d'une sauvegarde
+    // antérieure restaurée) est encore compté par les rapports : la ligne le
+    // suit alors, montant figé compris, et n'est jamais listée en double.
     fertilisations.forEach(f => {
       const userPrix = f.fertilisant.userStocks?.[0]?.prix ?? f.fertilisant.prix
       const miroir = miroirParSource.get(cleMiroir('fertilisation', f.id))
@@ -596,8 +597,8 @@ export async function GET(request: NextRequest) {
       // Le total comptable est celui des rapports, du FEC et de la TVA : les
       // lignes `comptable`. Soins et aliments sont des consommations internes,
       // jamais ajoutées à la facture d'achat qui a approvisionné le stock. Une
-      // fertilisation reprise d'une sauvegarde fait exception tant que son
-      // miroir est comptable (décision ouverte, voir la note de comptabilité).
+      // fertilisation ne l'est pas non plus, sauf miroir resté comptable (dossier
+      // de règlement, sauvegarde antérieure restaurée).
       total: multiDevise ? null : comptables.reduce((sum, e) => sum + e.montant, 0),
       totalComptable: multiDevise ? null : comptables.reduce((sum, e) => sum + e.montant, 0),
       totalAnalytique: multiDevise ? null : filtered.filter((e) => !e.comptable).reduce((sum, e) => sum + e.montant, 0),
