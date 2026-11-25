@@ -111,6 +111,18 @@ describe("POST /api/recoltes — date de récolte et cycle de la culture", () =>
     expect(mocks.recolteCreate.mock.calls[0][0].data.date).toEqual(new Date("2027-01-17"))
   })
 
+  it("signale une récolte datée du jour du dernier comptage de l'espèce ou d'avant, sans la refuser (décision B du 2026-11-25)", async () => {
+    mocks.chargerSurcharges.mockImplementation(async (args: { where?: { dateInventaire?: unknown } }) =>
+      args?.where?.dateInventaire ? [{ especeId: "Zinnia", dateInventaire: new Date("2027-01-20T09:00:00.000Z") }] : [])
+    const avant = await enregistrer("2027-01-17")
+    expect(avant.status).toBe(201)
+    expect((await avant.json()).avertissementComptage).toBe(
+      "Le stock de Zinnia a été compté le 20/01/2027 : ce comptage a peut-être déjà compté cette récolte. Si elle était déjà en stock à ce moment-là, recomptez le stock de l’espèce.")
+    const apres = await enregistrer("2027-01-21")
+    expect(apres.status).toBe(201)
+    expect((await apres.json()).avertissementComptage).toBeUndefined()
+  })
+
   it("la culture est relue dans le compte connecté", async () => {
     await enregistrer("2027-01-17")
     expect(mocks.cultureFindMany.mock.calls[0][0].where).toEqual({ id: { in: [1174] }, userId: "u1" })

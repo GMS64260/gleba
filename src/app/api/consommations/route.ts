@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
       },
     })
     return NextResponse.json(
-      { ...consommation, couvert: sortie.couvert, lots: sortie.lots },
+      { ...consommation, couvert: sortie.couvert, lots: sortie.lots, ...(sortie.avertissementComptage ? { avertissementComptage: sortie.avertissementComptage } : {}) },
       { status: 201 },
     )
   } catch (error) {

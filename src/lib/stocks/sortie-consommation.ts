@@ -23,6 +23,7 @@ import { verrouillerStockCommercial, verrouillerStockNetRecolte } from '@/lib/st
 import type { StatutSortieRecolte } from '@/lib/validations/recolte'
 import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 import { invalidateKpi } from '@/lib/kpi/cache'
+import { avertissementSaisieComptee, chargerDatesComptage } from '@/lib/stocks/avertissement-comptage'
 
 /** Destination « Vente » du référentiel : refusée ici, voir `MESSAGE_VENTE_PAR_LOT`. */
 export const DESTINATION_VENTE = 'Vente'
@@ -78,6 +79,8 @@ export type ResultatSortieConsommation =
       quantite: number
       couvert: number
       lots: LotSorti[]
+      /** Sortie datée du jour du dernier comptage de l'espèce ou d'avant : il l'a peut-être déjà comptée. */
+      avertissementComptage?: string
     }
   | { ok: false; status: 400 | 404 | 409; error: string; champ?: string }
 
@@ -143,6 +146,9 @@ export async function enregistrerSortieConsommation(
     return { ok: false, status: 409, error: messageStockLotsInsuffisant(resultat.disponible, preparation.unite), champ: 'quantite' }
   }
   invalidateKpi(userId)
+  // Décision B du 2026-11-25 : signalé, jamais refusé (`avertissement-comptage`).
+  const comptage = (await chargerDatesComptage(prisma, userId, [preparation.especeId])).get(preparation.especeId)
+  const avertissementComptage = avertissementSaisieComptee('sortie', { date, nomEspece: preparation.nom }, comptage)
   return {
     ok: true,
     especeId: preparation.especeId,
@@ -150,6 +156,7 @@ export async function enregistrerSortieConsommation(
     unite: preparation.unite,
     quantite: saisie.quantite,
     ...resultat,
+    ...(avertissementComptage ? { avertissementComptage } : {}),
   }
 }
 

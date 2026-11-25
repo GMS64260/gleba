@@ -10,6 +10,7 @@ import { uniteQuantiteRecolte } from './projection'
 import { chargerAvertissementsDarLegumes } from './dar'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
+import { avertissementSaisieComptee, chargerDatesComptage } from '@/lib/stocks/avertissement-comptage'
 
 const schema = createRecolteSchema.extend({
   unite: z.enum(['kg', 'g', 'piece', 'tige', 'botte']).optional(),
@@ -113,7 +114,15 @@ export async function ecrireRecoltesPreparees(tx: Prisma.TransactionClient, prep
 export async function creerRecoltes(userId: string, entrees: unknown[], uniteRequise = false) {
   const preparation = await preparerRecoltes(userId, entrees, uniteRequise)
   if (!preparation.ok) return preparation
-  const recoltes = await prisma.$transaction(tx => ecrireRecoltesPreparees(tx, preparation.recoltes))
+  const ecrites = await prisma.$transaction(tx => ecrireRecoltesPreparees(tx, preparation.recoltes))
   invalidateKpi(userId)
+  // Récolte datée du jour du dernier comptage de l'espèce ou d'avant : le
+  // comptage l'a peut-être déjà comptée (décision B du 2026-11-25). Signalé,
+  // jamais refusé : `avertissementComptage`, à part des délais avant récolte.
+  const comptages = await chargerDatesComptage(prisma, userId, ecrites.map(r => r.especeId))
+  const recoltes = ecrites.map(r => {
+    const avertissementComptage = avertissementSaisieComptee('recolte', { date: r.date, nomEspece: r.espece?.nom ?? r.especeId }, comptages.get(r.especeId))
+    return avertissementComptage ? { ...r, avertissementComptage } : r
+  })
   return { ok: true as const, recoltes }
 }
