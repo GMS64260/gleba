@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { buildUblInvoice, codeUnite, UblValidationError, validerFactureStructuree } from '@/lib/facture-ubl'
 import { buildCiiInvoice } from '@/lib/facturx/cii'
 import { factureStructuree } from './fixtures/facture-structuree'
+import { quantiteBois } from '@/lib/commercial/stock-types'
 
 const m = vi.hoisted(() => ({ facture: vi.fn(), preparation: vi.fn(), pdf: vi.fn() }))
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: vi.fn(async () => ({ session: { user: { id: 'ferme-fictive' } } })) }))
@@ -77,6 +78,27 @@ describe('exports des unités agricoles', () => {
     for (const generer of [buildUblInvoice, buildCiiInvoice]) {
       expect(generer(facture).match(/unitCode="[^"]+"/g)).toEqual([`unitCode="${code}"`, `unitCode="${code}"`])
     }
+  })
+
+  // Unités que l'application écrit elle-même sur une ligne de facture : vente
+  // de bois au volume, œufs, abattage, produits transformés, boutique, forfait.
+  it.each([
+    ['stère', 'G26'], ['stères', 'G26'], [' Stere ', 'G26'], ['m³', 'MTQ'], ['m3', 'MTQ'],
+    ['douzaine', 'DZN'], ['forfait', 'LS'], ['animal', 'HEA'],
+    ['bouteille', 'XBO'], ['pot', 'XPT'], ['bocal', 'XJR'], ['sachet', 'XSH'],
+    ['panier', 'XBK'], ['barquette', 'XPJ'], ['boîte', 'XBX'], ['boite', 'XBX'],
+  ])('exporte %s sans changer la quantité', (unite, code) => {
+    const facture = factureAgricole()
+    facture.lines[0].unit = unite
+    expect(codeUnite(unite)).toBe(code)
+    expect(validerFactureStructuree(facture)).toEqual([])
+    for (const generer of [buildUblInvoice, buildCiiInvoice]) expect(generer(facture)).toContain(`unitCode="${code}"`)
+  })
+
+  it('code en stère la quantité produite par une vente de bois', () => {
+    expect(codeUnite(quantiteBois({ volumeStere: 0.5, volumeM3: 0.3, poidsKg: null }).unite)).toBe('G26')
+    expect(codeUnite(quantiteBois({ volumeStere: null, volumeM3: 0.3, poidsKg: null }).unite)).toBe('MTQ')
+    expect(codeUnite(quantiteBois({ volumeStere: null, volumeM3: null, poidsKg: 33.75 }).unite)).toBe('KGM')
   })
 
   it.each(['unité-inventée', 'constructor', '__proto__', '', 'tige(s)', 'bottes de 10'])('refuse %j sans repli en pièce', unite => {
