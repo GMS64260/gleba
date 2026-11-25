@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { refusRecolteAvantDebut } from '../date-coherente'
+import { refusPeremptionAvantRecolte, refusRecolteAvantDebut } from '../date-coherente'
 
 // Fuseau de la production : la règle compare des journées civiles de Paris.
 beforeAll(() => { vi.stubEnv('TZ', 'Europe/Paris') })
@@ -77,5 +77,30 @@ describe('refusRecolteAvantDebut', () => {
         new Date(2026, 0, 1),
       ),
     ).toBeNull()
+  })
+})
+
+// Défaut D52 : une récolte du 22/11 périmant le 23/11 se redatait au 24/11.
+describe('refusPeremptionAvantRecolte', () => {
+  const peremption = new Date('2026-11-23T00:00:00.000Z')
+
+  it('refuse une récolte datée après sa péremption, avec les deux dates', () => {
+    expect(refusPeremptionAvantRecolte(new Date('2026-11-24T00:00:00.000Z'), peremption)).toBe(
+      "La péremption (23/11/2026) précède la récolte (24/11/2026). Une récolte se date au plus tard le jour de sa péremption : corrigez l'une des deux dates.",
+    )
+  })
+
+  it('accepte une péremption le jour même, quelle que soit l’heure de la récolte', () => {
+    expect(refusPeremptionAvantRecolte(new Date('2026-11-23T00:00:00.000Z'), peremption)).toBeNull()
+    // Récolte saisie à 17 h 30 à Paris le 23/11 : même jour civil.
+    expect(refusPeremptionAvantRecolte(new Date('2026-11-23T16:30:00.000Z'), peremption)).toBeNull()
+    // 23 h 30 UTC le 23/11, c'est 00 h 30 à Paris le 24 : un jour trop tard.
+    expect(refusPeremptionAvantRecolte(new Date('2026-11-23T23:30:00.000Z'), peremption)).not.toBeNull()
+  })
+
+  it('accepte une péremption postérieure ou absente', () => {
+    expect(refusPeremptionAvantRecolte(new Date('2026-11-22T00:00:00.000Z'), peremption)).toBeNull()
+    expect(refusPeremptionAvantRecolte(new Date('2026-11-22T00:00:00.000Z'), null)).toBeNull()
+    expect(refusPeremptionAvantRecolte(new Date('2026-11-22T00:00:00.000Z'), undefined)).toBeNull()
   })
 })

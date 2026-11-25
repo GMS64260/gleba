@@ -38,6 +38,8 @@ import {
 interface RecolteFormData {
   date: string
   quantite: number
+  /** Jour « AAAA-MM-JJ », vide sans péremption. */
+  datePeremption: string
   notes: string | null
 }
 
@@ -69,6 +71,7 @@ export default function EditRecoltePage() {
     defaultValues: {
       date: format(new Date(), "yyyy-MM-dd"),
       quantite: 0,
+      datePeremption: "",
       notes: null,
     },
   })
@@ -96,6 +99,7 @@ export default function EditRecoltePage() {
           // Guyane) : enregistrer la fiche sans y toucher redatait la récolte.
           date: jourCivilStocke(data.date) ?? format(new Date(), "yyyy-MM-dd"),
           quantite: data.quantite || 0,
+          datePeremption: jourCivilStocke(data.datePeremption) ?? "",
           notes: data.notes || null,
         })
         setIsLoading(false)
@@ -138,6 +142,9 @@ export default function EditRecoltePage() {
         body: JSON.stringify({
           ...data,
           date: new Date(dateSoumise).toISOString(),
+          // La péremption se corrige avec la date : le serveur refuse une
+          // récolte datée après elle, et aucun autre écran ne la modifie.
+          datePeremption: data.datePeremption ? new Date(data.datePeremption).toISOString() : null,
         }),
       })
 
@@ -270,6 +277,20 @@ export default function EditRecoltePage() {
                             if (valeur && valeur !== field.value) field.onChange(valeur)
                           }}
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="datePeremption"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Péremption (facultative)</FormLabel>
+                      <FormControl>
+                        <Input type="date" min={form.watch("date") || undefined} {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

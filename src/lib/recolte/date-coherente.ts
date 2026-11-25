@@ -17,10 +17,17 @@
  * Appelants : POST et PUT `/api/recoltes`, outil `create_recolte` de
  * l'assistant (et du MCP). L'import d'une sauvegarde (`/api/import`) en est
  * exempté : il restaure l'historique tel qu'il a été exporté.
+ *
+ * Seconde règle (défaut D52 de l'équipe debug, 2026-11-25) : la péremption
+ * d'une récolte n'est jamais antérieure à sa récolte, le jour même étant
+ * accepté. Rien ne la portait : une récolte se redatait après sa péremption.
+ * Appelants : `preparerRecoltes` (POST, assistant, MCP), PUT et PATCH
+ * `/api/recoltes/[id]`. Même exemption pour l'import d'une sauvegarde.
  */
 
 import { format } from 'date-fns'
 import { jourCivilLocal } from '@/lib/cultures/execution'
+import { jourCivilStocke } from '@/lib/jour-civil'
 
 /** Ce qu'il faut lire sur la culture pour décider. */
 export interface DebutCultureRecolte {
@@ -54,4 +61,20 @@ export function refusRecolteAvantDebut(
     ? ''
     : ` ${plantation ? 'Si elle' : "S'il"} a déjà eu lieu, corrigez d'abord sa date sur la fiche de la culture.`
   return `Date de récolte refusée : ${constat}, après le ${jour(dateRecolte)}. Une récolte ne peut pas précéder ${etape}.${conseil}`
+}
+
+/**
+ * Message de refus si la péremption précède la récolte, sinon `null` (pas de
+ * péremption, ou péremption le jour de la récolte ou après). Comparaison en
+ * jours civils : la récolte peut porter une heure, la péremption est un jour.
+ */
+export function refusPeremptionAvantRecolte(
+  dateRecolte: Date,
+  datePeremption: Date | null | undefined,
+): string | null {
+  const recolte = jourCivilStocke(dateRecolte)
+  const peremption = jourCivilStocke(datePeremption)
+  if (!recolte || !peremption || peremption >= recolte) return null
+  const jour = (iso: string) => iso.split('-').reverse().join('/')
+  return `La péremption (${jour(peremption)}) précède la récolte (${jour(recolte)}). Une récolte se date au plus tard le jour de sa péremption : corrigez l'une des deux dates.`
 }
