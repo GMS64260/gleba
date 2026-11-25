@@ -59,8 +59,6 @@ interface Consommation {
   prix: number | null
   destinationId: string | null
   notes: string | null
-  /** Part qu'aucun lot ne couvrait ; null (ligne antérieure) = toute la quantité. */
-  quantiteHorsLots?: number | null
   _count?: { lots: number }
   espece: {
     id: string
@@ -197,7 +195,7 @@ export function ConsommationsTab() {
         const err = await response.json()
         throw new Error(err.error)
       }
-      const cree: { lots?: unknown[]; horsLots?: number } = await response.json()
+      const cree: { lots?: unknown[] } = await response.json()
       const nbLots = cree.lots?.length ?? 0
 
       toast({
@@ -434,7 +432,6 @@ export function ConsommationsTab() {
                     {(conso._count?.lots ?? 0) > 0 && (
                       <span className="text-xs">
                         sur {conso._count!.lots} lot{conso._count!.lots > 1 ? "s" : ""}
-                        {conso.quantiteHorsLots ? `, dont ${formatQuantite(conso.quantiteHorsLots, conso.unite ?? "kg")} sans lot` : ""}
                       </span>
                     )}
                     {conso.prix && (
