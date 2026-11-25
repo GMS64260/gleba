@@ -120,7 +120,7 @@ export async function agirSurDocument(userId: string, id: string, action: string
       data.dateLivraison = dateCivile(livraison)
       await sortirStockCommercial(tx, userId, d.lignes, { documentId: d.id, numero: d.numero, date: dateCivile(livraison) })
     }
-    if (action === 'retourner' || (action === 'annuler' && d.statut === 'livre')) await retournerStockCommercial(tx, userId, { documentId: d.id })
+    if (action === 'retourner') await retournerStockCommercial(tx, userId, { documentId: d.id })
     return tx.documentCommercial.update({ where: { id }, data, include: relationsDocument })
   })
 }

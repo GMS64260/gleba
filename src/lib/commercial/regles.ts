@@ -10,6 +10,7 @@ export const LABELS_STATUT: Record<string, string> = {
 /**
  * Statuts d'un bon dont `dateLivraison` est la date réelle posée par « Marquer
  * livré » : le retour en stock garde cette date, la livraison a bien eu lieu.
+ * Un bon annulé ne l'a jamais été (voir `transitionDocument`).
  */
 export const STATUTS_LIVRAISON_EFFECTUEE: readonly string[] = ['livre', 'retourne']
 export const dateCivileSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue : AAAA-MM-JJ').refine((s) => {
@@ -123,7 +124,10 @@ export function transitionDocument(d: { type: string; statut: string; dateValidi
     brouillon: { emettre: 'emis' },
     emis: { accepter: 'accepte', refuser: 'refuse', annuler: 'annule' },
     accepte: { annuler: 'annule' },
-  } : { brouillon: { emettre: 'emis' }, emis: { livrer: 'livre', annuler: 'annule' }, livre: { annuler: 'annule' } }
+    // Un bon livré ne s'annule pas : « retourner » remet le stock et garde la
+  // trace de la livraison (statut, date réelle). Annulé, il se confondait avec
+  // un bon jamais livré, dont la date de livraison n'est que prévue.
+  } : { brouillon: { emettre: 'emis' }, emis: { livrer: 'livre', annuler: 'annule' } }
   const cible = suivantes[d.statut]?.[action]
   if (!cible) throw new ErreurCommerciale('Cette action ne correspond plus à l’état du document. Actualisez la liste.')
   if (d.type === 'devis' && ['emettre', 'accepter'].includes(action) && (!d.dateValidite || dateIsoFacture(d.dateValidite) < dateIsoFacture(maintenant))) {

@@ -23,7 +23,8 @@ async function textes(d: DocumentComplet) {
 describe('PDF d’un bon de livraison : date de livraison', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it.each(['brouillon', 'emis'])('annonce une livraison prévue pour un bon %s', async statut => {
+  // Un bon annulé n'a jamais été livré : un bon livré se retourne.
+  it.each(['brouillon', 'emis', 'annule'])('annonce une livraison prévue pour un bon %s', async statut => {
     expect(await textes(bon(statut))).toContain('Livraison prévue le 25/11/2026')
   })
 
