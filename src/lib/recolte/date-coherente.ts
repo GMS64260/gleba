@@ -22,7 +22,9 @@
  * d'une récolte n'est jamais antérieure à sa récolte, le jour même étant
  * accepté. Rien ne la portait : une récolte se redatait après sa péremption.
  * Appelants : `preparerRecoltes` (POST, assistant, MCP), PUT et PATCH
- * `/api/recoltes/[id]`. Même exemption pour l'import d'une sauvegarde.
+ * `/api/recoltes/[id]` ; pour le verger, `creerRecolteFruit`, PUT
+ * `/api/arbres/recoltes/[id]` et `modifierVenteVerger`. Même exemption pour
+ * l'import d'une sauvegarde.
  */
 
 import { format } from 'date-fns'

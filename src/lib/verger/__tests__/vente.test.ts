@@ -80,3 +80,17 @@ describe('vente directe d’un lot entamé par une perte', () => {
     await expect(vente).rejects.toMatchObject({ status: 409, message: expect.stringContaining('annulez ces sorties') })
   })
 })
+
+describe('péremption d’une récolte de fruits corrigée par le PATCH', () => {
+  beforeEach(() => { mocks.lot = { ...mocks.lot!, statut: 'en_stock' } })
+
+  it('refuse une péremption antérieure à la récolte', async () => {
+    const correction = modifierVenteVerger('fruit', 'u1', 'u1', 3, { datePeremption: '2026-09-30' })
+    await expect(correction).rejects.toMatchObject({ status: 400, champ: 'datePeremption' })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it('accepte une péremption le jour de la récolte', async () => {
+    await expect(modifierVenteVerger('fruit', 'u1', 'u1', 3, { datePeremption: '2026-10-01' })).rejects.toBe(SUITE)
+  })
+})

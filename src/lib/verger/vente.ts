@@ -1,4 +1,6 @@
 import { etatSortiesLotVerger, sortirReliquatVerger } from './sortie-stock'
+import { refusPeremptionAvantRecolte } from '@/lib/recolte/date-coherente'
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
@@ -52,6 +54,13 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
     const courant = fruit ?? bois
     if (!courant) throw new ErreurVerger('Lot introuvable.', 404)
     if (sortiePhysique) return sortirReliquatVerger(tx, userId, type, courant, saisie)
+    if (fruit && saisie.datePeremption !== undefined) {
+      const peremption = dateRecolteApi(saisie.datePeremption, 'datePeremption')
+      if (jourCivilStocke(peremption) !== jourCivilStocke(fruit.datePeremption)) {
+        const refusPeremption = refusPeremptionAvantRecolte(fruit.date, peremption)
+        if (refusPeremption) throw new ErreurVerger(refusPeremption, 400, 'datePeremption')
+      }
+    }
     if (courant.stockDisponibleCommercial != null) {
       // Une vente directe porte le lot entier : un lot entamé se vend par BL.
       if ((await etatSortiesLotVerger(tx, userId, type, courant)).fige) throw new ErreurVerger('Ce lot est lié à un document commercial. Utilisez le BL ou sa facture pour son reliquat et ses retours.', 409)
