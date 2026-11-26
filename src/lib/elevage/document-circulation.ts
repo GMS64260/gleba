@@ -101,6 +101,26 @@ export function anomaliesDocumentCirculation(
   return [...new Set(anomalies)]
 }
 
+/**
+ * Ne garde d'une préparation que ses champs déclarés. Une ligne relue en base
+ * porte aussi son empreinte, ses dates et ses identifiants : les laisser entrer
+ * dans le cliché changerait l'empreinte d'une préparation que personne n'a
+ * modifiée (D57).
+ */
+export function preparationCirculationDepuis(
+  value: Partial<Record<keyof PreparationDocumentCirculation, unknown>> | null | undefined,
+): PreparationDocumentCirculation {
+  const preparation = { ...PREPARATION_CIRCULATION_VIDE }
+  if (!value) return preparation
+  for (const cle of Object.keys(PREPARATION_CIRCULATION_VIDE) as Array<
+    keyof PreparationDocumentCirculation
+  >) {
+    const lu = value[cle]
+    if (lu !== undefined) (preparation as Record<string, unknown>)[cle] = lu
+  }
+  return preparation
+}
+
 export function construireSnapshotDocumentCirculation(
   declaration: DeclarationReglementaire,
   preparation: PreparationDocumentCirculation,
@@ -118,7 +138,7 @@ export function construireSnapshotDocumentCirculation(
     identifiants: declaration.identifiants,
     origine: declaration.origine,
     destination: declaration.destination,
-    preparation,
+    preparation: preparationCirculationDepuis(preparation),
     anomalies: anomaliesDocumentCirculation(declaration, preparation),
   }
 }

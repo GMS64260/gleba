@@ -46,13 +46,13 @@ describe("PATCH /api/admin/bugs/[id] : mail de résolution", () => {
   it("Résolu prévient l'auteur une fois", async () => {
     expect((await patcher({ status: "RESOLVED" })).status).toBe(200)
     expect(m.sendMail).toHaveBeenCalledTimes(1)
-    expect(m.logCreate.mock.calls[0][0].data).toMatchObject({ fromStatus: "OPEN", toStatus: "RESOLVED", note: null })
+    expect(m.update.mock.calls[0][0].data.statusLogs.create).toMatchObject({ fromStatus: "OPEN", toStatus: "RESOLVED", note: null })
   })
 
   it("Résolu sans mail résout et journalise sans écrire à l'auteur", async () => {
     expect((await patcher({ status: "RESOLVED", notifier: false })).status).toBe(200)
     expect(m.update.mock.calls[0][0].data).toMatchObject({ status: "RESOLVED", resolvedAt: expect.any(Date) })
-    expect(m.logCreate.mock.calls[0][0].data).toMatchObject({
+    expect(m.update.mock.calls[0][0].data.statusLogs.create).toMatchObject({
       fromStatus: "OPEN", toStatus: "RESOLVED", changedById: "admin-1", note: "Résolu sans mail à l'auteur.",
     })
     expect(m.sendMail).not.toHaveBeenCalled()

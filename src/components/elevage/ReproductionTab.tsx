@@ -4,6 +4,7 @@
  * Onglet Reproduction - Naissances + Calculateur gestation
  */
 
+import type { ReponseConsanguinite } from "@/lib/reproduction"
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { useSearchParams } from "next/navigation"
@@ -263,7 +264,7 @@ export function ReproductionTab({ year }: { year?: number } = {}) {
       )}
       {!compagnie && (
       <TabsContent value="indicateurs">
-        <IndicateursSubTab />
+        <IndicateursSubTab year={year} />
       </TabsContent>
       )}
       {(caps.reservations || caps.selection) && (
@@ -574,20 +575,34 @@ const ETAT_COULEUR: Record<string, string> = {
   nullipare: "bg-emerald-100 text-emerald-800 border-emerald-200",
 }
 
-function IndicateursSubTab() {
+function IndicateursSubTab({ year }: { year?: number }) {
   const filiereSel = useFiliereSelection()
   const [data, setData] = React.useState<ReproData | null>(null)
   const [etat, setEtat] = React.useState<EtatTroupeau | null>(null)
   const [loading, setLoading] = React.useState(true)
-  const [annee, setAnnee] = React.useState(new Date().getFullYear())
+  // L'année suit celle de l'en-tête de l'élevage (D81 : l'onglet ouvrait
+  // l'année en cours sous un en-tête resté sur l'année précédente). Le
+  // sélecteur local reste une surcharge, réalignée dès que l'en-tête change.
+  const [annee, setAnnee] = React.useState(year ?? new Date().getFullYear())
+  React.useEffect(() => {
+    if (year != null) setAnnee(year)
+  }, [year])
+  const anneesProposees = React.useMemo(() => {
+    const courante = new Date().getFullYear()
+    const plage = [0, -1, -2, -3].map((d) => courante + d)
+    return [...new Set([annee, ...plage])].sort((a, b) => b - a)
+  }, [annee])
 
   React.useEffect(() => {
+    let annule = false
     setLoading(true)
     const fp = filiereSel !== "toutes" ? `&filiere=${filiereSel}` : ""
     fetch(`/api/elevage/repro-indicateurs?annee=${annee}${fp}`)
-      .then((r) => r.json())
-      .then(setData)
-      .finally(() => setLoading(false))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!annule) setData(j) })
+      .catch(() => { if (!annule) setData(null) })
+      .finally(() => { if (!annule) setLoading(false) })
+    return () => { annule = true }
   }, [annee, filiereSel])
 
   React.useEffect(() => {
@@ -620,9 +635,9 @@ function IndicateursSubTab() {
             value={annee}
             onChange={(e) => setAnnee(parseInt(e.target.value, 10))}
           >
-            {[0, -1, -2, -3].map((d) => (
-              <option key={d} value={new Date().getFullYear() + d}>
-                {new Date().getFullYear() + d}
+            {anneesProposees.map((a) => (
+              <option key={a} value={a}>
+                {a}
               </option>
             ))}
           </select>
@@ -2221,11 +2236,19 @@ function DialogSaillie(props: {
       setWarning(null)
       return
     }
+    // Réponse d'un couple précédent ignorée : l'avertissement affiché est
+    // toujours celui du couple choisi.
+    let annule = false
+    setWarning(null)
     fetch(`/api/elevage/consanguinite?femelleId=${form.femelleId}&maleId=${form.maleId}`)
-      .then((r) => r.json())
+      .then((r) => (r.ok ? (r.json() as Promise<ReponseConsanguinite>) : null))
       .then((j) => {
-        setWarning(j.consanguinite ? `⚠ Ancêtre(s) commun(s) sur 3 générations (animaux #${j.ancetresCommuns.join(", #")})` : null)
+        if (annule || !j) return
+        const noms = (j.ancetres ?? []).map((a) => a.nom || a.identifiant || `animal n° ${a.id}`).join(", ")
+        setWarning(j.consanguinite ? `⚠ Ancêtre(s) commun(s) sur 3 générations : ${noms}` : null)
       })
+      .catch(() => {})
+    return () => { annule = true }
   }, [form.femelleId, form.maleId])
 
   const submit = async () => {

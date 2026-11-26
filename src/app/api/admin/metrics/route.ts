@@ -9,6 +9,8 @@
  * success=true (reason='impersonation') qui ne sont pas de vraies connexions.
  */
 
+import { debutPeriode } from "@/lib/admin-usage"
+import { WHERE_RECOLTE_SAISIE } from "@/lib/recolte/lignee"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { DEMO_EMAIL } from "@/lib/demo"
@@ -50,8 +52,10 @@ export async function GET(request: NextRequest) {
 
 async function getUserMetrics(userId: string) {
   const now = new Date()
-  const last30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-  const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  // Jours civils (UTC, comme `activity_days.day`) : aujourd'hui et les 29 ou
+  // 6 jours précédents, jamais un jour de plus (D88).
+  const last30d = debutPeriode(now, 30)
+  const last7d = debutPeriode(now, 7)
 
   const [
     user,
@@ -72,7 +76,7 @@ async function getUserMetrics(userId: string) {
     prisma.culture.count({ where: { userId } }),
     prisma.planche.count({ where: { userId } }),
     // Récoltes saisies : les parts d'un lot scindé ne comptent pas.
-    prisma.recolte.count({ where: { userId, recolteOrigineId: null } }),
+    prisma.recolte.count({ where: { userId, ...WHERE_RECOLTE_SAISIE } }),
     prisma.arbre.count({ where: { userId } }),
     prisma.animal.count({ where: { userId } }),
     prisma.activityDay.count({
@@ -103,8 +107,10 @@ async function getUserMetrics(userId: string) {
 
 async function getGlobalMetrics() {
   const now = new Date()
-  const last30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-  const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  // Jours civils (UTC, comme `activity_days.day`) : aujourd'hui et les 29 ou
+  // 6 jours précédents, jamais un jour de plus (D88).
+  const last30d = debutPeriode(now, 30)
+  const last7d = debutPeriode(now, 7)
 
   const [
     totalUsers,
@@ -132,7 +138,7 @@ async function getGlobalMetrics() {
       where: { success: false, createdAt: { gte: last30d } },
     }),
     prisma.culture.count(),
-    prisma.recolte.count({ where: { recolteOrigineId: null } }),
+    prisma.recolte.count({ where: WHERE_RECOLTE_SAISIE }),
   ])
 
   return {

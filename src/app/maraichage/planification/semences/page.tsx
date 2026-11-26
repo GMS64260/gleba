@@ -37,8 +37,10 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import {
   besoinGrainesSansMarge,
+  statutSelonMarge,
   totalGrainesACommander,
 } from "@/lib/semences/calcul"
+import { computeManquantsBreakdown } from "@/lib/semences/manquants"
 
 interface BesoinSemence {
   especeId: string
@@ -199,6 +201,12 @@ function uniteLabel(u: BesoinSemence["uniteDose"]): string {
   }
 }
 
+// Statut cohérent avec le réglage « Marge sécurité » (D91) : même règle pour
+// le tableau, le fichier CSV et la carte « À commander ».
+function statutAffiche(b: BesoinSemence, appliquerMarge: boolean): BesoinSemence["statut"] {
+  return statutSelonMarge(b, appliquerMarge, Boolean(besoinEnUnites(b)))
+}
+
 // Besoin brut sans marge (réversion du calcul stocké côté API).
 function brutGraines(b: BesoinSemence): number {
   return besoinGrainesSansMarge(b)
@@ -314,7 +322,7 @@ function makeGrainesColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[]
     {
       accessorKey: "statut",
       header: "Statut",
-      cell: ({ row }) => <StatutBadge statut={row.original.statut} partiel={row.original.besoinPartiel} />,
+      cell: ({ row }) => <StatutBadge statut={statutAffiche(row.original, appliquerMarge)} partiel={row.original.besoinPartiel} />,
     },
   ]
 }
@@ -366,7 +374,7 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
     {
       accessorKey: "statut",
       header: "Statut",
-      cell: ({ row }) => <StatutBadge statut={row.original.statut} partiel={row.original.besoinPartiel} />,
+      cell: ({ row }) => <StatutBadge statut={statutAffiche(row.original, appliquerMarge)} partiel={row.original.besoinPartiel} />,
     },
   ]
 }
@@ -449,7 +457,7 @@ function SemencesContent() {
     "Impossible de charger les besoins en semences",
   )
   const data = resultat?.data ?? AUCUN_BESOIN
-  const stats = resultat?.stats ?? null
+  const statsServeur = resultat?.stats ?? null
   // BUG-01 audit Marc : toggle pour basculer entre besoin brut et besoin
   // majoré (marge sécurité). Persistence via localStorage afin que la
   // préférence du maraîcher tienne d'une session à l'autre.
@@ -499,7 +507,7 @@ function SemencesContent() {
         b.stockUnites,
         (appliquerMarge || besoinEnUnites(b) ? b.aCommander : Math.max(0, graines - b.stockActuel)).toFixed(1),
         b.caieuxACommander,
-        b.statut,
+        statutAffiche(b, appliquerMarge),
       ]),
     ])
   }
@@ -541,6 +549,21 @@ function SemencesContent() {
     ? totalGrainesPlantsMarge
     : totalGrainesPlantsBrut
   const margeCumulee = Math.max(0, totalGrainesMarge - totalGrainesBrut)
+  // Compteurs de la carte « À commander » : ceux du serveur comptent la
+  // marge ; marge désactivée, ils sont recomptés sur les statuts affichés.
+  const stats = React.useMemo(() => {
+    if (!statsServeur || appliquerMarge) return statsServeur
+    // Mêmes lignes que le serveur : celles des trois onglets.
+    const listees = data.filter((b) => b.statut !== "IGNORE" && (b.mode === "graine_directe" || b.mode === "plant_repique" || b.mode === "bulbe_caieu"))
+    const lignes = listees.map((b) => ({ mode: b.mode, statut: statutAffiche(b, false) }))
+    const detail = computeManquantsBreakdown(lignes)
+    return {
+      ...statsServeur,
+      ...detail,
+      nbMissing: lignes.filter((l) => l.statut === "MISSING").length,
+      nbLow: lignes.filter((l) => l.statut === "LOW").length,
+    }
+  }, [statsServeur, appliquerMarge, data])
   const totalACommanderAffiche = totalGrainesACommander(
     [...graineDirecte, ...plantRepique],
     appliquerMarge,

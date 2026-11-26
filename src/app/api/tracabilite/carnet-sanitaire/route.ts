@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
         produit: soin.produit || null,
         quantite: soin.quantite || null,
         unite: soin.unite || null,
-        cout: soin.cout || null,
+        cout: soin.cout ?? null,
         veterinaire: soin.veterinaire || null,
         datePrevue: soin.datePrevue?.toISOString() || null,
         fait: soin.fait,

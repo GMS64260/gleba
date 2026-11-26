@@ -110,6 +110,32 @@ export function besoinGrainesSansMarge(besoin: BesoinGrainesAffichable): number 
   return besoin.grainesNecessaires / (1 + besoin.margeSecuritePct / 100)
 }
 
+/**
+ * Statut d'un besoin en graines tel que l'écran doit l'afficher, selon que la
+ * marge de sécurité est comptée ou non.
+ *
+ * Le serveur calcule le statut marge comprise. Marge désactivée, l'écran
+ * affichait les quantités sans marge à côté de ce statut : « Insuffisant »
+ * pour 9,68 g en stock et 9 g nécessaires (équipe debug, D91). Le statut suit
+ * la même règle que la colonne « À commander ».
+ *
+ * Inchangé pour un besoin compté en unités (caïeux, plants : pas de marge à
+ * retirer, `enUnites`), pour un besoin nul et pour les statuts qui ne
+ * comparent pas un stock (donnée ou surface manquante, ligne ignorée).
+ */
+export function statutSelonMarge<S extends string>(
+  besoin: BesoinGrainesAffichable & { statut: S },
+  appliquerMarge: boolean,
+  enUnites = false,
+): S | 'OK' | 'LOW' | 'MISSING' {
+  if (appliquerMarge || enUnites) return besoin.statut
+  if (besoin.statut !== 'OK' && besoin.statut !== 'LOW' && besoin.statut !== 'MISSING') return besoin.statut
+  if (!(besoin.grainesNecessaires > 0)) return besoin.statut
+  if (!(besoin.stockActuel > 0)) return 'MISSING'
+  // Tolérance : le besoin brut est une division flottante du besoin majoré.
+  return besoin.stockActuel + 1e-9 < besoinGrainesSansMarge(besoin) ? 'LOW' : 'OK'
+}
+
 export function totalGrainesACommander(
   besoins: BesoinGrainesAffichable[],
   appliquerMarge: boolean,
@@ -158,6 +184,33 @@ export function defaultGrainesParGramme(especeNom: string | null | undefined): n
     if (n.includes(kn) || kn.includes(n)) return v
   }
   return null
+}
+
+/**
+ * Grammes de semences d'un SEMIS DIRECT dosé à la surface : surface × dose
+ * (g/m²) de l'itinéraire, à défaut celle de l'espèce. Sans marge de sécurité.
+ *
+ * C'est la règle de « Semences nécessaires » (`planification.ts`). Le
+ * récapitulatif de Semer, lui, ne comptait que des graines par plant : pour un
+ * radis semé en ligne, il concluait « stock suffisant » avec 1 g là où 12 g
+ * sont nécessaires (équipe debug, D101).
+ *
+ * `null` quand la règle ne s'applique pas : plant repiqué, bulbe, bouture,
+ * dose exprimée autrement qu'en g/m², dose ou surface inconnue.
+ */
+export function besoinSemisDirectGrammes(args: {
+  modeSemis?: string | null
+  uniteDose?: string | null
+  doseItp?: number | null
+  doseEspece?: number | null
+  surfaceM2?: number | null
+}): number | null {
+  if (args.modeSemis && args.modeSemis !== 'graine_directe') return null
+  if (args.uniteDose && args.uniteDose !== 'g_m2') return null
+  const dose = args.doseItp ?? args.doseEspece ?? null
+  const surface = args.surfaceM2 ?? 0
+  if (dose == null || !(dose > 0) || !(surface > 0)) return null
+  return surface * dose
 }
 
 export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {

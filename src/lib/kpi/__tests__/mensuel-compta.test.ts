@@ -60,7 +60,11 @@ describe('chargerMensuelCompta', () => {
     await chargerMensuelCompta('u1', 2026, asOf)
 
     const { debut, fin } = bornesExerciceKpi(2026, asOf)
-    expect(fin).toBe(asOf)
+    // Équipe debug, D70 — la borne est le soir du jour : un avoir daté
+    // d'aujourd'hui (stocké à minuit UTC) est dans le cumul dès son émission.
+    expect(fin).toEqual(new Date(2026, 10, 1, 23, 59, 59, 999))
+    expect(new Date('2026-11-01T00:00:00.000Z') <= fin).toBe(true)
+    expect(bornesExerciceKpi(2026, new Date(2026, 10, 1, 0, 5)).fin).toEqual(fin)
     expect(mocked.depenseManuelle.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId: 'u1', date: { gte: debut, lte: fin }, comptable: true },
     }))

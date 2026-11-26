@@ -1,5 +1,7 @@
 "use client"
 
+import { ChampDecimal } from "@/components/ui/champ-decimal"
+import { lireNombreSaisi, versChampNombre } from "@/lib/saisie/nombre"
 import { useSaisieDelaisAttente } from "@/components/elevage/SaisieDelaisAttente"
 import { useDevise } from "@/hooks/use-devise"
 
@@ -1231,9 +1233,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       ordonnanceUrl: s.ordonnanceUrl ?? "",
       veterinaire: s.veterinaire ?? "",
       datePrevue: s.datePrevue ? jourSoin(new Date(s.datePrevue)) : "",
-      quantite: s.quantite ? s.quantite.toString() : "",
+      quantite: versChampNombre(s.quantite),
       unite: s.unite ?? "",
-      cout: s.cout ? s.cout.toString() : "",
+      cout: versChampNombre(s.cout),
       fait: s.fait,
       notes: s.notes ?? "",
       nbInjections: s.nbInjections != null ? String(s.nbInjections) : "1",
@@ -1654,6 +1656,12 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       )
       if (!annulationEdition) return
     }
+    // « 2,50 » vaut 2,5 quel que soit le navigateur (D72).
+    const coutLu = lireNombreSaisi(formData.cout)
+    if (coutLu !== null && (!Number.isFinite(coutLu) || coutLu < 0)) {
+      toast({ variant: "destructive", title: "Coût invalide", description: "Saisissez un montant positif, par exemple 2,50." })
+      return
+    }
     setIsSavingSoin(true)
     try {
       // Ticket cmvnp6s3z : un jour non touché renvoie la date stockée intacte
@@ -1675,7 +1683,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
           : null,
         quantite: formData.quantite ? parseFloat(formData.quantite) : null,
         unite: uniteLotSelectionne ?? (formData.unite || null),
-        cout: formData.cout ? parseFloat(formData.cout) : null,
+        cout: coutLu,
         fait: formData.fait,
         ...(annulationEdition ? { annulation: annulationEdition } : {}),
         notes: formData.notes || null,
@@ -2175,7 +2183,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
                       <option value="Autre">Autre</option>
                     </select>
                   </div>
-                  <div className="space-y-2"><Label>Coût ({symbole})</Label><Input type="number" step="0.01" value={formData.cout} onChange={(e) => setFormData(f => ({ ...f, cout: e.target.value }))} /></div>
+                  <div className="space-y-2"><Label>Coût ({symbole})</Label><ChampDecimal value={formData.cout} onValeur={(cout) => setFormData(f => ({ ...f, cout }))} placeholder="0,00" /></div>
                 </div>
 
                 <div className="space-y-2">

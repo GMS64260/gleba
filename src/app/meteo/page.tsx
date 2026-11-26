@@ -237,7 +237,7 @@ export default function MeteoPage() {
           <CardContent className="py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <Radio className="h-4 w-4 text-sky-600 shrink-0" />
-              <div className="min-w-0"><p className="text-sm font-medium">Source météo de l&apos;exploitation</p><p className="text-xs text-slate-500 truncate">Ce choix s&apos;applique aussi aux alertes et aux conseils d&apos;irrigation.</p>{erreurSource && <p className="text-xs text-red-600" role="alert">{erreurSource}</p>}</div>
+              <div className="min-w-0"><p className="text-sm font-medium">Source météo de l&apos;exploitation</p><p className="text-xs text-slate-500">S&apos;applique au relevé et aux alertes du jour. Les conseils d&apos;irrigation et les notifications suivent les prévisions localisées de chaque parcelle.</p>{erreurSource && <p className="text-xs text-red-600" role="alert">{erreurSource}</p>}</div>
             </div>
             <Select value={activeStation?.id ?? "parcelle"} onValueChange={selectSource}>
               <SelectTrigger className="w-full sm:w-[320px]"><SelectValue /></SelectTrigger>

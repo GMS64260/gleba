@@ -57,7 +57,8 @@ export function dernierArrosageDuLieu(
   arrosages: ArrosageSaisi[],
 ): { date: Date; jour: string } | null {
   const saisies = [
-    ...arrosages.map((a) => ({ date: a.date, jour: jourArrosage(a, meteo) })),
+    // Une saisie à 0 L n'a rien apporté : elle ne date pas un arrosage (D60).
+    ...arrosages.filter((a) => a.litresParM2 !== 0).map((a) => ({ date: a.date, jour: jourArrosage(a, meteo) })),
     ...(derniereIrrigation ? [{ date: derniereIrrigation, jour: jourDuLieu(derniereIrrigation, meteo) }] : []),
   ].filter((s) => s.jour <= meteo.aujourdhui.date)
   return saisies.reduce<{ date: Date; jour: string } | null>(

@@ -40,7 +40,11 @@ describe("arrosages saisis", () => {
     expect(litresSaisis(20, "kg")).toBe(20)
     expect(litresSaisis(3, "unités")).toBeNull()
     expect(litresSaisis(null, "L")).toBeNull()
-    expect(litresSaisis(0, "L")).toBeNull()
+    // Équipe debug, D60 — un zéro saisi est un apport nul, pas un volume
+    // inconnu : lu comme inconnu, il valait un arrosage complet.
+    expect(litresSaisis(0, "L")).toBe(0)
+    expect(litresSaisis(0, "unités")).toBeNull()
+    expect(litresSaisis(-1, "L")).toBeNull()
   })
 
   it("une intervention arrose la planche entière, comme « Noter » ; sans planche, la culture seule", async () => {

@@ -1,5 +1,5 @@
 import { ErreurCommerciale } from '@/lib/commercial/regles'
-import { prixFruitApi } from "@/lib/verger/creation-recolte"
+import { prixFruitApi, quantiteLotApi } from "@/lib/verger/creation-recolte"
 import { modifierVenteVerger } from "@/lib/verger/vente"
 import { ErreurVerger } from "@/lib/verger/erreur"
 import { etatSortiesLotVerger, reliquatApresCorrection } from "@/lib/verger/sortie-stock"
@@ -113,14 +113,26 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
       // Lot déjà entamé par un usage interne : la production corrigée doit le
       // couvrir dans la même mesure, et le reliquat suit la nouvelle quantité.
-      const volumeStere = body.volumeM3 !== undefined ? m3PleinToStere(body.volumeM3) : undefined
+      // Mêmes règles que la création (D82) : des nombres positifs, et un lot
+      // qui garde une quantité. Le corps était écrit tel quel (0, négatif, texte).
+      const volumeM3 = body.volumeM3 !== undefined ? quantiteLotApi(body.volumeM3, 'volumeM3') : undefined
+      const poidsKg = body.poidsKg !== undefined ? quantiteLotApi(body.poidsKg, 'poidsKg') : undefined
+      const volumeStere = volumeM3 !== undefined ? (volumeM3 === null ? null : m3PleinToStere(volumeM3)) : undefined
+      if (volumeM3 !== undefined || poidsKg !== undefined) {
+        const apres = quantiteBois({
+          volumeStere: volumeStere !== undefined ? volumeStere : existing.volumeStere,
+          volumeM3: volumeM3 !== undefined ? volumeM3 : existing.volumeM3,
+          poidsKg: poidsKg !== undefined ? poidsKg : existing.poidsKg,
+        })
+        if (!(apres.quantite > 0)) throw new ErreurVerger('Indiquez un volume ou un poids supérieur à zéro.', 400, 'volumeM3')
+      }
       const date = body.date ? new Date(body.date) : undefined
       const stockDisponibleCommercial = existing.stockDisponibleCommercial == null ? undefined
         : reliquatApresCorrection(sorties, {
           ...quantiteBois({
             volumeStere: volumeStere !== undefined ? volumeStere : existing.volumeStere,
-            volumeM3: body.volumeM3 !== undefined ? body.volumeM3 : existing.volumeM3,
-            poidsKg: body.poidsKg !== undefined ? body.poidsKg : existing.poidsKg,
+            volumeM3: volumeM3 !== undefined ? volumeM3 : existing.volumeM3,
+            poidsKg: poidsKg !== undefined ? poidsKg : existing.poidsKg,
           }),
           date: date ?? existing.date,
         })
@@ -130,11 +142,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
         data: {
           date,
           type: body.type,
-          volumeM3: body.volumeM3,
+          volumeM3,
           // Cohérence avec le POST : quand volumeM3 change, on recalcule
           // volumeStere via la même conversion (m3PleinToStere).
           volumeStere,
-          poidsKg: body.poidsKg,
+          poidsKg,
           stockDisponibleCommercial,
           destination: body.destination,
           prixVente: prixFruitApi(body.prixVente, "prixVente"),

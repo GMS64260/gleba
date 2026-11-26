@@ -1268,7 +1268,9 @@ function ProductionBoisSubTab() {
       nom: arbreNom ? `Replantation suite à coupe ${arbreNom}` : `Replantation suite à coupe du ${new Date(p.date).toLocaleDateString("fr-FR")}`,
       nature: "replantation_apres_coupe",
       cause: "coupe_programmee",
-      essencePrecedente: arbreNom,
+      // L'essence de l'arbre coupé, pas son nom : « Chêne », et non « Chêne du
+      // portail » (équipe debug, D103). Vide si elle n'est pas renseignée.
+      essencePrecedente: p.arbre?.espece ?? "",
       productionBoisId: String(p.id),
     })
     setShowReplanter(true)
@@ -1360,6 +1362,15 @@ function ProductionBoisSubTab() {
         })
         return
       }
+    }
+    // Un lot sans quantité entrait en stock puis restait introuvable (D82).
+    if (![volumeM3, volumeStere, poidsKg].some((v) => v !== null && v > 0)) {
+      toast({
+        title: "Quantité manquante",
+        description: "Indiquez un volume ou un poids supérieur à zéro.",
+        variant: "destructive",
+      })
+      return
     }
 
     setIsSubmitting(true)

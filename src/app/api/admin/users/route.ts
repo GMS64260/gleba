@@ -4,6 +4,7 @@
  * POST /api/admin/users - Creer un utilisateur
  */
 
+import { WHERE_RECOLTE_SAISIE } from "@/lib/recolte/lignee"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAdminApi, hashPassword } from "@/lib/auth-utils"
@@ -35,7 +36,7 @@ export async function GET() {
             cultures: true,
             planches: true,
             // Récoltes saisies : les parts d'un lot scindé ne comptent pas.
-            recoltes: { where: { recolteOrigineId: null } },
+            recoltes: { where: WHERE_RECOLTE_SAISIE },
           },
         },
       },

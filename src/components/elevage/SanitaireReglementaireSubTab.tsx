@@ -366,7 +366,8 @@ export function SanitaireReglementaireSubTab() {
         fetch(`/api/elevage/declarations-reglementaires?year=${annee}`),
         fetch('/api/elevage/aliments'),
         fetch(`/api/elevage/justificatifs-aliments?year=${annee}`),
-        fetch(`/api/elevage/mortalites?annee=${annee}`),
+        // Équarrissage : animaux de rente seulement, comme le registre.
+        fetch(`/api/elevage/mortalites?annee=${annee}&filiere=${filiereSel === "toutes" ? "rente" : filiereSel}`),
         fetch(`/api/elevage/justificatifs-equarrissage?year=${annee}`),
         fetch(`/api/elevage/registres-archives?year=${annee}`),
       ])
@@ -399,7 +400,7 @@ export function SanitaireReglementaireSubTab() {
     } finally {
       setDeclarationsLoading(false)
     }
-  }, [annee])
+  }, [annee, filiereSel])
   React.useEffect(() => { void reload() }, [reload])
 
   async function archiverRegistreComplet() {

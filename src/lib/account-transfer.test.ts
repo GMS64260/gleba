@@ -27,7 +27,8 @@ vi.mock("@/lib/prisma", () => {
   return { default: client }
 })
 
-import { ErreurCompteDejaRempli, exportAccount, importAccount } from "./account-transfer"
+import { Prisma } from "@prisma/client"
+import { ErreurCompteDejaRempli, describeManifest, exportAccount, importAccount } from "./account-transfer"
 import { SEUIL_MESURES_BRUTES_EXPORT } from "@/lib/capteurs/connecteurs"
 
 describe("transfert des identifiants BigInt des capteurs", () => {
@@ -118,7 +119,7 @@ describe("sauvegarde restaurable des capteurs (revue du 2026-10-30)", () => {
   })
 
   it("au seuil exactement, le brut part comme avant", async () => {
-    mocks.count.mockResolvedValue(SEUIL_MESURES_BRUTES_EXPORT)
+    mocks.count.mockImplementation(async (name: string) => (name === "mesureCapteur" ? SEUIL_MESURES_BRUTES_EXPORT : 0))
     const sauvegarde = await exportAccount("source")
     expect(sauvegarde.data.MesureCapteur).toHaveLength(1)
     expect(sauvegarde.avertissements).toEqual([])
@@ -323,5 +324,168 @@ describe("import d'un compte : aucun rattachement à l'entrée privée d'un autr
     expect(liees).toEqual(creees.map((e) => e.id))
     expect(resultat.imported.Espece).toBe(2)
     expect(resultat.warnings.join(" ")).not.toContain("n'existent pas")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Équipe debug, D76, D77 et D93 (2026-11-26) : types de champ et couverture
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("types de champ du schéma : rien ne se perd ni ne bloque la restauration (D76, D93)", () => {
+  const manifeste = describeManifest()
+  const transportes = new Set([...manifeste.byClass.owned, ...manifeste.byClass.child])
+
+  it("tout champ scalaire OU énuméré d'un modèle sauvegardé fait partie des champs copiés", () => {
+    const oublies: string[] = []
+    for (const modele of Prisma.dmmf.datamodel.models) {
+      if (!transportes.has(modele.name)) continue
+      const copies = new Set(manifeste.champs[modele.name])
+      for (const champ of modele.fields) {
+        // Une clé primaire entière n'est pas copiée : la base la régénère.
+        if (champ.isId) continue
+        if ((champ.kind === "scalar" || champ.kind === "enum") && !copies.has(champ.name)) oublies.push(`${modele.name}.${champ.name}`)
+      }
+    }
+    expect(oublies).toEqual([])
+  })
+
+  it("tout type scalaire d'un modèle sauvegardé est connu du codec", () => {
+    // Un type nouveau doit être examiné : se sérialise-t-il en JSON, et se relit-il ?
+    const connus = new Set(["String", "Int", "Float", "Boolean", "DateTime", "Json", "BigInt", "Decimal", "Bytes"])
+    const inconnus = new Set<string>()
+    for (const modele of Prisma.dmmf.datamodel.models) {
+      if (!transportes.has(modele.name)) continue
+      for (const champ of modele.fields) if (champ.kind === "scalar" && !connus.has(champ.type)) inconnus.add(`${modele.name}.${champ.name}: ${champ.type}`)
+    }
+    expect([...inconnus]).toEqual([])
+  })
+
+  it("la modération communautaire et les adhésions ne sont ni exportées ni réimportées", async () => {
+    expect(manifeste.byClass.excluded).toEqual(expect.arrayContaining(["Signalement", "MembreExploitation", "MediaReferentiel"]))
+    vi.clearAllMocks()
+    mocks.findMany.mockImplementation(async (name: string) =>
+      name === "signalement" ? [{ id: "sig-1", userId: "source", refType: "ESPECE", refId: "e1", motif: "doublon" }]
+        : name === "membreExploitation" ? [{ id: "adh-1", userId: "source", proprietaireId: "autre-ferme", email: "a@exemple.test", role: "MEMBRE" }]
+          : [])
+    mocks.count.mockImplementation(async () => 0)
+    const sauvegarde = await exportAccount("source")
+    expect(sauvegarde.data).not.toHaveProperty("Signalement")
+    expect(sauvegarde.data).not.toHaveProperty("MembreExploitation")
+
+    // Un fichier ancien (ou forgé) qui en contient reste restaurable, sans les écrire.
+    mocks.create.mockImplementation(async (_name: string, { data }: { data: Record<string, unknown> }) => ({ ...data, id: data.id ?? 1 }))
+    mocks.createMany.mockImplementation(async (_name: string, { data }: { data: unknown[] }) => ({ count: data.length }))
+    await importAccount("cible", {
+      format: "2.0",
+      data: {
+        Signalement: [{ id: "sig-1", userId: "source", refId: "e1", motif: "doublon" }],
+        MembreExploitation: [{ id: "adh-1", userId: "source", proprietaireId: "victime", email: "a@exemple.test", role: "MEMBRE" }],
+      },
+    } as never)
+    const ecrits = [...mocks.create.mock.calls, ...mocks.createMany.mock.calls].map(([nom]) => String(nom))
+    expect(ecrits.filter((nom) => nom === "signalement" || nom === "membreExploitation")).toEqual([])
+  })
+
+  it("relit un contenu binaire, au format actuel (base64) comme au format des fichiers déjà téléchargés", async () => {
+    vi.clearAllMocks()
+    mocks.findMany.mockImplementation(async () => [])
+    mocks.count.mockImplementation(async () => 0)
+    mocks.create.mockImplementation(async (_name: string, { data }: { data: Record<string, unknown> }) => ({ ...data, id: data.id ?? 1 }))
+    mocks.createMany.mockImplementation(async (_name: string, { data }: { data: unknown[] }) => ({ count: data.length }))
+    const tentative = (id: string, contenu: unknown) => ({
+      id, userId: "source", nomFichier: "releve.csv", contenu, tailleOctets: 3, empreinte: "e".repeat(64), source: "fichier", statut: "importe",
+    })
+    const octets = Buffer.from([37, 80, 68])
+    await importAccount("cible", {
+      format: "2.0",
+      data: {
+        TentativeImportReleve: [
+          tentative("t-base64", octets.toString("base64")),
+          tentative("t-buffer-json", JSON.parse(JSON.stringify(octets))),
+          tentative("t-uint8-json", JSON.parse(JSON.stringify(new Uint8Array(octets)))),
+          tentative("t-sans-contenu", null),
+        ],
+      },
+    } as never)
+    const crees = [
+      ...mocks.create.mock.calls.filter(([nom]) => nom === "tentativeImportReleve").map(([, args]) => args.data),
+      ...mocks.createMany.mock.calls.filter(([nom]) => nom === "tentativeImportReleve").flatMap(([, args]) => args.data),
+    ] as Array<{ contenu: unknown }>
+    expect(crees).toHaveLength(4)
+    for (const ligne of crees.slice(0, 3)) {
+      expect(Buffer.isBuffer(ligne.contenu)).toBe(true)
+      expect([...(ligne.contenu as Buffer)]).toEqual([37, 80, 68])
+    }
+    expect(crees[3].contenu).toBeNull()
+  })
+
+  // Contre-relecture du 2026-11-26 : une photo du référentiel n'a pas de
+  // propriétaire ; forgée « validée » dans un fichier, elle se serait publiée
+  // sans modération.
+  it("n'écrit jamais une photo du référentiel portée par un fichier de sauvegarde", async () => {
+    vi.clearAllMocks()
+    mocks.findMany.mockImplementation(async () => [])
+    mocks.count.mockImplementation(async () => 0)
+    mocks.create.mockImplementation(async (_name: string, { data }: { data: Record<string, unknown> }) => ({ ...data, id: data.id ?? 1 }))
+    mocks.createMany.mockImplementation(async (_name: string, { data }: { data: unknown[] }) => ({ count: data.length }))
+    await importAccount("cible", {
+      format: "2.0",
+      data: { MediaReferentiel: [{ id: "m1", especeId: "tomate", source: "WIKIMEDIA_COMMONS", statut: "VALIDE", principale: true, url: "/uploads/referentiel/membre/x-1200.jpg", auteur: "x", licence: "x", citation: "x", organe: "fruit" }] },
+    } as never)
+    const ecrits = [...mocks.create.mock.calls, ...mocks.createMany.mock.calls].map(([nom]) => String(nom))
+    expect(ecrits).not.toContain("mediaReferentiel")
+  })
+
+  it("n'écrit aucune ligne d'un modèle sans propriétaire que rien ne rattache au compte", async () => {
+    // Aucun modèle « enfant » sans lien vers une donnée transportée ne doit
+    // rester importable : la liste se recalcule sur le schéma courant.
+    const orphelins = Prisma.dmmf.datamodel.models
+      .filter((m) => manifeste.byClass.child.includes(m.name))
+      .filter((m) => !m.fields.some((f) => f.kind === "object" && f.relationFromFields?.length && f.type !== m.name && transportes.has(f.type)))
+      .map((m) => m.name)
+    expect(orphelins).toContain("ImpersonationGrant")
+    vi.clearAllMocks()
+    mocks.findMany.mockImplementation(async () => [])
+    mocks.count.mockImplementation(async () => 0)
+    mocks.create.mockImplementation(async (_name: string, { data }: { data: Record<string, unknown> }) => ({ ...data, id: data.id ?? 1 }))
+    mocks.createMany.mockImplementation(async (_name: string, { data }: { data: unknown[] }) => ({ count: data.length }))
+    const resultat = await importAccount("cible", {
+      format: "2.0",
+      data: Object.fromEntries(orphelins.map((nom) => [nom, [{ id: "forge-1", tokenHash: "a".repeat(64), adminId: "admin", targetId: "victime", expiresAt: "2099-01-01T00:00:00.000Z", adminSessionVersion: 0 }]])),
+    } as never)
+    expect([...mocks.create.mock.calls, ...mocks.createMany.mock.calls]).toEqual([])
+    expect(resultat.skipped).toMatchObject({ ImpersonationGrant: 1 })
+  })
+
+  it("refuse un contenu binaire illisible avec un motif, au lieu d'une erreur de base", async () => {
+    vi.clearAllMocks()
+    mocks.findMany.mockImplementation(async () => [])
+    mocks.count.mockImplementation(async () => 0)
+    await expect(importAccount("cible", {
+      format: "2.0",
+      data: { TentativeImportReleve: [{ id: "t1", userId: "source", contenu: { n: "importe quoi" }, tailleOctets: 1, empreinte: "e", source: "fichier", statut: "importe" }] },
+    } as never)).rejects.toThrow(/binaire illisible/)
+  })
+})
+
+describe("la sauvegarde dit ce qu'elle ne contient pas (D77)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.findMany.mockImplementation(async () => [])
+  })
+
+  it("annonce la boutique en ligne non incluse, avec ses volumes", async () => {
+    mocks.count.mockImplementation(async (name: string) => ({ boutique: 1, produitBoutique: 11, commandeBoutique: 3 }[name] ?? 0))
+    const { avertissements } = await exportAccount("source")
+    expect(avertissements).toHaveLength(1)
+    expect(avertissements![0]).toContain("Boutique en ligne non incluse")
+    expect(avertissements![0]).toContain("11 produits")
+    expect(avertissements![0]).toContain("3 commandes")
+    expect(mocks.count).toHaveBeenCalledWith("produitBoutique", { where: { userId: "source" } })
+  })
+
+  it("ne dit rien pour un compte sans boutique", async () => {
+    mocks.count.mockImplementation(async () => 0)
+    expect((await exportAccount("source")).avertissements).toEqual([])
   })
 })

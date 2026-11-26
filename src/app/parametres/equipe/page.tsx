@@ -169,17 +169,31 @@ export default function EquipePage() {
   async function renvoyer(membre: Membre) {
     setActionEnCours(membre.id)
     try {
-      const reponse = await fetch('/api/exploitation/membres', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: membre.email, role: membre.role, modules: membre.modules }),
-      })
+      // Un accès retiré se réinvite (nouvelle invitation) ; une invitation en
+      // attente ou expirée se renvoie, sans repasser par la garde de création
+      // qui refusait toute adresse déjà invitée (D75).
+      const reponse = membre.etat === 'REVOQUEE'
+        ? await fetch('/api/exploitation/membres', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: membre.email, role: membre.role, modules: membre.modules }),
+          })
+        : await fetch(`/api/exploitation/membres/${encodeURIComponent(membre.id)}/renvoi`, { method: 'POST' })
       const corps = await reponse.json().catch(() => ({}))
       if (!reponse.ok) {
         toast({ title: 'Renvoi impossible', description: corps.error ?? 'Erreur', variant: 'destructive' })
+        if (reponse.status === 409) await charger()
         return
       }
-      toast({ title: 'Invitation renvoyée', description: `Nouveau lien envoyé à ${membre.email}.` })
+      if (corps.data?.emailEnvoye === false) {
+        toast({
+          title: 'Courriel non envoyé',
+          description: `Le lien est prêt mais le courriel vers ${membre.email} n'est pas parti. Réessayez dans quelques minutes.`,
+          variant: 'destructive',
+        })
+      } else {
+        toast({ title: 'Invitation renvoyée', description: `Nouveau lien envoyé à ${membre.email}.` })
+      }
       await charger()
     } finally {
       setActionEnCours(null)

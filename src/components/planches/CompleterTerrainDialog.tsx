@@ -76,9 +76,16 @@ export function CompleterTerrainDialog({
   const [rows, setRows] = React.useState<Row[]>([])
   const [isSaving, setIsSaving] = React.useState(false)
 
-  // Re-synchroniser quand on ouvre la modale.
+  // Re-synchroniser À L'OUVERTURE seulement. Le parent passe un tableau
+  // recalculé à chaque rendu : en dépendre remettait les lignes à leur valeur
+  // d'origine dès que la page se redessinait, et le toast de « Appliquer les
+  // défauts » la redessine (équipe debug, D68 : sol et rétention restaient
+  // vides, « Rien à enregistrer »).
+  const etaitOuverte = React.useRef(false)
   React.useEffect(() => {
-    if (!open) return
+    const ouverture = open && !etaitOuverte.current
+    etaitOuverte.current = open
+    if (!ouverture) return
     setRows(
       planches.map((p) => ({
         id: p.id,

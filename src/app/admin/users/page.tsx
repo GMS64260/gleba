@@ -2,6 +2,7 @@
  * Liste des utilisateurs (Admin)
  */
 
+import { WHERE_RECOLTE_SAISIE } from "@/lib/recolte/lignee"
 import { requireAdmin } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import { UserTable } from "@/components/admin/UserTable"
@@ -28,7 +29,7 @@ export default async function UsersPage() {
           cultures: true,
           planches: true,
           // Récoltes saisies : les parts d'un lot scindé ne comptent pas.
-          recoltes: { where: { recolteOrigineId: null } },
+          recoltes: { where: WHERE_RECOLTE_SAISIE },
         },
       },
     },

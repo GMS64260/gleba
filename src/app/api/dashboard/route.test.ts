@@ -41,7 +41,10 @@ const recoltes = [
   { userId: 'ferme-test', date: new Date(2025, 11, 31, 23, 59, 59, 999), quantite: 7 },
   { userId: 'ferme-test', date: new Date(2026, 0, 1), quantite: 11 },
   { userId: 'ferme-test', date: maintenant, quantite: 13 },
-  { userId: 'ferme-test', date: new Date(maintenant.getTime() + 1), quantite: 17 },
+  // Demain : hors du cumul. La borne est le soir d'aujourd'hui, pas l'instant
+  // présent : une récolte datée du jour (minuit UTC, soit 1 h ou 2 h à Paris)
+  // restait hors du cumul jusqu'à cette heure (équipe debug, D70).
+  { userId: 'ferme-test', date: new Date(2026, 5, 16), quantite: 17 },
   { userId: 'ferme-test', date: new Date(2027, 0, 1), quantite: 19 },
   { userId: 'autre-ferme', date: new Date(2025, 5, 1), quantite: 1000 },
   { userId: 'autre-ferme', date: new Date(2026, 5, 1), quantite: 1000 },
@@ -87,13 +90,28 @@ describe('GET /api/dashboard — récoltes à date dans l’année sélectionné
     expect(stats.recoltesAnnee).toBe(12)
   })
 
-  it.each(['?year=2026', ''])('garde l’année courante arrêtée à maintenant (%s)', async (query) => {
+  it.each(['?year=2026', ''])('garde l’année courante arrêtée au soir d’aujourd’hui (%s)', async (query) => {
     const response = await GET(new NextRequest(`http://localhost/api/dashboard${query}`))
     expect(response.status).toBe(200)
     const { stats } = await response.json()
 
     expect(stats.recoltesCount).toBe(2)
     expect(stats.recoltesAnnee).toBe(24)
+  })
+
+  // D70 — juste après minuit à Paris, une récolte datée du jour (stockée à
+  // minuit UTC, soit plus tard que « maintenant ») est déjà dans le cumul.
+  it('compte une récolte datée du jour dès minuit passé', async () => {
+    vi.setSystemTime(new Date(2026, 5, 15, 0, 30))
+    recoltes.push({ id: 99, recolteOrigineId: null, userId: 'ferme-test', date: new Date('2026-06-15T00:00:00.000Z'), quantite: 5, unite: 'kg', especeId: 'carotte', espece: null })
+    try {
+      const response = await GET(new NextRequest('http://localhost/api/dashboard?year=2026'))
+      const { stats } = await response.json()
+      // La récolte de midi du jour (13 kg) compte aussi : la borne est le soir.
+      expect(stats.recoltesAnnee).toBe(29)
+    } finally {
+      recoltes.pop()
+    }
   })
 
   it('ne compte aucune récolte à venir pour une année future', async () => {

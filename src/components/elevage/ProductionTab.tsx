@@ -1,5 +1,6 @@
 "use client"
 
+import { versChampNombre } from "@/lib/saisie/nombre"
 import { formatMontantPiece, totalDansDeviseCourante, type PieceAvecDevise } from "@/lib/comptabilite/devise-piece-affichage"
 import { useDevise } from "@/hooks/use-devise"
 
@@ -1799,10 +1800,10 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
       // d'un abattage horodaté entre minuit et 2 h (heure de Paris).
       date: jourCivilStocke(a.date) ?? "",
       quantite: a.quantite.toString(),
-      poidsVif: a.poidsVif ? a.poidsVif.toString() : "",
-      poidsCarcasse: a.poidsCarcasse ? a.poidsCarcasse.toString() : "",
+      poidsVif: versChampNombre(a.poidsVif),
+      poidsCarcasse: versChampNombre(a.poidsCarcasse),
       destination: a.destination ?? "auto_consommation",
-      prixVente: a.prixVente ? a.prixVente.toString() : "",
+      prixVente: versChampNombre(a.prixVente),
       lieu: a.lieu ?? "",
       notes: a.notes ?? "",
       nEtablissementDestination: a.nEtablissementDestination ?? "",
@@ -2037,8 +2038,8 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
                 })()} value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Poids vif (kg)</Label><Input type="number" step="0.1" value={formData.poidsVif} onChange={(e) => setFormData(f => ({ ...f, poidsVif: e.target.value }))} /></div>
-                <div className="space-y-2"><Label>Poids carcasse (kg)</Label><Input type="number" step="0.1" value={formData.poidsCarcasse} onChange={(e) => setFormData(f => ({ ...f, poidsCarcasse: e.target.value }))} /></div>
+                <div className="space-y-2"><Label>Poids vif (kg)</Label><Input type="number" min="0" step="0.1" value={formData.poidsVif} onChange={(e) => setFormData(f => ({ ...f, poidsVif: e.target.value }))} /></div>
+                <div className="space-y-2"><Label>Poids carcasse (kg)</Label><Input type="number" min="0" step="0.1" value={formData.poidsCarcasse} onChange={(e) => setFormData(f => ({ ...f, poidsCarcasse: e.target.value }))} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -2052,7 +2053,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2"><Label>Prix vente</Label><Input type="number" step="0.01" value={formData.prixVente} onChange={(e) => setFormData(f => ({ ...f, prixVente: e.target.value }))} disabled={formData.destination !== 'vente'} /></div>
+                <div className="space-y-2"><Label>Prix vente</Label><Input type="number" min="0" step="0.01" value={formData.prixVente} onChange={(e) => setFormData(f => ({ ...f, prixVente: e.target.value }))} disabled={formData.destination !== 'vente'} /></div>
               </div>
               {formData.destination === 'vente' && <p className="text-sm text-muted-foreground">La vente est enregistrée payée. Pour une vente à crédit, décochez « Encaissement confirmé » depuis Comptabilité &gt; Transactions, bouton « Règlement et pièce ».</p>}
               {/* Ticket cmsog52qx — lieu et notes étaient persistés (formData/API) mais absents du dialog. */}

@@ -9,6 +9,7 @@
  * d'ensemble + un détail Élevage riche.
  */
 
+import { WHERE_RECOLTE_SAISIE } from "@/lib/recolte/lignee"
 import { requireAdmin } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import type { UniteQuantite } from "@/lib/recolte/projection"
@@ -107,7 +108,7 @@ export default async function ConsultationUserPage({ params }: PageProps) {
     prisma.planche.count({ where: { userId } }),
     // Récoltes saisies, sans les lots d'inventaire nés d'un comptage ni les
     // parts d'un lot scindé par une vente ou une sortie partielle.
-    prisma.recolte.count({ where: { userId, cultureId: { not: null }, recolteOrigineId: null } }),
+    prisma.recolte.count({ where: { userId, ...WHERE_RECOLTE_SAISIE } }),
     // Ventilé par unité : un compte de fleurs coupées récolte des tiges, pas
     // des kilos, et les additionner ferait un chiffre sans sens.
     prisma.recolte.groupBy({

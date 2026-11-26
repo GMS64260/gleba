@@ -3,6 +3,7 @@
  * GET /api/elevage/mortalites?annee=2026
  */
 
+import { isFiliere } from '@/lib/elevage/filiere'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -25,6 +26,11 @@ export async function GET(request: NextRequest) {
     }
     const annee = parsedYear.data
     const userId = session.user.id
+    // Filière de l'atelier affiché. Le bon d'enlèvement et le registre ne
+    // concernent que les animaux de rente : sans ce filtre, l'écran proposait
+    // les décès des chiens (D79).
+    const filiereLue = searchParams.get('filiere')
+    const filtreFiliere = isFiliere(filiereLue) ? { especeAnimale: { filiere: filiereLue } } : {}
     const startOfYear = new Date(annee, 0, 1)
     const endOfYear = new Date(annee + 1, 0, 1)
 
@@ -34,6 +40,7 @@ export async function GET(request: NextRequest) {
         userId,
         statut: 'mort',
         dateSortie: { gte: startOfYear, lt: endOfYear },
+        ...filtreFiliere,
       },
       select: {
         id: true,
@@ -75,7 +82,7 @@ export async function GET(request: NextRequest) {
     // (/api/elevage/stats) : les pertes d'un lot ne sont enregistrées nulle
     // part comme des morts datées, ses têtes n'entrent donc pas au dénominateur.
     const totalActifs = await prisma.animal.count({
-      where: { userId, statut: 'actif' },
+      where: { userId, statut: 'actif', ...filtreFiliere },
     })
     const totalMorts = mortalites.length
     const tauxMortalite = (totalActifs + totalMorts) > 0

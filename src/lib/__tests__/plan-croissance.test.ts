@@ -71,6 +71,23 @@ describe("plan-croissance", () => {
       expect(croissanceCulture(annuelle, new Date("2026-08-25"))).toBeNull()
     })
 
+    // Équipe debug, D90 — les dates de culture sont des jours stockés à
+    // minuit UTC ; le curseur du plan est à minuit LOCAL et la vue du jour à
+    // l'heure courante. La comparaison se fait en jours civils.
+    it("présente dès le jour de sa plantation, curseur à minuit local", () => {
+      const culture = { datePlantation: "2026-10-20T00:00:00.000Z", dateRecolte: "2026-11-20T00:00:00.000Z", finRecolte: "2026-12-02T00:00:00.000Z" }
+      expect(croissanceCulture(culture, new Date(2026, 9, 19))).toBeNull()
+      expect(croissanceCulture(culture, new Date(2026, 9, 20))).not.toBeNull()
+      expect(croissanceCulture(culture, new Date(2026, 9, 20, 0, 30))).not.toBeNull()
+    })
+
+    it("encore présente le dernier jour de récolte, à n'importe quelle heure", () => {
+      const culture = { datePlantation: "2026-10-20T00:00:00.000Z", dateRecolte: "2026-11-20T00:00:00.000Z", finRecolte: "2026-12-02T00:00:00.000Z" }
+      expect(croissanceCulture(culture, new Date(2026, 11, 2, 10, 0))).toBe(1)
+      expect(croissanceCulture(culture, new Date(2026, 11, 2, 23, 30))).toBe(1)
+      expect(croissanceCulture(culture, new Date(2026, 11, 3, 0, 30))).toBeNull()
+    })
+
     it("sans aucune date : présente à taille adulte (import)", () => {
       expect(
         croissanceCulture(

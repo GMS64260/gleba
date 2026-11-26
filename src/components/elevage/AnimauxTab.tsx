@@ -4,6 +4,7 @@
  * Onglet Animaux - Animaux individuels + Lots en sous-onglets
  */
 
+import { versChampNombre } from "@/lib/saisie/nombre"
 import * as React from "react"
 import { ChampsEncaissement } from "@/components/comptabilite/ChampsEncaissement"
 import { encaissementVenteInitial } from "@/lib/comptabilite/encaissement-vente"
@@ -360,7 +361,7 @@ function AnimauxSubTab() {
       // jour suivante écrasait 0 par null.
       prixAchat: a.prixAchat != null ? a.prixAchat.toString() : "",
       prixAchatInclusDansLot: a.prixAchatInclusDansLot,
-      poidsActuel: a.poidsActuel ? a.poidsActuel.toString() : "",
+      poidsActuel: versChampNombre(a.poidsActuel),
       notes: a.notes ?? "",
       mereId: a.mereId ? String(a.mereId) : "",
       pereId: a.pereId ? String(a.pereId) : "",
@@ -2010,7 +2011,7 @@ function LotsSubTab() {
       dateArrivee: lot.dateArrivee ? lot.dateArrivee.split('T')[0] : "",
       quantiteInitiale: lot.quantiteInitiale.toString(),
       provenance: lot.provenance ?? "",
-      prixAchatTotal: lot.prixAchatTotal ? lot.prixAchatTotal.toString() : "",
+      prixAchatTotal: versChampNombre(lot.prixAchatTotal),
       notes: lot.notes ?? "",
       parcelleGeoId: lot.parcelleGeo?.id ?? "",
       nExploitationDestination: lot.nExploitationDestination ?? "",
@@ -2542,7 +2543,7 @@ function LotsSubTab() {
                         <ParcelleAssignButton lotId={lot.id} parcelles={parcelles} onAssigned={fetchData} />
                       )}
                     </TableCell>
-                    <TableCell className="text-right">{lot.prixAchatTotal ? `${lot.prixAchatTotal.toFixed(2)} \u20ac` : '-'}</TableCell>
+                    <TableCell className="text-right">{lot.prixAchatTotal != null ? `${lot.prixAchatTotal.toFixed(2)} \u20ac` : '-'}</TableCell>
                     <TableCell><Badge className={STATUT_COLORS[lot.statut] || ''}>{labelStatutLot(lot.statut)}</Badge></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>

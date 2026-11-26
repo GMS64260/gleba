@@ -66,6 +66,19 @@ export async function PATCH(
   }
   if (priority) data.priority = priority as BugPriority
   if (adminNote !== undefined) data.adminNote = adminNote
+  // Le journal s'écrit AVEC le statut, dans la même écriture : créé après
+  // coup, il manquait à la réponse, et l'historique n'affichait la transition
+  // qu'après rechargement (équipe debug, D86).
+  if (status && status !== existing.status) {
+    data.statusLogs = {
+      create: {
+        fromStatus: existing.status,
+        toStatus: status as BugStatus,
+        changedById: getActeurId(session),
+        note: statusNote ?? (!notifier && status === "RESOLVED" ? "Résolu sans mail à l'auteur." : null),
+      },
+    }
+  }
 
   const updated = await prisma.bugReport.update({
     where: { id },
@@ -78,18 +91,6 @@ export async function PATCH(
       },
     },
   })
-
-  if (status && status !== existing.status) {
-    await prisma.bugStatusLog.create({
-      data: {
-        bugReportId: id,
-        fromStatus: existing.status,
-        toStatus: status as BugStatus,
-        changedById: getActeurId(session),
-        note: statusNote ?? (!notifier && status === "RESOLVED" ? "Résolu sans mail à l'auteur." : null),
-      },
-    })
-  }
 
   if (shouldSendResolutionEmail(existing.status, status, existing.statusLogs.length > 0, notifier)) {
     const email = feedbackResolvedEmail(existing.user.name)

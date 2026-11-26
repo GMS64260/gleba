@@ -12,6 +12,7 @@
  * Fichier SERVEUR uniquement (utilise Prisma) — ne pas importer côté client.
  */
 
+import { purgerJournauxStockTx } from '@/lib/caisse/conservation'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -216,5 +217,8 @@ export async function supprimerDonneesSansCleEtrangere(
   const aliments = await tx.aliment.deleteMany({
     where: { ownerUserId: userId, consommations: { none: {} } },
   })
+  // Historique de stock de la boutique : journaux sans clé étrangère, que
+  // seule cette purge retire une fois le compte supprimé (équipe debug, D78).
+  await purgerJournauxStockTx(tx, userId)
   return resultats.reduce((n, r) => n + r.count, 0) + aliments.count
 }

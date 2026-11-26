@@ -90,6 +90,19 @@ const EXCLUDED = new Set<string>([
   "ProduitBoutique",
   "CommandeBoutique",
   "LigneCommandeBoutique",
+  // Signalement d'une entrée partagée : modération de la communauté de CETTE
+  // instance, comme les avis. Restauré, il doublerait la file de modération
+  // ou viserait une entrée qui n'existe pas ailleurs (équipe debug, D93).
+  "Signalement",
+  // Photo du référentiel commun : sans propriétaire, publiée après modération.
+  // Elle n'appartient à aucun compte, et un fichier forgé qui en porterait une
+  // au statut « validée » la publierait sans modération (contre-relecture du
+  // 2026-11-26 : depuis que les champs énumérés sont copiés, la ligne
+  // s'écrivait).
+  "MediaReferentiel",
+  // Adhésion à l'exploitation d'un AUTRE compte : un droit d'accès, pas une
+  // donnée de ferme. Une sauvegarde ne doit ni le transporter ni le recréer.
+  "MembreExploitation",
 ])
 
 /** Référentiels partagés à PK string : ré-importés en upsert par id (préservé).
@@ -211,10 +224,15 @@ function buildManifest(): Map<string, ModelMeta> {
     const hasCompositePk = !!m.primaryKey && (m.primaryKey.fields?.length ?? 0) > 0
     const hasUserId = m.fields.some((f) => f.name === "userId" && f.kind === "scalar")
 
-    // Les listes scalaires font aussi partie des réglages à restaurer.
+    // Les listes scalaires font aussi partie des réglages à restaurer, et les
+    // champs ÉNUMÉRÉS aussi : Prisma les range dans un genre à part (`enum`),
+    // et les oublier ici perdait la valeur à la restauration. Sur un champ
+    // obligatoire sans défaut, une seule ligne annulait toute la restauration
+    // (équipe debug, D93) ; ailleurs la valeur retombait en silence sur son
+    // défaut (couches d'une parcelle).
     const scalarFieldNames = new Map<string, { type: string; required: boolean; isList: boolean }>()
     for (const f of m.fields) {
-      if (f.kind === "scalar") {
+      if (f.kind === "scalar" || f.kind === "enum") {
         scalarFieldNames.set(f.name, { type: f.type, required: f.isRequired, isList: f.isList })
       }
     }
@@ -291,11 +309,31 @@ export interface ExportResult {
   avertissements?: string[]
 }
 
+/** Phrase d'avertissement si le compte a une boutique en ligne, sinon `null`. */
+async function decrireBoutiqueNonSauvegardee(userId: string): Promise<string | null> {
+  const compter = async (modele: string) => Number(await delegue(prisma, modele)?.count({ where: { userId } })) || 0
+  const [boutiques, produits, commandes] = await Promise.all([
+    compter("boutique"),
+    compter("produitBoutique"),
+    compter("commandeBoutique"),
+  ])
+  if (boutiques + produits + commandes === 0) return null
+  const pluriel = (n: number, mot: string) => `${n.toLocaleString("fr-FR")} ${mot}${n > 1 ? "s" : ""}`
+  return `Boutique en ligne non incluse : ${pluriel(produits, "produit")} et leur stock, ${pluriel(commandes, "commande")}. Ces données ne seront pas restaurées par ce fichier.`
+}
+
 export async function exportAccount(userId: string, appVersion = "1.0.0"): Promise<ExportResult> {
   const manifest = buildManifest()
   const data: Record<string, Row[]> = {}
   const stats: Record<string, number> = {}
   const avertissements: string[] = []
+
+  // La boutique en ligne n'est pas dans la sauvegarde (son adresse est unique
+  // sur l'instance, ses commandes portent des données de clients et un
+  // instantané fiscal). L'écran promettait pourtant « toutes vos données » :
+  // on le dit, avec ce qui manque (équipe debug, D77).
+  const avertissementBoutique = await decrireBoutiqueNonSauvegardee(userId)
+  if (avertissementBoutique) avertissements.push(avertissementBoutique)
 
   // 1) Référentiels : tout, SAUF le privé d'autrui dans les référentiels
   //    communautaires (cf. REFERENTIAL_COMMUNAUTAIRE).
@@ -327,7 +365,7 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
       where: { userId },
     })
     data[meta.name] = rows.map((row) => {
-      const copie = Object.fromEntries(Object.entries(row).map(([nom, valeur]) => [nom, typeof valeur === 'bigint' ? valeur.toString() : valeur]))
+      const copie = Object.fromEntries(Object.entries(row).map(([nom, valeur]) => [nom, valeurExportable(valeur)]))
       // Une sauvegarde de données ne transporte aucun accès bancaire.
       if (meta.name === 'ConnexionStripe') Object.assign(copie, { jetonChiffre: '', actif: false, verrouSynchroJusqua: null })
       return copie
@@ -443,7 +481,7 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
   // pour sélectionner les enfants. L'import les relit selon le DMMF.
   for (const [model, rows] of Object.entries(data)) {
     data[model] = rows.map((row) => Object.fromEntries(
-      Object.entries(row).map(([key, value]) => [key, typeof value === "bigint" ? value.toString() : value]),
+      Object.entries(row).map(([key, value]) => [key, valeurExportable(value)]),
     ))
   }
 
@@ -518,8 +556,45 @@ function topoOrder(manifest: Map<string, ModelMeta>, models: ModelMeta[]): Model
   return order.map((n) => manifest.get(n)!).filter(Boolean)
 }
 
+/**
+ * Valeur d'une ligne telle qu'elle s'écrit en JSON : un entier 64 bits en
+ * chaîne décimale, des octets en base64. Laissé tel quel, un `Buffer` devenait
+ * `{"type":"Buffer","data":[…]}`, que la restauration ne savait pas relire
+ * (équipe debug, D76).
+ */
+function valeurExportable(valeur: unknown): unknown {
+  if (typeof valeur === "bigint") return valeur.toString()
+  if (valeur instanceof Uint8Array) return Buffer.from(valeur).toString("base64")
+  return valeur
+}
+
+/** Octets d'une sauvegarde : base64 (format actuel) ou formes laissées par les fichiers déjà téléchargés. */
+function octetsDepuisSauvegarde(value: unknown): Buffer {
+  if (value instanceof Uint8Array) return Buffer.from(value)
+  if (typeof value === "string") {
+    // `Buffer.from(…, "base64")` ne refuse rien : la forme se contrôle ici.
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+      throw new Error("Contenu binaire illisible dans la sauvegarde")
+    }
+    return Buffer.from(value, "base64")
+  }
+  const estOctet = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 255
+  if (Array.isArray(value) && value.every(estOctet)) return Buffer.from(value)
+  if (value && typeof value === "object") {
+    // `JSON.stringify` d'un Buffer : { type: "Buffer", data: [...] }.
+    const { type, data } = value as { type?: unknown; data?: unknown }
+    if (type === "Buffer" && Array.isArray(data) && data.every(estOctet)) return Buffer.from(data)
+    // `JSON.stringify` d'un Uint8Array : { "0": 37, "1": 80, … }.
+    const cles = Object.keys(value)
+    const octets = Object.values(value)
+    if (cles.length > 0 && cles.every((c, i) => c === String(i)) && octets.every(estOctet)) return Buffer.from(octets)
+  }
+  throw new Error("Contenu binaire illisible dans la sauvegarde")
+}
+
 function coerceValue(value: unknown, type: string): unknown {
   if (value === null || value === undefined) return value
+  if (type === "Bytes") return octetsDepuisSauvegarde(value)
   if (type === "DateTime") {
     return value instanceof Date ? value : new Date(value as string)
   }
@@ -765,6 +840,24 @@ export async function importAccount(
 
     for (const meta of ordered) {
       if (!meta.pkField) continue
+      // Sécurité (contre-relecture du 2026-11-26) : même règle qu'à l'export.
+      // Un modèle sans propriétaire ne s'importe que rattaché à une donnée du
+      // compte. Sans lien possible vers un modèle transporté (autorisation
+      // d'impersonation, détails de référentiels partagés, erreurs d'API…),
+      // l'export n'en produit jamais : un fichier qui en contient est forgé,
+      // et ses lignes s'écrivaient telles quelles.
+      const liensProprietaires = meta.rels.filter((r) => {
+        const cible = manifest.get(r.targetModel)?.klass
+        return r.targetModel !== meta.name && (cible === "owned" || cible === "child")
+      })
+      if (meta.klass === "child" && liensProprietaires.length === 0) {
+        const nombre = (data[meta.name] ?? []).length
+        if (nombre) {
+          skipped[meta.name] = nombre
+          warnings.push(`${nombre} ligne(s) « ${meta.name} » ignorée(s) : ce type de donnée n'appartient à aucun compte.`)
+        }
+        continue
+      }
       const rows = [...(data[meta.name] ?? [])]
       if (meta.name === 'MouvementStockCommercial') rows.sort((a, b) => Number(!!a.origineRetourId) - Number(!!b.origineRetourId))
       const map = ensureMap(meta.name)
@@ -791,6 +884,11 @@ export async function importAccount(
       }
 
       for (const row of rows) {
+        // Une ligne sans propriétaire doit citer au moins une donnée du compte.
+        if (meta.klass === "child" && !liensProprietaires.some((r) => row[r.fkField] !== null && row[r.fkField] !== undefined)) {
+          skip++
+          continue
+        }
         const oldPk = coerceValue(row[meta.pkField], meta.pkType)
         const createData = buildScalarData(meta, row)
         // Connexion Stripe : arrive inactive, sans jeton ni bail. Nouvel id
@@ -1060,7 +1158,11 @@ export function describeManifest() {
       }
     }
   }
-  return { byClass, order, violations }
+  // Champs copiés par modèle : le test de couverture y cherche tout champ
+  // scalaire ou énuméré du schéma (un champ oublié se perd à la restauration).
+  const champs: Record<string, string[]> = {}
+  for (const m of manifest.values()) champs[m.name] = m.scalarFields.map((f) => f.name)
+  return { byClass, order, violations, champs }
 }
 
 /** Validation légère d'un payload d'import. */

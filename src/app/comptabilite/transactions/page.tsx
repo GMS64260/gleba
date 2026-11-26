@@ -1,5 +1,8 @@
 "use client"
 
+import { bornesDateEcriture } from "@/lib/exercices"
+import { lireNombreSaisi } from "@/lib/saisie/nombre"
+import { ChampDecimal } from "@/components/ui/champ-decimal"
 import { useAffichageProgressif } from "@/hooks/use-affichage-progressif"
 import { AfficherPlus } from "@/components/ui/afficher-plus"
 import { cibleReglementLigne } from "@/lib/comptabilite/cle-reglement"
@@ -307,6 +310,8 @@ function TransactionsPageInner() {
       .map((l, i) => <span key={i} className="block">{l}</span>)
   }
   const { toast } = useToast()
+  // Dates d'écriture bornées aux exercices que le sélecteur sait ouvrir (D73).
+  const bornesDates = React.useMemo(() => bornesDateEcriture(), [])
   const router = useRouter()
   const searchParams = useSearchParams()
   const requestedTab = searchParams.get("tab")
@@ -785,6 +790,18 @@ function TransactionsPageInner() {
       return
     }
 
+    // Montant et quantité lus par le parseur commun : « 2,50 » vaut 2,5 (D72).
+    const montantLu = lireNombreSaisi(formData.montant)
+    const quantiteLue = lireNombreSaisi(formData.quantite)
+    if (montantLu === null || !Number.isFinite(montantLu)) {
+      toast({ variant: "destructive", title: "Montant invalide", description: "Saisissez un montant, par exemple 2,50." })
+      return
+    }
+    if (quantiteLue !== null && !Number.isFinite(quantiteLue)) {
+      toast({ variant: "destructive", title: "Quantité invalide", description: "Saisissez un nombre, par exemple 2,5." })
+      return
+    }
+
     const endpoint = formType === "vente"
       ? "/api/comptabilite/ventes-manuelles"
       : "/api/comptabilite/depenses-manuelles"
@@ -803,10 +820,10 @@ function TransactionsPageInner() {
       date: formData.date,
       categorie: formData.categorie,
       description: formData.description,
-      quantite: formData.quantite ? parseFloat(formData.quantite) : null,
+      quantite: quantiteLue,
       unite: formData.unite || null,
       prixUnitaire: formData.prixUnitaire ? parseFloat(formData.prixUnitaire) : null,
-      montant: parseFloat(formData.montant),
+      montant: montantLu,
       clientNom: formData.client || null,
       module: formData.module,
       paye: formData.paye,
@@ -815,7 +832,7 @@ function TransactionsPageInner() {
       date: formData.date,
       categorie: formData.categorie,
       description: formData.description,
-      montant: parseFloat(formData.montant),
+      montant: montantLu,
       fournisseurNom: formData.fournisseur || null,
       module: formData.module,
       paye: formData.paye,
@@ -1275,6 +1292,8 @@ function TransactionsPageInner() {
                       <Label>Date</Label>
                       <Input
                         type="date"
+                        min={bornesDates.min}
+                        max={bornesDates.max}
                         value={formData.date}
                         onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                         required
@@ -1445,12 +1464,10 @@ function TransactionsPageInner() {
                   <div className="grid gap-4 md:grid-cols-4">
                     <div>
                       <Label>Montant ({devise ?? "…"})</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
+                      <ChampDecimal
                         value={formData.montant}
-                        onChange={(e) => setFormData({ ...formData, montant: e.target.value })}
-                        placeholder="0.00"
+                        onValeur={(montant) => setFormData({ ...formData, montant })}
+                        placeholder="0,00"
                         required
                       />
                     </div>
@@ -1458,11 +1475,9 @@ function TransactionsPageInner() {
                       <>
                         <div>
                           <Label>Quantité</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
+                          <ChampDecimal
                             value={formData.quantite}
-                            onChange={(e) => setFormData({ ...formData, quantite: e.target.value })}
+                            onValeur={(quantite) => setFormData({ ...formData, quantite })}
                             placeholder="Optionnel"
                           />
                         </div>
@@ -1535,7 +1550,7 @@ function TransactionsPageInner() {
           <div className="space-y-3">
             <div>
               <Label htmlFor="edit-date">Date</Label>
-              <Input id="edit-date" type="date" value={editForm.date} onChange={(e) => setEditForm({ ...editForm, date: e.target.value })} />
+              <Input id="edit-date" type="date" min={bornesDates.min} max={bornesDates.max} value={editForm.date} onChange={(e) => setEditForm({ ...editForm, date: e.target.value })} />
             </div>
             <div>
               <Label htmlFor="edit-description">Description</Label>

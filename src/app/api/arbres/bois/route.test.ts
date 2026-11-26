@@ -86,4 +86,26 @@ describe("POST /api/arbres/bois — type de production", () => {
     expect(await res.json()).toEqual({ error: "Le type de production est requis", champ: "type" })
     expect(mocks.productionCreate).not.toHaveBeenCalled()
   })
+
+  // Équipe debug, D82 — un lot sans quantité entrait « en stock » puis restait
+  // introuvable dans la liste du stock.
+  it.each([
+    ["tout vide", { volumeM3: null, volumeStere: null, poidsKg: null }],
+    ["volume à zéro", { volumeM3: 0 }],
+    ["volume négatif", { volumeM3: -1 }],
+    ["texte", { volumeM3: "abc" }],
+  ])("refuse un lot sans quantité exploitable : %s", async (_cas, quantites) => {
+    const res = await creer({ ...CORPS_ECRAN, ...quantites })
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).champ).toBe("volumeM3")
+    expect(mocks.productionCreate).not.toHaveBeenCalled()
+  })
+
+  it("accepte un lot mesuré au poids seul, virgule décimale comprise", async () => {
+    const res = await creer({ ...CORPS_ECRAN, volumeM3: null, poidsKg: "12,5" })
+
+    expect(res.status).toBe(201)
+    expect(mocks.productionCreate.mock.calls[0][0].data).toMatchObject({ volumeM3: null, volumeStere: null, poidsKg: 12.5 })
+  })
 })

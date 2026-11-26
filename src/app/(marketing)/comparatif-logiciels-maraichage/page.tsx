@@ -160,7 +160,9 @@ export default function Page() {
         { titre: "Tarifs de l'hébergement Farmier", url: "https://farmier.com/pricing", editeur: "Farmier" },
         { titre: "LiteFarm", url: "https://www.litefarm.org/", editeur: "Université de Colombie-Britannique" },
         { titre: "Dépôt du code de LiteFarm", url: "https://github.com/LiteFarmOrg/LiteFarm", editeur: "GitHub" },
-        { titre: "Outils du projet Mesclun (La Pépinière)", url: "https://outils-mesclun.fr", editeur: "Projet Mesclun" },
+        // Le site des outils a fermé avec eux (lien mort, équipe debug D54) : la
+        // source est désormais la base publiée en données ouvertes.
+        { titre: "Base du projet Mesclun (La Pépinière) en données ouvertes", url: "https://doi.org/10.57745/IQVM2I", editeur: "Recherche Data Gouv (INRAE)" },
         { titre: "Tania, collectif archivé", url: "https://opencollective.com/tania", editeur: "Open Collective" },
         { titre: "Code de Gleba", url: "https://github.com/GMS64260/gleba", editeur: "GitHub" },
       ]}

@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma"
+import { arrondirLitres, litresEnregistrables } from '@/lib/irrigation/quantite-versee'
 import { irrigationCache } from "@/lib/irrigation-cache"
 import { cultureIrrigationDemarreeWhere } from "@/lib/irrigation-eligibility"
 import { idsAExpirer } from "@/lib/irrigation-peremption"
@@ -409,6 +410,9 @@ export async function enregistrerArrosageMesure({
   { ok: true; interventionId: number; cultureIds: number[]; plancheId: string | null } | { ok: false; erreur: string }
 > {
   if (!(Number.isFinite(litres) && litres > 0)) return { ok: false, erreur: 'Quantité versée invalide' }
+  // Jamais de 0 L enregistré : il se relirait comme un volume inconnu, donc
+  // comme un arrosage complet (D60).
+  if (!litresEnregistrables(litres)) return { ok: false, erreur: 'Quantité versée trop faible (moins de 1 mL)' }
   if (litres > LITRES_MAX_PAR_GESTE) return { ok: false, erreur: 'Quantité versée invalide (plus de 100 000 L)' }
   const ids = Array.from(new Set(cultureIds.filter((id) => Number.isInteger(id) && id > 0)))
   const cultures = ids.length
@@ -428,7 +432,7 @@ export async function enregistrerArrosageMesure({
       plancheId: pilote.plancheId,
       fait: true,
       intrantNom: 'Eau',
-      intrantQuantite: Math.round(litres * 10) / 10,
+      intrantQuantite: arrondirLitres(litres),
       intrantUnite: 'L',
       notes: notes?.trim().slice(0, 1000) || null,
     },

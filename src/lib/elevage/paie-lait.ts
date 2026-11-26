@@ -61,3 +61,37 @@ export function estimePrimeQualite(
     penalite: Math.round(malusParMille * mille * 100) / 100,
   }
 }
+
+type LivraisonQualite = {
+  litres: number | string
+  tb?: number | string | null
+  tp?: number | string | null
+  cellules?: number | string | null
+  germes?: number | string | null
+}
+
+/**
+ * Qualité moyenne d'un ensemble de livraisons, pondérée par le volume.
+ *
+ * Un taux est une grandeur du lait livré : 3 L à TB 40 et 97 L à TB 60 font
+ * un lait à 59,4, pas à 50. La moyenne simple donnait le même poids aux deux
+ * livraisons et faussait la prime estimée (équipe debug, D99). Chaque taux est
+ * moyenné sur les seules livraisons qui le renseignent ; `null` si aucune.
+ */
+export function qualiteLivraisonsPonderee(livraisons: LivraisonQualite[]): Required<QualiteLait> {
+  const moyenne = (cle: 'tb' | 'tp' | 'cellules' | 'germes'): number | null => {
+    let somme = 0
+    let volume = 0
+    for (const l of livraisons) {
+      const brut = l[cle]
+      if (brut === null || brut === undefined || brut === '') continue
+      const taux = Number(brut)
+      const litres = Number(l.litres)
+      if (!Number.isFinite(taux) || !Number.isFinite(litres) || litres <= 0) continue
+      somme += taux * litres
+      volume += litres
+    }
+    return volume > 0 ? somme / volume : null
+  }
+  return { tb: moyenne('tb'), tp: moyenne('tp'), cellules: moyenne('cellules'), germes: moyenne('germes') }
+}

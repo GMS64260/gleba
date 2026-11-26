@@ -29,8 +29,29 @@ export async function PUT(request: NextRequest) {
     const animal = await prisma.animal.findFirst({ where: { id: animalId, userId }, select: { id: true } })
     if (!animal) return NextResponse.json({ error: 'Animal introuvable' }, { status: 400 })
     const cotation = b.cotation != null && b.cotation !== '' ? Math.min(6, Math.max(1, Number(b.cotation))) : null
+    const numeroLof = typeof b.numeroLof === 'string' && b.numeroLof.trim() ? b.numeroLof.trim() : null
+    // Un numéro d'inscription désigne un seul animal : le même numéro sur une
+    // autre fiche du compte est une erreur de saisie ou un formulaire resté
+    // sur l'animal précédent (D80).
+    if (numeroLof) {
+      const autre = await prisma.pedigreeElevage.findFirst({
+        where: { userId, numeroLof, animalId: { not: animalId } },
+        select: { animalId: true },
+      })
+      if (autre) {
+        const fiche = await prisma.animal.findFirst({
+          where: { id: autre.animalId, userId },
+          select: { nom: true, identifiant: true },
+        })
+        const qui = fiche?.nom || fiche?.identifiant || 'un autre animal'
+        return NextResponse.json(
+          { error: `Ce numéro d'inscription est déjà celui de ${qui}.`, code: 'NUMERO_LOF_DEJA_PRIS' },
+          { status: 409 },
+        )
+      }
+    }
     const payload = {
-      numeroLof: b.numeroLof || null,
+      numeroLof,
       cotation,
       confirmationLof: !!b.confirmationLof,
       dateConfirmation: b.dateConfirmation ? new Date(b.dateConfirmation) : null,

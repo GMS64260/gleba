@@ -18,6 +18,7 @@ import {
   buildBuckets,
   clampInt,
   sqlSaisies,
+  debutPeriode,
   startOfBucket,
   type GroupeUsageId,
 } from "@/lib/admin-usage"
@@ -38,7 +39,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (!user) return NextResponse.json({ error: "Compte introuvable" }, { status: 404 })
 
     const now = new Date()
-    const windowStart = startOfBucket(new Date(now.getTime() - days * 86_400_000), "week")
+    // Même borne que la liste des comptes, quelle que soit sa granularité.
+    const windowStart = debutPeriode(now, days)
     const semaines = buildBuckets(windowStart, now, "week")
     // Calendrier : 53 semaines pleines, lundi en tête de colonne
     const calendrierDebut = startOfBucket(new Date(now.getTime() - 52 * 7 * 86_400_000), "week")

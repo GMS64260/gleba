@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculerBesoin } from '../calcul'
+import { besoinSemisDirectGrammes, calculerBesoin } from '../calcul'
 
 describe('calculerBesoin', () => {
   describe('mode graine_directe', () => {
@@ -233,5 +233,21 @@ describe('calculerBesoin', () => {
       expect(r.stockGrammes).toBe(0)
       expect(r.statut).toBe('IGNORE')
     })
+  })
+})
+
+// Équipe debug, D101 — Semer n'alertait pas sur le stock d'un semis direct.
+describe("besoinSemisDirectGrammes", () => {
+  it("surface × dose de l'itinéraire, à défaut celle de l'espèce", () => {
+    expect(besoinSemisDirectGrammes({ modeSemis: "graine_directe", uniteDose: "g_m2", doseItp: 2, doseEspece: 3, surfaceM2: 6 })).toBe(12)
+    expect(besoinSemisDirectGrammes({ modeSemis: "graine_directe", uniteDose: null, doseEspece: 3, surfaceM2: 6 })).toBe(18)
+    expect(besoinSemisDirectGrammes({ doseEspece: 2, surfaceM2: 6 })).toBe(12)
+  })
+
+  it("ne s'applique ni à un plant repiqué, ni à une dose qui n'est pas en g/m², ni sans dose ou surface", () => {
+    expect(besoinSemisDirectGrammes({ modeSemis: "plant_repique", doseEspece: 2, surfaceM2: 6 })).toBeNull()
+    expect(besoinSemisDirectGrammes({ modeSemis: "graine_directe", uniteDose: "graines_plant", doseEspece: 2, surfaceM2: 6 })).toBeNull()
+    expect(besoinSemisDirectGrammes({ modeSemis: "graine_directe", surfaceM2: 6 })).toBeNull()
+    expect(besoinSemisDirectGrammes({ modeSemis: "graine_directe", doseEspece: 2, surfaceM2: 0 })).toBeNull()
   })
 })

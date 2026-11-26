@@ -10,3 +10,6 @@ export const refusConservationCaisse: (userId: string, portee: 'compte' | 'donne
   async () => null
 
 export const purgerCaisseEntrainementTx: (tx: unknown, userId: string) => Promise<void> = async () => {}
+
+/** Sans boutique reliée au stock ni caisse, aucun journal de stock n'existe : rien à purger. */
+export const purgerJournauxStockTx: (tx: unknown, userId: string) => Promise<void> = async () => {}

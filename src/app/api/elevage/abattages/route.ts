@@ -20,6 +20,7 @@ import { abattageSchema } from '@/lib/validations/elevage-abattage'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { Prisma } from '@prisma/client'
 import { ErreurElevage } from '@/lib/elevage/erreurs'
+import { refuserSortieAvantEntree } from '@/lib/elevage/chronologie'
 import { verifierAttenteViande } from '@/lib/elevage/attente-viande'
 import { JOUR_SEUL } from '@/lib/elevage/date-soin'
 import { jourCivilStocke } from '@/lib/jour-civil'
@@ -31,7 +32,20 @@ const LOT_ABATTAGE_SELECT = {
   quantiteInitiale: true,
   statut: true,
   nom: true,
+  dateArrivee: true,
 } satisfies Prisma.LotAnimauxSelect
+
+/**
+ * Poids ou prix d'une correction : absent (`null`, chaîne vide), ou un nombre
+ * fini positif ou nul. Le PATCH lisait le corps brut : « -2 » s'enregistrait,
+ * « abc » finissait en erreur 500 et 0 devenait « non renseigné » (D98).
+ */
+function mesureCorrigee(valeur: unknown): { ok: true; valeur: number | null } | { ok: false } {
+  if (valeur === null || valeur === '') return { ok: true, valeur: null }
+  const n = typeof valeur === 'number' ? valeur : typeof valeur === 'string' ? Number(valeur.trim().replace(',', '.')) : NaN
+  return Number.isFinite(n) && n >= 0 ? { ok: true, valeur: n } : { ok: false }
+}
+const DESTINATIONS_ABATTAGE = ['auto_consommation', 'vente', 'don']
 type LotAbattage = Prisma.LotAnimauxGetPayload<{ select: typeof LOT_ABATTAGE_SELECT }>
 
 /** Champs scalaires d'un abattage modifiables par le PATCH. */
@@ -214,11 +228,14 @@ export async function POST(request: NextRequest) {
         if (!animal) throw new ErreurElevage('Animal introuvable', 404)
         if (animal.statut !== 'actif') throw new ErreurElevage("Cet animal n'est plus actif. Rechargez le cheptel.")
         if (lotId && animal.lotId !== lotId) throw new ErreurElevage("Cet animal n'appartient pas au lot indiqué.", 400)
+        refuserSortieAvantEntree(dateAbattage, animal, { evenement: 'Abattage', sujet: "de l'animal" })
       }
       if (lotId) {
         await tx.$queryRaw`SELECT id FROM lots_animaux WHERE id = ${lotId} AND user_id = ${session.user.id} FOR UPDATE`
         const lot = await tx.lotAnimaux.findFirst({ where: { id: lotId, userId: session.user.id }, select: LOT_ABATTAGE_SELECT })
         if (!lot) throw new ErreurElevage('Lot introuvable', 404)
+        // Jamais contournable : le registre d'élevage imprime ces deux dates.
+        refuserSortieAvantEntree(dateAbattage, lot, { evenement: 'Abattage', sujet: 'du lot' })
         if (!overrideCoherence && !animalId) {
           const { collectif, fiches } = await partCollectiveLot(session.user.id, lot, tx)
           if (quantite > collectif) throw refusAbattageHorsEffectif(lot, quantite, collectif, fiches)
@@ -361,10 +378,28 @@ export async function PATCH(request: NextRequest) {
       if (Number.isNaN(q) || q <= 0) return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
       updateData.quantite = q
     }
-    if (poidsVif !== undefined) updateData.poidsVif = poidsVif ? parseFloat(poidsVif) : null
-    if (poidsCarcasse !== undefined) updateData.poidsCarcasse = poidsCarcasse ? parseFloat(poidsCarcasse) : null
-    if (destination !== undefined) updateData.destination = destination
-    if (prixVente !== undefined) updateData.prixVente = prixVente ? parseFloat(prixVente) : null
+    for (const [champ, brut, libelle] of [
+      ['poidsVif', poidsVif, 'Poids vif'],
+      ['poidsCarcasse', poidsCarcasse, 'Poids carcasse'],
+      ['prixVente', prixVente, 'Prix de vente'],
+    ] as const) {
+      if (brut === undefined) continue
+      const lu = mesureCorrigee(brut)
+      if (!lu.ok) {
+        return NextResponse.json(
+          { error: `${libelle} : saisissez un nombre positif ou laissez le champ vide.`, champ },
+          { status: 400 },
+        )
+      }
+      updateData[champ] = lu.valeur
+    }
+    if (destination !== undefined) {
+      const lue = typeof destination === 'string' ? destination.trim().toLowerCase() : ''
+      if (!DESTINATIONS_ABATTAGE.includes(lue)) {
+        return NextResponse.json({ error: 'Destination invalide', champ: 'destination' }, { status: 400 })
+      }
+      updateData.destination = lue
+    }
     // Hors vente, pas de prix : un abattage passé de « vente » à « don » gardait
     // son prix, retiré de la comptabilité mais toujours compté en revenu par
     // l'économie de l'élevage et la carte « Revenus vente » des abattages.
@@ -416,6 +451,19 @@ export async function PATCH(request: NextRequest) {
       // ne se modifient pas ici) : un soin saisi après coup ne bloque pas la
       // correction d'un poids, d'un prix ou d'une note.
       if (updateData.date && updateData.date.getTime() !== courante.date.getTime()) {
+        if (courante.animalId) {
+          const animal = await tx.animal.findFirst({
+            where: { id: courante.animalId, userId },
+            select: { dateArrivee: true, dateNaissance: true },
+          })
+          if (animal) refuserSortieAvantEntree(updateData.date, animal, { evenement: 'Abattage', sujet: "de l'animal" })
+        } else if (courante.lotId) {
+          const lot = await tx.lotAnimaux.findFirst({
+            where: { id: courante.lotId, userId },
+            select: { dateArrivee: true },
+          })
+          if (lot) refuserSortieAvantEntree(updateData.date, lot, { evenement: 'Abattage', sujet: 'du lot' })
+        }
         await verifierAttenteViande(tx, userId, { animalId: courante.animalId, lotId: courante.lotId, date: updateData.date })
       }
       // Créer une facture si demandé et si prixVente existe
