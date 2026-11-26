@@ -5,9 +5,13 @@
  * moins qu'aucune tuile ne lève et que l'information est portée en texte.
  */
 
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
+
+// Le bouton « Noter » de l'en-tête lit les univers actifs de la ferme.
+vi.mock("@/hooks/use-modules", () => ({ useModules: () => ({ modules: ["maraichage", "verger", "elevage"], loading: false }) }))
+vi.mock("@/hooks/use-acces-service", () => ({ useAccesService: () => ({ acces: {} }) }))
 
 import { AccueilEnTete, libelleDate } from "./AccueilEnTete"
 import { PlanVignette } from "./PlanVignette"
