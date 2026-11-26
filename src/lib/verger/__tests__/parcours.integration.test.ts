@@ -77,7 +77,7 @@ it('CONTROLE : récolter sur l’arbre d’une autre exploitation est refusé', 
   expect(await db.recolteArbre.count({ where: { userId: auth.id } })).toBe(0)
 })
 
-it('le DAR est signalé à la récolte puis à la vente', async () => {
+it('le DAR est signalé à la récolte, puis la mise en vente est refusée pendant le délai', async () => {
   await db.observationSante.create({ data: { userId: auth.id, arbreId: a.id, date: hier, type: 'maladie',
     traitement: 'Traitement fictif', methodeTraitement: 'chimique', produit: 'Produit fictif', dar: 7, numAMM: '9999999',
     doseAppliquee: 1, uniteDose: 'L/ha', surfaceTraiteeHa: 1, volumeBouillieLHa: 100,
@@ -88,9 +88,11 @@ it('le DAR est signalé à la récolte puis à la vente', async () => {
   expect(recolte.status).toBe(201)
   const avertissements = [...(json.warnings ?? []), ...(json.avertissements ?? [])].join(' ')
   expect(avertissements).toMatch(/DAR|délai avant récolte|traitement/i)
+  // Un délai déclaré sur le traitement est bloquant à la vente (src/lib/phyto/refus-dar.ts).
   const vendue = await vente(json.id)
-  expect(vendue.status).toBe(200)
-  console.log('Avertissement DAR partagé', { darJours: 7, recolteLeLendemain: recolte.status, vente: vendue.status, avertissementDAR: true })
+  expect(vendue.status).toBe(409)
+  expect(await vendue.json()).toMatchObject({ code: 'DAR_EN_COURS' })
+  expect((await db.recolteArbre.findUniqueOrThrow({ where: { id: json.id } })).statut).not.toBe('vendu')
 })
 
 
