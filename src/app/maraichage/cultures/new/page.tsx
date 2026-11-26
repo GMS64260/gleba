@@ -4,6 +4,7 @@
  * Page de création d'une nouvelle culture
  */
 
+import { ChampDecimalNombre } from "@/components/ui/champ-decimal"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -1214,16 +1215,12 @@ export default function NewCulturePage() {
                       <FormItem>
                         <FormLabel>Longueur (m)</FormLabel>
                         <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            {...field}
-                            value={field.value ?? ""}
-                            onChange={(e) =>
-                              field.onChange(
-                                e.target.value ? parseFloat(e.target.value) : null
-                              )
-                            }
+                          <ChampDecimalNombre
+                            name={field.name}
+                            ref={field.ref}
+                            onBlur={field.onBlur}
+                            value={field.value ?? null}
+                            onNombre={field.onChange}
                           />
                         </FormControl>
                         <FormMessage />

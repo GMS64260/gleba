@@ -14,7 +14,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { m3PleinToStere, stereToM3Plein } from "@/lib/recolte/lot"
 // Types de production bois : liste unique partagée avec l'écran (QA cmvnp0dm9).
 import { refusTypeProductionBois } from "@/lib/verger/production-bois"
-import { prixFruitApi, dateRecolteApi } from '@/lib/verger/creation-recolte'
+import { prixFruitApi, dateRecolteApi, quantiteLotApi } from '@/lib/verger/creation-recolte'
 import { ErreurVerger } from '@/lib/verger/erreur'
 import { prochainNumeroLotVerger } from '@/lib/verger/numero-lot'
 import { verrouillerStockCommercial } from '@/lib/stocks/verrou-commercial'
@@ -175,10 +175,17 @@ export async function POST(request: NextRequest) {
 
       // DEV3 #4 — Conversion automatique stère ↔ m³ plein
       // Si l'utilisateur saisit l'un, on calcule l'autre.
-      let volumeM3 = body.volumeM3 != null && body.volumeM3 !== "" ? parseFloat(body.volumeM3) : null
-      let volumeStere = body.volumeStere != null && body.volumeStere !== "" ? parseFloat(body.volumeStere) : null
+      let volumeM3 = quantiteLotApi(body.volumeM3, 'volumeM3')
+      let volumeStere = quantiteLotApi(body.volumeStere, 'volumeStere')
+      const poidsKg = quantiteLotApi(body.poidsKg, 'poidsKg')
       if (volumeM3 != null && volumeStere == null) volumeStere = m3PleinToStere(volumeM3)
       if (volumeStere != null && volumeM3 == null) volumeM3 = stereToM3Plein(volumeStere)
+      // Un lot sans quantité entrait « en stock » puis restait introuvable : la
+      // liste du stock ne montre que les lots dont il reste quelque chose
+      // (équipe debug, D82). Même exigence que pour une récolte de fruits.
+      if (!(quantiteBois({ volumeStere, volumeM3, poidsKg }).quantite > 0)) {
+        throw new ErreurVerger('Indiquez un volume ou un poids supérieur à zéro.', 400, 'volumeM3')
+      }
 
       // DEV3 #4 — Parcelle d'origine : par défaut celle de l'arbre, surchargeable
       const parcelleId =
@@ -199,7 +206,7 @@ export async function POST(request: NextRequest) {
           type: body.type,
           volumeM3,
           volumeStere,
-          poidsKg: body.poidsKg ? parseFloat(body.poidsKg) : null,
+          poidsKg,
           statut: "en_stock",
           destination: body.destination || null,
           prixVente: prixVente ?? null,

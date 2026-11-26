@@ -179,7 +179,8 @@ describe('getKpiCompta', () => {
     // Même périmètre que le total : factures ni brouillon ni annulées, bornées au jour.
     const premier = mocked.facture.findMany.mock.calls[0][0]
     expect(premier.where.statut).toEqual({ notIn: ['annulee', 'brouillon'] })
-    expect(premier.where.date.lte).toEqual(new Date('2026-10-19T12:00:00'))
+    // Au soir du jour, pas à l'instant : un avoir daté du jour (minuit UTC) est compté (D70).
+    expect(premier.where.date.lte).toEqual(new Date(2026, 9, 19, 23, 59, 59, 999))
   })
 
   it('un changement de devise courante ne réutilise pas les agrégats mis en cache avant le changement', async () => {

@@ -522,7 +522,7 @@ function ParametresContent() {
         title: 'Sauvegarde complète téléchargée',
         description: avertissement
           ? `${avertissement} Conservez ce fichier précieusement.`
-          : 'Conservez ce fichier précieusement. Il contient toutes vos données.',
+          : 'Conservez ce fichier précieusement. Il contient vos données de ferme.',
       })
     } catch {
       toast({
@@ -1041,8 +1041,10 @@ function ParametresContent() {
               <div className="space-y-3">
                 <h4 className="text-sm font-medium text-slate-900">Sauvegarde complète</h4>
                 <p className="text-sm text-slate-500">
-                  Un seul fichier avec <strong>toutes</strong> vos données : potager, verger,
-                  élevage, comptabilité, stocks, préférences. Vos données vous appartiennent.
+                  Un seul fichier avec vos données de ferme : potager, verger, élevage,
+                  comptabilité, stocks, préférences. La boutique en ligne (produits, commandes)
+                  n’en fait pas partie ; le fichier le rappelle s’il y a lieu. Vos données vous
+                  appartiennent.
                 </p>
                 <Button onClick={handleExportFull} disabled={exportingFull}>
                   {exportingFull ? (

@@ -123,3 +123,25 @@ describe("libelleFenetre", () => {
     expect(libelleFenetre(null, new Date(2026, 6, 31))).toBeNull()
   })
 })
+
+// Équipe debug, D62 — une date prévue saisie à la main est stockée à minuit
+// UTC ; comparée au minuit local du jour, elle passait pour « à venir » le
+// jour même à l'est de Greenwich.
+describe("statutOperationArbre en jours civils", () => {
+  const aujourdhui = new Date(2026, 10, 25)
+
+  it("un travail prévu aujourd'hui est à faire, que sa date soit stockée à minuit UTC ou local", () => {
+    expect(statutOperationArbre({ fait: false, datePrevue: "2026-11-25T00:00:00.000Z" }, aujourdhui)).toBe("a_faire")
+    expect(statutOperationArbre({ fait: false, datePrevue: new Date(2026, 10, 25) }, aujourdhui)).toBe("a_faire")
+  })
+
+  it("la veille est en retard, le lendemain à venir", () => {
+    expect(statutOperationArbre({ fait: false, datePrevue: "2026-11-24T00:00:00.000Z" }, aujourdhui)).toBe("en_retard")
+    expect(statutOperationArbre({ fait: false, datePrevue: "2026-11-26T00:00:00.000Z" }, aujourdhui)).toBe("a_venir")
+  })
+
+  it("une fenêtre qui finit aujourd'hui est encore ouverte", () => {
+    expect(statutOperationArbre({ fait: false, datePrevue: "2026-11-01T00:00:00.000Z", dateLimite: "2026-11-25T00:00:00.000Z" }, aujourdhui)).toBe("a_faire")
+    expect(statutOperationArbre({ fait: false, datePrevue: "2026-11-01T00:00:00.000Z", dateLimite: "2026-11-24T00:00:00.000Z" }, aujourdhui)).toBe("fenetre_depassee")
+  })
+})

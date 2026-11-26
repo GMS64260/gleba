@@ -175,6 +175,21 @@ export function startOfBucket(d: Date, bucket: Bucket): Date {
   return x
 }
 
+/**
+ * Premier jour (UTC) d'une période de `days` jours civils qui finit
+ * aujourd'hui : « 7 jours » va d'aujourd'hui à J-6.
+ *
+ * Une seule borne pour la liste, la fiche d'un compte et les métriques. Elle
+ * ne dépend pas de la granularité d'affichage : alignée sur le mois, la
+ * période « 30 jours » remontait au 1er du mois précédent et ne concordait
+ * plus avec la fiche, alignée sur la semaine (équipe debug, D67). Et une
+ * fenêtre glissante à la milliseconde, comparée à une colonne de jours,
+ * comptait huit jours sur sept (D88).
+ */
+export function debutPeriode(now: Date, days: number): Date {
+  return new Date(startOfBucket(now, "day").getTime() - (Math.max(1, days) - 1) * 86_400_000)
+}
+
 /** Liste continue des buckets (clés YYYY-MM-DD) entre start et end inclus. */
 export function buildBuckets(start: Date, end: Date, bucket: Bucket): string[] {
   const out: string[] = []

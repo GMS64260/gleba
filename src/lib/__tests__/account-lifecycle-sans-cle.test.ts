@@ -14,6 +14,9 @@ describe('supprimerDonneesSansCleEtrangere', () => {
     ]
     const tx: Record<string, { deleteMany: ReturnType<typeof vi.fn> }> = {}
     for (const m of [...modeles, 'aliment']) tx[m] = { deleteMany: vi.fn(async () => ({ count: 1 })) }
+    // Purge des journaux de stock (sans effet dans le dépôt public, fonction SQL sur gleba.fr).
+    const executeRaw = vi.fn(async () => 0)
+    Object.assign(tx, { $executeRaw: executeRaw })
 
     const total = await supprimerDonneesSansCleEtrangere(tx as never, 'compte-a')
 

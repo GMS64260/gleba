@@ -8,7 +8,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { ESPECE_TYPES_VERGER, estTypeVerger } from "@/lib/validations/espece"
+import { estTypeVerger } from "@/lib/validations/espece"
+import { WHERE_BIOAGRESSEUR_VERGER } from "@/lib/verger/bioagresseurs-verger"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 
@@ -30,13 +31,7 @@ export async function GET(request: NextRequest) {
     // On ne garde que ceux dont au moins une espèce cible est un arbre
     // fruitier ou un petit fruit. Les bioagresseurs sans cible (adventices
     // génériques type Chiendent/Liseron) restent hors du référentiel verger.
-    where.especes = {
-      some: {
-        espece: {
-          type: { in: [...ESPECE_TYPES_VERGER] },
-        },
-      },
-    }
+    where.especes = WHERE_BIOAGRESSEUR_VERGER.especes
   }
 
   const bioagresseurs = await prisma.bioagresseur.findMany({

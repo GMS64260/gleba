@@ -32,6 +32,7 @@ import {
   lireModulesActifs,
   parseBucket,
   sqlSaisies,
+  debutPeriode,
   startOfBucket,
   type GroupeUsageId,
   type Segment,
@@ -54,8 +55,9 @@ export async function GET(request: NextRequest) {
     const bucket = parseBucket(searchParams.get("bucket"))
 
     const now = new Date()
-    const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
-    const windowStart = startOfBucket(start, bucket)
+    // La période ne dépend pas de la granularité : seul le premier intervalle
+    // du graphique peut être partiel (`buildBuckets` l'aligne lui-même).
+    const windowStart = debutPeriode(now, days)
     const buckets = buildBuckets(windowStart, now, bucket)
     const bucketSql = Prisma.raw(`'${bucket}'`) // validé par liste blanche
     const range = { days, bucket, start: windowStart.toISOString() }

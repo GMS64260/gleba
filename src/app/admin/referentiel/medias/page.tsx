@@ -10,7 +10,7 @@ export default async function ModerationMediasPage() {
   await requireAdmin();
   const medias = await prisma.mediaReferentiel.findMany({
     where: { statut: "PROPOSE" },
-    select: { id: true, url: true, miniatureUrl: true, auteur: true, licence: true, citation: true, organe: true, description: true, createdAt: true, espece: { select: { id: true, nom: true } } },
+    select: { id: true, auteur: true, licence: true, citation: true, organe: true, description: true, createdAt: true, espece: { select: { id: true, nom: true } } },
     orderBy: { createdAt: "asc" },
   });
 

@@ -150,6 +150,18 @@ export async function ancetres(
   return visited
 }
 
+/** Fiche d'un ancêtre commun, telle que la route de consanguinité la rend à l'écran. */
+export type AncetreCommun = { id: number; nom: string | null; identifiant: string | null }
+
+/** Réponse de `GET /api/elevage/consanguinite` : le même type pour la route et pour l'écran. */
+export type ReponseConsanguinite = {
+  consanguinite: boolean
+  generations: number
+  /** Identifiants seuls, gardés pour les appelants anciens. */
+  ancetresCommuns: number[]
+  ancetres: AncetreCommun[]
+}
+
 /**
  * Détecte la consanguinité entre deux animaux : intersection des ancêtres
  * sur `generations`. Retourne les IDs d'ancêtres partagés (un seul suffit

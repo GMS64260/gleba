@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "next-auth/react"
-import { ajouterOperation, lireFile, lireTachesCachees, oublierAutreActeur, sauverTaches, synchroniserOperations, type PorteeTournee, type TacheTournee } from "@/lib/elevage/offline-tournee"
+import { ajouterOperation, lireFile, lireTachesCachees, oublierAutreActeur, sansTachesEnFile, sauverTaches, synchroniserOperations, type PorteeTournee, type TacheTournee } from "@/lib/elevage/offline-tournee"
 
 const CATEGORIES: Record<string, string> = {
   alimentation: 'Alimentation',
@@ -79,7 +79,9 @@ export default function TourneePage() {
       const res = await fetch('/api/elevage/tournee?jours=7')
       if (!res.ok) throw new Error()
       const { data, portee } = await res.json() as { data: TacheTournee[]; portee: PorteeTournee }
-      setTasks(data); await sauverTaches(portee, data)
+      await sauverTaches(portee, data)
+      // Une tâche déjà acquittée mais pas encore envoyée ne se repropose pas.
+      setTasks(sansTachesEnFile(data, await lireFile(acteurRef.current)))
     } catch { setTasks(await lireTachesCachees(acteurRef.current)) }
     // Échéances élevage (soins, injections, délais, mises-bas) — mêmes sources
     // que le Dashboard. Best-effort : hors connexion, seules les tâches
@@ -94,6 +96,18 @@ export default function TourneePage() {
     setQueued((await lireFile(acteurRef.current)).length)
   }, [])
 
+  // `toast` lu par une ref : l'annonce reste stable d'un rendu à l'autre et
+  // ne relance pas le chargement de la tournée.
+  const toastRef = React.useRef(toast)
+  toastRef.current = toast
+  const annoncerRejets = React.useCallback((n: number) => {
+    toastRef.current({
+      variant: 'destructive',
+      title: n > 1 ? `${n} acquittements refusés` : 'Un acquittement refusé',
+      description: 'La tâche a été supprimée ou modifiée entre-temps. Vérifiez la tournée.',
+    })
+  }, [])
+
   // Lecture puis envoi de la file restée en attente : sans cela, une tâche validée
   // hors réseau ne partait qu'à un retour du réseau vécu page ouverte, ou à la
   // validation suivante. Rouvrir la tournée en ligne suffit maintenant.
@@ -101,10 +115,11 @@ export default function TourneePage() {
     await refresh()
     if (!navigator.onLine) return
     try {
-      const { envoyees } = await synchroniserOperations()
-      if (envoyees > 0) await refresh()
+      const { envoyees, rejetees } = await synchroniserOperations()
+      if (rejetees > 0) annoncerRejets(rejetees)
+      if (envoyees > 0 || rejetees > 0) await refresh()
     } catch { /* base locale illisible : la file reste pour la prochaine fois */ }
-  }, [refresh])
+  }, [refresh, annoncerRejets])
 
   React.useEffect(() => {
     if (!acteurSession || acteurRef.current === acteurSession) return
@@ -149,14 +164,28 @@ export default function TourneePage() {
     }
   }
 
+  // Appuis successifs sur « Fait » : un seul acquittement à la fois par tâche.
+  const enCours = React.useRef(new Set<string>())
   async function terminer(task: TacheTournee) {
+    if (enCours.current.has(task.id)) return
+    enCours.current.add(task.id)
+    try {
+      await acquitter(task)
+    } finally {
+      enCours.current.delete(task.id)
+    }
+  }
+  async function acquitter(task: TacheTournee) {
     const op = { tacheId: task.id, dateEcheance: task.prochaineEcheance, dateRealisation: new Date().toISOString(), notes: null, clientOperationId: crypto.randomUUID() }
     if (!await ajouterOperation(op)) {
       toast({ variant: 'destructive', title: 'Tâche non enregistrée', description: 'Rechargez la tournée en ligne avant de la reprendre hors connexion.' })
       return
     }
     setTasks(current => current.filter(t => t.id !== task.id))
-    if (online) await synchroniserOperations()
+    if (online) {
+      const { rejetees } = await synchroniserOperations()
+      if (rejetees > 0) annoncerRejets(rejetees)
+    }
     setQueued((await lireFile(acteurRef.current)).length)
     toast({ title: online ? 'Tâche acquittée' : 'Tâche conservée hors connexion', description: online ? undefined : 'Elle sera synchronisée au retour du réseau.' })
     if (online) await refresh()

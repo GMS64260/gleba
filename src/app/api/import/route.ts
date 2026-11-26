@@ -23,6 +23,7 @@ interface ImportData {
   exportDate?: string
   familles?: Array<{
     id: string
+    nomFr?: string | null
     intervalle?: number | null
     couleur?: string | null
     description?: string | null
@@ -350,12 +351,14 @@ export async function POST(request: NextRequest) {
         await tx.famille.upsert({
           where: { id: item.id },
           update: {
+            nomFr: item.nomFr,
             intervalle: item.intervalle ?? 4,
             couleur: item.couleur,
             description: item.description,
           },
           create: {
             id: item.id,
+            nomFr: item.nomFr,
             intervalle: item.intervalle ?? 4,
             couleur: item.couleur,
             description: item.description,

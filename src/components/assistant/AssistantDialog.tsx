@@ -60,6 +60,10 @@ export interface EspeceData {
   irrigation?: string | null
   niveau?: string | null
   categorie?: string | null
+  /** Semis : mode, dose et son unité (contrôle du stock de semences à Semer). */
+  modeSemis?: string | null
+  doseSemis?: number | null
+  uniteDose?: string | null
   itps?: ITPData[]
 }
 
@@ -83,6 +87,8 @@ export interface ITPData {
   notes?: string | null
   decalageMax?: number | null
   nbGrainesPlant?: number | null
+  /** Dose de semis de cette conduite (g/m²), prioritaire sur celle de l'espèce. */
+  doseSemis?: number | null
   /** Fenêtre et opération d'implantation (alerte de saison, 2026-10-25). */
   semaineImplantationDebut?: number | null
   semaineImplantationFin?: number | null

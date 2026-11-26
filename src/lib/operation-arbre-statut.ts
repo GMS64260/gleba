@@ -15,6 +15,8 @@
  * après, jamais « en retard ».
  */
 
+import { jourCivilStocke, jourLocalISO } from "@/lib/jour-civil"
+
 export type StatutOperationArbre =
   | "faite"
   | "soldee"
@@ -50,18 +52,26 @@ export function statutOperationArbre(
   if (operation.fait) return "faite"
   if (versDate(operation.abandonneeLe)) return "soldee"
 
+  // Comparaison en JOURS CIVILS, pas en instants. Une date prévue saisie à la
+  // main est stockée à minuit UTC, une date générée à minuit local : comparée
+  // au minuit local du jour, la première (01:00 à Paris) passait pour « à
+  // venir » le jour même (équipe debug, D62). `jourCivilStocke` lit le bon
+  // jour pour les deux formes.
+  const jour = jourLocalISO(aujourdhui)
   const limite = versDate(operation.dateLimite)
-  if (limite && limite < aujourdhui) return "fenetre_depassee"
+  const jourLimite = limite ? jourCivilStocke(limite) : null
+  if (jourLimite && jourLimite < jour) return "fenetre_depassee"
 
   const prevue = versDate(operation.datePrevue)
-  if (prevue && prevue > aujourdhui) return "a_venir"
+  const jourPrevu = prevue ? jourCivilStocke(prevue) : null
+  if (jourPrevu && jourPrevu > jour) return "a_venir"
 
   // Fenêtre encore ouverte : faisable, quel que soit l'âge de la date conseillée.
-  if (limite) return "a_faire"
+  if (jourLimite) return "a_faire"
 
   // Échéance ferme dépassée : c'est un vrai retard, à remonter tel quel. Un
   // rappel volontairement antidaté par l'utilisateur est un signal, pas du bruit.
-  if (prevue && prevue < aujourdhui) return "en_retard"
+  if (jourPrevu && jourPrevu < jour) return "en_retard"
 
   return "a_faire"
 }

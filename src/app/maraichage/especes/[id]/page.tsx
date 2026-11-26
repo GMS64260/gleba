@@ -739,7 +739,7 @@ export default function EditEspecePage() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Tabs value={onglet} onValueChange={changerOnglet} className="w-full">
-              <TabsList className="grid w-full grid-cols-7">
+              <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 sm:grid sm:grid-cols-7">
                 <TabsTrigger value="general">Général</TabsTrigger>
                 <TabsTrigger value="culture">Culture</TabsTrigger>
                 <TabsTrigger value="recolte">Récolte</TabsTrigger>

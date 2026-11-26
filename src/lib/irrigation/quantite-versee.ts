@@ -89,7 +89,26 @@ export function aideQuantite(litresParM2: number | null, surfaceM2: number): str
     .join(' ')
 }
 
+/**
+ * Quantité versée telle qu'elle est enregistrée : au millilitre.
+ *
+ * L'enregistrement arrondissait au dixième de litre : 0,04 L devenait 0 L,
+ * que la lecture prenait pour un volume inconnu, donc pour un arrosage
+ * complet, et le besoin d'eau de la planche disparaissait (équipe debug, D60).
+ * Une quantité qui s'arrondit à zéro est refusée, à la saisie comme au serveur.
+ */
+export function arrondirLitres(litres: number): number {
+  return Math.round(litres * 1000) / 1000
+}
+
+/** Vrai si la quantité saisie laisse une valeur enregistrable (au moins 1 mL). */
+export function litresEnregistrables(litres: number): boolean {
+  return Number.isFinite(litres) && arrondirLitres(litres) > 0
+}
+
 /** Détail du toast « Arrosage noté ». */
 export function detailArrosageNote(nom: string, litres: number | null): string {
-  return `${nom} · ${litres ? `${formatNombre(litres, 1)} L versés` : 'arrosage complet'}, consigné dans les interventions.`
+  // Sous 1 L, le dixième ne suffit pas : « 0 L versés » pour 0,04 L.
+  const versee = litres ? `${formatNombre(litres, litres < 1 ? 3 : 1)} L versés` : 'arrosage complet'
+  return `${nom} · ${versee}, consigné dans les interventions.`
 }

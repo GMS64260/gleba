@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   besoinGrainesSansMarge,
+  statutSelonMarge,
   totalGrainesACommander,
 } from "@/lib/semences/calcul"
 
@@ -32,5 +33,28 @@ describe("affichage des besoins avec ou sans marge", () => {
       { grainesNecessaires: 11.5, margeSecuritePct: 15, stockActuel: 12 },
       { grainesNecessaires: 5.75, margeSecuritePct: 15, stockActuel: 2 },
     ], false)).toBeCloseTo(3)
+  })
+})
+
+// Équipe debug, D91 — marge désactivée, le statut restait celui du serveur,
+// marge comprise : « Insuffisant » alors que le stock couvrait le besoin affiché.
+describe("statutSelonMarge", () => {
+  const besoin = { grainesNecessaires: 10.35, margeSecuritePct: 15, stockActuel: 9.68, statut: "LOW" as const }
+
+  it("garde le statut du serveur quand la marge est comptée", () => {
+    expect(statutSelonMarge(besoin, true)).toBe("LOW")
+  })
+
+  it("recalcule sans la marge : 9,68 g couvrent un besoin brut de 9 g", () => {
+    expect(statutSelonMarge(besoin, false)).toBe("OK")
+    expect(statutSelonMarge({ ...besoin, stockActuel: 8.9 }, false)).toBe("LOW")
+    expect(statutSelonMarge({ ...besoin, stockActuel: 9 }, false)).toBe("OK")
+    expect(statutSelonMarge({ ...besoin, stockActuel: 0, statut: "MISSING" as const }, false)).toBe("MISSING")
+  })
+
+  it("ne touche ni un besoin compté en unités, ni un statut sans comparaison de stock", () => {
+    expect(statutSelonMarge(besoin, false, true)).toBe("LOW")
+    expect(statutSelonMarge({ ...besoin, statut: "DONNEE_MANQUANTE" as const }, false)).toBe("DONNEE_MANQUANTE")
+    expect(statutSelonMarge({ ...besoin, grainesNecessaires: 0 }, false)).toBe("LOW")
   })
 })

@@ -41,12 +41,15 @@ export interface CultureArrosee {
 }
 
 /**
- * Litres d'une saisie d'intervention, ou null si l'unité n'est pas une
- * quantité d'eau. Le formulaire propose « kg » par défaut : pour de l'eau,
- * 1 kg = 1 L (20 kg saisis valaient un arrosage plein).
+ * Litres d'une saisie d'intervention, ou null si la quantité est absente ou
+ * si l'unité n'est pas une quantité d'eau. Le formulaire propose « kg » par
+ * défaut : pour de l'eau, 1 kg = 1 L (20 kg saisis valaient un arrosage plein).
+ *
+ * Un zéro saisi avec une unité d'eau est un apport nul, pas un volume inconnu :
+ * « 0 L » ne remplit pas la réserve du sol (D60).
  */
 export function litresSaisis(quantite: number | null, unite: string | null): number | null {
-  if (quantite === null || !(quantite > 0)) return null
+  if (quantite === null || !Number.isFinite(quantite) || quantite < 0) return null
   const u = (unite ?? '').trim().toLowerCase()
   if (u === 'l' || u.startsWith('litre') || u === 'kg') return quantite
   if (u === 'm3' || u === 'm³' || u === 't') return quantite * 1000
@@ -174,7 +177,8 @@ export function dernierArrosage(
   maintenant: Date = new Date(),
 ): Date | null {
   let dernier: Date | null = null
-  for (const date of [derniereIrrigation, ...saisis.map((a) => a.date)]) {
+  // Une saisie à 0 L n'a rien apporté : elle ne date pas un arrosage (D60).
+  for (const date of [derniereIrrigation, ...saisis.filter((a) => a.litresParM2 !== 0).map((a) => a.date)]) {
     if (date && !apresDemain(date, maintenant) && (!dernier || date > dernier)) dernier = date
   }
   return dernier

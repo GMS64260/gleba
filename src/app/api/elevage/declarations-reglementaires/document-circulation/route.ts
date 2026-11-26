@@ -15,7 +15,7 @@ import {
   anomaliesDocumentCirculation,
   construireSnapshotDocumentCirculation,
   declarationCompatibleDocumentCirculation,
-  PREPARATION_CIRCULATION_VIDE,
+  preparationCirculationDepuis,
   type PreparationDocumentCirculation,
 } from "@/lib/elevage/document-circulation"
 
@@ -79,10 +79,7 @@ const selectPreparation = {
 function normaliserPreparation(
   value: PreparationPersisted | null | undefined,
 ): PreparationDocumentCirculation {
-  return {
-    ...PREPARATION_CIRCULATION_VIDE,
-    ...value,
-  }
+  return preparationCirculationDepuis(value)
 }
 
 async function chargerContexte(userId: string, year: number, key: string) {

@@ -21,6 +21,7 @@ import {
   lireLitres,
   litresConseilles,
   type ContexteQuantiteVersee,
+  litresEnregistrables,
 } from "@/lib/irrigation/quantite-versee"
 
 export function SaisieArrosage({
@@ -57,7 +58,7 @@ export function SaisieArrosage({
         className="grid gap-4"
         onSubmit={(e) => {
           e.preventDefault()
-          if (quantite > 0 && !enCours) onNoter(quantite, observation)
+          if (litresEnregistrables(quantite) && !enCours) onNoter(quantite, observation)
         }}
       >
         <div className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/60 p-4">
@@ -102,7 +103,7 @@ export function SaisieArrosage({
           <Button type="button" variant="outline" onClick={() => onNoter(null, observation)} disabled={enCours}>
             Quantité inconnue
           </Button>
-          <Button type="submit" disabled={enCours || !(quantite > 0)}>
+          <Button type="submit" disabled={enCours || !litresEnregistrables(quantite)}>
             {enCours && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
             Enregistrer
           </Button>

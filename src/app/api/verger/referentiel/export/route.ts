@@ -11,6 +11,7 @@ import { ESPECE_TYPES_VERGER } from "@/lib/validations/espece"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
+import { WHERE_BIOAGRESSEUR_VERGER, WHERE_CIBLES_VERGER } from "@/lib/verger/bioagresseurs-verger"
 
 type Onglet = "especes" | "porte-greffes" | "bioagresseurs" | "essences"
 
@@ -89,7 +90,9 @@ export async function GET(request: NextRequest) {
     )
     filename = "referentiel-porte-greffes.csv"
   } else if (onglet === "bioagresseurs") {
+    // Même périmètre que l'onglet : organismes et cibles du verger (D83).
     const data = await prisma.bioagresseur.findMany({
+      where: WHERE_BIOAGRESSEUR_VERGER,
       select: {
         nomCommun: true,
         nomLatin: true,
@@ -98,7 +101,7 @@ export async function GET(request: NextRequest) {
         periodePression: true,
         methodesPbi: true,
         seuilNuisibilite: true,
-        especes: { select: { especeId: true } },
+        especes: { where: WHERE_CIBLES_VERGER, select: { especeId: true } },
         notes: true,
       },
       orderBy: [{ type: "asc" }, { nomCommun: "asc" }],

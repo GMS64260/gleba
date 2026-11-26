@@ -17,7 +17,7 @@ import prisma from '@/lib/prisma'
 import { chargerAttentesConsolidees } from '@/lib/elevage/attentes-query'
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
-import { sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
+import { injectionsHorsSoinsListes, sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
 import { classerEcheanceSoin, jourCivil, joursAvantEcheance } from '@/lib/elevage/echeances-soins'
 
 export type GraviteEcheance = 'info' | 'attention' | 'urgent'
@@ -375,9 +375,8 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
   // échéances au même jour : celle du soin (boucle ci-dessus) et celle de son
   // unique injection. Le protocole multi-injections, lui, garde le détail de
   // chaque injection, qui porte une information que le soin n'a pas.
-  const soinsDejaListes = new Set(soinsPlanifies.filter((s) => s.datePrevue).map((s) => s.id))
-  for (const injection of injectionsPlanifiees) {
-    if (injection.nombreInjections <= 1 && soinsDejaListes.has(injection.soinId)) continue
+  const soinsDejaListes = soinsPlanifies.filter((s) => s.datePrevue).map((s) => s.id)
+  for (const injection of injectionsHorsSoinsListes(injectionsPlanifiees, soinsDejaListes)) {
     const jr = joursAvantEcheance(injection.datePrevue, aujourdhui)
     if (jr == null) continue
     const retard = classerEcheanceSoin(injection.datePrevue, aujourdhui, horizonJours) === 'en_retard'

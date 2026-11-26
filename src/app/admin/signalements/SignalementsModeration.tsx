@@ -1,5 +1,6 @@
 "use client"
 
+import { useDerniereDemande } from "@/hooks/use-derniere-demande"
 import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -43,18 +44,31 @@ export function SignalementsModeration() {
   const [loading, setLoading] = React.useState(true)
   const [busy, setBusy] = React.useState<string | null>(null)
 
+  // Une panne de lecture n'est pas une liste vide : « Aucun signalement »
+  // affiché sur une erreur ferait croire que la file est traitée.
+  const [erreur, setErreur] = React.useState(false)
+  const nouvelleDemande = useDerniereDemande()
+
   const charger = React.useCallback(async () => {
+    // La réponse tardive d'un filtre précédent ne remplace pas celle du
+    // filtre affiché (D66 : « Rejetés » montrait les résultats de « Tous »).
+    const estActuelle = nouvelleDemande()
     setLoading(true)
+    setErreur(false)
     try {
-      const res = await fetch(`/api/admin/signalements?statut=${statut}`)
-      const json = res.ok ? await res.json() : { data: [] }
+      const res = await fetch(`/api/admin/signalements?statut=${statut}`, { cache: "no-store" })
+      if (!res.ok) throw new Error("lecture refusée")
+      const json = await res.json()
+      if (!estActuelle()) return
       setItems(json.data || [])
     } catch {
+      if (!estActuelle()) return
       setItems([])
+      setErreur(true)
     } finally {
-      setLoading(false)
+      if (estActuelle()) setLoading(false)
     }
-  }, [statut])
+  }, [statut, nouvelleDemande])
 
   React.useEffect(() => {
     void charger()
@@ -128,6 +142,11 @@ export function SignalementsModeration() {
       {loading ? (
         <div className="flex items-center justify-center h-40 text-slate-400">
           <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      ) : erreur ? (
+        <div role="alert" className="py-10 text-center text-sm text-red-700">
+          Les signalements n’ont pas pu être chargés.{" "}
+          <button type="button" className="underline" onClick={() => void charger()}>Réessayer</button>
         </div>
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground py-10 text-center">Aucun signalement.</p>

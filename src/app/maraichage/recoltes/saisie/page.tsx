@@ -4,6 +4,8 @@
  * Page de saisie rapide des recoltes
  */
 
+import { lireNombreSaisi } from "@/lib/saisie/nombre"
+import { ChampDecimal } from "@/components/ui/champ-decimal"
 import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
 import Link from "next/link"
@@ -281,6 +283,11 @@ export default function SaisieRecoltePage() {
       })
       return
     }
+    const quantiteLue = lireNombreSaisi(quantite)
+    if (quantiteLue === null || !Number.isFinite(quantiteLue) || quantiteLue <= 0) {
+      setSubmitError("Indiquez une quantité supérieure à zéro (ex. 2,5).")
+      return
+    }
 
     const cultureData = selectedCultureData
     if (!cultureData) return
@@ -293,7 +300,7 @@ export default function SaisieRecoltePage() {
         body: JSON.stringify({
           especeId: cultureData.especeId,
           cultureId: cultureData.id,
-          quantite: parseFloat(quantite),
+          quantite: quantiteLue,
           date: new Date(dateSoumise),
           datePeremption: peremptionSoumise ? new Date(peremptionSoumise) : null,
           notes: notes || null,
@@ -321,7 +328,7 @@ export default function SaisieRecoltePage() {
           especeId: cultureData.especeId,
           especeNom,
           cultureId: cultureData.id,
-          quantite: parseFloat(quantite),
+          quantite: quantiteLue,
           // L'unité voyage avec la ligne : la session peut enchaîner une carotte
           // au kilo et un dahlia à la tige.
           unite: uniteEnregistree,
@@ -333,7 +340,7 @@ export default function SaisieRecoltePage() {
 
       toast({
         title: "Récolte enregistrée",
-        description: `${quantite} ${libelleUniteQuantite(uniteEnregistree, parseFloat(quantite))} de ${especeNom}`,
+        description: `${quantite} ${libelleUniteQuantite(uniteEnregistree, quantiteLue)} de ${especeNom}`,
       })
 
       // Délai avant récolte d'un traitement encore en cours : la récolte est
@@ -589,14 +596,13 @@ export default function SaisieRecoltePage() {
                 <label className="text-sm font-medium" htmlFor="saisie-recolte-quantite">
                   Quantité ({libelleUnite}) *
                 </label>
-                <Input
+                {/* Champ décimal commun : « 2,50 » se lit 2,5 quel que soit le
+                    navigateur (un champ `number` en faisait 250, D72). */}
+                <ChampDecimal
                   id="saisie-recolte-quantite"
-                  type="number"
-                  step="0.01"
-                  min="0"
                   value={quantite}
-                  onChange={(e) => setQuantite(e.target.value)}
-                  placeholder="0.00"
+                  onValeur={setQuantite}
+                  placeholder="0,00"
                   className="mt-1 text-2xl h-14 text-center"
                 />
                 {selectedCultureData && (

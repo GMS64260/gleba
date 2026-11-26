@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest"
 
 import {
   aideQuantite,
+  arrondirLitres,
   contexteQuantiteVersee,
   detailArrosageNote,
   lireLitres,
+  litresEnregistrables,
   litresConseilles,
   phraseLitresPlanche,
 } from "../quantite-versee"
@@ -92,5 +94,16 @@ describe("quantité versée", () => {
     expect(phraseLitresPlanche({ ...contexte, plancheNom: null })).toBe("soit 538 L pour la planche")
     expect(phraseLitresPlanche({ litresParM2: 29.9, surfaceM2: 0, plancheNom: null })).toBeNull()
     expect(phraseLitresPlanche({ litresParM2: null, surfaceM2: 18, plancheNom: "A3" })).toBeNull()
+  })
+
+  // Équipe debug, D60 — le toast annonçait « 0 L versés » pour 0,04 L.
+  it("annonce une petite quantité sans l'arrondir à zéro", () => {
+    expect(detailArrosageNote("Radis", 0.04)).toContain("0,04 L versés")
+    expect(detailArrosageNote("Radis", 12.34)).toContain("12,3 L versés")
+    expect(detailArrosageNote("Radis", null)).toContain("arrosage complet")
+    expect(arrondirLitres(0.0449)).toBe(0.045)
+    expect(litresEnregistrables(0.04)).toBe(true)
+    expect(litresEnregistrables(0.0004)).toBe(false)
+    expect(litresEnregistrables(NaN)).toBe(false)
   })
 })

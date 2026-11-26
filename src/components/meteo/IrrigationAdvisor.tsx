@@ -24,7 +24,7 @@ import { PastilleEtat, type EtatRegistre } from "@/components/accueil/PastilleEt
 import { formatNombre } from "@/lib/format-utils"
 import { libelleIrrigation } from "@/lib/planches/libelle-irrigation"
 import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
-import { aideQuantite, detailArrosageNote, lireLitres, litresConseilles } from "@/lib/irrigation/quantite-versee"
+import { aideQuantite, detailArrosageNote, lireLitres, litresConseilles, litresEnregistrables } from "@/lib/irrigation/quantite-versee"
 import {
   afficheMesuresMeteo,
   bandeauMeteoIndisponible,
@@ -579,7 +579,7 @@ function RecoRow({
           className="space-y-2 border-b border-lin-doux bg-slate-50/60 px-4 py-3 pl-7"
           onSubmit={(e) => {
             e.preventDefault()
-            if (litresSaisis > 0) void enregistrer(litresSaisis)
+            if (litresEnregistrables(litresSaisis)) void enregistrer(litresSaisis)
           }}
         >
           <label htmlFor={`litres-${reco.plancheId}`} className="block text-xs font-medium text-encre">
@@ -599,7 +599,7 @@ function RecoRow({
               />
               <span className="text-sm text-slate-600">L</span>
             </span>
-            <Button type="submit" size="sm" className="h-9" disabled={saving || !(litresSaisis > 0)}>
+            <Button type="submit" size="sm" className="h-9" disabled={saving || !litresEnregistrables(litresSaisis)}>
               Enregistrer
             </Button>
             <Button type="button" size="sm" variant="outline" className="h-9" disabled={saving} onClick={() => void enregistrer(null)}>

@@ -5,6 +5,7 @@
  * DELETE /api/admin/users/[id] - Supprimer un utilisateur
  */
 
+import { WHERE_RECOLTE_SAISIE } from "@/lib/recolte/lignee"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { arreterAvantSuppression } from "@/lib/abonnement/stripe"
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           select: {
             cultures: true,
             planches: true,
-            recoltes: true,
+            recoltes: { where: WHERE_RECOLTE_SAISIE },
             fertilisations: true,
             objetsJardin: true,
           },

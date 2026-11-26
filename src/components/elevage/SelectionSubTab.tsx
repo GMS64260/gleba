@@ -9,6 +9,7 @@
  * Le pedigree complet reste accessible depuis la fiche de l'animal.
  */
 
+import type { ReponseConsanguinite } from "@/lib/reproduction"
 import * as React from "react"
 import { ouvrirApercu } from "@/lib/apercu-document"
 import Link from "next/link"
@@ -112,7 +113,7 @@ export function SelectionSubTab() {
   // COI
   const [femelleId, setFemelleId] = React.useState("")
   const [maleId, setMaleId] = React.useState("")
-  const [coi, setCoi] = React.useState<{ consanguinite: boolean; ancetresCommuns: Array<{ id?: number; nom?: string | null; identifiant?: string | null }> } | null>(null)
+  const [coi, setCoi] = React.useState<ReponseConsanguinite | null>(null)
   const [coiLoading, setCoiLoading] = React.useState(false)
   // Tests
   const [testAnimalId, setTestAnimalId] = React.useState("")
@@ -120,16 +121,28 @@ export function SelectionSubTab() {
   const [form, setForm] = React.useState(EMPTY_TEST)
   const [isSubmittingTest, setIsSubmittingTest] = React.useState(false)
   const [ped, setPed] = React.useState(EMPTY_PED)
+  // Animal auquel appartient le pedigree affiché. Tant qu'il diffère de
+  // l'animal choisi, le formulaire porte encore les valeurs d'un autre : on
+  // n'enregistre pas (D80, le n° LOF du premier écrasait celui du second).
+  const [pedPour, setPedPour] = React.useState<string | null>(null)
+  const [isSavingPed, setIsSavingPed] = React.useState(false)
 
   React.useEffect(() => {
     fetch("/api/elevage/animaux?statut=actif", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : { data: [] })).then((j) => setAnimaux(j.data ?? [])).catch(() => {})
   }, [])
 
+  // Numéro de la dernière demande de tests : une réponse plus ancienne (animal
+  // précédent) ne remplace pas la liste de l'animal affiché.
+  const demandeTests = React.useRef(0)
   const chargerTests = React.useCallback((animalId: string) => {
+    const n = ++demandeTests.current
     if (!animalId) { setTests([]); return }
+    setTests([])
     fetch(`/api/elevage/tests-sante?animalId=${animalId}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { data: [] })).then((j) => setTests(j.data ?? [])).catch(() => {})
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((j) => { if (n === demandeTests.current) setTests(j.data ?? []) })
+      .catch(() => {})
   }, [])
   React.useEffect(() => { chargerTests(testAnimalId) }, [testAnimalId, chargerTests])
   // Le type de test par défaut dépend de la filière (dysplasie pour un chien,
@@ -139,18 +152,31 @@ export function SelectionSubTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filiereSel])
   React.useEffect(() => {
-    if (!testAnimalId) { setPed(EMPTY_PED); return }
+    let annule = false
+    setPed(EMPTY_PED)
+    setPedPour(null)
+    if (!testAnimalId) return
     fetch(`/api/elevage/pedigree?animalId=${testAnimalId}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { data: null }))
+      .then(async (r) => {
+        if (!r.ok) throw new Error("pedigree illisible")
+        return r.json()
+      })
       .then((j) => {
+        if (annule) return
         const d = j.data
         setPed(d ? {
           numeroLof: d.numeroLof ?? "", cotation: d.cotation != null ? String(d.cotation) : "",
           confirmationLof: !!d.confirmationLof, dateConfirmation: d.dateConfirmation ? d.dateConfirmation.split("T")[0] : "", titres: d.titres ?? "",
         } : EMPTY_PED)
+        setPedPour(testAnimalId)
       })
-      .catch(() => setPed(EMPTY_PED))
+      // Lecture en échec : `pedPour` reste nul, l'enregistrement reste fermé
+      // (un formulaire vide enregistré effacerait le pedigree existant).
+      .catch(() => {})
+    return () => { annule = true }
   }, [testAnimalId])
+  // Un résultat de compatibilité ne vaut que pour le couple qui l'a produit.
+  React.useEffect(() => { setCoi(null) }, [femelleId, maleId])
 
   const lancerCoi = async () => {
     if (!femelleId || !maleId) { toast({ variant: "destructive", title: "Choisissez la femelle et le mâle" }); return }
@@ -190,12 +216,23 @@ export function SelectionSubTab() {
   }
 
   const savePed = async () => {
-    const res = await fetch("/api/elevage/pedigree", {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ animalId: Number(testAnimalId), ...ped, cotation: ped.cotation || null }),
-    })
-    if (res.ok) toast({ title: "Pedigree & cotation enregistrés" })
-    else toast({ variant: "destructive", title: "Erreur" })
+    if (isSavingPed || !pedPour || pedPour !== testAnimalId) return
+    setIsSavingPed(true)
+    try {
+      const res = await fetch("/api/elevage/pedigree", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ animalId: Number(pedPour), ...ped, cotation: ped.cotation || null }),
+      })
+      if (res.ok) toast({ title: "Pedigree & cotation enregistrés" })
+      else {
+        const j = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Pedigree non enregistré", description: j?.error })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Pedigree non enregistré", description: "Connexion interrompue, réessayez." })
+    } finally {
+      setIsSavingPed(false)
+    }
   }
 
   // Scope par filière d'atelier (ne mélange pas cheptel / compagnie / équin / NAC).
@@ -224,7 +261,7 @@ export function SelectionSubTab() {
           {coi && (
             <div className={`rounded-lg border p-3 text-sm ${coi.consanguinite ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-300 bg-emerald-50 text-emerald-800"}`}>
               {coi.consanguinite
-                ? <><strong>⚠️ Consanguinité détectée</strong> — {coi.ancetresCommuns.length} ancêtre(s) commun(s) : {coi.ancetresCommuns.map((a) => a.nom || a.identifiant || `#${a.id}`).join(", ")}</>
+                ? <><strong>⚠️ Consanguinité détectée</strong> — {coi.ancetres.length} ancêtre(s) commun(s) : {coi.ancetres.map((a) => a.nom || a.identifiant || `animal n° ${a.id}`).join(", ")}</>
                 : <><strong>✓ Aucun ancêtre commun</strong> sur 4 générations.</>}
             </div>
           )}
@@ -301,7 +338,7 @@ export function SelectionSubTab() {
                   <div className="space-y-1"><Label className="text-xs">Confirmation</Label><label className="flex h-9 items-center gap-2 text-sm"><input type="checkbox" checked={ped.confirmationLof} onChange={(e) => setPed((p) => ({ ...p, confirmationLof: e.target.checked }))} />{cfg.confirmationLabel}</label></div>
                   <div className="space-y-1"><Label className="text-xs">Date confirmation</Label><Input className="h-9" type="date" value={ped.dateConfirmation} onChange={(e) => setPed((p) => ({ ...p, dateConfirmation: e.target.value }))} /></div>
                   <div className="space-y-1 lg:col-span-3"><Label className="text-xs">{cfg.titresLabel}</Label><Input className="h-9" value={ped.titres} onChange={(e) => setPed((p) => ({ ...p, titres: e.target.value }))} placeholder={cfg.titresPlaceholder} /></div>
-                  <div><Button size="sm" onClick={savePed}>Enregistrer</Button></div>
+                  <div><Button size="sm" onClick={savePed} disabled={isSavingPed || pedPour !== testAnimalId}>{isSavingPed ? "Enregistrement…" : pedPour !== testAnimalId ? "Chargement…" : "Enregistrer"}</Button></div>
                 </div>
               </div>
             )}

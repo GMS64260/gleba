@@ -140,7 +140,23 @@ const visible = (etat: EtatTournee | null, acteurId?: string | null) =>
  * dernière portée confirmée sur ce navigateur (purgé à la déconnexion).
  */
 export async function lireTachesCachees(acteurId?: string | null): Promise<TacheTournee[]> {
-  return visible(await lireEtat(), acteurId)?.tasks ?? []
+  const etat = visible(await lireEtat(), acteurId)
+  return etat ? sansTachesEnFile(etat.tasks, etat.queue) : []
+}
+
+const memeInstant = (a: string, b: string) => a === b || new Date(a).getTime() === new Date(b).getTime()
+const memeOccurrence = (op: Pick<OperationTournee, 'tacheId' | 'dateEcheance'>, tacheId: string, echeance: string) =>
+  op.tacheId === tacheId && memeInstant(op.dateEcheance, echeance)
+
+/**
+ * Tâches encore à faire : celles dont l'occurrence affichée n'attend pas déjà
+ * dans la file. Sans ce filtre, une tâche marquée « Fait » hors connexion
+ * revenait au rechargement avec son bouton actif, et un second appui la
+ * mettait deux fois en file (équipe debug, D92).
+ */
+export function sansTachesEnFile(tasks: TacheTournee[], queue: OperationTournee[]): TacheTournee[] {
+  if (queue.length === 0) return tasks
+  return tasks.filter((t) => !queue.some((op) => memeOccurrence(op, t.id, t.prochaineEcheance)))
 }
 
 export async function lireFile(acteurId?: string | null): Promise<OperationTournee[]> {
@@ -151,7 +167,11 @@ export async function lireFile(acteurId?: string | null): Promise<OperationTourn
 export function ajouterOperation(op: OperationTournee): Promise<boolean> {
   return enSerie(() => modifierEtat((etat) => {
     if (!etat) return { etat, resultat: false }
-    if (etat.queue.some((q) => q.clientOperationId === op.clientOperationId)) return { etat, resultat: true }
+    // Une occurrence ne s'acquitte qu'une fois : la clé métier est (tâche,
+    // échéance), pas l'identifiant tiré à chaque appui.
+    if (etat.queue.some((q) => q.clientOperationId === op.clientOperationId || memeOccurrence(q, op.tacheId, op.dateEcheance))) {
+      return { etat, resultat: true }
+    }
     return { etat: { ...etat, queue: [...etat.queue, op] }, resultat: true }
   }))
 }
@@ -159,36 +179,49 @@ export function ajouterOperation(op: OperationTournee): Promise<boolean> {
 let synchronisation: Promise<unknown> = Promise.resolve()
 
 /**
- * Envoie la file, une synchronisation à la fois. Seules les opérations
- * acquittées (succès, ou 409 : déjà enregistrée) sont retirées, et seulement si
- * la portée n'a pas changé entre-temps ; celles ajoutées pendant l'envoi restent.
+ * Réponses qui closent une opération : enregistrée (2xx), déjà traitée (409),
+ * ou refusée pour de bon (tâche disparue, corps invalide). Rejouer un refus
+ * définitif ne changerait rien, et l'opération bloquait le compteur « à
+ * synchroniser » pour toujours (D92). Une erreur 5xx, 401 ou 429 reste en file.
  */
-export function synchroniserOperations(): Promise<{ envoyees: number; restantes: number }> {
+const REFUS_DEFINITIFS = new Set([400, 404, 410, 422])
+
+export type BilanSynchronisation = { envoyees: number; restantes: number; rejetees: number }
+
+/**
+ * Envoie la file, une synchronisation à la fois. Seules les opérations closes
+ * (succès, 409 : déjà enregistrée, ou refus définitif) sont retirées, et
+ * seulement si la portée n'a pas changé entre-temps ; celles ajoutées pendant
+ * l'envoi restent.
+ */
+export function synchroniserOperations(): Promise<BilanSynchronisation> {
   return synchroniserSous(() => porteeConfirmee)
 }
 
 /** Délai d'un appel réseau, quand le navigateur sait le poser. */
 const delai = (ms: number) => (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(ms) : undefined)
 
-function synchroniserSous(lirePortee: () => PorteeTournee | null): Promise<{ envoyees: number; restantes: number }> {
+function synchroniserSous(lirePortee: () => PorteeTournee | null): Promise<BilanSynchronisation> {
   const executer = async () => {
     const portee = lirePortee()
     const etat = await lireEtat()
-    if (!portee || !etat || !memePortee(etat.portee, portee)) return { envoyees: 0, restantes: etat?.queue.length ?? 0 }
+    if (!portee || !etat || !memePortee(etat.portee, portee)) return { envoyees: 0, restantes: etat?.queue.length ?? 0, rejetees: 0 }
     const acquittees = new Set<string>()
+    const rejetees = new Set<string>()
     for (const op of etat.queue) {
       try {
         // Un envoi coupé par le délai reste en file ; rejoué, le serveur ne l'enregistre qu'une fois.
         const res = await fetch('/api/elevage/tournee', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(op), signal: delai(10_000) })
         if (res.ok || res.status === 409) acquittees.add(op.clientOperationId)
+        else if (REFUS_DEFINITIFS.has(res.status)) rejetees.add(op.clientOperationId)
       } catch { /* hors connexion : l'opération reste en file */ }
     }
     const restantes = await enSerie(() => modifierEtat((courant) => {
       if (!courant || !memePortee(courant.portee, portee)) return { etat: courant, resultat: courant?.queue.length ?? 0 }
-      const queue = courant.queue.filter((op) => !acquittees.has(op.clientOperationId))
+      const queue = courant.queue.filter((op) => !acquittees.has(op.clientOperationId) && !rejetees.has(op.clientOperationId))
       return { etat: { ...courant, queue }, resultat: queue.length }
     }))
-    return { envoyees: acquittees.size, restantes }
+    return { envoyees: acquittees.size, restantes, rejetees: rejetees.size }
   }
   const suite = synchronisation.then(executer, executer)
   synchronisation = suite.catch(() => undefined)

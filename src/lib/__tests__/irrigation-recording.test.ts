@@ -395,7 +395,8 @@ describe("enregistrerArrosageMesure", () => {
         plancheId: "c3",
         fait: true,
         intrantNom: "Eau",
-        intrantQuantite: 193,
+        // Au millilitre (D60) : l'arrondi au dixième ramenait 0,04 L à 0.
+        intrantQuantite: 193.04,
         intrantUnite: "L",
         notes: null,
       },
@@ -405,6 +406,18 @@ describe("enregistrerArrosageMesure", () => {
     expect(p.culture.updateMany).not.toHaveBeenCalled()
     expect(p.irrigationPlanifiee.createMany).not.toHaveBeenCalled()
     expect(irrigationCache.invalidateUser).toHaveBeenCalledWith("u1")
+  })
+
+  it("enregistre 0,04 L tel quel et refuse ce qui s'arrondirait à zéro (D60)", async () => {
+    p.culture.findMany.mockResolvedValue([{ id: 7, plancheId: "c3" }])
+    p.intervention.create.mockResolvedValue({ id: 502 })
+    expect((await enregistrerArrosageMesure({ userId: "u1", cultureIds: [7], litres: 0.04, dateEffective: DATE_EFFECTIVE })).ok).toBe(true)
+    expect(p.intervention.create.mock.calls[0][0].data.intrantQuantite).toBe(0.04)
+    expect(await enregistrerArrosageMesure({ userId: "u1", cultureIds: [7], litres: 0.0004 })).toEqual({
+      ok: false,
+      erreur: "Quantité versée trop faible (moins de 1 mL)",
+    })
+    expect(p.intervention.create).toHaveBeenCalledTimes(1)
   })
 
   it("refuse une quantité nulle ou démesurée, des planches mêlées ou des cultures d'un autre compte", async () => {

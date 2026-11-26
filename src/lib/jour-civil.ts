@@ -72,3 +72,15 @@ export function dateJourSeul(date: Date | null): Date | null {
   const jour = jourCivilStocke(date)
   return jour ? new Date(`${jour}T00:00:00.000Z`) : new Date(Number.NaN)
 }
+
+/**
+ * Dernier instant du jour civil (fuseau du serveur) qui contient `instant`.
+ *
+ * Borne haute d'un cumul « jusqu'à aujourd'hui ». Une pièce datée du jour est
+ * stockée à minuit UTC, soit 1 h ou 2 h du matin à Paris : bornée à l'instant
+ * présent, elle restait hors du cumul jusqu'à cette heure-là (équipe debug,
+ * D70 : un avoir émis avant 1 h ne réduisait pas les revenus affichés).
+ */
+export function finJourCivil(instant: Date): Date {
+  return new Date(instant.getFullYear(), instant.getMonth(), instant.getDate(), 23, 59, 59, 999)
+}

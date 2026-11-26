@@ -82,7 +82,10 @@ export async function POST(request: NextRequest) {
         for (const item of data.familles || []) {
           await db.famille.upsert({
             where: { id: item.id },
-            update: { intervalle: item.intervalle, couleur: item.couleur, description: item.description },
+            // `nomFr` manquait : un nom corrigé dans le fichier n'était jamais
+            // repris pour une famille existante (D65). Clé absente du fichier
+            // = valeur gardée ; `null` = nom effacé, comme à l'export.
+            update: { nomFr: item.nomFr, intervalle: item.intervalle, couleur: item.couleur, description: item.description },
             create: item,
           })
           stats.familles++

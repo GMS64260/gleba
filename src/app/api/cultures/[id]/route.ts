@@ -6,6 +6,7 @@
  *   (sinon 409, cf. `src/lib/cultures/suppression.ts`)
  */
 
+import { reponseModifieAilleurs, versionPerimee } from '@/lib/api/version-lue'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
@@ -243,6 +244,12 @@ export async function PUT(
           { error: `Culture #${id} non trouvée` },
           { status: 404 }
         )
+      }
+      // Fiche ouverte dans deux onglets : le second enregistrement, qui renvoie
+      // tous les champs, ne réécrit pas ce que le premier vient de changer
+      // (D74). Contrôlé sous le verrou, avant toute écriture.
+      if (versionPerimee((body as { versionLue?: unknown } | null)?.versionLue, existing.updatedAt)) {
+        return reponseModifieAilleurs('Cette culture', existing.updatedAt)
       }
 
       const data = validationResult.data

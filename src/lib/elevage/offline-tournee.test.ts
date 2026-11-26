@@ -111,7 +111,7 @@ describe('ELEV-03 — file des acquittements', () => {
     await envoiCommence
     expect(await t.ajouterOperation(op('B'))).toBe(true)
     liberer()
-    expect(await synchro).toEqual({ envoyees: 1, restantes: 1 })
+    expect(await synchro).toEqual({ envoyees: 1, restantes: 1, rejetees: 0 })
     expect((await t.lireFile()).map((o) => o.tacheId)).toEqual(['B'])
 
     vi.stubGlobal('fetch', repondre())
@@ -136,9 +136,39 @@ describe('ELEV-03 — file des acquittements', () => {
     await t.ajouterOperation(op('A'))
     await t.ajouterOperation(op('A'))
     vi.stubGlobal('fetch', repondre(500))
-    expect(await t.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 1 })
+    expect(await t.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 1, rejetees: 0 })
     vi.stubGlobal('fetch', repondre(409))
-    expect(await t.synchroniserOperations()).toEqual({ envoyees: 1, restantes: 0 })
+    expect(await t.synchroniserOperations()).toEqual({ envoyees: 1, restantes: 0, rejetees: 0 })
+  })
+})
+
+describe('D92 — une tâche acquittée hors ligne ne se repropose pas', () => {
+  it('le cache ne rend plus une tâche dont l’occurrence attend dans la file', async () => {
+    const t = await charger()
+    await t.sauverTaches(A, [tache('A'), tache('B')])
+    await t.ajouterOperation(op('A'))
+    expect((await t.lireTachesCachees('acteur-A')).map((x) => x.id)).toEqual(['B'])
+    // L'occurrence suivante de la même tâche (autre échéance) reste proposée.
+    expect(t.sansTachesEnFile([{ ...tache('A'), prochaineEcheance: '2026-11-08' }], [op('A')]).map((x) => x.id)).toEqual(['A'])
+  })
+
+  it('un second appui sur la même occurrence ne crée pas une seconde opération', async () => {
+    const t = await charger()
+    await t.sauverTaches(A, [tache('A')])
+    expect(await t.ajouterOperation(op('A'))).toBe(true)
+    expect(await t.ajouterOperation({ ...op('A'), clientOperationId: 'autre-appui' })).toBe(true)
+    expect(await t.lireFile()).toHaveLength(1)
+  })
+
+  it('un refus définitif (404) quitte la file et est compté, une panne (500) y reste', async () => {
+    const t = await charger()
+    await t.sauverTaches(A, [tache('A'), tache('B')])
+    await t.ajouterOperation(op('A'))
+    vi.stubGlobal('fetch', repondre(404))
+    expect(await t.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 0, rejetees: 1 })
+    await t.ajouterOperation(op('B'))
+    vi.stubGlobal('fetch', repondre(500))
+    expect(await t.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 1, rejetees: 0 })
   })
 })
 
@@ -186,7 +216,7 @@ describe('SEC-02 — cache propre à une personne et une exploitation', () => {
     await premiere.ajouterOperation(op('A'))
     const rechargee = await charger()
     vi.stubGlobal('fetch', repondre())
-    expect(await rechargee.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 1 })
+    expect(await rechargee.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 1, rejetees: 0 })
     expect(envoyes).toEqual([])
   })
 
@@ -245,7 +275,7 @@ describe('SEC-02 — cache propre à une personne et une exploitation', () => {
     vi.stubGlobal('fetch', serveur(A, 500))
     expect(await menu.envoyerFileAvantDeconnexion()).toEqual({ restantes: 1, cause: 'refus' })
     vi.stubGlobal('fetch', repondre())
-    expect(await menu.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 1 })
+    expect(await menu.synchroniserOperations()).toEqual({ envoyees: 0, restantes: 1, rejetees: 0 })
     expect(envoyes).toEqual([])
   })
 

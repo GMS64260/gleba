@@ -18,10 +18,10 @@
  * de conserver leur horizon de planification à cinq ans.
  */
 
-const FIRST_AVAILABLE_YEAR = 2000
+import { PREMIER_EXERCICE, dernierExercice } from "@/lib/exercices"
 
-export function getAvailableYears(earliest?: number, latest = new Date().getFullYear() + 1): number[] {
-  const oldest = earliest ?? FIRST_AVAILABLE_YEAR
+export function getAvailableYears(earliest?: number, latest = dernierExercice()): number[] {
+  const oldest = earliest ?? PREMIER_EXERCICE
   const years: number[] = []
   for (let y = latest; y >= oldest; y--) {
     years.push(y)

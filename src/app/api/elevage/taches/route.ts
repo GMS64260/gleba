@@ -18,7 +18,7 @@ import {
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
-import { sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
+import { sqlSoinAnimalPresent, whereSoinAnimalPresent, injectionsHorsSoinsListes } from '@/lib/elevage/soins-a-faire'
 import {
   compterEcheancesSoins,
   echeanceSoinAFaire,
@@ -61,7 +61,13 @@ export async function GET(request: NextRequest) {
           OR: [
             { datePrevue: { gte: start, lte: end } },
             { date: { gte: start, lte: end } },
-            ...(retards ? [{ fait: false, datePrevue: { lt: start } }] : []),
+            ...(retards
+              ? [
+                  { fait: false, datePrevue: { lt: start } },
+                  // Soin à faire sans rappel : en retard depuis sa propre date.
+                  { fait: false, datePrevue: null, date: { lt: start } },
+                ]
+              : []),
           ],
           AND: [
             ...animLotFiliere,
@@ -203,7 +209,7 @@ export async function GET(request: NextRequest) {
           libelle: `Fin estimée — ${f.nom}${f.especeNom ? ` · ${f.especeNom}` : ''}`,
         })),
     ]
-    const injections = await prisma.$queryRaw<Array<{
+    const injectionsLues = await prisma.$queryRaw<Array<{
       injectionId: string
       soinId: number
       numero: number
@@ -254,6 +260,10 @@ export async function GET(request: NextRequest) {
         )
       ORDER BY i.date_prevue
     `
+
+    // L'unique injection d'un soin simple déjà listé n'est pas une ligne de
+    // plus : c'est le soin lui-même (D94).
+    const injections = injectionsHorsSoinsListes(injectionsLues, soins.map((s) => s.id))
 
     // Stats de la periode — QA caprin cms1v9e3a : compter les MÊMES objets
     // que ceux affichés (injections incluses, soins parents dédoublonnés),

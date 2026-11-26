@@ -99,6 +99,35 @@ describe("GET /api/elevage/taches — comptes des soins à faire", () => {
     expect(ordre).toEqual(["i-2", "soin-1", "soin-2", "soin-3"])
   })
 
+  // D94 — un soin simple a toujours une injection n° 1 datée du soin. La
+  // liste la rendait à la place du soin : « Injection 1/1 », mauvais jour de
+  // rappel, et aucun soin reportable.
+  it("rend un soin simple une seule fois, comme soin, à la date de son rappel", async () => {
+    mocks.soinFindMany.mockResolvedValue([
+      { ...soin(5, "2026-10-27T00:00:00Z"), date: new Date("2026-10-19T00:00:00Z") },
+    ])
+    mocks.queryRaw.mockResolvedValue([
+      { injectionId: "i-5", soinId: 5, numero: 1, nombreInjections: 1, datePrevue: new Date("2026-10-19T00:00:00Z"), dateRealisee: null, statut: "a_faire", type: "Vermifuge", description: null, produit: null, dose: null, voie: null, finAttenteLait: null, finAttenteOeufs: null, finAttenteViande: null, cout: null, animalId: 5, animalNom: "Animal 5", animalIdentifiant: null, lotId: null, lotNom: null },
+    ])
+    const url = "http://localhost/api/elevage/taches?start=2026-10-19T00:00:00.000Z&end=2026-11-18T22:59:59.999Z&retards=1"
+    const json = await (await GET(new NextRequest(url))).json()
+
+    expect(json.soins).toHaveLength(1)
+    expect(json.soins[0]).toMatchObject({ id: 5, injectionId: null, numeroInjection: null })
+    expect(new Date(json.soins[0].datePrevue).toISOString()).toBe("2026-10-27T00:00:00.000Z")
+    expect(json.stats.echeancesSoins.total).toBe(1)
+  })
+
+  it("demande aussi les soins à faire sans rappel, en retard depuis leur date", async () => {
+    const url = "http://localhost/api/elevage/taches?start=2026-10-19T00:00:00.000Z&end=2026-11-18T22:59:59.999Z&retards=1"
+    await GET(new NextRequest(url))
+    expect(mocks.soinFindMany.mock.calls[0][0].where.OR).toContainEqual({
+      fait: false,
+      datePrevue: null,
+      date: { lt: new Date("2026-10-19T00:00:00.000Z") },
+    })
+  })
+
   // Revue 2026-10-20 — les lots « vivants » (collecte attendue, nombre de lots
   // pondeurs) étaient retenus sur le compteur stocké `quantiteActuelle > 0`,
   // qui dérive dans les deux sens. Ils le sont désormais sur l'effectif

@@ -4,6 +4,7 @@
  * Page d'édition d'une culture
  */
 
+import { CODE_MODIFIE_AILLEURS } from "@/lib/api/version-lue"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
@@ -97,6 +98,9 @@ export default function EditCulturePage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   // Empêcher l'auto-remplissage au chargement initial
   const initialLoadDone = React.useRef(false)
+  // Version de la fiche à son chargement, renvoyée à l'enregistrement : la
+  // route refuse si la culture a changé entre-temps (autre onglet, D74).
+  const versionLue = React.useRef<string | null>(null)
   // Quantité saisie à la main : plus de recalcul (ticket cmvnpkkhp, revue).
   const {
     manuelle: quantiteManuelle,
@@ -169,6 +173,7 @@ export default function EditCulturePage() {
       }),
     ])
       .then(([especesData, planchesData, cultureData]) => {
+        versionLue.current = typeof cultureData.updatedAt === "string" ? cultureData.updatedAt : null
         setEspeces(especesData.data || [])
         setPlanches(planchesData.data || [])
         // Récoltes saisies : un lot scindé par une sortie partielle reste une récolte.
@@ -443,11 +448,24 @@ export default function EditCulturePage() {
         headers: { "Content-Type": "application/json" },
         // Dates calculées à l'écran envoyées en jour seul : en instant (minuit
         // local), elles étaient enregistrées la veille à l'est de Paris.
-        body: JSON.stringify(datesCalculeesEnJoursSeuls(data)),
+        body: JSON.stringify({
+          ...datesCalculeesEnJoursSeuls(data),
+          ...(versionLue.current ? { versionLue: versionLue.current } : {}),
+        }),
       })
 
       if (!response.ok) {
-        const error = await response.json()
+        const error = await response.json().catch(() => ({}))
+        if (response.status === 409 && error.code === CODE_MODIFIE_AILLEURS) {
+          // On reste sur la fiche : rien n'est enregistré, et la saisie en
+          // cours reste lisible le temps de la reporter après rechargement.
+          toast({
+            variant: "destructive",
+            title: "Culture modifiée ailleurs",
+            description: error.error,
+          })
+          return
+        }
         throw new Error(error.error || "Erreur lors de la mise à jour")
       }
 

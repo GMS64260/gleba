@@ -33,6 +33,29 @@ describe("API mortalités", () => {
     mocks.cheptel.mockResolvedValue({ individuels: [], lots: [] })
   })
 
+  it("ne retient que la filière demandée, pour le bon d’enlèvement (D79)", async () => {
+    const response = await GET(new NextRequest(
+      "http://localhost/api/elevage/mortalites?annee=2026&filiere=rente",
+    ))
+
+    expect(response.status).toBe(200)
+    expect(mocks.animalFindMany.mock.calls[0][0].where).toMatchObject({
+      userId: "user-1",
+      statut: "mort",
+      especeAnimale: { filiere: "rente" },
+    })
+    expect(mocks.animalCount.mock.calls[0][0].where).toMatchObject({
+      especeAnimale: { filiere: "rente" },
+    })
+  })
+
+  it("ignore une filière inconnue", async () => {
+    await GET(new NextRequest(
+      "http://localhost/api/elevage/mortalites?annee=2026&filiere=licorne",
+    ))
+    expect(mocks.animalFindMany.mock.calls[0][0].where).not.toHaveProperty("especeAnimale")
+  })
+
   it("borne les mortalités à l’exercice civil et au compte authentifié", async () => {
     const response = await GET(new NextRequest(
       "http://localhost/api/elevage/mortalites?annee=2026",

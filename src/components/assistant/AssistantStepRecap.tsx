@@ -7,6 +7,7 @@
  * - Creation de la planche et culture via API
  */
 
+import { besoinSemisDirectGrammes } from "@/lib/semences/calcul"
 import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -63,8 +64,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
 
   // Verifier le stock (graines OU plants selon la variete)
   React.useEffect(() => {
-    // Sans rangs ni espacement, le besoin n'est pas connu : rien à comparer.
-    if (!variete || quantitePlants == null) {
+    if (!variete) {
       setStockCheck(null)
       return
     }
@@ -73,6 +73,36 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
     const stockGraines = variete.userStockGraines ?? 0
     const stockPlants = variete.userStockPlants ?? 0
     const grainesParPlant = itp?.nbGrainesPlant || culture.itp?.nbGrainesPlant || 0
+
+    // Semis direct dosé à la surface (radis, carotte, mâche…) : le besoin est
+    // surface × dose, comme dans « Semences nécessaires ». Compté en graines
+    // par plant, il passait pour couvert par 1 g (D101).
+    const largeur = planche.largeur ?? 0
+    const longueur = culture.longueur ?? planche.longueur ?? 0
+    const besoinDirect = grainesParPlant > 0
+      ? null
+      : besoinSemisDirectGrammes({
+          modeSemis: espece?.modeSemis,
+          uniteDose: espece?.uniteDose,
+          doseItp: itp?.doseSemis ?? culture.itp?.doseSemis,
+          doseEspece: espece?.doseSemis,
+          surfaceM2: largeur * longueur,
+        })
+    if (besoinDirect !== null) {
+      setStockCheck({
+        suffisant: stockGraines + 1e-9 >= besoinDirect,
+        stockActuel: stockGraines,
+        besoin: besoinDirect,
+        unite: 'g',
+      })
+      return
+    }
+
+    // Sans rangs ni espacement, le besoin en plants n'est pas connu : rien à comparer.
+    if (quantitePlants == null) {
+      setStockCheck(null)
+      return
+    }
 
     // Determiner si on est en mode "plants" ou "graines"
     // Mode plants: pas de graines/g defini, ou stock plants > 0 et pas de graines
@@ -131,7 +161,11 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
             }
       )
     }
-  }, [variete, nbPlants, quantitePlants, itp?.nbGrainesPlant, culture.itp?.nbGrainesPlant])
+  }, [
+    variete, nbPlants, quantitePlants, itp?.nbGrainesPlant, culture.itp?.nbGrainesPlant,
+    itp?.doseSemis, culture.itp?.doseSemis, espece?.modeSemis, espece?.uniteDose, espece?.doseSemis,
+    planche.largeur, planche.longueur, culture.longueur,
+  ])
 
   // Charger les associations recommandees
   React.useEffect(() => {

@@ -195,6 +195,13 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
   const [plantsEditesManuellement, setPlantsEditesManuellement] = React.useState<boolean>(
     () => Boolean(prefill?.nombrePlants)
   )
+  // Densité saisie par l'utilisateur : tant qu'elle ne l'est pas, elle suit
+  // le type de plantation. Remplie une fois puis figée, elle gardait la
+  // densité du verger après un passage à « Haie », et le nombre de plants
+  // enregistré en découlait (équipe debug, D84).
+  const [densiteEditeeManuellement, setDensiteEditeeManuellement] = React.useState<boolean>(
+    () => Boolean(prefill?.densitePlantsParHa)
+  )
   const [parcelles, setParcelles] = React.useState<Array<{ id: string; nom: string; surface: number | null }>>([])
   const [zonesVerger, setZonesVerger] = React.useState<Array<{ id: number; nom: string }>>([])
   const [coupes, setCoupes] = React.useState<Array<{ id: number; date: string; volumeM3: number | null; arbre: { nom: string; espece: string | null } | null }>>([])
@@ -227,6 +234,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
     if (open && prefill) {
       setState((s) => ({ ...s, ...prefill }))
       if (prefill.nombrePlants) setPlantsEditesManuellement(true)
+      if (prefill.densitePlantsParHa) setDensiteEditeeManuellement(true)
     }
   }, [open, prefill])
 
@@ -235,6 +243,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
       const timer = setTimeout(() => {
         setState({ ...INITIAL, ...(prefill || {}) })
         setPlantsEditesManuellement(Boolean(prefill?.nombrePlants))
+        setDensiteEditeeManuellement(Boolean(prefill?.densitePlantsParHa))
       }, 300)
       return () => clearTimeout(timer)
     }
@@ -388,7 +397,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
   // conversion ×100 à l'injection, sans toucher au fichier data partagé.
   const facteurDensite = state.typeFormation === "haie" ? 100 : 1
   React.useEffect(() => {
-    if (!state.typeFormation || state.densitePlantsParHa) return
+    if (!state.typeFormation || densiteEditeeManuellement) return
     const def = DENSITES_DEFAUT[state.typeFormation as TypeFormation]
     if (def) {
       const facteur = state.typeFormation === "haie" ? 100 : 1
@@ -544,7 +553,14 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                     {coupes.length > 0 && (
                       <div>
                         <Label>Lier à une coupe / abattage déjà enregistré (optionnel)</Label>
-                        <Select value={state.productionBoisId || "_none"} onValueChange={(v) => update({ productionBoisId: v === "_none" ? "" : v })}>
+                        <Select value={state.productionBoisId || "_none"} onValueChange={(v) => {
+                          const coupe = coupes.find((c) => String(c.id) === v)
+                          // Lier une coupe renseigne l'essence précédente quand elle est connue et encore vide.
+                          update({
+                            productionBoisId: v === "_none" ? "" : v,
+                            ...(!state.essencePrecedente.trim() && coupe?.arbre?.espece ? { essencePrecedente: coupe.arbre.espece } : {}),
+                          })
+                        }}>
                           <SelectTrigger><SelectValue placeholder="Aucune coupe liée" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="_none">Aucune coupe</SelectItem>
@@ -816,7 +832,11 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                   <Input
                     type="number"
                     value={state.densitePlantsParHa}
-                    onChange={(e) => update({ densitePlantsParHa: e.target.value })}
+                    onChange={(e) => {
+                      // Champ vidé : la densité redevient celle du type choisi.
+                      setDensiteEditeeManuellement(e.target.value.trim() !== "")
+                      update({ densitePlantsParHa: e.target.value })
+                    }}
                   />
                   {state.typeFormation && DENSITES_DEFAUT[state.typeFormation as TypeFormation] && (
                     <p className="text-xs text-muted-foreground mt-1">

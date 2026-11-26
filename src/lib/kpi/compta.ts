@@ -20,6 +20,7 @@
  *      double comptage.
  */
 
+import { finJourCivil } from '@/lib/jour-civil'
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { chargerEncoursCompta } from '@/lib/comptabilite/encours'
@@ -59,12 +60,14 @@ export function whereDepensesComptables(userId: string, debut: Date, fin: Date):
 
 /**
  * Bornes de l'exercice lu par les KPI. Ticket DEV2 #1 — pour l'année en cours,
- * on s'arrête à `asOf` ; pour une année passée, on lit l'année entière.
+ * on s'arrête au soir du jour de `asOf` ; pour une année passée, on lit l'année
+ * entière. Le jour entier, pas l'instant : les pièces sont datées d'un jour
+ * (voir `finJourCivil`), comme la borne de l'année précédente (`shiftToPrevYear`).
  */
 export function bornesExerciceKpi(year: number, asOf: Date): { debut: Date; fin: Date } {
   const debut = new Date(year, 0, 1, 0, 0, 0, 0)
   const finAnnee = new Date(year, 11, 31, 23, 59, 59, 999)
-  return { debut, fin: asOf.getFullYear() === year ? asOf : finAnnee }
+  return { debut, fin: asOf.getFullYear() === year ? finJourCivil(asOf) : finAnnee }
 }
 
 /**

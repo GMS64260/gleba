@@ -17,7 +17,8 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { envoyerAvecConfirmationLait } from "@/lib/elevage/confirmation-lait"
 import { symboleDevise, formatMontantDevise, todayLocalISO } from "@/lib/format-utils"
-import { estimePrimeQualite, montantPaie } from "@/lib/elevage/paie-lait"
+import { estimePrimeQualite, montantPaie, qualiteLivraisonsPonderee } from "@/lib/elevage/paie-lait"
+import { jourCivilStocke } from "@/lib/jour-civil"
 
 const MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
 
@@ -117,15 +118,12 @@ export function LivraisonLaitSubTab() {
 
   // Estimation prime/pénalité à partir des livraisons du mois sélectionné
   const estimerPaie = () => {
-    const moisLiv = livraisons.filter((l) => new Date(l.date).getMonth() + 1 === paieForm.mois)
+    // Mois du jour civil stocké : `new Date(l.date).getMonth()` lisait le mois
+    // dans le fuseau du navigateur.
+    const moisLiv = livraisons.filter((l) => Number(jourCivilStocke(l.date)?.slice(5, 7)) === paieForm.mois)
     const litres = moisLiv.reduce((s, l) => s + Number(l.litres), 0)
-    // Moyenne pondérée simple des taux (sur les livraisons renseignées)
-    const avg = (getter: (l: Livraison) => number | null): number | null => {
-      const vals = moisLiv.map(getter).filter((v): v is number => v != null)
-      return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null
-    }
-    const q = { tb: avg((l) => (l.tb != null ? Number(l.tb) : null)), tp: avg((l) => (l.tp != null ? Number(l.tp) : null)), cellules: avg((l) => l.cellules), germes: avg((l) => l.germes) }
-    const { prime, penalite } = estimePrimeQualite(q, litres || 0)
+    // Taux pondérés par le volume de chaque livraison (D99).
+    const { prime, penalite } = estimePrimeQualite(qualiteLivraisonsPonderee(moisLiv), litres || 0)
     setPaieForm((f) => ({ ...f, litres: litres ? String(Math.round(litres * 100) / 100) : f.litres, primeQualite: String(prime), penalite: String(penalite) }))
     toast({ title: "Estimation calculée", description: `${moisLiv.length} livraison(s) du mois — grille indicative` })
   }

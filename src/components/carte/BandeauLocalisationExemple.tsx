@@ -62,6 +62,24 @@ export default function BandeauLocalisationExemple({
 }: BandeauLocalisationExempleProps) {
   const { toast } = useToast()
   const [masque, setMasque] = React.useState(false)
+  // « Masquer pour cette session » tient jusqu'à la fermeture de l'onglet : gardé
+  // en état React seul, le rappel revenait à chaque rechargement, et sur la
+  // météo comme sur la carte (équipe debug, D100). Lu après le montage, pour
+  // rendre la même chose que le serveur à l'hydratation.
+  const cleMasque = info?.parcelleId ? `gleba.rappel-localisation.masque.${info.parcelleId}` : null
+  React.useEffect(() => {
+    if (!cleMasque) return
+    try {
+      if (window.sessionStorage.getItem(cleMasque) === "1") setMasque(true)
+    } catch { /* stockage bloqué : le rappel reste affiché */ }
+  }, [cleMasque])
+  const masquerPourLaSession = () => {
+    setMasque(true)
+    if (!cleMasque) return
+    try {
+      window.sessionStorage.setItem(cleMasque, "1")
+    } catch { /* stockage bloqué : masqué jusqu'au rechargement seulement */ }
+  }
   const [recherche, setRecherche] = React.useState("")
   const [suggestions, setSuggestions] = React.useState<CommuneApi[]>([])
   const [cherche, setCherche] = React.useState(false)
@@ -193,7 +211,7 @@ export default function BandeauLocalisationExemple({
           variant="ghost"
           size="sm"
           className="h-7 w-7 flex-shrink-0 p-0 text-amber-700 hover:bg-amber-100"
-          onClick={() => setMasque(true)}
+          onClick={masquerPourLaSession}
           aria-label="Masquer ce rappel"
           title="Masquer pour cette session"
         >

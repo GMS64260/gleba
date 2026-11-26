@@ -20,6 +20,18 @@ export function prixFruitApi(valeur: unknown, champ: string): number | null | un
   return valeur
 }
 
+/**
+ * Volume ou poids d'un lot : absent (`null`, chaîne vide, 0), ou un nombre fini
+ * positif. Un zéro vaut « non renseigné » : c'est ce que l'écran envoie pour un
+ * champ laissé vide, et un lot ne se mesure pas à zéro.
+ */
+export function quantiteLotApi(valeur: unknown, champ: string): number | null {
+  if (valeur === undefined || valeur === null || valeur === '') return null
+  const n = typeof valeur === 'number' ? valeur : typeof valeur === 'string' ? Number(valeur.trim().replace(',', '.')) : NaN
+  if (!Number.isFinite(n) || n < 0) throw new ErreurVerger('Saisissez un nombre positif.', 400, champ)
+  return n === 0 ? null : n
+}
+
 /** Point d'entrée commun au formulaire et aux outils de l'assistant. */
 export async function creerRecolteFruit(userId: string, saisie: Record<string, unknown>) {
   if (!saisie || typeof saisie !== 'object' || Array.isArray(saisie)) throw new ErreurVerger('Données invalides.')

@@ -142,6 +142,24 @@ describe('GET /api/verger/referentiel/export', () => {
   )
 })
 
+// Équipe debug, D83 — l'export des bioagresseurs sortait tout le catalogue,
+// organismes et cibles hors verger compris.
+describe('GET /api/verger/referentiel/export?onglet=bioagresseurs', () => {
+  it("ne demande que les organismes et les cibles du verger, comme l'onglet", async () => {
+    const findMany = vi.fn(async () => [
+      { nomCommun: 'Carpocapse', nomLatin: 'Cydia pomonella', type: 'ravageur', organeCible: 'fruit', periodePression: [], methodesPbi: [], seuilNuisibilite: null, especes: [{ especeId: 'pommier' }], notes: null },
+    ])
+    mocks.db.bioagresseur = { findMany }
+    const res = await EXPORT(requete('GET', '/api/verger/referentiel/export?onglet=bioagresseurs'))
+    expect(res.status).toBe(200)
+    expect(await res.text()).toContain('Carpocapse')
+    const requeteBase = (findMany.mock.calls as unknown as Array<[{ where: unknown; select: { especes: { where: unknown } } }]>)[0][0]
+    const cibleVerger = { espece: { type: { in: ['arbre_fruitier', 'petit_fruit', 'liane'] } } }
+    expect(requeteBase.where).toEqual({ especes: { some: cibleVerger } })
+    expect(requeteBase.select.especes.where).toEqual(cibleVerger)
+  })
+})
+
 describe('DELETE /api/verger/porte-greffes/[id] — porte-greffe utilisé (revue du 2026-11-04)', () => {
   it("refuse en 409 tant que des arbres (de n'importe quel compte) le portent, sans rien supprimer", async () => {
     mocks.db.arbre = { count: vi.fn(async () => 40) }

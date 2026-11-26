@@ -21,6 +21,18 @@
  */
 import type { Prisma } from '@prisma/client'
 
+/**
+ * Une « récolte saisie », au sens des compteurs par compte : ni une part de
+ * lot scindé (`recolteOrigineId`), ni un lot d'inventaire né d'un comptage de
+ * stock (`cultureId` nul). Un seul filtre pour tous les compteurs : sans la
+ * seconde condition, chaque comptage de stock ajoutait une « récolte » dans
+ * l'administration (équipe debug, D89).
+ */
+export const WHERE_RECOLTE_SAISIE = {
+  cultureId: { not: null },
+  recolteOrigineId: null,
+} satisfies Prisma.RecolteWhereInput
+
 export interface LigneDeLignee {
   id: number
   recolteOrigineId?: number | null

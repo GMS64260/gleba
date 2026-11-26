@@ -9,6 +9,8 @@
  * Toutes les fonctions sont pures : utilisées par l'éditeur ET testées.
  */
 
+import { jourCivilStocke } from '@/lib/jour-civil'
+
 const JOUR_MS = 24 * 3600 * 1000
 const AN_MS = 365.25 * JOUR_MS
 
@@ -43,6 +45,21 @@ export interface ArbreCroissanceInput {
   datePlantation?: string | Date | null
 }
 
+/**
+ * `a` tombe-t-il un jour civil strictement avant `b` ?
+ *
+ * Les dates de culture sont des jours (stockés à minuit UTC) ; la date
+ * regardée est un instant du navigateur (curseur à minuit local, ou
+ * maintenant). Comparer les instants décalait la présence d'un jour : à
+ * Paris, une culture plantée le 20 n'apparaissait que le 21, et disparaissait
+ * du plan le matin même de son dernier jour de récolte (équipe debug, D90).
+ */
+function jourAvant(a: Date, b: Date): boolean {
+  const ja = jourCivilStocke(a)
+  const jb = jourCivilStocke(b)
+  return ja !== null && jb !== null ? ja < jb : a < b
+}
+
 function asDate(d: string | Date | null | undefined): Date | null {
   if (!d) return null
   const date = d instanceof Date ? d : new Date(d)
@@ -65,7 +82,7 @@ function asDate(d: string | Date | null | undefined): Date | null {
 export function croissanceCulture(c: CultureCroissanceInput, date: Date): number | null {
   const debut = asDate(c.datePlantation) ?? asDate(c.dateSemis)
   if (!debut) return 1
-  if (date < debut) return null
+  if (jourAvant(date, debut)) return null
 
   const recolte = asDate(c.dateRecolte)
   const maturite =
@@ -83,7 +100,8 @@ export function croissanceCulture(c: CultureCroissanceInput, date: Date): number
             maturite.getTime() +
               (c.itp?.dureeRecolte ?? DUREE_RECOLTE_DEFAUT_SEMAINES) * 7 * JOUR_MS
           )
-    if (date > fin) return null
+    // Présente jusqu'au soir de son dernier jour de récolte.
+    if (jourAvant(fin, date)) return null
   }
 
   if (date >= maturite) return 1
@@ -122,7 +140,7 @@ export function envergureArbreADate(
   }
 
   if (!plantation) return arbre.envergure
-  if (date < plantation) return 0
+  if (jourAvant(date, plantation)) return 0
   const total = aujourdHui.getTime() - plantation.getTime()
   if (total <= 0) return arbre.envergure
   const f = Math.max(0, Math.min(1, (date.getTime() - plantation.getTime()) / total))

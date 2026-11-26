@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { getActeurId } from '@/lib/exploitation/garde-session'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 const completeSchema = z.object({
   tacheId: z.string().min(1),
@@ -39,15 +40,42 @@ export async function POST(request: NextRequest) {
   })
   if (existingOperation) return NextResponse.json({ data: existingOperation, duplicate: true })
 
-  const tache = await prisma.tacheTerrainElevage.findFirst({ where: { id: d.tacheId, userId: session.user.id, actif: true } })
+  // Tâche lue sans filtre `actif` : une tâche ponctuelle déjà réalisée est
+  // inactive, et c'est un « déjà traité » (409, que le navigateur retire de sa
+  // file), pas une tâche introuvable (D92 : l'opération rejouée restait en file).
+  const tache = await prisma.tacheTerrainElevage.findFirst({ where: { id: d.tacheId, userId: session.user.id } })
   if (!tache) return NextResponse.json({ error: 'Tâche introuvable' }, { status: 404 })
-  if (tache.prochaineEcheance.getTime() !== d.dateEcheance.getTime()) {
-    return NextResponse.json({ error: 'Cette occurrence a déjà été traitée ou déplacée', code: 'STALE_OCCURRENCE' }, { status: 409 })
+  const dejaTraitee = () =>
+    NextResponse.json({ error: 'Cette occurrence a déjà été traitée ou déplacée', code: 'STALE_OCCURRENCE' }, { status: 409 })
+  if (!tache.actif) {
+    // Inactive parce que réalisée : déjà traité. Inactive parce que supprimée :
+    // refus définitif, que le navigateur annonce au lieu de le compter envoyé.
+    const realisee = await prisma.realisationTacheElevage.findFirst({
+      where: { userId: session.user.id, tacheId: tache.id, dateEcheance: d.dateEcheance },
+      select: { id: true },
+    })
+    return realisee
+      ? dejaTraitee()
+      : NextResponse.json({ error: 'Cette tâche a été supprimée', code: 'TACHE_RETIREE' }, { status: 410 })
   }
+  if (tache.prochaineEcheance.getTime() !== d.dateEcheance.getTime()) return dejaTraitee()
 
-  const result = await prisma.$transaction(async (tx) => {
+  const userId = session.user.id
+  let result
+  try {
+    result = await enregistrerRealisation(tache)
+  } catch (e) {
+    // Deux envois simultanés de la même occurrence : l'unicité (tâche,
+    // échéance) ou celle de l'opération refuse le second.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return dejaTraitee()
+    throw e
+  }
+  return NextResponse.json({ data: result })
+
+  function enregistrerRealisation(tache: { id: string; prochaineEcheance: Date; recurrenceJours: number | null }) {
+   return prisma.$transaction(async (tx) => {
     const realisation = await tx.realisationTacheElevage.create({
-      data: { userId: session.user.id, tacheId: tache.id, dateEcheance: d.dateEcheance, dateRealisation: d.dateRealisation ?? new Date(), notes: d.notes ?? null, clientOperationId: d.clientOperationId },
+      data: { userId, tacheId: tache.id, dateEcheance: d.dateEcheance, dateRealisation: d.dateRealisation ?? new Date(), notes: d.notes ?? null, clientOperationId: d.clientOperationId },
     })
     if (tache.recurrenceJours) {
       let prochaine = new Date(tache.prochaineEcheance.getTime() + tache.recurrenceJours * 86_400_000)
@@ -57,6 +85,6 @@ export async function POST(request: NextRequest) {
       await tx.tacheTerrainElevage.update({ where: { id: tache.id }, data: { actif: false } })
     }
     return realisation
-  })
-  return NextResponse.json({ data: result })
+   })
+  }
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { dateEcritureSchema } from '@/lib/exercices'
 import { refusVentilationFournie } from '@/lib/comptabilite/ventilation-ttc'
 import { modeReglementSchema } from './reglement'
 import { pjUrlSchema } from './justificatif'
@@ -6,7 +7,8 @@ import { pjUrlSchema } from './justificatif'
 const JOURNAUX = ['VE', 'AC', 'BQ', 'CA', 'OD'] as const
 
 const venteManuelleBase = z.object({
-  date: z.coerce.date().optional(),
+  // Dans l'horizon des exercices : au-delà, l'écriture serait introuvable (D73).
+  date: dateEcritureSchema.optional(),
   categorie: z.string().min(1, 'Catégorie requise'),
   description: z.string().min(1, 'Description requise').max(500),
   quantite: z.number().min(0).nullable().optional(),

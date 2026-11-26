@@ -116,3 +116,39 @@ describe("PUT /api/cultures/[id] — espèce, variété et ITP cohérents", () =
     expect(mocks.itpFindUnique).not.toHaveBeenCalled()
   })
 })
+
+// Équipe debug, D74 — la fiche ouverte dans deux onglets : le second
+// enregistrement renvoie tous les champs avec leurs valeurs d'origine et
+// effaçait la note modifiée dans le premier, les deux en 200.
+describe("PUT /api/cultures/[id] — fiche modifiée ailleurs", () => {
+  const enBase = new Date("2026-11-26T08:00:05.000Z")
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    mocks.cultureFindUnique.mockResolvedValue({ ...roquette, notes: "Note du premier onglet", updatedAt: enBase })
+    mocks.cultureUpdate.mockImplementation(async ({ data }) => ({ ...roquette, ...data, aIrriguer: false }))
+  })
+
+  it("refuse en 409 l'enregistrement d'une version périmée, sans rien écrire", async () => {
+    const res = await put({ notes: "", versionLue: "2026-11-26T08:00:00.000Z" })
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: "MODIFIE_AILLEURS", versionActuelle: enBase.toISOString() })
+    expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+  })
+
+  it("enregistre quand la version lue est celle de la base, sans écrire `versionLue`", async () => {
+    const res = await put({ notes: "Note corrigée", versionLue: enBase.toISOString() })
+
+    expect(res.status).toBe(200)
+    expect(mocks.cultureUpdate).toHaveBeenCalledTimes(1)
+    expect(mocks.cultureUpdate.mock.calls[0][0].data).not.toHaveProperty("versionLue")
+  })
+
+  it("garde le comportement d'avant pour un appelant qui n'envoie pas de version", async () => {
+    const res = await put({ notes: "Depuis l'assistant" })
+
+    expect(res.status).toBe(200)
+    expect(mocks.cultureUpdate).toHaveBeenCalledTimes(1)
+  })
+})

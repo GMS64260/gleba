@@ -4,6 +4,7 @@ import {
   construireSnapshotDocumentCirculation,
   declarationCompatibleDocumentCirculation,
   PREPARATION_CIRCULATION_VIDE,
+  preparationCirculationDepuis,
 } from "./document-circulation"
 import type { DeclarationReglementaire } from "./declarations-reglementaires"
 
@@ -86,5 +87,24 @@ describe("document de circulation préparatoire", () => {
     }
 
     expect(anomaliesDocumentCirculation(mouvementCollectif, preparation)).toEqual([])
+  })
+
+  it("garde la même empreinte quand la préparation est relue avec ses colonnes techniques (D57)", () => {
+    const preparation = {
+      ...PREPARATION_CIRCULATION_VIDE,
+      tiersNumeroEde: "EDE33",
+      numeroTransporteur: "TRANS-1",
+    }
+    const enregistre = construireSnapshotDocumentCirculation(declaration, preparation)
+    const relue = {
+      ...preparation,
+      snapshotHash: "empreinte-enregistree",
+      updatedAt: new Date("2026-11-25T10:00:00Z"),
+    }
+    const relu = construireSnapshotDocumentCirculation(declaration, relue)
+
+    expect(relu).toEqual(enregistre)
+    expect(relu.preparation).not.toHaveProperty("snapshotHash")
+    expect(preparationCirculationDepuis(relue)).toEqual(preparation)
   })
 })
