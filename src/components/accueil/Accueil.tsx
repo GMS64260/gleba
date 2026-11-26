@@ -61,7 +61,6 @@ import { CLASSES_BOUTON, CLASSES_BOUTON_PRINCIPAL } from "./boutons"
 import { NombreAnime } from "./NombreAnime"
 import { BandeMasques, CatalogueTuiles, Personnalisable } from "./Personnalisable"
 import { Repere } from "./Repere"
-import { RetourAncienAccueil } from "./RetourAncienAccueil"
 import { TuileAgent, alerteMeteoPrioritaire } from "./TuileAgent"
 import { TuileAujourdhui } from "./TuileAujourdhui"
 import { TuileElevage } from "./TuileElevage"
@@ -489,10 +488,6 @@ export function Accueil() {
             </DndContext>
           </TuileGrille>
 
-          <p className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-ardoise">
-            <span>Nouvel accueil, en essai : vos retours comptent, surtout « je ne retrouve plus… ».</span>
-            <RetourAncienAccueil />
-          </p>
         </ConteneurPage>
 
       </div>

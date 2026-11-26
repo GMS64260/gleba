@@ -23,7 +23,6 @@ import { ModulesNav } from "@/components/auth/ModulesNav"
 import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
 import { HeaderMeteoWidget } from "@/components/meteo/HeaderMeteoWidget"
 import { useHideOnScroll } from "@/hooks/use-hide-on-scroll"
-import { useVersionAccueil } from "@/hooks/use-version-accueil"
 import { usePathname } from "next/navigation"
 import type { ModuleId } from "@/lib/modules"
 import { estCoquilleV2Active } from "@/lib/navigation-principale"
@@ -44,8 +43,7 @@ export function AppHeader({ current, showLune = false, className = "" }: AppHead
   const hidden = useHideOnScroll()
   // La coquille v2 fournit déjà la barre commune sur toutes les tailles.
   const pathname = usePathname()
-  const { version } = useVersionAccueil()
-  const coquilleActive = estCoquilleV2Active(pathname, version, Boolean(session?.user))
+  const coquilleActive = estCoquilleV2Active(pathname, Boolean(session?.user))
 
   // Ticket cmsx5x1z2 — la barre d'onglets des modules se collait sous le header
   // avec un décalage codé en dur (`top-[61px]`), qui suppose un header d'une

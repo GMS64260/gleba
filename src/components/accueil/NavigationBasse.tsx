@@ -11,6 +11,7 @@ import { useAccesService } from "@/hooks/use-acces-service"
 import { ENTREES_NAVIGATION, entreeNavigationVisible, estEntreeNavigationActive, getEntreeNavigation, type EntreeNavigation } from "@/lib/navigation-principale"
 import { cn } from "@/lib/utils"
 import { GuideNavigationNotice, useGuidageNavigation } from "@/components/shell/GuidageNavigation"
+import { LienNoter } from "@/components/shell/LienNoter"
 
 const CLASSE_ENTREE = "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg text-[10.5px] font-medium text-ardoise focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge"
 
@@ -71,10 +72,10 @@ export function NavigationBasse({ className }: { className?: string }) {
       {cible && !ouvert && <div className="absolute inset-x-2 bottom-[calc(100%+0.5rem)]"><GuideNavigationNotice /></div>}
       {entree(directes[0])}
       {entree(directes[1], "Plan")}
-      <Link href="/taches" aria-current={estEntreeNavigationActive(pathname, "/taches") ? "page" : undefined} className={cn(CLASSE_ENTREE, "text-foret")} aria-label="Noter une tâche">
+      <LienNoter className={cn(CLASSE_ENTREE, "text-foret")}>
         <span className="-mt-5 grid h-11 w-11 place-items-center rounded-full bg-sauge text-craie shadow-fiche"><Pencil className="h-5 w-5" aria-hidden /></span>
         Noter
-      </Link>
+      </LienNoter>
       {entree(quatrieme)}
       <Sheet open={ouvert} onOpenChange={setOuvert}>
         <SheetTrigger asChild>
