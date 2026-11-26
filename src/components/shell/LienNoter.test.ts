@@ -51,10 +51,19 @@ describe("LienNoter", () => {
     expect(screen.getByRole("button", { name: "Noter" }).getAttribute("data-noter")).toBe("attente")
   })
 
-  it("suit l'univers de la page ouverte et marque la page courante", () => {
+  it("propose encore le choix depuis la page d'un univers, pour en changer", () => {
     monter("/elevage/tournee", ["maraichage", "verger", "elevage"])
+    expect(screen.queryByRole("link")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: /Noter/ }))
+    const liens = screen.getAllByRole("link")
+    expect(liens.map(l => l.getAttribute("href"))).toEqual(["/taches", "/verger?tab=calendrier", "/elevage/tournee"])
+    expect(liens.map(l => l.getAttribute("aria-current"))).toEqual([null, null, "true"])
+    expect(liens[2].textContent).toContain("Ici")
+  })
+
+  it("marque la page courante quand la ferme n'a qu'un univers", () => {
+    monter("/elevage/tournee", ["elevage"])
     const lien = screen.getByRole("link", { name: "Noter · Élevage" })
-    expect(lien.getAttribute("href")).toBe("/elevage/tournee")
     expect(lien.getAttribute("aria-current")).toBe("page")
   })
 })
