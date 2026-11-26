@@ -82,13 +82,18 @@ const DESTINATIONS_NOTER: readonly (DestinationNoter & { racines: readonly strin
 /**
  * Destinations du bouton « Noter » (retour FB-6S0AR2 : il n'ouvrait que les
  * tâches du maraîchage, même pour un éleveur). Une seule destination : le
- * bouton y mène directement, soit parce que la ferme n'a qu'un univers, soit
- * parce que la page ouverte appartient à l'un d'eux. Plusieurs : à l'appelant
- * de proposer le choix. Sans univers actif, les tâches restent la destination.
+ * bouton y mène directement. Plusieurs : à l'appelant de proposer le choix,
+ * sur toute page, y compris celle d'un univers : un lien vers la page déjà
+ * ouverte ne faisait rien, et on ne pouvait plus changer d'univers (retour du
+ * 2026-11-26). Sans univers actif, les tâches restent la destination.
  */
-export function destinationsNoter(pathname: string | null, modules: readonly ModuleId[]): DestinationNoter[] {
+export function destinationsNoter(modules: readonly ModuleId[]): DestinationNoter[] {
   const actives = DESTINATIONS_NOTER.filter(d => modules.includes(d.module))
-  if (actives.length === 0) return [DESTINATIONS_NOTER[0]]
-  const courante = actives.find(d => d.racines.some(r => estEntreeNavigationActive(pathname, r)))
-  return courante ? [courante] : [...actives]
+  return actives.length === 0 ? [DESTINATIONS_NOTER[0]] : [...actives]
+}
+
+/** Univers auquel appartient la page ouverte, pour le signaler dans le choix. */
+export function universNoterCourant(pathname: string | null, modules: readonly ModuleId[]): ModuleId | null {
+  const courante = DESTINATIONS_NOTER.find(d => modules.includes(d.module) && d.racines.some(r => estEntreeNavigationActive(pathname, r)))
+  return courante?.module ?? null
 }

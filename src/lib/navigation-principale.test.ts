@@ -1,42 +1,42 @@
 import { describe, expect, it } from "vitest"
 
-import { destinationsNoter, estCoquilleV2Active } from "./navigation-principale"
+import { destinationsNoter, estCoquilleV2Active, universNoterCourant } from "./navigation-principale"
 
-const liens = (pathname: string | null, modules: Parameters<typeof destinationsNoter>[1]) =>
-  destinationsNoter(pathname, modules).map(d => d.href)
+const liens = (modules: Parameters<typeof destinationsNoter>[0]) => destinationsNoter(modules).map(d => d.href)
 
 describe("destinationsNoter", () => {
   it("mène l'éleveur à sa tournée et l'arboriculteur à son verger, sans passer par le maraîchage", () => {
-    expect(liens("/aujourdhui", ["elevage", "comptabilite"])).toEqual(["/elevage/tournee"])
-    expect(liens("/aujourdhui", ["verger"])).toEqual(["/verger?tab=calendrier"])
-    expect(liens("/aujourdhui", ["maraichage"])).toEqual(["/taches"])
+    expect(liens(["elevage", "comptabilite"])).toEqual(["/elevage/tournee"])
+    expect(liens(["verger"])).toEqual(["/verger?tab=calendrier"])
+    expect(liens(["maraichage"])).toEqual(["/taches"])
   })
 
-  it("propose le choix sur une page commune quand la ferme a plusieurs univers", () => {
-    expect(liens("/aujourdhui", ["maraichage", "verger", "elevage", "comptabilite"])).toEqual([
-      "/taches",
-      "/verger?tab=calendrier",
-      "/elevage/tournee",
-    ])
-    expect(liens("/jardin", ["elevage", "maraichage"])).toEqual(["/taches", "/elevage/tournee"])
-  })
-
-  it("suit l'univers de la page ouverte", () => {
-    const tous = ["maraichage", "verger", "elevage"] as const
-    expect(liens("/elevage/animaux", tous)).toEqual(["/elevage/tournee"])
-    expect(liens("/verger", tous)).toEqual(["/verger?tab=calendrier"])
-    expect(liens("/maraichage/cultures", tous)).toEqual(["/taches"])
-    expect(liens("/taches", tous)).toEqual(["/taches"])
-  })
-
-  it("ne suit pas une page dont l'univers est désactivé", () => {
-    expect(liens("/elevage", ["maraichage", "verger"])).toEqual(["/taches", "/verger?tab=calendrier"])
-    expect(liens("/verger-autre", ["maraichage", "verger"])).toHaveLength(2)
+  it("rend tous les univers actifs de la ferme, dans l'ordre", () => {
+    expect(liens(["maraichage", "verger", "elevage", "comptabilite"])).toEqual(["/taches", "/verger?tab=calendrier", "/elevage/tournee"])
+    expect(liens(["elevage", "maraichage"])).toEqual(["/taches", "/elevage/tournee"])
   })
 
   it("garde les tâches quand aucun univers de production n'est actif", () => {
-    expect(liens("/aujourdhui", ["comptabilite"])).toEqual(["/taches"])
-    expect(liens(null, [])).toEqual(["/taches"])
+    expect(liens(["comptabilite"])).toEqual(["/taches"])
+    expect(liens([])).toEqual(["/taches"])
+  })
+})
+
+describe("universNoterCourant", () => {
+  const tous = ["maraichage", "verger", "elevage"] as const
+
+  it("reconnaît l'univers de la page ouverte", () => {
+    expect(universNoterCourant("/elevage/animaux", tous)).toBe("elevage")
+    expect(universNoterCourant("/verger", tous)).toBe("verger")
+    expect(universNoterCourant("/maraichage/cultures", tous)).toBe("maraichage")
+    expect(universNoterCourant("/taches", tous)).toBe("maraichage")
+  })
+
+  it("n'en signale aucun sur une page commune ou pour un univers désactivé", () => {
+    expect(universNoterCourant("/aujourdhui", tous)).toBeNull()
+    expect(universNoterCourant("/verger-autre", tous)).toBeNull()
+    expect(universNoterCourant("/elevage", ["maraichage", "verger"])).toBeNull()
+    expect(universNoterCourant(null, tous)).toBeNull()
   })
 })
 
