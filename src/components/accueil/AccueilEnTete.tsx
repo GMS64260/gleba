@@ -3,6 +3,7 @@ import Link from "next/link"
 
 import { dateMidiLocal } from "@/lib/accueil/classement"
 import type { PhraseFenetre } from "@/lib/accueil/fenetre-travail"
+import { LienNoter } from "@/components/shell/LienNoter"
 import { PageEntete } from "@/components/shell/PageEntete"
 
 import { CLASSES_BOUTON, CLASSES_BOUTON_PRINCIPAL } from "./boutons"
@@ -72,9 +73,9 @@ export function AccueilEnTete({ date, fenetre, chargementFenetre = false, temper
           )}
         </span>
       </div>} actions={<>
-        <Link href="/taches" className={CLASSES_BOUTON}>
+        <LienNoter className={CLASSES_BOUTON}>
           Noter
-        </Link>
+        </LienNoter>
         <Link href="/maraichage/recoltes" className={CLASSES_BOUTON_PRINCIPAL}>
           + Récolte
         </Link>

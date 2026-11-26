@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Accueil } from "@/components/accueil/Accueil";
 
 /**
- * Accueil v2 « La ferme d'abord » (bento), en opt-in par compte (préférence
- * `accueil = "v2"`, livraison L2 du 2026-10-09). La route est protégée par le
+ * Accueil « La ferme d'abord » (bento) : le seul accueil depuis le retrait de
+ * l'ancien (2026-11-26). La route est protégée par le
  * middleware comme toute page applicative ; les données viennent de
  * `GET /api/accueil/aujourdhui`.
  */

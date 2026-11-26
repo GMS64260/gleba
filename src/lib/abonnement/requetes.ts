@@ -3,7 +3,7 @@ export const ENTETE_CHEMIN = "x-gleba-chemin"
 export const ENTETE_METHODE = "x-gleba-methode"
 const MARAICHAGE = /^(maraichage|cultures|planches|planification|recoltes|irrigations|itps|rotations|associations|consommations|phyto|registre-phyto|interventions|calendrier|calendrier-climat|user\/stocks)(\/|$)/
 const VERGER = /^(arbres|verger)(\/|$)/
-const COMPTE = /^(abonnement|account|auth|user\/(preferences|delete-data|api-token)|exploitation|cookie-consent|avis|signalements|evolutions|feedback|referentiel|communaute|admin|accueil\/version|notifications\/push)(\/|$)/
+const COMPTE = /^(abonnement|account|auth|user\/(preferences|delete-data|api-token)|exploitation|cookie-consent|avis|signalements|evolutions|feedback|referentiel|communaute|admin|notifications\/push)(\/|$)/
 const COMMUN = /^(especes|varietes|familles|destinations|accueil|aujourdhui|dashboard|capteurs|carte|jardin|objets-jardin|objets|parcelles|search|stocks|taches|sol|lunaire|tracabilite|upload|onboarding|import|import-test-data|export|notifications|public|desabonnement)(\/|$)/
 /** Facturation du carnet gratuit ; le reste de `comptabilite` relève de la gestion (Complet). */
 const FACTURATION = /^comptabilite\/(clients|documents|envois|factures|fournisseurs|reglements|ventes-manuelles)(\/|$)/
