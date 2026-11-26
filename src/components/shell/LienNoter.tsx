@@ -7,12 +7,14 @@ import { usePathname } from "next/navigation"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { useAccesService } from "@/hooks/use-acces-service"
 import { useModules } from "@/hooks/use-modules"
-import { destinationsNoter, estEntreeNavigationActive } from "@/lib/navigation-principale"
+import { cn } from "@/lib/utils"
+import { destinationsNoter, estEntreeNavigationActive, universNoterCourant } from "@/lib/navigation-principale"
 
 /**
  * Bouton « Noter » : il ouvre la saisie de l'univers de la ferme (cultures,
- * verger, élevage). Avec un seul univers, ou depuis une page de l'un d'eux,
- * c'est un lien direct ; sinon il propose le choix (retour FB-6S0AR2).
+ * verger, élevage). Avec un seul univers c'est un lien direct ; avec plusieurs
+ * il propose toujours le choix, l'univers de la page ouverte signalé
+ * (retour FB-6S0AR2).
  */
 export function LienNoter({ className, children }: { className?: string; children?: React.ReactNode }) {
   const pathname = usePathname()
@@ -30,7 +32,8 @@ export function LienNoter({ className, children }: { className?: string; childre
       </button>
     )
   }
-  const destinations = destinationsNoter(pathname, modules)
+  const destinations = destinationsNoter(modules)
+  const courant = universNoterCourant(pathname, modules)
 
   if (destinations.length === 1) {
     const { href, libelle } = destinations[0]
@@ -61,12 +64,13 @@ export function LienNoter({ className, children }: { className?: string; childre
             const Icone = d.icone
             return (
               <li key={d.module}>
-                <Link href={d.href} data-noter={d.module} onClick={() => setOuvert(false)} className="flex min-h-14 items-center gap-3 rounded-lg border border-lin px-3 py-2 hover:bg-papier focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge">
+                <Link href={d.href} data-noter={d.module} onClick={() => setOuvert(false)} aria-current={d.module === courant ? "true" : undefined} className={cn("flex min-h-14 items-center gap-3 rounded-lg border border-lin px-3 py-2 hover:bg-papier focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge", d.module === courant && "border-sauge bg-sauge-doux")}>
                   <Icone className="h-5 w-5 shrink-0 text-sauge" aria-hidden />
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold text-encre">{d.libelle}</span>
                     <span className="block text-xs text-ardoise">{d.detail}</span>
                   </span>
+                  {d.module === courant && <span className="ml-auto shrink-0 text-xs text-foret">Ici</span>}
                 </Link>
               </li>
             )
