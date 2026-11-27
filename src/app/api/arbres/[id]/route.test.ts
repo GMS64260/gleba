@@ -340,6 +340,30 @@ describe("PUT /api/arbres/[id]", () => {
 // (registre : « Arbre #587 »). Le registre phyto est une traçabilité
 // réglementaire : les interventions sont conservées, détachées de l'arbre
 // avec un snapshot de son identité dans les notes.
+describe("PUT /api/arbres/[id] — nom obligatoire (D242)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: "user-1" } } })
+    mocks.arbreFindUnique.mockResolvedValue({ id: 42, userId: "user-1", nom: "Pêcher", parcelleGeoId: null })
+  })
+
+  it("refuse en 400 un nom vidé, sans rien écrire", async () => {
+    const response = await PUT(request({ nom: "   " }) as never, params)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ champ: "nom" })
+    expect(mocks.arbreUpdate).not.toHaveBeenCalled()
+  })
+
+  it("ne refuse pas un arbre déjà sans nom, que le plan renvoie tel quel", async () => {
+    mocks.arbreFindUnique.mockResolvedValue({ id: 42, userId: "user-1", nom: "", parcelleGeoId: null })
+
+    const response = await PUT(request({ nom: "", posX: 3, posY: 4 }) as never, params)
+
+    expect(response.status).not.toBe(400)
+  })
+})
+
 describe("DELETE /api/arbres/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks()

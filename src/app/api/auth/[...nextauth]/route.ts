@@ -2,9 +2,25 @@
  * Routes NextAuth.js
  */
 
+import type { NextRequest } from "next/server"
 import { handlers } from "@/lib/auth"
+import { sansCookieSessionRecopie } from "@/lib/session-cookie-recopie"
 
-export const { GET, POST } = handlers
+export const { POST } = handlers
+
+/**
+ * La lecture de la session par le navigateur (`GET /api/auth/session`, au
+ * montage et au retour sur l'onglet) recopie le jeton reçu : partie avant un
+ * changement de mot de passe, elle remplaçait le cookie réémis (équipe debug,
+ * D198). Connexion, retour du fournisseur et déconnexion posent leur cookie
+ * normalement. Attention : `POST /api/auth/session` (la fonction `update()`,
+ * que l'application n'appelle nulle part) recopie lui aussi le jeton reçu sans
+ * être filtré ; qui l'introduirait ferait revenir ce défaut.
+ */
+export async function GET(requete: NextRequest) {
+  const reponse = await handlers.GET(requete)
+  return new URL(requete.url).pathname.endsWith("/session") ? sansCookieSessionRecopie(requete, reponse) : reponse
+}
 
 /**
  * `HEAD` répond sans passer par Auth.js.

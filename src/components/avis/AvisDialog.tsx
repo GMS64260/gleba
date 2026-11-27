@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { confirmDialog } from "@/lib/global-dialog"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { StarRating } from "@/components/avis/StarRating"
 import { type AvisRefType } from "@/lib/avis/types"
 import { avisConfig } from "@/lib/avis/criteres"
@@ -114,6 +114,21 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
   const [fichiers, setFichiers] = React.useState<File[]>([])
   const [droitsPhotos, setDroitsPhotos] = React.useState(false)
   const [erreurChargement, setErreurChargement] = React.useState<string | null>(null)
+  // Confirmation affichée DANS cette fenêtre : celle de l'hôte global vit hors
+  // de son arbre, et sur téléphone « Annuler » fermait aussi le formulaire, avec
+  // son brouillon (équipe debug, D253).
+  const [confirmation, setConfirmation] = React.useState<null | { message: string; confirmLabel: string }>(null)
+  const reponseConfirmation = React.useRef<((accord: boolean) => void) | null>(null)
+  const repondreConfirmation = React.useCallback((accord: boolean) => {
+    reponseConfirmation.current?.(accord)
+    reponseConfirmation.current = null
+    setConfirmation(null)
+  }, [])
+  const confirmDialog = React.useCallback((message: string, confirmLabel: string) => new Promise<boolean>((resolve) => {
+    reponseConfirmation.current?.(false)
+    reponseConfirmation.current = resolve
+    setConfirmation({ message, confirmLabel })
+  }), [])
   // Garde anti-race : seule la réponse de la requête la plus récente est appliquée.
   const reqIdRef = React.useRef(0)
 
@@ -162,8 +177,9 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
       setData(null)
       setForm(EMPTY_FORM)
       setFichiers([])
+      repondreConfirmation(false)
     }
-  }, [open, refId, charger])
+  }, [open, refId, charger, repondreConfirmation])
 
   const aQuelqueChose =
     form.reprend != null ||
@@ -216,7 +232,7 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
 
   const supprimer = async () => {
     if (!base) return
-    if (!(await confirmDialog(data?.monAvis?.nbTemoignages ? "Supprimer votre avis, ses photos et tous ses témoignages de récolte ? Les récoltes restent dans votre registre." : "Supprimer votre avis et ses photos ?"))) return
+    if (!(await confirmDialog(data?.monAvis?.nbTemoignages ? "Supprimer votre avis, ses photos et tous ses témoignages de récolte ? Les récoltes restent dans votre registre." : "Supprimer votre avis et ses photos ?", "Supprimer"))) return
     try {
       const res = await fetch(base, { method: "DELETE" })
       if (!res.ok) throw new Error("Erreur")
@@ -230,7 +246,7 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
 
   const stats = data?.stats
   const retirerTemoignage = async (id: string) => {
-    if (!personnel || !(await confirmDialog("Retirer ce témoignage ? La récolte reste dans votre registre."))) return
+    if (!personnel || !(await confirmDialog("Retirer ce témoignage ? La récolte reste dans votre registre.", "Retirer"))) return
     try {
       const res = await fetch(`/api/avis/temoignages/${encodeURIComponent(id)}`, { method: "DELETE" })
       const body = await res.json().catch(() => ({}))
@@ -433,6 +449,15 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
             )}
           </div>
         )}
+        <ConfirmDialog
+          open={confirmation !== null}
+          onOpenChange={(ouvert) => { if (!ouvert && reponseConfirmation.current) repondreConfirmation(false) }}
+          title="Confirmer l'action"
+          description={confirmation?.message}
+          confirmLabel={confirmation?.confirmLabel ?? "Confirmer"}
+          variant="destructive"
+          onConfirm={() => repondreConfirmation(true)}
+        />
       </DialogContent>
     </Dialog>
   )

@@ -1189,8 +1189,10 @@ function ParametresContent() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleCopyMcp(mcpToken, 'token')}
+                        aria-label={mcpCopied === 'token' ? 'Jeton copié' : 'Copier le jeton'}
+                        title="Copier le jeton"
                       >
-                        {mcpCopied === 'token' ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                        {mcpCopied === 'token' ? <Check aria-hidden="true" className="h-4 w-4 text-green-600" /> : <Copy aria-hidden="true" className="h-4 w-4" />}
                       </Button>
                     </div>
                   </div>
@@ -1252,8 +1254,10 @@ function ParametresContent() {
                     size="sm"
                     className="absolute top-2 right-2 bg-slate-800 text-white hover:bg-slate-700 border-slate-600"
                     onClick={() => handleCopyMcp(claudeDesktopConfig!, 'config')}
+                    aria-label={mcpCopied === 'config' ? 'Configuration copiée' : 'Copier la configuration Claude Desktop'}
+                    title="Copier la configuration"
                   >
-                    {mcpCopied === 'config' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {mcpCopied === 'config' ? <Check aria-hidden="true" className="h-4 w-4" /> : <Copy aria-hidden="true" className="h-4 w-4" />}
                   </Button>
                 </div>
 

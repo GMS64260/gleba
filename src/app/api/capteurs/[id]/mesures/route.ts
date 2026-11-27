@@ -5,6 +5,7 @@
  * agrégats journaliers au-delà (min, max, moyenne, jours du lieu, calculés
  * chaque nuit : le jour en cours n'y est pas).
  */
+import { jourDansFuseau } from "@/lib/lunar"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { getUserId, requireAuthApi } from "@/lib/auth-utils"
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!estGrandeur(grandeur)) return NextResponse.json({ error: "Grandeur inconnue" }, { status: 400 })
   const jours = Math.min(JOURS_MAX, Math.max(1, Math.trunc(Number(request.nextUrl.searchParams.get("jours") ?? 7)) || 7))
 
-  const capteur = await prisma.capteur.findFirst({ where: { id, userId }, select: { id: true } })
+  const capteur = await prisma.capteur.findFirst({ where: { id, userId }, select: { id: true, connecteur: { select: { fuseau: true } } } })
   if (!capteur) return NextResponse.json({ error: "Capteur introuvable" }, { status: 404 })
 
   const depuis = new Date(Date.now() - jours * 24 * 3600 * 1000)
@@ -47,8 +48,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     })
   }
 
+  // Le jour en cours du lieu est partiel : il n'est pas tracé, comme le dit la
+  // légende de la courbe (équipe debug, D197).
+  let aujourdhui: string
+  try {
+    aujourdhui = jourDansFuseau(new Date(), capteur.connecteur?.fuseau || "Europe/Paris")
+  } catch {
+    aujourdhui = jourDansFuseau(new Date(), "Europe/Paris")
+  }
   const agregats = await prisma.mesureCapteurJour.findMany({
-    where: { capteurId: capteur.id, grandeur, jour: { gte: depuis } },
+    where: { capteurId: capteur.id, grandeur, jour: { gte: depuis, lt: new Date(`${aujourdhui}T00:00:00.000Z`) } },
     select: { jour: true, min: true, max: true, moyenne: true, nombre: true },
     orderBy: { jour: "asc" },
   })

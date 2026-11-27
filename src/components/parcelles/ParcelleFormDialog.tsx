@@ -89,10 +89,26 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
       // et d'écraser la valeur en place. Si la géométrie a changé, on l'omet →
       // le serveur recalcule normalement.
       const geometryInchangee = isEdit && (geometry || "") === (parcelle?.geometry || "")
-      const body: Record<string, unknown> =
+      let body: Record<string, unknown> =
         geometryInchangee && parcelle?.surface != null
           ? { ...formData, surface: parcelle.surface }
           : formData
+      if (isEdit && parcelle) {
+        // En modification, seuls les champs changés dans CE dialogue partent : la
+        // route garde une clé absente. Un onglet resté ouvert n'efface plus le type
+        // de sol enregistré ailleurs (équipe debug, D233). Sans géométrie envoyée,
+        // le serveur ne recalcule pas la surface.
+        const triees = (liste: string[]) => [...liste].sort().join(",")
+        body = {}
+        if (formData.nom !== parcelle.nom) body.nom = formData.nom
+        if (triees(couches) !== triees(parcelle.couches || [])) body.couches = couches
+        if ((typeSol || null) !== (parcelle.typeSol || null)) body.typeSol = typeSol || null
+        if (!geometryInchangee) body.geometry = geometry || ""
+        if (Object.keys(body).length === 0) {
+          onClose()
+          return
+        }
+      }
       const url = isEdit ? `/api/parcelles/${parcelle!.id}` : "/api/parcelles"
       const method = isEdit ? "PUT" : "POST"
 

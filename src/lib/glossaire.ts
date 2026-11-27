@@ -116,6 +116,31 @@ export const GLOSSAIRE: Record<string, GlossaireEntry> = {
       "Revenus moins dépenses directes liées à la production (semences, intrants, eau). " +
       "Ne tient pas compte des charges de structure (loyer, amortissement).",
   },
+  // Sigles d'élevage annoncés par le Centre d'aide (équipe debug, D249).
+  BDNI: {
+    label: "BDNI — Base de Données Nationale d'Identification",
+    definition:
+      "Base nationale où sont enregistrés les bovins identifiés : naissances, mouvements et sorties. " +
+      "Le numéro national d'un bovin (commençant par FR) s'y rattache ; Gleba en contrôle le format à la saisie.",
+  },
+  DIM: {
+    label: "DIM — Jours en lactation (Days In Milk)",
+    definition:
+      "Nombre de jours écoulés depuis la dernière mise-bas d'une femelle laitière. " +
+      "Gleba s'en sert pour suggérer le tarissement, notamment au-delà de 270 jours.",
+  },
+  FCR: {
+    label: "FCR — Indice de consommation (Feed Conversion Ratio)",
+    definition:
+      "Quantité d'aliment consommée pour produire un kilo de viande. Dans le tableau de bord Élevage, " +
+      "Gleba le calcule en kg d'aliment par kg de carcasse : plus il est bas, plus l'alimentation est efficace.",
+  },
+  IPG: {
+    label: "IPG — Identification Pérenne Généralisée",
+    definition:
+      "Identification officielle des ovins, caprins et porcins : chaque animal porte un numéro unique " +
+      "(FR, indicatif de l'élevage attribué par l'EDE, puis numéro d'ordre) repris dans le registre d'élevage.",
+  },
 }
 
 /**

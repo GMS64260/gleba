@@ -45,6 +45,8 @@ import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { ConsommationsTab } from "@/components/stocks/ConsommationsTab"
 import { AlertTriangle } from "lucide-react"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
+import { ChampDecimal } from "@/components/ui/champ-decimal"
+import { lireNombreSaisi, versChampNombre } from "@/lib/saisie/nombre"
 import { formatQuantiteParUnite, type QuantiteParUnite } from "@/lib/recolte/quantites"
 
 interface VarieteStock {
@@ -148,24 +150,34 @@ function StockInput({
   unit?: string
   isInteger?: boolean
 }) {
+  const { toast } = useToast()
   const [editing, setEditing] = React.useState(false)
-  const [localValue, setLocalValue] = React.useState(value?.toString() || "")
+  const [localValue, setLocalValue] = React.useState(versChampNombre(value))
   const inputRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
-    setLocalValue(value?.toString() || "")
+    setLocalValue(versChampNombre(value))
   }, [value])
 
   const handleBlur = () => {
     setEditing(false)
-    // Audit 2026-07 (#53) : `parseFloat(x) || null` transformait 0 en null
-    // (« non renseigné ») — saisir un stock à 0 ne l'enregistrait jamais.
-    // On ne convertit en null que si le champ est vide ou non numérique.
-    const parsed = isInteger ? parseInt(localValue) : parseFloat(localValue)
-    const numVal = localValue.trim() === "" || Number.isNaN(parsed) ? null : parsed
-    if (numVal !== value) {
-      onChange(numVal)
-      onSave(numVal)
+    // « 12,5 » se lit 12,5 quelle que soit la langue du navigateur : le champ
+    // numérique avalait la virgule et enregistrait 125 (équipe debug, D228).
+    // Un champ vidé efface le stock ; une saisie illisible, négative ou non
+    // entière là où il faut un entier est refusée au lieu de l'effacer.
+    const lu = lireNombreSaisi(localValue)
+    if (lu !== null && (Number.isNaN(lu) || lu < 0 || (isInteger && !Number.isInteger(lu)))) {
+      setLocalValue(versChampNombre(value))
+      toast({
+        variant: "destructive",
+        title: "Stock non enregistré",
+        description: isInteger ? "Saisissez un nombre entier positif." : "Saisissez un nombre positif, par exemple 12,5.",
+      })
+      return
+    }
+    if (lu !== value) {
+      onChange(lu)
+      onSave(lu)
     }
   }
 
@@ -174,22 +186,20 @@ function StockInput({
       inputRef.current?.blur()
     }
     if (e.key === "Escape") {
-      setLocalValue(value?.toString() || "")
+      setLocalValue(versChampNombre(value))
       setEditing(false)
     }
   }
 
   if (editing) {
     return (
-      <Input
+      <ChampDecimal
         ref={inputRef}
-        type="number"
         value={localValue}
-        onChange={(e) => setLocalValue(e.target.value)}
+        onValeur={setLocalValue}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         className="w-24 h-8"
-        step={isInteger ? 1 : 0.1}
         autoFocus
       />
     )

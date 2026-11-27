@@ -124,10 +124,12 @@ export async function GET(request: NextRequest, { params }: Params) {
       }))
     }
 
-    // Années disponibles
-    const yearsAvailable = [...new Set(culturesHistory.map((c) => c.annee))].sort(
-      (a, b) => b - a
-    )
+    // Années disponibles : cultures ET fertilisations. Une année sans culture
+    // mais avec un apport manquait au filtre (équipe debug, D206).
+    const yearsAvailable = [...new Set([
+      ...culturesHistory.map((c) => c.annee),
+      ...fertilisationsHistory.map((f) => new Date(f.date).getFullYear()),
+    ])].sort((a, b) => b - a)
 
     const response: PlancheHistory = {
       plancheId: planche.nom,

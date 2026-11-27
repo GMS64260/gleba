@@ -108,26 +108,26 @@ export async function GET(request: NextRequest) {
     const monthW = (pageWidth - especeColW) / 12
     const rowH = 20
 
-    // En-tête tableau
-    doc.fontSize(9).font("Helvetica-Bold").fillColor("#0f172a")
-    doc.rect(30, startY, pageWidth, rowH).fill("#f1f5f9")
-    doc.fillColor("#0f172a").text("Espèce", 35, startY + 6, { width: especeColW - 10 })
-    for (let m = 0; m < 12; m++) {
-      doc.text(
-        MOIS[m],
-        30 + especeColW + m * monthW,
-        startY + 6,
-        { width: monthW, align: "center" }
-      )
+    // En-tête du tableau, redessiné en haut de chaque page : les mois
+    // manquaient sur la seconde (équipe debug, D144).
+    const dessinerEntete = (yEntete: number) => {
+      doc.fontSize(9).font("Helvetica-Bold").fillColor("#0f172a")
+      doc.rect(30, yEntete, pageWidth, rowH).fill("#f1f5f9")
+      doc.fillColor("#0f172a").text("Espèce", 35, yEntete + 6, { width: especeColW - 10 })
+      for (let m = 0; m < 12; m++) {
+        doc.text(MOIS[m], 30 + especeColW + m * monthW, yEntete + 6, { width: monthW, align: "center" })
+      }
+      doc.fontSize(8).font("Helvetica")
     }
+    dessinerEntete(startY)
 
     // Lignes
     let y = startY + rowH
-    doc.fontSize(8).font("Helvetica")
     for (const profile of profiles) {
       if (y + rowH > doc.page.height - 60) {
         doc.addPage()
-        y = 40
+        dessinerEntete(40)
+        y = 40 + rowH
       }
       // Espece
       doc.fillColor("#0f172a").font("Helvetica-Bold")

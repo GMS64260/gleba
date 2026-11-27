@@ -16,3 +16,11 @@ export function parcelleDeCreation(filtre: string | null | undefined): string | 
   if (!filtre || filtre === FILTRE_SANS_PARCELLE) return undefined
   return filtre
 }
+
+/**
+ * Lien vers la vue 3D avec le filtre du plan, « Non assigné » compris : exclu
+ * du lien, il ouvrait la vue 3D sur toutes les parcelles (équipe debug, D237).
+ */
+export function lienVue3D(filtre: string | null | undefined): string {
+  return filtre ? `/jardin/3d?parcelle=${encodeURIComponent(filtre)}` : "/jardin/3d"
+}

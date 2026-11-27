@@ -1512,17 +1512,17 @@ export function ArbresTab() {
                   onChange={(e) => setBatchMode(e.target.checked)}
                   className="h-4 w-4"
                 />
-                Créer plusieurs arbres identiques (lot)
+                Créer un lot d&apos;arbres identiques
               </label>
               {batchMode && (
                 <>
                   <p className="text-xs text-muted-foreground">
-                    Le champ « Nom » sera ignoré au profit d&apos;un nommage automatique
-                    {' '}<code className="text-[10px]">prefix-01</code>, <code className="text-[10px]">prefix-02</code>…
+                    Un seul lot est créé, sous le nom ci-dessous, avec l&apos;effectif indiqué. Aucune fiche
+                    d&apos;arbre individuelle n&apos;est générée et le champ « Nom » est ignoré.
                   </p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs">Préfixe (ex: P-RR-2026)</Label>
+                      <Label className="text-xs">Nom du lot (ex : P-RR-2026)</Label>
                       <Input
                         value={batchPrefix}
                         onChange={(e) => setBatchPrefix(e.target.value)}
@@ -1547,7 +1547,7 @@ export function ArbresTab() {
             )}
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Enregistrement..." : batchMode ? `Créer ${batchCount} arbres` : "Ajouter l'arbre"}
+              {isSubmitting ? "Enregistrement..." : batchMode ? `Créer un lot de ${batchCount} arbres` : "Ajouter l'arbre"}
             </Button>
           </form>
         </DialogContent>

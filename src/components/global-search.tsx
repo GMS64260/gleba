@@ -47,6 +47,25 @@ export function GlobalSearch() {
   const [loading, setLoading] = React.useState(false)
   const gPressedAtRef = React.useRef(0)
   const focusAvantOuvertureRef = React.useRef<HTMLElement | null>(null)
+  const panneauRef = React.useRef<HTMLDivElement>(null)
+
+  // Tant que la palette couvre la page, Tab et Maj+Tab tournent dans la
+  // palette au lieu de passer derrière le voile (équipe debug, D252).
+  const garderFocusDansPalette = React.useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return
+    const panneau = panneauRef.current
+    if (!panneau) return
+    e.preventDefault()
+    const focusables = Array.from(panneau.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ))
+    if (focusables.length === 0) return
+    const position = focusables.indexOf(document.activeElement as HTMLElement)
+    const cible = e.shiftKey
+      ? focusables[(position <= 0 ? focusables.length : position) - 1]
+      : focusables[(position + 1) % focusables.length]
+    cible.focus()
+  }, [])
 
   const ouvrirPalette = React.useCallback(() => {
     if (open) return
@@ -178,7 +197,15 @@ export function GlobalSearch() {
       className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center pt-24 px-4"
       onClick={fermerPalette}
     >
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-xl">
+      <div
+        ref={panneauRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Palette de recherche"
+        onKeyDown={garderFocusDansPalette}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-xl"
+      >
         {/* L'API recherche et autorise les résultats ; cmdk ne filtre que les actions rapides. */}
         <Command
           label="Recherche globale"

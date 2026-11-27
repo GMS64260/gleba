@@ -5,13 +5,18 @@ import { CONTEXTE_FISCAL_VENTE_DISPONIBLE } from '@/lib/comptabilite/devise-vent
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), ventes: vi.fn(), factures: vi.fn(), exploitation: vi.fn() }))
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.auth }))
 vi.mock('@/lib/prisma', () => ({ default: {
-  venteManuelle: { findMany: mocks.ventes }, facture: { findMany: mocks.factures }, exploitation: { findUnique: mocks.exploitation },
+  venteManuelle: { findMany: mocks.ventes }, exploitation: { findUnique: mocks.exploitation },
 } }))
+// Les factures viennent du même chargeur que la liste des revenus (D231).
+vi.mock('@/lib/kpi/compta', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/kpi/compta')>()),
+  chargerFacturesRevenus: mocks.factures,
+}))
 import { GET } from './route'
 
 const contexte = (devise: 'EUR' | 'XPF') => ({ version: 1, regimeTva: 'tgc', territoire: 'NOUVELLE_CALEDONIE', devise, date: '2026-07-01T10:00:00.000Z' })
-const sansLiens = { ventesProduits: [], abattages: [], recoltesArbres: [], productionsBois: [], commandesBoutique: [] }
-const appeler = async () => (await GET(new NextRequest('http://localhost/api/comptabilite/sources?year=2026'))).json()
+const sansLiens = { moduleSource: null, date: new Date('2026-07-01T10:00:00.000Z') }
+const appeler = async (module?: string) => (await GET(new NextRequest(`http://localhost/api/comptabilite/sources?year=2026${module ? `&module=${module}` : ''}`))).json()
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -49,5 +54,22 @@ describe('GET /api/comptabilite/sources : une ligne par devise, jamais EUR + XPF
     const select = mocks.ventes.mock.calls[0][0].select
     expect('contexteFiscal' in select).toBe(CONTEXTE_FISCAL_VENTE_DISPONIBLE)
     expect(mocks.ventes.mock.calls[0][0].where.userId).toBe('qa')
+  })
+
+  it('applique le filtre d’atelier de la liste, ventes sans module comprises (D231)', async () => {
+    mocks.ventes.mockResolvedValue([
+      { montant: 40, module: 'elevage', categorie: 'oeufs', sourceType: 'vente_produit', auto: true, contexteFiscal: null },
+      // Sans module mais de catégorie potagère : rangée au potager, comme dans la liste.
+      { montant: 25, module: null, categorie: 'legumes', sourceType: null, auto: false, contexteFiscal: null },
+    ])
+    mocks.factures.mockResolvedValue([
+      { type: 'facture', totalTTC: 100, emetteurSnapshot: { devise: 'EUR' }, ...sansLiens, moduleSource: 'elevage' },
+    ])
+
+    const potager = await appeler('potager')
+    expect(potager.sources.map((s: { module: string; montant: number }) => [s.module, s.montant])).toEqual([['potager', 25]])
+
+    const tout = await appeler()
+    expect(tout.sources.reduce((somme: number, s: { montant: number }) => somme + s.montant, 0)).toBe(165)
   })
 })

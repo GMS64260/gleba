@@ -732,7 +732,8 @@ function TransactionsPageInner() {
         // les comptent (FB-7C4K9D). L'affichage reste progressif.
         fetch(`/api/comptabilite/revenus?${params}&limit=5000`),
         fetch(`/api/comptabilite/depenses?${params}&limit=5000`),
-        fetch(`/api/comptabilite/sources?year=${selectedYear}`),
+        // Même exercice et même atelier que les deux listes (D231).
+        fetch(`/api/comptabilite/sources?${params}`),
       ])
 
       // Les trois corps sont lus avant toute écriture d'état, puis écartés si
@@ -977,24 +978,28 @@ function TransactionsPageInner() {
           <TabsContent value="revenus">
             {/* Card "Source de vérité" - explique d'où viennent les chiffres */}
             <Card className="mb-6 border-blue-200 bg-blue-50/40">
-              <CardHeader
-                className="cursor-pointer select-none py-4"
-                onClick={() => setSourcesOpen(o => !o)}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Info className="h-5 w-5 text-blue-600" />
+              <CardHeader className="py-4">
+                {/* Un vrai bouton : le détail était inaccessible au clavier (D232). */}
+                <button
+                  type="button"
+                  onClick={() => setSourcesOpen(o => !o)}
+                  aria-expanded={sourcesOpen}
+                  aria-controls="sources-revenus-detail"
+                  className="flex w-full items-center justify-between gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                >
+                  <span className="flex items-center gap-2">
+                    <Info aria-hidden="true" className="h-5 w-5 text-blue-600" />
                     <CardTitle className="text-base">D&apos;où viennent ces chiffres ?</CardTitle>
-                  </div>
+                  </span>
                   {sourcesOpen ? (
-                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    <ChevronUp aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    <ChevronDown aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
                   )}
-                </div>
+                </button>
               </CardHeader>
               {sourcesOpen && (
-                <CardContent className="space-y-4 text-sm">
+                <CardContent id="sources-revenus-detail" className="space-y-4 text-sm">
                   <p className="text-muted-foreground">
                     Ce total agrège toutes vos ventes, qu&apos;elles proviennent du potager,
                     du verger, de l&apos;elevage, de la boutique en ligne ou de saisies manuelles.
@@ -1023,7 +1028,7 @@ function TransactionsPageInner() {
                     </div>
                     <div className="flex items-start gap-2">
                       <Store className="h-4 w-4 text-teal-600 mt-0.5 flex-shrink-0" />
-                      <span><strong>Boutique en ligne</strong> — commandes au statut « livrée ».</span>
+                      <span><strong>Boutique en ligne</strong> — commandes payées ou livrées.</span>
                     </div>
                     <div className="flex items-start gap-2 md:col-span-2">
                       <Receipt className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -1032,8 +1037,8 @@ function TransactionsPageInner() {
                   </div>
 
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 text-xs">
-                    Une commande boutique apparaît ici <strong>uniquement quand son statut
-                    est « livrée »</strong>. Avant ce statut, elle est visible dans{' '}
+                    Une commande boutique apparaît ici <strong>dès que son paiement est confirmé,
+                    ou à défaut quand elle est « livrée »</strong>. Avant cela, elle est visible dans{' '}
                     <Link href="/boutique" className="underline font-medium">
                       /boutique → Commandes
                     </Link>

@@ -45,9 +45,22 @@ export default function EconomieElevagePage() {
   React.useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
+    setErreurAdmin(erreur => (erreur?.entity === 'analyse' ? null : erreur))
     fetch(`/api/elevage/analyse-couts?annee=${annee}`, { signal: controller.signal })
-      .then(r => r.ok ? r.json() : Promise.reject(new Error("Chargement impossible")))
-      .then(setAnalyse).finally(() => setLoading(false)).catch(() => undefined)
+      .then(async r => {
+        const lu = await r.json().catch(() => null)
+        if (!r.ok) throw new Error(lu?.error || "Chargement impossible")
+        return lu
+      })
+      .then(lu => { if (!controller.signal.aborted) setAnalyse(lu) })
+      // Une année refusée n'affiche plus les chiffres du dernier exercice
+      // consulté sous l'année saisie (équipe debug, D246).
+      .catch(e => {
+        if (controller.signal.aborted) return
+        setAnalyse(null)
+        setErreurAdmin({ entity: 'analyse', message: e instanceof Error ? e.message : "Chargement impossible" })
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [annee])
   // Un refus s'affiche et laisse la saisie en place : il était avalé et le
@@ -87,7 +100,7 @@ export default function EconomieElevagePage() {
         <div><h1 className="text-2xl font-bold">Économie de l’élevage</h1><p className="text-sm text-muted-foreground">Marges par atelier et contrôle de la paie du lait.</p></div>
         <div className="flex gap-2"><Input aria-label="Année" className="w-24" type="number" value={annee} onChange={e => setAnnee(Number(e.target.value))} /><Button asChild variant="outline"><Link href="/elevage"><ArrowLeft className="h-4 w-4 mr-1" />Retour</Link></Button></div>
       </div>
-      {loading || !analyse ? <Card><CardContent className="p-8 text-center">Calcul en cours…</CardContent></Card> : <>
+      {erreurAdmin?.entity === 'analyse' ? <Card role="alert"><CardContent className="p-8 text-center text-red-700">Année {annee} : {erreurAdmin.message}</CardContent></Card> : loading || !analyse ? <Card><CardContent className="p-8 text-center">Calcul en cours…</CardContent></Card> : <>
         <div className="grid gap-3 sm:grid-cols-3">
           <Card><CardHeader><CardTitle className="text-sm">Coûts</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{formatMontant(analyse.stats.totalCouts)}</CardContent></Card>
           <Card><CardHeader><CardTitle className="text-sm">Revenus</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{formatMontant(analyse.stats.totalRevenus)}</CardContent></Card>

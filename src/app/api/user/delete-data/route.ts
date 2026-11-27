@@ -136,7 +136,7 @@ export async function DELETE() {
 
     return NextResponse.json({
       success: true,
-      message: `${total} enregistrements supprimés`,
+      message: `${total} enregistrement${total > 1 ? 's' : ''} supprimé${total > 1 ? 's' : ''}`,
       details,
     })
   } catch (error) {

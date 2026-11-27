@@ -18,11 +18,18 @@ export function GardeSession() {
   React.useEffect(() => {
     if (status !== "authenticated") return
     let actif = true
+    const lire = (): Promise<{ valide?: boolean } | null> =>
+      fetch("/api/session-etat", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null))
     const verifier = () => {
-      fetch("/api/session-etat", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((etat: { valide?: boolean } | null) => {
-          if (actif && etat?.valide === false) window.location.href = "/api/session-terminee"
+      lire()
+        .then(async (etat) => {
+          if (etat?.valide !== false) return
+          // Une vérification partie juste avant un changement de mot de passe
+          // porte encore l'ancien cookie : la seconde porte le cookie réémis
+          // (équipe debug, D198). Une session vraiment révoquée échoue deux fois.
+          await new Promise((suite) => setTimeout(suite, 400))
+          const confirmation = await lire()
+          if (actif && confirmation?.valide === false) window.location.href = "/api/session-terminee"
         })
         .catch(() => {})
     }

@@ -384,14 +384,14 @@ function StocksSubTab() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>ID *</Label><Input value={formData.id} onChange={(e) => setFormData(f => ({ ...f, id: e.target.value.toLowerCase().replace(/\s/g, '_') }))} placeholder="granules_pondeuses" /></div>
-                <div className="space-y-2"><Label>Nom *</Label><Input value={formData.nom} onChange={(e) => setFormData(f => ({ ...f, nom: e.target.value }))} placeholder="Granules pondeuses" /></div>
+                <div className="space-y-2"><Label htmlFor="nouvel-aliment-id">ID *</Label><Input id="nouvel-aliment-id" value={formData.id} onChange={(e) => setFormData(f => ({ ...f, id: e.target.value.toLowerCase().replace(/\s/g, '_') }))} placeholder="granules_pondeuses" /></div>
+                <div className="space-y-2"><Label htmlFor="nouvel-aliment-nom">Nom *</Label><Input id="nouvel-aliment-nom" value={formData.nom} onChange={(e) => setFormData(f => ({ ...f, nom: e.target.value }))} placeholder="Granules pondeuses" /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Prix (&euro;/kg)</Label><Input type="number" step="0.01" value={formData.prix} onChange={(e) => setFormData(f => ({ ...f, prix: e.target.value }))} /></div>
-                <div className="space-y-2"><Label>Stock (kg)</Label><Input type="number" step="0.1" value={formData.stock} onChange={(e) => setFormData(f => ({ ...f, stock: e.target.value }))} /></div>
+                <div className="space-y-2"><Label htmlFor="nouvel-aliment-prix">Prix (&euro;/kg)</Label><Input id="nouvel-aliment-prix" type="number" step="0.01" value={formData.prix} onChange={(e) => setFormData(f => ({ ...f, prix: e.target.value }))} /></div>
+                <div className="space-y-2"><Label htmlFor="nouvel-aliment-stock">Stock (kg)</Label><Input id="nouvel-aliment-stock" type="number" step="0.1" value={formData.stock} onChange={(e) => setFormData(f => ({ ...f, stock: e.target.value }))} /></div>
               </div>
-              <div className="space-y-2"><Label>Stock minimum (alerte)</Label><Input type="number" step="0.1" value={formData.stockMin} onChange={(e) => setFormData(f => ({ ...f, stockMin: e.target.value }))} /></div>
+              <div className="space-y-2"><Label htmlFor="nouvel-aliment-stock-min">Stock minimum (alerte)</Label><Input id="nouvel-aliment-stock-min" type="number" step="0.1" value={formData.stockMin} onChange={(e) => setFormData(f => ({ ...f, stockMin: e.target.value }))} /></div>
               {/* PROMPT 25 — valeurs alimentaires INRA (par kg brut) pour le calcul de ration */}
               <div className="pt-2 border-t">
                 <p className="text-xs text-muted-foreground mb-2">Valeurs alimentaires (par kg brut) — pour le calculateur de ration</p>

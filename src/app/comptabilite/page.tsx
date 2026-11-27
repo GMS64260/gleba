@@ -195,6 +195,7 @@ interface ComptaStats {
     stocksBas: number
     // QA 2026-05-15 — Bug #5
     commandesEnAttente?: number
+    commandesEnAttentePayees?: number
     commandesEnAttenteTotal?: number | null
     commandesEnAttenteTotalParDevise?: TotalDeviseApi[]
   }
@@ -540,7 +541,9 @@ export default function DashboardComptabilite() {
                     {data.stats.commandesEnAttente} commande(s) ({totauxParDevise(data.stats.commandesEnAttenteTotalParDevise, data.stats.commandesEnAttenteTotal)})
                   </p>
                   <p className="text-xs text-blue-700 mt-1">
-                    Statut Nouveau / Confirmée / Prête — sera comptabilisé à la livraison.
+                    {(data.stats.commandesEnAttentePayees ?? 0) > 0
+                      ? `Statut Nouveau / Confirmée / Prête. ${data.stats.commandesEnAttentePayees} déjà payée(s) : leur recette est déjà comptabilisée. Les autres le seront au paiement ou à la livraison.`
+                      : 'Statut Nouveau / Confirmée / Prête — sera comptabilisé au paiement ou, à défaut, à la livraison.'}
                   </p>
                 <p className="mt-2 flex items-center gap-1 text-sm font-medium text-blue-800 group-hover:underline">Voir les commandes<ArrowRight className="h-4 w-4" /></p>
                 </CardContent>

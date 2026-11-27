@@ -3,12 +3,12 @@ const m = vi.hoisted(() => ({
   auth: vi.fn(), admin: vi.fn(), session: vi.fn(), user: vi.fn(), espece: vi.fn(), revisionFirst: vi.fn(), revisions: vi.fn(),
   contributionCreate: vi.fn(), contributions: vi.fn(), contribution: vi.fn(), contributionUpdate: vi.fn(), revisionCreate: vi.fn(),
   discussion: vi.fn(), discussions: vi.fn(), discussionCreate: vi.fn(), discussionUpdate: vi.fn(), discussionDelete: vi.fn(), discussionCount: vi.fn(),
-  verrouAuteur: vi.fn(), reponse: vi.fn(), reponses: vi.fn(), reponseCreate: vi.fn(), reponseDelete: vi.fn(), transaction: vi.fn(),
+  photos: vi.fn(), verrouAuteur: vi.fn(), reponse: vi.fn(), reponses: vi.fn(), reponseCreate: vi.fn(), reponseDelete: vi.fn(), transaction: vi.fn(),
 }))
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: m.auth, requireAdminApi: m.admin, getSession: m.session }))
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: () => null, getClientIP: () => "test" }))
 vi.mock("@/lib/prisma", () => ({ default: {
-  user: { findUnique: m.user }, espece: { findFirst: m.espece },
+  user: { findUnique: m.user }, mediaReferentiel: { findMany: m.photos }, espece: { findFirst: m.espece },
   revisionEncyclopedie: { findFirst: m.revisionFirst, findMany: m.revisions, create: m.revisionCreate },
   contributionEncyclopedie: { create: m.contributionCreate, findMany: m.contributions, findUnique: m.contribution, updateMany: m.contributionUpdate },
   discussionEncyclopedie: { findFirst: m.discussion, findMany: m.discussions, create: m.discussionCreate, update: m.discussionUpdate, deleteMany: m.discussionDelete, count: m.discussionCount },
@@ -45,7 +45,7 @@ function connecter(role = "USER") {
 beforeEach(() => {
   vi.resetAllMocks(); connecter(); m.session.mockResolvedValue(null)
   m.espece.mockResolvedValue(espece); m.revisionFirst.mockResolvedValue(null); m.revisions.mockResolvedValue([])
-  m.verrouAuteur.mockResolvedValue([{ id: "acteur" }]); m.contributions.mockResolvedValue([]); m.contribution.mockResolvedValue(contribution); m.contributionUpdate.mockResolvedValue({ count: 1 })
+  m.verrouAuteur.mockResolvedValue([{ id: "acteur" }]); m.contributions.mockResolvedValue([]); m.photos.mockResolvedValue([]); m.contribution.mockResolvedValue(contribution); m.contributionUpdate.mockResolvedValue({ count: 1 })
   m.contributionCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ ...contribution, ...data }))
   m.revisionCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ ...revision, ...data }))
   m.discussion.mockResolvedValue(sujet); m.discussions.mockResolvedValue([]); m.discussionCount.mockResolvedValue(0)
@@ -107,8 +107,13 @@ describe("propositions", () => {
     expect(m.contributionCreate).not.toHaveBeenCalled()
   })
   it("le suivi personnel ne lit que les propositions de l'acteur sur les fiches publiques", async () => {
-    await mesContributions(request("/api/communaute/contributions"))
+    // Équipe debug, D192 : les photos proposées par l'acteur font partie du suivi.
+    m.photos.mockResolvedValue([{ id: "p1", statut: "PROPOSE", organe: "feuille", description: null, createdAt: new Date("2026-11-27T10:00:00Z"), espece: { id: "panais", nom: "Panais" } }])
+    const response = await mesContributions(request("/api/communaute/contributions"))
+    expect(response.status).toBe(200)
     expect(m.contributions.mock.calls[0][0].where).toMatchObject({ userId: "acteur", espece: { OR: expect.any(Array) } })
+    expect(m.photos.mock.calls[0][0].where).toMatchObject({ contributeurId: "acteur", source: "MEMBRE" })
+    expect((await response.json()).photos).toEqual([expect.objectContaining({ id: "p1", statut: "PROPOSE", createdAt: "2026-11-27T10:00:00.000Z" })])
   })
 })
 describe("publication relue", () => {

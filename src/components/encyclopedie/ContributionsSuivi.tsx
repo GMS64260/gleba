@@ -11,6 +11,9 @@ import { messageErreurReponse } from "@/lib/api-erreur"
 import { urlConnexion } from "@/lib/auth-retour"
 import { TITRES_SECTIONS, type ContributionEncyclopedieVue, type StatutContribution } from "@/lib/encyclopedie/types"
 
+type PhotoProposee = { id: string; statut: "PROPOSE" | "VALIDE" | "REJETE"; organe: string; description: string | null; createdAt: string; espece: { id: string; nom: string } }
+const LIBELLES_PHOTO: Record<PhotoProposee["statut"], string> = { PROPOSE: "En relecture", VALIDE: "Publiée", REJETE: "Non retenue" }
+
 const LIBELLES: Record<StatutContribution, string> = {
   EN_ATTENTE: "En relecture", PUBLIEE: "Publiée", A_REPRENDRE: "À reprendre", REFUSEE: "Non retenue",
 }
@@ -19,6 +22,7 @@ export function ContributionsSuivi() {
   const { status } = useSession()
   const demo = useIsDemoAccount()
   const [items, setItems] = React.useState<ContributionEncyclopedieVue[]>([])
+  const [photos, setPhotos] = React.useState<PhotoProposee[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [generation, setGeneration] = React.useState(0)
@@ -32,8 +36,8 @@ export function ContributionsSuivi() {
       try {
         const response = await fetch("/api/communaute/contributions", { signal: controller.signal, cache: "no-store" })
         if (!response.ok) throw new Error(await messageErreurReponse(response))
-        const data: { contributions: ContributionEncyclopedieVue[] } = await response.json()
-        if (!controller.signal.aborted) setItems(data.contributions)
+        const data: { contributions: ContributionEncyclopedieVue[]; photos?: PhotoProposee[] } = await response.json()
+        if (!controller.signal.aborted) { setItems(data.contributions); setPhotos(data.photos ?? []) }
       } catch (e) {
         if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Le suivi est momentanément indisponible.")
       } finally {
@@ -60,7 +64,7 @@ export function ContributionsSuivi() {
       </div>
       {loading && <p role="status" className="text-sm text-ardoise">Chargement des propositions…</p>}
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
-      {!loading && !error && items.length === 0 && <p className="rounded-xl border border-dashed border-lin p-6 text-sm text-ardoise">Vous n’avez pas encore proposé de modification. Ouvrez un végétal dans l’encyclopédie, puis cliquez sur « Modifier » auprès de l’élément à corriger.</p>}
+      {!loading && !error && items.length === 0 && photos.length === 0 && <p className="rounded-xl border border-dashed border-lin p-6 text-sm text-ardoise">Vous n’avez pas encore proposé de modification ni de photo. Ouvrez un végétal dans l’encyclopédie, puis cliquez sur « Modifier » auprès de l’élément à corriger.</p>}
       {items.map(item => (
         <article key={item.id} className="rounded-xl border border-lin bg-craie p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -78,6 +82,22 @@ export function ContributionsSuivi() {
           <Link className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-foret underline-offset-4 hover:underline" href={item.correction ? urlCorrection(item.espece.id, item.correction.cibleType, item.correction.refId, item.statut === "A_REPRENDRE") : `/referentiel/vegetaux/${encodeURIComponent(item.espece.id)}${item.statut === "A_REPRENDRE" ? `?section=${item.section}` : ""}#communaute-fiche`}>{item.statut === "A_REPRENDRE" ? "Préparer une nouvelle proposition" : "Revoir la fiche"} →</Link>
         </article>
       ))}
+      {photos.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-display text-xl text-foret">Photos proposées</h3>
+          {photos.map(photo => (
+            <article key={photo.id} className="rounded-xl border border-lin bg-craie p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="rounded-md bg-sauge-doux px-2.5 py-1 text-xs font-medium text-foret">{LIBELLES_PHOTO[photo.statut]}</span>
+                <time dateTime={photo.createdAt} className="text-xs text-ardoise">{new Date(photo.createdAt).toLocaleDateString("fr-FR")}</time>
+              </div>
+              <h4 className="mt-3 font-medium text-encre">{photo.espece.nom} · photo ({photo.organe})</h4>
+              {photo.description && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ardoise">{photo.description}</p>}
+              <Link className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-foret underline-offset-4 hover:underline" href={`/referentiel/vegetaux/${encodeURIComponent(photo.espece.id)}`}>Ouvrir la fiche</Link>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   )
 }

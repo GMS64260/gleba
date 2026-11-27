@@ -8,8 +8,8 @@ export function gardenLayersKey(tenantId: string): string {
   return `gleba_jardin_calques:${tenantId}`
 }
 
-function lireCalques(tenantId: string | null): GardenLayers {
-  const layers = { ...DEFAULT_LAYERS }
+function lireCalques(tenantId: string | null, base: GardenLayers = DEFAULT_LAYERS): GardenLayers {
+  const layers = { ...base }
   if (!tenantId) return layers
   try {
     const value: unknown = JSON.parse(localStorage.getItem(gardenLayersKey(tenantId)) ?? "null")
@@ -50,9 +50,21 @@ export function useGardenLayers() {
 
   const setLayers = useCallback((action: SetStateAction<GardenLayers>) => {
     setEtat(previous => {
-      const layers = previous.tenantId === tenantId ? previous.layers : lireCalques(tenantId)
+      // Relire le stockage : un autre onglet a pu changer un autre calque depuis
+      // l'ouverture, et ce réglage était annulé (équipe debug, D235).
+      const layers = lireCalques(tenantId, previous.tenantId === tenantId ? previous.layers : DEFAULT_LAYERS)
       return { tenantId, layers: typeof action === "function" ? action(layers) : action }
     })
+  }, [tenantId])
+
+  useEffect(() => {
+    if (!tenantId) return
+    const cle = gardenLayersKey(tenantId)
+    const synchroniser = (e: StorageEvent) => {
+      if (e.key === cle) setEtat({ tenantId, layers: lireCalques(tenantId) })
+    }
+    window.addEventListener("storage", synchroniser)
+    return () => window.removeEventListener("storage", synchroniser)
   }, [tenantId])
 
   return [etat.tenantId === tenantId ? etat.layers : DEFAULT_LAYERS, setLayers] as const

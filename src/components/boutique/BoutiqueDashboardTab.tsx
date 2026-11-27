@@ -209,7 +209,7 @@ export function BoutiqueDashboardTab() {
                       >
                         <span className="truncate">{p.nom}</span>
                         <span className="font-semibold text-teal-700 ml-2 whitespace-nowrap">
-                          {p.quantite} {p.unite}
+                          {p.quantite.toLocaleString("fr-FR", { maximumFractionDigits: 3 })} {p.unite}
                         </span>
                       </div>
                     ))}
@@ -242,7 +242,7 @@ export function BoutiqueDashboardTab() {
                         <td className="p-3">
                           <p className="font-medium">{p.nom}</p>
                           <p className="text-xs text-muted-foreground">
-                            {p.quantite} {p.unite} · {p.count} commande{p.count > 1 ? "s" : ""}
+                            {p.quantite.toLocaleString("fr-FR", { maximumFractionDigits: 3 })} {p.unite} · {p.count} commande{p.count > 1 ? "s" : ""}
                           </p>
                         </td>
                         <td className="p-3 text-right font-semibold text-teal-700 whitespace-nowrap">

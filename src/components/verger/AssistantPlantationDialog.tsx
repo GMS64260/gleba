@@ -230,9 +230,21 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
       .catch(() => setCoupes([]))
   }, [open])
 
-  // Appliquer prefill si fourni à l'ouverture
+  // À chaque OUVERTURE, repartir d'un brouillon neuf : la remise à zéro
+  // différée de la fermeture (animation) a pu être annulée par une réouverture
+  // immédiate, qui reprenait la surface du brouillon abandonné (D186).
+  const etaitOuvert = React.useRef(false)
   React.useEffect(() => {
-    if (open && prefill) {
+    const ouverture = open && !etaitOuvert.current
+    etaitOuvert.current = open
+    if (!open) return
+    if (ouverture) {
+      setState({ ...INITIAL, ...(prefill || {}) })
+      setPlantsEditesManuellement(Boolean(prefill?.nombrePlants))
+      setDensiteEditeeManuellement(Boolean(prefill?.densitePlantsParHa))
+      return
+    }
+    if (prefill) {
       setState((s) => ({ ...s, ...prefill }))
       if (prefill.nombrePlants) setPlantsEditesManuellement(true)
       if (prefill.densitePlantsParHa) setDensiteEditeeManuellement(true)

@@ -120,6 +120,17 @@ export async function listerContributions(acteurId: string | null) {
   }
   return result
 }
+/** Photos proposées par l'auteur, pour son suivi (D192). L'image elle-même n'est pas exposée ici. */
+export async function listerPhotosProposees(acteurId: string | null) {
+  if (acteurId === null) return []
+  const medias = await prisma.mediaReferentiel.findMany({
+    where: { contributeurId: acteurId, source: "MEMBRE", espece: visibiliteReferentielPublic },
+    select: { id: true, statut: true, organe: true, description: true, createdAt: true, espece: { select: { id: true, nom: true } } },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100,
+  })
+  return medias.map(m => ({ ...m, createdAt: m.createdAt.toISOString() }))
+}
+export type PhotoProposeeVue = Awaited<ReturnType<typeof listerPhotosProposees>>[number]
 export async function deciderContribution(id: string, validateurId: string, decision: DecisionEncyclopedie) {
   return prisma.$transaction(async tx => {
     const contribution = await tx.contributionEncyclopedie.findUnique({ where: { id } })

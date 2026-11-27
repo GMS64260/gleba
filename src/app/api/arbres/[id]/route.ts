@@ -117,6 +117,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json()
+    // Le nom est obligatoire, comme à la création : la fiche permettait de le
+    // retirer (équipe debug, D242). Absent du corps, il reste inchangé. Seul
+    // un RETRAIT est refusé : un arbre déjà sans nom (import, ancienne fiche)
+    // doit rester déplaçable sur le plan, qui renvoie le nom tel quel.
+    const nomSaisi: string | undefined = body.nom === undefined ? undefined : typeof body.nom === "string" ? body.nom.trim() : ""
+    if (nomSaisi !== undefined && nomSaisi === "" && (existing.nom ?? "").trim() !== "") {
+      return NextResponse.json({ error: "Le nom de l'arbre est obligatoire.", champ: "nom" }, { status: 400 })
+    }
 
     // Revue du 2026-10-23 : seul un CHANGEMENT de porte-greffe est contrôlé
     // (l'écran renvoie l'id en place) ; il doit être visible du compte.
@@ -236,7 +244,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       const arbre = await tx.arbre.update({
       where: { id: arbreId },
       data: {
-        nom: body.nom,
+        nom: nomSaisi,
         type: body.type,
         // Libellés libres normalisés à l'écriture (cf. `normaliserLibelle`) :
         // une espace de bordure créait une espèce en double dans les
