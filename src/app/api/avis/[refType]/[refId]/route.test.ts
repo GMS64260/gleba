@@ -185,3 +185,41 @@ describe('POST /api/avis/VARIETE/[refId] — corps du panneau d’avis', () => {
     }
   })
 })
+
+describe('POST /api/avis/VARIETE/[refId], avis publié ailleurs entre-temps (D140)', () => {
+  const dejaPublie = { id: 'a-moi', updatedAt: new Date('2026-11-26T21:00:00.000Z') }
+  const publier = (versionLue?: string) =>
+    POST(requete('POST', 'v-gleba-1', { reprend: true, notes: {}, commentaire: null, ...(versionLue === undefined ? {} : { versionLue }) }), params('v-gleba-1'))
+  const avis = () => mocks.db.avis as { findUnique: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> }
+
+  it('refuse en 409, sans rien écrire, l’onglet qui n’avait vu aucun avis', async () => {
+    avis().findUnique.mockResolvedValue(dejaPublie)
+
+    const res = await publier('aucun')
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/autre onglet/)
+    expect(avis().upsert).not.toHaveBeenCalled()
+  })
+
+  it('refuse en 409 l’onglet qui avait une version plus ancienne de l’avis', async () => {
+    avis().findUnique.mockResolvedValue(dejaPublie)
+
+    expect((await publier('2026-11-26T20:00:00.000Z')).status).toBe(409)
+    expect(avis().upsert).not.toHaveBeenCalled()
+  })
+
+  it('enregistre quand la version lue est celle de la base, ou quand aucun avis n’existe', async () => {
+    avis().findUnique.mockResolvedValue(dejaPublie)
+    expect((await publier('2026-11-26T21:00:00.000Z')).status).toBe(201)
+
+    avis().findUnique.mockResolvedValue(null)
+    expect((await publier('aucun')).status).toBe(201)
+  })
+
+  it('garde le comportement d’avant pour un appelant qui n’envoie pas de version', async () => {
+    avis().findUnique.mockResolvedValue(dejaPublie)
+
+    expect((await publier()).status).toBe(201)
+  })
+})

@@ -112,6 +112,14 @@ export function RationSubTab() {
 
   const enregistrerRation = async () => {
     if (!nom.trim()) { toast({ variant: "destructive", title: "Nom requis", description: "Donnez un nom au plan (ex. « Laitières en production »)." }); return }
+    // Une quantité négative ou illisible est refusée ici : filtrée comme une
+    // quantité nulle, elle retirait l'aliment du plan et l'écran annonçait
+    // « Ration mise à jour » (équipe debug, D191).
+    const invalide = aliments.find((a) => quantites[a.id] != null && !(quantites[a.id] >= 0))
+    if (invalide) {
+      toast({ variant: "destructive", title: "Quantité invalide", description: `${invalide.nom} : saisissez une quantité positive ou nulle, en kg. Le plan n’a pas été modifié.` })
+      return
+    }
     setSaving(true)
     const composition: CompositionLigne[] = aliments
       .filter((a) => (quantites[a.id] || 0) > 0)
@@ -305,10 +313,13 @@ export function RationSubTab() {
                         min="0"
                         step="0.1"
                         value={quantites[a.id] ?? ""}
-                        onChange={(e) =>
-                          setQuantites((q) => ({ ...q, [a.id]: parseFloat(e.target.value) || 0 }))
-                        }
-                        className="w-24 h-8 text-right ml-auto"
+                        onChange={(e) => {
+                          const saisie = e.target.value === "" ? 0 : Number(e.target.value)
+                          setQuantites((q) => ({ ...q, [a.id]: saisie }))
+                        }}
+                        aria-label={`Quantité de ${a.nom} en kg`}
+                        aria-invalid={(quantites[a.id] ?? 0) < 0 ? true : undefined}
+                        className={`w-24 h-8 text-right ml-auto${(quantites[a.id] ?? 0) < 0 ? " border-destructive" : ""}`}
                         placeholder="0"
                       />
                     </td>

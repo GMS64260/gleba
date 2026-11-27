@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { convertirQuantitePharmacie } from '@/lib/elevage/unite-pharmacie'
 
 const schema = z.object({
   produitId: z.string().min(1),
@@ -49,12 +50,23 @@ export async function POST(request: NextRequest) {
   // Ressaisie d'un lot déjà en pharmacie (même produit, même numéro). L'unité
   // d'un lot qui porte des soins ne change pas : ses prélèvements (en mL)
   // seraient rendus en « flacons » à la suppression d'un soin.
-  if (existant._count.soins > 0 && d.unite.toLowerCase() !== existant.unite.trim().toLowerCase()) {
+  //
+  // La quantité ajoutée est convertie dans l'unité du lot (1 L ajouté à un lot
+  // en mL vaut 1 000 mL) : additionner les nombres et reprendre l'unité saisie
+  // faisait de 12,5 mL + 1 L un stock de 13,5 L (équipe debug, D193). Seul un
+  // lot vide et sans soin peut changer d'unité (unité mal saisie à la création).
+  const lotSansHistoire = existant._count.soins === 0 && existant.quantite === 0
+  const ajoute = convertirQuantitePharmacie(d.quantite, d.unite, existant.unite)
+  if (ajoute === null && !lotSansHistoire) {
     return NextResponse.json(
-      { error: `Ce lot existe déjà en ${existant.unite} et des soins y ont été prélevés : son unité ne peut pas devenir « ${d.unite} ».`, champ: 'unite', code: 'UNITE_LOT_FIGEE' },
+      existant._count.soins > 0
+        ? { error: `Ce lot existe déjà en ${existant.unite} et des soins y ont été prélevés : son unité ne peut pas devenir « ${d.unite} ».`, champ: 'unite', code: 'UNITE_LOT_FIGEE' }
+        : { error: `Ce lot est tenu en ${existant.unite} : saisissez la quantité ajoutée en ${existant.unite}, ou modifiez le lot.`, champ: 'unite', code: 'UNITE_LOT_DIFFERENTE' },
       { status: 409 },
     )
   }
+  const uniteDuLot = ajoute === null ? d.unite : existant.unite
+  const quantiteAjoutee = ajoute ?? d.quantite
   // Une ressaisie complète le lot, elle n'efface rien : un champ laissé vide
   // (ordonnance archivée, fournisseur, notes, péremption — QA cmswtt0ee) garde
   // sa valeur. Les deux formulaires envoient ces champs à null quand ils sont
@@ -66,8 +78,8 @@ export async function POST(request: NextRequest) {
   const data = await prisma.stockMedicamentElevage.update({
     where: { id: existant.id },
     data: {
-      quantite: { increment: d.quantite },
-      unite: d.unite,
+      quantite: { increment: quantiteAjoutee },
+      unite: uniteDuLot,
       datePeremption: d.datePeremption ?? undefined,
       ordonnanceUrl: d.ordonnanceUrl || undefined,
       fournisseur: d.fournisseur || undefined,
@@ -75,7 +87,7 @@ export async function POST(request: NextRequest) {
     },
   })
   return NextResponse.json(
-    { data, ajout: { avant: existant.quantite, ajoute: d.quantite, apres: data.quantite } },
+    { data, ajout: { avant: existant.quantite, ajoute: quantiteAjoutee, apres: data.quantite, unite: uniteDuLot } },
     { status: 201 },
   )
 }

@@ -92,6 +92,11 @@ describe('import CSV animaux', () => {
     expect(problemes.join(' ')).toContain('« plumes »')
   })
 
+  it('signale une arrivée antérieure à la naissance, quel que soit le format des dates (D220)', () => {
+    expect(problemesLigne(ligne({ date_naissance: '20/11/2026', date_arrivee: '2026-11-19' })).join(' ')).toContain('antérieure à la date de naissance')
+    expect(problemesLigne(ligne({ date_naissance: '20/11/2026', date_arrivee: '20/11/2026' }))).toEqual([])
+  })
+
   it("contrôle l'identifiant contre son type avant l'envoi", () => {
     const problemes = problemesLigne(ligne({ identifiant: 'XXXXXX61059', type_identifiant: 'IPG ovin' }))
     expect(problemes).toHaveLength(1)

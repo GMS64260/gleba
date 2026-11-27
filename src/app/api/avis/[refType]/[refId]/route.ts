@@ -1,5 +1,6 @@
 /** Avis et récoltes explicitement partagées, accessibles aux comptes personnels. */
 import { NextRequest, NextResponse } from 'next/server'
+import { versionPerimee } from '@/lib/api/version-lue'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { getActeurId, getUserId } from '@/lib/exploitation/garde-session'
@@ -58,7 +59,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const avis = await prisma.$transaction(async tx => {
       await verrouAuteurAvis(tx, acteur)
       if (!await refAvisVisible(tx, refType, refId, tenant)) throw new ErreurAvis(404, 'Objet introuvable.')
-      const existant = await tx.avis.findUnique({ where: { refType_refId_userId: { refType, refId, userId: acteur } }, select: { id: true } })
+      const existant = await tx.avis.findUnique({ where: { refType_refId_userId: { refType, refId, userId: acteur } }, select: { id: true, updatedAt: true } })
+      // L'écran dit quel avis il avait sous les yeux : 'aucun', ou sa date de
+      // dernière modification. Publier depuis un onglet ouvert avant une autre
+      // publication remplaçait tout l'avis, commentaire compris (équipe debug,
+      // D140). Sans `versionLue`, l'appelant garde le comportement d'avant.
+      const versionLue = body.versionLue
+      if (versionLue === 'aucun' ? existant !== null : existant !== null && versionPerimee(versionLue, existant.updatedAt)) {
+        throw new ErreurAvis(409, 'Votre avis a été publié ou modifié depuis un autre onglet ou un autre appareil. Relisez-le ci-dessous avant de le modifier : rien n’a été enregistré.')
+      }
       const aDuContenu = payload.reprend !== null || Boolean(payload.commentaire) || Object.values(payload.notes).some(n => n !== null && n !== undefined)
       if (!existant && !aDuContenu && !photos?.length) throw new ErreurAvis(400, 'Ajoutez un avis, un commentaire ou une photo.')
       const a = await tx.avis.upsert({ where: { refType_refId_userId: { refType, refId, userId: acteur } }, update: payload,

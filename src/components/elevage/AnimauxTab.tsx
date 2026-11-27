@@ -2002,7 +2002,13 @@ function LotsSubTab() {
     setFormData({ ...EMPTY_LOT_FORM, especeAnimaleId: defautEspece })
   }
 
+  // Prix tel que le formulaire l'a prérempli : en modification, un prix non
+  // touché ne part pas, la route le laisse intact (un prix de 0 € ne peut plus
+  // être effacé par la correction d'un autre champ, équipe debug D58).
+  const prixLotLuRef = React.useRef<string | null>(null)
+
   const handleEditLot = (lot: Lot) => {
+    prixLotLuRef.current = versChampNombre(lot.prixAchatTotal)
     setEditingLotId(lot.id)
     setStatutLotEdite(lot.statut)
     setFormData({
@@ -2234,7 +2240,9 @@ function LotsSubTab() {
         dateArrivee: formData.dateArrivee || undefined,
         quantiteInitiale: formData.quantiteInitiale ? parseInt(formData.quantiteInitiale, 10) : undefined,
         provenance: formData.provenance || null,
-        prixAchatTotal: formData.prixAchatTotal ? parseFloat(formData.prixAchatTotal) : null,
+        prixAchatTotal: isEdit && formData.prixAchatTotal === prixLotLuRef.current
+          ? undefined
+          : formData.prixAchatTotal ? parseFloat(formData.prixAchatTotal) : null,
         parcelleGeoId: formData.parcelleGeoId || null,
         notes: formData.notes || null,
       }

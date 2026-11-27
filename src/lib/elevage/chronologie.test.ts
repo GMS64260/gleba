@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { debutPresence, motifSortieAvantEntree, refuserSortieAvantEntree } from './chronologie'
+import { debutPresence, motifArriveeAvantNaissance, motifSortieAvantEntree, refuserSortieAvantEntree } from './chronologie'
 
 const libelles = { evenement: 'Abattage', sujet: 'du lot' }
 
@@ -20,5 +20,19 @@ describe('chronologie du cheptel (D97)', () => {
     expect(debutPresence({ dateArrivee: null, dateNaissance: '2026-03-01' })).toBe('2026-03-01')
     expect(motifSortieAvantEntree('2026-02-01', { dateNaissance: '2026-03-01' }, { evenement: 'Abattage', sujet: "de l'animal" })).toContain('la naissance')
     expect(motifSortieAvantEntree('2020-01-01', {}, libelles)).toBeNull()
+  })
+})
+
+describe('arrivée et naissance d’un animal (D220)', () => {
+  it('refuse une arrivée datée avant la naissance', () => {
+    const motif = motifArriveeAvantNaissance({ dateNaissance: '2026-11-20', dateArrivee: new Date('2026-11-19T00:00:00Z') })
+    expect(motif).toContain('19/11/2026')
+    expect(motif).toContain('naissance de l\'animal (20/11/2026)')
+  })
+
+  it('accepte le jour de la naissance et ne contrôle rien sans les deux dates', () => {
+    expect(motifArriveeAvantNaissance({ dateNaissance: '2026-11-20', dateArrivee: '2026-11-20' })).toBeNull()
+    expect(motifArriveeAvantNaissance({ dateNaissance: null, dateArrivee: '2026-11-19' })).toBeNull()
+    expect(motifArriveeAvantNaissance({ dateNaissance: '2026-11-20', dateArrivee: null })).toBeNull()
   })
 })

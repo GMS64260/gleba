@@ -250,6 +250,34 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     }))
   })
 
+  it('POST refuse une arrivée antérieure à la naissance, et accepte le jour même (D220)', async () => {
+    mocks.isAssignableAnimalLot.mockResolvedValue(true)
+
+    const refus = await POST(request('POST', { ...corpsEcranAnimaux, statut: 'actif', dateNaissance: '2026-11-20', dateArrivee: '2026-11-19' }))
+    expect(refus.status).toBe(400)
+    expect(await refus.json()).toMatchObject({ champ: 'dateArrivee', error: expect.stringContaining('précède la naissance') })
+    expect(mocks.animalCreate).not.toHaveBeenCalled()
+
+    const accepte = await POST(request('POST', { ...corpsEcranAnimaux, statut: 'actif', dateNaissance: '2026-11-20', dateArrivee: '2026-11-20' }))
+    expect(accepte.status).toBe(201)
+  })
+
+  it('PATCH compare la date envoyée à celle de la fiche, et laisse modifier une fiche déjà incohérente', async () => {
+    const fiche = { id: 7, especeAnimaleId: 'brebis_solognote', lotId: null, prixAchat: null, prixAchatInclusDansLot: false, parcelleGeoId: null,
+      dateNaissance: new Date('2026-11-20T00:00:00Z'), dateArrivee: new Date('2026-11-25T00:00:00Z') }
+    mocks.animalFindFirst.mockResolvedValue(fiche)
+
+    const refus = await PATCH(request('PATCH', { id: 7, dateArrivee: '2026-11-19' }))
+    expect(refus.status).toBe(400)
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+
+    mocks.animalFindFirst.mockResolvedValue({ ...fiche, dateArrivee: new Date('2026-11-19T00:00:00Z') })
+    // L'écran renvoie ses deux dates, inchangées, avec le champ corrigé.
+    expect((await PATCH(request('PATCH', { id: 7, nom: 'Renommée', dateNaissance: '2026-11-20', dateArrivee: '2026-11-19' }))).status).toBe(200)
+    // Changer l'une des deux dates sans lever l'incohérence reste refusé.
+    expect((await PATCH(request('PATCH', { id: 7, dateNaissance: '2026-11-21', dateArrivee: '2026-11-19' }))).status).toBe(400)
+  })
+
   it('PATCH accepte un lot assignable et permet le détachement', async () => {
     mocks.isAssignableAnimalLot.mockResolvedValue(true)
     await PATCH(request('PATCH', { id: 7, lotId: 42 }))

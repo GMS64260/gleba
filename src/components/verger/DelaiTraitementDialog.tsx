@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label"
 import { SelectNatif } from "@/components/ui/select-natif"
 import { useToast } from "@/hooks/use-toast"
 import { LIBELLES_NATURE_PRODUIT, NATURES_PRODUIT_DECLAREES } from "@/lib/phyto/delai-avant-recolte"
-import { corpsDelaiTraitement, type OperationDelai } from "@/lib/verger/delai-traitement"
+import { corpsDelaiModifie, type OperationDelai } from "@/lib/verger/delai-traitement"
 
 interface Props {
   /** Traitement à compléter ; `null` ferme la fenêtre. */
@@ -42,7 +42,12 @@ export function DelaiTraitementDialog({ operation, onClose, onSaved }: Props) {
     setEnvoi(true)
     setErreur(null)
     try {
-      const corps = corpsDelaiTraitement({ dar, natureProduit })
+      // Seuls les champs changés partent (D164) ; rien de changé, rien à écrire.
+      const corps = corpsDelaiModifie(operation, { dar, natureProduit })
+      if (Object.keys(corps).length === 0) {
+        onClose()
+        return
+      }
       const res = await fetch(`/api/arbres/operations/${operation.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -53,7 +58,14 @@ export function DelaiTraitementDialog({ operation, onClose, onSaved }: Props) {
         setErreur(detail?.error || "Enregistrement refusé")
         return
       }
-      onSaved?.({ id: operation.id, ...corps })
+      // L'écran reprend ce que le serveur a enregistré, y compris le champ
+      // qu'un autre onglet a corrigé entre-temps.
+      const enregistre: { dar?: number | null; natureProduit?: string | null } | null = await res.json().catch(() => null)
+      onSaved?.({
+        id: operation.id,
+        dar: enregistre?.dar !== undefined ? enregistre.dar : (corps.dar !== undefined ? corps.dar : operation.dar ?? null),
+        natureProduit: enregistre?.natureProduit !== undefined ? enregistre.natureProduit : (corps.natureProduit !== undefined ? corps.natureProduit : operation.natureProduit ?? null),
+      })
       toast({ title: "Délai enregistré" })
       onClose()
     } catch {

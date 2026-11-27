@@ -34,6 +34,7 @@ import { nomAffichableItp } from "@/lib/itp-label"
 import { decalerSemaine } from "@/lib/calendrier-climat"
 import { ITP_TYPE_PLANCHE } from "@/lib/validations/itp"
 import { barresGantt, type ItpGantt } from "./gantt-barres"
+import { lireSaisieEntiere, saisieDepuisValeur, type SaisieEntiere } from "./saisie-semaine"
 import type { ItpVue } from "./types"
 
 interface ItpEditDialogProps {
@@ -61,19 +62,21 @@ export function ItpEditDialog({
   const { data: session } = useSession()
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
-  const [semaineSemis, setSemaineSemis] = React.useState<number | null>(null)
-  const [semainePlantation, setSemainePlantation] = React.useState<number | null>(null)
-  const [semaineRecolte, setSemaineRecolte] = React.useState<number | null>(null)
-  const [dureeRecolte, setDureeRecolte] = React.useState<number | null>(null)
+  // Les champs gardent le texte saisi : une saisie hors plage reste à l'écran
+  // avec son message, elle ne devient pas un effacement (D142).
+  const [saisieSemis, setSaisieSemis] = React.useState("")
+  const [saisiePlantation, setSaisiePlantation] = React.useState("")
+  const [saisieRecolte, setSaisieRecolte] = React.useState("")
+  const [saisieDuree, setSaisieDuree] = React.useState("")
   const [typePlanche, setTypePlanche] = React.useState<string | null>(null)
 
   // Sync form quand l'ITP change
   React.useEffect(() => {
     if (itp) {
-      setSemaineSemis(itp.semaineSemis)
-      setSemainePlantation(itp.semainePlantation)
-      setSemaineRecolte(itp.semaineRecolte)
-      setDureeRecolte(itp.dureeRecolte)
+      setSaisieSemis(saisieDepuisValeur(itp.semaineSemis))
+      setSaisiePlantation(saisieDepuisValeur(itp.semainePlantation))
+      setSaisieRecolte(saisieDepuisValeur(itp.semaineRecolte))
+      setSaisieDuree(saisieDepuisValeur(itp.dureeRecolte))
       setTypePlanche(itp.typePlanche)
     }
   }, [itp])
@@ -152,15 +155,32 @@ export function ItpEditDialog({
     )
   }
 
+  const luSemis = lireSaisieEntiere(saisieSemis, 1, 52)
+  const luPlantation = lireSaisieEntiere(saisiePlantation, 1, 52)
+  const luRecolte = lireSaisieEntiere(saisieRecolte, 1, 52)
+  const luDuree = lireSaisieEntiere(saisieDuree, 0, 52)
+  const saisieInvalide = [luSemis, luPlantation, luRecolte, luDuree].some((lu) => lu.erreur !== null)
+  // Tant qu'une saisie est invalide, l'aperçu et le rappel gardent la valeur enregistrée.
+  const semaineSemis = luSemis.erreur ? itp.semaineSemis : luSemis.valeur
+  const semainePlantation = luPlantation.erreur ? itp.semainePlantation : luPlantation.valeur
+  const semaineRecolte = luRecolte.erreur ? itp.semaineRecolte : luRecolte.valeur
+  const dureeRecolte = luDuree.erreur ? itp.dureeRecolte : luDuree.valeur
+
   const handleSave = async () => {
+    if (saisieInvalide) return
     setIsSubmitting(true)
     try {
-      const body: Record<string, number | string | null> = {
-        semaineSemis,
-        semainePlantation,
-        semaineRecolte,
-        dureeRecolte,
-        typePlanche,
+      // Seuls les champs changés partent : un champ non touché garde la valeur
+      // de la base, même si un autre écran l'a corrigée entre-temps.
+      const body: Record<string, number | string | null> = {}
+      if (semaineSemis !== itp.semaineSemis) body.semaineSemis = semaineSemis
+      if (semainePlantation !== itp.semainePlantation) body.semainePlantation = semainePlantation
+      if (semaineRecolte !== itp.semaineRecolte) body.semaineRecolte = semaineRecolte
+      if (dureeRecolte !== itp.dureeRecolte) body.dureeRecolte = dureeRecolte
+      if (typePlanche !== itp.typePlanche) body.typePlanche = typePlanche
+      if (Object.keys(body).length === 0) {
+        onOpenChange(false)
+        return
       }
 
       const response = await fetch(`/api/itps/${encodeURIComponent(itp.id)}`, {
@@ -182,13 +202,15 @@ export function ItpEditDialog({
         description: `« ${nomAffichableItp(itp)} » modifié avec succès`,
       })
 
+      // Valeurs du serveur : un champ non envoyé peut avoir été corrigé ailleurs.
+      const enregistre = <T,>(cle: string, saisi: T): T => (cle in updated ? (updated[cle] as T) : saisi)
       onSaved({
         ...itp,
-        semaineSemis,
-        semainePlantation,
-        semaineRecolte,
-        dureeRecolte,
-        typePlanche,
+        semaineSemis: enregistre("semaineSemis", semaineSemis),
+        semainePlantation: enregistre("semainePlantation", semainePlantation),
+        semaineRecolte: enregistre("semaineRecolte", semaineRecolte),
+        dureeRecolte: enregistre("dureeRecolte", dureeRecolte),
+        typePlanche: enregistre("typePlanche", typePlanche),
         espece: updated.espece || itp.espece,
       })
       onOpenChange(false)
@@ -221,19 +243,32 @@ export function ItpEditDialog({
       </p>
     ) : null
 
-  const parseWeek = (value: string): number | null => {
-    if (!value) return null
-    const n = parseInt(value)
-    if (isNaN(n) || n < 1 || n > 52) return null
-    return n
-  }
-
-  const parseDuration = (value: string): number | null => {
-    if (!value) return null
-    const n = parseInt(value)
-    if (isNaN(n) || n < 0 || n > 52) return null
-    return n
-  }
+  const champEntier = (
+    id: string,
+    saisie: string,
+    setSaisie: (valeur: string) => void,
+    lu: SaisieEntiere,
+    placeholder: string,
+  ) => (
+    <>
+      <Input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        placeholder={placeholder}
+        value={saisie}
+        onChange={(e) => setSaisie(e.target.value)}
+        aria-invalid={lu.erreur ? true : undefined}
+        aria-describedby={lu.erreur ? `${id}-erreur` : undefined}
+        className={lu.erreur ? "h-9 border-destructive" : "h-9"}
+      />
+      {lu.erreur && (
+        <p id={`${id}-erreur`} role="alert" className="text-xs text-destructive">
+          {lu.erreur}
+        </p>
+      )}
+    </>
+  )
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -261,56 +296,24 @@ export function ItpEditDialog({
           {/* Semaines */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-orange-600">Semaine semis</Label>
-              <Input
-                type="number"
-                min={1}
-                max={52}
-                placeholder="1-52"
-                value={semaineSemis ?? ""}
-                onChange={(e) => setSemaineSemis(parseWeek(e.target.value))}
-                className="h-9"
-              />
+              <Label htmlFor="itp-semaine-semis" className="text-xs font-medium text-orange-600">Semaine semis</Label>
+              {champEntier("itp-semaine-semis", saisieSemis, setSaisieSemis, luSemis, "1-52")}
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-green-600">Sem. plantation</Label>
-              <Input
-                type="number"
-                min={1}
-                max={52}
-                placeholder="1-52"
-                value={semainePlantation ?? ""}
-                onChange={(e) => setSemainePlantation(parseWeek(e.target.value))}
-                className="h-9"
-              />
+              <Label htmlFor="itp-semaine-plantation" className="text-xs font-medium text-green-600">Sem. plantation</Label>
+              {champEntier("itp-semaine-plantation", saisiePlantation, setSaisiePlantation, luPlantation, "1-52")}
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-purple-600">Sem. récolte</Label>
-              <Input
-                type="number"
-                min={1}
-                max={52}
-                placeholder="1-52"
-                value={semaineRecolte ?? ""}
-                onChange={(e) => setSemaineRecolte(parseWeek(e.target.value))}
-                className="h-9"
-              />
+              <Label htmlFor="itp-semaine-recolte" className="text-xs font-medium text-purple-600">Sem. récolte</Label>
+              {champEntier("itp-semaine-recolte", saisieRecolte, setSaisieRecolte, luRecolte, "1-52")}
             </div>
           </div>
 
           {/* Durée recolte + Type planche */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Durée récolte (sem.)</Label>
-              <Input
-                type="number"
-                min={0}
-                max={52}
-                placeholder="Ex: 4"
-                value={dureeRecolte ?? ""}
-                onChange={(e) => setDureeRecolte(parseDuration(e.target.value))}
-                className="h-9"
-              />
+              <Label htmlFor="itp-duree-recolte" className="text-xs font-medium">Durée récolte (sem.)</Label>
+              {champEntier("itp-duree-recolte", saisieDuree, setSaisieDuree, luDuree, "Ex: 4")}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Type de planche</Label>
@@ -348,7 +351,7 @@ export function ItpEditDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Annuler
           </Button>
-          <Button onClick={handleSave} disabled={isSubmitting}>
+          <Button onClick={handleSave} disabled={isSubmitting || saisieInvalide}>
             <Save className="h-4 w-4 mr-2" />
             {isSubmitting ? "Enregistrement..." : "Enregistrer"}
           </Button>

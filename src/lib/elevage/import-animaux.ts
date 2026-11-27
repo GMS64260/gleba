@@ -176,6 +176,11 @@ export function problemesLigne(row: AnimalCsvRow): string[] {
     if (iso === undefined) problemes.push(`${label} « ${valeur} » illisible (attendu AAAA-MM-JJ, JJ/MM/AAAA ou année seule)`)
     else if (iso && !anneePlausible(iso)) problemes.push(`${label} « ${valeur} » hors bornes (année entre ${ANNEE_MIN} et ${new Date().getFullYear() + 1})`)
   }
+  const naissance = row.date_naissance ? parseDateCsv(row.date_naissance) : null
+  const arrivee = row.date_arrivee ? parseDateCsv(row.date_arrivee) : null
+  if (naissance && arrivee && arrivee < naissance) {
+    problemes.push(`date d'arrivée « ${row.date_arrivee} » antérieure à la date de naissance « ${row.date_naissance} »`)
+  }
   for (const [label, valeur] of [['prix', row.prix_achat], ['poids', row.poids_kg]] as const) {
     if (valeur && !Number.isFinite(Number(valeur.replace(',', '.')))) problemes.push(`${label} « ${valeur} » invalide`)
   }
