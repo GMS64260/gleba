@@ -40,13 +40,13 @@ export default function GeolocateControl() {
         }
 
         // Ajouter un marqueur temporaire a la position
-        // La bulle ne recentre pas la carte et s'ouvre une fois la translation
-        // finie : ouverte aussitôt, elle arrêtait l'animation et la carte
-        // restait près de la position précédente (équipe debug, D179).
+        // La bulle ne recentre pas la carte (`autoPan: false`) : son recentrage
+        // arrêtait l'animation du centrage et la carte restait près de la
+        // position précédente (équipe debug, D179).
         const newMarker = L.marker(latlng)
           .addTo(map)
           .bindPopup("Vous êtes ici", { autoPan: false })
-        map.once("moveend", () => newMarker.openPopup())
+          .openPopup()
 
         // Supprimer le marqueur apres 10 secondes
         setTimeout(() => {

@@ -59,9 +59,9 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           OR: [
-            { datePrevue: { gte: start, lte: end } },
-            // Un soin à faire reporté appartient à la semaine de son rappel, pas
-            // à celle de sa saisie : il était compté dans les deux (D118).
+            // Un soin à faire appartient à la semaine de son rappel, un soin fait
+            // à celle de sa réalisation : jamais aux deux (D118).
+            { fait: false, datePrevue: { gte: start, lte: end } },
             { datePrevue: null, date: { gte: start, lte: end } },
             { fait: true, date: { gte: start, lte: end } },
             ...(retards

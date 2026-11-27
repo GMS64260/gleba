@@ -62,6 +62,23 @@ describe('POST mouvements-cheptel', () => {
     expect(mocks.mouvementCreate).not.toHaveBeenCalled()
   })
 
+  it('accepte le déplacement quand l’origine annoncée est la position réelle', async () => {
+    mocks.lotFindFirst.mockResolvedValue({ id: 12, parcelleGeoId: 'parcelle-1' })
+
+    const response = await POST(request({ lotId: 12, parcelleAvantId: 'parcelle-1', parcelleApresId: 'parcelle-2', date: '2026-07-22T10:00:00.000Z' }))
+
+    expect(response.status).toBe(201)
+  })
+
+  it('ne contrôle pas un mouvement antidaté, qui complète l’historique', async () => {
+    mocks.lotFindFirst.mockResolvedValue({ id: 12, parcelleGeoId: 'parcelle-9' })
+    mocks.mouvementFindFirst.mockResolvedValue({ parcelleApresId: 'parcelle-9', date: new Date('2026-08-01T10:00:00.000Z') })
+
+    const response = await POST(request({ lotId: 12, parcelleAvantId: 'parcelle-1', parcelleApresId: 'parcelle-2', date: '2026-07-22T10:00:00.000Z' }))
+
+    expect(response.status).toBe(201)
+  })
+
   it('journalise et met a jour le lot dans la meme transaction', async () => {
     const response = await POST(request({
       lotId: 12,

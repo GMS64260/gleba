@@ -317,6 +317,13 @@ export async function PATCH(request: NextRequest) {
       ? parsed.data.date
       : existing.date
 
+    // Une mise-bas rattachée à une saillie ne se redate pas avant elle (D106).
+    if (existing.saillieId && dateRetenue !== existing.date) {
+      const saillie = await prisma.saillie.findFirst({ where: { id: existing.saillieId, userId }, select: { date: true } })
+      const refusSaillie = saillie ? motifMiseBasAvantSaillie(dateRetenue, saillie.date) : null
+      if (refusSaillie) return NextResponse.json({ error: refusSaillie, champ: 'date' }, { status: 422 })
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM naissances_animales WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`
       const courante = await tx.naissanceAnimale.findFirst({ where: { id, userId }, include: { petits: { orderBy: { numero: 'asc' } } } })
