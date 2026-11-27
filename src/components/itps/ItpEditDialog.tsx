@@ -202,13 +202,15 @@ export function ItpEditDialog({
         description: `« ${nomAffichableItp(itp)} » modifié avec succès`,
       })
 
+      // Valeurs du serveur : un champ non envoyé peut avoir été corrigé ailleurs.
+      const enregistre = <T,>(cle: string, saisi: T): T => (cle in updated ? (updated[cle] as T) : saisi)
       onSaved({
         ...itp,
-        semaineSemis,
-        semainePlantation,
-        semaineRecolte,
-        dureeRecolte,
-        typePlanche,
+        semaineSemis: enregistre("semaineSemis", semaineSemis),
+        semainePlantation: enregistre("semainePlantation", semainePlantation),
+        semaineRecolte: enregistre("semaineRecolte", semaineRecolte),
+        dureeRecolte: enregistre("dureeRecolte", dureeRecolte),
+        typePlanche: enregistre("typePlanche", typePlanche),
         espece: updated.espece || itp.espece,
       })
       onOpenChange(false)

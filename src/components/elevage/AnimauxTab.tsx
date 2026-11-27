@@ -526,10 +526,6 @@ function AnimauxSubTab() {
         return
       }
     }
-    if (dateNaissanceSoumise && dateArriveeSoumise && dateArriveeSoumise < dateNaissanceSoumise) {
-      setAnimalSubmitError("La date d'arrivée précède la date de naissance : corrigez l'une des deux dates.")
-      return
-    }
     if (!formData.especeAnimaleId) {
       toast({ title: "Sélectionnez une espèce", variant: "destructive" })
       return

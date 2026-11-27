@@ -272,7 +272,10 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     expect(mocks.animalUpdate).not.toHaveBeenCalled()
 
     mocks.animalFindFirst.mockResolvedValue({ ...fiche, dateArrivee: new Date('2026-11-19T00:00:00Z') })
-    expect((await PATCH(request('PATCH', { id: 7, nom: 'Renommée' }))).status).toBe(200)
+    // L'écran renvoie ses deux dates, inchangées, avec le champ corrigé.
+    expect((await PATCH(request('PATCH', { id: 7, nom: 'Renommée', dateNaissance: '2026-11-20', dateArrivee: '2026-11-19' }))).status).toBe(200)
+    // Changer l'une des deux dates sans lever l'incohérence reste refusé.
+    expect((await PATCH(request('PATCH', { id: 7, dateNaissance: '2026-11-21', dateArrivee: '2026-11-19' }))).status).toBe(400)
   })
 
   it('PATCH accepte un lot assignable et permet le détachement', async () => {

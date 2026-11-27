@@ -1,4 +1,4 @@
-import { motifArriveeAvantNaissance } from '@/lib/elevage/chronologie'
+import { jourChange, motifArriveeAvantNaissance } from '@/lib/elevage/chronologie'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -433,7 +433,7 @@ export async function PUT(
       }
     }
 
-    if (dateNaissance || dateArrivee) {
+    if ((dateNaissance && jourChange(dateNaissance, existing.dateNaissance)) || (dateArrivee && jourChange(dateArrivee, existing.dateArrivee))) {
       const refusChronologie = motifArriveeAvantNaissance({
         dateNaissance: dateNaissance ? new Date(dateNaissance) : existing.dateNaissance,
         dateArrivee: dateArrivee ? new Date(dateArrivee) : existing.dateArrivee,

@@ -16,7 +16,9 @@ describe('convertirQuantitePharmacie', () => {
   it('rapproche les écritures d’une même unité', () => {
     expect(memeUnitePharmacie('mL', ' ml ')).toBe(true)
     expect(convertirQuantitePharmacie(3, 'millilitres', 'mL')).toBe(3)
-    expect(convertirQuantitePharmacie(2, 'Flacons', 'flacons')).toBe(2)
+    expect(convertirQuantitePharmacie(2, 'Flacons', 'flacon')).toBe(2)
+    expect(convertirQuantitePharmacie(4, 'comprimé', 'comprimés')).toBe(4)
+    expect(convertirQuantitePharmacie(5, 'cc', 'mL')).toBe(5)
   })
 
   it('refuse d’additionner des unités sans rapport', () => {

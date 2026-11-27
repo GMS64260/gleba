@@ -53,6 +53,19 @@ export function motifArriveeAvantNaissance(sujet: Presence): string | null {
   return `Arrivée du ${jourFr(arrivee)} : cette date précède la naissance de l'animal (${jourFr(naissance)}). Corrigez l'une des deux dates.`
 }
 
+/**
+ * Vrai si la date envoyée désigne un autre jour que celle de la fiche.
+ *
+ * L'écran renvoie toujours ses deux dates, même inchangées : une fiche ancienne
+ * déjà incohérente doit rester modifiable sur ses autres champs. Le formulaire
+ * préremplit le jour UTC de la date stockée ; les deux lectures sont admises.
+ */
+export function jourChange(envoyee: Date | string | null | undefined, enBase: Date | null | undefined): boolean {
+  const jour = jourCivilStocke(envoyee)
+  if (!enBase) return jour !== null
+  return jour !== jourCivilStocke(enBase) && jour !== enBase.toISOString().slice(0, 10)
+}
+
 /** Lève un refus 422 si l'événement précède l'entrée du sujet. */
 export function refuserSortieAvantEntree(
   date: Date | string,

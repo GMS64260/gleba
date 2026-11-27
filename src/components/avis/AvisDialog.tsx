@@ -119,7 +119,7 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
 
   const base = refId ? `/api/avis/${refType}/${encodeURIComponent(refId)}` : null
 
-  const charger = React.useCallback(async ({ page = 1, reinitialiserForm = true }: { page?: number; reinitialiserForm?: boolean } = {}) => {
+  const charger = React.useCallback(async ({ page = 1, reinitialiserForm = true, adopterVersion = false }: { page?: number; reinitialiserForm?: boolean; adopterVersion?: boolean } = {}) => {
     if (!base) return
     const reqId = ++reqIdRef.current
     setLoading(true)
@@ -131,7 +131,15 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
       if (reqId !== reqIdRef.current) return
       const d: AvisData = json.data
       setData(d)
-      versionLueRef.current = d.monAvis?.updatedAt ?? "aucun"
+      // La version suit le formulaire : tourner les pages ou retirer un partage
+      // ne recharge pas la saisie, donc pas non plus la version qu'elle a lue.
+      if (reinitialiserForm || adopterVersion) versionLueRef.current = d.monAvis?.updatedAt ?? "aucun"
+      if (adopterVersion && !reinitialiserForm) {
+        // Après un refus : garder la saisie, mais reprendre les photos publiées
+        // ailleurs, sinon la publication suivante les retirerait.
+        const publiees = d.monAvis?.photos ?? []
+        setPhotosConservees((gardees) => [...gardees, ...publiees.filter((p) => !gardees.some((g) => g.id === p.id))])
+      }
       if (reinitialiserForm) {
         setPhotosConservees(d.monAvis?.photos ?? [])
         setFichiers([])
@@ -191,7 +199,7 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
         if (res.status === 409) {
           // Montrer l'avis déjà publié, sans toucher à la saisie en cours.
           toast({ variant: "destructive", title: "Avis déjà publié ailleurs", description: err.error || "Relisez votre avis avant de le modifier." })
-          await charger({ reinitialiserForm: false })
+          await charger({ page: data?.page ?? 1, reinitialiserForm: false, adopterVersion: true })
           return
         }
         throw new Error(err.error || "Erreur")

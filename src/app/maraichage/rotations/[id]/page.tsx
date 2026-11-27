@@ -530,6 +530,7 @@ export default function EditRotationPage() {
                             type="checkbox"
                             checked={checked}
                             onChange={() => togglePlanche(p.id)}
+                            disabled={isSavingPlanches}
                             className="h-4 w-4"
                           />
                           <span className="font-medium">{p.nom}</span>

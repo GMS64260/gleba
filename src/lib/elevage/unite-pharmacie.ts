@@ -24,11 +24,13 @@ const SYNONYMES: Array<[RegExp, string]> = [
   [/^milligrammes?$/, 'mg'],
   [/^grammes?$/, 'g'],
   [/^(kilos?|kilogrammes?)$/, 'kg'],
+  [/^(cc|cm3|cm³)$/, 'ml'],
 ]
 
 function cleUnite(unite: string): string {
   const brute = unite.trim().toLowerCase().replace(/\.$/, '')
-  return SYNONYMES.find(([motif]) => motif.test(brute))?.[1] ?? brute
+  // Unité libre (« flacons », « doses », « comprimés ») : le pluriel ne fait pas une autre unité.
+  return SYNONYMES.find(([motif]) => motif.test(brute))?.[1] ?? (brute in UNITES ? brute : brute.replace(/(.{3,})s$/, '$1'))
 }
 
 /** Vrai si les deux textes désignent la même unité (« mL », « ml », « millilitres »). */

@@ -1,4 +1,4 @@
-import { motifArriveeAvantNaissance } from '@/lib/elevage/chronologie'
+import { jourChange, motifArriveeAvantNaissance } from '@/lib/elevage/chronologie'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -619,9 +619,13 @@ export async function PATCH(request: NextRequest) {
       }
       updateData[field] = d
     }
-    // La comparaison ne joue que si l'une des deux dates est envoyée : une
-    // fiche ancienne déjà incohérente reste modifiable sur ses autres champs.
-    if ('dateNaissance' in updateData || 'dateArrivee' in updateData) {
+    // La comparaison ne joue que si l'une des deux dates CHANGE : l'écran les
+    // renvoie toujours, et une fiche ancienne déjà incohérente doit rester
+    // modifiable sur ses autres champs.
+    if (
+      ('dateNaissance' in updateData && jourChange(updateData.dateNaissance as Date | null, existing.dateNaissance))
+      || ('dateArrivee' in updateData && jourChange(updateData.dateArrivee as Date | null, existing.dateArrivee))
+    ) {
       const refusChronologie = motifArriveeAvantNaissance({
         dateNaissance: 'dateNaissance' in updateData ? (updateData.dateNaissance as Date | null) : existing.dateNaissance,
         dateArrivee: 'dateArrivee' in updateData ? (updateData.dateArrivee as Date | null) : existing.dateArrivee,
