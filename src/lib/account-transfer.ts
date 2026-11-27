@@ -1123,7 +1123,8 @@ export async function importAccount(
  * fichier forgé portant le plus grand entier rendrait la fiche impossible à
  * enregistrer. D'autres modèles ont un champ `version` qui est une donnée.
  */
-const MODELES_A_VERSION_DE_FICHE = new Set(["Culture"])
+// eslint-disable-next-line no-restricted-syntax -- noms de modèles Prisma, sans accent par construction
+const MODELES_A_VERSION_DE_FICHE = new Set(["Culture", "Recolte", "Intervention"])
 
 function buildScalarData(meta: ModelMeta, row: Row): Row {
   const out: Row = {}

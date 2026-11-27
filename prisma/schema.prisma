@@ -1495,6 +1495,8 @@ model Recolte {
   // Produits boutique issus de cette récolte (bouton "Mettre en vente").
   produitsBoutique ProduitBoutique[]
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
   @@index([userId])
   @@index([especeId])
   @@index([cultureId])
@@ -4183,6 +4185,8 @@ model Intervention {
   createdAt            DateTime          @default(now()) @map("created_at")
   updatedAt            DateTime          @updatedAt @map("updated_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
   @@index([userId])
   @@index([userId, date])
   @@index([cultureId])

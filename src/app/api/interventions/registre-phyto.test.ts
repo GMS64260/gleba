@@ -34,6 +34,8 @@ vi.mock('@/lib/planches/resolution', () => ({ resoudreIdPlanche: vi.fn(async (_p
 vi.mock('@/lib/prisma', () => {
   const db: Record<string, unknown> = {
     $executeRaw: vi.fn(),
+    // Verrou de ligne pris avant de contrôler la version de la fiche.
+    $queryRaw: vi.fn(async () => []),
     intervention: { create: mocks.create, findFirst: mocks.findFirst, update: mocks.update, delete: mocks.remove },
     registrePhytoHistorique: { create: mocks.historiqueCreate },
     culture: { findFirst: mocks.cultureFindFirst },

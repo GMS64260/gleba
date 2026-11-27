@@ -441,6 +441,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
         await tx.intervention.update({
           where: { id: intervention.id },
           data: {
+            version: { increment: 1 },
             arbreId: null,
             notes: intervention.notes ? `${snapshotArbre}\n${intervention.notes}` : snapshotArbre,
             ...(contexte ?? {}),
