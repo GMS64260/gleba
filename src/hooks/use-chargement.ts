@@ -1,0 +1,157 @@
+"use client"
+
+/**
+ * Chargement de données d'un écran piloté par un filtre : la dernière demande
+ * gagne, d'office.
+ *
+ * Un écran qui relit ses données quand un filtre change (exercice, année,
+ * animal, parcelle, recherche, page) lance plusieurs demandes sans garantie
+ * d'ordre. Écrite à la main sur chaque écran, la garde manquait sur 73
+ * lectures (inventaire du 2026-11-27) et se contournait elle-même : le
+ * rechargement lancé après une action gardait le filtre de sa fermeture. Ici :
+ *
+ * - `cle` résume TOUS les filtres de la lecture (`factures:2026`). `null` :
+ *   rien n'est lu (année mémorisée pas encore restaurée, fiche non choisie).
+ *   Elle ne contient jamais un objet (`session`) : au mieux un identifiant.
+ * - Une réponse ne vaut que pour la demande qui l'a produite. Un changement de
+ *   clé annule la lecture en cours et invalide sa réponse, que le lecteur
+ *   honore le signal d'annulation ou non.
+ * - `recharger()` relit avec la clé et le lecteur COURANTS, jamais ceux du
+ *   rendu où il a été capturé. Il rend une promesse : `await recharger()`.
+ *
+ * Deux couches. `useLecture` n'a aucun état (un `useRef`, un `useEffect`) :
+ * l'écran range lui-même la réponse, sans changer le nombre ni l'ordre de ses
+ * `useState` (des tests les simulent par position). `useChargement` ajoute un
+ * seul `useState` et expose `donnees`, `erreur`, `enChargement`.
+ *
+ * Pour la réponse à un GESTE (scan, bouton « Vérifier », suggestions), qui ne
+ * décrit pas l'écran, `useDerniereDemande` reste l'outil.
+ */
+import * as React from "react"
+
+export type Lecteur<T> = (signal: AbortSignal) => Promise<T>
+
+export type Reponse<T> =
+  | { cle: string; etat: "chargement" }
+  | { cle: string; etat: "pret"; donnees: T }
+  | { cle: string; etat: "erreur"; erreur: unknown }
+
+/** État d'une lecture, hors de React pour être testé seul. */
+export type Boite<T> = {
+  cle: string | null
+  /** Numéro de la dernière demande : monotone, jamais remis à zéro. */
+  numero: number
+  controleur: AbortController | null
+  lecteur: Lecteur<T>
+  appliquer: (reponse: Reponse<T>) => void
+}
+
+export function creerBoite<T>(lecteur: Lecteur<T>, appliquer: (reponse: Reponse<T>) => void): Boite<T> {
+  return { cle: null, numero: 0, controleur: null, lecteur, appliquer }
+}
+
+/** Lance la lecture de la clé courante de la boîte ; toute lecture antérieure est invalidée. */
+export function lancerLecture<T>(boite: Boite<T>): Promise<void> {
+  boite.controleur?.abort()
+  const numero = ++boite.numero
+  const cle = boite.cle
+  if (cle === null) {
+    boite.controleur = null
+    return Promise.resolve()
+  }
+  const controleur = (boite.controleur = new AbortController())
+  boite.appliquer({ cle, etat: "chargement" })
+  let lecture: Promise<T>
+  try {
+    lecture = boite.lecteur(controleur.signal)
+  } catch (erreur) {
+    lecture = Promise.reject(erreur)
+  }
+  return lecture.then(
+    (donnees) => {
+      if (numero === boite.numero) boite.appliquer({ cle, etat: "pret", donnees })
+    },
+    (erreur) => {
+      if (numero === boite.numero && !controleur.signal.aborted) boite.appliquer({ cle, etat: "erreur", erreur })
+    },
+  )
+}
+
+/** Abandonne la lecture en cours : sa réponse ne sera pas appliquée. */
+export function abandonnerLecture<T>(boite: Boite<T>): void {
+  boite.numero++
+  boite.controleur?.abort()
+  boite.controleur = null
+}
+
+/**
+ * Couche sans état. `appliquer` reçoit « chargement », puis « pret » ou
+ * « erreur », toujours pour la demande courante.
+ */
+export function useLecture<T>(
+  cle: string | null,
+  lecteur: Lecteur<T>,
+  appliquer: (reponse: Reponse<T>) => void,
+): { recharger: () => Promise<void> } {
+  const ref = React.useRef<{ boite: Boite<T>; recharger: () => Promise<void> } | null>(null)
+  if (ref.current === null) {
+    const boite = creerBoite(lecteur, appliquer)
+    ref.current = { boite, recharger: () => lancerLecture(boite) }
+  }
+  const { boite, recharger } = ref.current
+  // Dernières fermetures : un rechargement lit le lecteur du rendu courant.
+  boite.lecteur = lecteur
+  boite.appliquer = appliquer
+  React.useEffect(() => {
+    boite.cle = cle
+    void lancerLecture(boite)
+    return () => abandonnerLecture(boite)
+  }, [cle]) // eslint-disable-line react-hooks/exhaustive-deps
+  return { recharger }
+}
+
+/** Ce que l'écran affiche pour la clé courante, à partir de la dernière réponse rangée. */
+export function etatChargement<T>(
+  reponse: Reponse<T> | null,
+  cle: string | null,
+): { donnees: T | null; erreur: unknown; enChargement: boolean } {
+  const courante = reponse !== null && cle !== null && reponse.cle === cle ? reponse : null
+  return {
+    donnees: courante?.etat === "pret" ? courante.donnees : null,
+    erreur: courante?.etat === "erreur" ? courante.erreur : null,
+    // Clé nulle : rien n'est demandé, l'écran reste en attente.
+    enChargement: courante === null || courante.etat === "chargement",
+  }
+}
+
+/**
+ * Réponse à ranger : un rechargement de la MÊME clé garde les données
+ * affichées (l'écran ne clignote pas après chaque action) ; un changement de
+ * clé les masque.
+ */
+export function rangerReponse<T>(precedente: Reponse<T> | null, recue: Reponse<T>): Reponse<T> {
+  if (recue.etat === "chargement" && precedente?.etat === "pret" && precedente.cle === recue.cle) return precedente
+  return recue
+}
+
+/**
+ * Couche avec état (un seul `useState`).
+ *
+ * `donnees` vaut `null` tant que la clé courante n'a pas répondu : aucune
+ * ligne d'un autre filtre ne reste affichée ni actionnable.
+ */
+export function useChargement<T>(cle: string | null, lecteur: Lecteur<T>) {
+  const [reponse, setReponse] = React.useState<Reponse<T> | null>(null)
+  const { recharger } = useLecture<T>(cle, lecteur, (recue) => setReponse((precedente) => rangerReponse(precedente, recue)))
+  return { ...etatChargement(reponse, cle), recharger }
+}
+
+/** Lecteur JSON courant : une réponse en échec lève, avec le message du serveur s'il en donne un. */
+export async function lireJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const reponse = await fetch(url, signal ? { signal } : undefined)
+  if (!reponse.ok) {
+    const corps = await reponse.json().catch(() => null)
+    throw new Error(typeof corps?.error === "string" ? corps.error : `Lecture impossible (${reponse.status})`)
+  }
+  return (await reponse.json()) as T
+}

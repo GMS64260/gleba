@@ -20,16 +20,18 @@ import * as React from "react"
  * Après démontage du composant, plus aucune demande n'est « actuelle ».
  */
 export function useDerniereDemande(): () => () => boolean {
+  // Compteur monotone, et drapeau de montage à part : remis à zéro au montage,
+  // le compteur donnait le même numéro à la demande partie avant un remontage
+  // (mode strict de React, en développement) et à celle d'après.
   const numero = React.useRef(0)
-  // Remis à zéro au montage : en développement, React monte, démonte puis
-  // remonte chaque effet, et le compteur resterait « démonté » pour toujours.
+  const monte = React.useRef(true)
   React.useEffect(() => {
-    numero.current = 0
-    return () => { numero.current = -1 }
+    monte.current = true
+    return () => { monte.current = false }
   }, [])
   return React.useCallback(() => {
-    if (numero.current < 0) return () => false
+    if (!monte.current) return () => false
     const n = ++numero.current
-    return () => n === numero.current
+    return () => monte.current && n === numero.current
   }, [])
 }
