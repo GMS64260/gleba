@@ -440,7 +440,7 @@ function FicheCapteur({
   return (
     <div className="rounded-md border border-slate-200 bg-white p-3 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{capteur.nom || capteur.identifiantExterne}</span>
+        <span className="min-w-0 max-w-full break-words font-medium">{capteur.nom || capteur.identifiantExterne}</span>
         {!capteur.cible && <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">À rattacher</Badge>}
         {capteur.clesInconnues.length > 0 && (
           <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">{capteur.clesInconnues.length} valeur(s) à interpréter</Badge>

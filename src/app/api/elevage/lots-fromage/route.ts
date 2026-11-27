@@ -7,6 +7,7 @@
  *       perdent leur statut "disponible").
  */
 
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -49,6 +50,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const data = parsed.data
+    // Une date limite ne précède pas la fabrication : l'étiquette imprimait
+    // « à consommer de préférence avant le » une date antérieure (D247).
+    const jourFabrication = jourCivilStocke(data.dateFabrication)
+    const jourLimite = jourCivilStocke(data.dluo)
+    if (jourFabrication && jourLimite && jourLimite < jourFabrication) {
+      const fr = (jour: string) => jour.split('-').reverse().join('/')
+      return NextResponse.json(
+        { error: `DLUO du ${fr(jourLimite)} : cette date précède la fabrication du ${fr(jourFabrication)}. Corrigez l'une des deux dates.`, champ: 'dluo' },
+        { status: 422 },
+      )
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session.user.id)

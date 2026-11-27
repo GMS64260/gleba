@@ -4,6 +4,7 @@
  * POST /api/cultures - Créer une culture
  */
 
+import { contientLitteral } from '@/lib/recherche/like'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createCultureSchema, normaliserDatesCreationCulture, validateCultureDates } from '@/lib/validations'
@@ -77,14 +78,16 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
+      // Texte littéral : « % » et « _ » saisis ne sont pas des jokers (D229).
+      const motif = contientLitteral(search)
       where.OR = [
-        { espece: { id: { contains: search, mode: 'insensitive' } } },
-        { variete: { id: { contains: search, mode: 'insensitive' } } },
+        { espece: { id: motif } },
+        { variete: { id: motif } },
         // Espèce ou variété personnelle : identifiant opaque, le nom vit dans `nom`.
-        { espece: { nom: { contains: search, mode: 'insensitive' } } },
-        { variete: { nom: { contains: search, mode: 'insensitive' } } },
-        { planche: { nom: { contains: search, mode: 'insensitive' } } },
-        { notes: { contains: search, mode: 'insensitive' } },
+        { espece: { nom: motif } },
+        { variete: { nom: motif } },
+        { planche: { nom: motif } },
+        { notes: motif },
       ]
     }
 

@@ -308,6 +308,16 @@ export async function DELETE(request: NextRequest) {
           where: { id: parsed.data.id, exploitationId: exploitation.id },
         })
         if (!before) throw new ErreurCadreReglementaire("Lieu introuvable", 404)
+        // Une annexe ne se réactive pas sous un site archivé (équipe debug, D245).
+        if (!parsed.data.archived && before.archivedAt && before.parentId) {
+          const parent = await tx.lieuDetentionElevage.findFirst({
+            where: { id: before.parentId, exploitationId: exploitation.id },
+            select: { nom: true, archivedAt: true },
+          })
+          if (parent?.archivedAt) {
+            throw new ErreurCadreReglementaire(`Réactivez d’abord « ${parent.nom} », ou rattachez ce lieu à un site actif.`, 409)
+          }
+        }
         if (parsed.data.archived) {
           const enfantActif = await tx.lieuDetentionElevage.findFirst({
             where: {

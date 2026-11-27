@@ -160,10 +160,30 @@ export default function EditAssociationPage() {
         (d) => d.especeId || d.familleId || d.groupe
       )
 
+      // Seuls les champs changés dans CET onglet partent : la route garde un
+      // champ absent, et remplace TOUTES les lignes dès qu'elle en reçoit. Un
+      // onglet resté ouvert rétablissait une espèce retirée ailleurs en ne
+      // corrigeant que la description (équipe debug, D230).
+      const ligne = (d: { especeId?: string | null; familleId?: string | null; groupe?: string | null; requise?: boolean | null; notes?: string | null }) =>
+        ({ especeId: d.especeId || null, familleId: d.familleId || null, groupe: d.groupe || null, requise: d.requise === true, notes: d.notes || null })
+      let corps: Record<string, unknown> = { ...data, details: filteredDetails }
+      if (association) {
+        corps = {}
+        if (data.nom !== association.nom) corps.nom = data.nom
+        if ((data.description || null) !== (association.description || null)) corps.description = data.description
+        if ((data.notes || null) !== (association.notes || null)) corps.notes = data.notes
+        if ((data.type ?? "favorable") !== (association.type || "favorable")) corps.type = data.type
+        if (JSON.stringify((filteredDetails ?? []).map(ligne)) !== JSON.stringify(association.details.map(ligne))) corps.details = filteredDetails
+        if (Object.keys(corps).length === 0) {
+          toast({ title: "Aucune modification à enregistrer" })
+          return
+        }
+      }
+
       const response = await fetch(`/api/associations/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, details: filteredDetails }),
+        body: JSON.stringify(corps),
       })
 
       if (!response.ok) {

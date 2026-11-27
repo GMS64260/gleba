@@ -7,6 +7,7 @@
  * répartition du troupeau.
  */
 
+import { finJourCivil } from '@/lib/jour-civil'
 import { NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -40,7 +41,9 @@ export async function GET(request: Request) {
       }),
       prisma.collecteLait.groupBy({
         by: ['animalId'],
-        where: { userId, animalId: { in: ids } },
+        // Une traite datée après aujourd'hui n'est pas encore faite : elle faisait
+        // passer l'animal « en lactation » dès aujourd'hui (D244, même règle que D219).
+        where: { userId, animalId: { in: ids }, date: { lte: finJourCivil(new Date()) } },
         _max: { date: true },
       }),
     ])

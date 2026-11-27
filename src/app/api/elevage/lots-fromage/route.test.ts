@@ -113,3 +113,18 @@ describe('POST /api/elevage/lots-fromage — lait déjà vendu ou livré (bilan 
     expect(mocks.lotCreate).toHaveBeenCalledWith({ data: expect.not.objectContaining({ confirmerLaitIndisponible: true }) })
   })
 })
+
+describe('POST /api/elevage/lots-fromage — date limite et fabrication (D247)', () => {
+  it('refuse en 422 une DLUO antérieure à la fabrication, sans créer le lot', async () => {
+    const res = await fabrication({ volumeLaitUtiliseL: 40, dluo: '2026-10-31' })
+
+    expect(res.status).toBe(422)
+    expect(await res.json()).toMatchObject({ champ: 'dluo', error: expect.stringContaining('précède la fabrication du 01/11/2026') })
+    expect(mocks.lotCreate).not.toHaveBeenCalled()
+  })
+
+  it('accepte une DLUO le jour de la fabrication ou après', async () => {
+    expect((await fabrication({ volumeLaitUtiliseL: 40, dluo: '2026-11-01' })).status).toBe(201)
+    expect((await fabrication({ volumeLaitUtiliseL: 40, dluo: '2026-12-15' })).status).toBe(201)
+  })
+})

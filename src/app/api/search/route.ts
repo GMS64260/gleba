@@ -14,6 +14,7 @@
  * n'est pas exposée — l'utilisateur affine sa requête s'il veut plus.
  */
 
+import { contientLitteral } from '@/lib/recherche/like'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -28,11 +29,6 @@ import { UNITES_QUANTITE, type UniteQuantite } from '@/lib/recolte/projection'
 
 const TAKE = 8
 const SELECT_NOM_VISIBLE = { nom: true, userId: true, partageCommunaute: true } as const
-
-// Prisma `contains` utilise LIKE : ces caractères sont du texte saisi, pas des jokers.
-function contientLitteral(texte: string) {
-  return { contains: texte.replace(/[\\%_]/g, '\\$&'), mode: 'insensitive' as const }
-}
 
 function nomVisible(entree: (EntreeReferentiel & { nom: string | null; espece?: EntreeReferentiel }) | null, userId: string) {
   if (!entree || !estVisibleReferentiel(entree, userId)) return null

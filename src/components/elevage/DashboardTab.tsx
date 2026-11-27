@@ -258,13 +258,34 @@ export function DashboardTab({ year }: DashboardTabProps) {
     }
   }, [])
 
-  const modifierPreference = (key: keyof DashboardPreferences, value: boolean) => {
-    setPreferences((current) => {
-      const next = { ...current, [key]: value }
-      window.localStorage.setItem(DASHBOARD_PREFS_KEY, JSON.stringify(next))
-      return next
-    })
+  const lirePreferencesStockees = (): DashboardPreferences | null => {
+    try {
+      const stockees = window.localStorage.getItem(DASHBOARD_PREFS_KEY)
+      return stockees ? { ...DASHBOARD_PREFS_DEFAULT, ...JSON.parse(stockees) } : null
+    } catch {
+      return null
+    }
   }
+
+  const modifierPreference = (key: keyof DashboardPreferences, value: boolean) => {
+    // Repartir du stockage, pas de l'état de cet onglet : un autre onglet a pu
+    // changer une autre option depuis l'ouverture, et elle était annulée (D201).
+    const next = { ...(lirePreferencesStockees() ?? preferences), [key]: value }
+    setPreferences(next)
+    try { window.localStorage.setItem(DASHBOARD_PREFS_KEY, JSON.stringify(next)) } catch { /* préférence facultative */ }
+  }
+
+  React.useEffect(() => {
+    const synchroniser = (e: StorageEvent) => {
+      if (e.key !== DASHBOARD_PREFS_KEY) return
+      try {
+        const stockees = window.localStorage.getItem(DASHBOARD_PREFS_KEY)
+        setPreferences(stockees ? { ...DASHBOARD_PREFS_DEFAULT, ...JSON.parse(stockees) } : DASHBOARD_PREFS_DEFAULT)
+      } catch { /* préférence facultative */ }
+    }
+    window.addEventListener("storage", synchroniser)
+    return () => window.removeEventListener("storage", synchroniser)
+  }, [])
 
   const appliquerPresetTerrain = () => {
     const next: DashboardPreferences = {

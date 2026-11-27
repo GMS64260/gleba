@@ -711,6 +711,8 @@ export async function calculerStatsExercice(userId: string, year: number, asOf: 
       stocksBas: Number(stocksBasAliments[0]?.count || 0) + stocksBasGraines,
       // QA 2026-05-15 — Bug #5 : commandes boutique en attente de livraison.
       commandesEnAttente: commandesEnAttente.length,
+      // Payées mais pas encore remises : leur recette est déjà en comptabilité (D217).
+      commandesEnAttentePayees: commandesEnAttente.filter((c) => c.venteManuelleId != null).length,
       commandesEnAttenteTotal: totalSiUneDevise(commandesEnAttenteTotalParDevise),
       // Contexte de commande figé quand il existe ; sinon devise courante.
       commandesEnAttenteTotalParDevise,

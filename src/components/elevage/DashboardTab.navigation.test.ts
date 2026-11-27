@@ -54,7 +54,7 @@ describe("navigation du tableau de bord Élevage (FRONT-09)", () => {
     vi.clearAllMocks()
     mocks.states = []
     const location = { pathname: "/elevage", search: "" }
-    vi.stubGlobal("window", { location, localStorage: { getItem: () => null } })
+    vi.stubGlobal("window", { location, localStorage: { getItem: () => null }, addEventListener: () => {}, removeEventListener: () => {} })
     vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.startsWith("/api/elevage/stats") ? {
       stats: { animauxActifs: 3, animauxTotal: 3, lotsActifs: 0, ventesAnnee: 0, ventesAnneePrecedente: 0, tauxPonte: null, fcr: null },
       productions: [], animauxParType: [], productionOeufsMois: [],

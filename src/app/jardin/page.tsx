@@ -4,6 +4,7 @@
  * Page Plan du jardin - Visualisation 2D avec éditeur complet
  */
 
+import { positionsEnGrille } from "@/lib/jardin/grille-planches"
 import { useMenuOuvertAuClic } from "@/hooks/use-menu-ouvert-au-clic"
 import type { AssociationEvaluable } from "@/lib/associations-alertes"
 import { liaisonEntrePlanches } from "@/lib/associations-voisinage"
@@ -75,7 +76,7 @@ import {
   enAttenteHorsVue,
   fusionnerRechargement,
 } from "@/lib/jardin/rechargement-plan"
-import { parcelleDeCreation } from "@/lib/jardin/filtre-parcelle"
+import { lienVue3D, parcelleDeCreation } from "@/lib/jardin/filtre-parcelle"
 import { nomsCopiesEnLot } from "@/lib/jardin/noms-copie"
 import { parcelleParDefautArbre } from "@/lib/verger/espece-arbre"
 import {
@@ -1557,13 +1558,10 @@ function JardinContent() {
     if (!(await confirmDialog(
       `Réorganiser le plan ?\n\nLes ${planches.length} planche(s) seront replacées en grille et leur emplacement actuel sera perdu. Les objets et les arbres ne bougent pas.`
     ))) return
-    const cols = Math.ceil(Math.sqrt(planches.length))
-    const spacing = 0.5
-    setPlanches(prev => prev.map((p, i) => ({
-      ...p,
-      posX: (i % cols) * ((p.largeur || 0.8) + spacing),
-      posY: Math.floor(i / cols) * ((p.longueur || 2) + spacing)
-    })))
+    setPlanches(prev => {
+      const positions = positionsEnGrille(prev)
+      return prev.map((p, i) => ({ ...p, ...positions[i] }))
+    })
     marquerChangement()
   }
 
@@ -2437,11 +2435,7 @@ function JardinContent() {
 
             {/* Vue 3D (nouveauté) */}
             <Link
-              href={
-                selectedParcelleId && selectedParcelleId !== "none"
-                  ? `/jardin/3d?parcelle=${encodeURIComponent(selectedParcelleId)}`
-                  : "/jardin/3d"
-              }
+              href={lienVue3D(selectedParcelleId)}
             >
               <Button
                 variant="outline"
@@ -2572,11 +2566,7 @@ function JardinContent() {
               asChild
             >
               <Link
-                href={
-                  selectedParcelleId && selectedParcelleId !== "none"
-                    ? `/jardin/3d?parcelle=${encodeURIComponent(selectedParcelleId)}`
-                    : "/jardin/3d"
-                }
+                href={lienVue3D(selectedParcelleId)}
                 aria-label="Ouvrir la vue 3D"
               >
                 <Box className="h-4 w-4" />

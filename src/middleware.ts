@@ -12,12 +12,13 @@ import {
   EN_TETE_MUTATION,
   valeurEnteteMutation,
 } from "@/lib/exploitation/entete-mutation"
-import { NextResponse } from "next/server"
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server"
 import { ENTETE_CHEMIN, ENTETE_METHODE } from "@/lib/abonnement/requetes"
 import { CHEMIN_INTROUVABLE, segmentRacineInconnu } from "@/lib/segments-racine"
 import { segmentsUpload } from "@/lib/uploads-chemin"
+import { sansCookieSessionRecopie } from "@/lib/session-cookie-recopie"
 
-export default auth((req) => {
+const avecSession = auth((req) => {
   const { pathname } = req.nextUrl
   const isLoggedIn = !!req.auth
   const isAdminRoute = estSurfaceAdministration(pathname)
@@ -212,6 +213,17 @@ export default auth((req) => {
 
   return suite()
 })
+
+type Middleware = (req: NextRequest, ev: NextFetchEvent) => Response | Promise<Response>
+
+// Une requête partie avant un changement de mot de passe ne doit pas réécrire
+// l'ancien jeton par-dessus le cookie réémis (équipe debug, D198).
+export default function middleware(req: NextRequest, ev: NextFetchEvent) {
+  const reponse = (avecSession as unknown as Middleware)(req, ev)
+  return reponse instanceof Promise
+    ? reponse.then((r) => (r ? sansCookieSessionRecopie(req, r) : r))
+    : reponse ? sansCookieSessionRecopie(req, reponse) : reponse
+}
 
 export const config = {
   matcher: [

@@ -1399,6 +1399,7 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
   // désormais la date de fabrication saisie : les 60 jours qui la précèdent.
   const dateFabricationValide = /^\d{4}-\d{2}-\d{2}$/.test(form.dateFabrication)
   const fenetreDebut = dateFabricationValide ? addDaysIso(form.dateFabrication, -FENETRE_COLLECTES_JOURS) : null
+  const dluoAvantFabrication = dateFabricationValide && !!form.dluo && form.dluo < form.dateFabrication
   React.useEffect(() => {
     if (!props.open || !fenetreDebut) return
     let annule = false
@@ -1493,7 +1494,8 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
           </div>
           <div>
             <Label>DLUO</Label>
-            <Input type="date" value={form.dluo} onChange={(e) => setForm({ ...form, dluo: e.target.value })} />
+            <Input type="date" min={form.dateFabrication || undefined} aria-invalid={dluoAvantFabrication || undefined} value={form.dluo} onChange={(e) => setForm({ ...form, dluo: e.target.value })} />
+            {dluoAvantFabrication && <p role="alert" className="text-xs text-red-600">La DLUO précède la date de fabrication.</p>}
           </div>
           <div>
             <Label>Traitement thermique</Label>
@@ -1590,7 +1592,7 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => props.onOpenChange(false)}>Annuler</Button>
-          <Button onClick={submit} disabled={saving || volumeFabrication === 0}>
+          <Button onClick={submit} disabled={saving || volumeFabrication === 0 || dluoAvantFabrication}>
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
             Créer le lot
           </Button>

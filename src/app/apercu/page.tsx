@@ -157,7 +157,13 @@ function ApercuDocument() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => window.history.back()}>
+          <Button variant="outline" size="sm" onClick={() => {
+            // Aperçu ouvert dans un nouvel onglet : une seule entrée d'historique,
+            // « retour » ne faisait rien (équipe debug, D130). On ferme l'onglet.
+            if (window.history.length > 1) { window.history.back(); return }
+            window.close()
+            window.setTimeout(() => { if (!window.closed) window.location.assign("/") }, 200)
+          }}>
             <ArrowLeft className="mr-1 h-4 w-4" />
             Retour
           </Button>

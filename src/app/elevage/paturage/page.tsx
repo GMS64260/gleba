@@ -58,7 +58,16 @@ export default function PaturagePage() {
   async function save(p: Paddock) {
     const s = settings[p.id]
     const res = await fetch('/api/elevage/paturage', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parcelleId: p.id, disponibiliteFourragereKgMsHa: s.fourrage ? Number(s.fourrage) : null, eauDisponible: s.eau === 'inconnu' ? null : s.eau === 'oui', etatCloture: s.cloture }) })
-    if (res.ok) { await reload(); toast({ title: 'État du paddock mis à jour' }) }
+    if (res.ok) { await reload(); toast({ title: 'État du paddock mis à jour' }); return }
+    // Un refus se dit : il était muet (équipe debug, D134).
+    const refus = await res.json().catch(() => null)
+    toast({
+      variant: 'destructive',
+      title: 'Paddock non mis à jour',
+      description: refus?.details?.fieldErrors?.disponibiliteFourragereKgMsHa
+        ? 'Fourrage : saisissez une valeur entre 0 et 100 000 kg MS/ha.'
+        : (refus?.error || "L'état du paddock n'a pas été enregistré."),
+    })
   }
 
   return <div className="min-h-screen bg-slate-50"><AppHeader current="elevage" /><main className="mx-auto max-w-6xl p-3 sm:p-6 space-y-4">

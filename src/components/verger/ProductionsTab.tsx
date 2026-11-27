@@ -1200,7 +1200,7 @@ function RecoltesFruitsSubTab() {
                     setVenteData({ ...venteData, creerFacture: checked === true })
                   }
                 />
-                <Label htmlFor="creerFactureRecolte">Créer une facture (TVA 5.5%)</Label>
+                <Label htmlFor="creerFactureRecolte">Créer une facture (TVA selon le régime de l’exploitation)</Label>
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setShowVenteDialog(false)}>

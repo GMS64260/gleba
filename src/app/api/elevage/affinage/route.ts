@@ -68,17 +68,21 @@ export async function GET(request: NextRequest) {
 
   const visibles = inclureEcoules ? data : data.filter((l) => l.etat !== 'ecoule' && l.stockPieces > 0)
 
+  // Les tuiles décrivent le stock : un lot écoulé ou épuisé, montré par le filtre
+  // « Inclure les lots écoulés », n'y compte pas (équipe debug, D177).
+  const enStock = data.filter((l) => l.etat !== 'ecoule' && l.stockPieces > 0)
+
   const stats = {
-    nbLots: visibles.length,
+    nbLots: enStock.length,
     // Lots écartés par la vue par défaut (écoulés, ou épuisés par le calcul
     // alors qu'ils sont encore « prêts » en base) : l'écran les nomme.
     nbLotsMasques: data.length - visibles.length,
-    stockPiecesTotal: visibles.reduce((s, l) => s + l.stockPieces, 0),
-    stockKgTotal: Math.round(visibles.reduce((s, l) => s + l.stockKg, 0) * 100) / 100,
+    stockPiecesTotal: enStock.reduce((s, l) => s + l.stockPieces, 0),
+    stockKgTotal: Math.round(enStock.reduce((s, l) => s + l.stockKg, 0) * 100) / 100,
     valorisationTotale: Math.round(
-      visibles.reduce((s, l) => s + (l.valorisation ?? 0), 0) * 100
+      enStock.reduce((s, l) => s + (l.valorisation ?? 0), 0) * 100
     ) / 100,
-    nbAlerteDlc: visibles.filter((l) => l.joursRestants != null && l.joursRestants <= 7).length,
+    nbAlerteDlc: enStock.filter((l) => l.joursRestants != null && l.joursRestants <= 7).length,
   }
 
   return NextResponse.json({ data: visibles, stats })

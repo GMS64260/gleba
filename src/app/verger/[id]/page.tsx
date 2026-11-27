@@ -102,6 +102,9 @@ function optionsTypesArbre(typeCourant: string | null | undefined) {
 }
 
 
+/** Champs rendus par le serveur que la fiche ne modifie pas. */
+const CHAMPS_LECTURE_ARBRE = new Set(["id", "userId", "createdAt", "updatedAt", "_count", "porteGreffeRef", "zone", "parcelleGeo"])
+
 export default function DetailArbrePage() {
   const { id } = useParams()
   const router = useRouter()
@@ -225,7 +228,9 @@ export default function DetailArbrePage() {
       try {
         const res = await fetch(`/api/arbres/${id}`)
         if (res.ok) {
-          setArbre(await res.json())
+          const lu = await res.json()
+          arbreLu.current = lu
+          setArbre(lu)
         } else {
           router.push("/verger?tab=arbres")
         }
@@ -256,19 +261,35 @@ export default function DetailArbrePage() {
       .finally(() => setRecoltesLoading(false))
   }, [session?.user, id])
 
+  // Fiche telle que le serveur l'a rendue en dernier, pour n'envoyer que les champs changés.
+  const arbreLu = React.useRef<unknown>(null)
+
   const handleSave = async () => {
     if (!arbre) return
+    // Seuls les champs changés depuis le chargement partent (la route garde un
+    // champ absent). Envoyée entière, la fiche d'un onglet resté ouvert
+    // réécrivait la date de plantation enregistrée ailleurs (équipe debug, D241).
+    const lu = arbreLu.current as Record<string, unknown> | null
+    const modifies = Object.fromEntries(
+      Object.entries(arbre).filter(([cle, valeur]) =>
+        !CHAMPS_LECTURE_ARBRE.has(cle) && JSON.stringify(valeur) !== JSON.stringify(lu?.[cle])),
+    )
+    if (Object.keys(modifies).length === 0) {
+      toast({ title: "Aucune modification à enregistrer" })
+      return
+    }
     setSaving(true)
 
     try {
       const res = await fetch(`/api/arbres/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(arbre),
+        body: JSON.stringify(modifies),
       })
 
       if (res.ok) {
         const updated = await res.json()
+        arbreLu.current = { ...arbre, ...updated }
         setArbre((current) => current ? { ...current, ...updated } : current)
         toast({ title: "Arbre mis à jour" })
       } else {
@@ -599,7 +620,7 @@ export default function DetailArbrePage() {
                     <Input
                       type="number"
                       min="0"
-                      value={arbre.age || ""}
+                      value={arbre.age ?? ""}
                       onChange={(e) =>
                         setArbre({ ...arbre, age: e.target.value ? parseInt(e.target.value) : null })
                       }
@@ -630,7 +651,7 @@ export default function DetailArbrePage() {
                       type="number"
                       step="0.01"
                       min="0"
-                      value={arbre.prixAchat || ""}
+                      value={arbre.prixAchat ?? ""}
                       onChange={(e) =>
                         setArbre({
                           ...arbre,
@@ -661,7 +682,7 @@ export default function DetailArbrePage() {
                       type="number"
                       step="0.1"
                       min="0"
-                      value={arbre.hauteur || ""}
+                      value={arbre.hauteur ?? ""}
                       onChange={(e) =>
                         setArbre({
                           ...arbre,
@@ -724,7 +745,7 @@ export default function DetailArbrePage() {
                       type="number"
                       min="1900"
                       max="2100"
-                      value={arbre.anneeProduction || ""}
+                      value={arbre.anneeProduction ?? ""}
                       onChange={(e) =>
                         setArbre({
                           ...arbre,
@@ -739,7 +760,7 @@ export default function DetailArbrePage() {
                       type="number"
                       step="0.1"
                       min="0"
-                      value={arbre.rendementMoyen || ""}
+                      value={arbre.rendementMoyen ?? ""}
                       onChange={(e) =>
                         setArbre({
                           ...arbre,
