@@ -418,6 +418,10 @@ function TransactionsPageInner() {
     paye: "true",
   }
   const [editForm, setEditForm] = React.useState(editFormVide)
+  // Valeurs du formulaire à son ouverture : seuls les champs changés depuis
+  // partent au serveur. Tout renvoyer faisait réécrire à un onglet resté ouvert
+  // le montant qu'un autre venait de corriger (équipe debug, D208).
+  const editInitial = React.useRef(editFormVide)
   const [isSavingEdit, setIsSavingEdit] = React.useState(false)
   const [deleting, setDeleting] = React.useState<Transaction | null>(null)
 
@@ -441,7 +445,7 @@ function TransactionsPageInner() {
       : "/api/comptabilite/depenses-manuelles"
 
   const openEdit = (t: Transaction) => {
-    setEditForm({
+    const initial = {
       ...editFormVide,
       date: new Date(t.date).toISOString().slice(0, 10),
       description: t.description ?? "",
@@ -458,31 +462,36 @@ function TransactionsPageInner() {
       modeReglement: t.modeReglement ?? "",
       numeroPiece: t.numeroPiece ?? "",
       tauxTVA: t.tauxTVA == null ? "" : String(t.tauxTVA),
-    })
+    }
+    setEditForm(initial)
+    editInitial.current = initial
     setEditing(t)
   }
 
   const saveEdit = async () => {
     if (!editing || isSavingEdit) return
+    const change = (champ: keyof typeof editFormVide) => editForm[champ].trim() !== editInitial.current[champ].trim()
     const montant = parseFloat(editForm.montant.replace(",", "."))
-    if (!Number.isFinite(montant) || montant < 0) {
+    if (change("montant") && (!Number.isFinite(montant) || montant < 0)) {
       toast({ variant: "destructive", title: "Montant invalide", description: "Saisissez un montant valide." })
+      return
+    }
+    if (change("date") && Number.isNaN(new Date(editForm.date).getTime())) {
+      toast({ variant: "destructive", title: "Date invalide", description: "Saisissez une date valide." })
       return
     }
     setIsSavingEdit(true)
     try {
-      const body: Record<string, unknown> = {
-        id: editing.sourceId,
-        date: new Date(editForm.date).toISOString(),
-        description: editForm.description.trim(),
-        montant,
-        paye: editForm.paye === "true",
-      }
+      const body: Record<string, unknown> = { id: editing.sourceId }
+      if (change("date")) body.date = new Date(editForm.date).toISOString()
+      if (change("description")) body.description = editForm.description.trim()
+      if (change("montant")) body.montant = montant
+      if (change("paye")) body.paye = editForm.paye === "true"
       if (editForm.categorie) body.categorie = editForm.categorie
-      if (editForm.module) body.module = editForm.module
+      if (editForm.module && change("module")) body.module = editForm.module
       if (editForm.modeReglement !== (editing.modeReglement ?? "")) body.modeReglement = editForm.modeReglement || null
       if (editForm.numeroPiece.trim() !== (editing.numeroPiece ?? "")) body.numeroPiece = editForm.numeroPiece.trim() || null
-      if (editForm.tauxTVA) {
+      if (editForm.tauxTVA && change("tauxTVA")) {
         const taux = parseFloat(editForm.tauxTVA.replace(",", "."))
         if (!Number.isFinite(taux) || taux < 0 || taux > 100) {
           toast({ variant: "destructive", title: "Taux de TVA invalide", description: "Saisissez un taux entre 0 et 100." })
@@ -492,9 +501,14 @@ function TransactionsPageInner() {
         body.tauxTVA = taux
       }
       const tiers = editForm.tiers.trim()
-      if (tiers) {
+      if (tiers && change("tiers")) {
         if (editing.source === "VenteManuelle") body.clientNom = tiers
         else body.fournisseurNom = tiers
+      }
+      if (Object.keys(body).length === 1) {
+        // Rien n'a changé : pas d'appel, donc rien à réécrire.
+        setEditing(null)
+        return
       }
       const res = await fetch(endpointFor(editing), {
         method: "PATCH",
@@ -505,7 +519,7 @@ function TransactionsPageInner() {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "Correction refusée")
       }
-      toast({ title: "Écriture corrigée", description: formatTransaction(montant, editing) })
+      toast({ title: "Écriture corrigée", description: formatTransaction(change("montant") ? montant : editing.montant, editing) })
       setEditing(null)
       fetchData()
     } catch (err) {

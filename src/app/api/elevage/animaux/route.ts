@@ -1,3 +1,4 @@
+import { motifArriveeAvantNaissance } from '@/lib/elevage/chronologie'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -177,6 +178,13 @@ export async function POST(request: NextRequest) {
       notes,
       parcelleGeoId,
     } = parsed.data
+
+    // Seule une arrivée saisie est comparée : sans elle, l'arrivée vaut le jour
+    // de la saisie.
+    const refusChronologie = dateArrivee ? motifArriveeAvantNaissance({ dateNaissance, dateArrivee }) : null
+    if (refusChronologie) {
+      return NextResponse.json({ error: refusChronologie, champ: 'dateArrivee' }, { status: 400 })
+    }
 
     // L'espèce doit exister ET être visible du compte (catalogue, communauté
     // ou fiche perso), comme au PATCH.
@@ -610,6 +618,17 @@ export async function PATCH(request: NextRequest) {
         )
       }
       updateData[field] = d
+    }
+    // La comparaison ne joue que si l'une des deux dates est envoyée : une
+    // fiche ancienne déjà incohérente reste modifiable sur ses autres champs.
+    if ('dateNaissance' in updateData || 'dateArrivee' in updateData) {
+      const refusChronologie = motifArriveeAvantNaissance({
+        dateNaissance: 'dateNaissance' in updateData ? (updateData.dateNaissance as Date | null) : existing.dateNaissance,
+        dateArrivee: 'dateArrivee' in updateData ? (updateData.dateArrivee as Date | null) : existing.dateArrivee,
+      })
+      if (refusChronologie) {
+        return NextResponse.json({ error: refusChronologie, champ: 'dateArrivee' }, { status: 400 })
+      }
     }
     if (pereIdentifiant !== undefined) updateData.pereIdentifiant = pereIdentifiant ?? null
     if (mereIdentifiant !== undefined) updateData.mereIdentifiant = mereIdentifiant ?? null

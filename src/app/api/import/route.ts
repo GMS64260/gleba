@@ -785,7 +785,15 @@ export async function POST(request: NextRequest) {
 
     // 11. Planches (per-user unique by nom)
     // Incoming item.id is the planche name (from old exports or nom field)
-    const plancheNameToIdMap = new Map<string, string>() // name → cuid
+    //
+    // La table porte deux clés par planche : son nom ET l'identifiant qu'elle
+    // avait dans le fichier. Les lignes enfants (cultures, fertilisations)
+    // désignent leur planche par cet ancien identifiant ; indexée par le nom
+    // seul, la table ne le retrouvait pas dès que la planche d'origine n'existait
+    // plus (réimport après « Tout supprimer », autre compte, autre instance) :
+    // la fertilisation était sautée et la culture revenait sans planche (équipe
+    // debug, D171).
+    const plancheNameToIdMap = new Map<string, string>() // nom ou ancien id → cuid
     if (data.planches?.length) {
       for (const item of data.planches) {
         const plancheName = (item as { nom?: string | null }).nom || item.id // support both old (id) and new (nom) export formats
@@ -821,6 +829,7 @@ export async function POST(request: NextRequest) {
             },
           })
           plancheNameToIdMap.set(plancheName, existing.id)
+          if (item.id) plancheNameToIdMap.set(item.id, existing.id)
         } else {
           // Créer nouvelle planche (id auto-generated)
           const created = await tx.planche.create({
@@ -845,6 +854,7 @@ export async function POST(request: NextRequest) {
             },
           })
           plancheNameToIdMap.set(plancheName, created.id)
+          if (item.id) plancheNameToIdMap.set(item.id, created.id)
         }
         stats.planches++
       }
@@ -1119,9 +1129,18 @@ export async function POST(request: NextRequest) {
     // compteurs dans stats pour les clients existants, mais les sortir du bilan.
     const { culturesItpIgnore, culturesVarieteIgnore, ...enregistrements } = stats
     const totalImported = Object.values(enregistrements).reduce((a, b) => a + b, 0)
+    // Les référentiels d'un fichier ne sont relus que pour un administrateur.
+    // Pour tout autre compte ce ne sont pas des lignes « ignorées » : comptées,
+    // elles noyaient les vraies pertes (« 1 importé, 2271 ignorés » pour une
+    // seule fertilisation perdue, D171).
+    const clesReferentiel = new Set<string>([
+      'familles', 'fournisseurs', 'especes', 'varietes', 'itps', 'rotations',
+      'rotationDetails', 'fertilisants', 'associations', 'associationDetails',
+    ])
     const totalPropose = (Object.keys(enregistrements) as Array<keyof typeof enregistrements>)
+      .filter((cle) => isAdmin || !clesReferentiel.has(cle))
       .reduce((total, cle) => total + (data[cle]?.length ?? 0), 0)
-      + (data.associations ?? []).reduce((total, association) => total + (association.details?.length ?? 0), 0)
+      + (isAdmin ? (data.associations ?? []).reduce((total, association) => total + (association.details?.length ?? 0), 0) : 0)
     const ignores = totalPropose - totalImported
     const referencesRetirees = culturesItpIgnore + culturesVarieteIgnore
 

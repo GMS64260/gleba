@@ -471,10 +471,10 @@ export function SanitaireReglementaireSubTab() {
       if (!res.ok) return toast({ variant: 'destructive', title: 'Stock non enregistré', description: (await res.json()).error })
       // Lot déjà en pharmacie : la quantité saisie s'est ajoutée au reste.
       const reponse = await res.json().catch(() => null)
-      const ajout = reponse?.ajout as { avant: number; ajoute: number; apres: number } | undefined
+      const ajout = reponse?.ajout as { avant: number; ajoute: number; apres: number; unite?: string } | undefined
       setStockOpen(false); await reload()
       toast(ajout
-        ? { title: 'Lot complété', description: `Ce lot était déjà en pharmacie : ${ajout.ajoute} ${stockForm.unite} ajouté(s) aux ${ajout.avant} restants, soit ${ajout.apres}. Pour corriger une quantité, modifiez le lot.` }
+        ? { title: 'Lot complété', description: `Ce lot était déjà en pharmacie : ${ajout.ajoute} ${ajout.unite ?? stockForm.unite} ajouté(s) aux ${ajout.avant} restants, soit ${ajout.apres} ${ajout.unite ?? stockForm.unite}. Pour corriger une quantité, modifiez le lot.` }
         : { title: 'Stock de médicament enregistré' })
     } finally {
       setIsSavingStock(false)

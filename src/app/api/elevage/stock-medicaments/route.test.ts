@@ -46,7 +46,7 @@ describe('POST /api/elevage/stock-medicaments — ressaisie d’un lot existant'
     expect(where).toEqual({ id: 's1' })
     // La quantité saisie s'ajoute au reste du lot (12 + 50), elle ne le remplace pas.
     expect(data).toMatchObject({ quantite: { increment: 50 }, unite: 'mL' })
-    expect((await reponse.json()).ajout).toEqual({ avant: 12, ajoute: 50, apres: 62 })
+    expect((await reponse.json()).ajout).toEqual({ avant: 12, ajoute: 50, apres: 62, unite: 'mL' })
     expect(data.ordonnanceUrl).toBeUndefined()
     expect(data.fournisseur).toBeUndefined()
     expect(data.notes).toBeUndefined()
@@ -58,5 +58,34 @@ describe('POST /api/elevage/stock-medicaments — ressaisie d’un lot existant'
     expect(res.status).toBe(409)
     expect((await res.json()).code).toBe('UNITE_LOT_FIGEE')
     expect(mocks.stockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('convertit dans l’unité du lot une quantité ajoutée en litres (D193)', async () => {
+    mocks.stockFindUnique.mockResolvedValue({ ...enPharmacie, quantite: 12.5 })
+    mocks.stockUpdate.mockResolvedValueOnce({ ...enPharmacie, quantite: 1012.5 })
+    const reponse = await post({ ...lot, quantite: 1, unite: 'L' })
+    expect(reponse.status).toBe(201)
+    expect(mocks.stockUpdate.mock.calls[0][0].data).toMatchObject({ quantite: { increment: 1000 }, unite: 'mL' })
+    expect((await reponse.json()).ajout).toEqual({ avant: 12.5, ajoute: 1000, apres: 1012.5, unite: 'mL' })
+  })
+
+  it('garde l’écriture de l’unité du lot quand la saisie n’en diffère que par la casse', async () => {
+    mocks.stockFindUnique.mockResolvedValue(enPharmacie)
+    await post({ ...lot, unite: 'ml' })
+    expect(mocks.stockUpdate.mock.calls[0][0].data).toMatchObject({ quantite: { increment: 50 }, unite: 'mL' })
+  })
+
+  it('refuse (409) d’ajouter des flacons à un lot en mL, même sans soin', async () => {
+    mocks.stockFindUnique.mockResolvedValue({ ...enPharmacie, _count: { soins: 0 } })
+    const res = await post({ ...lot, unite: 'flacons' })
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('UNITE_LOT_DIFFERENTE')
+    expect(mocks.stockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('laisse corriger l’unité d’un lot vide et sans soin', async () => {
+    mocks.stockFindUnique.mockResolvedValue({ ...enPharmacie, quantite: 0, _count: { soins: 0 } })
+    expect((await post({ ...lot, quantite: 3, unite: 'flacons' })).status).toBe(201)
+    expect(mocks.stockUpdate.mock.calls[0][0].data).toMatchObject({ quantite: { increment: 3 }, unite: 'flacons' })
   })
 })

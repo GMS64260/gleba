@@ -226,6 +226,13 @@ describe('PUT /api/itps/[id] — semaines : conflit de période et règles du tr
     expect(mocks.findFirst.mock.calls[0][0].where.semainePlantation).toBeNull()
   })
 
+  it.each([53, 0, 5.5, '53'])('refuse en 400 la semaine de semis %s sans rien écrire (D142)', async (semaineSemis) => {
+    const res = await PUT(requete({ semaineSemis }), params('cmperso1'))
+
+    expect(res.status).toBe(400)
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
   it('refuse en 400 une récolte ramenée à moins de 4 semaines du semis existant', async () => {
     const res = await PUT(requete({ semaineRecolte: 9 }), params('cmperso1'))
 

@@ -52,6 +52,7 @@ interface AvisPublic {
   photos: PhotoAvisVue[]
   temoignages: TemoignageRecolteVue[]
   nbTemoignages: number
+  updatedAt?: string
 }
 
 interface AvisData {
@@ -130,6 +131,7 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
       if (reqId !== reqIdRef.current) return
       const d: AvisData = json.data
       setData(d)
+      versionLueRef.current = d.monAvis?.updatedAt ?? "aucun"
       if (reinitialiserForm) {
         setPhotosConservees(d.monAvis?.photos ?? [])
         setFichiers([])
@@ -163,6 +165,10 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
   const setNote = (key: string, v: number | null) =>
     setForm((f) => ({ ...f, notes: { ...f.notes, [key]: v } }))
 
+  // Avis tel que l'écran l'a chargé en dernier : « aucun », ou sa date de
+  // modification. Le serveur refuse si un autre onglet a publié entre-temps.
+  const versionLueRef = React.useRef<string>("aucun")
+
   const enregistrer = async () => {
     if (!base || !aQuelqueChose || !personnel || (fichiers.length > 0 && !droitsPhotos)) return
     setSaving(true)
@@ -177,10 +183,17 @@ export function AvisDialog({ refType, refId, nom, open, onOpenChange, onSaved }:
           commentaire: form.commentaire.trim() || null,
           photos: [...photosConservees.map(photo => ({ id: photo.id })), ...nouvellesPhotos],
           confirmationDroitsPhotos: fichiers.length > 0 ? droitsPhotos : undefined,
+          versionLue: versionLueRef.current,
         }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
+        if (res.status === 409) {
+          // Montrer l'avis déjà publié, sans toucher à la saisie en cours.
+          toast({ variant: "destructive", title: "Avis déjà publié ailleurs", description: err.error || "Relisez votre avis avant de le modifier." })
+          await charger({ reinitialiserForm: false })
+          return
+        }
         throw new Error(err.error || "Erreur")
       }
       toast({ title: "Merci !", description: "Votre avis a été enregistré." })

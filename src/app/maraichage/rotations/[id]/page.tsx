@@ -138,6 +138,7 @@ export default function EditRotationPage() {
         setRotationData(rotation)
         // PROMPT 12 — pré-cocher les planches déjà rattachées.
         setSelectedPlancheIds(new Set(rotation.planches.map((p) => p.id)))
+        planchesLuesRef.current = new Set(rotation.planches.map((p) => p.id))
 
         // Remplir le formulaire
         form.reset({
@@ -162,16 +163,27 @@ export default function EditRotationPage() {
     loadData()
   }, [id, form, toast, router])
 
+  // Planches rattachées telles que le serveur les a rendues en dernier. Seules
+  // les cases changées depuis partent : deux onglets qui cochent chacun une
+  // planche ne se défont plus l'un l'autre (D158).
+  const planchesLuesRef = React.useRef<Set<string>>(new Set())
+
   const handleSavePlanches = async () => {
     setIsSavingPlanches(true)
     try {
+      const lues = planchesLuesRef.current
+      const ajouts = [...selectedPlancheIds].filter((plancheId) => !lues.has(plancheId))
+      const retraits = [...lues].filter((plancheId) => !selectedPlancheIds.has(plancheId))
       const res = await fetch(`/api/rotations/${encodeURIComponent(id)}/planches`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plancheIds: [...selectedPlancheIds] }),
+        body: JSON.stringify({ ajouts, retraits }),
       })
       if (!res.ok) throw new Error()
-      const data = await res.json()
+      const data: { count: number; planches: Planche[] } = await res.json()
+      // L'écran repart de l'état du serveur, rattachements d'un autre onglet compris.
+      planchesLuesRef.current = new Set(data.planches.map((p) => p.id))
+      setSelectedPlancheIds(new Set(data.planches.map((p) => p.id)))
       toast({ title: `${data.count} planche(s) rattachée(s) à la rotation` })
       // Refresh rotationData planches
       if (rotationData) setRotationData({ ...rotationData, planches: data.planches, _count: { planches: data.count } })

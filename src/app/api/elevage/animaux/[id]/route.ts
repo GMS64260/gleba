@@ -1,3 +1,4 @@
+import { motifArriveeAvantNaissance } from '@/lib/elevage/chronologie'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 /**
@@ -429,6 +430,16 @@ export async function PUT(
           { error: `Date ${label} invalide (année attendue entre 1990 et ${new Date().getFullYear() + 1})` },
           { status: 400 }
         )
+      }
+    }
+
+    if (dateNaissance || dateArrivee) {
+      const refusChronologie = motifArriveeAvantNaissance({
+        dateNaissance: dateNaissance ? new Date(dateNaissance) : existing.dateNaissance,
+        dateArrivee: dateArrivee ? new Date(dateArrivee) : existing.dateArrivee,
+      })
+      if (refusChronologie) {
+        return NextResponse.json({ error: refusChronologie, champ: 'dateArrivee' }, { status: 400 })
       }
     }
 
