@@ -1116,10 +1116,20 @@ export async function importAccount(
 }
 
 /** Construit l'objet de données scalaires (typage Date/Decimal géré). */
+/**
+ * Modèles dont `version` est la version de fiche (`src/lib/api/version-fiche.ts`).
+ * Elle ne se restaure pas : la fiche recréée repart de zéro. Recopiée, une
+ * version qui recule laisserait passer un formulaire resté ouvert, et un
+ * fichier forgé portant le plus grand entier rendrait la fiche impossible à
+ * enregistrer. D'autres modèles ont un champ `version` qui est une donnée.
+ */
+const MODELES_A_VERSION_DE_FICHE = new Set(["Culture"])
+
 function buildScalarData(meta: ModelMeta, row: Row): Row {
   const out: Row = {}
   for (const f of meta.scalarFields) {
     if (!(f.name in row)) continue
+    if (f.name === "version" && MODELES_A_VERSION_DE_FICHE.has(meta.name)) continue
     const value = row[f.name]
     out[f.name] = f.isList && Array.isArray(value)
       ? value.map((v) => coerceValue(v, f.type))

@@ -1,3 +1,4 @@
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { apresDemain, MESSAGE_RECOLTE_FUTURE } from '@/lib/interventions/date-realisee'
@@ -250,7 +251,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         })
         const recalage = etat?.recolteFaite ? ecrituresPassageAFait(etat, 'recolteFaite', dateCible) : {}
         if (Object.keys(recalage).length > 0) {
-          const culture = await tx.culture.update({ where: { id: cultureCible }, data: recalage })
+          const culture = await tx.culture.update({ where: { id: cultureCible }, data: { ...recalage, ...INCREMENT_VERSION } })
           return { ok: true as const, recolte: { ...recolte, culture } }
         }
       }

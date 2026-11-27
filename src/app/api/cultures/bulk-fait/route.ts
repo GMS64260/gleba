@@ -12,6 +12,7 @@
  * (c'est un fait accompli) et signalée dans `avertissements: [{ id, message }]`.
  */
 
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest) {
         for (const message of warnings) avertissements.push({ id: culture.id, message })
         await tx.culture.update({
           where: { id: culture.id, userId: session.user.id },
-          data: { [field]: true, ...ecritures },
+          data: { [field]: true, ...ecritures, ...INCREMENT_VERSION },
         })
         traitees++
       }
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
       if (sansRecalage.length > 0) {
         await tx.culture.updateMany({
           where: { id: { in: sansRecalage }, userId: session.user.id },
-          data: { [field]: true },
+          data: { [field]: true, ...INCREMENT_VERSION },
         })
         traitees += sansRecalage.length
       }

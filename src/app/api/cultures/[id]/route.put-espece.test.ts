@@ -145,6 +145,35 @@ describe("PUT /api/cultures/[id] — fiche modifiée ailleurs", () => {
     expect(mocks.cultureUpdate.mock.calls[0][0].data).not.toHaveProperty("versionLue")
   })
 
+  // Version de fiche (chantier du 2026-11-27) : un numéro, qui n'avance que
+  // sur une écriture d'un champ de la fiche.
+  it("refuse en 409 un numéro de version périmé, et rend la version actuelle", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...roquette, updatedAt: enBase, version: 5 })
+
+    const res = await put({ notes: "", versionLue: 4 })
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: "MODIFIE_AILLEURS", versionActuelle: 5 })
+    expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+  })
+
+  it("enregistre et fait avancer la version dans la même écriture quand le numéro est le bon", async () => {
+    mocks.cultureFindUnique.mockResolvedValue({ ...roquette, updatedAt: enBase, version: 5 })
+
+    const res = await put({ notes: "Note corrigée", versionLue: 5 })
+
+    expect(res.status).toBe(200)
+    expect(mocks.cultureUpdate).toHaveBeenCalledTimes(1)
+    const { data } = mocks.cultureUpdate.mock.calls[0][0]
+    expect(data).toMatchObject({ version: { increment: 1 } })
+    expect(data).not.toHaveProperty("versionLue")
+  })
+
+  it("refuse en 400 une version illisible au lieu de l'ignorer", async () => {
+    expect((await put({ notes: "", versionLue: "cinq" })).status).toBe(400)
+    expect(mocks.cultureUpdate).not.toHaveBeenCalled()
+  })
+
   it("garde le comportement d'avant pour un appelant qui n'envoie pas de version", async () => {
     const res = await put({ notes: "Depuis l'assistant" })
 

@@ -1,3 +1,4 @@
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import prisma from '@/lib/prisma'
 import { apresDemain, MESSAGE_RECOLTE_FUTURE } from '@/lib/interventions/date-realisee'
 import { createRecolteSchema } from '@/lib/validations/recolte'
@@ -96,7 +97,7 @@ export async function ecrireRecoltesPreparees(tx: Prisma.TransactionClient, prep
       const etat = etats.get(culture.id)!
       const dates = ecrituresPassageAFait(etat, 'recolteFaite', data.date)
       if (!etat.recolteFaite || Object.keys(dates).length > 0) {
-        await tx.culture.update({ where: { id: culture.id }, data: { recolteFaite: true, ...dates } })
+        await tx.culture.update({ where: { id: culture.id }, data: { recolteFaite: true, ...dates, ...INCREMENT_VERSION } })
         etats.set(culture.id, { ...etat, recolteFaite: true, ...dates })
       }
       resultats.push(recolte)

@@ -35,7 +35,7 @@ describe('saisie de récoltes du formulaire et de l’assistant', () => {
     const resultat = await creerRecoltes('ferme', [entree], true)
     expect(resultat.ok).toBe(true)
     expect(mocks.recolte).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ quantite: 0.75, unite: 'kg', userId: 'ferme', statutBioSnapshot: 'AB' }) }))
-    expect(mocks.culture).toHaveBeenCalledWith({ where: { id: 1 }, data: { recolteFaite: true, dateRecolte: new Date('2026-10-26'), dateRecoltePlan: tomate.dateRecolte } })
+    expect(mocks.culture).toHaveBeenCalledWith({ where: { id: 1 }, data: { recolteFaite: true, dateRecolte: new Date('2026-10-26'), dateRecoltePlan: tomate.dateRecolte, version: { increment: 1 } } })
     expect(mocks.invalider).toHaveBeenCalledWith('ferme')
   })
 

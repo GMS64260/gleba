@@ -15,6 +15,7 @@
  * automatique et l'étape repasse à faire, dans la même transaction.
  */
 
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -98,7 +99,7 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
 
       await tx.culture.update({
         where: { id: cultureId },
-        data: { recolteFaite: false, ...ecritures },
+        data: { recolteFaite: false, ...ecritures, ...INCREMENT_VERSION },
       })
       return recoltes.length
     })

@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
 
     // Nettoyer les données utilisateur (supprimer le champ userId pour l'export)
     const cleanPlanches = planches.map((p) => sansChamps(p, 'userId'))
-    const cleanCultures = cultures.map((c) => sansChamps(c, 'userId', 'createdAt', 'updatedAt'))
+    const cleanCultures = cultures.map((c) => sansChamps(c, 'userId', 'createdAt', 'updatedAt', 'version'))
     const cleanRecoltes = recoltes.map((r) => sansChamps(r, 'userId', 'createdAt'))
     const cleanFertilisations = fertilisations.map((f) => sansChamps(f, 'userId', 'createdAt'))
     const cleanAnalyses = analyses.map((a) => sansChamps(a, 'userId'))

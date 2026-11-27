@@ -1425,6 +1425,8 @@ model Culture {
   notes     String?  @map("notes")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  /// Version de fiche : avance à chaque écriture d'un champ du formulaire (`src/lib/api/version-fiche.ts`).
+  version   Int      @default(0)
 
   // Relations
   recoltes              Recolte[]
