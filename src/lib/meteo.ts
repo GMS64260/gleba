@@ -156,7 +156,10 @@ export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<
   // suit SON minuit reste exposée, comme avant.
   return getOrFetch(
     `openmeteo:forecast:${roundCoord(lat)},${roundCoord(lng)}:${jourCivilLocalISO(new Date())}`,
-    () => fetchOpenMeteoForecastUncached(lat, lng),
+    // La prévision est demandée au point de la clé (coordonnées arrondies) :
+    // demandée au point exact du premier visiteur, deux parcelles voisines
+    // recevaient l'une ou l'autre selon l'ordre des visites (D113).
+    () => fetchOpenMeteoForecastUncached(roundCoord(lat), roundCoord(lng)),
     30 * 60_000
   )
 }

@@ -10,6 +10,7 @@
  *  - Courbe lactation : par animal (305 j depuis dernière mise-bas)
  */
 
+import { lireNombreSaisi, versChampNombre } from "@/lib/saisie/nombre"
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { useSearchParams } from "next/navigation"
@@ -858,8 +859,21 @@ function CollecteView() {
   }
 
   const idemHier = async (day: string, traite: "Matin" | "Soir") => {
-    const prev = findCollecte(addDaysIso(day, -1), traite)
-    if (!prev) return
+    const veille = addDaysIso(day, -1)
+    let prev = findCollecte(veille, traite)
+    // La veille de la première colonne est hors de la fenêtre chargée : elle
+    // se lit à la demande, au lieu de ne rien faire sans message (D224).
+    if (!prev && !days.includes(veille)) {
+      const res = await fetch(`/api/elevage/collectes-lait?from=${veille}&to=${veille}`).catch(() => null)
+      const json = res?.ok ? await res.json().catch(() => null) : null
+      prev = (json?.data as Collecte[] | undefined)?.find((c) =>
+        c.date.split("T")[0] === veille && c.traite === traite &&
+        (target === "animal" ? c.animalId === selectedId : c.lotId === selectedId))
+    }
+    if (!prev) {
+      toast({ title: "Rien à recopier", description: `Aucune traite du ${traite.toLowerCase()} enregistrée le ${veille.split("-").reverse().join("/")}.` })
+      return
+    }
     await saveCollecte(day, traite, Number(prev.quantiteLitres))
   }
 
@@ -1179,8 +1193,14 @@ function CellSaisie(props: {
         disabled={props.saving || props.affecte}
         onChange={(e) => setV(e.target.value)}
         onBlur={() => {
-          const n = parseFloat(v)
-          if (!isNaN(n) && n !== props.value) props.onSave(n)
+          const n = lireNombreSaisi(v)
+          // Cellule vidée ou illisible : rien n'est effacé, elle reprend la
+          // traite enregistrée (elle restait vide alors que le total la comptait, D152).
+          if (n === null || Number.isNaN(n)) {
+            setV(versChampNombre(props.value))
+            return
+          }
+          if (n !== props.value) props.onSave(n)
         }}
         className="h-11 w-20 touch-manipulation rounded border border-slate-300 text-center text-base sm:w-16 sm:text-sm"
         placeholder="—"
@@ -1598,6 +1618,7 @@ function LactationView() {
     suggererTarissement?: boolean
   } | null>(null)
   const [savingLL, setSavingLL] = React.useState(false)
+  const demandeLactation = React.useRef(0)
 
   React.useEffect(() => {
     fetch("/api/elevage/animaux?statut=actif")
@@ -1613,9 +1634,12 @@ function LactationView() {
 
   const reloadLactation = React.useCallback(() => {
     if (selectedId == null) return
+    // La réponse d'une chèvre quittée entre-temps ne remplace pas celle de la
+    // chèvre affichée (DIM et conseil de tarissement d'une autre, D202).
+    const numero = ++demandeLactation.current
     fetch(`/api/elevage/lactation?animalId=${selectedId}`)
       .then((r) => r.json())
-      .then(setData)
+      .then((payload) => { if (numero === demandeLactation.current) setData(payload) })
   }, [selectedId])
 
   React.useEffect(() => {

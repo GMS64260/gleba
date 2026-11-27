@@ -1,3 +1,4 @@
+import { apresDemain, MESSAGE_SOIN_FAIT_FUTUR } from '@/lib/interventions/date-realisee'
 import { creerSoinAnimal } from '@/lib/elevage/creation-soin'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
@@ -223,6 +224,12 @@ export async function PATCH(request: NextRequest) {
         updateData.datePrevue = existing.date
       }
       updateData.date = newDate
+    }
+    // Même règle qu'à la création, si la date change ou si le soin devient fait.
+    const seraFait = fait !== undefined ? fait : existing.fait
+    if (seraFait && (updateData.date !== undefined || (fait === true && !existing.fait))
+      && apresDemain((updateData.date as Date | undefined) ?? existing.date)) {
+      return NextResponse.json({ error: MESSAGE_SOIN_FAIT_FUTUR, champ: 'date' }, { status: 422 })
     }
     if (notes !== undefined) updateData.notes = notes
     if (type !== undefined) updateData.type = type

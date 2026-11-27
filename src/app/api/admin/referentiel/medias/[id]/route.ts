@@ -19,21 +19,32 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!existing) return NextResponse.json({ error: "Média introuvable" }, { status: 404 });
 
   const media = await prisma.$transaction(async (tx) => {
-    if (parsed.data.statut === "VALIDE" && parsed.data.principale) {
-      await tx.mediaReferentiel.updateMany({ where: { especeId: existing.especeId, statut: "VALIDE", principale: true }, data: { principale: false } });
-    }
-    return tx.mediaReferentiel.update({
-      where: { id },
+    // La décision ne s'applique qu'à une photo encore proposée : rejetée depuis
+    // un autre onglet, elle redevenait publique par un « Valider » resté
+    // affichable (équipe debug, D212).
+    const prise = await tx.mediaReferentiel.updateMany({
+      where: { id, statut: "PROPOSE" },
       data: {
         statut: parsed.data.statut,
-        principale: parsed.data.statut === "VALIDE" && parsed.data.principale,
+        principale: false,
         valideParId: getActeurId(session),
         valideAt: new Date(),
         controleAt: new Date(),
       },
-      select: { id: true, statut: true, principale: true },
     });
+    if (prise.count === 0) return null;
+    if (parsed.data.statut === "VALIDE" && parsed.data.principale) {
+      await tx.mediaReferentiel.updateMany({ where: { especeId: existing.especeId, statut: "VALIDE", principale: true, NOT: { id } }, data: { principale: false } });
+      await tx.mediaReferentiel.update({ where: { id }, data: { principale: true } });
+    }
+    return tx.mediaReferentiel.findUnique({ where: { id }, select: { id: true, statut: true, principale: true } });
   });
+  if (!media) {
+    return NextResponse.json(
+      { error: "Cette photo a déjà été modérée depuis un autre onglet. Actualisez la file.", code: "MODIFIE_AILLEURS" },
+      { status: 409 },
+    );
+  }
   return NextResponse.json({ data: media });
 }
 

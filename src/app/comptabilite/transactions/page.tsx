@@ -718,7 +718,9 @@ function TransactionsPageInner() {
   // rapports, avec lesquels cet écran partage la clé `gleba_compta_year`.
   const years = getAvailableYears()
 
+  const demandeDonnees = React.useRef(0)
   const fetchData = React.useCallback(async () => {
+    const numero = ++demandeDonnees.current
     setIsLoading(true)
     try {
       const params = new URLSearchParams({ year: selectedYear.toString() })
@@ -733,24 +735,27 @@ function TransactionsPageInner() {
         fetch(`/api/comptabilite/sources?year=${selectedYear}`),
       ])
 
-      if (revRes.ok) {
-        const result = await revRes.json()
-        setRevenus(result.data)
-        setStatsRevenus(result.stats)
+      // Les trois corps sont lus avant toute écriture d'état, puis écartés si
+      // un autre exercice ou un autre module a été demandé entre-temps (D207).
+      const [revenusLus, depensesLues, sourcesLues] = await Promise.all([
+        revRes.ok ? revRes.json() : null,
+        depRes.ok ? depRes.json() : null,
+        srcRes.ok ? srcRes.json() : null,
+      ])
+      if (numero !== demandeDonnees.current) return
+      if (revenusLus) {
+        setRevenus(revenusLus.data)
+        setStatsRevenus(revenusLus.stats)
       }
-      if (depRes.ok) {
-        const result = await depRes.json()
-        setDepenses(result.data)
-        setStatsDepenses(result.stats)
+      if (depensesLues) {
+        setDepenses(depensesLues.data)
+        setStatsDepenses(depensesLues.stats)
       }
-      if (srcRes.ok) {
-        const result = await srcRes.json()
-        setSourcesBreakdown(result.sources || [])
-      }
+      if (sourcesLues) setSourcesBreakdown(sourcesLues.sources || [])
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
+      if (numero === demandeDonnees.current) toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
-      setIsLoading(false)
+      if (numero === demandeDonnees.current) setIsLoading(false)
     }
   }, [selectedYear, selectedModule, toast])
 
@@ -807,6 +812,14 @@ function TransactionsPageInner() {
     // Montant et quantité lus par le parseur commun : « 2,50 » vaut 2,5 (D72).
     const montantLu = lireNombreSaisi(formData.montant)
     const quantiteLue = lireNombreSaisi(formData.quantite)
+    if (montantLu !== null && montantLu < 0) {
+      toast({ variant: "destructive", title: "Montant négatif", description: "Un montant se saisit en positif. Pour annuler une vente, émettez un avoir ou supprimez l'écriture." })
+      return
+    }
+    if (quantiteLue !== null && quantiteLue < 0) {
+      toast({ variant: "destructive", title: "Quantité négative", description: "Saisissez une quantité positive." })
+      return
+    }
     if (montantLu === null || !Number.isFinite(montantLu)) {
       toast({ variant: "destructive", title: "Montant invalide", description: "Saisissez un montant, par exemple 2,50." })
       return

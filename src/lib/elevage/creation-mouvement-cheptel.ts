@@ -63,6 +63,8 @@ export async function creerMouvementCheptel(
   tx: Prisma.TransactionClient,
   userId: string,
   d: z.infer<typeof mouvementSchema>,
+  /** `verifierOrigine` : refuser (409) si l'origine annoncée n'est plus la position réelle. */
+  options: { verifierOrigine?: boolean } = {},
 ) {
   if (d.animalId) {
     const a = await tx.animal.findFirst({ where: { id: d.animalId, userId }, select: { id: true } })
@@ -83,6 +85,27 @@ export async function creerMouvementCheptel(
 
   const cible = { animalId: d.animalId ?? null, lotId: d.lotId ?? null }
   await verrouillerCible(tx, userId, cible)
+  // Formulaire resté ouvert : l'origine qu'il annonce n'est plus la position
+  // réelle. Le mouvement s'écrivait « aucune parcelle → aucune parcelle » et
+  // la sortie perdait sa parcelle de départ (équipe debug, D223). Un mouvement
+  // antidaté complète l'historique : il n'est pas contrôlé.
+  if (options.verifierOrigine) {
+    const dernier = await tx.mouvementCheptel.findFirst({
+      where: { userId, ...(cible.animalId ? { animalId: cible.animalId } : { lotId: cible.lotId }) },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      select: { date: true },
+    })
+    if (!dernier || dernier.date.getTime() <= d.date.getTime()) {
+      const fiche = cible.animalId
+        ? await tx.animal.findFirst({ where: { id: cible.animalId, userId }, select: { parcelleGeoId: true } })
+        : await tx.lotAnimaux.findFirst({ where: { id: cible.lotId!, userId }, select: { parcelleGeoId: true } })
+      // Une bête sans position connue garde une origine libre (premier mouvement saisi).
+      const positionReelle = fiche?.parcelleGeoId ?? null
+      if (positionReelle !== null && (d.parcelleAvantId ?? null) !== positionReelle) {
+        throw new ErreurMouvementCheptel("La position a changé depuis l'ouverture de cet écran (autre onglet ou autre membre). Rechargez la page avant d'enregistrer ce déplacement : rien n'a été enregistré.", 409)
+      }
+    }
+  }
   const mouvement = await tx.mouvementCheptel.create({
     data: {
       userId,

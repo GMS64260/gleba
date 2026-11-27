@@ -47,8 +47,36 @@ describe('POST mouvements-cheptel', () => {
     mocks.parcelleFindFirst.mockResolvedValue({ id: 'parcelle-1' })
     mocks.mouvementCreate.mockResolvedValue({ id: 'mouvement-1' })
     // Le mouvement saisi est le plus récent : la position suit sa destination.
-    mocks.mouvementFindFirst.mockResolvedValue({ parcelleApresId: 'parcelle-2' })
+    mocks.mouvementFindFirst.mockResolvedValue({ parcelleApresId: 'parcelle-2', date: new Date('2026-07-22T10:00:00.000Z') })
     mocks.lotUpdateMany.mockResolvedValue({ count: 1 })
+  })
+
+  it('refuse (409) un déplacement dont l’origine annoncée n’est plus la position réelle (D223)', async () => {
+    // Le lot a été déplacé depuis un autre onglet : il est en parcelle-9, le formulaire annonce « aucune parcelle ».
+    mocks.lotFindFirst.mockResolvedValue({ id: 12, parcelleGeoId: 'parcelle-9' })
+
+    const response = await POST(request({ lotId: 12, parcelleAvantId: null, parcelleApresId: null, date: '2026-07-22T10:00:00.000Z' }))
+
+    expect(response.status).toBe(409)
+    expect((await response.json()).error).toMatch(/position a changé/)
+    expect(mocks.mouvementCreate).not.toHaveBeenCalled()
+  })
+
+  it('accepte le déplacement quand l’origine annoncée est la position réelle', async () => {
+    mocks.lotFindFirst.mockResolvedValue({ id: 12, parcelleGeoId: 'parcelle-1' })
+
+    const response = await POST(request({ lotId: 12, parcelleAvantId: 'parcelle-1', parcelleApresId: 'parcelle-2', date: '2026-07-22T10:00:00.000Z' }))
+
+    expect(response.status).toBe(201)
+  })
+
+  it('ne contrôle pas un mouvement antidaté, qui complète l’historique', async () => {
+    mocks.lotFindFirst.mockResolvedValue({ id: 12, parcelleGeoId: 'parcelle-9' })
+    mocks.mouvementFindFirst.mockResolvedValue({ parcelleApresId: 'parcelle-9', date: new Date('2026-08-01T10:00:00.000Z') })
+
+    const response = await POST(request({ lotId: 12, parcelleAvantId: 'parcelle-1', parcelleApresId: 'parcelle-2', date: '2026-07-22T10:00:00.000Z' }))
+
+    expect(response.status).toBe(201)
   })
 
   it('journalise et met a jour le lot dans la meme transaction', async () => {

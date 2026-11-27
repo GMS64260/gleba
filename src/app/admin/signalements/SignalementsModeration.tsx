@@ -77,10 +77,13 @@ export function SignalementsModeration() {
   async function patchStatut(id: string, nouveau: "traite" | "rejete" | "ouvert") {
     setBusy(id)
     try {
+      // `depuis` : la décision ne s'applique que si le signalement est encore
+      // dans l'état affiché (onglet resté ouvert, D211).
+      const affiche = items.find((s) => s.id === id)?.statut
       const res = await fetch(`/api/admin/signalements/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: nouveau }),
+        body: JSON.stringify({ statut: nouveau, ...(affiche ? { depuis: affiche } : {}) }),
       })
       if (res.ok) {
         await charger()
@@ -99,22 +102,43 @@ export function SignalementsModeration() {
     if (!(await confirmDialog(`Retirer « ${s.entree?.nom ?? s.refId} » de la communauté (rendue privée à son auteur) ?`))) return
     setBusy(s.id)
     try {
+      // Le signalement est pris D'ABORD, et seulement s'il est encore ouvert :
+      // rejeté depuis un autre onglet, il ne doit plus retirer la fiche (D211).
+      const prise = await fetch(`/api/admin/signalements/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statut: "traite", depuis: "ouvert" }),
+      })
+      if (!prise.ok) {
+        const p = await prise.json().catch(() => null)
+        toast({ variant: "destructive", title: "Retrait non effectué", description: p?.error || "Ce signalement n'est plus ouvert." })
+        await charger()
+        return
+      }
+      // Refus du serveur ou réseau coupé : dans les deux cas le signalement
+      // redevient ouvert, il ne reste jamais « traité » avec une fiche publique.
       const res = await fetch(`${s.apiBase}/${encodeURIComponent(s.refId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ partageCommunaute: false }),
-      })
-      if (!res.ok) {
-        const p = await res.json().catch(() => null)
-        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Retrait impossible" })
-        setBusy(null)
+      }).catch(() => null)
+      if (!res?.ok) {
+        const p = res ? await res.json().catch(() => null) : null
+        const rouvert = await fetch(`/api/admin/signalements/${s.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ statut: "ouvert", depuis: "traite" }),
+        }).catch(() => null)
+        toast({
+          variant: "destructive",
+          title: "Retrait non effectué",
+          description: rouvert?.ok
+            ? (p?.error || "La fiche n'a pas pu être retirée. Le signalement reste ouvert.")
+            : "La fiche n'a pas pu être retirée et le signalement n'a pas pu être rouvert : rouvrez-le depuis la liste des signalements traités.",
+        })
+        await charger().catch(() => null)
         return
       }
-      await fetch(`/api/admin/signalements/${s.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: "traite" }),
-      })
       toast({ title: "Entrée retirée de la communauté", description: `« ${s.entree?.nom ?? s.refId} » est de nouveau privée.` })
       await charger()
     } finally {

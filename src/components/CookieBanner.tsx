@@ -18,6 +18,8 @@ import { Button } from "@/components/ui/button"
 import {
   CLE_CHOIX_COOKIES as STORAGE_KEY,
   enregistrerChoixCookies,
+  EVENEMENT_ROUVRIR_BANDEAU,
+  lireChoixCookies,
 } from "@/lib/consentement-cookies"
 const SESSION_KEY = "gleba-session-id"
 
@@ -82,6 +84,22 @@ export function CookieBanner() {
     } catch {
       setOpen(true)
     }
+  }, [])
+
+  // Réouverture à la demande (page Confidentialité) : le bandeau reprend les
+  // choix enregistrés, pour qu'un accord puisse être retiré (D172).
+  React.useEffect(() => {
+    const rouvrir = () => {
+      let choix: Record<string, unknown> | null = null
+      try { choix = lireChoixCookies() } catch { choix = null }
+      setAnalytics(choix?.analytics === true)
+      setMarketing(choix?.marketing === true)
+      setPerso(choix?.personnalisation === true)
+      setDetail(true)
+      setOpen(true)
+    }
+    window.addEventListener(EVENEMENT_ROUVRIR_BANDEAU, rouvrir)
+    return () => window.removeEventListener(EVENEMENT_ROUVRIR_BANDEAU, rouvrir)
   }, [])
 
   const accepterTout = async () => {

@@ -29,10 +29,18 @@ export const GRILLE_DEFAUT: GrilleQualite = {
   malusGermes: 15,
 }
 
-/** Montant HT d'une paie : (litres/1000) × prix base + prime − pénalité. */
+/** Valeur telle que la garde une colonne à deux décimales. */
+export const auCentime = (n: number) => Math.round((n + Math.sign(n) * Number.EPSILON) * 100) / 100
+
+/**
+ * Montant HT d'une paie : (litres/1000) × prix base + prime − pénalité.
+ * Chaque terme est arrondi au centime AVANT le calcul, comme il est stocké :
+ * calculé sur les saisies brutes, le total différait de la somme de ses
+ * montants relus (85,998 arrondi à 86,00 pour 85 + 2,34 − 1,35, D189).
+ */
 export function montantPaie(litres: number, prixBaseMille: number, prime = 0, penalite = 0): number {
-  const base = (litres / 1000) * prixBaseMille
-  return Math.round((base + prime - penalite) * 100) / 100
+  const base = (auCentime(litres) / 1000) * auCentime(prixBaseMille)
+  return auCentime(auCentime(base) + auCentime(prime) - auCentime(penalite))
 }
 
 export type QualiteLait = { tb?: number | null; tp?: number | null; cellules?: number | null; germes?: number | null }

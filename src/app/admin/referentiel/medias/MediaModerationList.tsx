@@ -16,7 +16,11 @@ export function MediaModerationList({ initialMedias }: { initialMedias: Media[] 
     setBusy(id); setError(null);
     const response = await fetch(`/api/admin/referentiel/medias/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ statut, principale }) });
     if (response.ok) setMedias((items) => items.filter((item) => item.id !== id));
-    else setError((await response.json().catch(() => ({}))).error || "Modération impossible");
+    else {
+      setError((await response.json().catch(() => ({}))).error || "Modération impossible");
+      // Déjà modérée ailleurs : la carte quitte aussi cette file.
+      if (response.status === 409) setMedias((items) => items.filter((item) => item.id !== id));
+    }
     setBusy(null);
   }
 

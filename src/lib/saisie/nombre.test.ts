@@ -68,7 +68,8 @@ describe('filtrerSaisieDecimale', () => {
     expect(filtrerSaisieDecimale('2,50')).toBe('2,50')
     expect(filtrerSaisieDecimale('12 kg')).toBe('12 ')
     expect(filtrerSaisieDecimale('1.234,56')).toBe('1.234,56')
-    expect(filtrerSaisieDecimale('-4')).toBe('4')
-    expect(filtrerSaisieDecimale('-4', { negatif: true })).toBe('-4')
+    // Le signe reste visible, pour que le formulaire refuse au lieu d'enregistrer 4 (D114).
+    expect(filtrerSaisieDecimale('-4')).toBe('-4')
+    expect(filtrerSaisieDecimale('4-2')).toBe('42')
   })
 })

@@ -405,7 +405,9 @@ export default function InterventionsPage() {
   // Le ref évite de réécraser un choix « Aucune » fait volontairement après.
   const plancheAutoRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!form.cultureId) return
+    // Formulaire remis à zéro : la même culture choisie de nouveau doit
+    // retrouver sa planche (équipe debug, D139).
+    if (!form.cultureId) { plancheAutoRef.current = null; return }
     if (plancheAutoRef.current === form.cultureId) return
     const culture = cultures.find((c) => String(c.id) === form.cultureId)
     if (!culture) return // référentiel pas encore chargé : on retentera

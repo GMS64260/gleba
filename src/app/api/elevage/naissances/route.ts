@@ -11,6 +11,7 @@ import prisma from '@/lib/prisma'
 import { naissanceSchema } from '@/lib/validations/elevage-naissance'
 import { erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
 import { jourCivilStocke } from '@/lib/jour-civil'
+import { jourChange, motifMiseBasAvantNaissanceMere, motifMiseBasAvantSaillie } from '@/lib/elevage/chronologie'
 
 class NaissanceLieeError extends Error {}
 
@@ -145,13 +146,16 @@ export async function POST(request: NextRequest) {
     if (parsed.data.mereId) {
       const mere = await prisma.animal.findFirst({
         where: { id: parsed.data.mereId, userId },
-        select: { id: true, statut: true, dateSortie: true },
+        select: { id: true, statut: true, dateSortie: true, dateNaissance: true },
       })
       if (!mere) return NextResponse.json({ error: 'Mère introuvable' }, { status: 404 })
       // Ticket cmud1e386 — mise bas oubliée d'une mère sortie : acceptée si
       // antérieure à sa sortie, refusée sinon.
       const erreurSortie = erreurMereSortieAvantNaissance(mere, parsed.data.date ?? new Date())
       if (erreurSortie) return NextResponse.json({ error: erreurSortie }, { status: 400 })
+      // Une mise-bas ne précède pas la naissance de la mère (équipe debug, D190).
+      const refusNaissance = motifMiseBasAvantNaissanceMere(parsed.data.date ?? new Date(), mere)
+      if (refusNaissance) return NextResponse.json({ error: refusNaissance, champ: 'date' }, { status: 422 })
     }
     if (parsed.data.lotId) {
       const lot = await prisma.lotAnimaux.findFirst({
@@ -163,9 +167,12 @@ export async function POST(request: NextRequest) {
     if (parsed.data.saillieId) {
       const saillie = await prisma.saillie.findFirst({
         where: { id: parsed.data.saillieId, userId },
-        select: { id: true },
+        select: { id: true, date: true },
       })
       if (!saillie) return NextResponse.json({ error: 'Saillie introuvable' }, { status: 404 })
+      // Une mise-bas ne clôt pas une saillie survenue après elle (équipe debug, D106).
+      const refusSaillie = motifMiseBasAvantSaillie(parsed.data.date ?? new Date(), saillie.date)
+      if (refusSaillie) return NextResponse.json({ error: refusSaillie, champ: 'saillieId' }, { status: 422 })
     }
 
     // PROMPT 18 — si saillieId fourni, on lie la mise-bas à la saillie et on
@@ -279,12 +286,17 @@ export async function PATCH(request: NextRequest) {
     if (parsed.data.mereId) {
       const mere = await prisma.animal.findFirst({
         where: { id: parsed.data.mereId, userId },
-        select: { id: true, statut: true, dateSortie: true },
+        select: { id: true, statut: true, dateSortie: true, dateNaissance: true },
       })
       if (!mere) return NextResponse.json({ error: 'Mère introuvable' }, { status: 404 })
       // Ticket cmud1e386 — une mère sortie avant la mise bas est impossible.
       const erreurSortie = erreurMereSortieAvantNaissance(mere, parsed.data.date ?? existing.date)
       if (erreurSortie) return NextResponse.json({ error: erreurSortie }, { status: 400 })
+      // Même règle qu'à la création, si la mère ou la date change.
+      if (parsed.data.mereId !== existing.mereId || (parsed.data.date && jourChange(parsed.data.date, existing.date))) {
+        const refusNaissance = motifMiseBasAvantNaissanceMere(parsed.data.date ?? existing.date, mere)
+        if (refusNaissance) return NextResponse.json({ error: refusNaissance, champ: 'date' }, { status: 422 })
+      }
     }
     if (parsed.data.lotId) {
       const lot = await prisma.lotAnimaux.findFirst({
@@ -304,6 +316,13 @@ export async function PATCH(request: NextRequest) {
     const dateRetenue = parsed.data.date && jourCivilStocke(parsed.data.date) !== jourCivilStocke(existing.date)
       ? parsed.data.date
       : existing.date
+
+    // Une mise-bas rattachée à une saillie ne se redate pas avant elle (D106).
+    if (existing.saillieId && dateRetenue !== existing.date) {
+      const saillie = await prisma.saillie.findFirst({ where: { id: existing.saillieId, userId }, select: { date: true } })
+      const refusSaillie = saillie ? motifMiseBasAvantSaillie(dateRetenue, saillie.date) : null
+      if (refusSaillie) return NextResponse.json({ error: refusSaillie, champ: 'date' }, { status: 422 })
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM naissances_animales WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`

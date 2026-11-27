@@ -80,8 +80,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const cible = typeObjet(typeDemande)
-    const largeur = Math.max(planche.largeur ?? cible.gabarit.largeur, LARGEUR_MINI)
-    const longueur = Math.max(planche.longueur ?? cible.gabarit.longueur, LONGUEUR_MINI)
+    // Le minimum ne sert qu'à une dimension absente : une planche de 0,40 m
+    // devenait un mur de 0,50 m alors que l'écran promet des dimensions
+    // conservées (équipe debug, D178).
+    const dimension = (saisie: number | null, gabarit: number, mini: number) =>
+      saisie != null && saisie > 0 ? saisie : Math.max(gabarit, mini)
+    const largeur = dimension(planche.largeur, cible.gabarit.largeur, LARGEUR_MINI)
+    const longueur = dimension(planche.longueur, cible.gabarit.longueur, LONGUEUR_MINI)
 
     // Transaction : jamais de planche supprimée sans son objet, jamais de
     // doublon si la suppression échoue.

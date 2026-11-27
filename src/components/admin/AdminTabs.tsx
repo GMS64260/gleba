@@ -117,9 +117,15 @@ function LoginLogsPanel() {
   const [pages, setPages] = React.useState(1)
   const [total, setTotal] = React.useState(0)
   const [loading, setLoading] = React.useState(true)
+  // Brouillon du champ, et filtre réellement appliqué : les pages suivantes
+  // suivent le filtre validé, pas ce qui est en cours de frappe (D167).
   const [emailFilter, setEmailFilter] = React.useState("")
+  const [emailApplique, setEmailApplique] = React.useState("")
+  // La réponse d'un filtre quitté entre-temps ne remplace pas la liste (D168).
+  const demandeLogs = React.useRef(0)
 
   const fetchLogs = React.useCallback(async (p: number, email?: string) => {
+    const numero = ++demandeLogs.current
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: String(p), limit: "30" })
@@ -127,14 +133,15 @@ function LoginLogsPanel() {
       const res = await fetch(`/api/admin/logs?${params}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
+      if (numero !== demandeLogs.current) return
       setLogs(data.logs)
       setPages(data.pages)
       setTotal(data.total)
       setPage(data.page)
     } catch {
-      setLogs([])
+      if (numero === demandeLogs.current) setLogs([])
     } finally {
-      setLoading(false)
+      if (numero === demandeLogs.current) setLoading(false)
     }
   }, [])
 
@@ -143,7 +150,9 @@ function LoginLogsPanel() {
   }, [fetchLogs])
 
   const handleFilter = () => {
-    fetchLogs(1, emailFilter || undefined)
+    const email = emailFilter.trim()
+    setEmailApplique(email)
+    fetchLogs(1, email || undefined)
   }
 
   return (
@@ -166,12 +175,13 @@ function LoginLogsPanel() {
           <Button variant="outline" size="sm" onClick={handleFilter}>
             Filtrer
           </Button>
-          {emailFilter && (
+          {(emailFilter || emailApplique) && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setEmailFilter("")
+                setEmailApplique("")
                 fetchLogs(1)
               }}
             >
@@ -246,7 +256,7 @@ function LoginLogsPanel() {
                     variant="outline"
                     size="sm"
                     disabled={page <= 1}
-                    onClick={() => fetchLogs(page - 1, emailFilter || undefined)}
+                    onClick={() => fetchLogs(page - 1, emailApplique || undefined)}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
@@ -254,7 +264,7 @@ function LoginLogsPanel() {
                     variant="outline"
                     size="sm"
                     disabled={page >= pages}
-                    onClick={() => fetchLogs(page + 1, emailFilter || undefined)}
+                    onClick={() => fetchLogs(page + 1, emailApplique || undefined)}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -272,17 +282,31 @@ function MetricsPanel() {
   const [global, setGlobal] = React.useState<GlobalMetrics | null>(null)
   const [demo, setDemo] = React.useState<DemoMetrics | null>(null)
   const [loading, setLoading] = React.useState(true)
+  // Une lecture en échec n'est pas « aucun compte démo » : elle se dit, et se
+  // relance (équipe debug, D213).
+  const [erreur, setErreur] = React.useState<string | null>(null)
+  const [essai, setEssai] = React.useState(0)
 
   React.useEffect(() => {
+    let actif = true
+    setLoading(true)
+    setErreur(null)
     fetch("/api/admin/metrics")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Le serveur a répondu ${r.status}.`)
+        return r.json()
+      })
       .then((data) => {
+        if (!actif) return
         setGlobal(data.global)
         setDemo(data.demo)
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+      .catch((e) => {
+        if (actif) setErreur(e instanceof TypeError ? "Connexion interrompue." : e instanceof Error ? e.message : "Lecture impossible.")
+      })
+      .finally(() => { if (actif) setLoading(false) })
+    return () => { actif = false }
+  }, [essai])
 
   if (loading) {
     return (
@@ -349,7 +373,16 @@ function MetricsPanel() {
         </Card>
       )}
 
-      {!demo && (
+      {erreur && (
+        <Card>
+          <CardContent className="space-y-3 py-8 text-center">
+            <p role="alert" className="text-sm text-red-700">Les métriques n’ont pas pu être chargées. {erreur}</p>
+            <Button variant="outline" size="sm" onClick={() => setEssai((n) => n + 1)}>Réessayer</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {!erreur && !demo && (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             Aucun compte demo (demo@gleba.fr) trouve

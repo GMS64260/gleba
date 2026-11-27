@@ -65,7 +65,8 @@ export function refusPlafondsAvoir(
     const p = plafonds.get(cle)
     if (!p) return `Le taux de ${n.taux} % ne figure pas sur la facture d'origine.`
     const cumul = (dejaEmis.get(cle)?.ttc ?? 0) + n.ttc
-    if (cumul > p.ttc + 1) {
+    // Au centime près, sans tolérance : un centime de trop par taux passait (D105).
+    if (cumul > p.ttc) {
       const reste = Math.max(0, p.ttc - (dejaEmis.get(cle)?.ttc ?? 0))
       return `À ${n.taux} %, la facture d'origine porte ${montant(p.ttc)} TTC et il reste ${montant(reste)} TTC à créditer à ce taux. Répartissez l'avoir entre les taux de la facture.`
     }

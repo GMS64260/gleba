@@ -127,7 +127,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
     const id = typeof body?.id === 'string' ? body.id : null
     if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
-    const existing = await prisma.planRation.findFirst({ where: { id, userId: session.user.id }, select: { id: true } })
+    const existing = await prisma.planRation.findFirst({ where: { id, userId: session.user.id }, select: { id: true, animalId: true } })
     if (!existing) return NextResponse.json({ error: 'Ration introuvable' }, { status: 404 })
 
     const parsed = rationSchema.safeParse(body)
@@ -135,7 +135,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const d = parsed.data
-    const invalide = await rationValide(session.user.id, d.lotId ?? null, d.animalId ?? null, d.composition)
+    // L'écran des rations n'envoie pas l'animal : absent du corps, il garde sa
+    // valeur au lieu d'être effacé à chaque modification.
+    const animalId = d.animalId === undefined ? existing.animalId : d.animalId
+    const invalide = await rationValide(session.user.id, d.lotId ?? null, animalId, d.composition)
     if (invalide) return NextResponse.json({ error: invalide }, { status: 400 })
 
     const ration = await prisma.planRation.update({
@@ -143,7 +146,7 @@ export async function PATCH(request: NextRequest) {
       data: {
         nom: d.nom,
         lotId: d.lotId ?? null,
-        animalId: d.animalId ?? null,
+        animalId,
         stade: d.stade,
         profilEspece: d.profilEspece,
         poidsVif: d.poidsVif,

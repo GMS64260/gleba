@@ -66,6 +66,41 @@ export function jourChange(envoyee: Date | string | null | undefined, enBase: Da
   return jour !== jourCivilStocke(enBase) && jour !== enBase.toISOString().slice(0, 10)
 }
 
+/** Message de refus si la mise-bas précède la saillie à laquelle on la rattache (D106), sinon `null`. */
+export function motifMiseBasAvantSaillie(dateMiseBas: Date | string, dateSaillie: Date | string): string | null {
+  const miseBas = jourCivilStocke(dateMiseBas)
+  const saillie = jourCivilStocke(dateSaillie)
+  if (!miseBas || !saillie || miseBas >= saillie) return null
+  return `Mise-bas du ${jourFr(miseBas)} : cette date précède la saillie choisie (${jourFr(saillie)}). Choisissez une autre saillie ou corrigez la date.`
+}
+
+/** Vrai si la date tombe après aujourd'hui (jours civils) : une pesée, un soin fait, une collecte ne se datent pas dans le futur. */
+export function estApresAujourdhui(date: Date | string | null | undefined, maintenant = new Date()): boolean {
+  const jour = jourCivilStocke(date)
+  const aujourdhui = jourCivilStocke(maintenant)
+  return !!jour && !!aujourdhui && jour > aujourdhui
+}
+
+/** Message de refus si la fin précède le début (jours civils), sinon `null` (D151, D154). */
+export function motifFinAvantDebut(
+  debut: Date | string | null | undefined,
+  fin: Date | string | null | undefined,
+  quoi: string,
+): string | null {
+  const jourDebut = jourCivilStocke(debut)
+  const jourFin = jourCivilStocke(fin)
+  if (!jourDebut || !jourFin || jourFin >= jourDebut) return null
+  return `${quoi} : la fin (${jourFr(jourFin)}) précède le début (${jourFr(jourDebut)}). Corrigez l'une des deux dates.`
+}
+
+/** Message de refus si la mise-bas ne suit pas la naissance de la mère, sinon `null` (D190). */
+export function motifMiseBasAvantNaissanceMere(dateMiseBas: Date | string, mere: Presence): string | null {
+  const jour = jourCivilStocke(dateMiseBas)
+  const naissance = jourCivilStocke(mere.dateNaissance)
+  if (!jour || !naissance || jour > naissance) return null
+  return `Mise-bas du ${jourFr(jour)} : la mère est née le ${jourFr(naissance)}. Corrigez l'une des deux dates.`
+}
+
 /** Lève un refus 422 si l'événement précède l'entrée du sujet. */
 export function refuserSortieAvantEntree(
   date: Date | string,

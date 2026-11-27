@@ -1,3 +1,5 @@
+import { jourCivilStocke } from '@/lib/jour-civil'
+import { jourChange } from '@/lib/elevage/chronologie'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 /**
  * API Réservations d'élevage (Phase 1 — filière compagnie).
@@ -103,6 +105,20 @@ async function validerReferences(
   return { naissanceId, petitNaissanceId }
 }
 
+/**
+ * Une remise ne se prévoit pas avant la naissance de la portée : le projet
+ * d'attestation datait la cession avant la naissance (équipe debug, D136).
+ */
+async function exigerRemiseApresNaissance(userId: string, naissanceId: number | null, dateLivraison: Date | null) {
+  if (naissanceId == null || !dateLivraison) return
+  const portee = await prisma.naissanceAnimale.findFirst({ where: { id: naissanceId, userId }, select: { date: true } })
+  const remise = jourCivilStocke(dateLivraison)
+  const naissance = jourCivilStocke(portee?.date)
+  if (!remise || !naissance || remise >= naissance) return
+  const fr = (jour: string) => jour.split('-').reverse().join('/')
+  throw new ReservationValidationError(`Remise prévue le ${fr(remise)} : cette date précède la naissance de la portée (${fr(naissance)}).`)
+}
+
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
@@ -132,6 +148,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Le nom de l'acquéreur est requis" }, { status: 400 })
     }
     const references = await validerReferences(userId, b.naissanceId, b.petitNaissanceId)
+    await exigerRemiseApresNaissance(userId, references.naissanceId, dateOptionnelle(b.dateLivraison))
     const acompte = montantOptionnel(b.acompte, 'Acompte')
     const montant = montantOptionnel(b.montant, 'Montant')
     if (acompte != null && montant != null && acompte > montant) {
@@ -210,6 +227,16 @@ export async function PATCH(request: NextRequest) {
     if (b.acompte !== undefined) data.acompte = montantOptionnel(b.acompte, 'Acompte')
     if (b.montant !== undefined) data.montant = montantOptionnel(b.montant, 'Montant')
     if (b.dateLivraison !== undefined) data.dateLivraison = dateOptionnelle(b.dateLivraison)
+    // Seulement si la date ou la portée change : l'écran renvoie tous ses
+    // champs, une réservation ancienne reste modifiable sur le reste.
+    const dateFinale = b.dateLivraison !== undefined ? (data.dateLivraison as Date | null) : existing.dateLivraison
+    const porteeFinale = data.naissanceId !== undefined ? (data.naissanceId as number | null) : existing.naissanceId
+    if (
+      (b.dateLivraison !== undefined && jourChange(dateFinale, existing.dateLivraison))
+      || porteeFinale !== existing.naissanceId
+    ) {
+      await exigerRemiseApresNaissance(userId, porteeFinale, dateFinale)
+    }
     if (b.notes !== undefined) data.notes = b.notes || null
     const acompteFinal = b.acompte !== undefined
       ? (data.acompte as number | null)

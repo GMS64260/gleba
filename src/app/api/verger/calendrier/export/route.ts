@@ -57,13 +57,15 @@ export async function GET(request: NextRequest) {
   } else {
     const arbres = await prisma.arbre.findMany({
       where: filtreArbresVivants(userId),
-      select: { espece: true },
+      select: { espece: true, type: true },
     })
-    const especesUniques = [...new Set(arbres.map((a) => a.espece).filter(Boolean))] as string[]
+    // Le type de l'arbre compte, comme à l'écran : un châtaignier conduit en
+    // forestier n'a pas le calendrier de récolte du fruitier (D143).
     const seen = new Set<string>()
     profiles = []
-    for (const esp of especesUniques) {
-      const p = findTreeCareProfile(esp)
+    for (const { espece: esp, type } of arbres) {
+      if (!esp) continue
+      const p = findTreeCareProfile(esp, type)
       if (p && !seen.has(p.espece)) {
         seen.add(p.espece)
         profiles.push(p)

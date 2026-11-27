@@ -42,6 +42,7 @@ import {
   DENSITES_DEFAUT,
   ETAPES_TYPES,
   type TypeFormation,
+  datePrevueEtapeType,
 } from "@/data/essences-forestieres"
 import { getAidesByType, NIVEAU_LIBELLE } from "@/data/aides-plantation"
 import { libelleForesterie } from "@/lib/verger/libelles-foresterie"
@@ -411,11 +412,12 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
   // lui-même le nombre de plants (ticket cmsog29er).
   React.useEffect(() => {
     if (plantsEditesManuellement) return
-    if (state.surfaceHa && state.densitePlantsParHa) {
-      const s = parseFloat(state.surfaceHa)
-      const d = parseFloat(state.densitePlantsParHa)
-      if (s > 0 && d > 0) update({ nombrePlants: Math.round(s * d).toString() })
-    }
+    // Une valeur dérivée qui n'est plus calculable est vidée, pas conservée :
+    // surface remise à zéro, les 20 plants d'avant partaient encore (D184).
+    const s = parseFloat(state.surfaceHa)
+    const d = parseFloat(state.densitePlantsParHa)
+    const suivant = Number.isFinite(s) && Number.isFinite(d) && s >= 0 && d >= 0 ? Math.round(s * d).toString() : ""
+    if (suivant !== state.nombrePlants) update({ nombrePlants: suivant })
   }, [state.surfaceHa, state.densitePlantsParHa, plantsEditesManuellement]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const progress = ((state.step - 1) / STEPS.length) * 100
@@ -920,8 +922,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                     </p>
                     <div className="space-y-1.5">
                       {etapesTypes.map((etape, idx) => {
-                        const baseDate = new Date(state.datePlantationPrevue)
-                        const etapeDate = new Date(baseDate.getTime() + etape.offsetJours * 24 * 60 * 60 * 1000)
+                        const etapeDate = datePrevueEtapeType(new Date(state.datePlantationPrevue), etape)
                         return (
                           <div key={idx} className="flex items-center gap-2 text-xs">
                             <Check className="h-3 w-3 text-green-600 flex-shrink-0" />

@@ -29,9 +29,11 @@ export const ChampDecimal = React.forwardRef<HTMLInputElement, Props>(
       type="text"
       inputMode="decimal"
       autoComplete="off"
+      // Un nombre négatif saisi là où il n'a pas de sens reste visible et signalé (D114).
+      aria-invalid={!negatif && String(value ?? "").trim().startsWith("-") ? true : undefined}
       {...props}
       value={value}
-      onChange={(e) => onValeur(filtrerSaisieDecimale(e.target.value, { negatif }))}
+      onChange={(e) => onValeur(filtrerSaisieDecimale(e.target.value))}
     />
   ),
 )

@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     // Appartenance des ressources, journal et emplacement courant forment une
     // seule opération, partagée avec l'assistant : une erreur ne laisse jamais
     // la carte et l'historique en désaccord.
-    const m = await prisma.$transaction((tx) => creerMouvementCheptel(tx, userId, d))
+    const m = await prisma.$transaction((tx) => creerMouvementCheptel(tx, userId, d, { verifierOrigine: d.parcelleAvantId !== undefined }))
 
     return NextResponse.json({ data: m }, { status: 201 })
   } catch (err) {

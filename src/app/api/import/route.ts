@@ -4,6 +4,7 @@
  * Importe les données pour l'utilisateur connecté
  */
 
+import { surfacePlanche } from '@/lib/planches/surface'
 import { typeAssociationImporte, desactivationAssociationImportee } from "@/lib/validations/association"
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
@@ -813,7 +814,9 @@ export async function POST(request: NextRequest) {
             data: {
               rotationId: item.rotationId,
               ilot: item.ilot,
-              surface: item.surface,
+              // Recalculée depuis les dimensions, comme à la création à l'écran :
+              // la surface du fichier était recopiée telle quelle, 400 m² pour 1 × 4 m (D204).
+              surface: surfacePlanche(item.largeur, item.longueur) ?? item.surface,
               largeur: item.largeur,
               longueur: item.longueur,
               posX: item.posX,
@@ -838,7 +841,9 @@ export async function POST(request: NextRequest) {
               userId,
               rotationId: item.rotationId,
               ilot: item.ilot,
-              surface: item.surface,
+              // Recalculée depuis les dimensions, comme à la création à l'écran :
+              // la surface du fichier était recopiée telle quelle, 400 m² pour 1 × 4 m (D204).
+              surface: surfacePlanche(item.largeur, item.longueur) ?? item.surface,
               largeur: item.largeur,
               longueur: item.longueur,
               posX: item.posX,

@@ -7,6 +7,8 @@
  * Scopé userId ; appartenance de l'animal validée à l'écriture.
  */
 
+import { finJourCivil } from '@/lib/jour-civil'
+import { estApresAujourdhui } from '@/lib/elevage/chronologie'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -28,7 +30,8 @@ async function animalPossede(userId: string, animalId: number): Promise<boolean>
 // Recale Animal.poidsActuel sur la pesée la plus récente (ou null si plus aucune).
 async function majPoidsActuel(tx: Prisma.TransactionClient, userId: string, animalId: number) {
   const derniere = await tx.pesee.findFirst({
-    where: { userId, animalId },
+    // Jamais une pesée datée après aujourd'hui (saisies antérieures au refus ci-dessous).
+    where: { userId, animalId, date: { lte: finJourCivil(new Date()) } },
     orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     select: { poidsKg: true },
   })
@@ -89,6 +92,10 @@ export async function POST(request: NextRequest) {
     const d = parsed.data
     if (!(await animalPossede(session.user.id, d.animalId))) {
       return NextResponse.json({ error: 'Animal introuvable dans votre cheptel.' }, { status: 400 })
+    }
+    // Une pesée de demain remplaçait le poids courant de l'animal (équipe debug, D135).
+    if (estApresAujourdhui(d.date)) {
+      return NextResponse.json({ error: 'Une pesée ne peut pas être datée après aujourd’hui.', champ: 'date' }, { status: 422 })
     }
     const pesee = await prisma.$transaction(async (tx) => {
       const saved = await tx.pesee.create({

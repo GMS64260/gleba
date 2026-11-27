@@ -336,11 +336,16 @@ export default function FacturesPage() {
   // avoirs, encaissements) sortaient du seul écran qui les gère.
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const years = React.useMemo(() => getAvailableYears(), [])
+  // Numéro de la dernière demande : la réponse d'un exercice quitté entre-temps
+  // ne remplace pas la liste de l'exercice affiché (équipe debug, D165).
+  const demandeEmises = React.useRef(0)
   const fetchFacturesEmises = React.useCallback(async () => {
+    const numero = ++demandeEmises.current
     try {
       const res = await fetch(`/api/comptabilite/factures?year=${selectedYear}`)
       if (res.ok) {
         const data = await res.json()
+        if (numero !== demandeEmises.current) return
         setFacturesEmises(Array.isArray(data) ? data : (data.data || data.factures || []))
       }
     } catch {
@@ -867,7 +872,11 @@ export default function FacturesPage() {
                     title="Exercice"
                     className="w-[110px]"
                     value={String(selectedYear)}
-                    onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+                    onChange={(e) => {
+                      // Aucune ligne de l'exercice quitté ne reste cliquable pendant le chargement.
+                      setFacturesEmises([])
+                      setSelectedYear(parseInt(e.target.value, 10))
+                    }}
                   >
                     {years.map((y) => (
                       <option key={y} value={y}>{y}</option>

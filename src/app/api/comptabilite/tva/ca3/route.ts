@@ -72,6 +72,8 @@ export async function GET(request: NextRequest) {
     { libelle: 'TVA collectée 20 %', valeur: collectee['20']?.tva || 0 },
     { libelle: 'TVA collectée 5.5 %', valeur: collectee['5.5']?.tva || 0 },
     { libelle: 'TVA collectée 10 %', valeur: collectee['10']?.tva || 0 },
+    // La base à 2,1 % avait sa ligne, pas sa TVA : elle ne sortait que dans le total (D129).
+    { libelle: 'TVA collectée 2.1 %', valeur: collectee['2.1']?.tva || 0 },
     ...autresTaux.map(([taux, t]) => ({
       libelle: `TVA collectée ${taux} % (taux particulier)`,
       valeur: t.tva,

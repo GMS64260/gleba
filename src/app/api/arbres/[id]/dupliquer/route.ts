@@ -60,15 +60,16 @@ export async function POST(
       return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
     }
 
-    const existants = await prisma.arbre.findMany({ where: { userId }, select: { nom: true } })
-    const plan = planCopiesArbre(
-      { nom: source.nom, posX: source.posX ?? 0, posY: source.posY ?? 0, envergure: source.envergure ?? 2 },
-      nombre,
-      existants.map((a) => a.nom)
-    )
-
     const { creees, calendriers } = await prisma.$transaction(async tx => {
       await verrouillerStockCommercial(tx, userId)
+      // Les noms se lisent SOUS le verrou : lus avant, deux duplications
+      // simultanées calculaient les mêmes noms de copie (D163).
+      const existants = await tx.arbre.findMany({ where: { userId }, select: { nom: true } })
+      const plan = planCopiesArbre(
+        { nom: source.nom, posX: source.posX ?? 0, posY: source.posY ?? 0, envergure: source.envergure ?? 2 },
+        nombre,
+        existants.map((a) => a.nom)
+      )
       const creees = []
       let calendriers = 0
       for (const copie of plan) {

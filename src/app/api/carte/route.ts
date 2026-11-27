@@ -10,6 +10,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { createParcelleSchema } from '@/lib/validations/parcelle'
 import { calculateCentroid, calculateSurfaceHa } from '@/lib/geo-utils'
+import { nomCopieParcelle } from '@/lib/geo-duplication'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 // GET /api/carte - Liste des parcelles de l'utilisateur
@@ -190,9 +191,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const parcelle = await prisma.parcelleGeo.create({
+    // Copie d'une parcelle : le serveur nomme la copie, sous verrou. Nommée par
+    // l'écran, deux onglets (ou un double clic) calculaient le même nom sur leur
+    // liste périmée et créaient deux copies homonymes (équipe debug, D120).
+    const copieDe = typeof body?.copieDe === 'string' && body.copieDe.trim() ? body.copieDe.trim() : null
+    const parcelle = await prisma.$transaction(async (tx) => {
+      let nomFinal = nom.trim()
+      if (copieDe) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:copie-parcelle:${session!.user.id}`}))`
+        const existantes = await tx.parcelleGeo.findMany({ where: { userId: session!.user.id }, select: { nom: true } })
+        nomFinal = nomCopieParcelle(copieDe, existantes.map((p) => p.nom))
+      }
+      return tx.parcelleGeo.create({
       data: {
-        nom: nom.trim(),
+        nom: nomFinal,
         userId: session!.user.id,
         geometry,
         couches,
@@ -228,6 +240,7 @@ export async function POST(request: NextRequest) {
         notes: true,
         couches: true,
       },
+    })
     })
 
     return NextResponse.json(parcelle, { status: 201 })

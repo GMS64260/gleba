@@ -52,19 +52,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Un seul signalement OUVERT par membre et par entrée (idempotent).
-    const existing = await prisma.signalement.findFirst({
-      where: { refType, refId, userId, statut: 'ouvert' },
-      select: { id: true },
+    // Lecture et création sous verrou : deux envois simultanés créaient deux
+    // signalements ouverts, et le second bloquait le suivant (D226).
+    const resultat = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:signalement:${userId}:${refType}:${refId}`}))`
+      const existing = await tx.signalement.findFirst({
+        where: { refType, refId, userId, statut: 'ouvert' },
+        select: { id: true },
+      })
+      if (existing) return { id: existing.id, deja: true }
+      const sig = await tx.signalement.create({
+        data: { refType, refId, userId, motif: motif.slice(0, 2000) },
+        select: { id: true },
+      })
+      return { id: sig.id, deja: false }
     })
-    if (existing) {
-      return NextResponse.json({ ok: true, id: existing.id, deja: true })
-    }
-
-    const sig = await prisma.signalement.create({
-      data: { refType, refId, userId, motif: motif.slice(0, 2000) },
-      select: { id: true },
-    })
-    return NextResponse.json({ ok: true, id: sig.id }, { status: 201 })
+    if (resultat.deja) return NextResponse.json({ ok: true, id: resultat.id, deja: true })
+    return NextResponse.json({ ok: true, id: resultat.id }, { status: 201 })
   } catch (e) {
     console.error('POST /api/signalements error:', e)
     return NextResponse.json({ error: 'Erreur lors du signalement.' }, { status: 500 })

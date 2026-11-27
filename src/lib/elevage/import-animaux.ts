@@ -1,3 +1,4 @@
+import { jourCivilStocke } from '@/lib/jour-civil'
 import { isValidIdentifiant, placeholderIdentifiant, TYPES_IDENTIFIANT, type TypeIdentifiant } from '@/lib/identification-animal'
 import { ORIENTATIONS_PRODUCTION, type OrientationProduction } from '@/lib/validations/elevage-animal'
 // La normalisation du sexe est partagée avec le schéma d'écriture : source unique.
@@ -94,11 +95,14 @@ export function parseAnimauxCsv(content: string): AnimauxCsvParse {
 export function parseDateCsv(value: string): string | null | undefined {
   const v = value.trim()
   if (!v) return null
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v
   const fr = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (fr) return `${fr[3]}-${fr[2].padStart(2, '0')}-${fr[1].padStart(2, '0')}`
-  if (/^\d{4}$/.test(v)) return `${v}-01-01`
-  return undefined
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(v) ? v
+    : fr ? `${fr[3]}-${fr[2].padStart(2, '0')}-${fr[1].padStart(2, '0')}`
+    : /^\d{4}$/.test(v) ? `${v}-01-01` : null
+  if (!iso) return undefined
+  // Un jour absent du calendrier (31/02) est illisible : passé tel quel, il
+  // était enregistré comme une autre date (le 3 mars, équipe debug D221).
+  return jourCivilStocke(iso) === iso ? iso : undefined
 }
 
 /** Type d'identifiant CSV → valeur canonique (`IPG Ovin` → `IPG ovin`). `undefined` si inconnu. */

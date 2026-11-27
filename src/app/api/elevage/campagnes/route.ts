@@ -7,6 +7,7 @@
  * rattachent (Saillie.campagneId).
  */
 
+import { jourChange, motifFinAvantDebut } from '@/lib/elevage/chronologie'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -95,6 +96,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const d = parsed.data
+    const refusPeriode = motifFinAvantDebut(d.dateDebut, d.dateFin, 'Période de lutte')
+    if (refusPeriode) return NextResponse.json({ error: refusPeriode, champ: 'dateFin' }, { status: 400 })
     if (d.especeAnimaleId) {
       const refusEspece = await refusEspeceInaccessible(d.especeAnimaleId, session.user.id)
       if (refusEspece) return refusEspece
@@ -129,6 +132,17 @@ export async function PATCH(request: NextRequest) {
     const { id, ...updates } = parsed.data
     const existing = await prisma.campagneReproduction.findFirst({ where: { id, userId: session.user.id } })
     if (!existing) return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
+    // Seulement si l'une des deux dates est envoyée et change (une campagne
+    // ancienne déjà inversée reste modifiable sur ses autres champs).
+    const debutFinal = updates.dateDebut ?? existing.dateDebut
+    const finFinale = updates.dateFin !== undefined ? updates.dateFin : existing.dateFin
+    if (
+      (updates.dateDebut !== undefined && jourChange(updates.dateDebut, existing.dateDebut))
+      || (updates.dateFin !== undefined && jourChange(updates.dateFin, existing.dateFin))
+    ) {
+      const refusPeriode = motifFinAvantDebut(debutFinal, finFinale, 'Période de lutte')
+      if (refusPeriode) return NextResponse.json({ error: refusPeriode, champ: 'dateFin' }, { status: 400 })
+    }
     if (updates.especeAnimaleId && updates.especeAnimaleId !== existing.especeAnimaleId) {
       const refusEspece = await refusEspeceInaccessible(updates.especeAnimaleId, session.user.id)
       if (refusEspece) return refusEspece

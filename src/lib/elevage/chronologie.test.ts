@@ -36,3 +36,19 @@ describe('arrivée et naissance d’un animal (D220)', () => {
     expect(motifArriveeAvantNaissance({ dateNaissance: '2026-11-20', dateArrivee: null })).toBeNull()
   })
 })
+
+describe('mise-bas, saillie et dates futures (D106, D135)', () => {
+  it('refuse une mise-bas antérieure à la saillie rattachée, accepte le jour même', async () => {
+    const { motifMiseBasAvantSaillie } = await import('./chronologie')
+    expect(motifMiseBasAvantSaillie('2026-11-20', '2026-11-25')).toContain('précède la saillie choisie (25/11/2026)')
+    expect(motifMiseBasAvantSaillie('2026-11-25', '2026-11-25')).toBeNull()
+  })
+
+  it('reconnaît une date postérieure à aujourd’hui en jours civils', async () => {
+    const { estApresAujourdhui } = await import('./chronologie')
+    const maintenant = new Date('2026-11-26T10:00:00.000Z')
+    expect(estApresAujourdhui('2026-11-27', maintenant)).toBe(true)
+    expect(estApresAujourdhui(new Date('2026-11-26T00:00:00.000Z'), maintenant)).toBe(false)
+    expect(estApresAujourdhui(null, maintenant)).toBe(false)
+  })
+})

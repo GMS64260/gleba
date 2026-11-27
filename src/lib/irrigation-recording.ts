@@ -30,7 +30,15 @@ export interface EnregistrerArrosageResult {
    * null) : ce qu'il faut pour l'annuler exactement (`annulerArrosageCultures`).
    */
   derniereIrrigationAvant: Record<number, string | null>
+  /**
+   * Traces d'un geste précédent dont ce geste a complété l'observation (double
+   * geste dans la fenêtre de dédoublonnage) : leur note avant et après, pour
+   * que l'annulation retire aussi ce complément.
+   */
+  tracesCompletees: TraceCompletee[]
 }
+
+export interface TraceCompletee { id: number; avant: string | null; apres: string }
 
 /**
  * Enregistre un arrosage physique et réconcilie toutes les vues :
@@ -61,6 +69,7 @@ export async function enregistrerArrosageCultures({
       irrigationsTraceesCreees: 0,
       dateEffective,
       derniereIrrigationAvant: {},
+      tracesCompletees: [],
     }
   }
 
@@ -92,6 +101,7 @@ export async function enregistrerArrosageCultures({
       irrigationsTraceesCreees: 0,
       dateEffective,
       derniereIrrigationAvant: {},
+      tracesCompletees: [],
     }
   }
 
@@ -181,6 +191,13 @@ export async function enregistrerArrosageCultures({
   const tracesACompleter = observation
     ? closesAujourdhui.filter((t) => !(t.notes ?? '').includes(observation))
     : []
+  const tracesCompletees: TraceCompletee[] = observation
+    ? tracesACompleter.map((t) => ({
+        id: t.id,
+        avant: t.notes,
+        apres: !t.notes || t.notes === 'Arrosage noté' ? observation : `${t.notes} · ${observation}`.slice(0, 1000),
+      }))
+    : []
   const cultureIdsTracees = new Set<number>([
     ...aClore.map((irr) => irr.cultureId),
     ...closesAujourdhui.map((irr) => irr.cultureId),
@@ -219,15 +236,8 @@ export async function enregistrerArrosageCultures({
           notes: observation || 'Arrosage noté',
         })),
       }),
-      ...tracesACompleter.map((t) =>
-        prisma.irrigationPlanifiee.update({
-          where: { id: t.id },
-          data: {
-            notes: !t.notes || t.notes === 'Arrosage noté'
-              ? observation
-              : `${t.notes} · ${observation}`.slice(0, 1000),
-          },
-        }),
+      ...tracesCompletees.map((t) =>
+        prisma.irrigationPlanifiee.update({ where: { id: t.id }, data: { notes: t.apres } }),
       ),
     ])
 
@@ -242,6 +252,7 @@ export async function enregistrerArrosageCultures({
     irrigationsTraceesCreees: tracesCreees.count,
     dateEffective,
     derniereIrrigationAvant,
+    tracesCompletees,
   }
 }
 
@@ -251,6 +262,8 @@ export interface AnnulerArrosageParams {
   dateEffective: Date
   /** `derniereIrrigation` d'avant le geste, par culture (renvoyé par le même appel). */
   avant: Record<number, string | null>
+  /** Observations que le geste a ajoutées à une trace antérieure (renvoyées par le même appel). */
+  tracesCompletees?: TraceCompletee[]
 }
 
 /**
@@ -262,7 +275,7 @@ export interface AnnulerArrosageParams {
  * compte, cultures concernées) et ne restaure `derniereIrrigation` que si
  * aucun arrosage plus récent ne l'a remplacé depuis.
  */
-export async function annulerArrosageCultures({ userId, dateEffective, avant }: AnnulerArrosageParams) {
+export async function annulerArrosageCultures({ userId, dateEffective, avant, tracesCompletees = [] }: AnnulerArrosageParams) {
   const ids = Object.keys(avant)
     .map(Number)
     .filter((id) => Number.isInteger(id) && id > 0)
@@ -279,6 +292,16 @@ export async function annulerArrosageCultures({ userId, dateEffective, avant }: 
     const traces = await tx.irrigationPlanifiee.deleteMany({
       where: { userId, cultureId: { in: idsAutorises }, fait: true, dateEffective },
     })
+    // Double geste : le second n'a pas créé de trace, il a complété celle du
+    // premier. L'annuler retire ce complément, sinon son observation restait au
+    // registre (équipe debug, D205). Seulement si la note est encore celle que
+    // CE geste a écrite : un geste plus récent l'emporte.
+    for (const t of tracesCompletees) {
+      await tx.irrigationPlanifiee.updateMany({
+        where: { id: t.id, userId, cultureId: { in: idsAutorises }, fait: true, notes: t.apres },
+        data: { notes: t.avant },
+      })
+    }
     let culturesRestaurees = 0
     for (const c of cultures) {
       // Un arrosage noté depuis l'emporte : on ne le défait pas.

@@ -23,6 +23,8 @@ import { cheminOuvert } from '@/lib/exploitation/modules-chemins'
 import { estVisibleReferentiel, visibiliteReferentiel, type EntreeReferentiel } from '@/lib/referentiel-communaute'
 import { normalizeReferentielKey } from '@/lib/normalize'
 import { formatSurface } from '@/components/parcelles/parcelle-constants'
+import { formatQuantite } from '@/lib/recolte/quantites'
+import { UNITES_QUANTITE, type UniteQuantite } from '@/lib/recolte/projection'
 
 const TAKE = 8
 const SELECT_NOM_VISIBLE = { nom: true, userId: true, partageCommunaute: true } as const
@@ -147,7 +149,7 @@ export async function GET(request: NextRequest) {
       ] },
       take: TAKE,
       orderBy: { date: 'desc' },
-      select: { id: true, especeId: true, notes: true, quantite: true, date: true, espece: { select: SELECT_NOM_VISIBLE } },
+      select: { id: true, especeId: true, notes: true, quantite: true, unite: true, date: true, espece: { select: SELECT_NOM_VISIBLE } },
     }),
     prisma.produitBoutique.findMany({
       where: { userId, nom: like },
@@ -233,7 +235,7 @@ export async function GET(request: NextRequest) {
     })),
     ...recoltes.map((r): SearchItem => ({
       id: `recolte-${r.id}`,
-      label: `${nomVisible(r.espece, userId) ?? r.especeId ?? ''} · ${r.quantite} kg`,
+      label: `${nomVisible(r.espece, userId) ?? r.especeId ?? ''} · ${formatQuantite(r.quantite, (UNITES_QUANTITE as readonly string[]).includes(r.unite ?? '') ? (r.unite as UniteQuantite) : 'kg')}`,
       sub: `${r.notes || ''} · ${new Date(r.date).toLocaleDateString('fr-FR')}`.trim(),
       type: 'Récolte',
       href: `/maraichage/recoltes`,

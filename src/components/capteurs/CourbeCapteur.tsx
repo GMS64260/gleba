@@ -45,7 +45,9 @@ export function CourbeCapteur({ capteurId, grandeur, jours, fuseau: fuseauStocke
     return () => {
       actif = false
     }
-  }, [capteurId, grandeur, jours, sansAgregat])
+    // Le fuseau fait partie de la demande : les journées sont découpées dans ce
+    // fuseau côté serveur, la courbe se relit quand il change (D214).
+  }, [capteurId, grandeur, jours, sansAgregat, fuseauStocke])
 
   if (sansAgregat) {
     return <p className="text-sm text-slate-500">La direction du vent n&apos;a pas de moyenne journalière : choisissez 30 jours au plus.</p>

@@ -1510,6 +1510,11 @@ function AnimauxSubTab() {
                             }}>
                               Enregistrer un décès
                             </DropdownMenuItem>
+                            {/* Fiche saisie par erreur : elle se supprime sans passer par un
+                                décès fictif. Le serveur refuse toute fiche qui porte des saisies (D150). */}
+                            <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(animal)}>
+                              Supprimer la fiche (saisie par erreur)
+                            </DropdownMenuItem>
                           </>
                         ) : (
                           <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(animal)}>
@@ -1735,18 +1740,16 @@ function AnimauxSubTab() {
                           </div>
                         </TooltipProvider>
                       )}
-                      {animal.statut !== 'actif' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(animal)}
-                          className="text-red-600 hover:text-red-700"
-                          aria-label={`Supprimer ${nomLigneAnimal(animal)}`}
-                          title="Supprimer"
-                        >
-                          <span aria-hidden="true">&times;</span>
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(animal)}
+                        className="text-red-600 hover:text-red-700"
+                        aria-label={`Supprimer ${nomLigneAnimal(animal)}`}
+                        title={animal.statut === 'actif' ? "Supprimer la fiche (saisie par erreur)" : "Supprimer"}
+                      >
+                        <span aria-hidden="true">&times;</span>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -2452,6 +2455,11 @@ function LotsSubTab() {
                           Ajouter / retirer des animaux
                         </Button>
                       )}
+                      {/* La suppression n'existait que dans le tableau, masqué sur téléphone (D176). */}
+                      <Button className="col-span-2 min-h-11 text-red-700" variant="outline" onClick={() => handleSupprimerLot(lot)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Supprimer le lot
+                      </Button>
                     </div>
                   </article>
                 )

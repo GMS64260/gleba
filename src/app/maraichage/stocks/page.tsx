@@ -45,6 +45,7 @@ import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { ConsommationsTab } from "@/components/stocks/ConsommationsTab"
 import { AlertTriangle } from "lucide-react"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
+import { formatQuantiteParUnite, type QuantiteParUnite } from "@/lib/recolte/quantites"
 
 interface VarieteStock {
   id: string
@@ -76,6 +77,8 @@ interface EspeceStock {
   unite?: string | null
   dateInventaire: string | null
   couleur: string | null
+  /** Lots tenus dans une autre unité que l'unité courante de l'espèce. */
+  autresUnites?: QuantiteParUnite
 }
 
 interface StockData {
@@ -267,8 +270,12 @@ function StocksPageContent() {
     recoltes: "",
   })
 
-  const fetchData = React.useCallback(async () => {
-    setIsLoading(true)
+  // `silencieux` : rechargement après un comptage, sans repasser la page en
+  // chargement. La dernière demande gagne.
+  const demandeStocks = React.useRef(0)
+  const fetchData = React.useCallback(async (silencieux = false) => {
+    const numero = ++demandeStocks.current
+    if (!silencieux) setIsLoading(true)
     try {
       // Construire l'URL avec le filtre especeType si present
       let url = "/api/stocks"
@@ -278,15 +285,17 @@ function StocksPageContent() {
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur chargement")
       const result = await response.json()
+      if (numero !== demandeStocks.current) return
       setData(result)
     } catch {
+      if (numero !== demandeStocks.current) return
       toast({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de charger les stocks",
       })
     } finally {
-      setIsLoading(false)
+      if (numero === demandeStocks.current) setIsLoading(false)
     }
   }, [toast, especeType])
 
@@ -315,6 +324,9 @@ function StocksPageContent() {
         title: "Stock mis à jour",
         description: typeof corps?.data?.message === "string" ? corps.data.message : "Le stock a été enregistré",
       })
+      // Un comptage change la date d'inventaire et le stock des lots : l'écran
+      // reprend ce que le serveur a enregistré (équipe debug, D138).
+      if (type === "recolte") void fetchData(true)
     } catch (e) {
       toast({
         variant: "destructive",
@@ -471,7 +483,7 @@ function StocksPageContent() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={fetchData}>
+          <Button variant="outline" size="sm" onClick={() => fetchData()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Actualiser
           </Button>
@@ -845,10 +857,18 @@ function StocksPageContent() {
                               en pièces ou en bottes. */}
                           <StockInput
                             value={e.inventaire}
-                            onChange={(val) => updateLocalStock("recoltes", e.id, "inventaire", val)}
+                            // Vider le champ efface le comptage, pas le stock des lots affiché.
+                            onChange={(val) => { if (val !== null) updateLocalStock("recoltes", e.id, "inventaire", val) }}
                             onSave={(val) => saveStock("recolte", e.id, val)}
                             unit={libelleUniteQuantite((e.unite ?? "kg") as UniteQuantite)}
                           />
+                          {/* Les lots d'une ancienne unité restent en stock : ils
+                              disparaissaient de l'écran au changement d'unité (D123). */}
+                          {e.autresUnites && Object.keys(e.autresUnites).length > 0 && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              + {formatQuantiteParUnite(e.autresUnites)} (lots d’une ancienne unité, hors comptage)
+                            </p>
+                          )}
                         </TableCell>
                         <TableCell>
                           {e.dateInventaire

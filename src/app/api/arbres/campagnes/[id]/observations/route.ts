@@ -101,6 +101,19 @@ export async function POST(request: NextRequest, { params }: Params) {
       { status: 400 },
     )
   }
+  // Le comptage entier ne dépasse pas la plantation : 4 vivants et 1 mort sur
+  // 4 plants donnaient 100 % de reprise (équipe debug, D126). Un regarnissage
+  // est une campagne distincte, il n'est pas borné par celle-ci.
+  const compte = (nbVivants ?? 0) + (nbMorts ?? 0) + (nbManquants ?? 0)
+  if (campagne.nombrePlants && campagne.nombrePlants > 0 && compte > campagne.nombrePlants) {
+    return NextResponse.json(
+      {
+        error: `Le comptage (${nbVivants ?? 0} vivants, ${nbMorts ?? 0} morts, ${nbManquants ?? 0} manquants, soit ${compte}) dépasse les ${campagne.nombrePlants} plants de la campagne.`,
+        champ: "nbMorts",
+      },
+      { status: 400 },
+    )
+  }
 
   // Calcul du taux de reprise si possible
   if (tauxReprise === null && nbVivants !== null) {

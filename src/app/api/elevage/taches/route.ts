@@ -59,8 +59,11 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           OR: [
-            { datePrevue: { gte: start, lte: end } },
-            { date: { gte: start, lte: end } },
+            // Un soin à faire appartient à la semaine de son rappel, un soin fait
+            // à celle de sa réalisation : jamais aux deux (D118).
+            { fait: false, datePrevue: { gte: start, lte: end } },
+            { datePrevue: null, date: { gte: start, lte: end } },
+            { fait: true, date: { gte: start, lte: end } },
             ...(retards
               ? [
                   { fait: false, datePrevue: { lt: start } },
@@ -376,7 +379,8 @@ export async function GET(request: NextRequest) {
         ...soinsSansInjections
           .map(s => ({
         id: s.id,
-        date: s.datePrevue || s.date,
+        // Un soin fait se range au jour de sa réalisation.
+        date: s.fait ? s.date : (s.datePrevue || s.date),
         dateReelle: s.date,
         datePrevue: s.datePrevue,
         type: s.type,

@@ -17,6 +17,8 @@ import { finJourLivraison } from '@/lib/commercial/dates-stock'
 import { refusModificationCollecteEntamee } from '@/lib/elevage/stock-oeufs'
 
 class CollecteEntameeError extends Error {}
+/** Casses et œufs souillés supérieurs à la collecte : saisie invalide, pas un conflit de stock. */
+class DeclassesSuperieursError extends Error {}
 class CollecteIntrouvableError extends Error {}
 
 /** Bornes [jour ; lendemain[ d'une collecte, pour chercher une collecte du même jour. */
@@ -408,6 +410,15 @@ export async function PATCH(request: NextRequest) {
         where: { id: existing.id, userId: session!.user.id },
       })
       if (!courante) throw new CollecteIntrouvableError()
+      // Seulement si l'un des trois nombres change : une collecte ancienne déjà
+      // incohérente reste corrigeable sur ses autres champs.
+      if (updateData.quantite !== undefined || updateData.casses !== undefined || updateData.sales !== undefined) {
+        const quantiteFinale = (updateData.quantite as number | undefined) ?? courante.quantite
+        const declasses = ((updateData.casses as number | undefined) ?? courante.casses ?? 0) + ((updateData.sales as number | undefined) ?? courante.sales ?? 0)
+        if (declasses > quantiteFinale) {
+          throw new DeclassesSuperieursError(`Casses et œufs souillés (${declasses}) sont compris dans les ${quantiteFinale} œufs collectés : leur total ne peut pas dépasser ${quantiteFinale}.`)
+        }
+      }
       const sorties = await tx.mouvementStockOeuf.findMany({
         where: { productionId: courante.id, userId: session!.user.id },
         select: { quantite: true, date: true },
@@ -442,6 +453,9 @@ export async function PATCH(request: NextRequest) {
     if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof CollecteIntrouvableError) {
       return NextResponse.json({ error: 'Production non trouvée' }, { status: 404 })
+    }
+    if (error instanceof DeclassesSuperieursError) {
+      return NextResponse.json({ error: error.message, champ: 'casses' }, { status: 400 })
     }
     if (error instanceof CollecteEntameeError) {
       return NextResponse.json({ error: error.message, code: 'STOCK_OEUFS_MOUVEMENTS_EXISTANTS' }, { status: 409 })

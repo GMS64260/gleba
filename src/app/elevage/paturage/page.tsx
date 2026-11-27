@@ -44,7 +44,12 @@ export default function PaturagePage() {
     setIsSubmitting(true)
     try {
       const res = await fetch('/api/elevage/mouvements-cheptel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lotId: lot.id, parcelleAvantId: lot.parcelleGeoId, parcelleApresId: destination === 'none' ? null : destination, date: new Date(), motif: 'Rotation pâturage' }) })
-      if (!res.ok) return toast({ variant: 'destructive', title: 'Déplacement impossible', description: (await res.json()).error })
+      if (!res.ok) {
+        toast({ variant: 'destructive', title: 'Déplacement impossible', description: (await res.json().catch(() => null))?.error })
+        // Position changée ailleurs : l'écran reprend l'état réel.
+        if (res.status === 409) await reload()
+        return
+      }
       setMoveOpen(false); await reload(); toast({ title: 'Rotation enregistrée' })
     } finally {
       setIsSubmitting(false)

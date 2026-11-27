@@ -329,6 +329,17 @@ export function ReglagesNotifications() {
       (cle) => !valeursEgales(reglages[cle].valeur, reglagesInitiaux[cle].valeur)
     )
     const passModifie = motDePasseSaisi !== ""
+    // Le masque affiché n'est pas un mot de passe : refusé AVANT toute écriture.
+    // Les réglages partent un par un, et l'expéditeur était déjà enregistré
+    // quand le serveur refusait le masque (équipe debug, D169).
+    if (/^•+$/.test(motDePasseSaisi)) {
+      toast({
+        variant: "destructive",
+        title: "Réglages invalides",
+        description: "Le mot de passe masqué ne peut pas être enregistré : saisissez le mot de passe réel ou laissez le champ vide. Rien n'a été modifié.",
+      })
+      return
+    }
 
     if (modifiees.length === 0 && !passModifie) {
       toast({ title: "Aucune modification à enregistrer" })
@@ -422,6 +433,14 @@ export function ReglagesNotifications() {
       (cle) => !valeursEgales(reglages[cle].valeur, reglagesInitiaux[cle].valeur)
     )
     const clePriveeModifiee = clePriveeVapidSaisie !== ""
+    if (/^•+$/.test(clePriveeVapidSaisie)) {
+      toast({
+        variant: "destructive",
+        title: "Réglages invalides",
+        description: "La clé privée masquée ne peut pas être enregistrée : saisissez la clé réelle ou laissez le champ vide. Rien n'a été modifié.",
+      })
+      return
+    }
 
     if (modifiees.length === 0 && !clePriveeModifiee) {
       toast({ title: "Aucune modification à enregistrer" })

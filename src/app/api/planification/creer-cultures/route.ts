@@ -17,6 +17,7 @@ const LOT_MAX = 500
 const creerCulturesSchema = z.object({
   cultures: z.array(z.object({
     plancheId: z.string().min(1).max(200),
+    plancheRef: z.string().min(1).max(200).nullable().optional(),
     itpId: z.string().min(1).max(200),
     annee: z.number().int().min(2000).max(2100),
     varieteId: z.string().min(1).max(200).optional(),

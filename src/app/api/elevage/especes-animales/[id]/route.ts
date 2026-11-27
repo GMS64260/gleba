@@ -8,6 +8,7 @@
  * Pas de GET détail (inutile ici, évite tout IDOR).
  */
 
+import { refusDureesEspece } from '@/lib/elevage/durees-espece'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -47,6 +48,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (!rendement.ok) {
       return NextResponse.json({ error: rendement.erreur, champ: 'rendementCarcasse' }, { status: 400 })
     }
+
+    const refusDuree = refusDureesEspece(body)
+    if (refusDuree) return NextResponse.json({ error: refusDuree.erreur, champ: refusDuree.champ }, { status: 400 })
 
     const data: Record<string, unknown> = {}
     if (body.nom !== undefined) data.nom = body.nom

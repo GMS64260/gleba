@@ -145,6 +145,13 @@ export default function BanquePage() {
   const choisirCompte = (id: string) => {
     compteVoulu.current = id
     setCompteId(id)
+    // Les lignes affichées appartiennent au compte précédent : elles ne restent
+    // ni visibles ni actionnables pendant le chargement, et aucun dialogue
+    // ouvert sur l'une d'elles ne survit au changement (équipe debug, D111).
+    setDonnees((d) => (d ? { ...d, operations: [], curseurSuivant: null } : d))
+    setExclusion(null)
+    setOperation(null)
+    setVirement(null)
   }
   const charger = React.useCallback(
     async (curseur?: string) => {
@@ -657,7 +664,7 @@ export default function BanquePage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                disabled={enCours}
+                                disabled={enCours || charge}
                                 onClick={() =>
                                   executer(async () => {
                                     await action({
@@ -682,7 +689,7 @@ export default function BanquePage() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    disabled={enCours}
+                                    disabled={enCours || charge}
                                     onClick={() =>
                                       executer(async () => {
                                         await action({
@@ -706,7 +713,7 @@ export default function BanquePage() {
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    disabled={enCours}
+                                    disabled={enCours || charge}
                                     onClick={() =>
                                       executer(async () => {
                                         await action({ action: 'retablir', operationId: o.id })
@@ -730,7 +737,7 @@ export default function BanquePage() {
                                       !VIREMENTS.includes(o.famille) && (
                                         <Button
                                           size="sm"
-                                          disabled={enCours}
+                                          disabled={enCours || charge}
                                           onClick={() => ouvrirRapprochement(o, 'principal')}
                                         >
                                           Rapprocher{' '}
@@ -744,7 +751,7 @@ export default function BanquePage() {
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        disabled={enCours}
+                                        disabled={enCours || charge}
                                         onClick={() => ouvrirRapprochement(o, 'frais')}
                                       >
                                         Rapprocher les frais
@@ -757,7 +764,7 @@ export default function BanquePage() {
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          disabled={enCours}
+                                          disabled={enCours || charge}
                                           onClick={() => {
                                             setVirement(o)
                                             setRechercheVirement('')
@@ -776,7 +783,7 @@ export default function BanquePage() {
                                         <Button
                                           size="sm"
                                           variant="ghost"
-                                          disabled={enCours}
+                                          disabled={enCours || charge}
                                           onClick={() => {
                                             setExclusion(o)
                                             setMotif(
@@ -1136,7 +1143,7 @@ export default function BanquePage() {
             maxLength={500}
           />
           <Button
-            disabled={enCours || motif.trim().length < 3}
+            disabled={enCours || charge || motif.trim().length < 3}
             onClick={() =>
               executer(async () => {
                 if (exclusion)

@@ -66,6 +66,10 @@ interface BesoinSemence {
   tauxGerminationPct: number | null
   aCommander: number
   caieuxACommander: number
+  /** Sans la marge de sécurité (réglage désactivé). */
+  besoinCaieuxSansMarge?: number
+  caieuxACommanderSansMarge?: number
+  statutSansMarge?: "OK" | "LOW" | "MISSING" | "IGNORE" | "DONNEE_MANQUANTE" | "SURFACE_MANQUANTE"
   statut: "OK" | "LOW" | "MISSING" | "IGNORE" | "DONNEE_MANQUANTE" | "SURFACE_MANQUANTE"
   stockDateMaj: string | null
 }
@@ -411,13 +415,22 @@ const uniteSemence = (nom: string): string => {
   return "unités"
 }
 
-const caieuxColumns: ColumnDef<BesoinSemence>[] = [
+// Caïeux, bulbilles, tubercules : mêmes colonnes selon le réglage « Marge
+// sécurité ». Elles restaient majorées quand la marge était désactivée (D107).
+const besoinCaieuxAffiche = (b: BesoinSemence, appliquerMarge: boolean) =>
+  appliquerMarge ? b.besoinCaieux : b.besoinCaieuxSansMarge ?? b.besoinCaieux
+const caieuxACommanderAffiches = (b: BesoinSemence, appliquerMarge: boolean) =>
+  appliquerMarge ? b.caieuxACommander : b.caieuxACommanderSansMarge ?? b.caieuxACommander
+const statutCaieuxAffiche = (b: BesoinSemence, appliquerMarge: boolean) =>
+  appliquerMarge ? b.statut : b.statutSansMarge ?? b.statut
+
+const makeCaieuxColumns = (appliquerMarge: boolean): ColumnDef<BesoinSemence>[] => [
   ...baseColumns,
   {
     accessorKey: "besoinCaieux",
-    header: "Bulbilles / tubercules nécessaires",
+    header: appliquerMarge ? "Bulbilles / tubercules nécessaires, marge comprise" : "Bulbilles / tubercules nécessaires, sans marge",
     cell: ({ row }) => {
-      const v = row.original.besoinCaieux
+      const v = besoinCaieuxAffiche(row.original, appliquerMarge)
       return `${v.toLocaleString()} ${uniteSemence(row.original.especeNom ?? row.original.especeId)}`
     },
   },
@@ -430,14 +443,14 @@ const caieuxColumns: ColumnDef<BesoinSemence>[] = [
     accessorKey: "caieuxACommander",
     header: "À commander",
     cell: ({ row }) => {
-      const v = row.original.caieuxACommander
+      const v = caieuxACommanderAffiches(row.original, appliquerMarge)
       return v > 0 ? `${v.toLocaleString()} ${uniteSemence(row.original.especeNom ?? row.original.especeId)}` : "—"
     },
   },
   {
     accessorKey: "statut",
     header: "Statut",
-    cell: ({ row }) => <StatutBadge statut={row.original.statut} partiel={row.original.besoinPartiel} />,
+    cell: ({ row }) => <StatutBadge statut={statutCaieuxAffiche(row.original, appliquerMarge)} partiel={row.original.besoinPartiel} />,
   },
 ]
 
@@ -475,6 +488,7 @@ function SemencesContent() {
 
   const grainesColumns = React.useMemo(() => makeGrainesColumns(appliquerMarge), [appliquerMarge])
   const plantsColumns = React.useMemo(() => makePlantsColumns(appliquerMarge), [appliquerMarge])
+  const caieuxColumns = React.useMemo(() => makeCaieuxColumns(appliquerMarge), [appliquerMarge])
 
 
   const handleExport = () => {
@@ -502,12 +516,12 @@ function SemencesContent() {
         b.surfaceTotale.toFixed(1),
         b.nbPlants,
         graines.toFixed(1),
-        b.besoinCaieux,
+        b.mode === "bulbe_caieu" ? besoinCaieuxAffiche(b, appliquerMarge) : b.besoinCaieux,
         b.stockActuel.toFixed(1),
         b.stockUnites,
         (appliquerMarge || besoinEnUnites(b) ? b.aCommander : Math.max(0, graines - b.stockActuel)).toFixed(1),
-        b.caieuxACommander,
-        statutAffiche(b, appliquerMarge),
+        b.mode === "bulbe_caieu" ? caieuxACommanderAffiches(b, appliquerMarge) : b.caieuxACommander,
+        b.mode === "bulbe_caieu" ? statutCaieuxAffiche(b, appliquerMarge) : statutAffiche(b, appliquerMarge),
       ]),
     ])
   }
@@ -555,11 +569,14 @@ function SemencesContent() {
     if (!statsServeur || appliquerMarge) return statsServeur
     // Mêmes lignes que le serveur : celles des trois onglets.
     const listees = data.filter((b) => b.statut !== "IGNORE" && (b.mode === "graine_directe" || b.mode === "plant_repique" || b.mode === "bulbe_caieu"))
-    const lignes = listees.map((b) => ({ mode: b.mode, statut: statutAffiche(b, false) }))
+    const lignes = listees.map((b) => ({ mode: b.mode, statut: b.mode === "bulbe_caieu" ? statutCaieuxAffiche(b, false) : statutAffiche(b, false) }))
     const detail = computeManquantsBreakdown(lignes)
+    const caieux = listees.filter((b) => b.mode === "bulbe_caieu")
     return {
       ...statsServeur,
       ...detail,
+      totalCaieux: caieux.reduce((somme, b) => somme + besoinCaieuxAffiche(b, false), 0),
+      totalCaieuxACommander: caieux.reduce((somme, b) => somme + caieuxACommanderAffiches(b, false), 0),
       nbMissing: lignes.filter((l) => l.statut === "MISSING").length,
       nbLow: lignes.filter((l) => l.statut === "LOW").length,
     }

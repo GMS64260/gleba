@@ -19,6 +19,9 @@ export function apresDemain(date: Date, maintenant: Date = new Date()): boolean 
   return (jourCivilStocke(date) ?? jourLocalISO(date)) > jourLocalISO(demain)
 }
 
+export const MESSAGE_SOIN_FAIT_FUTUR =
+  "Un soin fait se date au plus tard aujourd'hui. Datez-le du jour où il a été administré, ou laissez-le « à faire » pour un rappel."
+
 export const MESSAGE_REALISEE_FUTURE =
   "Une intervention réalisée se date au plus tard aujourd'hui. Datez-la du jour où elle a été faite, ou laissez-la planifiée."
 

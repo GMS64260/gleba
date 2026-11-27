@@ -29,21 +29,14 @@ export async function POST(
     return NextResponse.json({ error: "Demande introuvable" }, { status: 404 })
   }
 
-  const existing = await prisma.evolutionVote.findUnique({
-    where: { evolutionId_userId: { evolutionId: id, userId } },
-    select: { id: true },
+  // La bascule se fait sous verrou : deux votes presque simultanés créaient
+  // tous deux la ligne, et le second répondait 500 (équipe debug, D173).
+  const { hasVoted, votes } = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gleba:vote-evolution:${id}:${userId}`}))`
+    const retire = await tx.evolutionVote.deleteMany({ where: { evolutionId: id, userId } })
+    if (retire.count === 0) await tx.evolutionVote.create({ data: { evolutionId: id, userId } })
+    return { hasVoted: retire.count === 0, votes: await tx.evolutionVote.count({ where: { evolutionId: id } }) }
   })
-
-  let hasVoted: boolean
-  if (existing) {
-    await prisma.evolutionVote.delete({ where: { id: existing.id } })
-    hasVoted = false
-  } else {
-    await prisma.evolutionVote.create({ data: { evolutionId: id, userId } })
-    hasVoted = true
-  }
-
-  const votes = await prisma.evolutionVote.count({ where: { evolutionId: id } })
 
   return NextResponse.json({ success: true, hasVoted, votes })
 }

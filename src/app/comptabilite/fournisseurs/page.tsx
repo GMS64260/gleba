@@ -141,7 +141,7 @@ export default function FournisseursPage() {
       siteWeb: fournisseur.siteWeb || "",
       siret: fournisseur.siret || "",
       type: fournisseur.type || "mixte",
-      conditionsPaiement: String(fournisseur.conditionsPaiement || 30),
+      conditionsPaiement: String(fournisseur.conditionsPaiement ?? 30),
       notes: fournisseur.notes || "",
     })
     setDialogOpen(true)

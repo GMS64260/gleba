@@ -813,7 +813,7 @@ export async function GET(request: NextRequest) {
     titreSection("8. Déclarations réglementaires préparées")
     for (const declaration of declarations.declarations) {
       ligne(
-        `${formatDate(declaration.dateEvenement)} · ${declaration.type} · ${declaration.libelle} · ${declaration.organisme} · échéance ${formatDate(declaration.dateEcheance)} · statut ${declaration.statut}${declaration.referenceTransmission ? ` · preuve ${declaration.referenceTransmission}` : ""}${declaration.anomalies.length ? ` · anomalies : ${declaration.anomalies.join(", ")}` : ""}`,
+        `${formatDate(declaration.dateEvenement)} · ${declaration.type} · ${declaration.libelle} · ${declaration.organisme} · échéance ${String(declaration.dateEcheance).slice(0, 10).split('-').reverse().join('/')} · statut ${declaration.statut}${declaration.referenceTransmission ? ` · preuve ${declaration.referenceTransmission}` : ""}${declaration.anomalies.length ? ` · anomalies : ${declaration.anomalies.join(", ")}` : ""}`,
       )
     }
     if (!declarations.declarations.length) vide("Aucune déclaration couverte sur la période.")

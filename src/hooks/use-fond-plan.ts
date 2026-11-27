@@ -170,6 +170,7 @@ export function useFondPlan(parcelleId?: string | null) {
   const patchTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingPatch = React.useRef<{ parcelle: string; reglages: FondReglagesPartiels } | null>(null)
 
+  const rechargerRef = React.useRef<(() => Promise<unknown> | void) | null>(null)
   const envoyerPatch = React.useCallback(() => {
     const patch = pendingPatch.current
     pendingPatch.current = null
@@ -178,6 +179,10 @@ export function useFondPlan(parcelleId?: string | null) {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ parcelle: patch.parcelle, ...patch.reglages }),
+    }).then((res) => {
+      // Réglage refusé par le serveur : l'écran reprend l'état enregistré au
+      // lieu de garder une valeur qui disparaîtra au rechargement (D157).
+      if (!res.ok) void rechargerRef.current?.()
     }).catch(() => {
       // hors-ligne : les réglages restent appliqués localement pour la session
     })
@@ -195,6 +200,7 @@ export function useFondPlan(parcelleId?: string | null) {
       setLoading(false)
     }
   }, [parcelleKey])
+  rechargerRef.current = recharger
 
   React.useEffect(() => {
     let cancelled = false
