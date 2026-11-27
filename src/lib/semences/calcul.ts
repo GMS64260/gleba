@@ -119,8 +119,9 @@ export function besoinGrainesSansMarge(besoin: BesoinGrainesAffichable): number 
  * pour 9,68 g en stock et 9 g nécessaires (équipe debug, D91). Le statut suit
  * la même règle que la colonne « À commander ».
  *
- * Inchangé pour un besoin compté en unités (caïeux, plants : pas de marge à
- * retirer, `enUnites`), pour un besoin nul et pour les statuts qui ne
+ * Inchangé pour un besoin compté en unités (`enUnites` : la marge y est aussi
+ * appliquée, mais le serveur fournit lui-même le besoin et le statut sans
+ * marge, voir `besoinCaieuxSansMarge`), pour un besoin nul et pour les statuts qui ne
  * comparent pas un stock (donnée ou surface manquante, ligne ignorée).
  */
 export function statutSelonMarge<S extends string>(

@@ -19,4 +19,8 @@ export const productionOeufsSchema = z.object({
 }).refine(
   data => data.lotId != null || data.animalId != null,
   { message: 'Lot ou animal requis', path: ['lotId'] }
+).refine(
+  // Casses et œufs souillés sont compris dans la collecte (équipe debug, D195).
+  data => data.casses + data.sales <= data.quantite,
+  { message: 'Casses et œufs souillés sont compris dans la quantité collectée : leur total ne peut pas la dépasser.', path: ['casses'] }
 )

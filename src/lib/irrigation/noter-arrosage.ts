@@ -10,7 +10,7 @@
  * trace et les dates d'avant ; avec, l'intervention créée.
  */
 export type AnnulationArrosage =
-  | { dateEffective: string; avant: Record<number, string | null> }
+  | { dateEffective: string; avant: Record<number, string | null>; tracesCompletees?: Array<{ id: number; avant: string | null; apres: string }> }
   | { interventionId: number }
 
 type Resultat<T> = ({ ok: true } & T) | { ok: false; erreur: string }
@@ -52,7 +52,7 @@ export async function noterArrosage(
     )
     signalerMiseAJour(source)
     if (litres) return { ok: true, annulation: { interventionId: r.interventionId } }
-    return { ok: true, annulation: { dateEffective: r.dateEffective, avant: r.derniereIrrigationAvant ?? {} } }
+    return { ok: true, annulation: { dateEffective: r.dateEffective, avant: r.derniereIrrigationAvant ?? {}, tracesCompletees: r.tracesCompletees ?? [] } }
   } catch (e) {
     return { ok: false, erreur: e instanceof Error ? e.message : "Impossible de noter l'arrosage" }
   }

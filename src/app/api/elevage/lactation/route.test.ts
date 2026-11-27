@@ -46,7 +46,7 @@ describe("GET lactation : provenance de l’âge et tarissement", () => {
     })
     expect(mocks.animal).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 42, userId: "ferme-fictive" } }))
     expect(mocks.collectes).toHaveBeenCalledWith({
-      where: { animalId: 42, userId: "ferme-fictive", date: { gte: avant(4) } },
+      where: { animalId: 42, userId: "ferme-fictive", date: { gte: avant(4), lte: expect.any(Date) } },
       orderBy: { date: "asc" }, select: { date: true, quantiteLitres: true },
     })
   })

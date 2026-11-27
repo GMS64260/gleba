@@ -255,16 +255,26 @@ export async function PUT(request: NextRequest) {
   if (existing) {
     return NextResponse.json({ error: "Cette maladie personnalisée existe déjà." }, { status: 409 })
   }
-  const data = await prisma.maladieElevage.create({
-    data: {
-      userId: session.user.id,
-      code,
-      nom: parsed.data.nom,
-      especesCibles: parsed.data.especesCibles,
-      description: parsed.data.description || null,
-    },
-  })
-  return NextResponse.json({ data }, { status: 201 })
+  try {
+    const data = await prisma.maladieElevage.create({
+      data: {
+        userId: session.user.id,
+        code,
+        nom: parsed.data.nom,
+        especesCibles: parsed.data.especesCibles,
+        description: parsed.data.description || null,
+      },
+    })
+    return NextResponse.json({ data }, { status: 201 })
+  } catch (erreur) {
+    // Deux envois simultanés passent tous deux la lecture ci-dessus : la
+    // contrainte d'unicité tranche, et le second reçoit le même 409 au lieu
+    // d'une erreur 500 sans explication (équipe debug, D194).
+    if ((erreur as { code?: string } | null)?.code === 'P2002') {
+      return NextResponse.json({ error: "Cette maladie personnalisée existe déjà." }, { status: 409 })
+    }
+    throw erreur
+  }
 }
 
 export async function DELETE(request: NextRequest) {

@@ -168,7 +168,10 @@ function BesoinsEau({ val }: { val: number | null }) {
 
 const columns: ColumnDef<EspeceWithRelations>[] = [
   {
-    accessorKey: "id",
+    // La recherche et le tri portent sur le nom affiché, pas sur la clé : une
+    // espèce personnelle restait introuvable par son nom (D146).
+    id: "espece",
+    accessorFn: (espece) => espece.nom ?? espece.id,
     header: "Espèce",
     cell: ({ row }) => {
       const espece = row.original

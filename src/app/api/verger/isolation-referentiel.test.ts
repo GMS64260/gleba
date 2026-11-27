@@ -135,9 +135,11 @@ describe('GET /api/verger/referentiel/export', () => {
       expect(csv).not.toContain('secrète')
       expect(csv).not.toContain('cm-privee')
       // Le catalogue, l'entrée du compte et la partagée sortent toujours.
-      for (const marque of onglet === 'especes' ? ['e-gleba-1', 'e-cm-moi', 'e-cm-partagee'] : ['Entrée Gleba', 'Entrée du compte', 'Entrée partagée']) {
+      for (const marque of ['Entrée Gleba', 'Entrée du compte', 'Entrée partagée']) {
         expect(csv).toContain(marque)
       }
+      // Une espèce sort sous son nom, jamais sous sa clé technique (D145).
+      if (onglet === 'especes') expect(csv).not.toContain('e-cm-moi')
     },
   )
 })

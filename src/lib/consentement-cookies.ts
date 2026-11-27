@@ -22,3 +22,14 @@ export function enregistrerChoixCookies(choix: Record<string, unknown>): void {
   localStorage.setItem(CLE_CHOIX_COOKIES, JSON.stringify(choix))
   window.dispatchEvent(new Event(EVENEMENT_CHOIX_COOKIES))
 }
+
+/**
+ * Rouvre le bandeau pour revoir un choix déjà enregistré. Sans ce moyen, un
+ * accord donné ne pouvait plus être retiré (équipe debug, D172), alors que le
+ * retrait doit rester aussi simple que l'accord.
+ */
+export const EVENEMENT_ROUVRIR_BANDEAU = "gleba-cookie-banner-open"
+
+export function rouvrirBandeauCookies(): void {
+  window.dispatchEvent(new Event(EVENEMENT_ROUVRIR_BANDEAU))
+}

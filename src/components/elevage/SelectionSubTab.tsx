@@ -321,12 +321,14 @@ export function SelectionSubTab() {
                   <Label className="text-sm font-medium flex items-center gap-2"><Dna className="h-4 w-4 text-blue-600" />{cfg.pedigreeTitle}</Label>
                   <Button size="sm" variant="outline" onClick={() => ouvrirApercu(`/api/elevage/animaux/${testAnimalId}/pedigree`, cfg.pedigreeTitle)}><ExternalLink className="h-4 w-4 mr-1" />Exporter le pedigree (PDF)</Button>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end">
-                  <div className="space-y-1"><Label className="text-xs">{cfg.registreLabel}</Label><Input className="h-9" value={ped.numeroLof} onChange={(e) => setPed((p) => ({ ...p, numeroLof: e.target.value }))} /></div>
+                {/* Champs fermés tant que la fiche n'est pas chargée : sur connexion lente,
+                    la réponse remplaçait le numéro en cours de saisie (D188). */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end" aria-busy={pedPour !== testAnimalId}>
+                  <div className="space-y-1"><Label className="text-xs">{cfg.registreLabel}</Label><Input className="h-9" disabled={pedPour !== testAnimalId} value={ped.numeroLof} onChange={(e) => setPed((p) => ({ ...p, numeroLof: e.target.value }))} /></div>
                   {cfg.showCotation && (
                     <div className="space-y-1">
                       <Label className="text-xs">Cotation (1-6)</Label>
-                      <Select value={ped.cotation || "__none__"} onValueChange={(v) => setPed((p) => ({ ...p, cotation: v === "__none__" ? "" : v }))}>
+                      <Select disabled={pedPour !== testAnimalId} value={ped.cotation || "__none__"} onValueChange={(v) => setPed((p) => ({ ...p, cotation: v === "__none__" ? "" : v }))}>
                         <SelectTrigger className="h-9"><SelectValue placeholder="—" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="__none__">—</SelectItem>
@@ -335,9 +337,9 @@ export function SelectionSubTab() {
                       </Select>
                     </div>
                   )}
-                  <div className="space-y-1"><Label className="text-xs">Confirmation</Label><label className="flex h-9 items-center gap-2 text-sm"><input type="checkbox" checked={ped.confirmationLof} onChange={(e) => setPed((p) => ({ ...p, confirmationLof: e.target.checked }))} />{cfg.confirmationLabel}</label></div>
-                  <div className="space-y-1"><Label className="text-xs">Date confirmation</Label><Input className="h-9" type="date" value={ped.dateConfirmation} onChange={(e) => setPed((p) => ({ ...p, dateConfirmation: e.target.value }))} /></div>
-                  <div className="space-y-1 lg:col-span-3"><Label className="text-xs">{cfg.titresLabel}</Label><Input className="h-9" value={ped.titres} onChange={(e) => setPed((p) => ({ ...p, titres: e.target.value }))} placeholder={cfg.titresPlaceholder} /></div>
+                  <div className="space-y-1"><Label className="text-xs">Confirmation</Label><label className="flex h-9 items-center gap-2 text-sm"><input type="checkbox" disabled={pedPour !== testAnimalId} checked={ped.confirmationLof} onChange={(e) => setPed((p) => ({ ...p, confirmationLof: e.target.checked }))} />{cfg.confirmationLabel}</label></div>
+                  <div className="space-y-1"><Label className="text-xs">Date confirmation</Label><Input className="h-9" type="date" disabled={pedPour !== testAnimalId} value={ped.dateConfirmation} onChange={(e) => setPed((p) => ({ ...p, dateConfirmation: e.target.value }))} /></div>
+                  <div className="space-y-1 lg:col-span-3"><Label className="text-xs">{cfg.titresLabel}</Label><Input className="h-9" disabled={pedPour !== testAnimalId} value={ped.titres} onChange={(e) => setPed((p) => ({ ...p, titres: e.target.value }))} placeholder={cfg.titresPlaceholder} /></div>
                   <div><Button size="sm" onClick={savePed} disabled={isSavingPed || pedPour !== testAnimalId}>{isSavingPed ? "Enregistrement…" : pedPour !== testAnimalId ? "Chargement…" : "Enregistrer"}</Button></div>
                 </div>
               </div>

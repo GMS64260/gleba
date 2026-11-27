@@ -78,16 +78,20 @@ export function decalerGeometrieParcelle(geojsonStr: string, marge = MARGE_COPIE
  * nom, mais deux « (copie) » identiques rendraient les sélecteurs
  * indiscernables (même défaut que l'import cadastral, QA cmsp57mck).
  */
-export function nomCopieParcelle(nom: string, nomsExistants: Iterable<string>): string {
+/** Même borne que le nom d'une parcelle à la création (`parcelleSchema.nom`). */
+export const NOM_PARCELLE_MAX = 100
+
+export function nomCopieParcelle(nom: string, nomsExistants: Iterable<string>, max = NOM_PARCELLE_MAX): string {
   const pris = new Set(Array.from(nomsExistants, (n) => n.trim().toLowerCase()))
   const base = nom.replace(/\s*\(copie(?: \d+)?\)\s*$/i, "").trim() || "Parcelle"
-  let candidat = `${base} (copie)`
-  let rang = 2
-  while (pris.has(candidat.toLowerCase())) {
-    candidat = `${base} (copie ${rang})`
-    rang += 1
+  for (let rang = 1; ; rang++) {
+    const suffixe = rang === 1 ? " (copie)" : ` (copie ${rang})`
+    // Le nom est raccourci pour que la copie tienne dans la limite : une
+    // parcelle au nom de 100 caractères ne pouvait pas être dupliquée (D119).
+    const tete = base.slice(0, max - suffixe.length).replace(/[\uD800-\uDBFF]$/, "").trimEnd()
+    const candidat = `${tete}${suffixe}`
+    if (!pris.has(candidat.toLowerCase())) return candidat
   }
-  return candidat
 }
 
 /** Ce que la carte connaît d'une parcelle source. */

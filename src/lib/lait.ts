@@ -253,7 +253,11 @@ export function synthetiseLactations(
 
     const joursCouverts = parJour.size
     const moyenneJour = joursCouverts > 0 ? laitTotal / joursCouverts : 0
-    const jours = Math.max(0, Math.round((Math.min(finObs, refMs + 86_400_000) - debut) / 86_400_000))
+    // Jour de mise-bas = 0, comme `dim()` et `courbeLactation` : le palmarès
+    // comptait un jour de plus que l'écran Lactation pour une lactation en
+    // cours (équipe debug, D156). Une lactation close garde sa durée.
+    const finJours = enCours ? refMs : Math.min(finObs, refMs + 86_400_000)
+    const jours = Math.max(0, Math.round((finJours - debut) / 86_400_000))
 
     const moyChamp = (getter: (c: CollecteLite) => number | null | undefined): number | null => {
       const vals = dansFenetre.map(getter).filter((v): v is number => v != null && !Number.isNaN(Number(v))).map(Number)

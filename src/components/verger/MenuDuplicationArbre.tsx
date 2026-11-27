@@ -11,6 +11,7 @@
  * `POST /api/arbres/[id]/dupliquer`).
  */
 
+import { useMenuOuvertAuClic } from "@/hooks/use-menu-ouvert-au-clic"
 import * as React from "react"
 import {
   DropdownMenu,
@@ -38,10 +39,12 @@ export function MenuDuplicationArbre({
   const [recopierAchat, setRecopierAchat] = React.useState(false)
   const prix = arbre.prixAchat ?? 0
   const aUnAchat = prix > 0 || arbre.dateAchat != null
+  // Au doigt, le menu s'ouvre au clic et non à l'appui (D121).
+  const menu = useMenuOuvertAuClic()
 
   return (
-    <DropdownMenu onOpenChange={(ouvert) => { if (!ouvert) setRecopierAchat(false) }}>
-      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+    <DropdownMenu open={menu.open} onOpenChange={(ouvert) => { menu.onOpenChange(ouvert); if (!ouvert) setRecopierAchat(false) }}>
+      <DropdownMenuTrigger {...menu.declencheur} asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align={align} onClick={(e) => e.stopPropagation()}>
         {aUnAchat && (
           <>

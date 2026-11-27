@@ -57,7 +57,9 @@ function ActionRegistre({ action }: { action: ActionLigne }) {
     )
   }
   return (
-    <button type="button" onClick={action.onClick} disabled={action.disabled} className={CLASSES_ACTION}>
+    // Le second clic d'un double clic est ignoré : la ligne traitée disparaît et
+    // il partait sur la ligne voisine remontée sous le pointeur (D125).
+    <button type="button" onClick={(e) => { if (e.detail > 1) return; action.onClick?.() }} disabled={action.disabled} className={CLASSES_ACTION}>
       {action.libelle}
     </button>
   )

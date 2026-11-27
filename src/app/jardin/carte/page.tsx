@@ -7,7 +7,7 @@
  */
 
 import { confirmDialog } from "@/lib/global-dialog"
-import { useState, useEffect, useCallback, Suspense } from "react"
+import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
@@ -265,20 +265,26 @@ function CartePageContent() {
   // -- Duplication (vigie5388, 2026-09-18) --
   // Même tracé posé juste à l'est de l'original, sans référence cadastrale
   // (une copie n'est pas la parcelle du cadastre, et l'API refuse le doublon).
+  const duplicationEnCours = useRef(false)
   const handleDuplicate = useCallback(async (id: string) => {
     const source = parcelles.find((p) => p.id === id)
     if (!source) return
+    // Un seul envoi à la fois : un double clic créait deux copies.
+    if (duplicationEnCours.current) return
+    duplicationEnCours.current = true
     // Activités (couches) comprises : la copie les perdait (PLAN-03, 2026-11-12).
     const corps = corpsCopieParcelle(source, parcelles.map((p) => p.nom))
     if (!corps) {
       toast({ title: "Duplication impossible", description: "Le tracé de cette parcelle n'est pas exploitable.", variant: "destructive" })
+      duplicationEnCours.current = false
       return
     }
     try {
       const res = await fetch("/api/carte", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(corps),
+        // `copieDe` : le serveur choisit le nom libre, même si un autre onglet a déjà créé une copie.
+        body: JSON.stringify({ ...corps, copieDe: source.nom }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
@@ -296,6 +302,8 @@ function CartePageContent() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue"
       toast({ title: "Erreur", description: message, variant: "destructive" })
+    } finally {
+      duplicationEnCours.current = false
     }
   }, [parcelles, fetchParcelles, toast])
 

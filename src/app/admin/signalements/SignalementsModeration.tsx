@@ -99,6 +99,19 @@ export function SignalementsModeration() {
     if (!(await confirmDialog(`Retirer « ${s.entree?.nom ?? s.refId} » de la communauté (rendue privée à son auteur) ?`))) return
     setBusy(s.id)
     try {
+      // Le signalement est pris D'ABORD, et seulement s'il est encore ouvert :
+      // rejeté depuis un autre onglet, il ne doit plus retirer la fiche (D211).
+      const prise = await fetch(`/api/admin/signalements/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statut: "traite", depuis: "ouvert" }),
+      })
+      if (!prise.ok) {
+        const p = await prise.json().catch(() => null)
+        toast({ variant: "destructive", title: "Retrait non effectué", description: p?.error || "Ce signalement n'est plus ouvert." })
+        await charger()
+        return
+      }
       const res = await fetch(`${s.apiBase}/${encodeURIComponent(s.refId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -106,15 +119,16 @@ export function SignalementsModeration() {
       })
       if (!res.ok) {
         const p = await res.json().catch(() => null)
+        // Le retrait a échoué : le signalement redevient ouvert.
+        await fetch(`/api/admin/signalements/${s.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ statut: "ouvert", depuis: "traite" }),
+        }).catch(() => null)
         toast({ variant: "destructive", title: "Erreur", description: p?.error || "Retrait impossible" })
-        setBusy(null)
+        await charger()
         return
       }
-      await fetch(`/api/admin/signalements/${s.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: "traite" }),
-      })
       toast({ title: "Entrée retirée de la communauté", description: `« ${s.entree?.nom ?? s.refId} » est de nouveau privée.` })
       await charger()
     } finally {

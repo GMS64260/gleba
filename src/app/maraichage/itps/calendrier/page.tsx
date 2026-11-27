@@ -205,11 +205,11 @@ export default function ITCalendrierPage() {
 
       // Filtre planches
       if (filtreTypePlanche === "mes-planches") {
+        // Un itinéraire générique (sans type) est toujours compatible. Le texte
+        // recherché s'applique ensuite : chaque cas sortait ici, sans le lire (D161).
         const t = itp.typePlanche
-        if (!t) return true // ITP générique : toujours affiché
-        if (TYPES_ABRI.includes(t)) return userADeLAbri
-        if (t === "Plein champ") return userADuPleinChamp
-        return false
+        const compatible = !t || (TYPES_ABRI.includes(t) ? userADeLAbri : t === "Plein champ" ? userADuPleinChamp : false)
+        if (!compatible) return false
       } else if (filtreTypePlanche !== "all" && itp.typePlanche !== filtreTypePlanche) {
         return false
       }

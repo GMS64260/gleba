@@ -253,6 +253,11 @@ export async function POST(request: NextRequest) {
 // QA 2026-05-15 — édition par bouton ✏️ depuis l'onglet Consommations.
 // On recalcule l'impact stock : delta = nouvelle quantité - ancienne ;
 // puis on applique le delta sur UserStockAliment.
+/** Refus de stock levé dans la transaction de correction, rendu en 422 comme à la création. */
+class RefusStockAliment extends Error {
+  constructor(readonly corps: object) { super('stock') }
+}
+
 export async function PATCH(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -260,6 +265,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const userId = session.user.id
     const body = await request.json()
+    const overrideStock = body?.overrideStock === true
     const id = parseInt(body.id, 10)
     if (Number.isNaN(id)) {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
@@ -306,6 +312,35 @@ export async function PATCH(request: NextRequest) {
         where: { id, userId },
         select: { alimentId: true, quantite: true },
       }) ?? avant
+      // Même garde qu'à la création : corriger une distribution ne fait pas
+      // passer le stock en négatif sans confirmation (équipe debug, D153).
+      const deduction = existing.alimentId === alimentId ? quantite - existing.quantite : quantite
+      if (!overrideStock && deduction > 0) {
+        const stockCible = await tx.userStockAliment.findUnique({
+          where: { userId_alimentId: { userId, alimentId } },
+          select: { stock: true },
+        })
+        if (stockCible === null) {
+          throw new RefusStockAliment({
+            error: 'Stock non initialisé',
+            code: 'STOCK_NON_INITIALISE',
+            details: { message: `Le stock de cet aliment n'a jamais été renseigné. Initialisez-le d'abord depuis l'onglet « Stocks » (ou confirmez pour enregistrer la correction et laisser le stock partir en négatif).` },
+          })
+        }
+        const stockActuel = stockCible.stock ?? 0
+        if (stockActuel - deduction < 0) {
+          throw new RefusStockAliment({
+            error: 'Stock insuffisant',
+            code: 'STOCK_INSUFFISANT',
+            details: {
+              stockActuel,
+              quantiteDemandee: deduction,
+              manque: Math.round((deduction - stockActuel) * 100) / 100,
+              message: `Stock actuel : ${stockActuel} — cette correction en retire ${deduction} de plus et ferait passer le stock à ${Math.round((stockActuel - deduction) * 100) / 100}. Approvisionnez le stock ou confirmez pour forcer.`,
+            },
+          })
+        }
+      }
       if (existing.alimentId !== alimentId) {
         await tx.userStockAliment.upsert({
           where: { userId_alimentId: { userId, alimentId: existing.alimentId } },
@@ -355,6 +390,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: updated })
   } catch (error) {
+    if (error instanceof RefusStockAliment) return NextResponse.json(error.corps, { status: 422 })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/consommations-aliments error:', error)
     return NextResponse.json(

@@ -142,12 +142,16 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
         }),
       })
       if (res.ok) {
+        // L'écran reprend la date enregistrée : une opération faite se range au
+        // jour de sa réalisation, pas à sa date prévue (équipe debug, D110).
+        const maj = (await res.json().catch(() => null)) as (OperationDelai & { fait?: boolean; date?: string; datePrevue?: string | null }) | null
         setOperations((prev) =>
-          prev.map((o) => (o.id === op.id ? { ...o, fait: !op.fait } : o))
+          prev.map((o) => (o.id === op.id
+            ? { ...o, fait: maj?.fait ?? !op.fait, date: maj?.date ?? o.date, datePrevue: maj?.datePrevue !== undefined ? maj.datePrevue : o.datePrevue }
+            : o))
         )
         toast({ title: op.fait ? "Remis en attente" : "Fait !" })
         // Traitement coché « fait » sans délai : on le demande sur place.
-        const maj = (await res.json().catch(() => null)) as OperationDelai | null
         if (!op.fait && maj && delaiTraitementASaisir(maj)) setDelaiOp(maj)
       } else {
         toast({ variant: "destructive", title: "Mise à jour refusée" })
@@ -469,7 +473,9 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
                   </SheetDescription>
                 </SheetHeader>
                 <div className="py-4 space-y-2 overflow-y-auto">
-                  {selectedDayForMobile?.events.map((op) => {
+                  {selectedDayForMobile?.events.map((ouverte) => {
+                    // Opération à jour, pas la copie prise à l'ouverture du panneau.
+                    const op = operations.find((o) => o.id === ouverte.id) ?? ouverte
                     const config = TYPE_CONFIG[op.type] || TYPE_CONFIG.autre
                     const Icon = config.icon
                     return (

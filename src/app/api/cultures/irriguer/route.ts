@@ -108,7 +108,14 @@ export async function PATCH(request: NextRequest) {
       if (Number.isNaN(dateEffective.getTime()) || !avant) {
         return NextResponse.json({ error: 'dateEffective et avant requis' }, { status: 400 })
       }
-      const result = await annulerArrosageCultures({ userId, dateEffective, avant })
+      const tracesCompletees = (Array.isArray(body.tracesCompletees) ? body.tracesCompletees : [])
+        .filter((t: unknown): t is { id: number; avant: string | null; apres: string } => {
+          const trace = t as { id?: unknown; avant?: unknown; apres?: unknown } | null
+          return !!trace && Number.isInteger(trace.id) && typeof trace.apres === 'string' && trace.apres.length <= 1000
+            && (trace.avant === null || (typeof trace.avant === 'string' && trace.avant.length <= 1000))
+        })
+        .slice(0, 500)
+      const result = await annulerArrosageCultures({ userId, dateEffective, avant, tracesCompletees })
       return NextResponse.json({ success: true, ...result })
     }
 

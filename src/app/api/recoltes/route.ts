@@ -202,9 +202,14 @@ export async function POST(request: NextRequest) {
   try {
     // Le formulaire exprime déjà la quantité dans l'unité de la ferme.
     // Son schéma retire toute unité client, comme avant la mutualisation.
-    const validation = createRecolteSchema.safeParse(await request.json())
+    const corps = await request.json()
+    const validation = createRecolteSchema.safeParse(corps)
     if (!validation.success) return NextResponse.json({ error: 'Données invalides', details: validation.error.flatten() }, { status: 400 })
-    const resultat = await creerRecoltes(session!.user.id, [validation.data])
+    // L'unité que l'écran affichait ne choisit rien : elle sert à refuser une
+    // quantité saisie dans une unité qui a changé depuis (autre onglet). 3 kg
+    // devenaient 3 tiges (équipe debug, D124).
+    const uniteAttendue = typeof corps?.uniteAttendue === 'string' ? corps.uniteAttendue : undefined
+    const resultat = await creerRecoltes(session!.user.id, [{ ...validation.data, ...(uniteAttendue ? { unite: uniteAttendue } : {}) }])
     if (!resultat.ok) {
       return NextResponse.json({ error: resultat.error, ...('champ' in resultat ? { champ: resultat.champ } : {}) }, { status: 400 })
     }

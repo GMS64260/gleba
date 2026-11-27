@@ -85,3 +85,15 @@ describe("corpsCopieParcelle", () => {
     expect(corpsCopieParcelle({ ...source, geometry: "pas du json" }, [])).toBeNull()
   })
 })
+
+describe('nomCopieParcelle, nom long (D119)', () => {
+  it('raccourcit le nom pour que la copie tienne dans la limite de 100 caractères', () => {
+    const long = 'P'.repeat(100)
+    const copie = nomCopieParcelle(long, [long])
+    expect(copie.length).toBeLessThanOrEqual(100)
+    expect(copie.endsWith(' (copie)')).toBe(true)
+    const seconde = nomCopieParcelle(long, [long, copie])
+    expect(seconde.length).toBeLessThanOrEqual(100)
+    expect(seconde.endsWith(' (copie 2)')).toBe(true)
+  })
+})

@@ -8,6 +8,7 @@
  * Édition / suppression : voir /api/elevage/especes-animales/[id].
  */
 
+import { refusDureesEspece } from '@/lib/elevage/durees-espece'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -127,6 +128,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    const refusDuree = refusDureesEspece(body)
+    if (refusDuree) return NextResponse.json({ error: refusDuree.erreur, champ: refusDuree.champ }, { status: 400 })
 
     // QA cmvgeif10 — le rendement carcasse est un ratio du poids vif ; un
     // pourcentage (65) est refusé en nommant le champ et l'unité.

@@ -7,3 +7,12 @@ export function indisponibiliteLotVerger(lot: { date: Date; datePeremption?: Dat
   if (lot.datePeremption && dateIsoFacture(lot.datePeremption) < jour) return 'perime' as const
   return null
 }
+
+/**
+ * Jours civils avant la péremption : 0 = dernier jour vendable, négatif = périmé.
+ * Même jour civil que la règle de vente ci-dessus, pour que l'écran n'annonce
+ * pas « Périmé » un lot encore vendable (équipe debug, D109).
+ */
+export function joursAvantPeremptionLot(datePeremption: Date | string, aLaDate: Date): number {
+  return Math.round((Date.parse(dateIsoFacture(datePeremption)) - Date.parse(dateIsoFacture(aLaDate))) / 86_400_000)
+}

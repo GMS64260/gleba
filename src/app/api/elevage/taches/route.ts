@@ -60,7 +60,10 @@ export async function GET(request: NextRequest) {
           userId,
           OR: [
             { datePrevue: { gte: start, lte: end } },
-            { date: { gte: start, lte: end } },
+            // Un soin à faire reporté appartient à la semaine de son rappel, pas
+            // à celle de sa saisie : il était compté dans les deux (D118).
+            { datePrevue: null, date: { gte: start, lte: end } },
+            { fait: true, date: { gte: start, lte: end } },
             ...(retards
               ? [
                   { fait: false, datePrevue: { lt: start } },
@@ -376,7 +379,8 @@ export async function GET(request: NextRequest) {
         ...soinsSansInjections
           .map(s => ({
         id: s.id,
-        date: s.datePrevue || s.date,
+        // Un soin fait se range au jour de sa réalisation.
+        date: s.fait ? s.date : (s.datePrevue || s.date),
         dateReelle: s.date,
         datePrevue: s.datePrevue,
         type: s.type,

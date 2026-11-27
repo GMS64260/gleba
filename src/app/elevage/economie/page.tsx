@@ -50,9 +50,34 @@ export default function EconomieElevagePage() {
       .then(setAnalyse).finally(() => setLoading(false)).catch(() => undefined)
     return () => controller.abort()
   }, [annee])
-  const createAdmin = async (body: object) => {
-    const response = await fetch('/api/elevage/administration', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    if (response.ok) await refreshAdmin()
+  // Un refus s'affiche et laisse la saisie en place : il était avalé et le
+  // formulaire vidé (D174). Un seul envoi à la fois : un double clic créait
+  // deux fois la même échéance (D175).
+  const [erreurAdmin, setErreurAdmin] = React.useState<{ entity: string; message: string } | null>(null)
+  const [envoi, setEnvoi] = React.useState<null | 'echeance' | 'contrat'>(null)
+  const envoiEnCours = React.useRef(false)
+  const createAdmin = async (body: { entity: 'echeance' | 'contrat' } & Record<string, unknown>): Promise<boolean> => {
+    if (envoiEnCours.current) return false
+    envoiEnCours.current = true
+    setEnvoi(body.entity)
+    setErreurAdmin(null)
+    try {
+      const response = await fetch('/api/elevage/administration', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!response.ok) {
+        const refus = await response.json().catch(() => null)
+        const champ = refus?.details?.fieldErrors ? (Object.values(refus.details.fieldErrors).flat()[0] as string | undefined) : undefined
+        setErreurAdmin({ entity: body.entity, message: String(champ || refus?.error || "L'enregistrement a été refusé.") })
+        return false
+      }
+      await refreshAdmin()
+      return true
+    } catch {
+      setErreurAdmin({ entity: body.entity, message: "Connexion interrompue : rien n'a été enregistré." })
+      return false
+    } finally {
+      envoiEnCours.current = false
+      setEnvoi(null)
+    }
   }
 
   return <div className="min-h-screen bg-slate-50">
@@ -73,23 +98,25 @@ export default function EconomieElevagePage() {
         <Card><CardHeader><CardTitle>Méthode de calcul</CardTitle></CardHeader><CardContent className="space-y-1 text-sm text-muted-foreground">{Object.values(analyse.methode).map(text => <p key={text}>• {text}</p>)}</CardContent></Card>
         <div className="grid gap-4 lg:grid-cols-2">
           <Card><CardHeader><CardTitle>Échéances et aides</CardTitle></CardHeader><CardContent className="space-y-3">
-            <form className="grid gap-2 sm:grid-cols-4" onSubmit={async e => { e.preventDefault(); await createAdmin({ entity: 'echeance', ...echeance }); setEcheance({ libelle: '', categorie: 'PAC', dateEcheance: '' }) }}>
-              <Input required placeholder="Libellé" value={echeance.libelle} onChange={e => setEcheance(v => ({ ...v, libelle: e.target.value }))} />
+            <form className="grid gap-2 sm:grid-cols-4" onSubmit={async e => { e.preventDefault(); if (await createAdmin({ entity: 'echeance', ...echeance })) setEcheance({ libelle: '', categorie: 'PAC', dateEcheance: '' }) }}>
+              <Input required maxLength={200} aria-label="Libellé (200 caractères au maximum)" placeholder="Libellé" value={echeance.libelle} onChange={e => setEcheance(v => ({ ...v, libelle: e.target.value }))} />
               <select aria-label="Catégorie" className="h-10 rounded-md border bg-white px-2" value={echeance.categorie} onChange={e => setEcheance(v => ({ ...v, categorie: e.target.value }))}><option>PAC</option><option>IDENTIFICATION</option><option>SANITAIRE</option><option>ASSURANCE</option><option>AUTRE</option></select>
               <Input required type="date" value={echeance.dateEcheance} onChange={e => setEcheance(v => ({ ...v, dateEcheance: e.target.value }))} />
-              <Button type="submit">Ajouter</Button>
+              <Button type="submit" disabled={envoi !== null}>{envoi === 'echeance' ? 'Ajout…' : 'Ajouter'}</Button>
             </form>
+            {erreurAdmin?.entity === 'echeance' && <p role="alert" className="text-sm text-red-700">{erreurAdmin.message}</p>}
             {admin.echeances.map(item => <div key={item.id} className="flex justify-between border-t pt-2 text-sm"><span>{item.categorie} · {item.libelle}</span><span>{new Date(item.dateEcheance).toLocaleDateString('fr-FR')}</span></div>)}
           </CardContent></Card>
           <Card><CardHeader><CardTitle>Contrats commerciaux</CardTitle></CardHeader><CardContent className="space-y-3">
-            <form className="grid gap-2 sm:grid-cols-2" onSubmit={async e => { e.preventDefault(); await createAdmin({ entity: 'contrat', ...contrat, dateFin: contrat.dateFin || null }); setContrat({ client: '', production: '', dateDebut: '', dateFin: '', prix: '' }) }}>
+            <form className="grid gap-2 sm:grid-cols-2" onSubmit={async e => { e.preventDefault(); if (await createAdmin({ entity: 'contrat', ...contrat, dateFin: contrat.dateFin || null })) setContrat({ client: '', production: '', dateDebut: '', dateFin: '', prix: '' }) }}>
               <Input required placeholder="Client / collecteur" value={contrat.client} onChange={e => setContrat(v => ({ ...v, client: e.target.value }))} />
               <Input required placeholder="Production" value={contrat.production} onChange={e => setContrat(v => ({ ...v, production: e.target.value }))} />
               <Input required aria-label="Début" type="date" value={contrat.dateDebut} onChange={e => setContrat(v => ({ ...v, dateDebut: e.target.value }))} />
-              <Input aria-label="Fin" type="date" value={contrat.dateFin} onChange={e => setContrat(v => ({ ...v, dateFin: e.target.value }))} />
+              <Input aria-label="Fin" type="date" min={contrat.dateDebut || undefined} value={contrat.dateFin} onChange={e => setContrat(v => ({ ...v, dateFin: e.target.value }))} />
               <Input placeholder="Prix / grille" value={contrat.prix} onChange={e => setContrat(v => ({ ...v, prix: e.target.value }))} />
-              <Button type="submit">Ajouter le contrat</Button>
+              <Button type="submit" disabled={envoi !== null}>{envoi === 'contrat' ? 'Ajout…' : 'Ajouter le contrat'}</Button>
             </form>
+            {erreurAdmin?.entity === 'contrat' && <p role="alert" className="text-sm text-red-700">{erreurAdmin.message}</p>}
             {admin.contrats.map(item => <div key={item.id} className="flex justify-between border-t pt-2 text-sm"><span>{item.client} · {item.production}</span><span>{item.dateFin ? `fin ${new Date(item.dateFin).toLocaleDateString('fr-FR')}` : 'sans échéance'}</span></div>)}
           </CardContent></Card>
         </div>

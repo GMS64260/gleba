@@ -207,13 +207,12 @@ export default function SaisieRecoltePage() {
     // Soustraire les recoltes déjà effectuées (de la session en cours + de la
     // DB). Côté DB on prend la part de l'unité courante : `totalRecolteParUnite`
     // est ventilé, additionner les autres unités serait faux.
-    const dejaRecolteSessions = recentRecoltes
-      .filter((r) => r.cultureId === selectedCultureData.id)
-      .reduce((sum, r) => sum + r.quantite, 0)
+    // Les pesées de la session sont reportées dans ce total à l'enregistrement :
+    // les compter aussi à part les doublait dès que la liste était rechargée (D122).
     const dejaRecolteDB =
       selectedCultureData.totalRecolteParUnite?.[uniteCulture] ??
       (uniteCulture === 'kg' ? selectedCultureData.totalRecolte || 0 : 0)
-    const restant = Math.max(0, rendementTotal - dejaRecolteDB - dejaRecolteSessions)
+    const restant = Math.max(0, rendementTotal - dejaRecolteDB)
 
     const decimales = uniteCulture === 'kg' ? 2 : 0
     const arrondi = (valeur: number) =>
@@ -221,12 +220,12 @@ export default function SaisieRecoltePage() {
 
     return {
       rendementTotal: arrondi(rendementTotal),
-      dejaRecolte: arrondi(dejaRecolteDB + dejaRecolteSessions),
+      dejaRecolte: arrondi(dejaRecolteDB),
       restant: arrondi(restant),
       surface: Math.round(surface * 100) / 100,
       rendementM2: Math.round(parM2 * 1000) / 1000,
     }
-  }, [selectedCultureData, recentRecoltes, uniteCulture])
+  }, [selectedCultureData, uniteCulture])
 
   // Pré-remplir la quantité quand on change de culture (si estimation disponible)
   const prevSelectedCulture = React.useRef(selectedCulture)
@@ -301,6 +300,7 @@ export default function SaisieRecoltePage() {
           especeId: cultureData.especeId,
           cultureId: cultureData.id,
           quantite: quantiteLue,
+          uniteAttendue: uniteQuantiteRecolte(cultureData.espece.uniteRendement),
           date: new Date(dateSoumise),
           datePeremption: peremptionSoumise ? new Date(peremptionSoumise) : null,
           notes: notes || null,
@@ -322,6 +322,13 @@ export default function SaisieRecoltePage() {
         creee && typeof creee.unite === "string" && (UNITES_QUANTITE as readonly string[]).includes(creee.unite)
           ? (creee.unite as UniteQuantite)
           : uniteQuantiteRecolte(cultureData.espece.uniteRendement)
+      const avecLaPesee = (c: Culture): Culture => c.id !== cultureData.id ? c : {
+        ...c,
+        totalRecolteParUnite: ajouterQuantite({ ...(c.totalRecolteParUnite ?? {}) }, uniteEnregistree, quantiteLue),
+        totalRecolte: uniteEnregistree === 'kg' ? (c.totalRecolte || 0) + quantiteLue : c.totalRecolte,
+      }
+      setSelectedCultureData((actuelle) => actuelle && avecLaPesee(actuelle))
+      setCultures((liste) => liste.map(avecLaPesee))
       setRecentRecoltes((prev) => [
         {
           id: typeof creee?.id === "number" ? creee.id : null,

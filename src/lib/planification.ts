@@ -61,6 +61,12 @@ function deriveIlot(ilot: string | null, nom: string | null | undefined): string
 
 export interface CulturePrevue {
   plancheId: string
+  /**
+   * Identifiant de la planche. `plancheId` porte son NOM (affichage, tri) : un
+   * nom se réutilise, et la création d'un lot rattachait la culture à une
+   * autre planche qui avait repris ce nom (équipe debug, D159).
+   */
+  plancheRef?: string | null
   plancheLongueur: number | null
   plancheLargeur: number | null
   plancheSurface: number | null
@@ -139,6 +145,8 @@ export interface CulturePrevue {
 export interface EtapeRotationNonSuivie {
   /** Nom de la planche (même convention que `CulturePrevue.plancheId`). */
   plancheId: string
+  /** Identifiant de la planche (voir `CulturePrevue.plancheRef`). */
+  plancheRef?: string | null
   ilot: string | null
   rotationId: string | null
   rotationAnnee: number
@@ -217,6 +225,13 @@ export interface BesoinSemence {
   aCommander: number
   /** Manque à commander (en unités pour mode bulbe_caieu). */
   caieuxACommander: number
+  /**
+   * Les mêmes sans la marge de sécurité, et le statut qui va avec : l'écran les
+   * lit quand le réglage « Marge sécurité » est désactivé (équipe debug, D107).
+   */
+  besoinCaieuxSansMarge: number
+  caieuxACommanderSansMarge: number
+  statutSansMarge: BesoinSemence['statut']
   /**
    * Statut métier : OK / LOW / MISSING / IGNORE / DONNEE_MANQUANTE
    * (QA cmswxo3ri — culture planifiée dont le référentiel ne permet aucun calcul).
@@ -577,6 +592,7 @@ export async function getCulturesPrevuesEtEtapesNonSuivies(
         })
         etapesNonSuivies.push({
           plancheId: planche.nom,
+          plancheRef: planche.id,
           ilot: deriveIlot(planche.ilot, planche.nom),
           rotationId: planche.rotationId,
           rotationAnnee: detail.annee,
@@ -632,6 +648,7 @@ export async function getCulturesPrevuesEtEtapesNonSuivies(
 
       culturesPrevues.push({
         plancheId: planche.nom,
+        plancheRef: planche.id,
         plancheLongueur: planche.longueur,
         plancheLargeur: planche.largeur,
         plancheSurface: planche.surface,
@@ -763,6 +780,7 @@ export async function getCulturesPrevuesEtEtapesNonSuivies(
 
       culturesPrevues.push({
         plancheId: planche?.nom || '',
+        plancheRef: planche?.id ?? null,
         plancheLongueur: planche?.longueur ?? null,
         plancheLargeur: planche?.largeur ?? null,
         plancheSurface: planche?.surface ?? null,
@@ -1290,6 +1308,7 @@ export async function getBesoinsSemences(
       stockUnites: stock?.stockPlants ?? 0,
     }
     const calc = calculerBesoin({ ...entree, doseGParM2: doseEffective })
+    const calcSansMarge = calculerBesoin({ ...entree, margeSecuritePct: 0, doseGParM2: doseEffective })
     // Besoin partiel : sans les cultures dosées, la dose manquante l'annulait.
     // Il garde le statut « Dose manquante » (bandeau qui renvoie au référentiel,
     // jamais de « OK » sur un besoin sous-estimé) et n'affiche pas de dose.
@@ -1321,6 +1340,9 @@ export async function getBesoinsSemences(
       tauxGerminationPct: espece?.tauxGermination ?? null,
       aCommander: calc.manqueGrammes,
       caieuxACommander: calc.manqueCaieux,
+      besoinCaieuxSansMarge: calcSansMarge.besoinCaieux,
+      caieuxACommanderSansMarge: calcSansMarge.manqueCaieux,
+      statutSansMarge: besoinPartiel ? 'DONNEE_MANQUANTE' : calcSansMarge.statut,
       statut: besoinPartiel ? 'DONNEE_MANQUANTE' : calc.statut,
       stockDateMaj: stock?.dateStock?.toISOString() ?? null,
     })
@@ -1599,7 +1621,7 @@ export async function getAssociations(
 }
 
 /** Lignes d'un lot de création, telles que l'écran « Créer les cultures » les envoie. */
-type LigneLot = { plancheId: string; itpId: string; annee: number; varieteId?: string }
+type LigneLot = { plancheId: string; plancheRef?: string | null; itpId: string; annee: number; varieteId?: string }
 
 type ResultatLot = {
   created: number
@@ -1670,13 +1692,14 @@ async function creerCulturesDuLot(
 
   // Resolve planche noms to cuid IDs
   const plancheNoms = [...new Set(cultures.map(c => c.plancheId))]
+  const plancheRefs = [...new Set(cultures.map(c => c.plancheRef).filter((ref): ref is string => !!ref))]
   // Résolution par nom OU par id, mais UNIQUEMENT parmi les planches de
   // l'utilisateur (audit 2026-07, #42 IDOR : le fallback sur l'id brut du
   // client permettait de rattacher une culture à la planche d'un autre compte).
   // Cultures en place lues comme la création unitaire (selectCulturesOccupation) :
   // même verdict d'occupation que POST /api/cultures (revue du 2026-10-11).
   const planchesDb = await tx.planche.findMany({
-    where: { userId, OR: [{ nom: { in: plancheNoms } }, { id: { in: plancheNoms } }] },
+    where: { userId, OR: [{ nom: { in: plancheNoms } }, { id: { in: [...plancheNoms, ...plancheRefs] } }] },
     select: {
       id: true,
       nom: true,
@@ -1742,13 +1765,19 @@ async function creerCulturesDuLot(
     )
 
     // Resolve planche nom → cuid (appartenance vérifiée : nom OU id de l'user)
-    const plancheCuidId = plancheNomToId.get(culture.plancheId)
-      ?? (plancheIdsUser.has(culture.plancheId) ? culture.plancheId : null)
+    // L'identifiant d'abord : la planche que l'écran montrait, même renommée ;
+    // jamais une autre planche qui aurait repris son nom entre-temps (D159).
+    const plancheCuidId = culture.plancheRef
+      ? (plancheIdsUser.has(culture.plancheRef) ? culture.plancheRef : null)
+      : plancheNomToId.get(culture.plancheId)
+        ?? (plancheIdsUser.has(culture.plancheId) ? culture.plancheId : null)
     if (!plancheCuidId) {
       ignorees.push({
         plancheId: culture.plancheId,
         itpId: culture.itpId,
-        motif: "planche inconnue dans votre exploitation",
+        motif: culture.plancheRef
+          ? "planche supprimée depuis l'ouverture de la page : actualisez-la"
+          : "planche inconnue dans votre exploitation",
       })
       continue
     }

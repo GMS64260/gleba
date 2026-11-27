@@ -5,6 +5,7 @@
  * PATCH /api/elevage/aliments - Mettre à jour le stock per-user
  */
 
+import { finJourCivil } from '@/lib/jour-civil'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -54,7 +55,9 @@ export async function GET(request: NextRequest) {
       // Consommation de l'utilisateur par aliment sur la fenêtre (scopé userId).
       prisma.consommationAliment.groupBy({
         by: ['alimentId'],
-        where: { userId, date: { gte: depuis } },
+        // Une distribution datée de demain n'est pas un historique : elle
+        // entrait dans la consommation moyenne et faussait l'autonomie (D133).
+        where: { userId, date: { gte: depuis, lte: finJourCivil(new Date()) } },
         _sum: { quantite: true },
         _min: { date: true },
       }),

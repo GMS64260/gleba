@@ -295,6 +295,20 @@ export const DENSITES_DEFAUT: Record<TypeFormation, { min: number; max: number; 
 }
 
 /** Etapes types par cycle de plantation forestière */
+/**
+ * Date prévue d'une étape type. Un élagage de formation qui tombe hors de
+ * janvier–mars est recalé au 15 février suivant. Une seule règle pour la
+ * création de la campagne et pour l'aperçu de l'assistant, qui annonçait la
+ * date brute (équipe debug, D185).
+ */
+export function datePrevueEtapeType(datePlantation: Date, etape: { type: string; offsetJours: number }): Date {
+  const brute = new Date(datePlantation.getTime() + etape.offsetJours * 24 * 60 * 60 * 1000)
+  if (etape.type !== "elagage_formation") return brute
+  const mois = brute.getMonth() + 1
+  if (mois >= 1 && mois <= 3) return brute
+  return new Date(brute.getFullYear() + 1, 1, 15)
+}
+
 export const ETAPES_TYPES: Record<TypeFormation, Array<{ type: string; libelle: string; offsetJours: number }>> = {
   forestier_futaie: [
     { type: "preparation_sol", libelle: "Préparation du sol (sous-solage, dégagement)", offsetJours: -60 },

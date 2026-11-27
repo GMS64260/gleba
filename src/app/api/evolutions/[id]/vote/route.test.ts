@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
-  auth: vi.fn(), evolution: vi.fn(), findUnique: vi.fn(), create: vi.fn(), delete: vi.fn(), count: vi.fn(),
+  auth: vi.fn(), evolution: vi.fn(), create: vi.fn(), deleteMany: vi.fn(), count: vi.fn(), verrou: vi.fn(),
 }))
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.auth }))
-vi.mock("@/lib/prisma", () => ({ default: {
-  evolution: { findUnique: mocks.evolution },
-  evolutionVote: { findUnique: mocks.findUnique, create: mocks.create, delete: mocks.delete, count: mocks.count },
-} }))
+vi.mock("@/lib/prisma", () => {
+  const client = {
+    evolution: { findUnique: mocks.evolution },
+    evolutionVote: { create: mocks.create, deleteMany: mocks.deleteMany, count: mocks.count },
+    $executeRaw: mocks.verrou,
+    $transaction: (action: (tx: unknown) => unknown) => action(client),
+  }
+  return { default: client }
+})
 import { POST } from "./route"
 
 const voter = () => POST(new Request("https://gleba.example/api/evolutions/proposition-test/vote", { method: "POST" }), {
@@ -22,20 +27,17 @@ describe("vote sur les évolutions : contrat conservé", () => {
     mocks.count.mockResolvedValue(4)
   })
 
-  it("ajoute le vote au nom de l'acteur", async () => {
-    mocks.findUnique.mockResolvedValue(null)
+  it("ajoute le vote au nom de l'acteur, sous verrou", async () => {
+    mocks.deleteMany.mockResolvedValue({ count: 0 })
     expect(await (await voter()).json()).toEqual({ success: true, hasVoted: true, votes: 4 })
-    expect(mocks.findUnique).toHaveBeenCalledWith({
-      where: { evolutionId_userId: { evolutionId: "proposition-test", userId: "acteur-test" } }, select: { id: true },
-    })
+    expect(mocks.verrou).toHaveBeenCalledTimes(1)
+    expect(mocks.deleteMany).toHaveBeenCalledWith({ where: { evolutionId: "proposition-test", userId: "acteur-test" } })
     expect(mocks.create).toHaveBeenCalledWith({ data: { evolutionId: "proposition-test", userId: "acteur-test" } })
-    expect(mocks.delete).not.toHaveBeenCalled()
   })
 
-  it("retire le vote existant", async () => {
-    mocks.findUnique.mockResolvedValue({ id: "vote-test" })
+  it("retire le vote existant sans en recréer un", async () => {
+    mocks.deleteMany.mockResolvedValue({ count: 1 })
     expect(await (await voter()).json()).toEqual({ success: true, hasVoted: false, votes: 4 })
-    expect(mocks.delete).toHaveBeenCalledWith({ where: { id: "vote-test" } })
     expect(mocks.create).not.toHaveBeenCalled()
   })
 })

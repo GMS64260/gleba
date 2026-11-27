@@ -1037,6 +1037,7 @@ export function ArbresTab() {
       <DataTable
         columns={columns}
         data={filteredData}
+        getRowId={(arbre) => String(arbre.id)}
         isLoading={isLoading}
         onFilteredRowsChange={setArbresAffiches}
         showPagination={true}

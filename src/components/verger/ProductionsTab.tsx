@@ -12,7 +12,7 @@ import type { VenteCommercialeVerger } from '@/lib/verger/suivi-commercial-types
 import { montantVenteFruit } from '@/lib/verger/montant-vente'
 import { quantiteBois } from "@/lib/commercial/stock-types"
 import Link from "next/link"
-import { isPast, differenceInDays } from "date-fns"
+import { joursAvantPeremptionLot } from "@/lib/verger/disponibilite-lot"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { confirmDialog } from "@/lib/global-dialog"
@@ -288,10 +288,10 @@ function RecoltesFruitsSubTab() {
   ].sort((a, b) => b.date.localeCompare(a.date))
 
   const now = new Date()
-  const perimesCount = stockRecoltes.filter(r => r.datePeremption && isPast(new Date(r.datePeremption))).length
+  const perimesCount = stockRecoltes.filter(r => r.datePeremption && joursAvantPeremptionLot(r.datePeremption, now) < 0).length
   const bientotPerimesCount = stockRecoltes.filter(r => {
     if (!r.datePeremption) return false
-    const days = differenceInDays(new Date(r.datePeremption), now)
+    const days = joursAvantPeremptionLot(r.datePeremption, now)
     return days >= 0 && days <= 3
   }).length
 
@@ -335,13 +335,14 @@ function RecoltesFruitsSubTab() {
 
   const getPeremptionBadge = (datePeremption: string | null) => {
     if (!datePeremption) return null
-    const date = new Date(datePeremption)
-    if (isPast(date)) {
+    // Jours civils, comme la règle de vente : le jour de la péremption est le
+    // dernier jour vendable, pas un lot périmé (D109).
+    const days = joursAvantPeremptionLot(datePeremption, now)
+    if (days < 0) {
       return <Badge variant="destructive" className="text-xs">Périmé</Badge>
     }
-    const days = differenceInDays(date, now)
     if (days <= 3) {
-      return <Badge className="bg-orange-500 text-xs">{days}j restants</Badge>
+      return <Badge className="bg-orange-500 text-xs">{days === 0 ? "Dernier jour" : `${days}j restants`}</Badge>
     }
     return null
   }
@@ -726,7 +727,7 @@ function RecoltesFruitsSubTab() {
                 </TableHeader>
                 <TableBody>
                   {stockRecoltes.map((r) => (
-                    <TableRow key={r.id} className={r.datePeremption && isPast(new Date(r.datePeremption)) ? "bg-red-50" : ""}>
+                    <TableRow key={r.id} className={r.datePeremption && joursAvantPeremptionLot(r.datePeremption, now) < 0 ? "bg-red-50" : ""}>
                       <TableCell>{celluleDate(r)}</TableCell>
                       <TableCell className="font-medium">{r.arbre.nom}{r.warnings?.map(message => <p key={message} className="mt-1 max-w-sm text-xs text-amber-800">{message}</p>)}</TableCell>
                       <TableCell className="text-right">{r.quantite} kg</TableCell>
@@ -1323,10 +1324,12 @@ function ProductionBoisSubTab() {
   const livraisonsBois = productions.flatMap(lot => (lot.ventesCommerciales ?? []).map(vente => ({ lot, vente })))
   const nombreVentesBois = venduProductions.length + livraisonsBois.length
   const utiliseProductions = [
-    ...productions.filter(p => p.statut === "utilise").map(p => ({ ...p, cleHistorique: `lot-${p.id}`, sortieId: null as string | null, quantiteUtilisee: quantiteBois(p) })),
-    ...productions.flatMap(p => (p.mouvementsCommerciaux ?? []).map(m => ({ ...p, cleHistorique: m.id, sortieId: m.id as string | null, date: m.date,
+    ...productions.filter(p => p.statut === "utilise").map(p => ({ ...p, cleHistorique: `lot-${p.id}`, sortieId: null as string | null, dateUsage: null as string | null, quantiteUtilisee: quantiteBois(p) })),
+    // La date de production reste celle du lot : la date de la sortie a sa
+    // propre colonne (elle s'affichait sous « Date prod. », D218).
+    ...productions.flatMap(p => (p.mouvementsCommerciaux ?? []).map(m => ({ ...p, cleHistorique: m.id, sortieId: m.id as string | null, dateUsage: m.date as string | null,
       destination: m.notes, quantiteUtilisee: { quantite: m.quantite, unite: m.unite } }))),
-  ].sort((a, b) => b.date.localeCompare(a.date))
+  ].sort((a, b) => (b.dateUsage ?? b.date).localeCompare(a.dateUsage ?? a.date))
 
   const stockVolume = stockProductions.reduce((sum, p) => sum + (p.volumeM3 || 0), 0)
   const venduVolume = venduProductions.reduce((sum, p) => sum + (p.volumeM3 || 0), 0) + livraisonsBois.reduce((sum, { lot, vente }) => {
@@ -1724,6 +1727,7 @@ function ProductionBoisSubTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date prod.</TableHead>
+                    <TableHead>Date d’usage</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead className="text-right">Volume</TableHead>
                     <TableHead>Destination</TableHead>
@@ -1734,6 +1738,7 @@ function ProductionBoisSubTab() {
                   {utiliseProductions.map((p) => (
                     <TableRow key={p.cleHistorique}>
                       <TableCell>{new Date(p.date).toLocaleDateString("fr-FR")}</TableCell>
+                      <TableCell>{p.dateUsage ? new Date(p.dateUsage).toLocaleDateString("fr-FR") : "—"}</TableCell>
                       <TableCell>{libelleTypeBois(p.type)}</TableCell>
                       <TableCell className="text-right">{p.quantiteUtilisee.quantite.toLocaleString("fr-FR")} {p.quantiteUtilisee.unite}</TableCell>
                       <TableCell>{labelDestinationBois(p.destination)}</TableCell>

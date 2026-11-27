@@ -84,6 +84,15 @@ describe("POST observation de campagne — valeurs numériques", () => {
     expect((await post({ nbVivants: "100" })).status).toBe(201)
   })
 
+  // D126 : 100 vivants et 1 mort sur 100 plants donnaient 100 % de reprise.
+  it("refuse un comptage dont la somme dépasse les plants plantés", async () => {
+    const res = await post({ nbVivants: "100", nbMorts: "1" })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain("dépasse les 100 plants")
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect((await post({ nbVivants: "95", nbMorts: "3", nbManquants: "2" })).status).toBe(201)
+  })
+
   it("conserve le calcul de repli sans nombre de plants renseigné", async () => {
     mocks.campagne.mockResolvedValue({ id: 17, nombrePlants: null, datePlantationReelle: new Date("2026-01-15") })
     const res = await post({ nbVivants: "0", nbMorts: "100" })

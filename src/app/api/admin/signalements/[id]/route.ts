@@ -33,14 +33,28 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const rouvert = statut === 'ouvert'
-    const sig = await prisma.signalement.update({
-      where: { id },
+    // `depuis` : statut que l'écran avait sous les yeux. La décision ne
+    // s'applique que s'il est toujours celui de la base : un signalement rejeté
+    // ailleurs restait « traitable » depuis un onglet ouvert avant (D211).
+    const depuis = body.depuis as string | undefined
+    if (depuis !== undefined && !STATUTS.includes(depuis as (typeof STATUTS)[number])) {
+      return NextResponse.json({ error: 'Statut invalide.' }, { status: 400 })
+    }
+    const maj = await prisma.signalement.updateMany({
+      where: { id, ...(depuis ? { statut: depuis } : {}) },
       data: {
         statut,
         resolvedAt: rouvert ? null : new Date(),
         resolvedById: rouvert ? null : getActeurId(session),
       },
     })
+    if (maj.count === 0) {
+      return NextResponse.json(
+        { error: 'Ce signalement a déjà été traité ou rejeté depuis un autre onglet. Actualisez la liste.', code: 'MODIFIE_AILLEURS' },
+        { status: 409 },
+      )
+    }
+    const sig = await prisma.signalement.findUnique({ where: { id } })
     return NextResponse.json(sig)
   } catch (e) {
     console.error('PATCH /api/admin/signalements/[id] error:', e)

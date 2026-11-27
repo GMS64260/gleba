@@ -7,6 +7,7 @@
  * donne une origine estimée, sans suggestion de tarissement.
  */
 
+import { finJourCivil } from '@/lib/jour-civil'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -37,7 +38,9 @@ export async function GET(request: NextRequest) {
   const since = derniereMiseBas ?? new Date(Date.now() - 305 * 86_400_000)
 
   const collectes = await prisma.collecteLait.findMany({
-    where: { animalId, userId: session.user.id, date: { gte: since } },
+    // Jamais une traite datée après aujourd'hui : elle devenait l'origine de la
+    // lactation et donnait un âge de −1 jour (équipe debug, D219).
+    where: { animalId, userId: session.user.id, date: { gte: since, lte: finJourCivil(new Date()) } },
     orderBy: { date: 'asc' },
     select: { date: true, quantiteLitres: true },
   })

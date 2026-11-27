@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const tx = vi.hoisted(() => ({
   culture: { findMany: vi.fn(), update: vi.fn() },
-  irrigationPlanifiee: { deleteMany: vi.fn() },
+  irrigationPlanifiee: { deleteMany: vi.fn(), updateMany: vi.fn() },
 }))
 
 vi.mock("@/lib/prisma", () => ({
@@ -44,6 +44,22 @@ describe("annulerArrosageCultures", () => {
     expect(tx.culture.update).toHaveBeenCalledWith({ where: { id: 11 }, data: { derniereIrrigation: null } })
     expect(r).toEqual({ tracesSupprimees: 2, culturesRestaurees: 2 })
     expect(irrigationCache.invalidateUser).toHaveBeenCalledWith("u1")
+  })
+
+  it("retire l'observation ajoutée par un double geste à la trace du premier (D205)", async () => {
+    tx.culture.findMany.mockResolvedValue([{ id: 10, derniereIrrigation: GESTE }])
+    tx.irrigationPlanifiee.deleteMany.mockResolvedValue({ count: 0 })
+
+    await annulerArrosageCultures({
+      userId: "u1", dateEffective: GESTE, avant: { 10: AVANT },
+      tracesCompletees: [{ id: 77, avant: "Observation A", apres: "Observation A · Observation B" }],
+    })
+
+    // Seulement si la note est encore celle que ce geste a écrite.
+    expect(tx.irrigationPlanifiee.updateMany).toHaveBeenCalledWith({
+      where: { id: 77, userId: "u1", cultureId: { in: [10] }, fait: true, notes: "Observation A · Observation B" },
+      data: { notes: "Observation A" },
+    })
   })
 
   it("ne défait pas un arrosage noté depuis", async () => {

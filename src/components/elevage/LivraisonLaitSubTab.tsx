@@ -124,8 +124,12 @@ export function LivraisonLaitSubTab() {
     const litres = moisLiv.reduce((s, l) => s + Number(l.litres), 0)
     // Taux pondérés par le volume de chaque livraison (D99).
     const { prime, penalite } = estimePrimeQualite(qualiteLivraisonsPonderee(moisLiv), litres || 0)
-    setPaieForm((f) => ({ ...f, litres: litres ? String(Math.round(litres * 100) / 100) : f.litres, primeQualite: String(prime), penalite: String(penalite) }))
-    toast({ title: "Estimation calculée", description: `${moisLiv.length} livraison(s) du mois — grille indicative` })
+    // Un mois sans livraison vide les litres : garder ceux du mois estimé
+    // précédemment les publiait sous le mauvais mois (équipe debug, D112).
+    setPaieForm((f) => ({ ...f, litres: litres > 0 ? String(Math.round(litres * 100) / 100) : "", primeQualite: String(prime), penalite: String(penalite) }))
+    toast(moisLiv.length
+      ? { title: "Estimation calculée", description: `${moisLiv.length} livraison(s) du mois — grille indicative` }
+      : { title: "Aucune livraison ce mois", description: "Les litres ont été vidés : saisissez le relevé du collecteur." })
   }
 
   const submitPaie = () => unSeulEnvoi("paie", envoyerPaie)

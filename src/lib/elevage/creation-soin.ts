@@ -1,3 +1,4 @@
+import { apresDemain, MESSAGE_SOIN_FAIT_FUTUR } from '@/lib/interventions/date-realisee'
 import prisma from '@/lib/prisma'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
@@ -38,6 +39,11 @@ export async function creerSoinAnimal(body: unknown, userId: string) {
 
     const d = parsed.data
     const dateSoin = d.date || new Date()
+    // Un soin fait ne se date pas dans le futur : il s'enregistrait dix ans à
+    // l'avance, dépense comprise (équipe debug, D115).
+    if (d.fait && apresDemain(dateSoin)) {
+      return reponse({ error: MESSAGE_SOIN_FAIT_FUTUR, champ: 'date' }, { status: 422 })
+    }
 
     // Audit élevage 2026-06-11 — validation tenant : l'animal/le lot soigné
     // doit appartenir au user (sinon le soin référence — et la réponse

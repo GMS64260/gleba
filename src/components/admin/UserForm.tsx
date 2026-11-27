@@ -56,11 +56,13 @@ export function UserForm({ user }: UserFormProps) {
       const method = isEdit ? "PATCH" : "POST"
 
       // Pour l'edition, n'envoyer le mot de passe que s'il est rempli
-      const body = isEdit
+      // En édition, seuls les champs changés partent : tout renvoyer réactivait
+      // un compte désactivé ailleurs quand on ne corrigeait que son nom (D210).
+      const body = isEdit && user
         ? {
-            name: formData.name || null,
-            role: formData.role,
-            active: formData.active,
+            ...(formData.name !== (user.name || "") && { name: formData.name || null }),
+            ...(formData.role !== user.role && { role: formData.role }),
+            ...(formData.active !== user.active && { active: formData.active }),
             ...(formData.password && { password: formData.password }),
           }
         : formData

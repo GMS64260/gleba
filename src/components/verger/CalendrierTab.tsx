@@ -216,7 +216,7 @@ function LotCard({
               type="button"
               disabled={occupe}
               className={CLASSES_SOLDER}
-              onClick={() => onTraiterLot(lot, "solder")}
+              onClick={(e) => { if (e.detail > 1) return; onTraiterLot(lot, "solder") }}
             >
               <Archive className="h-4 w-4" aria-hidden />
               {enCours === `${lot.cle}:solder` ? "…" : "Solder"}
@@ -247,7 +247,7 @@ function LotCard({
                   disabled={occupe}
                   aria-label={`Fait pour ${operation.arbre.nom}`}
                   title="Fait pour cet arbre"
-                  onClick={() => onMarquerFait(operation)}
+                  onClick={(e) => { if (e.detail > 1) return; onMarquerFait(operation) }}
                 >
                   <Check className="h-4 w-4" aria-hidden />
                 </button>
@@ -400,8 +400,13 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
    * Un seul geste pour un lot entier. `fait` enregistre la réalisation,
    * `solder` acte qu'une fenêtre refermée ne sera pas rattrapée cette saison.
    */
+  // Verrou synchrone : l'état `enCours` n'est lu qu'au rendu suivant, deux clics
+  // rapprochés partaient tous les deux.
+  const traitementEnCours = React.useRef(false)
   const traiterLot = React.useCallback(
     async (lot: LotOperations, action: "fait" | "solder") => {
+      if (traitementEnCours.current) return
+      traitementEnCours.current = true
       const ids = lot.operations.map((operation) => operation.id)
       setEnCours(`${lot.cle}:${action}`)
       try {
@@ -435,6 +440,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         })
       } finally {
         setEnCours(null)
+        traitementEnCours.current = false
       }
     },
     [toast]

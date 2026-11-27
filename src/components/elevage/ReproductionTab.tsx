@@ -1802,7 +1802,8 @@ function CalculateurSubTab() {
   const typeLabel = espece?.type === 'volaille' ? 'Couvaison' : 'Gestation'
 
   const dateNaissancePrevue = React.useMemo(() => {
-    if (!duree || !dateAccouplement) return null
+    // Une durée négative (donnée ancienne) ne prévoit pas une naissance avant l'accouplement.
+    if (!duree || duree <= 0 || !dateAccouplement) return null
     const d = new Date(dateAccouplement)
     d.setDate(d.getDate() + duree)
     return d

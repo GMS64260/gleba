@@ -95,6 +95,11 @@ interface DataTableProps<TData, TValue> {
   // sélectionnée. `bulkActions` reçoit les lignes sélectionnées (sur l'ensemble
   // des pages du jeu filtré) et un rappel pour vider la sélection.
   enableRowSelection?: boolean
+  /**
+   * Identité d'une ligne. Sans elle, la sélection suit la POSITION : après un
+   * filtre ou un rechargement, la case cochée désigne une autre ligne (D162).
+   */
+  getRowId?: (row: TData, index: number) => string
   bulkActions?: (selectedRows: TData[], clearSelection: () => void) => React.ReactNode
   // Lignes réellement affichables après la recherche et les filtres du tableau
   // (toutes pages confondues). Sert aux actions calculées hors du tableau, qui
@@ -127,6 +132,7 @@ export function DataTable<TData, TValue>({
   showPagination = true,
   tableClassName,
   enableRowSelection = false,
+  getRowId,
   bulkActions,
   onFilteredRowsChange,
 }: DataTableProps<TData, TValue>) {
@@ -219,6 +225,7 @@ export function DataTable<TData, TValue>({
 
   const table = useReactTable({
     data,
+    getRowId,
     columns: columnsWithActions,
     pageCount,
     state: {
@@ -287,7 +294,8 @@ export function DataTable<TData, TValue>({
             </Button>
           )}
           {onExport && (
-            <Button variant="outline" size="sm" onClick={onExport}>
+            // Pas d'export pendant le chargement : le fichier sortait vide (D141).
+            <Button variant="outline" size="sm" onClick={onExport} disabled={isLoading}>
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>

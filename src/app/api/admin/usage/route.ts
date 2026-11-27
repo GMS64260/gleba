@@ -300,6 +300,9 @@ export async function GET(request: NextRequest) {
     }
     const inscriptions = buckets.map(() => 0)
     for (const u of users) {
+      // Le premier intervalle (mois, semaine) commence avant la période : n'y
+      // compter que les inscriptions de la période, comme la tuile (D117).
+      if (u.createdAt < windowStart) continue
       const i = idx.get(startOfBucket(u.createdAt, bucket).toISOString().slice(0, 10))
       if (i !== undefined) inscriptions[i]++
     }

@@ -281,6 +281,9 @@ export function SanitaireReglementaireSubTab() {
   // reprise d'historique (signalement 2026-09-25 : un éleveur ressaisissant
   // 2021-2025 ne pouvait ni voir ni solder les déclarations de ces années).
   const [annee, setAnnee] = React.useState(anneeCourante)
+  // Exercice affiché en ce moment, lu par les traitements longs lancés sur un autre.
+  const anneeAffichee = React.useRef(annee)
+  anneeAffichee.current = annee
   const [declarations, setDeclarations] = React.useState<Declaration[]>([])
   const [declarationResume, setDeclarationResume] = React.useState<DeclarationResume | null>(null)
   const [declarationsLoading, setDeclarationsLoading] = React.useState(true)
@@ -430,11 +433,13 @@ export function SanitaireReglementaireSubTab() {
       const archivesResponse = await fetch(
         `/api/elevage/registres-archives?year=${annee}`,
       )
-      if (archivesResponse.ok) {
+      // L'exercice a pu changer pendant l'archivage : la liste de l'exercice
+      // archivé ne remplace pas celle de l'exercice affiché (équipe debug, D200).
+      if (archivesResponse.ok && anneeAffichee.current === annee) {
         setArchivesRegistre((await archivesResponse.json()).data)
       }
       toast({
-        title: "Dossier réglementaire archivé",
+        title: `Dossier réglementaire ${annee} archivé`,
         description:
           "Le ZIP contient le registre, son manifeste d’intégrité et les pièces privées disponibles.",
       })
@@ -1293,7 +1298,7 @@ export function SanitaireReglementaireSubTab() {
                     </div>
                     <div className="mt-1 text-sm text-muted-foreground">
                       Événement le {new Date(declaration.dateEvenement).toLocaleDateString('fr-FR')}
-                      {' · '}échéance le {new Date(declaration.dateEcheance).toLocaleDateString('fr-FR')}
+                      {' · '}échéance le {new Date(declaration.dateEcheance).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}
                       {' · '}{declaration.organisme}
                     </div>
                   </div>

@@ -4,6 +4,7 @@
  * Page Rotations - Plans de rotation des cultures
  */
 
+import { telechargerCsv } from "@/app/maraichage/planification/export-csv"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -246,14 +247,8 @@ export default function RotationsPage() {
       r.details.map(d => `A${d.annee}:${d.itp?.espece?.id || d.itp?.id || '?'}`).join(" | "),
     ])
 
-    const csv = [headers, ...rows].map(row => row.join(";")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = "rotations.csv"
-    link.click()
-    URL.revokeObjectURL(url)
+    // Cellules échappées : un « ; » dans un nom de rotation décalait les colonnes (D160).
+    telechargerCsv("rotations.csv", [headers, ...rows])
   }
 
   return (

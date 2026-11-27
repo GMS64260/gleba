@@ -42,8 +42,8 @@ export async function GET(request: NextRequest) {
   if (onglet === "especes") {
     const data = await prisma.espece.findMany({
       where: { AND: [{ type: { in: [...ESPECE_TYPES_VERGER] } }, vis] },
-      select: { id: true, type: true, familleId: true, nomLatin: true, rendement: true, uniteRendement: true, besoinEau: true, vivace: true },
-      orderBy: { id: "asc" },
+      select: { id: true, nom: true, type: true, familleId: true, nomLatin: true, rendement: true, uniteRendement: true, besoinEau: true, vivace: true },
+      orderBy: [{ nom: "asc" }, { id: "asc" }],
     })
     // Unité par ligne : les arbres sont en kg/arbre, pas en kg/m² (V2 Bug 5).
     const uniteLabel = (u: string | null) =>
@@ -51,7 +51,8 @@ export async function GET(request: NextRequest) {
     csv = toCsv(
       ["Espèce", "Type", "Famille", "Nom latin", "Rendement", "Unité rendement", "Besoin eau (1-5)", "Vivace"],
       data.map((e) => [
-        e.id,
+        // Le nom, pas la clé : une espèce personnelle a un identifiant technique (D145).
+        e.nom ?? e.id,
         e.type,
         e.familleId ?? "",
         e.nomLatin ?? "",
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
         sensibilites: true,
         drageonnement: true,
         notes: true,
-        especes: { where: { espece: vis }, select: { especeId: true } },
+        especes: { where: { espece: vis }, select: { especeId: true, espece: { select: { nom: true } } } },
       },
       orderBy: { nom: "asc" },
     })
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
         p.precocite,
         (p.sensibilites ?? []).join(", "),
         p.drageonnement ? "Oui" : "Non",
-        p.especes.map((e) => e.especeId).join(", "),
+        p.especes.map((e) => e.espece?.nom ?? e.especeId).join(", "),
         p.notes ?? "",
       ])
     )
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
         periodePression: true,
         methodesPbi: true,
         seuilNuisibilite: true,
-        especes: { where: WHERE_CIBLES_VERGER, select: { especeId: true } },
+        especes: { where: WHERE_CIBLES_VERGER, select: { especeId: true, espece: { select: { nom: true } } } },
         notes: true,
       },
       orderBy: [{ type: "asc" }, { nomCommun: "asc" }],
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest) {
         (b.periodePression ?? []).join(", "),
         (b.methodesPbi ?? []).join(", "),
         b.seuilNuisibilite ?? "",
-        b.especes.map((e) => e.especeId).join(", "),
+        b.especes.map((e) => e.espece?.nom ?? e.especeId).join(", "),
         b.notes ?? "",
       ])
     )

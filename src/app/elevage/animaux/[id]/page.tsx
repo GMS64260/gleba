@@ -700,7 +700,7 @@ function PeseesCard({ animalId }: { animalId: number }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-wrap items-end gap-2">
-          <div><Label className="text-xs">Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" /></div>
+          <div><Label className="text-xs">Date</Label><Input type="date" max={todayLocalISO()} value={date} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" /></div>
           <div><Label className="text-xs">Poids (kg)</Label><Input type="number" step="0.1" min="0" value={poids} onChange={(e) => setPoids(e.target.value)} className="h-9 w-28" placeholder="0" /></div>
           <Button size="sm" onClick={ajouter} disabled={saving}>Ajouter</Button>
         </div>

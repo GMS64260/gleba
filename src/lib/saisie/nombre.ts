@@ -60,12 +60,14 @@ export function nombreSaisiValide(
  * séparateurs : « 1.234,56 » collé reste lisible, et une saisie ambiguë est
  * refusée par `lireNombreSaisi` au lieu d'être déformée.
  */
-export function filtrerSaisieDecimale(saisie: string, options: { negatif?: boolean } = {}): string {
+export function filtrerSaisieDecimale(saisie: string): string {
   let sortie = ''
   for (const c of saisie) {
     if ((c >= '0' && c <= '9') || c === ',' || c === '.') sortie += c
     else if (c === ' ' || c === '\u00a0' || c === '\u202f') sortie += sortie === '' ? '' : ' '
-    else if (c === '-' && options.negatif && sortie === '') sortie += c
+    // Le signe est toujours gardé : retiré en silence, « -2 » s'enregistrait
+    // comme 2 (équipe debug, D114). Le formulaire refuse ensuite le négatif.
+    else if (c === '-' && sortie === '') sortie += c
   }
   return sortie
 }

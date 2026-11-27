@@ -30,6 +30,7 @@ import { useToast } from "@/hooks/use-toast"
 
 interface CulturePrevue {
   plancheId: string
+  plancheRef?: string | null
   ilot: string | null
   especeId: string | null
   especeNom?: string | null
@@ -47,6 +48,7 @@ interface CulturePrevue {
 /** QA cmv2r2rl8 — étape de rotation prévue que la planche ne suit pas. */
 interface EtapeNonSuivie {
   plancheId: string
+  plancheRef?: string | null
   ilot: string | null
   especeId: string | null
   especeNom?: string | null
@@ -144,6 +146,7 @@ function CreerCulturesContent() {
         ...etapesCreables.filter(e => selectedIds.has(getEtapeKey(e))),
       ].map(c => ({
         plancheId: c.plancheId,
+        plancheRef: c.plancheRef ?? undefined,
         itpId: c.itpId!,
         annee: c.annee,
       }))

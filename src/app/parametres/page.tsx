@@ -1089,7 +1089,9 @@ function ParametresContent() {
                 <strong>Migrer vers mon propre serveur :</strong> téléchargez votre sauvegarde
                 ici, installez Gleba chez vous (voir la documentation d&apos;auto-hébergement),
                 créez votre compte sur la nouvelle instance, puis restaurez le fichier. Vous
-                récupérez tout, sans repartir de zéro.
+                récupérez vos données de ferme, sans repartir de zéro. Vos contributions à
+                la communauté (avis, signalements, propositions, votes) et vos échanges avec
+                l’assistant ne font pas partie de la sauvegarde.
               </p>
             </div>
           </CardContent>

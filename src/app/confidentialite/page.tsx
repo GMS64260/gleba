@@ -14,6 +14,7 @@
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { OppositionMesureAudience } from "@/components/mesure-audience/OppositionMesureAudience"
+import { GererCookies } from "@/components/GererCookies"
 import { Button } from "@/components/ui/button"
 
 export const metadata = {
@@ -420,8 +421,11 @@ export default function ConfidentialitePage() {
         <p>
           Le site utilise des cookies essentiels, toujours actifs, pour la session, le
           panier et la sécurité, et, avec votre consentement, des cookies de marketing
-          et de personnalisation. Vous pouvez modifier votre choix à tout moment via le
-          bandeau cookies.
+          et de personnalisation. Vous pouvez modifier ou retirer votre choix à tout
+          moment :
+        </p>
+        <p>
+          <GererCookies />
         </p>
 
         <h3>Vidéo YouTube</h3>

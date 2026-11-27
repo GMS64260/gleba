@@ -9,7 +9,7 @@ import { ErreurVerger } from "@/lib/verger/erreur"
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
-import { ETAPES_TYPES, type TypeFormation } from "@/data/essences-forestieres"
+import { ETAPES_TYPES, datePrevueEtapeType, type TypeFormation } from "@/data/essences-forestieres"
 
 // GET /api/arbres/campagnes?statut=...&type=...
 export async function GET(request: NextRequest) {
@@ -146,25 +146,15 @@ export async function POST(request: NextRequest) {
         // référentiel Gleba dit « Janv. → Mars ». Les étapes de taille sont
         // recalées dans la première fenêtre hivernale (15/02) qui SUIT la
         // date brute — même logique que le calendrier d'entretien par espèce.
-        const dansFenetreHivernale = (d: Date) => {
-          const m = d.getMonth() + 1
-          return m >= 1 && m <= 3
-        }
-        const calerTailleFenetre = (brute: Date): Date => {
-          if (dansFenetreHivernale(brute)) return brute
-          const annee = brute.getMonth() + 1 > 3 ? brute.getFullYear() + 1 : brute.getFullYear()
-          return new Date(annee, 1, 15) // 15 février
-        }
         await prisma.etapeCampagne.createMany({
           data: etapesTypes.map((e, idx) => {
-            const brute = new Date(datePrevue.getTime() + e.offsetJours * 24 * 60 * 60 * 1000)
             return {
               userId: session!.user.id,
               campagneId: campagne.id,
               type: e.type,
               ordre: idx,
               description: e.libelle,
-              datePrevue: e.type === "elagage_formation" ? calerTailleFenetre(brute) : brute,
+              datePrevue: datePrevueEtapeType(datePrevue, e),
               fait: false,
             }
           }),

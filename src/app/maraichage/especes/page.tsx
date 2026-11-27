@@ -5,6 +5,7 @@
  * Filtrable par type : Légumes, Arbres fruitiers, Petits fruits, Aromatiques, Fleurs, Engrais verts
  */
 
+import { telechargerCsv } from "@/app/maraichage/planification/export-csv"
 import * as React from "react"
 import { useExploitation } from "@/hooks/use-exploitation"
 import { Suspense } from "react"
@@ -405,7 +406,8 @@ function EspecesPageContent() {
   const handleExport = () => {
     const headers = ["Espèce", "Type", "Famille", "Nom latin", "Rendement", "Vivace", "Besoin N", "Besoin P", "Besoin K", "Besoin Eau"]
     const rows = data.map(e => [
-      e.id,
+      // Le nom, pas la clé : une espèce personnelle a un identifiant technique (D137).
+      e.nom ?? e.id,
       libelleTypeEspece(e.type),
       e.famille?.id || "",
       e.nomLatin || "",
@@ -417,14 +419,7 @@ function EspecesPageContent() {
       e.besoinEau?.toString() || "",
     ])
 
-    const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `especes${selectedType && selectedType !== 'all' ? `-${selectedType}` : ''}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
+    telechargerCsv(`especes${selectedType && selectedType !== 'all' ? `-${selectedType}` : ''}.csv`, [headers, ...rows])
   }
 
   // Colonne « Origine » partagée : badge Gleba/Perso/Communauté + actions

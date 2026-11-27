@@ -44,6 +44,9 @@ beforeEach(() => {
     findFirst: vi.fn(async () => null),
     create: vi.fn(async () => ({ id: 'sig-1' })),
   }
+  // Lecture et création se font sous verrou, dans une transaction (D226).
+  mocks.db.$executeRaw = vi.fn(async () => 0)
+  mocks.db.$transaction = vi.fn(async (action: (tx: typeof mocks.db) => unknown) => action(mocks.db))
 })
 
 describe('POST /api/signalements', () => {

@@ -84,9 +84,13 @@ export async function computeProductionsRuche(
         (somme, mouvement) => somme + mouvement.quantite,
         0,
       )
+      // Une récolte datée après aujourd'hui n'est pas encore disponible, comme
+      // dans les stocks agrégés et à la sortie (équipe debug, D196).
+      const aVenir = production.date.getTime() > finJourLivraison(new Date()).getTime()
       return {
         ...production,
-        quantiteDisponible: Math.max(0, production.quantite - sorti),
+        aVenir,
+        quantiteDisponible: aVenir ? 0 : Math.max(0, production.quantite - sorti),
       }
     }),
     stats: totaux.map((total) => ({

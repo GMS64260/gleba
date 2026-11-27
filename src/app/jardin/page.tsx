@@ -4,6 +4,7 @@
  * Page Plan du jardin - Visualisation 2D avec éditeur complet
  */
 
+import { useMenuOuvertAuClic } from "@/hooks/use-menu-ouvert-au-clic"
 import type { AssociationEvaluable } from "@/lib/associations-alertes"
 import { liaisonEntrePlanches } from "@/lib/associations-voisinage"
 import * as React from "react"
@@ -423,6 +424,9 @@ function JardinContent() {
 
   // Image de fond persistée côté serveur (satellite/drone) + outils du plan
   const { fond, majReglages, decalerFond, televerserImage, supprimerImage } = useFondPlan(selectedParcelleId)
+  // Menus « Dupliquer » : au doigt, ouverts au clic et non à l'appui (D121).
+  const menuCopiePlanche = useMenuOuvertAuClic()
+  const menuCopieObjet = useMenuOuvertAuClic()
   const [tool, setTool] = React.useState<GardenTool>('select')
 
   // Plan vivant : date affichée (null = aujourd'hui) + calques togglables
@@ -3047,8 +3051,8 @@ function JardinContent() {
                         <Plus className="h-4 w-4 mr-1" />
                         Culture
                       </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                      <DropdownMenu open={menuCopiePlanche.open} onOpenChange={menuCopiePlanche.onOpenChange}>
+                        <DropdownMenuTrigger {...menuCopiePlanche.declencheur} asChild>
                           <Button variant="outline" size="sm" title="Dupliquer">
                             <Copy className="h-4 w-4" />
                           </Button>
@@ -3222,8 +3226,8 @@ function JardinContent() {
 
                       {/* Actions */}
                       <div className="flex gap-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                        <DropdownMenu open={menuCopieObjet.open} onOpenChange={menuCopieObjet.onOpenChange}>
+                          <DropdownMenuTrigger {...menuCopieObjet.declencheur} asChild>
                             <Button variant="outline" size="sm" className="flex-1">
                               <Copy className="h-4 w-4 mr-2" />
                               Dupliquer
@@ -4212,9 +4216,13 @@ function JardinContent() {
                       step="0.1"
                       className="h-8 w-24 px-2 text-sm"
                       value={Math.round(fond.offsetX * 100) / 100}
+                      min={-10000}
+                      max={10000}
                       onChange={(e) => {
                         const v = parseFloat(e.target.value.replace(",", "."))
-                        if (Number.isFinite(v)) majReglages({ offsetX: v })
+                        // Borné comme le serveur : au-delà, le plan appliquait un décalage
+                        // refusé puis le perdait au rechargement (équipe debug, D157).
+                        if (Number.isFinite(v)) majReglages({ offsetX: Math.min(10000, Math.max(-10000, v)) })
                       }}
                       aria-label="Décalage horizontal de l'image de fond (m)"
                     />
@@ -4229,7 +4237,7 @@ function JardinContent() {
                       value={Math.round(fond.offsetY * 100) / 100}
                       onChange={(e) => {
                         const v = parseFloat(e.target.value.replace(",", "."))
-                        if (Number.isFinite(v)) majReglages({ offsetY: v })
+                        if (Number.isFinite(v)) majReglages({ offsetY: Math.min(10000, Math.max(-10000, v)) })
                       }}
                       aria-label="Décalage vertical de l'image de fond (m)"
                     />
