@@ -1,5 +1,6 @@
 "use client"
 
+import { useLecture } from "@/hooks/use-chargement"
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { AlertTriangle, Archive, Check, Download, ExternalLink, FileSpreadsheet, FileText, History, Loader2, Pencil, Plus, RotateCcw, Send, Trash2, Upload } from "lucide-react"
@@ -349,62 +350,59 @@ export function SanitaireReglementaireSubTab() {
     }
   }
 
-  const reload = React.useCallback(async () => {
-    setDeclarationsLoading(true)
-    try {
-      const [
-        s,
-        p,
-        produitsRes,
-        declarationsRes,
-        alimentsRes,
-        justificatifsRes,
-        mortalitesRes,
-        equarrissageRes,
-        archivesRes,
-      ] = await Promise.all([
-        fetch('/api/elevage/stock-medicaments'),
-        fetch('/api/elevage/prophylaxies'),
-        fetch('/api/elevage/produits-veterinaires'),
-        fetch(`/api/elevage/declarations-reglementaires?year=${annee}`),
-        fetch('/api/elevage/aliments'),
-        fetch(`/api/elevage/justificatifs-aliments?year=${annee}`),
+  // Lectures du registre pour l'exercice et la filière affichés : la dernière
+  // demande gagne, et les listes d'un autre exercice ne restent pas affichées
+  // pendant le chargement (archive téléchargée ou bon d'enlèvement rattaché à
+  // l'exercice précédent).
+  const { recharger: reload } = useLecture(
+    `sanitaire:${annee}:${filiereSel}`,
+    async (signal) => {
+      const lire = (url: string) => fetch(url, { signal }).then((r) => (r.ok ? r.json() : null))
+      const [s, p, produitsLus, declarationsLues, alimentsLus, justificatifsLus, mortalitesLues, equarrissageLu, archivesLues] = await Promise.all([
+        lire('/api/elevage/stock-medicaments'),
+        lire('/api/elevage/prophylaxies'),
+        lire('/api/elevage/produits-veterinaires'),
+        lire(`/api/elevage/declarations-reglementaires?year=${annee}`),
+        lire('/api/elevage/aliments'),
+        lire(`/api/elevage/justificatifs-aliments?year=${annee}`),
         // Équarrissage : animaux de rente seulement, comme le registre.
-        fetch(`/api/elevage/mortalites?annee=${annee}&filiere=${filiereSel === "toutes" ? "rente" : filiereSel}`),
-        fetch(`/api/elevage/justificatifs-equarrissage?year=${annee}`),
-        fetch(`/api/elevage/registres-archives?year=${annee}`),
+        lire(`/api/elevage/mortalites?annee=${annee}&filiere=${filiereSel === "toutes" ? "rente" : filiereSel}`),
+        lire(`/api/elevage/justificatifs-equarrissage?year=${annee}`),
+        lire(`/api/elevage/registres-archives?year=${annee}`),
       ])
-      if (s.ok) setStocks((await s.json()).data)
-      if (p.ok) setProphylaxies((await p.json()).data)
-      if (produitsRes.ok) setProduits((await produitsRes.json()).data)
-      if (alimentsRes.ok) {
-        setAliments((await alimentsRes.json()).data.map((aliment: AlimentJustificatifOption) => ({
-          id: aliment.id,
-          nom: aliment.nom,
-        })))
+      return { s, p, produitsLus, declarationsLues, alimentsLus, justificatifsLus, mortalitesLues, equarrissageLu, archivesLues }
+    },
+    (reponse) => {
+      if (reponse.etat === "chargement") {
+        setDeclarationsLoading(true)
+        if (!reponse.rafraichissement) {
+          setJustificatifsAliments([])
+          setMortalites([])
+          setJustificatifsEquarrissage([])
+          setArchivesRegistre([])
+          setDeclarations([])
+        }
+        return
       }
-      if (justificatifsRes.ok) {
-        setJustificatifsAliments((await justificatifsRes.json()).data)
-      }
-      if (mortalitesRes.ok) {
-        setMortalites((await mortalitesRes.json()).data)
-      }
-      if (equarrissageRes.ok) {
-        setJustificatifsEquarrissage((await equarrissageRes.json()).data)
-      }
-      if (archivesRes.ok) {
-        setArchivesRegistre((await archivesRes.json()).data)
-      }
-      if (declarationsRes.ok) {
-        const payload = await declarationsRes.json()
-        setDeclarations(payload.declarations)
-        setDeclarationResume(payload.resume)
-      }
-    } finally {
       setDeclarationsLoading(false)
-    }
-  }, [annee, filiereSel])
-  React.useEffect(() => { void reload() }, [reload])
+      if (reponse.etat === "erreur") return
+      const lu = reponse.donnees
+      if (lu.s) setStocks(lu.s.data)
+      if (lu.p) setProphylaxies(lu.p.data)
+      if (lu.produitsLus) setProduits(lu.produitsLus.data)
+      if (lu.alimentsLus) {
+        setAliments(lu.alimentsLus.data.map((aliment: AlimentJustificatifOption) => ({ id: aliment.id, nom: aliment.nom })))
+      }
+      if (lu.justificatifsLus) setJustificatifsAliments(lu.justificatifsLus.data)
+      if (lu.mortalitesLues) setMortalites(lu.mortalitesLues.data)
+      if (lu.equarrissageLu) setJustificatifsEquarrissage(lu.equarrissageLu.data)
+      if (lu.archivesLues) setArchivesRegistre(lu.archivesLues.data)
+      if (lu.declarationsLues) {
+        setDeclarations(lu.declarationsLues.declarations)
+        setDeclarationResume(lu.declarationsLues.resume)
+      }
+    },
+  )
 
   async function archiverRegistreComplet() {
     setArchivageLoading(true)

@@ -98,7 +98,21 @@ describe("lancerLecture : la dernière demande gagne", () => {
     lecteur.demandes[0].resoudre("trop tard")
     await lecture
 
-    expect(recues).toEqual([{ cle: "a", etat: "chargement" }])
+    expect(recues).toEqual([{ cle: "a", etat: "chargement", rafraichissement: false }])
+  })
+})
+
+describe("rafraîchissement", () => {
+  it("distingue le rechargement de la même clé d'un changement de filtre", async () => {
+    const recues: Reponse<string>[] = []
+    const boite = creerBoite<string>(async () => "lignes", (r) => recues.push(r))
+    boite.cle = "2025"
+    await lancerLecture(boite)
+    await lancerLecture(boite)
+    boite.cle = "2026"
+    await lancerLecture(boite)
+
+    expect(recues.filter((r) => r.etat === "chargement").map((r) => r.etat === "chargement" && r.rafraichissement)).toEqual([false, true, false])
   })
 })
 
@@ -113,8 +127,8 @@ describe("état affiché", () => {
   })
 
   it("garde les données pendant un rechargement de la même clé, les masque au changement de clé", () => {
-    expect(rangerReponse(pret, { cle: "2025", etat: "chargement" })).toBe(pret)
-    expect(rangerReponse(pret, { cle: "2026", etat: "chargement" })).toEqual({ cle: "2026", etat: "chargement" })
+    expect(rangerReponse(pret, { cle: "2025", etat: "chargement", rafraichissement: true })).toBe(pret)
+    expect(rangerReponse(pret, { cle: "2026", etat: "chargement", rafraichissement: false })).toEqual({ cle: "2026", etat: "chargement", rafraichissement: false })
     const erreur: Reponse<string> = { cle: "2025", etat: "erreur", erreur: new Error("panne") }
     expect(rangerReponse(pret, erreur)).toBe(erreur)
   })

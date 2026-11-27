@@ -32,7 +32,8 @@ import * as React from "react"
 export type Lecteur<T> = (signal: AbortSignal) => Promise<T>
 
 export type Reponse<T> =
-  | { cle: string; etat: "chargement" }
+  /** `rafraichissement` : même clé que la dernière réponse reçue (rechargement après une action). */
+  | { cle: string; etat: "chargement"; rafraichissement: boolean }
   | { cle: string; etat: "pret"; donnees: T }
   | { cle: string; etat: "erreur"; erreur: unknown }
 
@@ -42,12 +43,14 @@ export type Boite<T> = {
   /** Numéro de la dernière demande : monotone, jamais remis à zéro. */
   numero: number
   controleur: AbortController | null
+  /** Clé de la dernière réponse appliquée avec succès. */
+  cleRecue: string | null
   lecteur: Lecteur<T>
   appliquer: (reponse: Reponse<T>) => void
 }
 
 export function creerBoite<T>(lecteur: Lecteur<T>, appliquer: (reponse: Reponse<T>) => void): Boite<T> {
-  return { cle: null, numero: 0, controleur: null, lecteur, appliquer }
+  return { cle: null, numero: 0, controleur: null, cleRecue: null, lecteur, appliquer }
 }
 
 /** Lance la lecture de la clé courante de la boîte ; toute lecture antérieure est invalidée. */
@@ -60,7 +63,7 @@ export function lancerLecture<T>(boite: Boite<T>): Promise<void> {
     return Promise.resolve()
   }
   const controleur = (boite.controleur = new AbortController())
-  boite.appliquer({ cle, etat: "chargement" })
+  boite.appliquer({ cle, etat: "chargement", rafraichissement: boite.cleRecue === cle })
   let lecture: Promise<T>
   try {
     lecture = boite.lecteur(controleur.signal)
@@ -69,7 +72,9 @@ export function lancerLecture<T>(boite: Boite<T>): Promise<void> {
   }
   return lecture.then(
     (donnees) => {
-      if (numero === boite.numero) boite.appliquer({ cle, etat: "pret", donnees })
+      if (numero !== boite.numero) return
+      boite.cleRecue = cle
+      boite.appliquer({ cle, etat: "pret", donnees })
     },
     (erreur) => {
       if (numero === boite.numero && !controleur.signal.aborted) boite.appliquer({ cle, etat: "erreur", erreur })
@@ -86,7 +91,9 @@ export function abandonnerLecture<T>(boite: Boite<T>): void {
 
 /**
  * Couche sans état. `appliquer` reçoit « chargement », puis « pret » ou
- * « erreur », toujours pour la demande courante.
+ * « erreur », toujours pour la demande courante. Sur un « chargement » qui
+ * n'est pas un rafraîchissement, l'écran vide ce qu'il affichait : les lignes
+ * d'un autre filtre ne restent ni visibles ni actionnables.
  */
 export function useLecture<T>(
   cle: string | null,
