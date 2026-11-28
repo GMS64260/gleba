@@ -76,6 +76,21 @@ function collectTabValues(children: React.ReactNode): string[] {
 }
 
 /**
+ * Faut-il mémoriser la valeur d'un groupe d'onglets contrôlé, changée par le
+ * code de l'écran ? Oui si elle a changé depuis le rendu précédent sous la
+ * même clé de stockage et qu'elle désigne un onglet existant. Non à la
+ * première passe avec une clé : la restauration de la préférence décide.
+ */
+export function ongletAMemoriser(
+  avant: { cle: string | null; valeur: string | undefined },
+  cle: string,
+  valeur: string,
+  onglets: readonly string[],
+): boolean {
+  return avant.cle === cle && avant.valeur !== valeur && onglets.includes(valeur)
+}
+
+/**
  * Racine d'onglets avec mémorisation transverse.
  *
  * - clé isolée par route, groupe d'onglets et utilisateur ;
@@ -111,6 +126,19 @@ const Tabs = React.forwardRef<
     if (controlled) onValueChangeRef.current?.(stored)
     else setInternalValue(stored)
   }, [controlled, signature, storageKey])
+
+  // Un onglet choisi par le code de l'écran (carte, bouton « tout afficher »)
+  // est mémorisé comme un clic sur l'onglet : sinon l'ancien filtre revenait
+  // au rechargement (équipe debug, D254). La première passe avec une clé de
+  // stockage laisse la restauration ci-dessus décider.
+  const precedente = React.useRef<{ cle: string | null; valeur: string | undefined }>({ cle: null, valeur: undefined })
+  React.useEffect(() => {
+    const avant = precedente.current
+    precedente.current = { cle: storageKey, valeur: value }
+    if (controlled && storageKey && value !== undefined && ongletAMemoriser(avant, storageKey, value, signature.split("|"))) {
+      window.localStorage.setItem(storageKey, value)
+    }
+  }, [controlled, signature, storageKey, value])
 
   const handleValueChange = React.useCallback((next: string) => {
     if (!controlled) setInternalValue(next)
