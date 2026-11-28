@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { whereAlimentAccessible } from '@/lib/elevage/aliment-accessible'
 
 const ligneSchema = z.object({
@@ -125,6 +126,9 @@ export async function PATCH(request: NextRequest) {
   if (error) return error
   try {
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const id = typeof body?.id === 'string' ? body.id : null
     if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     const existing = await prisma.planRation.findFirst({ where: { id, userId: session.user.id }, select: { id: true, animalId: true } })
@@ -141,9 +145,10 @@ export async function PATCH(request: NextRequest) {
     const invalide = await rationValide(session.user.id, d.lotId ?? null, animalId, d.composition)
     if (invalide) return NextResponse.json({ error: invalide }, { status: 400 })
 
-    const ration = await prisma.planRation.update({
+    const ration = await ecrireFicheVersionnee(prisma, 'plans_ration', id, lecture.version, 'Ration', (db) => db.planRation.update({
       where: { id },
       data: {
+        ...INCREMENT_VERSION,
         nom: d.nom,
         lotId: d.lotId ?? null,
         animalId,
@@ -156,9 +161,10 @@ export async function PATCH(request: NextRequest) {
         composition: d.composition,
         notes: d.notes ?? null,
       },
-    })
+    }))
     return NextResponse.json({ data: ration })
   } catch (err) {
+    if (err instanceof FicheModifieeAilleurs) return err.reponse()
     console.error('PATCH /api/elevage/rations error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }

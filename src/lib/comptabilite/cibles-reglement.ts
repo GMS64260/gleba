@@ -1,3 +1,4 @@
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { deviseFactureReglement } from './devise-reglement'
 import { modePaiementDepuisReglement } from '@/lib/validations/reglement'
 import { Prisma } from '@prisma/client'
@@ -190,7 +191,8 @@ export async function projeterEtatReglement(
   } else if (cible.type === 'VenteProduit') {
     await db.venteProduit.updateMany({
       where: { id: cible.id, userId, annule: false, factureId: null },
-      data: { paye },
+      // « Payée » figure dans le formulaire de la vente : sa version avance.
+      data: { paye, ...INCREMENT_VERSION },
     })
   }
   if (cible.miroir) {

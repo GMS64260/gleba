@@ -383,6 +383,7 @@ export async function POST(request: NextRequest) {
             telephone: item.telephone,
             siteWeb: item.siteWeb,
             notes: item.notes,
+            ...INCREMENT_VERSION,
           },
           create: {
             id: item.id,

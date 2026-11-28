@@ -59,6 +59,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { AnimalCombobox, type AnimalOption } from "@/components/elevage/AnimalCombobox"
 import { useToast } from "@/hooks/use-toast"
+import { messageConflitDialogue, refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
 import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
 import { confirmDialog } from "@/lib/global-dialog"
@@ -200,6 +201,8 @@ export function ProductionTab({ year }: { year?: number } = {}) {
 // ============================================================
 
 interface Production {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: number
   date: string
   quantite: number
@@ -306,6 +309,8 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   // QA 2026-05-15 — édition par bouton ✏️ : id de la production en
   // cours d'édition (null = mode création).
   const [editingId, setEditingId] = React.useState<number | null>(null)
+  // Version de la ligne ouverte en modification (refus si elle a changé ailleurs).
+  const versionLigne = useVersionFiche()
   // BUG #2 : payload en attente quand le backend a renvoyé 422
   // COLLECTE_OVER_SEUIL — l'éleveur doit confirmer pour forcer la saisie.
   const [overrideState, setOverrideState] = React.useState<{
@@ -455,9 +460,12 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     const response = await fetch('/api/elevage/production-oeufs', {
       method: isEdit ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(isEdit ? { id: options.editingId, ...finalPayload } : finalPayload),
+      body: JSON.stringify(isEdit ? versionLigne.joindre({ id: options.editingId, ...finalPayload }) : finalPayload),
     })
     if (response.ok) return { ok: true }
+    // Collecte modifiée ailleurs : la saisie reste ouverte, un second envoi l'impose.
+    const refusVersion = isEdit ? await refusDansDialogue(response, versionLigne) : null
+    if (refusVersion) return { ok: false, status: 409, body: { error: refusVersion } }
     const body = await response.json().catch(() => ({}))
     return { ok: false, status: response.status, body }
   }
@@ -465,6 +473,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   // QA 2026-05-15 — pré-remplit la modale + ouvre en mode édition.
   const handleEdit = (prod: Production) => {
     setEditingId(prod.id)
+    versionLigne.retenir(prod)
     setFormData({
       lotId: prod.lot?.id ? prod.lot.id.toString() : "",
       date: prod.date.split('T')[0],
@@ -1217,6 +1226,8 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
 // ============================================================
 
 interface Vente extends PieceAvecDevise {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: number
   date: string
   type: string
@@ -1275,6 +1286,8 @@ function VentesSubTab({ year }: { year?: number } = {}) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingId, setEditingId] = React.useState<number | null>(null)
+  // Version de la ligne ouverte en modification (refus si elle a changé ailleurs).
+  const versionLigne = useVersionFiche()
   const [isSubmittingVente, setIsSubmittingVente] = React.useState(false)
 
   const [formData, setFormData] = React.useState({
@@ -1309,6 +1322,7 @@ function VentesSubTab({ year }: { year?: number } = {}) {
 
   const handleEdit = (v: Vente) => {
     setEditingId(v.id)
+    versionLigne.retenir(v)
     setFormData({
       date: v.date.split('T')[0],
       type: v.type,
@@ -1432,10 +1446,17 @@ function VentesSubTab({ year }: { year?: number } = {}) {
       const envoi = await envoyerAvecConfirmationLait((confirmer) => fetch('/api/elevage/ventes', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(confirmer ? { ...body, confirmerLaitIndisponible: true } : body),
+        body: JSON.stringify(isEdit ? versionLigne.joindre(confirmer ? { ...body, confirmerLaitIndisponible: true } : body) : confirmer ? { ...body, confirmerLaitIndisponible: true } : body),
       }))
       if (!envoi) return
       const { res: response, json } = envoi
+      // Vente modifiée ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      if (isEdit && response.status === 409 && json?.code === "MODIFIE_AILLEURS") {
+        const conflit = { message: String(json.error ?? "Cette fiche a été modifiée depuis son ouverture."), versionActuelle: typeof json.versionActuelle === "number" ? json.versionActuelle : null }
+        versionLigne.adopter(conflit.versionActuelle)
+        toast({ variant: "destructive", title: "Modifiée ailleurs", description: messageConflitDialogue(conflit) })
+        return
+      }
       if (!response.ok) {
         // Ticket cms1vqsqu — afficher le message précis de l'API (garde-fous).
         toast({ variant: "destructive", title: "Erreur", description: json?.error || "Impossible d'enregistrer" })
@@ -1734,6 +1755,8 @@ function VentesSubTab({ year }: { year?: number } = {}) {
 // ============================================================
 
 interface Abattage {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: number
   date: string
   quantite: number
@@ -1779,6 +1802,8 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
   const [especeFilter, setEspeceFilter] = React.useState<Set<string>>(new Set())
   // QA 2026-05-15 — édition par ligne
   const [editingId, setEditingId] = React.useState<number | null>(null)
+  // Version de la ligne ouverte en modification (refus si elle a changé ailleurs).
+  const versionLigne = useVersionFiche()
   const [isSubmittingAbattage, setIsSubmittingAbattage] = React.useState(false)
 
   const [formData, setFormData] = React.useState({
@@ -1794,6 +1819,7 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
 
   const handleEdit = (a: Abattage) => {
     setEditingId(a.id)
+    versionLigne.retenir(a)
     setFormData({
       lotId: a.lot?.id ? a.lot.id.toString() : "",
       // Jour civil, celui que le PATCH compare : `split('T')` lisait la veille
@@ -1909,8 +1935,14 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
       const response = await fetch('/api/elevage/abattages', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(isEdit ? versionLigne.joindre(body) : body),
       })
+      // Abattage modifié ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const refusVersion = isEdit ? await refusDansDialogue(response, versionLigne) : null
+      if (refusVersion) {
+        toast({ variant: "destructive", title: "Modifié ailleurs", description: refusVersion })
+        return
+      }
       if (!response.ok) {
         // Revue 2026-10-20 — le refus de la route (plafond des têtes
         // collectives, temps d'attente…) se lit tel quel, comme dans AnimauxTab.

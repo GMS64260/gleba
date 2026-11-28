@@ -7,6 +7,7 @@ import { champsReellementEnvoyes } from '@/lib/validations/champs-envoyes'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { Prisma } from '@prisma/client'
 import { createClientSchema, updateClientSchema } from '@/lib/validations/client'
 import { compterVentesParClient } from '@/lib/comptabilite/ventes-client'
@@ -171,6 +172,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const parsed = updateClientSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
@@ -228,13 +232,14 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const client = await prisma.client.update({
+    const client = await ecrireFicheVersionnee(prisma, 'clients', id, lecture.version, 'Client', (db) => db.client.update({
       where: { id },
-      data: updateData,
-    })
+      data: { ...updateData, ...INCREMENT_VERSION },
+    }))
 
     return NextResponse.json({ data: client })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     console.error('PATCH /api/comptabilite/clients error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la modification', details: "Erreur interne du serveur" },

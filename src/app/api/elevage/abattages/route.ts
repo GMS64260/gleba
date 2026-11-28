@@ -12,6 +12,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 import { lireAnnee } from '@/lib/api/annee'
 import { createVenteFromAbattage, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
@@ -334,6 +335,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const { id, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, lieu, nEtablissementDestination, notes } = body
     const overrideCoherence = (body as { overrideCoherence?: boolean })?.overrideCoherence === true
     const userId = session.user.id
@@ -428,6 +432,7 @@ export async function PATCH(request: NextRequest) {
       await verrouillerReglements(tx, session!.user.id)
       await tx.$queryRaw`SELECT id FROM abattages WHERE id = ${existing.id} AND user_id = ${userId} FOR UPDATE`
       const courante = await tx.abattage.findFirst({ where: { id: existing.id, userId } })
+      if (courante && versionFichePerimee(lecture.version, courante)) throw new FicheModifieeAilleurs('Abattage', courante.version)
       if (!courante || Object.entries(courante).some(([champ, valeur]) => {
         const avant = existing[champ as keyof typeof existing]
         return valeur instanceof Date && avant instanceof Date ? valeur.getTime() !== avant.getTime() : valeur !== avant
@@ -537,7 +542,7 @@ export async function PATCH(request: NextRequest) {
 
       const updated = await tx.abattage.update({
         where: { id: parseInt(id) },
-        data: updateData,
+        data: { ...updateData, ...INCREMENT_VERSION },
         include: {
           animal: { select: { id: true, nom: true, identifiant: true, race: true } },
           lot: { select: { id: true, nom: true } },
@@ -560,6 +565,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: abattage })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json({ error: error.message, code: error.code, details: error.details }, { status: error.status })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })

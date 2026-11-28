@@ -7,6 +7,7 @@ import { champsReellementEnvoyes } from '@/lib/validations/champs-envoyes'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { Prisma } from '@prisma/client'
 import { createFournisseurSchema, updateFournisseurSchema } from '@/lib/validations'
 import { sansChamps } from '@/lib/sans-champs'
@@ -143,6 +144,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const parsed = updateFournisseurSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
@@ -161,9 +165,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Fournisseur non trouvé' }, { status: 404 })
     }
 
-    const fournisseur = await prisma.fournisseur.update({
+    const fournisseur = await ecrireFicheVersionnee(prisma, 'fournisseurs', id, lecture.version, 'Fournisseur', (db) => db.fournisseur.update({
       where: { id },
       data: {
+        ...INCREMENT_VERSION,
         ...(updateData.contact !== undefined && { contact: updateData.contact }),
         ...(updateData.adresse !== undefined && { adresse: updateData.adresse }),
         ...(updateData.ville !== undefined && { ville: updateData.ville }),
@@ -190,10 +195,11 @@ export async function PATCH(request: NextRequest) {
         ...(updateData.notes !== undefined && { notes: updateData.notes }),
         ...(updateData.actif !== undefined && { actif: updateData.actif }),
       },
-    })
+    }))
 
     return NextResponse.json({ data: fournisseur })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     console.error('PATCH /api/comptabilite/fournisseurs error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la modification', details: "Erreur interne du serveur" },

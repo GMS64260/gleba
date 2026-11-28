@@ -28,7 +28,8 @@ export type DocumentVue = Omit<DocumentComplet, DatesDocument> & {
 async function requete(url: string, method = 'GET', body?: unknown) {
   const r = await fetch(url, { method, ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) })
   const j = await r.json()
-  if (!r.ok) throw new Error(j.error || 'Action impossible')
+  // Le code et la version actuelle suivent l'erreur : l'éditeur s'en sert pour le refus « modifié ailleurs ».
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Action impossible'), { code: j.code as string | undefined, versionActuelle: j.versionActuelle as number | undefined })
   return j
 }
 
@@ -132,7 +133,19 @@ export function DocumentsCommerciaux({ type, onFacture }: { type: 'devis' | 'liv
     </div>
     <p className="rounded-lg border bg-white p-3 text-sm text-muted-foreground">{type === 'devis' ? 'Le devis et son acceptation ne créent aucun revenu. Le chiffre d’affaires apparaît à l’émission de la facture.' : 'Choisissez vos produits dans les stocks : leurs quantités sont déduites à la confirmation de livraison. La facture reprend le bon sans nouvelle sortie de stock.'}</p>
     {editeur && <FormulaireDocument key={editeur.cle} type={type} initial={editeur.document} preselection={!editeur.document ? preselection : undefined} copie={editeur.copie} onFermer={fermerEditeur} onSauver={async (contenu) => {
-      if (editeur.document && !editeur.copie) await requete(`/api/comptabilite/documents/${editeur.document.id}`, 'PUT', contenu)
+      if (editeur.document && !editeur.copie) {
+        const document = editeur.document
+        const versionLue = (document as { version?: unknown }).version
+        try {
+          await requete(`/api/comptabilite/documents/${document.id}`, 'PUT', typeof versionLue === 'number' ? { ...contenu, versionLue } : contenu)
+        } catch (e) {
+          const refus = e as Error & { code?: string; versionActuelle?: number }
+          if (refus.code !== 'MODIFIE_AILLEURS' || typeof refus.versionActuelle !== 'number') throw e
+          // La saisie reste ouverte (même clé d'éditeur) ; un second enregistrement l'impose.
+          setEditeur({ ...editeur, document: { ...document, version: refus.versionActuelle } as typeof document })
+          throw new Error(`${refus.message} Enregistrez de nouveau pour imposer votre saisie, ou fermez ce formulaire et actualisez la page pour voir le document à jour.`)
+        }
+      }
       else await requete('/api/comptabilite/documents', 'POST', { cle: editeur.cle, contenu })
       fermerEditeur(); setPage(1); setFiltre(''); setRecherche(''); setDocumentCible(''); exercice('all'); actualiser()
     }} />}

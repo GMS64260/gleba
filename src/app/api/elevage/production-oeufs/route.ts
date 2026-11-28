@@ -9,6 +9,7 @@ import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 import { productionOeufsSchema } from '@/lib/validations/elevage-production-oeufs'
 import { seuilCollecteMaxJour } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
@@ -320,6 +321,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const { id, date, quantite, casses, sales, calibre, notes, lotId, animalId } = body
     const overrideCoherence = (body as { overrideCoherence?: boolean })?.overrideCoherence === true
 
@@ -410,6 +414,7 @@ export async function PATCH(request: NextRequest) {
         where: { id: existing.id, userId: session!.user.id },
       })
       if (!courante) throw new CollecteIntrouvableError()
+      if (courante && versionFichePerimee(lecture.version, courante)) throw new FicheModifieeAilleurs('Collecte', courante.version)
       // Seulement si l'un des trois nombres change : une collecte ancienne déjà
       // incohérente reste corrigeable sur ses autres champs.
       if (updateData.quantite !== undefined || updateData.casses !== undefined || updateData.sales !== undefined) {
@@ -439,7 +444,7 @@ export async function PATCH(request: NextRequest) {
       if (refus) throw new CollecteEntameeError(refus)
       return tx.productionOeuf.update({
         where: { id: courante.id },
-        data: updateData,
+        data: { ...updateData, ...INCREMENT_VERSION },
         include: {
           lot: { select: { id: true, nom: true } },
           animal: { select: { id: true, nom: true, identifiant: true } },
@@ -449,6 +454,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: production })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     const conflitCaisse = messageConflitStockCaisse(error)
     if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof CollecteIntrouvableError) {

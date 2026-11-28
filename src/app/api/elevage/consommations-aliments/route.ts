@@ -10,6 +10,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from '@/lib/api/version-fiche'
 import { Prisma } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromConsommationAliment, deleteAutoEntry } from '@/lib/auto-compta'
@@ -265,6 +266,9 @@ export async function PATCH(request: NextRequest) {
   try {
     const userId = session.user.id
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const overrideStock = body?.overrideStock === true
     const id = parseInt(body.id, 10)
     if (Number.isNaN(id)) {
@@ -305,6 +309,7 @@ export async function PATCH(request: NextRequest) {
     // si changement, puis on applique le delta sur le nouvel.
     const updated = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      await controlerVersionFiche(tx, 'consommations_aliments', id, lecture.version, 'Consommation')
       // L'ancienne quantité et l'ancien aliment se relisent sous le mutex : pris
       // sur la lecture d'avant transaction, deux corrections envoyées ensemble
       // appliquaient chacune l'écart avec la valeur d'origine au stock.
@@ -365,6 +370,7 @@ export async function PATCH(request: NextRequest) {
       const result = await tx.consommationAliment.update({
         where: { id },
         data: {
+          ...INCREMENT_VERSION,
           alimentId,
           lotId: lotId ?? null,
           animalId: animalId ?? null,
@@ -390,6 +396,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: updated })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     if (error instanceof RefusStockAliment) return NextResponse.json(error.corps, { status: 422 })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PATCH /api/elevage/consommations-aliments error:', error)

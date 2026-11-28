@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
+import { refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import { confirmDialog } from "@/lib/global-dialog"
 import { useFiliereSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 
@@ -58,6 +59,7 @@ export function ReservationsSubTab() {
   const [naissances, setNaissances] = React.useState<NaissanceOpt[]>([])
   const [open, setOpen] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
+  const versionLigne = useVersionFiche()
   const [form, setForm] = React.useState(EMPTY)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
@@ -92,6 +94,7 @@ export function ReservationsSubTab() {
   const openCreate = () => { setEditingId(null); setForm(EMPTY); setOpen(true) }
   const openEdit = (r: Reservation) => {
     setEditingId(r.id)
+    versionLigne.retenir(r)
     setForm({
       id: r.id, acquereurNom: r.acquereurNom, acquereurEmail: r.acquereurEmail ?? "", acquereurTel: r.acquereurTel ?? "",
       naissanceId: r.naissanceId != null ? String(r.naissanceId) : "", statut: r.statut,
@@ -117,8 +120,11 @@ export function ReservationsSubTab() {
       const res = await fetch("/api/elevage/reservations", {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(editingId ? versionLigne.joindre(payload) : payload),
       })
+      // Réservation modifiée ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const refusVersion = editingId ? await refusDansDialogue(res, versionLigne) : null
+      if (refusVersion) { toast({ variant: "destructive", title: "Modifiée ailleurs", description: refusVersion }); return }
       if (!res.ok) { const j = await res.json().catch(() => null); toast({ variant: "destructive", title: "Erreur", description: j?.error || "Échec" }); return }
       toast({ title: editingId ? "Réservation modifiée" : "Réservation créée" })
       setOpen(false); fetchData()
@@ -132,7 +138,12 @@ export function ReservationsSubTab() {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: r.id, statut }),
     })
-    if (res.ok) { setReservations((prev) => prev.map((x) => (x.id === r.id ? { ...x, statut } : x))) }
+    // La ligne reprend la réponse du serveur, version comprise : sinon le formulaire
+    // ouvert juste après serait refusé pour ce propre changement de statut.
+    if (res.ok) {
+      const enregistree = (await res.json().catch(() => null))?.data as Partial<Reservation> | undefined
+      setReservations((prev) => prev.map((x) => (x.id === r.id ? { ...x, statut, ...(enregistree ?? {}) } : x)))
+    }
     else toast({ variant: "destructive", title: "Erreur" })
   }
 

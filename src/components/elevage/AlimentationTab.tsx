@@ -56,6 +56,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { confirmDialog } from "@/lib/global-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
 import { symboleDevise, formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
 import { dateSoinARenvoyer, jourSoin } from '@/lib/elevage/date-soin'
@@ -592,6 +593,7 @@ export function ConsommationsSubTab({ year }: { year?: number } = {}) {
   const lotsCibles = lots.filter((l) => filiereMatch(filiereSel, l.especeAnimale?.filiere))
   const animauxCibles = animaux.filter((a) => filiereMatch(filiereSel, a.especeAnimale?.filiere))
   const [stats, setStats] = React.useState<ConsoStats | null>(null)
+  const versionConso = useVersionFiche()
   const [{ isDialogOpen, editingConsoId, formData }, dispatchConsoForm] = React.useReducer(
     reduireFormulaireConsommation, undefined, () => formulaireConsommationVierge(todayLocalISO()),
   )
@@ -612,6 +614,7 @@ export function ConsommationsSubTab({ year }: { year?: number } = {}) {
 
   const handleEditConso = (c: Consommation) => {
     setStockConfirm(null)
+    versionConso.retenir(c)
     dispatchConsoForm({ type: "modifier", consommation: c })
   }
 
@@ -657,8 +660,14 @@ export function ConsommationsSubTab({ year }: { year?: number } = {}) {
     const response = await fetch("/api/elevage/consommations-aliments", {
       method: isEdit ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(isEdit ? versionConso.joindre(body) : body),
     })
+    // Consommation modifiée ailleurs : la saisie reste ouverte, un second envoi l'impose.
+    const refusVersion = isEdit ? await refusDansDialogue(response, versionConso) : null
+    if (refusVersion) {
+      toast({ variant: "destructive", title: "Modifiée ailleurs", description: refusVersion })
+      return
+    }
     if (response.ok) {
       toast({
         title: isEdit ? "Consommation mise à jour" : "Consommation enregistrée",
@@ -1132,6 +1141,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   // QA 2026-05-15 — édition par ligne
   const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
+  const versionSoin = useVersionFiche()
   // Lu dans le rechargement du référentiel, qui ne doit pas se relancer à
   // chaque ouverture de formulaire (FB-7YARYN).
   const editingSoinIdRef = React.useRef<number | null>(null)
@@ -1215,6 +1225,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
 
   const handleEditSoin = (s: Soin) => {
     setEditingSoinId(s.id)
+    versionSoin.retenir(s)
     setFormData({
       cible: s.animalId ? "animal" : "lot",
       lotId: s.lot?.id ? s.lot.id.toString() : "",
@@ -1709,8 +1720,15 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
       const response = await fetch('/api/elevage/soins', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(isEdit ? versionSoin.joindre(payload) : payload),
       })
+      // Soin modifié ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const refusVersion = isEdit ? await refusDansDialogue(response, versionSoin) : null
+      if (refusVersion) {
+        setSoinSubmitError(refusVersion)
+        toast({ variant: "destructive", title: "Modifié ailleurs", description: refusVersion })
+        return
+      }
       const json = await response.json()
       if (!response.ok) {
         setSoinSubmitError(json.error || "Enregistrement du soin impossible.")

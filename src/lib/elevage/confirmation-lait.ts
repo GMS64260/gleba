@@ -11,6 +11,8 @@ import { CODE_LAIT_INDISPONIBLE } from "./lait-indisponible"
 export interface CorpsReponse {
   error?: string
   code?: string
+  /** Présente sur un refus « modifiée ailleurs » (version de fiche). */
+  versionActuelle?: number | null
   warning?: string | null
   data?: Record<string, unknown>
 }

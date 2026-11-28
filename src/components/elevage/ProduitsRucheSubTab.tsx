@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useToast } from "@/hooks/use-toast"
+import { refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import {
   PRODUITS_RUCHE,
   PRODUITS_RUCHE_LABELS,
@@ -44,6 +45,8 @@ import { todayLocalISO } from "@/lib/format-utils"
 import { confirmDialog } from "@/lib/global-dialog"
 
 interface ProductionRuche {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: number
   date: string
   produit: ProduitRuche
@@ -148,6 +151,7 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [isSortieDialogOpen, setIsSortieDialogOpen] = React.useState(false)
   const [editingId, setEditingId] = React.useState<number | null>(null)
+  const versionLigne = useVersionFiche()
   const [productions, setProductions] = React.useState<ProductionRuche[]>([])
   const [stats, setStats] = React.useState<StatProduitRuche[]>([])
   const [stocks, setStocks] = React.useState<StockRuche[]>([])
@@ -196,6 +200,7 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
 
   const openEdit = (production: ProductionRuche) => {
     setEditingId(production.id)
+    versionLigne.retenir(production)
     setFormData({
       date: production.date.slice(0, 10),
       produit: production.produit,
@@ -225,7 +230,7 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
       const response = await fetch("/api/elevage/production-ruche", {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify((editingId ? versionLigne.joindre : (corps: object) => corps)({
           ...(editingId ? { id: editingId } : {}),
           date: formData.date,
           produit: formData.produit,
@@ -235,8 +240,11 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
           animalId: formData.cible.startsWith("animal:") ? Number(formData.cible.slice(7)) : null,
           numeroLot: formData.numeroLot || null,
           notes: formData.notes || null,
-        }),
+        })),
       })
+      // Récolte modifiée ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const refusVersion = editingId ? await refusDansDialogue(response, versionLigne) : null
+      if (refusVersion) throw new Error(refusVersion)
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result?.error || "Impossible d’enregistrer la récolte")
 

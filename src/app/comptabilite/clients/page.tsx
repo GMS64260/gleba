@@ -19,10 +19,13 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { TITRE_FICHE_MODIFIEE, avecVersionLigne, conflitDansDialogue } from "@/hooks/use-version-fiche"
 import { fetchWithRetry } from "@/lib/fetch-retry"
 import { confirmDialog } from "@/lib/global-dialog"
 
 interface Client {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: number
   nom: string
   type: string
@@ -198,8 +201,15 @@ export default function ClientsPage() {
       const response = await fetch('/api/comptabilite/clients', {
         method: editingClient ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(avecVersionLigne(body, editingClient)),
       })
+      // Client modifié ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const conflit = await conflitDansDialogue(response, editingClient)
+      if (conflit) {
+        setEditingClient(conflit.ligne)
+        toast({ variant: "destructive", title: TITRE_FICHE_MODIFIEE, description: conflit.message })
+        return
+      }
 
       if (response.ok) {
         toast({ title: editingClient ? "Client modifié" : "Client créé" })
