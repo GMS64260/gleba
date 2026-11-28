@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import { AnimalCombobox } from "./AnimalCombobox"
 import { confirmDialog } from "@/lib/global-dialog"
 import { useFiliereSelection, filiereMatch } from "@/lib/elevage/filiere-context"
@@ -126,6 +127,7 @@ export function SelectionSubTab() {
   // n'enregistre pas (D80, le n° LOF du premier écrasait celui du second).
   const [pedPour, setPedPour] = React.useState<string | null>(null)
   const [isSavingPed, setIsSavingPed] = React.useState(false)
+  const versionPed = useVersionFiche()
 
   React.useEffect(() => {
     fetch("/api/elevage/animaux?statut=actif", { cache: "no-store" })
@@ -164,6 +166,8 @@ export function SelectionSubTab() {
       .then((j) => {
         if (annule) return
         const d = j.data
+        // `null` : l'animal n'a pas encore de pedigree (création attendue).
+        versionPed.retenir(d ?? null)
         setPed(d ? {
           numeroLof: d.numeroLof ?? "", cotation: d.cotation != null ? String(d.cotation) : "",
           confirmationLof: !!d.confirmationLof, dateConfirmation: d.dateConfirmation ? d.dateConfirmation.split("T")[0] : "", titres: d.titres ?? "",
@@ -221,10 +225,16 @@ export function SelectionSubTab() {
     try {
       const res = await fetch("/api/elevage/pedigree", {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ animalId: Number(pedPour), ...ped, cotation: ped.cotation || null }),
+        body: JSON.stringify(versionPed.joindre({ animalId: Number(pedPour), ...ped, cotation: ped.cotation || null })),
       })
-      if (res.ok) toast({ title: "Pedigree & cotation enregistrés" })
-      else {
+      // Pedigree modifié ailleurs : la saisie reste à l'écran, un second envoi l'impose.
+      const refusVersion = await refusDansDialogue(res, versionPed)
+      if (refusVersion) { toast({ variant: "destructive", title: "Modifié ailleurs", description: refusVersion }); return }
+      if (res.ok) {
+        // Le panneau reste ouvert : la version enregistrée devient celle retenue.
+        versionPed.retenir((await res.json().catch(() => null))?.data)
+        toast({ title: "Pedigree & cotation enregistrés" })
+      } else {
         const j = await res.json().catch(() => null)
         toast({ variant: "destructive", title: "Pedigree non enregistré", description: j?.error })
       }
