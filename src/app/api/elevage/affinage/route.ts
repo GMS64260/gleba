@@ -12,6 +12,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { stockDuLotFromage } from '@/lib/elevage/stock-fromage'
 import { joursAvantEcheanceCave, valoriserStockFromage } from '@/lib/elevage/cave-fromage'
+import { refusDateLimiteFromage } from '@/lib/elevage/date-limite-fromage'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -105,6 +106,8 @@ export async function PATCH(request: NextRequest) {
     const { id, ...updates } = parsed.data
     const existing = await prisma.lotFromage.findFirst({ where: { id, userId: session.user.id } })
     if (!existing) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+    const refusDate = refusDateLimiteFromage(existing, updates)
+    if (refusDate) return NextResponse.json(refusDate, { status: 422 })
     const lot = await prisma.lotFromage.update({ where: { id }, data: updates })
     return NextResponse.json({ data: lot })
   } catch (err) {
