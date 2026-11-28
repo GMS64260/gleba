@@ -158,7 +158,17 @@ export function LivraisonLaitSubTab() {
     if (!paieForm.litres || !paieForm.prixBaseMille) { toast({ variant: "destructive", title: "Litres et prix de base requis" }); return }
     // Une seule paie par mois : en enregistrer une seconde REMPLACE la première
     // (litres, montant, laiterie, notes), donc sa recette. On le dit avant.
-    const dejaSaisie = paies.find((p) => p.mois === paieForm.mois)
+    // Le contrôle relit les paies de l'année au moment de l'envoi : la liste à
+    // l'écran est vide pendant un chargement ou après une lecture en échec, et
+    // la paie du mois (donc sa recette) était alors remplacée sans prévenir.
+    let paiesAnnee = paies
+    try {
+      paiesAnnee = (await lireJson<Lu<Paie, NonNullable<typeof paieStats>>>(`/api/elevage/paies-lait?annee=${annee}`)).data || []
+    } catch {
+      toast({ variant: "destructive", title: "Paies illisibles", description: "Impossible de vérifier si ce mois est déjà saisi. Réessayez." })
+      return
+    }
+    const dejaSaisie = paiesAnnee.find((p) => p.mois === paieForm.mois)
     if (dejaSaisie && !(await confirmDialog(
       `Une paie est déjà enregistrée pour ${MOIS[paieForm.mois - 1]}${dejaSaisie.laiterie ? ` (${dejaSaisie.laiterie})` : ""}. L'enregistrer de nouveau la remplace, avec sa recette en comptabilité. Continuer ?`,
     ))) return

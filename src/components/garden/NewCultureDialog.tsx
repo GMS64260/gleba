@@ -187,6 +187,13 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     // La dernière espèce choisie gagne : la réponse lente d'une espèce
     // précédente ne remplit plus variété, itinéraire, dates et rangs.
     let actif = true
+    // Les listes de l'espèce précédente ne restent pas proposées pendant la lecture.
+    setVarietes([])
+    setItps([])
+    // Leurs champs disparaissent avec les listes : la variété et l'itinéraire de
+    // l'espèce précédente ne partent pas si l'on crée avant la réponse.
+    setVarieteId(null)
+    setItpId(null)
     Promise.all([
       fetch(`/api/especes/${encodeURIComponent(especeId)}`).then(r => r.json()),
       fetch(`/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then(r => r.json()),

@@ -375,6 +375,9 @@ export default function NewCulturePage() {
     // du formulaire de l'espèce affichée.
     let actif = true
     if (selectedEspece) {
+      // Les listes de l'espèce précédente ne restent pas proposées pendant la lecture.
+      setVarietes([])
+      setItps([])
       Promise.all([
         fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`).then((r) => r.json()),
         fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then((r) => r.json()),

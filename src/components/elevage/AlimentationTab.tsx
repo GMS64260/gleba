@@ -1415,6 +1415,10 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     // La dernière espèce gagne : le catalogue lent d'un autre animal ne
     // préremplit plus les délais d'attente du soin en cours de saisie.
     let actif = true
+    // Le catalogue d'une autre espèce ne reste pas proposé pendant la lecture : ses
+    // délais d'attente ne s'appliquent pas à l'animal ou au lot choisi.
+    // Pas en modification d'un soin : son produit rattaché doit rester lisible dans la liste.
+    if (editingSoinIdRef.current === null) setProduits([])
     fetch(`/api/elevage/produits-veterinaires${suffix}`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("catalogue")))
       .then((payload) => {
