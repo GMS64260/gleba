@@ -19,10 +19,13 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { TITRE_FICHE_MODIFIEE, avecVersionLigne, conflitDansDialogue } from "@/hooks/use-version-fiche"
 import { useSession } from "next-auth/react"
 import { confirmDialog } from "@/lib/global-dialog"
 
 interface Fournisseur {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: string
   contact: string | null
   adresse: string | null
@@ -161,8 +164,15 @@ export default function FournisseursPage() {
       const response = await fetch('/api/comptabilite/fournisseurs', {
         method: editingFournisseur ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(avecVersionLigne(body, editingFournisseur)),
       })
+      // Fournisseur modifié ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const conflit = await conflitDansDialogue(response, editingFournisseur)
+      if (conflit) {
+        setEditingFournisseur(conflit.ligne)
+        toast({ variant: "destructive", title: TITRE_FICHE_MODIFIEE, description: conflit.message })
+        return
+      }
 
       if (response.ok) {
         toast({ title: editingFournisseur ? "Fournisseur modifié" : "Fournisseur créé" })

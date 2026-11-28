@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, versionFichePerimee, type VersionLue } from '@/lib/api/version-fiche'
 import { adresseDeFiche, identiteAcheteur } from '@/lib/comptabilite/rattachement-client'
 import { creerFacture, snapshotEmetteurForEmission, type EmetteurSnapshot } from '@/lib/facture-utils'
 import { dateIsoFacture } from '@/lib/facture-regles'
@@ -93,14 +94,16 @@ export async function creerDocument(userId: string, cle: string, contenu: Conten
   }, { timeout: 15_000 })
 }
 
-export async function modifierDocument(userId: string, id: string, contenu: ContenuDocument) {
+export async function modifierDocument(userId: string, id: string, contenu: ContenuDocument, versionLue?: VersionLue) {
   return prisma.$transaction(async (tx) => {
     await verrouiller(tx, userId, [id])
     const d = await lire(tx, userId, id)
+    // Version de fiche, relue sous le verrou de ligne : le PUT remplace tout le document, lignes comprises.
+    if (versionFichePerimee(versionLue, d)) throw new FicheModifieeAilleurs('Document', d.version)
     if (d.statut !== 'brouillon' || d.devisOrigineId) throw new ErreurCommerciale('Seul un brouillon créé directement est modifiable. Dupliquez ce document pour le réviser.')
     if (contenu.type !== d.type) throw new ErreurCommerciale('Le type du document ne se modifie pas', 400)
     const { lignes, ...data } = await preparer(tx, userId, contenu)
-    return tx.documentCommercial.update({ where: { id: d.id }, data: { ...data, lignes: { deleteMany: {}, create: lignes } }, include: relationsDocument })
+    return tx.documentCommercial.update({ where: { id: d.id }, data: { ...data, ...INCREMENT_VERSION, lignes: { deleteMany: {}, create: lignes } }, include: relationsDocument })
   })
 }
 
