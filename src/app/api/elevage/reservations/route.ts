@@ -10,6 +10,7 @@ import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from '@/lib/api/version-fiche'
 import { upsertVenteFromReservationElevage } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 
@@ -190,6 +191,9 @@ export async function PATCH(request: NextRequest) {
   const userId = session!.user.id
   try {
     const b = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(b)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     if (!b?.id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
     const existing = await prisma.reservationElevage.findFirst({
       where: { id: b.id, userId },
@@ -249,13 +253,15 @@ export async function PATCH(request: NextRequest) {
     }
     const updated = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
-      const saved = await tx.reservationElevage.update({ where: { id: b.id }, data })
+      await controlerVersionFiche(tx, 'reservations_elevage', b.id, lecture.version, 'Réservation')
+      const saved = await tx.reservationElevage.update({ where: { id: b.id }, data: { ...data, ...INCREMENT_VERSION } })
       await upsertVenteFromReservationElevage(tx, userId, saved)
       return saved
     })
     invalidateKpi(userId)
     return NextResponse.json({ data: updated })
   } catch (e) {
+    if (e instanceof FicheModifieeAilleurs) return e.reponse()
     if (e instanceof ReservationValidationError) {
       return NextResponse.json({ error: e.message }, { status: 400 })
     }

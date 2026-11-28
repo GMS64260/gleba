@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import { besoinsMonogastrique, besoinsRuminant, bilanRation, bilanRationMonogastrique, type ProfilEspeceRation, type StadeGestation, type LigneRation } from "@/lib/elevage/ration"
 import { symboleDevise, formatMontantDevise } from "@/lib/format-utils"
 
@@ -75,6 +76,7 @@ export function RationSubTab() {
   const [stade, setStade] = React.useState("lactation")
   const [profilEspece, setProfilEspece] = React.useState<ProfilEspeceRation>('caprin')
   const [editingId, setEditingId] = React.useState<string | null>(null)
+  const versionLigne = useVersionFiche()
   const [saving, setSaving] = React.useState(false)
 
   const reloadRations = React.useCallback(() => {
@@ -96,6 +98,7 @@ export function RationSubTab() {
 
   const chargerRation = (r: RationEnregistree) => {
     setEditingId(r.id)
+    versionLigne.retenir(r)
     setNom(r.nom)
     setLotId(r.lotId ? String(r.lotId) : "")
     setStade(r.stade || "lactation")
@@ -140,10 +143,15 @@ export function RationSubTab() {
       const res = await fetch("/api/elevage/rations", {
         method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(editingId ? versionLigne.joindre(payload) : payload),
       })
+      // Ration modifiée ailleurs : la saisie reste à l'écran, un second envoi l'impose.
+      const refusVersion = editingId ? await refusDansDialogue(res, versionLigne) : null
+      if (refusVersion) { toast({ variant: "destructive", title: "Modifiée ailleurs", description: refusVersion }); return }
       const j = await res.json()
       if (!res.ok) { toast({ variant: "destructive", title: "Erreur", description: j.error || "Échec" }); return }
+      // L'écran reste ouvert sur la ration : la version enregistrée devient celle retenue.
+      versionLigne.retenir(j.data)
       setEditingId(j.data?.id ?? editingId)
       toast({ title: editingId ? "Ration mise à jour" : "Ration enregistrée", description: nom.trim() })
       reloadRations()
@@ -167,7 +175,7 @@ export function RationSubTab() {
   }
 
   const nouvelleRation = () => {
-    setEditingId(null); setNom(""); setLotId(""); setStade("lactation"); setQuantites({})
+    setEditingId(null); versionLigne.oublier(); setNom(""); setLotId(""); setStade("lactation"); setQuantites({})
   }
 
   const estRuminant = profilEspece === 'caprin' || profilEspece === 'ovin' || profilEspece === 'bovin'

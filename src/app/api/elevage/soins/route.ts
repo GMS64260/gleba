@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma, type SoinAnimal } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from '@/lib/api/version-fiche'
 import { createDepenseFromSoinAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { soinPatchSchema } from '@/lib/validations/elevage-soin'
@@ -179,6 +180,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const corps = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(corps)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const parsed = soinPatchSchema.safeParse(corps)
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
@@ -420,6 +424,7 @@ export async function PATCH(request: NextRequest) {
 
     const soin = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      await controlerVersionFiche(tx, 'soins_animaux', id, lecture.version, 'Soin')
       // L'état du prélèvement se relit SOUS le mutex : sur `existing` (lu avant
       // la transaction), deux « Fait » envoyés ensemble voyaient chacun un soin
       // non fait et décomptaient chacun la pharmacie, alors qu'une annulation
@@ -513,7 +518,7 @@ export async function PATCH(request: NextRequest) {
       }
       const updated = await tx.soinAnimal.update({
         where: { id },
-        data: updateData,
+        data: { ...updateData, ...INCREMENT_VERSION },
         include: { animal: true, lot: true, produitVeterinaire: true },
       })
       let finalSoin = updated
@@ -578,6 +583,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: soin })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     if (error instanceof RefusDelaisSousVerrou) {
       const { status, ...corps } = error.refus
       return NextResponse.json(corps, { status })
