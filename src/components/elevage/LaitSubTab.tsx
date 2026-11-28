@@ -771,7 +771,9 @@ function CollecteView() {
       }
       setLoading(false)
       if (reponse.etat === "erreur") {
-        toast({ variant: "destructive", title: "Collectes non chargées", description: "La saisie reste fermée pour ne pas écraser une traite existante. Actualisez la page." })
+        // Fermée aussi après un rafraîchissement en échec : la grille affichée n'est pas confirmée par le serveur.
+        setFenetreEnChargement(true)
+        toast({ variant: "destructive", title: "Collectes non chargées", description: "La saisie reste fermée pour ne pas écraser une traite existante. Touchez « Rafraîchir »." })
         return
       }
       setFenetreEnChargement(false)

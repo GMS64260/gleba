@@ -713,7 +713,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                         key={e.id}
                         type="button"
                         onClick={() => {
-                          update({ essenceId: e.id, essenceLibre: "" })
+                          update({ essenceId: e.id, essenceLibre: "", porteGreffeId: "" }) // le porte-greffe d'une autre essence ne suit pas
                           // Auto-remplir densité depuis le référentiel forestier
                           // (seules les essences forestières exposent densitesParHa).
                           if (e.source === "forestiere") {

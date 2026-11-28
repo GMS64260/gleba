@@ -1417,7 +1417,8 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     let actif = true
     // Le catalogue d'une autre espèce ne reste pas proposé pendant la lecture : ses
     // délais d'attente ne s'appliquent pas à l'animal ou au lot choisi.
-    setProduits([])
+    // Pas en modification d'un soin : son produit rattaché doit rester lisible dans la liste.
+    if (editingSoinIdRef.current === null) setProduits([])
     fetch(`/api/elevage/produits-veterinaires${suffix}`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("catalogue")))
       .then((payload) => {
