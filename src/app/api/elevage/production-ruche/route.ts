@@ -10,6 +10,7 @@ import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
+import { FicheModifieeAilleurs, INCREMENT_VERSION, lireVersionLue, versionFichePerimee } from "@/lib/api/version-fiche"
 import {
   estLotApicole,
   PRODUITS_RUCHE,
@@ -266,6 +267,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const id = Number(body.id)
     if (!Number.isInteger(id) || id <= 0) {
       return NextResponse.json({ error: "ID requis" }, { status: 400 })
@@ -301,6 +305,7 @@ export async function PATCH(request: NextRequest) {
         where: { id, userId: session.user.id },
         select: {
           id: true,
+          version: true,
           date: true,
           produit: true,
           unite: true,
@@ -311,6 +316,7 @@ export async function PATCH(request: NextRequest) {
         },
       })
       if (!courante) throw new StockRucheError("Récolte introuvable", 404)
+      if (versionFichePerimee(lecture.version, courante)) throw new FicheModifieeAilleurs("Récolte de la ruche", courante.version)
 
       const quantiteSortie = courante.mouvementsStock.reduce(
         (somme, mouvement) => somme + mouvement.quantite,
@@ -342,6 +348,7 @@ export async function PATCH(request: NextRequest) {
       return tx.productionRuche.update({
         where: { id },
         data: {
+          ...INCREMENT_VERSION,
           date: nouvelleDate,
           produit: parsed.data.produit,
           quantite: parsed.data.quantite,
@@ -373,6 +380,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: production })
   } catch (cause) {
+    if (cause instanceof FicheModifieeAilleurs) return cause.reponse()
     const conflitCaisse = messageConflitStockCaisse(cause)
     if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (cause instanceof StockRucheError) {

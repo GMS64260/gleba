@@ -11,6 +11,7 @@ import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 import { enrichirVentesElevageReglements } from '@/lib/comptabilite/projection-reglements'
 import { Prisma, type VenteProduit } from '@prisma/client'
 import { lireAnnee } from '@/lib/api/annee'
@@ -591,6 +592,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const { id, paye, client, notes } = body
 
     const mode = modeReglementSchema.safeParse(body.modeReglement)
@@ -788,6 +792,7 @@ export async function PATCH(request: NextRequest) {
       await verrouillerReglements(tx, session.user.id)
       await tx.$queryRaw`SELECT id FROM ventes_produits WHERE id = ${existing.id} AND user_id = ${userId} FOR UPDATE`
       const courante = await tx.venteProduit.findFirst({ where: { id: existing.id, userId } })
+      if (courante && versionFichePerimee(lecture.version, courante)) throw new FicheModifieeAilleurs('Vente', courante.version)
       const aChange = !courante || Object.entries(existing).some(([champ, avant]) => {
         const apres = courante[champ as keyof VenteProduit]
         return avant instanceof Date && apres instanceof Date ? avant.getTime() !== apres.getTime() : avant !== apres
@@ -862,7 +867,7 @@ export async function PATCH(request: NextRequest) {
 
       const updated = await tx.venteProduit.update({
         where: { id: parseInt(id) },
-        data: updateData,
+        data: { ...updateData, ...INCREMENT_VERSION },
         include: {
           destination: true,
         },
@@ -943,6 +948,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: vente })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     const conflitCaisse = messageConflitStockCaisse(error)
     if (conflitCaisse) return NextResponse.json({ error: conflitCaisse, code: 'CONFLIT_STOCK_CAISSE' }, { status: 409 })
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
