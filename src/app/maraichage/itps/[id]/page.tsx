@@ -38,6 +38,7 @@ import {
 import { SelectNatif } from "@/components/ui/select-natif"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { MESSAGE_FICHE_NON_ENREGISTREE, envoyerFiche, useVersionFiche } from "@/hooks/use-version-fiche"
 import { updateITPSchema, type UpdateITPInput, ITP_TYPE_PLANCHE } from "@/lib/validations/itp"
 import { decalageItpPourLecteur, decalerSemaine, labelZone } from "@/lib/calendrier-climat"
 import { nomAffichableItp } from "@/lib/itp-label"
@@ -108,6 +109,7 @@ export default function EditITPPage() {
   // que la planification appliquera réellement (une seule vérité, énoncée).
   const [zoneUser, setZoneUser] = React.useState<ZoneClimat | null>(null)
   const [itpData, setItpData] = React.useState<ITPData | null>(null)
+  const versionFiche = useVersionFiche()
   // Identifiant RÉEL de l'itinéraire affiché. L'URL peut porter une espèce
   // (`/maraichage/itps/Tomate`) que le GET résout vers un ITP : écrire ou
   // supprimer sur l'identifiant de l'URL répondait alors 404.
@@ -143,6 +145,7 @@ export default function EditITPPage() {
 
         const itp: ITPData = await itpRes.json()
         setItpData(itp)
+        versionFiche.retenir(itp)
 
         // Remplir le formulaire
         form.reset({
@@ -199,11 +202,12 @@ export default function EditITPPage() {
         especeId:
           data.especeId ?? (especeSoumise && especeSoumise !== "_none" ? especeSoumise : null),
       }
-      const response = await fetch(`/api/itps/${encodeURIComponent(idItp)}`, {
+      const response = await envoyerFiche(versionFiche, payload, (corps) => fetch(`/api/itps/${encodeURIComponent(idItp)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
+        body: JSON.stringify(corps),
+      }), confirmDialog)
+      if (!response) throw new Error(MESSAGE_FICHE_NON_ENREGISTREE)
 
       if (!response.ok) {
         // Une erreur de proxy n'est pas du JSON : pas de « Unexpected token < ».

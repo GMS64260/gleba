@@ -8,6 +8,7 @@ import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { updateEspeceSchema } from '@/lib/validations'
 import { nomEtCleReferentiel } from '@/lib/normalize'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -174,6 +175,10 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
+    // Version de fiche : l'écran renvoie celle qu'il a lue.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
+
     // Validation
     const validationResult = updateEspeceSchema.safeParse(body)
     if (!validationResult.success) {
@@ -250,7 +255,7 @@ export async function PUT(
     }
 
     // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
-    const espece = await prisma.espece.update({
+    const espece = await ecrireFicheVersionnee(prisma, 'especes', id, lecture.version, 'Espèce', (db) => db.espece.update({
       where: { id },
       data: {
         ...donnees,
@@ -258,14 +263,16 @@ export async function PUT(
         ...(existing.userId && body.partageCommunaute !== undefined
           ? { partageCommunaute: body.partageCommunaute === true }
           : {}),
+        ...INCREMENT_VERSION,
       },
       include: {
         famille: true,
       },
-    })
+    }))
 
     return NextResponse.json(masquerEntree(espece, session!.user.id))
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     const conflitStock = messageConflitStockCaisse(error)
     if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     console.error('PUT /api/especes/[id] error:', error)

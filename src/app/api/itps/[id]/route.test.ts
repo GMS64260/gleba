@@ -15,8 +15,12 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
+const versionFiche = vi.hoisted(() => ({ enBase: vi.fn(async () => [{ version: 0 }]) }))
 vi.mock('@/lib/prisma', () => ({
   default: {
+    // Version de fiche : verrou de ligne et relecture de la version, dans une transaction.
+    $queryRawUnsafe: versionFiche.enBase,
+    $transaction: async (action: (tx: unknown) => unknown) => action((await import('@/lib/prisma')).default),
     iTP: {
       findUnique: mocks.findUnique,
       // Revue 2026-10-20 — la cible du PUT est lue par un `findFirst` scopé
@@ -83,6 +87,30 @@ describe('PUT /api/itps/[id] — renommage', () => {
     const data = mocks.update.mock.calls[0][0].data
     expect(data.nom).toBe('TEST-Marc-Phacélie-v7')
     expect(data.nomNormalise).toBe('test marc phacelie v7')
+  })
+
+  // Version de fiche : un formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+  it('refuse en 409 une version lue périmée, sans rien écrire', async () => {
+    versionFiche.enBase.mockResolvedValueOnce([{ version: 4 }])
+
+    const res = await PUT(requete({ nom: 'Phacélie fin de saison', versionLue: 3 }), params('cmperso1'))
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: 'MODIFIE_AILLEURS', versionActuelle: 4 })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it('écrit et fait avancer la version, avec ou sans version lue', async () => {
+    versionFiche.enBase.mockResolvedValueOnce([{ version: 4 }])
+    expect((await PUT(requete({ nom: 'Phacélie fin de saison', versionLue: 4 }), params('cmperso1'))).status).toBe(200)
+    expect((await PUT(requete({ nom: 'Phacélie fin de saison' }), params('cmperso1'))).status).toBe(200)
+
+    for (const [appel] of mocks.update.mock.calls) {
+      expect(appel.data).toMatchObject({ version: { increment: 1 } })
+      expect(appel.data).not.toHaveProperty('versionLue')
+    }
+    // Sans version lue, aucun verrou n'est pris : comportement d'avant.
+    expect(versionFiche.enBase).toHaveBeenCalledTimes(1)
   })
 
   it("ne touche jamais à l'identifiant technique", async () => {

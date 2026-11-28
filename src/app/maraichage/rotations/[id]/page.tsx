@@ -38,6 +38,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { confirmDialog } from "@/lib/global-dialog"
+import { MESSAGE_FICHE_NON_ENREGISTREE, envoyerFiche, useVersionFiche } from "@/hooks/use-version-fiche"
 import { updateRotationSchema, type UpdateRotationInput } from "@/lib/validations"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
@@ -93,6 +94,7 @@ export default function EditRotationPage() {
 
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const versionFiche = useVersionFiche()
   const [itps, setItps] = React.useState<ITP[]>([])
   const [rotationData, setRotationData] = React.useState<RotationData | null>(null)
   // PROMPT 12 — gestion du rattachement multi-planches
@@ -135,6 +137,7 @@ export default function EditRotationPage() {
         }
 
         const rotation: RotationData = await rotationRes.json()
+        versionFiche.retenir(rotation)
         setRotationData(rotation)
         // PROMPT 12 — pré-cocher les planches déjà rattachées.
         setSelectedPlancheIds(new Set(rotation.planches.map((p) => p.id)))
@@ -221,11 +224,12 @@ export default function EditRotationPage() {
         active: Boolean(data.active) && planComplet,
       }
 
-      const response = await fetch(`/api/rotations/${encodeURIComponent(id)}`, {
+      const response = await envoyerFiche(versionFiche, payload, (envoi) => fetch(`/api/rotations/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
+        body: JSON.stringify(envoi),
+      }), confirmDialog)
+      if (!response) throw new Error(MESSAGE_FICHE_NON_ENREGISTREE)
 
       if (!response.ok) {
         const error = await response.json()

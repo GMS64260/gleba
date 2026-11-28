@@ -51,6 +51,35 @@ export async function lireConflitVersion(reponse: Response): Promise<ConflitVers
   }
 }
 
+/**
+ * Envoie une fiche avec sa version, et gère le refus « modifiée ailleurs » :
+ * la saisie n'est pas perdue, on demande s'il faut l'imposer, et si oui on
+ * renvoie avec la version actuelle. Rend la réponse à traiter comme
+ * d'habitude, ou `null` si la personne a renoncé (rien n'a été enregistré).
+ *
+ *   const res = await envoyerFiche(version, corps, (c) => fetch(url, { method: "PUT", body: JSON.stringify(c) }), confirmDialog)
+ *   if (!res) { setErreur(MESSAGE_FICHE_NON_ENREGISTREE); return }
+ */
+export async function envoyerFiche<T extends object>(
+  version: { joindre: (corps: T) => object; adopter: (versionActuelle: number | null) => void },
+  corps: T,
+  envoyer: (corps: object) => Promise<Response>,
+  confirmer: (message: string) => Promise<boolean>,
+): Promise<Response | null> {
+  // Deux essais au plus : un second refus (encore modifiée entre-temps) se traite comme le premier.
+  for (let essai = 0; essai < 3; essai++) {
+    const reponse = await envoyer(version.joindre(corps))
+    const conflit = await lireConflitVersion(reponse)
+    if (!conflit) return reponse
+    const imposer = await confirmer(`${conflit.message} Enregistrer quand même vos valeurs à la place de celles enregistrées entre-temps ? Sinon, annulez puis rechargez la page pour voir la fiche à jour.`)
+    if (!imposer) return null
+    version.adopter(conflit.versionActuelle)
+  }
+  return null
+}
+
+export const MESSAGE_FICHE_NON_ENREGISTREE = "Fiche modifiée ailleurs : rien n'a été enregistré. Rechargez la page pour voir la fiche à jour."
+
 function creerVersionFiche() {
   let version: VersionRetenue = null
   return {

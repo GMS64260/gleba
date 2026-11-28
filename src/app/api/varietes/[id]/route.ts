@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from '@/lib/api/version-fiche'
 import { nomEtCleReferentiel } from '@/lib/normalize'
 import { updateVarieteSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -32,6 +33,10 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
+
+    // Version de fiche : l'écran renvoie celle qu'il a lue.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
 
     // Validation
     const validationResult = updateVarieteSchema.safeParse(body)
@@ -142,6 +147,7 @@ export async function PUT(
 
     // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
     const variete = await prisma.$transaction(async (tx) => {
+      await controlerVersionFiche(tx, 'varietes', id, lecture.version, 'Variété')
       const maj = await tx.variete.update({
         where: { id },
         data: {
@@ -150,6 +156,7 @@ export async function PUT(
           ...(existing.userId && body.partageCommunaute !== undefined
             ? { partageCommunaute: body.partageCommunaute === true }
             : {}),
+          ...INCREMENT_VERSION,
         },
         include: {
           espece: true,
@@ -169,6 +176,7 @@ export async function PUT(
 
     return NextResponse.json(variete)
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     console.error('PUT /api/varietes/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour de la variété' },

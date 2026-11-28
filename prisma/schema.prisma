@@ -633,6 +633,9 @@ model Fournisseur {
   varietes Variete[]
   aliments Aliment[]
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([siret])
   @@map("fournisseurs")
 }
@@ -776,6 +779,9 @@ model Espece {
   contributionsEncyclopedie ContributionEncyclopedie[]
   revisionsEncyclopedie     RevisionEncyclopedie[]
   discussionsEncyclopedie   DiscussionEncyclopedie[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@map("especes")
@@ -995,6 +1001,9 @@ model Variete {
   //   perso    : UNIQUE (user_id, espece, nom_normalise) WHERE user_id IS NOT NULL
   // Pas d'index simple (espece, nom_normalise) : supprimé en base par la migration
   // 20260514010000_unique_variete_nom_normalise ; seuls les index partiels ci-dessus existent.
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([isPlaceholder])
   @@index([userId])
   @@map("varietes")
@@ -1141,6 +1150,9 @@ model ITP {
   cultures         Culture[]
   rotationsDetails RotationDetail[]
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([zoneClimat])
   @@index([actif, statutValidation])
@@ -1162,6 +1174,9 @@ model Rotation {
   // Relations
   details  RotationDetail[]
   planches Planche[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@map("rotations")
 }
@@ -1322,6 +1337,9 @@ model ParcelleGeo {
 
 
   capteurs Capteur[]
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@map("parcelles_geo")
 }
@@ -1631,6 +1649,9 @@ model ObjetJardin {
 
 
   capteurs Capteur[]
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@map("objets_jardin")
 }
@@ -1711,6 +1732,9 @@ model Arbre {
 
 
   capteurs Capteur[]
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([type])
   @@index([especeId])
@@ -1734,6 +1758,9 @@ model LotArbres {
   notes          String?     @map("notes")
   createdAt      DateTime    @default(now()) @map("created_at")
   updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@index([parcelleGeoId])
@@ -1776,6 +1803,9 @@ model RecolteArbre {
   conditionnement      String?      @map("conditionnement") // Vrac | Cagette 5kg | Cagette 10kg | Palox | Big-bag
   notes                String?      @map("notes")
   createdAt            DateTime     @default(now()) @map("created_at")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@index([arbreId])
@@ -2014,6 +2044,9 @@ model ObservationSante {
   // PROMPT 11 LOT D — Interventions phyto déclenchées par cette observation.
   interventionsLiees Intervention[] @relation("InterventionObservation")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([arbreId])
   @@index([date])
@@ -2202,6 +2235,9 @@ model Association {
   // Relations
   details AssociationDetail[]
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([type])
   @@map("associations")
 }
@@ -2266,6 +2302,9 @@ model EspeceAnimale {
   // PROMPT 24 — campagnes de reproduction ciblant cette espèce
   campagnes                  CampagneReproduction[]
   delaisProduitsVeterinaires ProduitVeterinaireEspece[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@index([filiere])
@@ -2417,6 +2456,9 @@ model Animal {
 
 
   capteurs Capteur[]
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([especeAnimaleId])
   @@index([statut])
@@ -2469,6 +2511,9 @@ model LotAnimaux {
 
 
   capteurs Capteur[]
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([especeAnimaleId])
   @@index([statut])
@@ -2492,6 +2537,9 @@ model ProductionOeuf {
   notes           String?              @map("notes")
   createdAt       DateTime             @default(now()) @map("created_at")
   mouvementsStock MouvementStockOeuf[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@index([lotId])
@@ -2544,6 +2592,9 @@ model ProductionRuche {
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
   mouvementsStock MouvementStockRuche[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId, date])
   @@index([userId, produit])
@@ -2616,6 +2667,9 @@ model VenteProduit {
   notes                String?               @map("notes")
   createdAt            DateTime              @default(now()) @map("created_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([type])
   @@index([date])
@@ -2651,6 +2705,9 @@ model Abattage {
   notes          String?     @map("notes")
   createdAt      DateTime    @default(now()) @map("created_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([date])
   @@index([factureId])
@@ -2672,6 +2729,9 @@ model ConsommationAliment {
   quantite  Float       @map("quantite") // kg
   notes     String?     @map("notes")
   createdAt DateTime    @default(now()) @map("created_at")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@index([alimentId])
@@ -2739,6 +2799,9 @@ model SoinAnimal {
   createdAt                  DateTime                @default(now()) @map("created_at")
   injections                 InjectionSoin[]
   annulations                AnnulationSoinAnimal[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@index([animalId])
@@ -2960,6 +3023,9 @@ model ProphylaxieElevage {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId, datePrevue])
   @@map("prophylaxies_elevage")
 }
@@ -3029,6 +3095,9 @@ model NaissanceAnimale {
   petits                  PetitNaissance[]
   createdAt               DateTime         @default(now()) @map("created_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([mereId])
   @@index([lotId])
@@ -3086,6 +3155,9 @@ model ReservationElevage {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId, statut])
   @@index([naissanceId])
   @@map("reservations_elevage")
@@ -3123,6 +3195,9 @@ model PedigreeElevage {
   titres           String?   @map("titres") // ex "CACS Paris 2025, Champion de France"
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@map("pedigrees_elevage")
@@ -3214,6 +3289,9 @@ model PreparationDocumentCirculation {
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@unique([userId, declarationKey])
   @@index([userId, updatedAt])
   @@map("preparations_documents_circulation")
@@ -3277,6 +3355,9 @@ model Saillie {
   miseBas               NaissanceAnimale?     @relation("SaillieMiseBas")
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@index([femelleId])
@@ -3540,6 +3621,9 @@ model PlanRation {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([userId])
   @@index([lotId])
   @@map("plans_ration")
@@ -3617,6 +3701,9 @@ model Client {
   ventesManuelles VenteManuelle[]
   factures        Facture[]
   documentsCommerciaux DocumentCommercial[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId])
   @@index([nom])
@@ -3781,6 +3868,9 @@ model DocumentCommercial {
   envois             EnvoiCommercial[]
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@unique([userId, numero])
   @@index([userId, type, date])
@@ -4034,6 +4124,9 @@ model UserStockEspece {
   // Pour les récoltes maraîchage où il n'y a pas d'achat, dériver du
   // prix de vente moyen × (1 - marge) via coutStandardDepuisPrixVente.
   coutUnitaire   Float?    @map("cout_unitaire")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@unique([userId, especeId])
   @@index([userId])
@@ -4568,6 +4661,9 @@ model Boutique {
   produits  ProduitBoutique[]
   commandes CommandeBoutique[]
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([slug])
   @@index([active])
   @@map("boutiques")
@@ -4658,6 +4754,9 @@ model CommandeBoutique {
 
   mouvementsStock MouvementStockCommercial[]
   lignes LigneCommandeBoutique[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@unique([userId, numero])
   @@index([userId])
@@ -4774,6 +4873,9 @@ model Exploitation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@map("exploitations")
 }
 
@@ -4799,6 +4901,9 @@ model LieuDetentionElevage {
   archivedAt     DateTime?              @map("archived_at")
   createdAt      DateTime               @default(now()) @map("created_at")
   updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@unique([exploitationId, nom])
   @@index([exploitationId, archivedAt])
@@ -4831,6 +4936,9 @@ model IntervenantElevage {
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
 
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
+
   @@index([exploitationId, role, archivedAt])
   @@map("intervenants_elevage")
 }
@@ -4857,6 +4965,9 @@ model JustificatifAlimentElevage {
   archivedAt      DateTime? @map("archived_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId, dateDocument])
   @@index([userId, archivedAt])
@@ -4887,6 +4998,9 @@ model JustificatifEquarrissageElevage {
   updatedAt                  DateTime  @updatedAt @map("updated_at")
 
   animaux JustificatifEquarrissageAnimal[]
+
+  /// Version de fiche (`src/lib/api/version-fiche.ts`).
+  version Int @default(0)
 
   @@index([userId, dateEnlevement])
   @@index([userId, archivedAt])

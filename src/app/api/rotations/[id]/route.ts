@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from '@/lib/api/version-fiche'
 import { updateRotationSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { etapesRotationInvalides, messageEtapesInvalides } from '@/lib/rotations/itp-etapes'
@@ -97,6 +98,9 @@ export async function PUT(
     const body = await request.json()
 
     // Validation
+    // Version de fiche : l'écran renvoie celle qu'il a lue.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const validationResult = updateRotationSchema.safeParse(body)
     if (!validationResult.success) {
       return NextResponse.json(
@@ -176,6 +180,7 @@ export async function PUT(
 
     // Mise a jour avec transaction pour gerer les details
     const rotation = await prisma.$transaction(async (tx) => {
+      await controlerVersionFiche(tx, 'rotations', id, lecture.version, 'Rotation')
       // Si des details sont fournis, supprimer les anciens et creer les nouveaux
       if (details) {
         await tx.rotationDetail.deleteMany({
@@ -199,6 +204,7 @@ export async function PUT(
         data: {
           ...rotationData,
           nbAnnees,
+          ...INCREMENT_VERSION,
         },
         include: {
           details: {
@@ -217,6 +223,7 @@ export async function PUT(
 
     return NextResponse.json(masquerReferentielsEmbarques(rotation, session!.user.id))
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     console.error('PUT /api/rotations/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour de la rotation' },

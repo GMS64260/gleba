@@ -4,6 +4,8 @@
  * Importe les données pour l'utilisateur connecté
  */
 
+// Un import qui met à jour une fiche fait avancer sa version (formulaire ouvert prévenu).
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { surfacePlanche } from '@/lib/planches/surface'
 import { typeAssociationImporte, desactivationAssociationImportee } from "@/lib/validations/association"
 import { NextRequest, NextResponse } from 'next/server'
@@ -402,6 +404,7 @@ export async function POST(request: NextRequest) {
         await tx.espece.upsert({
           where: { id: item.id },
           update: {
+            ...INCREMENT_VERSION,
             type: item.type ?? 'legume',
             familleId: item.familleId,
             nomLatin: item.nomLatin,
@@ -472,6 +475,7 @@ export async function POST(request: NextRequest) {
         await tx.variete.upsert({
           where: { id: item.id },
           update: {
+            ...INCREMENT_VERSION,
             especeId: item.especeId,
             fournisseurId: item.fournisseurId,
             semaineRecolte: item.semaineRecolte,
@@ -537,6 +541,7 @@ export async function POST(request: NextRequest) {
         await tx.iTP.upsert({
           where: { id: item.id },
           update: {
+            ...INCREMENT_VERSION,
             ...(typeof item.nom === 'string' && item.nom.trim()
               ? { nom: nomItp.nom, nomNormalise: nomItp.nomNormalise }
               : {}),
@@ -587,6 +592,7 @@ export async function POST(request: NextRequest) {
         await tx.rotation.upsert({
           where: { id: item.id },
           update: {
+            ...INCREMENT_VERSION,
             active: item.active ?? true,
             nbAnnees: item.nbAnnees,
             notes: item.notes,
@@ -693,6 +699,7 @@ export async function POST(request: NextRequest) {
           await tx.association.update({
             where: { id: existingByNom.id },
             data: {
+              ...INCREMENT_VERSION,
               nom: item.nom,
               description: item.description,
               notes: item.notes,

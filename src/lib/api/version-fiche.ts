@@ -92,3 +92,64 @@ export function avecVersionSiFiche<T extends object>(data: T, horsFiche: readonl
     ? { ...data, ...INCREMENT_VERSION }
     : data
 }
+
+/** Tables dotées d'une version de fiche et d'une clé primaire `id`. */
+export type TableAVersion =
+  | 'itps' | 'especes' | 'varietes' | 'associations' | 'rotations'
+  | 'arbres' | 'objets_jardin' | 'lots_arbres' | 'recoltes_arbres' | 'observations_sante' | 'parcelles_geo'
+  | 'animaux' | 'lots_animaux' | 'naissances_animales' | 'saillies' | 'especes_animales'
+  | 'abattages' | 'ventes_produits' | 'production_oeufs' | 'productions_ruche'
+  | 'soins_animaux' | 'consommations_aliments' | 'plans_ration' | 'reservations_elevage'
+  | 'justificatifs_aliments_elevage' | 'justificatifs_equarrissage_elevage' | 'prophylaxies_elevage'
+  | 'lieux_detention_elevage' | 'intervenants_elevage'
+  | 'clients' | 'fournisseurs' | 'documents_commerciaux' | 'boutiques' | 'commandes_boutique'
+
+type TransactionBrute = { $queryRawUnsafe: <T = unknown>(requete: string, ...valeurs: unknown[]) => Promise<T> }
+
+/**
+ * Dans une transaction : verrouille la ligne, relit sa version et lève
+ * `FicheModifieeAilleurs` si l'écran en a lu une autre. À appeler AVANT toute
+ * écriture ; l'écriture qui suit porte `INCREMENT_VERSION`. Deux
+ * enregistrements concurrents porteurs de la même version ne passent pas tous
+ * les deux : le second attend le verrou, relit la version avancée et est
+ * refusé. Sans version lue (assistant, script, ancien onglet), rien n'est
+ * verrouillé ni contrôlé : comportement d'avant.
+ *
+ * `table` est un littéral du type `TableAVersion`, jamais une saisie.
+ */
+export async function controlerVersionFiche(
+  tx: TransactionBrute,
+  table: TableAVersion,
+  id: string | number,
+  lue: VersionLue,
+  quoi: string,
+): Promise<void> {
+  if (lue === undefined) return
+  const lignes = await tx.$queryRawUnsafe<Array<{ version: number }>>(`SELECT "version" FROM "${table}" WHERE "id" = $1 FOR UPDATE`, id)
+  const enBase = lignes[0] ?? null
+  if (versionFichePerimee(lue, enBase)) throw new FicheModifieeAilleurs(quoi, enBase?.version ?? null)
+}
+
+type ClientTransactionnel<Tx extends TransactionBrute> = { $transaction: <R>(action: (tx: Tx) => Promise<R>) => Promise<R> }
+
+/**
+ * Écriture d'une fiche hors transaction existante. Avec une version lue : la
+ * ligne est verrouillée, la version contrôlée, puis `ecrire` s'exécute dans la
+ * même transaction. Sans version lue : `ecrire` s'exécute directement, comme
+ * avant. Dans les deux cas, `ecrire` porte `INCREMENT_VERSION` dans son `data`.
+ * Lève `FicheModifieeAilleurs` (à rendre par `.reponse()`).
+ */
+export async function ecrireFicheVersionnee<Tx extends TransactionBrute, R>(
+  client: ClientTransactionnel<Tx> & Tx,
+  table: TableAVersion,
+  id: string | number,
+  lue: VersionLue,
+  quoi: string,
+  ecrire: (db: Tx) => Promise<R>,
+): Promise<R> {
+  if (lue === undefined) return ecrire(client)
+  return client.$transaction(async (tx) => {
+    await controlerVersionFiche(tx, table, id, lue, quoi)
+    return ecrire(tx)
+  })
+}

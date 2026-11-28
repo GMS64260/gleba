@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FicheModifieeAilleurs, CHAMPS_HORS_FICHE, avecVersionSiFiche, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from './version-fiche'
+import { FicheModifieeAilleurs, CHAMPS_HORS_FICHE, avecVersionSiFiche, controlerVersionFiche, ecrireFicheVersionnee, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from './version-fiche'
 
 describe('lireVersionLue', () => {
   it('lit un entier, la sentinelle de création et l’absence', () => {
@@ -62,5 +62,45 @@ describe('avecVersionSiFiche', () => {
   })
   it('ignore un champ de la fiche laissé à undefined', () => {
     expect(avecVersionSiFiche({ aIrriguer: false, notes: undefined }, CHAMPS_HORS_FICHE.culture)).not.toHaveProperty('version')
+  })
+})
+
+describe('controlerVersionFiche et ecrireFicheVersionnee', () => {
+  const base = (version: number | null) => {
+    const requetes: Array<{ sql: string; valeurs: unknown[] }> = []
+    const tx = {
+      $queryRawUnsafe: async <T,>(sql: string, ...valeurs: unknown[]) => { requetes.push({ sql, valeurs }); return (version === null ? [] : [{ version }]) as T },
+    }
+    const client = { ...tx, transactions: 0, $transaction: async <R,>(action: (t: typeof tx) => Promise<R>) => { client.transactions++; return action(tx) } }
+    return { tx, client, requetes }
+  }
+
+  it('verrouille la ligne et laisse passer la version lue', async () => {
+    const { tx, requetes } = base(4)
+    await expect(controlerVersionFiche(tx, 'itps', 'itp-1', 4, 'Itinéraire')).resolves.toBeUndefined()
+    expect(requetes).toEqual([{ sql: 'SELECT "version" FROM "itps" WHERE "id" = $1 FOR UPDATE', valeurs: ['itp-1'] }])
+  })
+
+  it('refuse une version qui a avancé, ou une fiche disparue', async () => {
+    await expect(controlerVersionFiche(base(5).tx, 'itps', 'itp-1', 4, 'Itinéraire')).rejects.toMatchObject({ versionActuelle: 5 })
+    await expect(controlerVersionFiche(base(null).tx, 'itps', 'itp-1', 4, 'Itinéraire')).rejects.toBeInstanceOf(FicheModifieeAilleurs)
+  })
+
+  it('sans version lue, ne verrouille rien et écrit directement', async () => {
+    const { client, requetes } = base(9)
+    const ecrit = await ecrireFicheVersionnee(client, 'itps', 'itp-1', undefined, 'Itinéraire', async () => 'écrit')
+    expect(ecrit).toBe('écrit')
+    expect(requetes).toHaveLength(0)
+    expect(client.transactions).toBe(0)
+  })
+
+  it('avec une version lue, contrôle puis écrit dans la même transaction, et n’écrit pas sur un refus', async () => {
+    const bon = base(2)
+    expect(await ecrireFicheVersionnee(bon.client, 'itps', 'itp-1', 2, 'Itinéraire', async () => 'écrit')).toBe('écrit')
+    expect(bon.client.transactions).toBe(1)
+    const perime = base(3)
+    let ecritures = 0
+    await expect(ecrireFicheVersionnee(perime.client, 'itps', 'itp-1', 2, 'Itinéraire', async () => { ecritures++ })).rejects.toBeInstanceOf(FicheModifieeAilleurs)
+    expect(ecritures).toBe(0)
   })
 })
