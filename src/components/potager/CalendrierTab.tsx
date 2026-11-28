@@ -5,6 +5,7 @@
  * Combine le calendrier des cultures et la liste des tâches de la semaine
  */
 
+import { useDernierChargeur } from "@/hooks/use-chargement"
 import { TITRE_AVERTISSEMENT_CULTURE, avertissementsReponse } from "@/lib/cultures/avertissements-reponse"
 import { signalerAvertissementsRecolte } from "@/lib/recolte/dar-ecran"
 import * as React from "react"
@@ -171,7 +172,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   // QA Camille 2026-05-15 — Bug #2 : on inclut `year` pour que l'API
   // filtre les cultures concernées sur l'année sélectionnée
   // (sinon les tâches restent figées sur l'année courante).
-  const fetchTaches = React.useCallback(async () => {
+  // La dernière demande gagne, et un rechargement après une action relit avec
+  // les filtres affichés (jamais ceux de la fermeture qui l'a lancé).
+  const chargerTaches = React.useCallback(async (estActuelle: () => boolean) => {
     setLoadingTaches(true)
     try {
       const res = await fetch(
@@ -179,18 +182,23 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
       )
       if (res.ok) {
         const result = await res.json()
+        if (!estActuelle()) return
         setTaches(result)
+      } else if (estActuelle()) {
+        // Lecture refusée : les tâches d'une autre semaine ne restent pas actionnables.
+        setTaches(null)
       }
     } catch {
-      // silent
+      if (estActuelle()) setTaches(null)
     } finally {
-      setLoadingTaches(false)
+      if (estActuelle()) setLoadingTaches(false)
     }
   }, [year, weekStart, weekEnd])
+  const fetchTaches = useDernierChargeur(chargerTaches)
 
   React.useEffect(() => {
-    fetchTaches()
-  }, [fetchTaches])
+    void fetchTaches()
+  }, [fetchTaches, chargerTaches])
 
   React.useEffect(() => {
     const handleIrrigationUpdated = () => {

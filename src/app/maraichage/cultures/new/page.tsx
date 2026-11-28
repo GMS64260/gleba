@@ -370,12 +370,17 @@ export default function NewCulturePage() {
 
   // Charger les varietes et ITPs quand l'espece change
   React.useEffect(() => {
+    // La dernière espèce choisie gagne : la réponse lente d'une espèce
+    // précédente ne remplit plus les variétés, les itinéraires ni les champs
+    // du formulaire de l'espèce affichée.
+    let actif = true
     if (selectedEspece) {
       Promise.all([
         fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`).then((r) => r.json()),
         fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then((r) => r.json()),
       ])
         .then(([especeData, itpsData]) => {
+          if (!actif) return
           setVarietes(especeData.varietes || [])
           // La variété de l'espèce PRÉCÉDENTE restait sélectionnée au changement
           // d'espèce : la culture partait « Carotte / Tomate Marmande ». Le
@@ -396,6 +401,7 @@ export default function NewCulturePage() {
           }
         })
         .catch(() => {
+          if (!actif) return
           setVarietes([])
           setItps([])
           autoItpRef.current = null
@@ -408,6 +414,7 @@ export default function NewCulturePage() {
       setItps([])
       setMotifProposition(null)
     }
+    return () => { actif = false }
   }, [selectedEspece, form, retirerValeursItp])
 
   const [datesSaisies, setDatesSaisies] = React.useState(false)

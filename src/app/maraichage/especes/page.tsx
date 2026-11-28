@@ -5,6 +5,7 @@
  * Filtrable par type : Légumes, Arbres fruitiers, Petits fruits, Aromatiques, Fleurs, Engrais verts
  */
 
+import { useDernierChargeur } from "@/hooks/use-chargement"
 import { telechargerCsv } from "@/app/maraichage/planification/export-csv"
 import * as React from "react"
 import { useExploitation } from "@/hooks/use-exploitation"
@@ -334,7 +335,9 @@ function EspecesPageContent() {
   }, [typeFromUrl])
 
   // Charger les données
-  const fetchData = React.useCallback(async () => {
+  // La dernière demande gagne, et un rechargement après une action relit avec
+  // les filtres affichés (jamais ceux de la fermeture qui l'a lancé).
+  const chargerEspeces = React.useCallback(async (estActuelle: () => boolean) => {
     setIsLoading(true)
     try {
       let url = `/api/especes?page=${pageIndex + 1}&pageSize=${pageSize}&cultureCount=${cultureCount}&avis=1`
@@ -357,25 +360,31 @@ function EspecesPageContent() {
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
+      if (!estActuelle()) return
       setData(result.data)
       setPageCount(result.totalPages)
     } catch {
+      if (!estActuelle()) return
+      // Les lignes d'un autre filtre ne restent pas affichées ni exportables sous le nouveau.
+      setData([])
+      setPageCount(0)
       toast({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de charger les espèces",
       })
     } finally {
-      setIsLoading(false)
+      if (estActuelle()) setIsLoading(false)
     }
   }, [pageIndex, selectedType, debouncedSearch, cultureCount, filtreOrigine, filtreZone, filtreAvis, toast])
+  const fetchData = useDernierChargeur(chargerEspeces)
 
   // Ne charger les données qu'après initialisation
   React.useEffect(() => {
     if (isInitialized) {
-      fetchData()
+      void fetchData()
     }
-  }, [isInitialized, fetchData])
+  }, [isInitialized, fetchData, chargerEspeces])
 
   // Reset page when type changes
   const handleTypeChange = (type: string) => {

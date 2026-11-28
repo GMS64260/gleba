@@ -380,13 +380,16 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
       setEssencesDispo([])
       return
     }
+    // Le dernier type choisi gagne : les essences d'un type précédent ne s'affichent plus.
+    let actif = true
     fetch(`/api/verger/essences-disponibles?type=${state.typeFormation}`)
       .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((d) => setEssencesDispo(d.data || []))
-      .catch(() => setEssencesDispo([]))
+      .then((d) => { if (actif) setEssencesDispo(d.data || []) })
+      .catch(() => { if (actif) setEssencesDispo([]) })
     // reset des sélections dépendantes du type
     setPortesGreffe([])
     if (state.essenceId) update({ essenceId: "", porteGreffeId: "" })
+    return () => { actif = false }
   }, [state.typeFormation]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // PROMPT 09 — Quand essence fruitière sélectionnée, charger ses porte-greffes.
@@ -398,10 +401,13 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
       return
     }
     const especeId = essenceItemSelectionnee.id.replace(/^fruitier::/, "")
+    // La dernière essence choisie gagne.
+    let actif = true
     fetch(`/api/verger/porte-greffes?especeId=${encodeURIComponent(especeId)}`)
       .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((d) => setPortesGreffe(d.data || []))
-      .catch(() => setPortesGreffe([]))
+      .then((d) => { if (actif) setPortesGreffe(d.data || []) })
+      .catch(() => { if (actif) setPortesGreffe([]) })
+    return () => { actif = false }
   }, [state.essenceId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calcul densité par défaut quand on choisit le type

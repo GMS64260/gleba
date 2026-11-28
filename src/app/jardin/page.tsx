@@ -4,6 +4,7 @@
  * Page Plan du jardin - Visualisation 2D avec éditeur complet
  */
 
+import { useDernierChargeur } from "@/hooks/use-chargement"
 import { positionsEnGrille } from "@/lib/jardin/grille-planches"
 import { useMenuOuvertAuClic } from "@/hooks/use-menu-ouvert-au-clic"
 import type { AssociationEvaluable } from "@/lib/associations-alertes"
@@ -638,12 +639,15 @@ function JardinContent() {
   }, [annee, anneePrete, selectedParcelleId, vue])
 
   // Charger les objets du jardin
-  const fetchObjets = React.useCallback(async () => {
+  // La dernière parcelle choisie gagne, et un rechargement après une action relit
+  // la parcelle affichée (jamais celle de la fermeture qui l'a lancé).
+  const chargerObjets = React.useCallback(async (estActuelle: () => boolean) => {
     try {
       const params = selectedParcelleId ? `?parcelle=${selectedParcelleId}` : ''
       const response = await fetch(`/api/objets-jardin${params}`)
       if (!response.ok) return
       const data = await response.json()
+      if (!estActuelle()) return
       const rows: ObjetJardin[] = data || []
       const fusion = fusionnerRechargement({
         rechargees: rows,
@@ -662,6 +666,7 @@ function JardinContent() {
       // Ignorer
     }
   }, [selectedParcelleId])
+  const fetchObjets = useDernierChargeur(chargerObjets)
 
   /**
    * QA 2026-07-30 — Une attente de confirmation GPS ne doit pas survivre au
@@ -698,7 +703,9 @@ function JardinContent() {
   // parcelles". On filtre désormais par `parcelle_geo_id` quand une
   // parcelle est sélectionnée ; côté front, on garantit aussi un
   // 2e filet en cas de réponse partielle.
-  const fetchArbres = React.useCallback(async () => {
+  // La dernière parcelle choisie gagne, et un rechargement après une action relit
+  // la parcelle affichée (jamais celle de la fermeture qui l'a lancé).
+  const chargerArbres = React.useCallback(async (estActuelle: () => boolean) => {
     try {
       // La route /api/arbres filtre via `?parcelle=<id>` (et accepte
       // `parcelle=none` pour les arbres sans rattachement parcellaire).
@@ -706,6 +713,7 @@ function JardinContent() {
       const response = await fetch(`/api/arbres${params}`)
       if (!response.ok) return
       const data = await response.json()
+      if (!estActuelle()) return
       const rows = Array.isArray(data) ? data : data.data || []
       // Le filtre « Non assigné » (selectedParcelleId='none') vise les arbres
       // sans parcelle (parcelleGeoId=null). L'ancien `=== 'none'` ne matchait
@@ -732,6 +740,7 @@ function JardinContent() {
       // Ignorer
     }
   }, [selectedParcelleId])
+  const fetchArbres = useDernierChargeur(chargerArbres)
 
   // Charger les parcelles
   const fetchParcelles = React.useCallback(async () => {
@@ -932,12 +941,12 @@ function JardinContent() {
   React.useEffect(() => {
     setIsLoading(true)
     Promise.all([fetchPlanches(), fetchObjets()])
-  }, [fetchPlanches, fetchObjets])
+  }, [fetchPlanches, fetchObjets, chargerObjets])
 
   // Charger arbres et données de reference une seule fois
   React.useEffect(() => {
     Promise.all([fetchArbres(), fetchEspeces(), fetchParcelles(), fetchPlanchesSansParcelle(), fetchArbresSansParcelle()])
-  }, [fetchArbres, fetchEspeces, fetchParcelles, fetchPlanchesSansParcelle, fetchArbresSansParcelle])
+  }, [fetchArbres, chargerArbres, fetchEspeces, fetchParcelles, fetchPlanchesSansParcelle, fetchArbresSansParcelle])
 
   // Le GPS et le plan utilisent deux repères indépendants : WGS84 pour le
   // relevé terrain, mètres SVG pour l'éditeur. Une capture issue de la

@@ -5,6 +5,7 @@
  * Affiche les cultures sur planches voisines
  */
 
+import { useDernierChargeur } from "@/hooks/use-chargement"
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
@@ -162,16 +163,20 @@ function AssociationsContent() {
   })
 
 
-  const fetchData = React.useCallback(async () => {
+  // La dernière demande gagne, et un rechargement après une action relit avec
+  // les filtres affichés (jamais ceux de la fermeture qui l'a lancé).
+  const chargerAssociations = React.useCallback(async (estActuelle: () => boolean) => {
     setIsLoading(true)
     setErreur(false)
     try {
       const response = await fetch(`/api/planification/associations?annee=${annee}`)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
+      if (!estActuelle()) return
       setData(result.data)
       setStats(result.stats)
     } catch {
+      if (!estActuelle()) return
       // Un échec ne doit pas se lire comme « aucune culture prévue ».
       setErreur(true)
       setData([])
@@ -182,16 +187,17 @@ function AssociationsContent() {
         description: "Impossible de charger les associations",
       })
     } finally {
-      setIsLoading(false)
+      if (estActuelle()) setIsLoading(false)
     }
   }, [annee, toast])
+  const fetchData = useDernierChargeur(chargerAssociations)
 
   React.useEffect(() => {
     // Ne pas charger la saison courante avant d'avoir restauré la saison
     // mémorisée : la réponse tardive écraserait les données de la bonne année.
     if (!anneePrete) return
-    fetchData()
-  }, [anneePrete, fetchData])
+    void fetchData()
+  }, [anneePrete, fetchData, chargerAssociations])
 
   const handleExport = () => {
     telechargerCsv(`associations-${annee}.csv`, lignesCsvVoisinage(data))

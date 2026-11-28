@@ -10,6 +10,7 @@
  *  - Courbe lactation : par animal (305 j depuis dernière mise-bas)
  */
 
+import { useLecture } from "@/hooks/use-chargement"
 import { lireNombreSaisi, versChampNombre } from "@/lib/saisie/nombre"
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
@@ -741,20 +742,37 @@ function CollecteView() {
     return Array.from({ length: 7 }, (_, i) => addDaysIso(endDate, -i)).reverse()
   }, [endDate])
 
-  const reload = React.useCallback(() => {
-    setLoading(true)
-    const from = addDaysIso(endDate, -6)
-    const to = endDate
-    Promise.all([
-      fetch("/api/elevage/animaux?statut=actif").then((r) => r.json()),
-      fetch("/api/elevage/lots?statut=actif").then((r) => r.json()),
-      fetch(`/api/elevage/collectes-lait?from=${from}&to=${to}`).then((r) => r.json()),
-      fetch("/api/elevage/attentes").then((r) => r.json()),
-      // Bilan matière des 7 jours affichés et du mois (2026-11-03) ; un échec
-      // n'empêche pas la saisie.
-      fetch(`/api/elevage/bilan-lait?date=${to}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    ])
-      .then(([a, l, c, attentes, bilan]) => {
+  // Fenêtre de 7 jours et cible (animal ou lot) : la dernière demande gagne.
+  // Tant que la fenêtre demandée n'est pas chargée, les cases sont fermées :
+  // elles affichaient les traites de l'ancienne fenêtre sous les nouveaux
+  // jours, une case paraissait vide et la saisie écrasait une traite existante.
+  const [fenetreEnChargement, setFenetreEnChargement] = React.useState(false)
+  const { recharger: reload } = useLecture(
+    `collectes:${endDate}:${target}`,
+    (signal) => {
+      const from = addDaysIso(endDate, -6)
+      const to = endDate
+      return Promise.all([
+        fetch("/api/elevage/animaux?statut=actif", { signal }).then((r) => r.json()),
+        fetch("/api/elevage/lots?statut=actif", { signal }).then((r) => r.json()),
+        fetch(`/api/elevage/collectes-lait?from=${from}&to=${to}`, { signal }).then((r) => r.json()),
+        fetch("/api/elevage/attentes", { signal }).then((r) => r.json()),
+        // Bilan matière des 7 jours affichés et du mois (2026-11-03) ; un échec
+        // n'empêche pas la saisie.
+        fetch(`/api/elevage/bilan-lait?date=${to}`, { signal }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      ])
+    },
+    (reponse) => {
+      if (reponse.etat === "chargement") {
+        setLoading(true)
+        if (!reponse.rafraichissement) setFenetreEnChargement(true)
+        return
+      }
+      setLoading(false)
+      if (reponse.etat === "erreur") return
+      setFenetreEnChargement(false)
+      const [a, l, c, attentes, bilan] = reponse.donnees
+      {
         setBilans(bilan?.jours7 && bilan?.mois ? bilan : null)
         const { animaux: aList, lots: lList } = listerCiblesCollecteLait<Animal, Lot>(
           a.data,
@@ -778,13 +796,9 @@ function CollecteView() {
           }
           return null
         })
-      })
-      .finally(() => setLoading(false))
-  }, [endDate, target])
-
-  React.useEffect(() => {
-    reload()
-  }, [reload])
+      }
+    },
+  )
 
   // La cible de traite fait partie de l'URL : un rechargement, un favori ou
   // un retour navigateur conserve l'animal/lot en cours au lieu de revenir au
@@ -1024,7 +1038,7 @@ function CollecteView() {
                       <div className="flex justify-center">
                         <CellSaisie
                           value={collecte ? Number(collecte.quantiteLitres) : null}
-                          saving={savingKey === key}
+                          saving={savingKey === key || fenetreEnChargement}
                           ecarte={collecte?.ecarteAttente}
                           causeAttente={collecte?.causeAttente}
                           affecte={collecte?.lotFromage != null}
@@ -1069,7 +1083,7 @@ function CollecteView() {
                           <td key={d} className="p-1 text-center">
                             <CellSaisie
                               value={c ? Number(c.quantiteLitres) : null}
-                              saving={savingKey === key}
+                              saving={savingKey === key || fenetreEnChargement}
                               ecarte={c?.ecarteAttente}
                               causeAttente={c?.causeAttente}
                               affecte={c?.lotFromage != null}
@@ -1403,6 +1417,8 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
   React.useEffect(() => {
     if (!props.open || !fenetreDebut) return
     let annule = false
+    // Les collectes de l'ancienne fenêtre ne restent pas cochables pendant la lecture.
+    setCollectesDispo([])
     fetch(`/api/elevage/collectes-lait?from=${fenetreDebut}&to=${form.dateFabrication}`)
       .then((r) => r.json())
       .then(({ data }) => {
@@ -1620,7 +1636,6 @@ function LactationView() {
     suggererTarissement?: boolean
   } | null>(null)
   const [savingLL, setSavingLL] = React.useState(false)
-  const demandeLactation = React.useRef(0)
 
   React.useEffect(() => {
     fetch("/api/elevage/animaux?statut=actif")
@@ -1634,19 +1649,17 @@ function LactationView() {
       })
   }, [])
 
-  const reloadLactation = React.useCallback(() => {
-    if (selectedId == null) return
-    // La réponse d'une chèvre quittée entre-temps ne remplace pas celle de la
-    // chèvre affichée (DIM et conseil de tarissement d'une autre, D202).
-    const numero = ++demandeLactation.current
-    fetch(`/api/elevage/lactation?animalId=${selectedId}`)
-      .then((r) => r.json())
-      .then((payload) => { if (numero === demandeLactation.current) setData(payload) })
-  }, [selectedId])
-
-  React.useEffect(() => {
-    reloadLactation()
-  }, [reloadLactation])
+  // Lactation de l'animal affiché. Au changement d'animal, la fiche de
+  // l'ancien est retirée aussitôt : « Lactation longue » envoyait sinon
+  // l'inverse du drapeau de l'animal précédent à l'animal choisi (D202).
+  const { recharger: reloadLactation } = useLecture<NonNullable<typeof data>>(
+    selectedId == null ? null : `lactation:${selectedId}`,
+    (signal) => fetch(`/api/elevage/lactation?animalId=${selectedId}`, { signal }).then((r) => r.json()),
+    (reponse) => {
+      if (reponse.etat === "pret") setData(reponse.donnees)
+      else if (reponse.etat === "erreur" || !reponse.rafraichissement) setData(null)
+    },
+  )
 
   const toggleLactationLongue = async () => {
     if (selectedId == null || data == null) return

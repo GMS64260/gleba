@@ -4,6 +4,7 @@
  * Onglet Arbres - Liste des arbres avec filtres par type et dialog d'ajout
  */
 
+import { useDernierChargeur } from "@/hooks/use-chargement"
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { useRouter } from "next/navigation"
@@ -449,7 +450,9 @@ export function ArbresTab() {
   }, [toast])
 
 
-  const fetchData = React.useCallback(async () => {
+  // La dernière demande gagne, et un rechargement après une action relit avec
+  // les filtres affichés (jamais ceux de la fermeture qui l'a lancé).
+  const chargerArbres = React.useCallback(async (estActuelle: () => boolean) => {
     setIsLoading(true)
     try {
       // La liste individuelle est la donnée principale. Une erreur du module
@@ -468,6 +471,7 @@ export function ArbresTab() {
       if (arbresResult.status !== "fulfilled" || !Array.isArray(arbresResult.value)) {
         throw new Error("Impossible de charger les arbres")
       }
+      if (!estActuelle()) return
       setData(arbresResult.value)
 
       if (lotsResult.status === "fulfilled" && Array.isArray(lotsResult.value)) {
@@ -482,12 +486,14 @@ export function ArbresTab() {
         setLotDrafts({})
       }
     } catch {
+      if (!estActuelle()) return
       setData([])
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les arbres" })
     } finally {
-      setIsLoading(false)
+      if (estActuelle()) setIsLoading(false)
     }
   }, [toast, selectedEtat])
+  const fetchData = useDernierChargeur(chargerArbres)
 
   // Retour utilisateur 2026-07-27 — rattacher N arbres sélectionnés à une
   // parcelle en un appel, au lieu de N passages par la fiche arbre.
@@ -532,8 +538,8 @@ export function ArbresTab() {
   )
 
   React.useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    void fetchData()
+  }, [fetchData, chargerArbres])
 
   const handleDupliquer = React.useCallback(async (arbre: Arbre, nombre: number, recopierAchat: boolean) => {
     try {
@@ -646,10 +652,13 @@ export function ArbresTab() {
       setPortesGreffeOptions([])
       return
     }
+    // La dernière espèce saisie gagne : les porte-greffes d'une espèce précédente ne s'affichent plus.
+    let actif = true
     fetch(`/api/verger/porte-greffes?especeId=${encodeURIComponent(especeCle)}`)
       .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((d) => setPortesGreffeOptions(d.data || []))
-      .catch(() => setPortesGreffeOptions([]))
+      .then((d) => { if (actif) setPortesGreffeOptions(d.data || []) })
+      .catch(() => { if (actif) setPortesGreffeOptions([]) })
+    return () => { actif = false }
   }, [especeCle])
 
   const especeOptions = React.useMemo(() => {

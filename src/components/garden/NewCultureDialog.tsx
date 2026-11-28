@@ -184,10 +184,14 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
       setItpId(null)
       return
     }
+    // La dernière espèce choisie gagne : la réponse lente d'une espèce
+    // précédente ne remplit plus variété, itinéraire, dates et rangs.
+    let actif = true
     Promise.all([
       fetch(`/api/especes/${encodeURIComponent(especeId)}`).then(r => r.json()),
       fetch(`/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then(r => r.json()),
     ]).then(([especeData, itpsData]) => {
+      if (!actif) return
       setVarietes(especeData.varietes || [])
       // La variété de l'espèce précédente restait sélectionnée : la culture
       // partait « Carotte / Tomate Marmande ». Le serveur refuse désormais cette
@@ -201,11 +205,13 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
         setItpId(null)
       }
     }).catch(() => {
+      if (!actif) return
       setVarietes([])
       setVarieteId(null)
       setItps([])
       setItpId(null)
     })
+    return () => { actif = false }
   }, [especeId])
 
   // Remplir dates et quantites depuis ITP

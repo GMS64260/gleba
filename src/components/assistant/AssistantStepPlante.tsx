@@ -8,6 +8,7 @@
  * - Section 3 : Sélection de la variete (apparaît après selection ITP)
  */
 
+import { useDerniereDemande } from "@/hooks/use-derniere-demande"
 import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -249,8 +250,13 @@ export function AssistantStepPlante({
   // Fetch ITPs when espece changes
   // =========================================================================
 
+  // La dernière espèce choisie gagne : la réponse lente d'une espèce précédente
+  // ne remplit plus la liste ni la culture en cours de saisie.
+  const demandeItps = useDerniereDemande()
+  const demandeVarietes = useDerniereDemande()
   const fetchItps = React.useCallback(
     async (especeId: string) => {
+      const estActuelle = demandeItps()
       setItpsLoading(true)
       setItpsError(null)
       try {
@@ -259,6 +265,7 @@ export function AssistantStepPlante({
         )
         if (!res.ok) throw new Error("Erreur lors du chargement des ITPs")
         const data = await res.json()
+        if (!estActuelle()) return
         const fetched: ITPData[] = data.data || []
         setItps(fetched)
 
@@ -273,14 +280,15 @@ export function AssistantStepPlante({
           })
         }
       } catch (e) {
+        if (!estActuelle()) return
         console.error("Error fetching ITPs:", e)
         setItpsError("Impossible de charger les itinéraires techniques.")
         setItps([])
       } finally {
-        setItpsLoading(false)
+        if (estActuelle()) setItpsLoading(false)
       }
     },
-    [onItpChange, onCultureChange]
+    [onItpChange, onCultureChange, demandeItps]
   )
 
   // =========================================================================
@@ -289,6 +297,7 @@ export function AssistantStepPlante({
 
   const fetchVarietes = React.useCallback(
     async (especeId: string) => {
+      const estActuelle = demandeVarietes()
       setVarietesLoading(true)
       setVarietesError(null)
       setAutoSelectedVariete(false)
@@ -299,6 +308,7 @@ export function AssistantStepPlante({
         if (!res.ok)
           throw new Error("Erreur lors du chargement des variétés")
         const data = await res.json()
+        if (!estActuelle()) return
         const raw: VarieteData[] = data.data || []
 
         // Sort: stock first, then by total descending
@@ -322,11 +332,12 @@ export function AssistantStepPlante({
           }
         }
       } catch (e) {
+        if (!estActuelle()) return
         console.error("Error fetching varietes:", e)
         setVarietesError("Impossible de charger les variétés.")
         setVarietes([])
       } finally {
-        setVarietesLoading(false)
+        if (estActuelle()) setVarietesLoading(false)
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -339,6 +350,8 @@ export function AssistantStepPlante({
 
   React.useEffect(() => {
     if (!espece) {
+      // Espèce retirée : les lectures en cours ne valent plus.
+      demandeItps(); demandeVarietes()
       setItps([])
       setVarietes([])
       return

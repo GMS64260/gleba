@@ -272,16 +272,21 @@ export default function EditCulturePage() {
 
   // Charger les varietes et ITPs quand l'espece change
   React.useEffect(() => {
+    // La dernière espèce choisie gagne : la réponse lente d'une espèce
+    // précédente ne remplace plus les variétés et itinéraires affichés.
+    let actif = true
     if (selectedEspece) {
       Promise.all([
         fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`).then((r) => r.json()),
         fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then((r) => r.json()),
       ])
         .then(([especeData, itpsData]) => {
+          if (!actif) return
           setVarietes(especeData.varietes || [])
           setItps(itpsData.data || [])
         })
         .catch(() => {
+          if (!actif) return
           setVarietes([])
           setItps([])
         })
@@ -289,6 +294,7 @@ export default function EditCulturePage() {
       setVarietes([])
       setItps([])
     }
+    return () => { actif = false }
   }, [selectedEspece])
 
   // Quand l'ITP change (seulement si c'est un changement utilisateur, pas le chargement initial)

@@ -92,8 +92,16 @@ export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTa
 
   const hasGPS = !!(planche.parcelleGeo?.centroidLat && planche.parcelleGeo?.centroidLng)
 
+  // Coordonnées affichées, relues à la réponse : une estimation demandée pour
+  // une autre parcelle (ou une autre planche) n'est plus proposée à celle-ci.
+  const coordonneesAffichees = React.useRef("")
+  coordonneesAffichees.current = `${planche.id}:${planche.parcelleGeo?.centroidLat}:${planche.parcelleGeo?.centroidLng}`
+  // Une estimation reçue ne survit pas au changement de planche ou de parcelle : « Appliquer » écrirait le sol de l'ancienne.
+  const coordonnees = coordonneesAffichees.current
+  React.useEffect(() => { setSoilEstimate(null) }, [coordonnees])
   const fetchSoilEstimate = async () => {
     if (!hasGPS) return
+    const demandePour = coordonneesAffichees.current
     setSoilLoading(true)
     setSoilEstimate(null)
     try {
@@ -102,6 +110,7 @@ export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTa
       const res = await fetch(`/api/sol/soilgrids?lat=${lat}&lng=${lng}`)
       if (!res.ok) throw new Error("Données indisponibles")
       const json = await res.json()
+      if (coordonneesAffichees.current !== demandePour) return
       setSoilEstimate({
         argile: json.donnees.argile,
         limon: json.donnees.limon,

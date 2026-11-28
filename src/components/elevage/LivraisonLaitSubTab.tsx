@@ -1,5 +1,6 @@
 "use client"
 
+import { lireJson, useLecture } from "@/hooks/use-chargement"
 import { useDevise } from "@/hooks/use-devise"
 
 /**
@@ -61,11 +62,31 @@ export function LivraisonLaitSubTab() {
   const [livForm, setLivForm] = React.useState({ date: todayLocalISO(), litres: "", laiterie: "", tb: "", tp: "", cellules: "", germes: "" })
   const [paieForm, setPaieForm] = React.useState({ mois: new Date().getMonth() + 1, litres: "", prixBaseMille: "700", primeQualite: "0", penalite: "0", laiterie: "" })
 
-  const reload = React.useCallback(() => {
-    fetch(`/api/elevage/livraisons-lait?annee=${annee}`).then((r) => r.json()).then((j) => { setLivraisons(j.data || []); setLivStats(j.stats || null) })
-    fetch(`/api/elevage/paies-lait?annee=${annee}`).then((r) => r.json()).then((j) => { setPaies(j.data || []); setPaieStats(j.stats || null) })
-  }, [annee])
-  React.useEffect(() => { reload() }, [reload])
+  // Livraisons et paies de l'année affichée. Au changement d'année, les lignes
+  // de l'ancienne ne restent ni visibles ni actionnables, et sa réponse en
+  // retard est ignorée : « Estimer » remplissait la paie depuis une autre
+  // année, et le contrôle de doublon se faisait sur elle.
+  type Lu<L, S> = { data?: L[]; stats?: S | null }
+  const { recharger: reload } = useLecture(
+    `livraisons-paies:${annee}`,
+    async (signal) => {
+      const [livraisonsLues, paiesLues] = await Promise.all([
+        lireJson<Lu<Livraison, NonNullable<typeof livStats>>>(`/api/elevage/livraisons-lait?annee=${annee}`, signal),
+        lireJson<Lu<Paie, NonNullable<typeof paieStats>>>(`/api/elevage/paies-lait?annee=${annee}`, signal),
+      ])
+      return { livraisonsLues, paiesLues }
+    },
+    (reponse) => {
+      if (reponse.etat === "pret") {
+        setLivraisons(reponse.donnees.livraisonsLues.data || [])
+        setLivStats(reponse.donnees.livraisonsLues.stats || null)
+        setPaies(reponse.donnees.paiesLues.data || [])
+        setPaieStats(reponse.donnees.paiesLues.stats || null)
+      } else if (reponse.etat === "erreur" || !reponse.rafraichissement) {
+        setLivraisons([]); setLivStats(null); setPaies([]); setPaieStats(null)
+      }
+    },
+  )
 
   // Un seul envoi à la fois : deux appuis créaient deux livraisons.
   const [envoi, setEnvoi] = React.useState<null | "livraison" | "paie">(null)
