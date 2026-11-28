@@ -12,6 +12,7 @@ import {
 } from "@/lib/elevage/cadre-reglementaire"
 import { empreinteDeclaration } from "@/lib/elevage/declarations-reglementaires"
 import prisma from "@/lib/prisma"
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from "@/lib/api/version-fiche"
 
 class ErreurCadreReglementaire extends Error {
   constructor(
@@ -187,7 +188,13 @@ export async function PATCH(request: NextRequest) {
   if (error) return error
 
   try {
-    const parsed = cadreReglementaireMutationSchema.safeParse(await request.json())
+    const corps = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(corps)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
+    const { versionLue: _versionLue, ...mutation } = (corps ?? {}) as Record<string, unknown>
+    void _versionLue
+    const parsed = cadreReglementaireMutationSchema.safeParse(mutation)
     if (!parsed.success || !parsed.data.id) {
       return NextResponse.json(
         {
@@ -207,6 +214,7 @@ export async function PATCH(request: NextRequest) {
 
     const result = await prisma.$transaction(async (tx) => {
       if (parsed.data.kind === "lieu") {
+        await controlerVersionFiche(tx, 'lieux_detention_elevage', parsed.data.id!, lecture.version, 'Lieu')
         const before = await tx.lieuDetentionElevage.findFirst({
           where: { id: parsed.data.id, exploitationId: exploitation.id },
         })
@@ -219,7 +227,7 @@ export async function PATCH(request: NextRequest) {
         )
         const updated = await tx.lieuDetentionElevage.update({
           where: { id: before.id },
-          data: parsed.data.data,
+          data: { ...parsed.data.data, ...INCREMENT_VERSION },
         })
         const beforeAudit = jsonAudit(before)
         const afterAudit = jsonAudit(updated)
@@ -239,13 +247,14 @@ export async function PATCH(request: NextRequest) {
         return updated
       }
 
+      await controlerVersionFiche(tx, 'intervenants_elevage', parsed.data.id!, lecture.version, 'Intervenant')
       const before = await tx.intervenantElevage.findFirst({
         where: { id: parsed.data.id, exploitationId: exploitation.id },
       })
       if (!before) throw new ErreurCadreReglementaire("Intervenant introuvable", 404)
       const updated = await tx.intervenantElevage.update({
         where: { id: before.id },
-        data: parsed.data.data,
+        data: { ...parsed.data.data, ...INCREMENT_VERSION },
       })
       const beforeAudit = jsonAudit(before)
       const afterAudit = jsonAudit(updated)
@@ -267,6 +276,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: result })
   } catch (err) {
+    if (err instanceof FicheModifieeAilleurs) return err.reponse()
     if (err instanceof ErreurCadreReglementaire) {
       return NextResponse.json({ error: err.message }, { status: err.status })
     }
