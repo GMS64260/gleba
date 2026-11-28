@@ -27,6 +27,7 @@
  *
  * À appeler dans une transaction qui tient déjà `verrouillerStockCommercial`.
  */
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import type { Prisma } from '@prisma/client'
 import { quantitesCaisse } from '@/lib/caisse/reservations'
 import { chargerIdsRecoltesHorsStock } from '@/lib/stocks-helpers'
@@ -150,7 +151,10 @@ export async function sortirParLots(
         },
         select: { id: true },
       })
-      await tx.recolte.update({ where: { id: lot.id }, data: { quantite: auMillieme(lot.quantite - prise) } })
+      // La quantité est un champ de la fiche de récolte : sa version avance, pour
+      // qu'un formulaire ouvert avant la sortie soit prévenu au lieu de réécrire
+      // l'ancienne quantité (stock fantôme).
+      await tx.recolte.update({ where: { id: lot.id }, data: { quantite: auMillieme(lot.quantite - prise), ...INCREMENT_VERSION } })
       sortis.push({ id: part.id, quantite: prise, reliquatId: lot.id })
     }
     restant = auMillieme(restant - prise)

@@ -19,7 +19,10 @@ export type VersionRetenue = number | "aucune" | null
 
 /** Version portée par une fiche reçue du serveur ; `null` si elle n'en a pas (ancien serveur). */
 export function versionDe(fiche: unknown): VersionRetenue {
-  if (fiche === null || fiche === undefined) return "aucune"
+  // `undefined` : rien n'a été chargé, aucune version n'est envoyée. Seul un
+  // `null` explicite dit « le serveur n'a pas de fiche » (création par upsert).
+  if (fiche === undefined) return null
+  if (fiche === null) return "aucune"
   const version = (fiche as { version?: unknown }).version
   return typeof version === "number" && Number.isInteger(version) && version >= 0 ? version : null
 }

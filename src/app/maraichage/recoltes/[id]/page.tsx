@@ -157,8 +157,9 @@ export default function EditRecoltePage() {
       if (conflit) {
         if (await confirmDialog(`${conflit.message} Enregistrer quand même vos valeurs à la place de celles enregistrées entre-temps ? Sinon, annulez puis rechargez la page pour voir la fiche à jour.`)) {
           versionFiche.adopter(conflit.versionActuelle)
-          setIsSubmitting(false)
-          return onSubmit(data)
+          // La date contrôlée plus haut repart telle quelle : le renvoi n'a plus
+          // l'événement du formulaire pour la relire.
+          return await onSubmit({ ...data, date: dateSoumise })
         }
         setSubmitError("Récolte modifiée ailleurs : rien n'a été enregistré. Rechargez la page pour voir la fiche à jour.")
         return

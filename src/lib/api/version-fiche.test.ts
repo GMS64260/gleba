@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FicheModifieeAilleurs, lireVersionLue, reponseFicheModifiee, toucheChampsFiche, versionFichePerimee } from './version-fiche'
+import { FicheModifieeAilleurs, CHAMPS_HORS_FICHE, avecVersionSiFiche, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from './version-fiche'
 
 describe('lireVersionLue', () => {
   it('lit un entier, la sentinelle de création et l’absence', () => {
@@ -50,9 +50,17 @@ describe('refus', () => {
   })
 })
 
-describe('toucheChampsFiche', () => {
-  it('ne compte que les champs du formulaire réellement écrits', () => {
-    expect(toucheChampsFiche({ notes: 'x', derniereIrrigation: new Date() }, ['notes', 'quantite'])).toBe(true)
-    expect(toucheChampsFiche({ derniereIrrigation: new Date(), notes: undefined }, ['notes', 'quantite'])).toBe(false)
+describe('avecVersionSiFiche', () => {
+  it('fait avancer la version quand un champ de la fiche est écrit', () => {
+    expect(avecVersionSiFiche({ notes: 'x', derniereIrrigation: new Date() }, CHAMPS_HORS_FICHE.culture)).toMatchObject({ version: { increment: 1 } })
+    expect(avecVersionSiFiche({ quantite: 4, statut: 'vendu' }, CHAMPS_HORS_FICHE.recolte)).toMatchObject({ version: { increment: 1 } })
+  })
+  it('ne la touche pas pour un arrosage noté, l’interrupteur « à irriguer » ou une vente totale', () => {
+    expect(avecVersionSiFiche({ derniereIrrigation: new Date() }, CHAMPS_HORS_FICHE.culture)).not.toHaveProperty('version')
+    expect(avecVersionSiFiche({ aIrriguer: true }, CHAMPS_HORS_FICHE.culture)).not.toHaveProperty('version')
+    expect(avecVersionSiFiche({ statut: 'vendu', dateVente: new Date(), prixTotal: 12, clientNom: 'AMAP' }, CHAMPS_HORS_FICHE.recolte)).not.toHaveProperty('version')
+  })
+  it('ignore un champ de la fiche laissé à undefined', () => {
+    expect(avecVersionSiFiche({ aIrriguer: false, notes: undefined }, CHAMPS_HORS_FICHE.culture)).not.toHaveProperty('version')
   })
 })

@@ -368,6 +368,9 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
       const copie = Object.fromEntries(Object.entries(row).map(([nom, valeur]) => [nom, valeurExportable(valeur)]))
       // Une sauvegarde de données ne transporte aucun accès bancaire.
       if (meta.name === 'ConnexionStripe') Object.assign(copie, { jetonChiffre: '', actif: false, verrouSynchroJusqua: null })
+      // La version de fiche est un compteur technique : elle ne sort ni de la
+      // sauvegarde ni des exports tabulaires qui en dérivent.
+      if (MODELES_A_VERSION_DE_FICHE.has(meta.name)) delete (copie as Record<string, unknown>).version
       return copie
     })
     stats[meta.name] = rows.length

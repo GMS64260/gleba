@@ -7,7 +7,7 @@
  */
 
 import { reponseModifieAilleurs, versionPerimee } from '@/lib/api/version-lue'
-import { INCREMENT_VERSION, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from '@/lib/api/version-fiche'
+import { CHAMPS_HORS_FICHE, INCREMENT_VERSION, avecVersionSiFiche, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from '@/lib/api/version-fiche'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
@@ -820,11 +820,9 @@ export async function PATCH(
       const culture = await tx.culture.update({
         where: { id: cultureId },
         // Un geste qui change un champ de la fiche fait avancer sa version ;
-        // un arrosage noté (écriture dérivée) ne la touche pas : il provoquait
-        // un faux refus sur le formulaire ouvert à côté.
-        data: Object.keys(updateData).some((cle) => cle !== 'derniereIrrigation')
-          ? { ...updateData, ...INCREMENT_VERSION }
-          : updateData,
+        // un arrosage noté ou l'interrupteur « à irriguer » ne la touchent
+        // pas : ils provoquaient un faux refus sur le formulaire ouvert à côté.
+        data: avecVersionSiFiche(updateData, CHAMPS_HORS_FICHE.culture),
       })
       irrigationModifiee = 'derniereIrrigation' in updateData
 

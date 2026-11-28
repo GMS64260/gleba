@@ -172,6 +172,15 @@ describe('PATCH : intervention modifiée ailleurs', () => {
     expect(data).not.toHaveProperty('versionLue')
   })
 
+  it('verrouille la ligne avant de contrôler la version', async () => {
+    const { default: prisma } = await import('@/lib/prisma')
+    const verrou = vi.mocked(prisma.$queryRaw)
+    await corriger(3)
+    const requetes = verrou.mock.calls.map(([morceaux]) => (morceaux as unknown as string[]).join('?'))
+    expect(requetes.some((sql) => /FROM interventions[\s\S]*FOR UPDATE/.test(sql))).toBe(true)
+    expect(verrou.mock.invocationCallOrder[0]).toBeLessThan(mocks.update.mock.invocationCallOrder[0])
+  })
+
   it('garde le comportement d’avant sans version, et refuse une version illisible', async () => {
     expect((await corriger()).status).toBe(200)
     expect((await corriger('trois')).status).toBe(400)

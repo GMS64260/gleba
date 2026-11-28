@@ -104,6 +104,23 @@ describe("PUT /api/recoltes/[id] — date de récolte et cycle de la culture", (
     expect(mocks.recolteUpdate).not.toHaveBeenCalled()
   })
 
+  // Version de fiche : un formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+  it("refuse en 409 une version lue qui n'est plus celle de la base, sans rien écrire", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, version: 4 })
+    const res = await modifier({ quantite: 30, notes: null, versionLue: 3 })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: "MODIFIE_AILLEURS", versionActuelle: 4 })
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+
+  it("écrit et fait avancer la version quand la version lue est la bonne", async () => {
+    mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, version: 4 })
+    const res = await modifier({ quantite: 30, notes: null, versionLue: 4 })
+    expect(res.status).toBe(200)
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).toMatchObject({ quantite: 30, version: { increment: 1 } })
+    expect(mocks.recolteUpdate.mock.calls[0][0].data).not.toHaveProperty("versionLue")
+  })
+
   it("accepte une nouvelle date postérieure à la plantation", async () => {
     const res = await modifier({ date: new Date("2027-01-24T00:00:00.000Z").toISOString(), quantite: 25, notes: null })
     expect(res.status).toBe(200)

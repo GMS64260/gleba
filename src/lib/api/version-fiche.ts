@@ -77,7 +77,18 @@ export class FicheModifieeAilleurs extends Error {
   }
 }
 
-/** Vrai si l'écriture change au moins un champ que le formulaire de la fiche renvoie. */
-export function toucheChampsFiche(data: object, champs: readonly string[]): boolean {
-  return champs.some((champ) => (data as Record<string, unknown>)[champ] !== undefined)
+/**
+ * Champs qu'aucun formulaire de fiche ne renvoie : les écrire seuls ne fait
+ * pas avancer la version (sinon, faux refus sur le formulaire ouvert à côté).
+ */
+export const CHAMPS_HORS_FICHE = {
+  culture: ['aIrriguer', 'derniereIrrigation'],
+  recolte: ['statut', 'dateVente', 'dateSortie', 'prixKg', 'prixTotal', 'clientId', 'clientNom', 'factureId', 'consommationId', 'stockDisponibleCommercial', 'recolteOrigineId'],
+} as const
+
+/** `data` complété de l'incrément si l'écriture touche autre chose que des champs hors fiche. */
+export function avecVersionSiFiche<T extends object>(data: T, horsFiche: readonly string[]): T & { version?: { increment: 1 } } {
+  return Object.keys(data).some((cle) => (data as Record<string, unknown>)[cle] !== undefined && !horsFiche.includes(cle))
+    ? { ...data, ...INCREMENT_VERSION }
+    : data
 }

@@ -8,7 +8,6 @@
  * deux affichent les mêmes chiffres.
  */
 
-import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { getUserId, refusSiLectureSeule } from '@/lib/exploitation/garde-session'
@@ -195,7 +194,8 @@ export async function PATCH(request: NextRequest) {
 
     const updated = await prisma.culture.update({
       where: { id: culture.id },
-      data: { aIrriguer, ...INCREMENT_VERSION },
+      // Hors formulaire de fiche : la version n'avance pas (pas de faux refus).
+      data: { aIrriguer },
     })
 
     return NextResponse.json({ success: true, data: updated })

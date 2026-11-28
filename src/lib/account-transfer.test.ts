@@ -65,6 +65,14 @@ describe("transfert des identifiants BigInt des capteurs", () => {
     expect(sauvegarde.avertissements).toEqual([])
   })
 
+  // Version de fiche : compteur technique, ni sauvegardé ni restauré.
+  it("ne sort pas la version de fiche d'une culture dans la sauvegarde", async () => {
+    mocks.rows.culture = [{ id: 7, userId: "source", especeId: "laitue", annee: 2026, version: 12 }]
+    const sauvegarde = await exportAccount("source")
+    expect(sauvegarde.data.Culture).toEqual([expect.objectContaining({ id: 7, annee: 2026 })])
+    expect(sauvegarde.data.Culture[0]).not.toHaveProperty("version")
+  })
+
   it("réimporte le fichier JSON et laisse la cible régénérer la PK BigInt", async () => {
     const sauvegarde = JSON.parse(JSON.stringify(await exportAccount("source")))
     const resultat = await importAccount("cible", sauvegarde)

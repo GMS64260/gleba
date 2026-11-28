@@ -1,4 +1,4 @@
-import { FicheModifieeAilleurs, INCREMENT_VERSION, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
+import { CHAMPS_HORS_FICHE, FicheModifieeAilleurs, INCREMENT_VERSION, avecVersionSiFiche, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { apresDemain, MESSAGE_RECOLTE_FUTURE } from '@/lib/interventions/date-realisee'
@@ -439,8 +439,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           notes: sortie?.ok ? existing.notes ?? `Reliquat de la récolte #${recolteId}` : `Reliquat non vendu de la récolte #${recolteId}`,
         } })
       }
-      // Vente, sortie, remise en stock : des champs de la fiche changent.
-      const recolte = await tx.recolte.update({ where: { id: recolteId }, data: { ...updateData, ...INCREMENT_VERSION },
+      // Une vente ou une sortie partielle change la quantité de la fiche : sa
+      // version avance. Le statut, le prix et le client seuls ne la touchent pas.
+      const recolte = await tx.recolte.update({ where: { id: recolteId }, data: avecVersionSiFiche(updateData, CHAMPS_HORS_FICHE.recolte),
         include: { espece: { include: { famille: true } }, culture: { include: { variete: true, planche: true } } },
       })
       if (statut === 'vendu') await createVenteFromRecolte(userId, recolte, tx)
