@@ -20,6 +20,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { INCREMENT_VERSION, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from "@/lib/api/version-fiche"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { deleteAutoEntry } from "@/lib/auto-compta"
 import { annulerFactureLiee } from "@/lib/facture-utils"
@@ -92,6 +93,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const userId = session!.user.id
     return await prisma.$transaction(async (tx) => {
       await verrouillerStockCommercial(tx, session!.user.id)
+      // Verrou de ligne : la version relue ci-dessous ne peut plus avancer avant l'écriture.
+      await tx.$queryRaw`SELECT id FROM recoltes_arbres WHERE id = ${recolteId} AND user_id = ${userId} FOR UPDATE`
       const existing = await tx.recolteArbre.findUnique({
         where: { id: recolteId, userId },
         include: { arbre: { select: { espece: true } } },
@@ -107,6 +110,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
       if (existing.statut === 'vendu' || existing.factureId) return NextResponse.json({ error: 'Ce lot est vendu. Corrigez la vente ou sa facture, ou annulez sa vente avant de modifier la récolte.' }, { status: 409 })
       const body = await request.json()
+      // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+      const lecture = lireVersionLue(body)
+      if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
+      if (versionFichePerimee(lecture.version, existing)) return reponseFicheModifiee('Récolte', existing.version)
 
       // Production 2026-09-04 : un maraîcher a saisi deux fois la même récolte à
       // une minute d'écart, seule la date différait — l'écran n'offrait aucune
@@ -276,6 +283,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
           destinationCommerce: texteOuNull(body.destinationCommerce),
           conditionnement: texteOuNull(body.conditionnement),
           statutBioSnapshot,
+          ...INCREMENT_VERSION,
         },
         include: {
           arbre: {

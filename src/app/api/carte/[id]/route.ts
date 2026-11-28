@@ -8,6 +8,7 @@
 import { refusSuppressionParcelle, usagesParcelle } from '@/lib/parcelles/suppression'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { irrigationCache } from '@/lib/irrigation-cache'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { updateParcelleSchema } from '@/lib/validations/parcelle'
@@ -18,6 +19,8 @@ type RouteParams = { params: Promise<{ id: string }> }
 // Sélection des champs sans les timestamps
 const parcelleSelect = {
   id: true,
+  // Version de fiche, renvoyée par l'écran à la modification.
+  version: true,
   nom: true,
   userId: true,
   geometry: true,
@@ -89,6 +92,9 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
+    // Version de fiche : le panneau resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
 
     // Vérifier existence et propriété
     const existing = await prisma.parcelleGeo.findUnique({
@@ -147,16 +153,17 @@ export async function PUT(
     }
 
     // Mise à jour en base
-    const parcelle = await prisma.parcelleGeo.update({
+    const parcelle = await ecrireFicheVersionnee(prisma, 'parcelles_geo', id, lecture.version, 'Parcelle', (db) => db.parcelleGeo.update({
       where: { id },
-      data: updateData,
+      data: { ...updateData, ...INCREMENT_VERSION },
       select: parcelleSelect,
-    })
+    }))
     // Le sol de la parcelle nourrit le conseil d'irrigation (ticket QA cmv2re9vl).
     irrigationCache.invalidateUser(session!.user.id)
 
     return NextResponse.json(parcelle)
   } catch (err) {
+    if (err instanceof FicheModifieeAilleurs) return err.reponse()
     console.error('PUT /api/carte/[id] error:', err)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour de la parcelle' },

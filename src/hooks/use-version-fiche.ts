@@ -80,6 +80,31 @@ export async function envoyerFiche<T extends object>(
 
 export const MESSAGE_FICHE_NON_ENREGISTREE = "Fiche modifiée ailleurs : rien n'a été enregistré. Rechargez la page pour voir la fiche à jour."
 
+/**
+ * Formulaire dans un dialogue, ouvert sur une ligne de liste. Pas de question
+ * superposée au dialogue (sur téléphone, l'annuler fermait aussi le dialogue
+ * et sa saisie) : sur un refus, la ligne ouverte adopte la version actuelle et
+ * un second « Enregistrer » impose la saisie en connaissance de cause.
+ *
+ *   body: JSON.stringify(avecVersionLigne(corps, ligneOuverte))
+ *   const conflit = await conflitDansDialogue(res, ligneOuverte)
+ *   if (conflit) { setLigneOuverte(conflit.ligne); toast({ variant: "destructive", title: TITRE_FICHE_MODIFIEE, description: conflit.message }); return }
+ */
+export function avecVersionLigne<T extends object>(corps: T, ligne: { version?: unknown } | null | undefined): T & { versionLue?: number } {
+  return typeof ligne?.version === "number" ? { ...corps, versionLue: ligne.version } : corps
+}
+
+export async function conflitDansDialogue<L extends object>(reponse: Response, ligne: L | null | undefined): Promise<{ ligne: L; message: string } | null> {
+  const conflit = await lireConflitVersion(reponse)
+  if (!conflit || !ligne) return null
+  return {
+    ligne: conflit.versionActuelle === null ? ligne : { ...ligne, version: conflit.versionActuelle },
+    message: `${conflit.message} Enregistrez de nouveau pour imposer votre saisie, ou fermez pour voir la fiche à jour.`,
+  }
+}
+
+export const TITRE_FICHE_MODIFIEE = "Modifiée ailleurs"
+
 function creerVersionFiche() {
   let version: VersionRetenue = null
   return {
