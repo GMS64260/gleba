@@ -632,7 +632,8 @@ export function ArbresTab() {
   // les arbres de l'onglet, quelle que soit la recherche.
   const [arbresAffiches, setArbresAffiches] = React.useState<Arbre[] | null>(null)
   const arbresEtiquettes = arbresAffiches ?? filteredData
-  const etiquettesImprimables = arbresEtiquettes.length > 0 && arbresEtiquettes.length <= 60
+  // Pendant le chargement d'un autre filtre d'état, la liste affichée est encore l'ancienne : pas de planche sur elle.
+  const etiquettesImprimables = !isLoading && (arbresEtiquettes.length > 0 && arbresEtiquettes.length <= 60)
 
   // QA cmvgddn3l (2026-10-20) — « prunier » en minuscules n'ouvrait que
   // « Aucun » porte-greffe : la liste, les variétés et l'avertissement de zone

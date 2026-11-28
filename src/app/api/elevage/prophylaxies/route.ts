@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 
 const schema = z.object({
   id: z.string().optional(),
@@ -28,7 +29,11 @@ export async function GET() {
 async function save(request: NextRequest, update: boolean) {
   const { session, error } = await requireAuthApi()
   if (error) return error
-  const parsed = schema.safeParse(await request.json())
+  const corps = await request.json()
+  // Version de fiche : une ligne de liste périmée ne réécrit pas ce qui a changé ailleurs.
+  const lecture = lireVersionLue(corps)
+  if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
+  const parsed = schema.safeParse(corps)
   if (!parsed.success) return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
   const { id, ...d } = parsed.data
   if (d.especeAnimaleId) {
@@ -41,8 +46,14 @@ async function save(request: NextRequest, update: boolean) {
     if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     const found = await prisma.prophylaxieElevage.findFirst({ where: { id, userId: session.user.id }, select: { id: true } })
     if (!found) return NextResponse.json({ error: 'Échéance introuvable' }, { status: 404 })
-    const data = await prisma.prophylaxieElevage.update({ where: { id }, data: { ...d, documentUrl: d.documentUrl || null } })
-    return NextResponse.json({ data })
+    try {
+      const data = await ecrireFicheVersionnee(prisma, 'prophylaxies_elevage', id, lecture.version, 'Échéance',
+        (db) => db.prophylaxieElevage.update({ where: { id }, data: { ...d, documentUrl: d.documentUrl || null, ...INCREMENT_VERSION } }))
+      return NextResponse.json({ data })
+    } catch (e) {
+      if (e instanceof FicheModifieeAilleurs) return e.reponse()
+      throw e
+    }
   }
   const data = await prisma.prophylaxieElevage.create({ data: { userId: session.user.id, ...d, documentUrl: d.documentUrl || null } })
   return NextResponse.json({ data }, { status: 201 })

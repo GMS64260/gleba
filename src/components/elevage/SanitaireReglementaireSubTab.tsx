@@ -726,9 +726,12 @@ export function SanitaireReglementaireSubTab() {
   async function realisee(p: Prophylaxie) {
     const res = await fetch('/api/elevage/prophylaxies', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...p, datePrevue: p.datePrevue, dateRealisee: new Date(), statut: 'realisee' }),
+      // Le geste renvoie toute la ligne affichée : sa version part avec, pour qu'une
+      // ligne périmée ne réécrive pas l'échéance corrigée ailleurs.
+      body: JSON.stringify({ ...p, ...(typeof (p as { version?: unknown }).version === 'number' ? { versionLue: (p as { version?: number }).version } : {}), datePrevue: p.datePrevue, dateRealisee: new Date(), statut: 'realisee' }),
     })
-    if (res.ok) await reload()
+    if (res.status === 409) toast({ variant: "destructive", title: "Échéance modifiée ailleurs", description: "La liste vient d'être relue : vérifiez la ligne, puis recommencez." })
+    if (res.ok || res.status === 409) await reload()
   }
 
   // Signalement 2026-09-25 (éleveur caprin) — le refus de suppression d'un lot

@@ -252,6 +252,10 @@ export function AssistantStepPlante({
 
   // La dernière espèce choisie gagne : la réponse lente d'une espèce précédente
   // ne remplit plus la liste ni la culture en cours de saisie.
+  const skipVarieteRef = React.useRef(skipVariete)
+  skipVarieteRef.current = skipVariete
+  const varieteRef = React.useRef(variete)
+  varieteRef.current = variete
   const demandeItps = useDerniereDemande()
   const demandeVarietes = useDerniereDemande()
   const fetchItps = React.useCallback(
@@ -324,7 +328,9 @@ export function AssistantStepPlante({
         setVarietes(sorted)
 
         // Auto-select best stock variant if no variete already selected
-        if (!variete && sorted.length > 0 && !skipVariete) {
+        // Lu à la réponse, pas à la demande : « Pas de variété spécifique » cochée
+        // pendant le chargement n'est plus contredite par une variété choisie d'office.
+        if (!varieteRef.current && sorted.length > 0 && !skipVarieteRef.current) {
           const best = sorted[0]
           if (getTotalStock(best) > 0) {
             onVarieteChange(best)
