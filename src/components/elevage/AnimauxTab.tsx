@@ -70,6 +70,7 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
+import { lireConflitVersion, refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import { todayLocalISO } from '@/lib/format-utils'
 import { ImportAnimauxCsv } from './ImportAnimauxCsv'
 import {
@@ -84,6 +85,8 @@ import {
 
 interface Animal {
   id: number
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   identifiant: string | null
   typeIdentifiant: string | null
   nom: string | null
@@ -132,6 +135,8 @@ interface Animal {
 }
 
 interface Lot {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: number
   nom: string | null
   dateArrivee: string | null
@@ -276,6 +281,8 @@ function AnimauxSubTab() {
   const [animalSubmitError, setAnimalSubmitError] = React.useState<string | null>(null)
   // QA 2026-05-15 — édition par ligne pour les animaux
   const [editingAnimalId, setEditingAnimalId] = React.useState<number | null>(null)
+  // Version de la fiche ouverte en modification ; adoptée après un refus, pour qu'un second envoi impose la saisie.
+  const versionAnimalOuvert = React.useRef<number | null>(null)
   // Statut et date de sortie de l'animal édité : la section « Sortie » du
   // formulaire n'apparaît que pour un animal sorti (ou incohérent).
   const [sortieEnEdition, setSortieEnEdition] = React.useState<{ statut: string; dateSortie: string | null } | null>(null)
@@ -333,6 +340,7 @@ function AnimauxSubTab() {
 
   const handleEditAnimal = (a: Animal) => {
     setEditingAnimalId(a.id)
+    versionAnimalOuvert.current = typeof a.version === "number" ? a.version : null
     setSortieEnEdition({ statut: a.statut, dateSortie: a.dateSortie ?? null })
     setIdentifiantCharge({ identifiant: a.identifiant ?? "", typeIdentifiant: a.typeIdentifiant ?? "" })
     setFormData({
@@ -606,7 +614,7 @@ function AnimauxSubTab() {
       // ne puisse le faire naître « mort ». L'édition ne touche pas au statut ici
       // (géré par les actions dédiées vente/abattage/décès).
       const body = isEdit
-        ? { id: editingAnimalId, ...cleaned }
+        ? { id: editingAnimalId, ...cleaned, ...(versionAnimalOuvert.current !== null ? { versionLue: versionAnimalOuvert.current } : {}) }
         : { ...cleaned, statut: 'actif' }
       const envoyer = (corps: object) => fetch('/api/elevage/animaux', {
         method: isEdit ? 'PATCH' : 'POST',
@@ -614,6 +622,12 @@ function AnimauxSubTab() {
         body: JSON.stringify(corps),
       })
       let response = await envoyer(body)
+      // Fiche modifiée ailleurs : la saisie reste ouverte, un second « Enregistrer » l'impose.
+      const conflitVersion = isEdit ? await lireConflitVersion(response) : null
+      if (conflitVersion) {
+        versionAnimalOuvert.current = conflitVersion.versionActuelle
+        throw new Error(`${conflitVersion.message} Enregistrez de nouveau pour imposer votre saisie, ou fermez pour voir la fiche à jour.`)
+      }
       let refusDoublon: { code?: string; error?: string } | null = null
       if (response.status === 409) {
         refusDoublon = await response.clone().json().catch(() => null)
@@ -1982,6 +1996,7 @@ function LotsSubTab() {
   const [isSavingLot, setIsSavingLot] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingLotId, setEditingLotId] = React.useState<number | null>(null)
+  const versionLot = useVersionFiche()
   // Composition groupée d'un lot (signalement 2026-09-25).
   const [lotAComposer, setLotAComposer] = React.useState<LotAComposer | null>(null)
   const ouvrirComposition = (lot: Lot) =>
@@ -1999,6 +2014,7 @@ function LotsSubTab() {
 
   const resetLotForm = () => {
     setEditingLotId(null)
+    versionLot.oublier()
     setStatutLotEdite(null)
     const defautEspece =
       especesPourAtelier.length === 1 ? especesPourAtelier[0].id : ""
@@ -2013,6 +2029,7 @@ function LotsSubTab() {
   const handleEditLot = (lot: Lot) => {
     prixLotLuRef.current = versChampNombre(lot.prixAchatTotal)
     setEditingLotId(lot.id)
+    versionLot.retenir(lot)
     setStatutLotEdite(lot.statut)
     setFormData({
       especeAnimaleId: lot.especeAnimale.id,
@@ -2261,8 +2278,10 @@ function LotsSubTab() {
       const response = await fetch('/api/elevage/lots', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(isEdit ? versionLot.joindre(body) : body),
       })
+      const refusVersion = isEdit ? await refusDansDialogue(response, versionLot) : null
+      if (refusVersion) throw new Error(refusVersion)
       if (!response.ok) {
         // QA caprin cms1vdadf — même pattern que le formulaire animal : on lit
         // le corps de la 400 (zod flatten → details.fieldErrors, ou message

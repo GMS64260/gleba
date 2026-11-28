@@ -1,3 +1,4 @@
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import type { Prisma } from '@prisma/client'
 import { z } from 'zod'
 
@@ -45,8 +46,9 @@ export async function recalerPosition(tx: Prisma.TransactionClient, userId: stri
     select: { parcelleApresId: true },
   })
   const parcelleGeoId = dernier ? dernier.parcelleApresId : repli
-  if (cible.animalId) await tx.animal.updateMany({ where: { id: cible.animalId, userId }, data: { parcelleGeoId } })
-  else if (cible.lotId) await tx.lotAnimaux.updateMany({ where: { id: cible.lotId, userId }, data: { parcelleGeoId } })
+  // La parcelle figure dans les formulaires de l'animal et du lot : leur version avance.
+  if (cible.animalId) await tx.animal.updateMany({ where: { id: cible.animalId, userId }, data: { parcelleGeoId, ...INCREMENT_VERSION } })
+  else if (cible.lotId) await tx.lotAnimaux.updateMany({ where: { id: cible.lotId, userId }, data: { parcelleGeoId, ...INCREMENT_VERSION } })
 }
 
 /**

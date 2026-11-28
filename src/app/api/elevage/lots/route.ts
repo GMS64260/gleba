@@ -11,6 +11,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from '@/lib/api/version-fiche'
 import { Prisma } from '@prisma/client'
 import { lotSchema } from '@/lib/validations/elevage-lot'
 import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
@@ -198,6 +199,9 @@ export async function PATCH(request: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     }
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
 
     const existing = await prisma.lotAnimaux.findFirst({
       where: { id: parseInt(id), userId: session.user.id },
@@ -322,6 +326,7 @@ export async function PATCH(request: NextRequest) {
 
     const lot = await prisma.$transaction(async (tx) => {
       await verrouillerReglements(tx, session!.user.id)
+      await controlerVersionFiche(tx, 'lots_animaux', existing.id, lecture.version, 'Lot')
       if (corrigeQuantiteInitiale && updateData.quantiteInitiale !== undefined) {
         // Relu sous le mutex : un abattage ou une naissance validés entre-temps
         // ont déjà déplacé le compteur, l'écart s'applique à sa valeur courante.
@@ -336,7 +341,7 @@ export async function PATCH(request: NextRequest) {
       }
       const updated = await tx.lotAnimaux.update({
         where: { id: parseInt(id) },
-        data: updateData,
+        data: { ...updateData, ...INCREMENT_VERSION },
         include: { especeAnimale: true },
       })
       if (updateData.parcelleGeoId !== undefined && updated.parcelleGeoId !== existing.parcelleGeoId) {
@@ -382,6 +387,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ data: lot })
   } catch (error) {
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     console.error('PATCH /api/elevage/lots error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },

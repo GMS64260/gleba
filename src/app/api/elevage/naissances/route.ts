@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 import { naissanceSchema } from '@/lib/validations/elevage-naissance'
 import { erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
 import { jourCivilStocke } from '@/lib/jour-civil'
@@ -266,6 +267,9 @@ export async function PATCH(request: NextRequest) {
     if (Number.isNaN(id)) {
       return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
     }
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const userId = session.user.id
     const existing = await prisma.naissanceAnimale.findFirst({
       where: { id, userId },
@@ -327,6 +331,7 @@ export async function PATCH(request: NextRequest) {
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM naissances_animales WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`
       const courante = await tx.naissanceAnimale.findFirst({ where: { id, userId }, include: { petits: { orderBy: { numero: 'asc' } } } })
+      if (versionFichePerimee(lecture.version, courante)) throw new FicheModifieeAilleurs('Naissance', courante?.version ?? null)
       // L'ancien lot et l'ancien effectif se lisent sur la ligne VERROUILLÉE :
       // pris sur `existing` (lu avant la transaction), deux corrections envoyées
       // ensemble retiraient chacune les 8 vivants d'origine et le compteur du
@@ -365,6 +370,7 @@ export async function PATCH(request: NextRequest) {
       await tx.naissanceAnimale.update({
         where: { id },
         data: {
+          ...INCREMENT_VERSION,
           mereId: parsed.data.mereId ?? null,
           lotId: parsed.data.lotId ?? null,
           pereIdentifiant: parsed.data.pereIdentifiant ?? null,
@@ -415,6 +421,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ data: updated })
   } catch (error) {
     if (error instanceof NaissanceLieeError) return NextResponse.json({ error: error.message }, { status: 409 })
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     console.error('PATCH /api/elevage/naissances error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },

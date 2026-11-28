@@ -7,6 +7,7 @@
  * Scopé userId ; appartenance de l'animal validée à l'écriture.
  */
 
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { finJourCivil } from '@/lib/jour-civil'
 import { estApresAujourdhui } from '@/lib/elevage/chronologie'
 import { NextRequest, NextResponse } from 'next/server'
@@ -37,7 +38,8 @@ async function majPoidsActuel(tx: Prisma.TransactionClient, userId: string, anim
   })
   await tx.animal.updateMany({
     where: { id: animalId, userId },
-    data: { poidsActuel: derniere ? derniere.poidsKg : null },
+    // Le poids figure dans le formulaire de l'animal : sa version avance.
+    data: { poidsActuel: derniere ? derniere.poidsKg : null, ...INCREMENT_VERSION },
   })
 }
 

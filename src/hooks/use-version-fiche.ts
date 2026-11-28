@@ -105,6 +105,22 @@ export async function conflitDansDialogue<L extends object>(reponse: Response, l
 
 export const TITRE_FICHE_MODIFIEE = "Modifiée ailleurs"
 
+/** Message d'un refus dans un dialogue : la saisie reste ouverte, un second envoi l'impose. */
+export function messageConflitDialogue(conflit: ConflitVersion): string {
+  return `${conflit.message} Enregistrez de nouveau pour imposer votre saisie, ou fermez pour voir la fiche à jour.`
+}
+
+/**
+ * Refus « modifiée ailleurs » d'un formulaire en dialogue tenu par `useVersionFiche` :
+ * la version actuelle est adoptée et le message à afficher est rendu ; `null` s'il n'y a pas de conflit.
+ */
+export async function refusDansDialogue(reponse: Response, version: { adopter: (versionActuelle: number | null) => void }): Promise<string | null> {
+  const conflit = await lireConflitVersion(reponse)
+  if (!conflit) return null
+  version.adopter(conflit.versionActuelle)
+  return messageConflitDialogue(conflit)
+}
+
 function creerVersionFiche() {
   let version: VersionRetenue = null
   return {

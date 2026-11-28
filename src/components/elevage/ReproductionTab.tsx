@@ -42,6 +42,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
+import { refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AnimalCombobox } from "./AnimalCombobox"
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
@@ -90,6 +91,8 @@ type PetitRow = {
 }
 
 interface Naissance {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: number
   date: string
   nombreNes: number
@@ -787,6 +790,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   const [creerFichesAnimales, setCreerFichesAnimales] = React.useState(true)
   // QA 2026-05-15 — édition par ligne
   const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
+  const versionNaissance = useVersionFiche()
   const initialOpenApplied = React.useRef(false)
   React.useEffect(() => {
     if (!initialOpen || initialOpenApplied.current) return
@@ -867,6 +871,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
 
   const resetNaissForm = () => {
     setEditingNaissId(null)
+    versionNaissance.oublier()
     setNaissanceSubmitError(null)
     setCreerFichesAnimales(true)
     setFormData(EMPTY_NAISS_FORM)
@@ -874,6 +879,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
 
   const handleEditNaiss = (n: Naissance) => {
     setEditingNaissId(n.id)
+    versionNaissance.retenir(n)
     setFormData({
       mereId: n.mereId ? n.mereId.toString() : "",
       lotId: n.lotId ? n.lotId.toString() : "",
@@ -1123,8 +1129,15 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
       const response = await fetch('/api/elevage/naissances', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(isEdit ? versionNaissance.joindre(payload) : payload),
       })
+      // Naissance modifiée ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const refusVersion = isEdit ? await refusDansDialogue(response, versionNaissance) : null
+      if (refusVersion) {
+        setNaissanceSubmitError(refusVersion)
+        toast({ variant: "destructive", title: "Modifiée ailleurs", description: refusVersion })
+        return
+      }
       const responsePayload = await response.json().catch(() => null)
       if (!response.ok) {
         // Récupérer le détail d'erreur (Zod) pour informer précisément.
@@ -1897,6 +1910,8 @@ function CalculateurSubTab() {
 // ============================================================
 
 interface SaillieRow {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: string
   date: string
   type: string
@@ -2192,6 +2207,7 @@ function DialogSaillie(props: {
 }) {
   const { toast } = useToast()
   const isEdit = !!props.editingSaillie
+  const versionSaillie = useVersionFiche()
   const [form, setForm] = React.useState({
     date: todayLocalISO(),
     femelleId: 0,
@@ -2206,6 +2222,7 @@ function DialogSaillie(props: {
   // Pré-remplir depuis editingSaillie quand on ouvre en mode édition
   React.useEffect(() => {
     if (props.open && props.editingSaillie) {
+      versionSaillie.retenir(props.editingSaillie)
       const s = props.editingSaillie
       setForm({
         date: s.date.split("T")[0],
@@ -2273,8 +2290,14 @@ function DialogSaillie(props: {
       const res = await fetch("/api/elevage/saillies", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(isEdit ? versionSaillie.joindre(body) : body),
       })
+      // Saillie modifiée ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const refusVersion = isEdit ? await refusDansDialogue(res, versionSaillie) : null
+      if (refusVersion) {
+        toast({ variant: "destructive", title: "Modifiée ailleurs", description: refusVersion })
+        return
+      }
       const json = await res.json()
       if (!res.ok) {
         toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec" })
