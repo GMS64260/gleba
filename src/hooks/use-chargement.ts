@@ -181,17 +181,28 @@ export async function lireJson<T>(url: string, signal?: AbortSignal): Promise<T>
  *   const fetchData = useDernierChargeur(charger)
  *   React.useEffect(() => { void fetchData() }, [fetchData, charger])   // `charger` change avec les filtres
  */
+export type EtatChargeur<R> = {
+  chargeur: (estActuelle: () => boolean) => Promise<R>
+  /** Numéro de la dernière demande : monotone. */
+  numero: number
+  monte: boolean
+}
+
+/** Cœur de `useDernierChargeur`, hors de React pour être testé seul. */
+export function appelerDernierChargeur<R>(etat: EtatChargeur<R>): Promise<R> {
+  const n = ++etat.numero
+  return etat.chargeur(() => etat.monte && n === etat.numero)
+}
+
 export function useDernierChargeur<R = void>(chargeur: (estActuelle: () => boolean) => Promise<R>): () => Promise<R> {
-  const courant = React.useRef(chargeur)
-  courant.current = chargeur
-  const numero = React.useRef(0)
-  const monte = React.useRef(true)
+  const ref = React.useRef<EtatChargeur<R> | null>(null)
+  if (ref.current === null) ref.current = { chargeur, numero: 0, monte: true }
+  const etat = ref.current
+  // Dernière fermeture : un rechargement lit le chargeur du rendu courant.
+  etat.chargeur = chargeur
   React.useEffect(() => {
-    monte.current = true
-    return () => { monte.current = false }
-  }, [])
-  return React.useCallback(() => {
-    const n = ++numero.current
-    return courant.current(() => monte.current && n === numero.current)
-  }, [])
+    etat.monte = true
+    return () => { etat.monte = false }
+  }, [etat])
+  return React.useCallback(() => appelerDernierChargeur(etat), [etat])
 }

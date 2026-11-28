@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { abandonnerLecture, creerBoite, etatChargement, lancerLecture, rangerReponse, type Reponse } from "./use-chargement"
+import { abandonnerLecture, appelerDernierChargeur, creerBoite, etatChargement, lancerLecture, rangerReponse, type Reponse } from "./use-chargement"
 
 /** Lecteur dont chaque demande se résout à la main, dans l'ordre voulu par le test. */
 function lecteurManuel() {
@@ -131,5 +131,54 @@ describe("état affiché", () => {
     expect(rangerReponse(pret, { cle: "2026", etat: "chargement", rafraichissement: false })).toEqual({ cle: "2026", etat: "chargement", rafraichissement: false })
     const erreur: Reponse<string> = { cle: "2025", etat: "erreur", erreur: new Error("panne") }
     expect(rangerReponse(pret, erreur)).toBe(erreur)
+  })
+})
+
+describe("useDernierChargeur : chargeur écrit à la main", () => {
+  const differe = <T,>() => {
+    let resoudre!: (valeur: T) => void
+    const promesse = new Promise<T>((r) => { resoudre = r })
+    return { promesse, resoudre }
+  }
+
+  it("seule la dernière demande reste actuelle, même si l'ancienne répond après", async () => {
+    const lente = differe<string>()
+    const rapide = differe<string>()
+    const reponses = [lente, rapide]
+    const rangees: string[] = []
+    const etat = {
+      numero: 0, monte: true,
+      chargeur: async (estActuelle: () => boolean) => {
+        const donnees = await reponses.shift()!.promesse
+        if (estActuelle()) rangees.push(donnees)
+      },
+    }
+    const premiere = appelerDernierChargeur(etat)
+    const seconde = appelerDernierChargeur(etat)
+    rapide.resoudre("filtre affiché")
+    await seconde
+    lente.resoudre("ancien filtre")
+    await premiere
+    expect(rangees).toEqual(["filtre affiché"])
+  })
+
+  it("appelle toujours le chargeur du rendu courant, pas celui de la fermeture d'origine", async () => {
+    const lus: string[] = []
+    const etat = { numero: 0, monte: true, chargeur: async () => { lus.push("année 2025") } }
+    // Geste lancé depuis une fermeture ancienne, après un changement de filtre.
+    etat.chargeur = async () => { lus.push("année 2026") }
+    await appelerDernierChargeur(etat)
+    expect(lus).toEqual(["année 2026"])
+  })
+
+  it("plus rien n'est actuel après le démontage", async () => {
+    const reponse = differe<void>()
+    let actuelle = true
+    const etat = { numero: 0, monte: true, chargeur: async (estActuelle: () => boolean) => { await reponse.promesse; actuelle = estActuelle() } }
+    const demande = appelerDernierChargeur(etat)
+    etat.monte = false
+    reponse.resoudre()
+    await demande
+    expect(actuelle).toBe(false)
   })
 })
