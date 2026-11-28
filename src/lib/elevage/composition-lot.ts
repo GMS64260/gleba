@@ -10,6 +10,7 @@
  * des lots tenu. Tout ou rien : la moindre incohérence refuse l'ensemble.
  */
 
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
@@ -112,7 +113,8 @@ export async function composerLot(
     for (const { animal, lotCible, inclus } of changements) {
       await tx.animal.update({
         where: { id: animal.id },
-        data: { lotId: lotCible, prixAchatInclusDansLot: inclus },
+        // Le lot figure dans le formulaire de l'animal : sa version avance.
+        data: { lotId: lotCible, prixAchatInclusDansLot: inclus, ...INCREMENT_VERSION },
       })
       await enregistrerChangementLot(tx, userId, animal.id, animal.lotId, lotCible, dateEffet, MOTIF)
       if (inclus !== animal.prixAchatInclusDansLot) {

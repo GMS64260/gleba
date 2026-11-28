@@ -11,6 +11,7 @@
 import { refusDureesEspece } from '@/lib/elevage/durees-espece'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { masquerEntree, peutEditerReferentiel, whereReferentielCible } from '@/lib/referentiel-communaute'
 import { coerceFiliere } from '@/lib/elevage/filiere'
@@ -27,6 +28,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
 
     // Profil privé d'un autre compte = profil inexistant (404), jamais 403.
     const existing = await prisma.especeAnimale.findFirst({
@@ -77,9 +81,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       data.partageCommunaute = body.partageCommunaute === true
     }
 
-    const espece = await prisma.especeAnimale.update({ where: { id }, data })
+    const espece = await ecrireFicheVersionnee(prisma, 'especes_animales', id, lecture.version, 'Profil d’espèce',
+      (db) => db.especeAnimale.update({ where: { id }, data: { ...data, ...INCREMENT_VERSION } }))
     return NextResponse.json({ data: masquerEntree(espece, session!.user.id) })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     console.error('PUT /api/elevage/especes-animales/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la modification', details: 'Erreur interne du serveur' },

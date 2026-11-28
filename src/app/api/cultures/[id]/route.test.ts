@@ -137,7 +137,7 @@ describe("PATCH /api/cultures/[id] — cohérence du cycle", () => {
     expect(response.status).toBe(200)
     expect(mocks.cultureUpdate).toHaveBeenCalledWith({
       where: { id: 42 },
-      data: { semisFait: false },
+      data: { semisFait: false, version: { increment: 1 } },
     })
   })
 
@@ -156,7 +156,7 @@ describe("PATCH /api/cultures/[id] — cohérence du cycle", () => {
     }))
     expect(mocks.cultureUpdate).toHaveBeenCalledWith({
       where: { id: 42 },
-      data: { recolteFaite: true, dateRecolte: premiere },
+      data: { recolteFaite: true, dateRecolte: premiere, version: { increment: 1 } },
     })
   })
 })
@@ -242,7 +242,7 @@ describe("PATCH /api/cultures/[id] — ordre du cycle sur une date déplacée", 
     const response = await patch({ notes: "à vérifier" })
 
     expect(response.status).toBe(200)
-    expect(mocks.cultureUpdate).toHaveBeenCalledWith({ where: { id: 42 }, data: { notes: "à vérifier" } })
+    expect(mocks.cultureUpdate).toHaveBeenCalledWith({ where: { id: 42 }, data: { notes: "à vérifier", version: { increment: 1 } } })
   })
 })
 
@@ -275,6 +275,6 @@ describe("PATCH /api/cultures/[id] — corps contrôlé", () => {
     const response = await patch({ terminee: "" })
 
     expect(response.status).toBe(200)
-    expect(mocks.cultureUpdate).toHaveBeenCalledWith({ where: { id: 42 }, data: { terminee: null } })
+    expect(mocks.cultureUpdate).toHaveBeenCalledWith({ where: { id: 42 }, data: { terminee: null, version: { increment: 1 } } })
   })
 })

@@ -16,6 +16,7 @@ import type L from "leaflet"
 
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { MESSAGE_FICHE_NON_ENREGISTREE, envoyerFiche, joindreVersion, versionDe } from "@/hooks/use-version-fiche"
 import type { ParcelleGeoData } from "@/components/carte/ParcelleLayer"
 import { corpsCopieParcelle } from "@/lib/geo-duplication"
 import type { CadastreResult } from "@/components/carte/CadastreSearch"
@@ -207,11 +208,19 @@ function CartePageContent() {
         toast({ title: "Parcelle créée", description: `"${data.nom}" a été ajoutée.` })
       } else if (selectedParcelle) {
         // Edition
-        const res = await fetch(`/api/carte/${selectedParcelle.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        })
+        // Version de la parcelle telle que le panneau l'a ouverte : refus si elle a changé ailleurs.
+        let versionLue = versionDe(selectedParcelle)
+        const res = await envoyerFiche(
+          { joindre: (corps: typeof data) => joindreVersion(corps, versionLue), adopter: (actuelle) => { versionLue = actuelle } },
+          data,
+          (corps) => fetch(`/api/carte/${selectedParcelle.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(corps),
+          }),
+          confirmDialog,
+        )
+        if (!res) throw new Error(MESSAGE_FICHE_NON_ENREGISTREE)
         if (!res.ok) {
           const err = await res.json().catch(() => null)
           throw new Error(err?.error || "Erreur lors de la mise à jour")

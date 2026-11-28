@@ -74,6 +74,8 @@ import {
 
 interface Intervention {
   id: number
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   date: string
   type: string
   cultureId: number | null
@@ -605,7 +607,9 @@ export default function InterventionsPage() {
         : "/api/interventions"
       const method = editingIntervention ? "PATCH" : "POST"
       const payload = editingIntervention
-        ? { id: editingIntervention.id, ...body }
+        // La version de la ligne ouverte part avec la modification : le serveur
+        // refuse si l'intervention a été modifiée ailleurs depuis.
+        ? { id: editingIntervention.id, ...body, ...(typeof editingIntervention.version === "number" ? { versionLue: editingIntervention.version } : {}) }
         : arrosageAComplete
           ? { ...body, remplaceArrosageNoteId: arrosageAComplete }
           : body
@@ -625,11 +629,24 @@ export default function InterventionsPage() {
         setEditingIntervention(null)
         setArrosageAComplete(null)
         setForm(emptyForm)
-        fetchInterventions()
+        // Attendue : rouvrir la ligne avant la relecture renverrait son
+        // ancienne version, refusée par sa propre écriture.
+        await fetchInterventions()
       } else {
         // QA cmsno1hct — le corps d'erreur du serveur (validation zod…) était
         // jeté : toute 400 était indiscernable d'une panne réseau.
         const d = await res.json().catch(() => ({}))
+        if (res.status === 409 && d.code === "MODIFIE_AILLEURS") {
+          // La saisie reste ouverte. La ligne ouverte adopte la version
+          // actuelle : un second « Enregistrer » impose la saisie en
+          // connaissance de cause, fermer le formulaire montre la ligne à jour.
+          if (editingIntervention && typeof d.versionActuelle === "number") {
+            setEditingIntervention({ ...editingIntervention, version: d.versionActuelle })
+          }
+          toast({ variant: "destructive", title: "Intervention modifiée ailleurs", description: `${d.error} Enregistrez de nouveau pour imposer votre saisie, ou fermez ce formulaire pour voir l'intervention à jour.` })
+          fetchInterventions()
+          return
+        }
         if (res.status === 400 && typeof d.champ === "string") {
           setErreurSaisie({ champ: d.champ, message: d.error || "Vérifiez ce champ." })
           toast({ variant: "destructive", title: "Erreur", description: d.error || "Vérifiez le champ indiqué." })

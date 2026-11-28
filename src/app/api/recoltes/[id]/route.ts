@@ -1,3 +1,4 @@
+import { CHAMPS_HORS_FICHE, FicheModifieeAilleurs, INCREMENT_VERSION, avecVersionSiFiche, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 import { messageConflitStockCaisse } from '@/lib/caisse/conflit-stock'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { apresDemain, MESSAGE_RECOLTE_FUTURE } from '@/lib/interventions/date-realisee'
@@ -125,8 +126,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const recolteId = Number((await params).id)
     if (!Number.isInteger(recolteId) || recolteId <= 0) return NextResponse.json({ error: 'ID de récolte invalide' }, { status: 400 })
-    const validation = updateRecolteSchema.safeParse(await request.json())
+    const corps = await request.json()
+    const validation = updateRecolteSchema.safeParse(corps)
     if (!validation.success) return NextResponse.json({ error: 'Données invalides', details: validation.error.flatten() }, { status: 400 })
+    const lecture = lireVersionLue(corps)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const userId = session!.user.id
     const data = validation.data
     const resultat = await prisma.$transaction(async tx => {
@@ -140,6 +144,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (!apercu) throw new ErreurCommerciale('Récolte introuvable', 404)
       await verrouillerCultures(tx, userId, [apercu.cultureId, data.cultureId ?? apercu.cultureId].filter((id): id is number => id != null), 'sansCle')
       const lot = await verrouillerRecolteLibre(tx, userId, recolteId)
+      // Version de fiche, contrôlée sous le verrou de ligne, avant toute écriture.
+      if (versionFichePerimee(lecture.version, lot)) throw new FicheModifieeAilleurs('Récolte', lot.version)
       if (lot.cultureId !== apercu.cultureId) {
         throw new ErreurCommerciale('Cette récolte vient d’être rattachée à une autre culture. Actualisez la page puis recommencez.', 409)
       }
@@ -233,6 +239,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         where: { id: recolteId },
         data: {
           ...data,
+          ...INCREMENT_VERSION,
           ...(statutBioSnapshot !== undefined ? { statutBioSnapshot } : {}),
           // Rattachée à une autre culture ou à une autre espèce, une part n'est
           // plus une part de la récolte d'origine : elle redevient une récolte.
@@ -250,7 +257,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         })
         const recalage = etat?.recolteFaite ? ecrituresPassageAFait(etat, 'recolteFaite', dateCible) : {}
         if (Object.keys(recalage).length > 0) {
-          const culture = await tx.culture.update({ where: { id: cultureCible }, data: recalage })
+          const culture = await tx.culture.update({ where: { id: cultureCible }, data: { ...recalage, ...INCREMENT_VERSION } })
           return { ok: true as const, recolte: { ...recolte, culture } }
         }
       }
@@ -263,6 +270,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const conflitStock = messageConflitStockCaisse(error)
     if (conflitStock) return NextResponse.json({ error: conflitStock }, { status: 409 })
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     if (error instanceof ErreurCommerciale) return NextResponse.json({ error: error.message }, { status: error.status })
     console.error('PUT /api/recoltes/[id] error:', error)
     return NextResponse.json({ error: 'Erreur lors de la mise à jour de la récolte' }, { status: 500 })
@@ -431,7 +439,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           notes: sortie?.ok ? existing.notes ?? `Reliquat de la récolte #${recolteId}` : `Reliquat non vendu de la récolte #${recolteId}`,
         } })
       }
-      const recolte = await tx.recolte.update({ where: { id: recolteId }, data: updateData,
+      // Une vente ou une sortie partielle change la quantité de la fiche : sa
+      // version avance. Le statut, le prix et le client seuls ne la touchent pas.
+      const recolte = await tx.recolte.update({ where: { id: recolteId }, data: avecVersionSiFiche(updateData, CHAMPS_HORS_FICHE.recolte),
         include: { espece: { include: { famille: true } }, culture: { include: { variete: true, planche: true } } },
       })
       if (statut === 'vendu') await createVenteFromRecolte(userId, recolte, tx)

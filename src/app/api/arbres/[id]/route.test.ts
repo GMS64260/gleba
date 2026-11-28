@@ -440,6 +440,7 @@ describe("DELETE /api/arbres/[id]", () => {
     expect(mocks.txInterventionUpdate).toHaveBeenCalledWith({
       where: { id: 77 },
       data: {
+        version: { increment: 1 },
         arbreId: null,
         notes: "[Arbre supprimé : Pêcher du fond (Pêcher)]\nVent faible",
       },
@@ -447,6 +448,7 @@ describe("DELETE /api/arbres/[id]", () => {
     expect(mocks.txInterventionUpdate).toHaveBeenCalledWith({
       where: { id: 78 },
       data: {
+        version: { increment: 1 },
         arbreId: null,
         notes: "[Arbre supprimé : Pêcher du fond (Pêcher)]",
       },

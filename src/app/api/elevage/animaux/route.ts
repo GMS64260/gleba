@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, avecVersionSiFiche, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { animalSchema, isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle, redaterAffectationInitiale, regleAchatInclusLot } from '@/lib/elevage/animal-lot'
@@ -390,6 +391,9 @@ export async function PATCH(request: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     }
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
 
     const existing = await prisma.animal.findFirst({
       where: { id: parseInt(id), userId: session.user.id },
@@ -652,10 +656,13 @@ export async function PATCH(request: NextRequest) {
       // transaction, peut dater d'avant une requête concurrente. Le redatage,
       // le changement de lot, le déplacement et la garde partent de `avant`.
       const avant = await lireFicheSousVerrou(tx, session.user.id, existing.id)
+      if (versionFichePerimee(lecture.version, avant)) throw new FicheModifieeAilleurs('Animal', avant.version)
       await garantirRemiseActifPossible(tx, session.user.id, avant, statut)
       const updated = await tx.animal.update({
         where: { id: parseInt(id) },
-        data: updateData,
+        // La position sur le plan n'est pas un champ de la fiche : la déplacer
+        // ne fait pas avancer la version.
+        data: avecVersionSiFiche(updateData, ['posX', 'posY']),
         include: {
           especeAnimale: { select: { id: true, nom: true, type: true, couleur: true } },
           lot: { select: { id: true, nom: true } },
@@ -703,6 +710,7 @@ export async function PATCH(request: NextRequest) {
     if (error instanceof ErreurReglement) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof ErreurElevage) return NextResponse.json(corpsRefusElevage(error), { status: error.status })
     if (error instanceof ErreurMouvementCheptel) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     console.error('PATCH /api/elevage/animaux error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },

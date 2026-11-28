@@ -479,9 +479,13 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
   // JSON n'a pas d'entier 64 bits : une chaîne décimale conserve la précision
   // des BigInt (PK et FK), sans modifier les identifiants utilisés ci-dessus
   // pour sélectionner les enfants. L'import les relit selon le DMMF.
+  // La version de fiche est un compteur technique : elle ne sort ni de la
+  // sauvegarde ni des exports tabulaires qui en dérivent, quel que soit le
+  // classement du modèle (compte, référentiel ou enfant).
   for (const [model, rows] of Object.entries(data)) {
+    const sansVersion = MODELES_A_VERSION_DE_FICHE.has(model)
     data[model] = rows.map((row) => Object.fromEntries(
-      Object.entries(row).map(([key, value]) => [key, valeurExportable(value)]),
+      Object.entries(row).filter(([key]) => !(sansVersion && key === "version")).map(([key, value]) => [key, valeurExportable(value)]),
     ))
   }
 
@@ -1116,10 +1120,21 @@ export async function importAccount(
 }
 
 /** Construit l'objet de données scalaires (typage Date/Decimal géré). */
+/**
+ * Modèles dont `version` est la version de fiche (`src/lib/api/version-fiche.ts`).
+ * Elle ne se restaure pas : la fiche recréée repart de zéro. Recopiée, une
+ * version qui recule laisserait passer un formulaire resté ouvert, et un
+ * fichier forgé portant le plus grand entier rendrait la fiche impossible à
+ * enregistrer. D'autres modèles ont un champ `version` qui est une donnée.
+ */
+// eslint-disable-next-line no-restricted-syntax -- noms de modèles Prisma, sans accent par construction
+const MODELES_A_VERSION_DE_FICHE = new Set("Culture Recolte Intervention ITP Espece Variete UserStockEspece Association Rotation Client Fournisseur DocumentCommercial Boutique CommandeBoutique Exploitation Arbre ObjetJardin LotArbres RecolteArbre ObservationSante ParcelleGeo Abattage VenteProduit ProductionOeuf ProductionRuche NaissanceAnimale Saillie PlanRation ReservationElevage ConsommationAliment SoinAnimal LotAnimaux Animal JustificatifAlimentElevage JustificatifEquarrissageElevage ProphylaxieElevage PreparationDocumentCirculation LieuDetentionElevage IntervenantElevage PedigreeElevage EspeceAnimale".split(" "))
+
 function buildScalarData(meta: ModelMeta, row: Row): Row {
   const out: Row = {}
   for (const f of meta.scalarFields) {
     if (!(f.name in row)) continue
+    if (f.name === "version" && MODELES_A_VERSION_DE_FICHE.has(meta.name)) continue
     const value = row[f.name]
     out[f.name] = f.isList && Array.isArray(value)
       ? value.map((v) => coerceValue(v, f.type))

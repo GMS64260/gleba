@@ -7,6 +7,7 @@
  */
 
 import { reponseModifieAilleurs, versionPerimee } from '@/lib/api/version-lue'
+import { CHAMPS_HORS_FICHE, INCREMENT_VERSION, avecVersionSiFiche, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from '@/lib/api/version-fiche'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
@@ -248,7 +249,13 @@ export async function PUT(
       // Fiche ouverte dans deux onglets : le second enregistrement, qui renvoie
       // tous les champs, ne réécrit pas ce que le premier vient de changer
       // (D74). Contrôlé sous le verrou, avant toute écriture.
-      if (versionPerimee((body as { versionLue?: unknown } | null)?.versionLue, existing.updatedAt)) {
+      // Version de fiche : l'écran renvoie le numéro qu'il a lu. Un onglet
+      // ouvert avant la mise en service envoie encore la date de modification
+      // (ancien protocole), contrôlée comme avant le temps d'une livraison.
+      const lecture = lireVersionLue(body)
+      if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
+      if (versionFichePerimee(lecture.version, existing)) return reponseFicheModifiee('Culture', existing.version)
+      if (lecture.ancienneDate && versionPerimee(lecture.ancienneDate, existing.updatedAt)) {
         return reponseModifieAilleurs('Cette culture', existing.updatedAt)
       }
 
@@ -512,7 +519,7 @@ export async function PUT(
       // Mise à jour
       const culture = await tx.culture.update({
         where: { id: cultureId },
-        data: { ...validationResult.data, ...ecritureQuantite, ...ecrituresEtapes },
+        data: { ...validationResult.data, ...ecritureQuantite, ...ecrituresEtapes, ...INCREMENT_VERSION },
         include: {
           espece: true,
           variete: true,
@@ -812,7 +819,10 @@ export async function PATCH(
 
       const culture = await tx.culture.update({
         where: { id: cultureId },
-        data: updateData,
+        // Un geste qui change un champ de la fiche fait avancer sa version ;
+        // un arrosage noté ou l'interrupteur « à irriguer » ne la touchent
+        // pas : ils provoquaient un faux refus sur le formulaire ouvert à côté.
+        data: avecVersionSiFiche(updateData, CHAMPS_HORS_FICHE.culture),
       })
       irrigationModifiee = 'derniereIrrigation' in updateData
 

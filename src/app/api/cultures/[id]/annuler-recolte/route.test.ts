@@ -91,7 +91,7 @@ describe('POST /api/cultures/[id]/annuler-recolte', () => {
     expect(mocks.recolteDelete).toHaveBeenCalledTimes(2)
     expect(mocks.cultureUpdate).toHaveBeenCalledWith({
       where: { id: 42 },
-      data: { recolteFaite: false, dateRecolte: new Date('2026-08-20T00:00:00Z'), dateRecoltePlan: null },
+      data: { recolteFaite: false, dateRecolte: new Date('2026-08-20T00:00:00Z'), dateRecoltePlan: null, version: { increment: 1 } },
     })
   })
 

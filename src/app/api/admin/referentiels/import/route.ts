@@ -3,6 +3,8 @@
  * POST /api/admin/referentiels/import
  */
 
+// Un import qui met à jour une fiche fait avancer sa version (formulaire ouvert prévenu).
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { typeAssociationImporte, desactivationAssociationImportee } from "@/lib/validations/association"
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
         for (const item of data.especes || []) {
           await db.espece.upsert({
             where: { id: item.id },
-            update: { ...item },
+            update: { ...item, ...INCREMENT_VERSION },
             create: item,
           })
           stats.especes++
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
         for (const item of data.varietes || []) {
           await db.variete.upsert({
             where: { id: item.id },
-            update: { ...item },
+            update: { ...item, ...INCREMENT_VERSION },
             create: item,
           })
           stats.varietes++
@@ -149,7 +151,7 @@ export async function POST(request: NextRequest) {
           void _partage
           await db.iTP.upsert({
             where: { id: item.id },
-            update: champs,
+            update: { ...champs, ...INCREMENT_VERSION },
             create: champs as typeof item,
           })
           stats.itps++
@@ -171,7 +173,7 @@ export async function POST(request: NextRequest) {
             where: { id: item.id },
             // `type` (favorable | incompatible | neutre) suit le fichier quand il le porte.
             // Désactivation (règle conservée, exclue des calculs) : idem.
-            update: { nom: item.nom, description: item.description, notes: item.notes, type: typeAssociationImporte(item.type), ...desactivationAssociationImportee(item) },
+            update: { nom: item.nom, description: item.description, notes: item.notes, type: typeAssociationImporte(item.type), ...desactivationAssociationImportee(item), ...INCREMENT_VERSION },
             create: { id: item.id, nom: item.nom, description: item.description, notes: item.notes, type: typeAssociationImporte(item.type), ...desactivationAssociationImportee(item) },
           })
           stats.associations++
@@ -219,7 +221,7 @@ export async function POST(request: NextRequest) {
         for (const item of data.rotations || []) {
           await db.rotation.upsert({
             where: { id: item.id },
-            update: { active: item.active, nbAnnees: item.nbAnnees, notes: item.notes },
+            update: { active: item.active, nbAnnees: item.nbAnnees, notes: item.notes, ...INCREMENT_VERSION },
             create: { id: item.id, active: item.active, nbAnnees: item.nbAnnees, notes: item.notes },
           })
           stats.rotations++

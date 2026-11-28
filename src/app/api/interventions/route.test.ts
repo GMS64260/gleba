@@ -24,6 +24,8 @@ vi.mock('@/lib/prisma', async () => {
   const { delegueMemoire } = await import('@/lib/__tests__/fixtures/referentiel-memoire')
   const db = {
     $executeRaw: vi.fn(),
+    // Verrou de ligne pris avant de contrôler la version de la fiche.
+    $queryRaw: vi.fn(async () => []),
     intervention: { create: mocks.create, findFirst: mocks.findFirst, update: mocks.update },
     culture: delegueMemoire([{ id: 461, userId: 'u1' }]),
   }
@@ -135,5 +137,52 @@ describe('PATCH : références inchangées non revalidées', () => {
     expect(mocks.update.mock.calls[0][0].data.plancheId).toBe('B3')
     vi.mocked(resoudreIdPlanche).mockResolvedValueOnce(null)
     expect((await PATCH(requete('PATCH', { id: 113, plancheId: 'Autre planche' }))).status).toBe(400)
+  })
+})
+
+// Version de fiche (chantier du 2026-11-27) : le formulaire resté ouvert
+// ailleurs renvoie tous ses champs et écrasait la correction faite entre-temps.
+describe('PATCH : intervention modifiée ailleurs', () => {
+  const stockee = { id: 113, userId: 'u1', fait: true, dureeMinutes: 30, date: new Date('2026-10-05T00:00:00Z'), cultureId: null, plancheId: null, arbreId: null, version: 3 }
+  const corriger = (versionLue?: unknown) => PATCH(requete('PATCH', {
+    id: 113, ...corpsArrosage('2026-10-05', true), notes: 'Arrosage au tuyau', ...(versionLue === undefined ? {} : { versionLue }),
+  }))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'u1' } } })
+    mocks.findFirst.mockResolvedValue(stockee)
+    mocks.update.mockImplementation(async ({ data }) => ({ ...stockee, ...data }))
+  })
+
+  it('refuse en 409 une version périmée, sans rien écrire', async () => {
+    const res = await corriger(2)
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: 'MODIFIE_AILLEURS', versionActuelle: 3 })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
+  it('enregistre et fait avancer la version quand elle est celle de la base', async () => {
+    const res = await corriger(3)
+
+    expect(res.status).toBe(200)
+    const { data } = mocks.update.mock.calls[0][0]
+    expect(data).toMatchObject({ notes: 'Arrosage au tuyau', version: { increment: 1 } })
+    expect(data).not.toHaveProperty('versionLue')
+  })
+
+  it('verrouille la ligne avant de contrôler la version', async () => {
+    const { default: prisma } = await import('@/lib/prisma')
+    const verrou = vi.mocked(prisma.$queryRaw)
+    await corriger(3)
+    const requetes = verrou.mock.calls.map(([morceaux]) => (morceaux as unknown as string[]).join('?'))
+    expect(requetes.some((sql) => /FROM interventions[\s\S]*FOR UPDATE/.test(sql))).toBe(true)
+    expect(verrou.mock.invocationCallOrder[0]).toBeLessThan(mocks.update.mock.invocationCallOrder[0])
+  })
+
+  it('garde le comportement d’avant sans version, et refuse une version illisible', async () => {
+    expect((await corriger()).status).toBe(200)
+    expect((await corriger('trois')).status).toBe(400)
   })
 })

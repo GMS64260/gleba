@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import {
   OrigineControls,
   useReferentielActions,
@@ -138,6 +139,7 @@ export function EspecesTab() {
   const [especeSubmitError, setEspeceSubmitError] = React.useState<string | null>(null)
   const [isSavingEspece, setIsSavingEspece] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
+  const versionEspece = useVersionFiche()
   const [formData, setFormData] = React.useState(emptyForm)
   const [selectedType, setSelectedType] = React.useState("all")
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
@@ -199,6 +201,7 @@ export function EspecesTab() {
 
   const openEdit = (e: EspeceAnimale) => {
     setEditingId(e.id)
+    versionEspece.retenir(e)
     setEspeceSubmitError(null)
     setFormData({
       id: e.id, nom: e.nom, type: e.type, filiere: e.filiere || "rente", production: e.production,
@@ -274,7 +277,10 @@ export function EspecesTab() {
         : '/api/elevage/especes-animales'
       const method = isEdit ? 'PUT' : 'POST'
 
-      const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(isEdit ? versionEspece.joindre(payload) : payload) })
+      // Profil modifié ailleurs : la saisie reste ouverte, un second envoi l'impose.
+      const refusVersion = isEdit ? await refusDansDialogue(response, versionEspece) : null
+      if (refusVersion) throw new Error(refusVersion)
       if (!response.ok) {
         const err = await response.json().catch(() => null)
         throw new Error(err?.error || 'Erreur')

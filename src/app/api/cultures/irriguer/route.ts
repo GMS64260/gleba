@@ -194,6 +194,7 @@ export async function PATCH(request: NextRequest) {
 
     const updated = await prisma.culture.update({
       where: { id: culture.id },
+      // Hors formulaire de fiche : la version n'avance pas (pas de faux refus).
       data: { aIrriguer },
     })
 

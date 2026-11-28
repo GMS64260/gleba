@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from "@/lib/api/version-fiche"
 import { Prisma } from "@prisma/client"
 import { ZodError } from "zod"
 import { requireAuthApi, requireAdminApi } from "@/lib/auth-utils"
@@ -62,6 +63,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
     const body = await request.json()
+    // Version de fiche : l'écran renvoie celle qu'il a lue.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const validated = updateAssociationSchema.parse(body)
 
     const { details, active, motifDesactivation, ...associationData } = validated
@@ -83,6 +87,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     // Mettre à jour l'association et ses details
     const association = await prisma.$transaction(async (tx) => {
+      await controlerVersionFiche(tx, 'associations', id, lecture.version, 'Association')
       // Mettre à jour les données de base
       // Désactivation / réactivation : la règle et ses détails sont conservés.
       // Une règle déjà désactivée garde sa date d'origine.
@@ -97,7 +102,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             : {}
       await tx.association.update({
         where: { id },
-        data: { ...associationData, ...etat },
+        data: { ...associationData, ...etat, ...INCREMENT_VERSION },
       })
 
       // Si des details sont fournis, les remplacer
@@ -125,6 +130,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(association)
   } catch (err) {
+    if (err instanceof FicheModifieeAilleurs) return err.reponse()
     console.error("PUT /api/associations/[id] error:", err)
 
     if (err instanceof ZodError) {

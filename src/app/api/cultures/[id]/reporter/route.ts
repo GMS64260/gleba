@@ -9,6 +9,7 @@
  * d'occupation de la planche (400 si le cycle reporté la fait déborder).
  */
 
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
       const maj = await tx.culture.update({
         where: { id: cultureId, userId },
-        data: resultat.ecritures,
+        data: { ...resultat.ecritures, ...INCREMENT_VERSION },
         include: { espece: true, variete: true, planche: true },
       })
       return { maj, decalages: resultat.decalages }

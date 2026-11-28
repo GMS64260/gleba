@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -25,6 +26,9 @@ export async function PUT(request: NextRequest) {
   try {
     const b = await request.json()
     if (b?.animalId == null) return NextResponse.json({ error: 'animalId requis' }, { status: 400 })
+    // Version de fiche : le panneau resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(b)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const animalId = Number(b.animalId)
     const animal = await prisma.animal.findFirst({ where: { id: animalId, userId }, select: { id: true } })
     if (!animal) return NextResponse.json({ error: 'Animal introuvable' }, { status: 400 })
@@ -57,13 +61,22 @@ export async function PUT(request: NextRequest) {
       dateConfirmation: b.dateConfirmation ? new Date(b.dateConfirmation) : null,
       titres: b.titres || null,
     }
-    const data = await prisma.pedigreeElevage.upsert({
-      where: { animalId },
-      update: payload,
-      create: { userId, animalId, ...payload },
+    const data = await prisma.$transaction(async (tx) => {
+      if (lecture.version !== undefined) {
+        // Verrou sur l'animal : il existe même quand le pedigree n'a pas encore de ligne.
+        await tx.$queryRaw`SELECT id FROM animaux WHERE id = ${animalId} AND user_id = ${userId} FOR UPDATE`
+        const enBase = await tx.pedigreeElevage.findUnique({ where: { animalId }, select: { version: true } })
+        if (versionFichePerimee(lecture.version, enBase)) throw new FicheModifieeAilleurs('Pedigree', enBase?.version ?? null)
+      }
+      return tx.pedigreeElevage.upsert({
+        where: { animalId },
+        update: { ...payload, ...INCREMENT_VERSION },
+        create: { userId, animalId, ...payload },
+      })
     })
     return NextResponse.json({ data })
   } catch (e) {
+    if (e instanceof FicheModifieeAilleurs) return e.reponse()
     console.error('PUT /api/elevage/pedigree', e)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }

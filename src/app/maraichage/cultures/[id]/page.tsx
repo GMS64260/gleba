@@ -4,7 +4,7 @@
  * Page d'édition d'une culture
  */
 
-import { CODE_MODIFIE_AILLEURS } from "@/lib/api/version-lue"
+import { CODE_FICHE_MODIFIEE as CODE_MODIFIE_AILLEURS, useVersionFiche } from "@/hooks/use-version-fiche"
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
@@ -100,7 +100,7 @@ export default function EditCulturePage() {
   const initialLoadDone = React.useRef(false)
   // Version de la fiche à son chargement, renvoyée à l'enregistrement : la
   // route refuse si la culture a changé entre-temps (autre onglet, D74).
-  const versionLue = React.useRef<string | null>(null)
+  const versionFiche = useVersionFiche()
   // Quantité saisie à la main : plus de recalcul (ticket cmvnpkkhp, revue).
   const {
     manuelle: quantiteManuelle,
@@ -173,7 +173,7 @@ export default function EditCulturePage() {
       }),
     ])
       .then(([especesData, planchesData, cultureData]) => {
-        versionLue.current = typeof cultureData.updatedAt === "string" ? cultureData.updatedAt : null
+        versionFiche.retenir(cultureData)
         setEspeces(especesData.data || [])
         setPlanches(planchesData.data || [])
         // Récoltes saisies : un lot scindé par une sortie partielle reste une récolte.
@@ -268,7 +268,7 @@ export default function EditCulturePage() {
         })
         router.push("/maraichage/cultures")
       })
-  }, [cultureId, form, router, toast, definirQuantiteManuelle])
+  }, [cultureId, form, router, toast, definirQuantiteManuelle, versionFiche])
 
   // Charger les varietes et ITPs quand l'espece change
   React.useEffect(() => {
@@ -448,21 +448,27 @@ export default function EditCulturePage() {
         headers: { "Content-Type": "application/json" },
         // Dates calculées à l'écran envoyées en jour seul : en instant (minuit
         // local), elles étaient enregistrées la veille à l'est de Paris.
-        body: JSON.stringify({
-          ...datesCalculeesEnJoursSeuls(data),
-          ...(versionLue.current ? { versionLue: versionLue.current } : {}),
-        }),
+        body: JSON.stringify(versionFiche.joindre(datesCalculeesEnJoursSeuls(data))),
       })
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
         if (response.status === 409 && error.code === CODE_MODIFIE_AILLEURS) {
-          // On reste sur la fiche : rien n'est enregistré, et la saisie en
-          // cours reste lisible le temps de la reporter après rechargement.
+          // Rien n'est enregistré et la saisie reste à l'écran. Deux issues :
+          // enregistrer quand même (en connaissance de cause), ou recharger la
+          // fiche pour voir ce qui a changé avant de reporter sa saisie.
+          const insister = await confirmDialog(
+            `${error.error} Enregistrer quand même vos valeurs à la place de celles enregistrées entre-temps ? Sinon, annulez puis rechargez la page pour voir la fiche à jour.`,
+          )
+          if (insister) {
+            versionFiche.adopter(typeof error.versionActuelle === "number" ? error.versionActuelle : null)
+            setIsSubmitting(false)
+            return onSubmit(data)
+          }
           toast({
             variant: "destructive",
             title: "Culture modifiée ailleurs",
-            description: error.error,
+            description: "Rien n'a été enregistré. Rechargez la page pour voir la fiche à jour ; votre saisie reste affichée d'ici là.",
           })
           return
         }

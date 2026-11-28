@@ -1,4 +1,5 @@
 import { etatSortiesLotVerger, sortirReliquatVerger } from './sortie-stock'
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { refusPeremptionAvantRecolte } from '@/lib/recolte/date-coherente'
 import { jourCivilStocke } from '@/lib/jour-civil'
 import { randomUUID } from 'node:crypto'
@@ -129,7 +130,8 @@ export async function modifierVenteVerger(type: 'fruit' | 'bois', userId: string
     }
     const commun = { statut, dateVente, clientId, clientNom, factureId, notes: texte('notes') }
     const updated = fruit
-      ? await tx.recolteArbre.update({ where: { id, userId }, data: { ...commun,
+      // Prix, notes et péremption figurent dans le formulaire de la récolte : sa version avance.
+      ? await tx.recolteArbre.update({ where: { id, userId }, data: { ...commun, ...INCREMENT_VERSION,
         ...(statut === 'vendu' ? { prixTotal: total, prixKg: total / fruit.quantite } : { prixTotal: totalSaisi, prixKg: prixKgSaisi }),
         ...(saisie.datePeremption !== undefined ? { datePeremption: dateRecolteApi(saisie.datePeremption, 'datePeremption') } : {}),
       }, include: { arbre: { select: { id: true, nom: true, type: true, espece: true } } } })

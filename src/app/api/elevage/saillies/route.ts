@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { Prisma } from '@prisma/client'
 import { saillieSchema, updateSaillieSchema } from '@/lib/validations/saillie'
 import {
@@ -176,6 +177,9 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
     const parsed = updateSaillieSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
@@ -228,9 +232,15 @@ export async function PATCH(request: NextRequest) {
         data.dateTarissementPrevue = estVolaille(espece) ? null : dateTarissementPrevue(dateMb, espece.production)
       }
     }
-    const saillie = await prisma.saillie.update({ where: { id }, data })
+    // Le statut et la confirmation de gestation sont des gestes de la liste, hors formulaire :
+    // seuls les champs du formulaire font avancer la version.
+    const toucheFiche = (['date', 'femelleId', 'maleId', 'type', 'agentInseminateur', 'semenceLot', 'pereExterneRef', 'notes'] as const)
+      .some((champ) => (updates as Record<string, unknown>)[champ] !== undefined)
+    const saillie = await ecrireFicheVersionnee(prisma, 'saillies', id, lecture.version, 'Saillie',
+      (db) => db.saillie.update({ where: { id }, data: toucheFiche ? { ...data, ...INCREMENT_VERSION } : data }))
     return NextResponse.json({ data: saillie })
   } catch (err) {
+    if (err instanceof FicheModifieeAilleurs) return err.reponse()
     console.error('PATCH /api/elevage/saillies error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }

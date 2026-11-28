@@ -1,3 +1,4 @@
+import { FicheModifieeAilleurs, INCREMENT_VERSION, lireVersionLue, versionFichePerimee } from '@/lib/api/version-fiche'
 import { darIndicatifApresCorrection, MESSAGE_NATURE_AVEC_AMM, natureContreditAmm } from '@/lib/phyto/delai-avant-recolte'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import { ErreurReglement } from '@/lib/comptabilite/monnaie'
@@ -729,11 +730,15 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
     const userId = session.user.id
-    const { id, ...updates } = body
+    const { id, versionLue: _versionEnvoyee, ...updates } = body
+    void _versionEnvoyee
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     }
+    const lectureVersion = lireVersionLue(body)
+    if (!lectureVersion.ok) return NextResponse.json({ error: lectureVersion.erreur }, { status: 400 })
+    const versionLue = lectureVersion.version
 
     // QA cmsjk2k5n — le PATCH ne validait rien (contrairement au POST) : une
     // dose ou une surface négative (−1 L/ha, −10 m²) était persistée telle
@@ -782,8 +787,12 @@ export async function PATCH(request: NextRequest) {
       // Les écritures d'une même exploitation sont sérialisées par ce verrou :
       // la ligne relue ici est l'état courant sur lequel tout se décide
       // (provenance du délai, contrôles, contexte du registre, journal).
+      // Le verrou ci-dessus n'arrête que les écritures qui le prennent : la
+      // ligne est verrouillée pour que la version lue soit celle qu'on écrit.
+      await tx.$queryRaw`SELECT id FROM interventions WHERE id = ${parseInt(id)} AND user_id = ${userId} FOR UPDATE`
       const existing = await tx.intervention.findFirst({ where: { id: parseInt(id), userId } })
       if (!existing) throw new RefusModification('Intervention non trouvée', 404)
+      if (versionFichePerimee(versionLue, existing)) throw new FicheModifieeAilleurs('Intervention', existing.version)
 
       // Seules les références modifiées sont revalidées : sans clé étrangère, une
       // culture supprimée ou une planche renommée depuis la saisie reste stockée,
@@ -955,7 +964,7 @@ export async function PATCH(request: NextRequest) {
           data.substancesActives = phyto.produit.substanceActive
         }
       }
-      const updated = await tx.intervention.update({ where: { id: parseInt(id), userId }, data })
+      const updated = await tx.intervention.update({ where: { id: parseInt(id), userId }, data: { ...data, ...INCREMENT_VERSION } })
       // Arrêté du 24 décembre 2025, art. 3 : l'état d'avant d'un traitement
       // réalisé reste retrouvable (revue de conformité du 2026-11-12, C3).
       if (interventionAuRegistre(existing)) {
@@ -979,6 +988,7 @@ export async function PATCH(request: NextRequest) {
     irrigationCache.invalidateUser(userId)
     return NextResponse.json(updated)
   } catch (err) {
+    if (err instanceof FicheModifieeAilleurs) return err.reponse()
     if (err instanceof RefusModification) {
       return NextResponse.json({ error: err.message, ...(err.champ ? { champ: err.champ } : {}) }, { status: err.status })
     }

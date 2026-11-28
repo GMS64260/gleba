@@ -45,6 +45,7 @@ import {
 import { ProduitsTransformesSubTab, TransformationDialog } from "./ProduitsTransformes"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
+import { TITRE_FICHE_MODIFIEE, avecVersionLigne, conflitDansDialogue } from "@/hooks/use-version-fiche"
 import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
 import { todayLocalISO, formatNombre } from '@/lib/format-utils'
 import { labelStatutRecolteArbre } from '@/lib/verger/statut-recolte-arbre'
@@ -88,6 +89,8 @@ interface Client {
 interface SortieVerger { id: string; nature: string; quantite: number; unite: string; date: string; notes: string | null }
 
 interface RecolteArbre {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   ventesCommerciales?: VenteCommercialeVerger[]
   mouvementsCommerciaux?: SortieVerger[]
   /** Lot livré par BL ou facture : ni correction ni suppression (calculé par l'API). */
@@ -412,7 +415,7 @@ function RecoltesFruitsSubTab() {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             // En modification la parcelle est envoyée telle quelle (vide = retirée).
-            body: JSON.stringify({ ...corps, parcelleId: newRecolte.parcelleId || null }),
+            body: JSON.stringify(avecVersionLigne({ ...corps, parcelleId: newRecolte.parcelleId || null }, editingRecolte)),
           })
         : await fetch("/api/arbres/recoltes", {
             method: "POST",
@@ -448,6 +451,12 @@ function RecoltesFruitsSubTab() {
         }
         fetchData()
       } else {
+        const conflit = await conflitDansDialogue(res, editingRecolte)
+        if (conflit) {
+          setEditingRecolte(conflit.ligne)
+          toast({ title: TITRE_FICHE_MODIFIEE, description: conflit.message, variant: "destructive" })
+          return
+        }
         const data = await res.json().catch(() => ({}))
         toast({
           title: modification ? "Échec de la modification" : "Échec de l'enregistrement",

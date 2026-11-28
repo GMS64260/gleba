@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { updateITPSchema } from '@/lib/validations'
 import { messageIncoherenceSemainesItp, messageRefusTriggerDatesItp } from '@/lib/validations/itp'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -134,6 +135,10 @@ export async function PUT(
 
   try {
     const body = await request.json()
+
+    // Version de fiche : l'écran renvoie celle qu'il a lue.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
 
     // Validation
     const validationResult = updateITPSchema.safeParse(body)
@@ -280,7 +285,7 @@ export async function PUT(
     }
 
     // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
-    const itp = await prisma.iTP.update({
+    const itp = await ecrireFicheVersionnee(prisma, 'itps', id, lecture.version, 'Itinéraire', (db) => db.iTP.update({
       where: { id },
       data: {
         ...data,
@@ -288,11 +293,13 @@ export async function PUT(
         ...(existing.userId && body.partageCommunaute !== undefined
           ? { partageCommunaute: body.partageCommunaute === true }
           : {}),
+        // Le partage à la communauté n'est pas un champ du formulaire : seul, il n'avance pas la version.
+        ...(Object.keys({ ...data, ...(renommage ?? {}) }).length > 0 ? INCREMENT_VERSION : {}),
       },
       include: {
         espece: true,
       },
-    })
+    }))
 
     // Renommage vers un nom déjà porté ailleurs dans le catalogue visible :
     // signalé, jamais bloqué (le périmètre d'unicité, lui, est déjà garanti).
@@ -314,6 +321,7 @@ export async function PUT(
         : {}),
     })
   } catch (error) {
+    if (error instanceof FicheModifieeAilleurs) return error.reponse()
     // Même traduction qu'à la création : conflit de période → 409 nommé.
     // Les semaines absentes de la requête gardent leur valeur en base : la
     // recherche du jumeau porte sur la ligne telle qu'elle aurait été écrite.

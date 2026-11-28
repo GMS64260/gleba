@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { FicheModifieeAilleurs, avecVersionSiFiche, controlerVersionFiche, lireVersionLue } from "@/lib/api/version-fiche"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { MESSAGE_AMM_INVALIDE, numAMMValide } from "@/lib/tracabilite/amm"
 import { resoudreOperateurExploitation } from "@/lib/tracabilite/operateur-exploitation"
@@ -31,6 +32,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "ID invalide" }, { status: 400 })
     }
     const body = await request.json()
+    // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+    const lecture = lireVersionLue(body)
+    if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
 
     const existing = await prisma.observationSante.findFirst({
       where: { id: obsId, userId: session!.user.id },
@@ -143,6 +147,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const observation = await prisma.$transaction(async (tx) => {
+      await controlerVersionFiche(tx, 'observations_sante', obsId, lecture.version, 'Observation')
       // Contexte du registre figé à nouveau si l'arbre, la parcelle ou la date
       // change, ou s'il ne l'a jamais été (revue de conformité du 2026-11-12, C4).
       const apresFusion = { ...existing, ...data } as typeof existing
@@ -161,7 +166,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
       const observation = await tx.observationSante.update({
         where: { id: obsId },
-        data,
+        // « Résolu » est un geste de la liste, hors formulaire : il ne fait pas avancer la version.
+        data: avecVersionSiFiche(data, ['resolu', 'dateResolution']),
         include: {
           arbre: { select: { id: true, nom: true, type: true } },
         },
@@ -185,6 +191,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json(observation)
   } catch (err) {
+    if (err instanceof FicheModifieeAilleurs) return err.reponse()
     console.error("PUT /api/arbres/observations error:", err)
     return NextResponse.json({ error: "Erreur lors de la modification de l'observation" }, { status: 500 })
   }

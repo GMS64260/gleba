@@ -35,6 +35,7 @@ import {
   Pencil,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { TITRE_FICHE_MODIFIEE, avecVersionLigne, conflitDansDialogue } from "@/hooks/use-version-fiche"
 import { ImageUploader } from "@/components/ui/image-uploader"
 import { METHODES_TRAITEMENT, labelMethode, methodeExigeCertiphyto } from "@/lib/phyto/methodes"
 import { estMethodeProduitPhytopharmaceutique } from "@/lib/tracabilite/conformite-observation-phyto"
@@ -66,6 +67,8 @@ interface Arbre {
 }
 
 interface Observation {
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   id: number
   arbreId: number
   date: string
@@ -335,7 +338,7 @@ function ObservationsSubTab() {
       const res = await fetch(url, {
         method: editingObs ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(avecVersionLigne({
           ...formData,
           doseAppliquee: formData.doseAppliquee || null,
           dar: formData.dar.trim() === "" ? null : Number(formData.dar),
@@ -343,7 +346,7 @@ function ObservationsSubTab() {
           stadeBBCH: formData.stadeBBCH || null,
           pctOrganesTouches: formData.pctOrganesTouches ? parseInt(formData.pctOrganesTouches) : null,
           photoUrl: formData.photoUrl || null,
-        }),
+        }, editingObs)),
       })
       if (res.ok) {
         setShowDialog(false)
@@ -352,6 +355,12 @@ function ObservationsSubTab() {
         toast({ title: editingObs ? "Observation modifiée" : "Observation enregistrée" })
         fetchData()
       } else {
+        const conflit = await conflitDansDialogue(res, editingObs)
+        if (conflit) {
+          setEditingObs(conflit.ligne)
+          toast({ title: TITRE_FICHE_MODIFIEE, description: conflit.message, variant: "destructive" })
+          return
+        }
         const data = await res.json().catch(() => ({}))
         toast({ title: "Échec de l'enregistrement", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
@@ -1093,7 +1102,7 @@ function RegistrePhytoSubTab() {
       const res = await fetch(`/api/arbres/observations/${editingObs.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(avecVersionLigne({
           produit: editForm.produit || null,
           numAMM: editForm.numAMM || null,
           doseAppliquee: editForm.doseAppliquee || null,
@@ -1103,7 +1112,7 @@ function RegistrePhytoSubTab() {
           surfaceTraiteeHa: editForm.surfaceTraiteeHa || null,
           traitement: editForm.traitement || null,
           methodeTraitement: editForm.methodeTraitement || null,
-        }),
+        }, editingObs)),
       })
       if (res.ok) {
         setShowEditDialog(false)
@@ -1111,6 +1120,12 @@ function RegistrePhytoSubTab() {
         toast({ title: "Traitement mis à jour" })
         fetchData()
       } else {
+        const conflit = await conflitDansDialogue(res, editingObs)
+        if (conflit) {
+          setEditingObs(conflit.ligne)
+          toast({ title: TITRE_FICHE_MODIFIEE, description: conflit.message, variant: "destructive" })
+          return
+        }
         const data = await res.json().catch(() => ({}))
         toast({
           title: "Échec de la mise à jour",

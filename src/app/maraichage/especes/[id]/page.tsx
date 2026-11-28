@@ -56,6 +56,7 @@ import { libellePeriodeSemainesCourt } from "@/lib/semaines-lisibles"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { MESSAGE_FICHE_NON_ENREGISTREE, envoyerFiche, useVersionFiche } from "@/hooks/use-version-fiche"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import {
   ANCRE_CHEZ_MOI,
@@ -115,6 +116,8 @@ interface MonStock {
 
 interface Variete {
   id: string
+  /** Version de fiche, renvoyée à la modification. */
+  version?: number
   nom: string | null
   especeId: string
   fournisseurId: string | null
@@ -164,6 +167,7 @@ export default function EditEspecePage() {
   const [familles, setFamilles] = React.useState<{ id: string }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const versionFiche = useVersionFiche()
 
   // L'URL porte l'onglet (`?tab=`, lu au montage, réécrit par
   // history.replaceState pour ne pas remonter la page par le routeur) ; la
@@ -421,6 +425,7 @@ export default function EditEspecePage() {
     ])
       .then(([famillesData, especeData, fournisseursData]) => {
         setFamilles(Array.isArray(famillesData) ? famillesData : [])
+        versionFiche.retenir(especeData)
         setEspeceNom(especeData.nom ?? especeId)
         setEspeceType(especeData.type ?? null)
         setUniteRendementEspece(
@@ -487,16 +492,17 @@ export default function EditEspecePage() {
         })
         router.push("/maraichage/especes")
       })
-  }, [especeId, form, router, toast, reloadVarietes])
+  }, [especeId, form, router, toast, reloadVarietes, versionFiche])
 
   const onSubmit = async (data: UpdateEspeceInput) => {
     setIsSubmitting(true)
     try {
-      const response = await fetch(`/api/especes/${encodeURIComponent(especeId)}`, {
+      const response = await envoyerFiche(versionFiche, data, (corps) => fetch(`/api/especes/${encodeURIComponent(especeId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
+        body: JSON.stringify(corps),
+      }), confirmDialog)
+      if (!response) throw new Error(MESSAGE_FICHE_NON_ENREGISTREE)
 
       if (!response.ok) {
         const error = await response.json()
@@ -625,10 +631,19 @@ export default function EditEspecePage() {
             stockGraines: varieteForm.stockGraines ? parseFloat(varieteForm.stockGraines) : null,
             stockPlants: varieteForm.stockPlants ? parseInt(varieteForm.stockPlants) : null,
             description: varieteForm.description || null,
+            // Version de la variété ouverte : le serveur refuse si elle a été modifiée ailleurs.
+            ...(typeof editingVariete.version === "number" ? { versionLue: editingVariete.version } : {}),
           }),
         })
         if (!res.ok) {
-          const err = await res.json()
+          const err = await res.json().catch(() => ({}))
+          if (res.status === 409 && err.code === "MODIFIE_AILLEURS" && typeof err.versionActuelle === "number") {
+            // La saisie reste ouverte ; un second « Enregistrer » l'impose en connaissance de cause.
+            setEditingVariete({ ...editingVariete, version: err.versionActuelle })
+            // La liste est relue : fermer ce dialogue montre bien la variété à jour.
+            void reloadVarietes()
+            throw new Error(`${err.error} Enregistrez de nouveau pour imposer votre saisie, ou fermez pour voir la variété à jour.`)
+          }
           throw new Error(err.error || "Erreur")
         }
         await reloadVarietes() // recharge avec avisStats à jour

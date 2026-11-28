@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { lireConflitVersion, useVersionFiche } from "@/hooks/use-version-fiche"
 import { BoutonPartagerRecolte } from "@/components/avis/PartagerRecolte"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import {
@@ -67,6 +68,7 @@ export default function EditRecoltePage() {
     unite: UniteQuantite
   } | null>(null)
 
+  const versionFiche = useVersionFiche()
   const form = useForm<RecolteFormData>({
     defaultValues: {
       date: format(new Date(), "yyyy-MM-dd"),
@@ -84,6 +86,7 @@ export default function EditRecoltePage() {
         return res.json()
       })
       .then((data) => {
+        versionFiche.retenir(data)
         setRecolteInfo({
           especeId: data.especeId,
           especeNom: data.espece?.nom ?? data.especeId,
@@ -112,7 +115,7 @@ export default function EditRecoltePage() {
         })
         router.push("/maraichage/recoltes")
       })
-  }, [recolteId, form, router, toast])
+  }, [recolteId, form, router, toast, versionFiche])
 
   const onSubmit = async (data: RecolteFormData, event?: React.BaseSyntheticEvent) => {
     // QA cmv2r0qua — filet FormData, comme la saisie : la date visible dans le
@@ -139,14 +142,28 @@ export default function EditRecoltePage() {
       const response = await fetch(`/api/recoltes/${recolteId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(versionFiche.joindre({
           ...data,
           date: new Date(dateSoumise).toISOString(),
           // La péremption se corrige avec la date : le serveur refuse une
           // récolte datée après elle, et aucun autre écran ne la modifie.
           datePeremption: data.datePeremption ? new Date(data.datePeremption).toISOString() : null,
-        }),
+        })),
       })
+
+      // Fiche modifiée ailleurs depuis son ouverture : rien n'est enregistré, la
+      // saisie reste à l'écran, et l'on choisit d'insister ou de recharger.
+      const conflit = await lireConflitVersion(response)
+      if (conflit) {
+        if (await confirmDialog(`${conflit.message} Enregistrer quand même vos valeurs à la place de celles enregistrées entre-temps ? Sinon, annulez puis rechargez la page pour voir la fiche à jour.`)) {
+          versionFiche.adopter(conflit.versionActuelle)
+          // La date contrôlée plus haut repart telle quelle : le renvoi n'a plus
+          // l'événement du formulaire pour la relire.
+          return await onSubmit({ ...data, date: dateSoumise })
+        }
+        setSubmitError("Récolte modifiée ailleurs : rien n'a été enregistré. Rechargez la page pour voir la fiche à jour.")
+        return
+      }
 
       if (!response.ok) {
         const error = await response.json().catch(() => null)

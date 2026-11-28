@@ -20,6 +20,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from "@/lib/api/version-fiche"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { deleteAutoEntry } from "@/lib/auto-compta"
 import { annulerFactureLiee } from "@/lib/facture-utils"
@@ -107,6 +108,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
       if (existing.statut === 'vendu' || existing.factureId) return NextResponse.json({ error: 'Ce lot est vendu. Corrigez la vente ou sa facture, ou annulez sa vente avant de modifier la récolte.' }, { status: 409 })
       const body = await request.json()
+      // Version de fiche : le formulaire resté ouvert ne réécrit pas ce qui a changé ailleurs.
+      const lecture = lireVersionLue(body)
+      if (!lecture.ok) return NextResponse.json({ error: lecture.erreur }, { status: 400 })
+      // Avec une version lue : verrou de ligne, relecture de la version, refus si elle a avancé.
+      await controlerVersionFiche(tx, 'recoltes_arbres', recolteId, lecture.version, 'Récolte')
 
       // Production 2026-09-04 : un maraîcher a saisi deux fois la même récolte à
       // une minute d'écart, seule la date différait — l'écran n'offrait aucune
@@ -276,6 +282,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
           destinationCommerce: texteOuNull(body.destinationCommerce),
           conditionnement: texteOuNull(body.conditionnement),
           statutBioSnapshot,
+          ...INCREMENT_VERSION,
         },
         include: {
           arbre: {
@@ -306,6 +313,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return NextResponse.json(warnings.length > 0 ? { ...recolte, warnings } : recolte)
     })
   } catch (err) {
+    if (err instanceof FicheModifieeAilleurs) return err.reponse()
     if (err instanceof ErreurCommerciale) return NextResponse.json({ error: err.message }, { status: err.status })
     if (err instanceof ErreurVerger) return NextResponse.json({ error: err.message, champ: err.champ }, { status: err.status })
     if (err instanceof ErreurReglement) return NextResponse.json({ error: err.message }, { status: err.status })

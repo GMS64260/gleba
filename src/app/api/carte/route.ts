@@ -23,6 +23,7 @@ export async function GET() {
       where: { userId: session!.user.id },
       select: {
         id: true,
+        version: true,
         nom: true,
         userId: true,
         geometry: true,
@@ -223,6 +224,7 @@ export async function POST(request: NextRequest) {
       },
       select: {
         id: true,
+        version: true,
         nom: true,
         userId: true,
         geometry: true,

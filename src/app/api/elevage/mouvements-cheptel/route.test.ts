@@ -94,7 +94,7 @@ describe('POST mouvements-cheptel', () => {
     }) })
     expect(mocks.lotUpdateMany).toHaveBeenCalledWith({
       where: { id: 12, userId: 'user-1' },
-      data: { parcelleGeoId: 'parcelle-2' },
+      data: { parcelleGeoId: 'parcelle-2', version: { increment: 1 } },
     })
   })
 
@@ -109,7 +109,7 @@ describe('POST mouvements-cheptel', () => {
     expect(response.status).toBe(201)
     expect(mocks.animalUpdateMany).toHaveBeenCalledWith({
       where: { id: 7, userId: 'user-1' },
-      data: { parcelleGeoId: 'parcelle-2' },
+      data: { parcelleGeoId: 'parcelle-2', version: { increment: 1 } },
     })
     expect(mocks.lotUpdateMany).not.toHaveBeenCalled()
   })
