@@ -755,7 +755,8 @@ function CollecteView() {
       return Promise.all([
         fetch("/api/elevage/animaux?statut=actif", { signal }).then((r) => r.json()),
         fetch("/api/elevage/lots?statut=actif", { signal }).then((r) => r.json()),
-        fetch(`/api/elevage/collectes-lait?from=${from}&to=${to}`, { signal }).then((r) => r.json()),
+        // Une erreur n'est pas une fenêtre vide : les cases restent fermées et l'erreur est dite.
+        fetch(`/api/elevage/collectes-lait?from=${from}&to=${to}`, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Collectes illisibles (${r.status})`)))),
         fetch("/api/elevage/attentes", { signal }).then((r) => r.json()),
         // Bilan matière des 7 jours affichés et du mois (2026-11-03) ; un échec
         // n'empêche pas la saisie.
@@ -769,7 +770,10 @@ function CollecteView() {
         return
       }
       setLoading(false)
-      if (reponse.etat === "erreur") return
+      if (reponse.etat === "erreur") {
+        toast({ variant: "destructive", title: "Collectes non chargées", description: "La saisie reste fermée pour ne pas écraser une traite existante. Actualisez la page." })
+        return
+      }
       setFenetreEnChargement(false)
       const [a, l, c, attentes, bilan] = reponse.donnees
       {
@@ -1222,6 +1226,9 @@ function CellSaisie(props: {
       {props.value == null && (
         <button
           type="button"
+          // Fermé comme le champ pendant le chargement de la fenêtre : la case
+          // paraît vide alors qu'une traite existe peut-être déjà pour ce jour.
+          disabled={props.saving}
           onClick={props.onIdemHier}
           title="Recopier la valeur d'hier"
           className="inline-flex min-h-11 touch-manipulation items-center gap-1 px-2 text-xs text-slate-600 hover:text-slate-800"

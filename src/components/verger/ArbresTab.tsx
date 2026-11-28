@@ -654,6 +654,8 @@ export function ArbresTab() {
     }
     // La dernière espèce saisie gagne : les porte-greffes d'une espèce précédente ne s'affichent plus.
     let actif = true
+    // Les porte-greffes de l'espèce précédente ne restent pas proposés pendant la lecture.
+    setPortesGreffeOptions([])
     fetch(`/api/verger/porte-greffes?especeId=${encodeURIComponent(especeCle)}`)
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((d) => { if (actif) setPortesGreffeOptions(d.data || []) })

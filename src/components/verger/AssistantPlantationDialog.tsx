@@ -382,6 +382,8 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
     }
     // Le dernier type choisi gagne : les essences d'un type précédent ne s'affichent plus.
     let actif = true
+    // Les essences du type précédent ne restent pas proposées pendant la lecture.
+    setEssencesDispo([])
     fetch(`/api/verger/essences-disponibles?type=${state.typeFormation}`)
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((d) => { if (actif) setEssencesDispo(d.data || []) })
@@ -403,6 +405,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
     const especeId = essenceItemSelectionnee.id.replace(/^fruitier::/, "")
     // La dernière essence choisie gagne.
     let actif = true
+    setPortesGreffe([])
     fetch(`/api/verger/porte-greffes?especeId=${encodeURIComponent(especeId)}`)
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((d) => { if (actif) setPortesGreffe(d.data || []) })
