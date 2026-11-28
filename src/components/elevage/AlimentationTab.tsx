@@ -56,6 +56,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { confirmDialog } from "@/lib/global-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { useDernierChargeur } from "@/hooks/use-chargement"
 import { refusDansDialogue, useVersionFiche } from "@/hooks/use-version-fiche"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
 import { symboleDevise, formatMontantDevise, todayLocalISO } from '@/lib/format-utils'
@@ -1358,7 +1359,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
     return lots.find((lot) => String(lot.id) === formData.lotId)?.especeAnimale?.id ?? null
   }, [animaux, formData.animalId, formData.cible, formData.lotId, lots])
 
-  const fetchData = React.useCallback(async () => {
+  // La dernière demande gagne, et un rechargement après une action relit avec
+  // les filtres affichés (jamais ceux de la fermeture qui l'a lancé).
+  const chargerSoins = React.useCallback(async (estActuelle: () => boolean) => {
     setIsLoading(true)
     try {
       let url = periode === "toutes"
@@ -1383,44 +1386,53 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
         const payload = await response.json().catch(() => null)
         throw new Error(`${ressource} : ${payload?.error || `HTTP ${response.status}`}`)
       }
-      const soinsJson = await soinsRes.json()
+      const [soinsJson, lotsJson, animauxJson, stocksJson] = await Promise.all([soinsRes.json(), lotsRes.json(), animauxRes.json(), stocksRes.json()])
+      if (!estActuelle()) return
       setSoins(soinsJson.data)
       setTotalSoins(soinsJson.meta?.total ?? soinsJson.data.length)
-      setLots((await lotsRes.json()).data)
-      setAnimaux((await animauxRes.json()).data)
-      setStocksMedicaments((await stocksRes.json()).data)
+      setLots(lotsJson.data)
+      setAnimaux(animauxJson.data)
+      setStocksMedicaments(stocksJson.data)
     } catch (error) {
+      if (!estActuelle()) return
       toast({
         variant: "destructive",
         title: "Chargement incomplet",
         description: `${error instanceof Error ? error.message : "ressource inconnue"}. Actualisez la vue ; les données déjà chargées restent affichées.`,
       })
     } finally {
-      setIsLoading(false)
+      if (estActuelle()) setIsLoading(false)
     }
   }, [filterFait, periode, anneeExercice, toast])
+  const fetchData = useDernierChargeur(chargerSoins)
 
-  React.useEffect(() => { fetchData() }, [fetchData])
+  React.useEffect(() => { void fetchData() }, [fetchData, chargerSoins])
 
   React.useEffect(() => {
     const suffix = especeIdSelectionnee
       ? `?especeId=${encodeURIComponent(especeIdSelectionnee)}`
       : ""
+    // La dernière espèce gagne : le catalogue lent d'un autre animal ne
+    // préremplit plus les délais d'attente du soin en cours de saisie.
+    let actif = true
     fetch(`/api/elevage/produits-veterinaires${suffix}`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("catalogue")))
       .then((payload) => {
+        if (!actif) return
         const data = payload.data ?? []
         setProduits(data)
         setFormData((current) =>
           preremplirDelaisDepuisCatalogue(current, data, editingSoinIdRef.current !== null))
       })
       .catch(() => {
+        if (!actif) return
         toast({
           variant: "destructive",
           title: "Référentiel vétérinaire indisponible",
           description: "La saisie libre reste disponible ; réessayez avant d’utiliser un délai prérempli.",
         })
       })
+    return () => { actif = false }
   }, [especeIdSelectionnee, toast])
 
   const ajouterLotPharmacie = async () => {

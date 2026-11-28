@@ -162,3 +162,36 @@ export async function lireJson<T>(url: string, signal?: AbortSignal): Promise<T>
   }
   return (await reponse.json()) as T
 }
+
+/**
+ * Pour un chargeur écrit à la main (`fetchData`) qu'on ne réécrit pas en
+ * `useLecture` : deux garanties en une ligne.
+ *
+ * - La fonction rendue est STABLE et appelle toujours le chargeur du rendu
+ *   courant : un rechargement lancé après une action relit avec les filtres
+ *   affichés, jamais avec ceux de la fermeture qui l'a capturé.
+ * - Le chargeur reçoit `estActuelle` : faux dès qu'une demande plus récente
+ *   est partie ou que l'écran est démonté. Il ne range rien si elle est fausse.
+ *
+ *   const charger = React.useCallback(async (estActuelle: () => boolean) => {
+ *     const res = await fetch(url)
+ *     if (!estActuelle()) return
+ *     setDonnees(await res.json())
+ *   }, [filtre])
+ *   const fetchData = useDernierChargeur(charger)
+ *   React.useEffect(() => { void fetchData() }, [fetchData, charger])   // `charger` change avec les filtres
+ */
+export function useDernierChargeur<R = void>(chargeur: (estActuelle: () => boolean) => Promise<R>): () => Promise<R> {
+  const courant = React.useRef(chargeur)
+  courant.current = chargeur
+  const numero = React.useRef(0)
+  const monte = React.useRef(true)
+  React.useEffect(() => {
+    monte.current = true
+    return () => { monte.current = false }
+  }, [])
+  return React.useCallback(() => {
+    const n = ++numero.current
+    return courant.current(() => monte.current && n === numero.current)
+  }, [])
+}

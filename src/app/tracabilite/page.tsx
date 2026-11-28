@@ -398,8 +398,18 @@ function TraçabilitéContent() {
 
     // Registre d'un module fermé au membre connecté (élevage, culture) : la
     // route répond 403 ; son message s'affiche à la place du registre.
+    // Le dernier registre demandé gagne : la réponse lente d'un autre onglet
+    // ou d'une autre année ne remplace plus le registre affiché.
+    let actif = true
     const refusDe = async (res: Response) => {
-      if (res.status === 403) setRefusRegistre(await messageErreurReponse(res))
+      if (res.status !== 403) return
+      const message = await messageErreurReponse(res)
+      if (actif) setRefusRegistre(message)
+    }
+    const ranger = async <T,>(res: Response, appliquer: (donnees: T) => void) => {
+      if (!res.ok) return refusDe(res)
+      const donnees = (await res.json()) as T
+      if (actif) appliquer(donnees)
     }
     const fetchData = async () => {
       setLoading(true)
@@ -407,29 +417,26 @@ function TraçabilitéContent() {
       try {
         if (activeTab === "phyto") {
           const res = await fetch(`/api/tracabilite/registre-phyto?annee=${selectedYear}`)
-          if (res.ok) setPhytoData(await res.json())
-          else await refusDe(res)
+          await ranger(res, setPhytoData)
         } else if (activeTab === "culture") {
           const res = await fetch(`/api/tracabilite/registre-culture?annee=${selectedYear}`)
-          if (res.ok) setCultureData(await res.json())
-          else await refusDe(res)
+          await ranger(res, setCultureData)
         } else if (activeTab === "sanitaire") {
           const res = await fetch(`/api/tracabilite/carnet-sanitaire?annee=${selectedYear}`)
-          if (res.ok) setSanitaireData(await res.json())
-          else await refusDe(res)
+          await ranger(res, setSanitaireData)
         } else if (activeTab === "elevage") {
           const res = await fetch(`/api/tracabilite/registre-elevage?annee=${selectedYear}`)
-          if (res.ok) setElevageData(await res.json())
-          else await refusDe(res)
+          await ranger(res, setElevageData)
         }
       } catch (err) {
         console.error("Erreur chargement tracabilite:", err)
       } finally {
-        setLoading(false)
+        if (actif) setLoading(false)
       }
     }
 
     fetchData()
+    return () => { actif = false }
   }, [activeTab, selectedYear, session?.user, etatRestaure])
 
   const toggleCulture = (id: number) => {
