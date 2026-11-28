@@ -193,7 +193,7 @@ describe("PATCH /api/comptabilite/ventes-manuelles — écriture dérivée", () 
 
     expect(res.status).toBe(200)
     expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 909, userId: "u1" }, data: { paye: true } })
-    expect(mocks.sourceUpdateMany).toHaveBeenCalledWith({ where: { id: 167, userId: "u1", annule: false, factureId: null }, data: { paye: true } })
+    expect(mocks.sourceUpdateMany).toHaveBeenCalledWith({ where: { id: 167, userId: "u1", annule: false, factureId: null }, data: { paye: true, version: { increment: 1 } } })
   })
 
   it("nomme un mode de règlement hors liste refusé par la validation", async () => {
@@ -211,7 +211,7 @@ describe("pointage et source d’élevage", () => {
   it("défaire un pointage corrige aussi la vente d’origine", async () => {
     mocks.venteFindFirst.mockResolvedValue({ ...venteManuelle, auto: true, sourceType: "vente_produit", sourceId: 167 })
     expect((await PATCH(requete("PATCH", { id: 12, paye: false, modeReglement: "Chèque" }))).status).toBe(200)
-    expect(mocks.sourceUpdateMany).toHaveBeenCalledWith({ where: { id: 167, userId: "u1", annule: false, factureId: null }, data: { paye: false } })
+    expect(mocks.sourceUpdateMany).toHaveBeenCalledWith({ where: { id: 167, userId: "u1", annule: false, factureId: null }, data: { paye: false, version: { increment: 1 } } })
     expect(mocks.venteUpdate).toHaveBeenCalledWith({ where: { id: 12, userId: "u1" }, data: { paye: false, modeReglement: "Chèque" } })
   })
   it("refuse une source disparue, annulée, facturée ou hors du compte sans écrire le miroir", async () => {
