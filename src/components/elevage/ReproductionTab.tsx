@@ -2241,7 +2241,7 @@ function DialogSaillie(props: {
         agentInseminateur: "", semenceLot: "", pereExterneRef: "", notes: "",
       })
     }
-  }, [props.open, props.editingSaillie])
+  }, [props.open, props.editingSaillie, versionSaillie])
   const [warning, setWarning] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
 

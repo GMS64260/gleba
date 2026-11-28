@@ -154,7 +154,7 @@ export default function EditAssociationPage() {
       }
     }
     loadData()
-  }, [id, form, router, toast])
+  }, [id, form, router, toast, versionFiche])
 
   const onSubmit = async (data: UpdateAssociationInput) => {
     setIsSubmitting(true)

@@ -76,8 +76,8 @@ describe('POST /api/elevage/lots/[id]/animaux — composer un lot en une fois', 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ data: { ajoutes: 2, retires: 1 } })
     expect(mocks.animalUpdate).toHaveBeenCalledTimes(3)
-    expect(mocks.animalUpdate).toHaveBeenCalledWith({ where: { id: 1 }, data: { lotId: 81, prixAchatInclusDansLot: false } })
-    expect(mocks.animalUpdate).toHaveBeenCalledWith({ where: { id: 4 }, data: { lotId: null, prixAchatInclusDansLot: false } })
+    expect(mocks.animalUpdate).toHaveBeenCalledWith({ where: { id: 1 }, data: { lotId: 81, prixAchatInclusDansLot: false, version: { increment: 1 } } })
+    expect(mocks.animalUpdate).toHaveBeenCalledWith({ where: { id: 4 }, data: { lotId: null, prixAchatInclusDansLot: false, version: { increment: 1 } } })
     expect(mocks.enregistrerChangementLot).toHaveBeenCalledWith(
       expect.anything(), 'user-1', 1, 79, 81, expect.any(Date), 'Composition du lot',
     )

@@ -185,7 +185,7 @@ export default function EditITPPage() {
       }
     }
     loadData()
-  }, [id, form, toast, router])
+  }, [id, form, toast, router, versionFiche])
 
   const onSubmit = async (data: UpdateITPInput, event?: React.BaseSyntheticEvent) => {
     setIsSubmitting(true)

@@ -178,7 +178,7 @@ export function SelectionSubTab() {
       // (un formulaire vide enregistré effacerait le pedigree existant).
       .catch(() => {})
     return () => { annule = true }
-  }, [testAnimalId])
+  }, [testAnimalId, versionPed])
   // Un résultat de compatibilité ne vaut que pour le couple qui l'a produit.
   React.useEffect(() => { setCoi(null) }, [femelleId, maleId])
 

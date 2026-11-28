@@ -164,7 +164,7 @@ export default function EditRotationPage() {
       }
     }
     loadData()
-  }, [id, form, toast, router])
+  }, [id, form, toast, router, versionFiche])
 
   // Planches rattachées telles que le serveur les a rendues en dernier. Seules
   // les cases changées depuis partent : deux onglets qui cochent chacun une

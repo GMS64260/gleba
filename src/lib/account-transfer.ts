@@ -1128,15 +1128,7 @@ export async function importAccount(
  * enregistrer. D'autres modèles ont un champ `version` qui est une donnée.
  */
 // eslint-disable-next-line no-restricted-syntax -- noms de modèles Prisma, sans accent par construction
-const MODELES_A_VERSION_DE_FICHE = new Set([
-  "Culture", "Recolte", "Intervention", "ITP", "Espece", "Variete",
-  "UserStockEspece", "Association", "Rotation", "Client", "Fournisseur", "DocumentCommercial",
-  "Boutique", "CommandeBoutique", "Exploitation", "Arbre", "ObjetJardin", "LotArbres",
-  "RecolteArbre", "ObservationSante", "ParcelleGeo", "Abattage", "VenteProduit", "ProductionOeuf",
-  "ProductionRuche", "NaissanceAnimale", "Saillie", "PlanRation", "ReservationElevage", "ConsommationAliment",
-  "SoinAnimal", "LotAnimaux", "Animal", "JustificatifAlimentElevage", "JustificatifEquarrissageElevage", "ProphylaxieElevage",
-  "PreparationDocumentCirculation", "LieuDetentionElevage", "IntervenantElevage", "PedigreeElevage", "EspeceAnimale",
-])
+const MODELES_A_VERSION_DE_FICHE = new Set("Culture Recolte Intervention ITP Espece Variete UserStockEspece Association Rotation Client Fournisseur DocumentCommercial Boutique CommandeBoutique Exploitation Arbre ObjetJardin LotArbres RecolteArbre ObservationSante ParcelleGeo Abattage VenteProduit ProductionOeuf ProductionRuche NaissanceAnimale Saillie PlanRation ReservationElevage ConsommationAliment SoinAnimal LotAnimaux Animal JustificatifAlimentElevage JustificatifEquarrissageElevage ProphylaxieElevage PreparationDocumentCirculation LieuDetentionElevage IntervenantElevage PedigreeElevage EspeceAnimale".split(" "))
 
 function buildScalarData(meta: ModelMeta, row: Row): Row {
   const out: Row = {}

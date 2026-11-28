@@ -492,7 +492,7 @@ export default function EditEspecePage() {
         })
         router.push("/maraichage/especes")
       })
-  }, [especeId, form, router, toast, reloadVarietes])
+  }, [especeId, form, router, toast, reloadVarietes, versionFiche])
 
   const onSubmit = async (data: UpdateEspeceInput) => {
     setIsSubmitting(true)
