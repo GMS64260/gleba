@@ -136,6 +136,7 @@ describe('intégrité des références de réservation', () => {
       data: {
         naissanceId: 12,
         petitNaissanceId: null,
+        version: { increment: 1 },
       },
     })
   })

@@ -9,6 +9,7 @@
  * = ancienne + days. Sinon utilise `date` comme valeur absolue.
  */
 
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
@@ -38,7 +39,8 @@ export async function POST(request: NextRequest) {
       // Décalage absolu : tous les soins reportés à la même date
       const r = await prisma.soinAnimal.updateMany({
         where: { id: { in: ids }, userId: session.user.id },
-        data: { datePrevue: date },
+        // La date prévue figure dans le formulaire du soin : sa version avance.
+        data: { datePrevue: date, ...INCREMENT_VERSION },
       })
       return NextResponse.json({ updated: r.count, mode: 'absolute' })
     }
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
       soins.map((s) => {
         const next = new Date(s.datePrevue!)
         next.setUTCDate(next.getUTCDate() + (days ?? 0))
-        return prisma.soinAnimal.update({ where: { id: s.id }, data: { datePrevue: next } })
+        return prisma.soinAnimal.update({ where: { id: s.id }, data: { datePrevue: next, ...INCREMENT_VERSION } })
       })
     )
 

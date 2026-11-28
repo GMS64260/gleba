@@ -36,6 +36,7 @@
  *    garde son heure réelle (ticket cmvnp6s3z, 2026-10-25).
  */
 
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { Prisma } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import { calendrierInjections, derniereInjectionActive, ajouterJours, type InjectionEtat } from './injections'
@@ -352,7 +353,8 @@ export async function daterInjection(
           : null
       }
 
-      const updated = await tx.soinAnimal.update({ where: { id: soinId }, data })
+      // Date, « fait » et délais figurent dans le formulaire du soin : sa version avance.
+      const updated = await tx.soinAnimal.update({ where: { id: soinId }, data: { ...data, ...INCREMENT_VERSION } })
       const cibles = await ciblesLaitAffectees(tx, userId, courant.animalId, courant.lotId)
       const f = fenetreSoin(courant.date, updated.date, courant.finAttenteLait, updated.finAttenteLait)
       if (f) await resyncEcartementLait(tx, userId, cibles, f.min, f.max)
@@ -443,7 +445,8 @@ export async function mettreAJourProtocoleSoin(
     }) ?? existing
     const delais = delaisFinaux(stockes, protocole)
     if (delaisFournis) Object.assign(data, delais, { delaiAttenteSource: 'prescription' })
-    await tx.soinAnimal.update({ where: { id: soinId }, data })
+    // Produit, notes et délais figurent dans le formulaire du soin : sa version avance.
+    await tx.soinAnimal.update({ where: { id: soinId }, data: { ...data, ...INCREMENT_VERSION } })
     const avant = await lireInjections(tx, userId, soinId)
     const premiereRealisee = avant.some((i) => i.numero === 1 && i.statut === 'realisee')
     await synchroniserInjections(tx, userId, soinId, { debut, nombre, intervalleHeures: nombre > 1 ? intervalle : null }, {

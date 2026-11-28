@@ -138,7 +138,12 @@ export function ReservationsSubTab() {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: r.id, statut }),
     })
-    if (res.ok) { setReservations((prev) => prev.map((x) => (x.id === r.id ? { ...x, statut } : x))) }
+    // La ligne reprend la réponse du serveur, version comprise : sinon le formulaire
+    // ouvert juste après serait refusé pour ce propre changement de statut.
+    if (res.ok) {
+      const enregistree = (await res.json().catch(() => null))?.data as Partial<Reservation> | undefined
+      setReservations((prev) => prev.map((x) => (x.id === r.id ? { ...x, statut, ...(enregistree ?? {}) } : x)))
+    }
     else toast({ variant: "destructive", title: "Erreur" })
   }
 

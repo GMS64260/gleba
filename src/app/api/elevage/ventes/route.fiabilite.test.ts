@@ -48,7 +48,7 @@ const request = (method: string, body?: object, query = '') => new NextRequest(
   },
 )
 const venteInitiale = () => ({
-  id: 11, userId: 'review', date: new Date('2026-10-28T10:00:00Z'), type: 'oeufs',
+  id: 11, version: 0, userId: 'review', date: new Date('2026-10-28T10:00:00Z'), type: 'oeufs',
   quantite: 12, unite: 'unite', prixUnitaire: 1, prixTotal: 12, client: 'Client test',
   paye: false, annule: false, factureId: null, animalId: null, lotFromageId: null,
   tauxTVA: 5.5, notes: null, description: null, destinationId: null,
@@ -76,7 +76,9 @@ beforeEach(() => {
   m.venteTx.mockImplementation(async (args?: { where?: { id?: unknown } }) =>
     typeof args?.where?.id === 'object' && args.where.id !== null ? autreVenteActive : structuredClone(courante))
   m.venteUpdate.mockImplementation(async ({ data }) => {
-    Object.assign(courante, data)
+    // Comme la base : l'incrément de version s'applique, il ne se stocke pas tel quel.
+    const { version, ...champs } = data as { version?: { increment: number } } & Record<string, unknown>
+    Object.assign(courante, champs, version ? { version: (courante as { version: number }).version + version.increment } : {})
     return structuredClone(courante)
   })
   m.venteCreate.mockImplementation(async ({ data }) => {

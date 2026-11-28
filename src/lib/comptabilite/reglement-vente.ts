@@ -1,3 +1,4 @@
+import { INCREMENT_VERSION } from '@/lib/api/version-fiche'
 import { verrouillerReglements } from '@/lib/comptabilite/verrou-reglements'
 import type { Prisma, VenteManuelle } from '@prisma/client'
 import prisma from '@/lib/prisma'
@@ -42,7 +43,8 @@ export async function enregistrerReglementVente(
         const count = typeof intention.paye === 'boolean'
           ? (await tx.venteProduit.updateMany({
               where: { id: existing.sourceId, userId, annule: false, factureId: null },
-              data: { paye: intention.paye },
+              // « Payée » figure dans le formulaire de la vente : sa version avance.
+              data: { paye: intention.paye, ...INCREMENT_VERSION },
             })).count
           : (await tx.$queryRaw<Array<{ id: number }>>`SELECT id FROM ventes_produits WHERE id = ${existing.sourceId} AND user_id = ${userId} AND annule = false AND facture_id IS NULL FOR UPDATE`).length
         if (count !== 1) {

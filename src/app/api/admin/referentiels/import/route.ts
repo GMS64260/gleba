@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
         for (const item of data.fournisseurs || []) {
           await db.fournisseur.upsert({
             where: { id: item.id },
-            update: { ...item },
+            update: { ...item, ...INCREMENT_VERSION },
             create: item,
           })
           stats.fournisseurs++
