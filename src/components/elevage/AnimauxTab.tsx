@@ -626,6 +626,8 @@ function AnimauxSubTab() {
       const conflitVersion = isEdit ? await lireConflitVersion(response) : null
       if (conflitVersion) {
         versionAnimalOuvert.current = conflitVersion.versionActuelle
+        // La liste est relue : fermer ce dialogue montre bien la fiche à jour.
+        fetchData()
         throw new Error(`${conflitVersion.message} Enregistrez de nouveau pour imposer votre saisie, ou fermez pour voir la fiche à jour.`)
       }
       let refusDoublon: { code?: string; error?: string } | null = null

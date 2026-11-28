@@ -86,6 +86,17 @@ export const CHAMPS_HORS_FICHE = {
   recolte: ['statut', 'dateVente', 'dateSortie', 'prixKg', 'prixTotal', 'clientId', 'clientNom', 'factureId', 'consommationId', 'stockDisponibleCommercial', 'recolteOrigineId'],
 } as const
 
+/**
+ * `data` complété de l'incrément si l'écriture touche au moins un champ que le
+ * FORMULAIRE de la fiche renvoie. Pour les routes partagées avec des gestes de
+ * liste (résoudre, réformer, tracer…) qui écrivent d'autres champs.
+ */
+export function avecVersionSiTouche<T extends object>(data: T, champsFormulaire: readonly string[]): T & { version?: { increment: 1 } } {
+  return champsFormulaire.some((champ) => (data as Record<string, unknown>)[champ] !== undefined)
+    ? { ...data, ...INCREMENT_VERSION }
+    : data
+}
+
 /** `data` complété de l'incrément si l'écriture touche autre chose que des champs hors fiche. */
 export function avecVersionSiFiche<T extends object>(data: T, horsFiche: readonly string[]): T & { version?: { increment: 1 } } {
   return Object.keys(data).some((cle) => (data as Record<string, unknown>)[cle] !== undefined && !horsFiche.includes(cle))
@@ -93,16 +104,25 @@ export function avecVersionSiFiche<T extends object>(data: T, horsFiche: readonl
     : data
 }
 
-/** Tables dotées d'une version de fiche et d'une clé primaire `id`. */
-export type TableAVersion =
-  | 'itps' | 'especes' | 'varietes' | 'associations' | 'rotations'
-  | 'arbres' | 'objets_jardin' | 'lots_arbres' | 'recoltes_arbres' | 'observations_sante' | 'parcelles_geo'
-  | 'animaux' | 'lots_animaux' | 'naissances_animales' | 'saillies' | 'especes_animales'
-  | 'abattages' | 'ventes_produits' | 'production_oeufs' | 'productions_ruche'
-  | 'soins_animaux' | 'consommations_aliments' | 'plans_ration' | 'reservations_elevage'
-  | 'justificatifs_aliments_elevage' | 'justificatifs_equarrissage_elevage' | 'prophylaxies_elevage'
-  | 'lieux_detention_elevage' | 'intervenants_elevage'
-  | 'clients' | 'fournisseurs' | 'documents_commerciaux' | 'boutiques' | 'commandes_boutique'
+/**
+ * Tables dotées d'une version de fiche, avec la COLONNE de leur clé primaire.
+ * Les référentiels historiques n'ont pas de colonne `id` (`itps.it_plante`,
+ * `especes.espece`…) : interroger `"id"` y répondait 42703 et la route 500.
+ * Cette table sert aussi de liste blanche : seul un nom qui y figure entre
+ * dans la requête. Un test la compare au modèle Prisma (DMMF).
+ */
+export const CLE_PRIMAIRE_TABLE_A_VERSION = {
+  itps: 'it_plante', especes: 'espece', varietes: 'variete', associations: 'id', rotations: 'rotation',
+  arbres: 'id', objets_jardin: 'id', lots_arbres: 'id', recoltes_arbres: 'id', observations_sante: 'id', parcelles_geo: 'id',
+  animaux: 'id', lots_animaux: 'id', naissances_animales: 'id', saillies: 'id', especes_animales: 'espece_animale',
+  abattages: 'id', ventes_produits: 'id', production_oeufs: 'id', productions_ruche: 'id',
+  soins_animaux: 'id', consommations_aliments: 'id', plans_ration: 'id', reservations_elevage: 'id',
+  justificatifs_aliments_elevage: 'id', justificatifs_equarrissage_elevage: 'id', prophylaxies_elevage: 'id',
+  lieux_detention_elevage: 'id', intervenants_elevage: 'id',
+  clients: 'id', fournisseurs: 'fournisseur', documents_commerciaux: 'id', boutiques: 'id', commandes_boutique: 'id',
+} as const
+
+export type TableAVersion = keyof typeof CLE_PRIMAIRE_TABLE_A_VERSION
 
 type TransactionBrute = { $queryRawUnsafe: <T = unknown>(requete: string, ...valeurs: unknown[]) => Promise<T> }
 
@@ -115,7 +135,8 @@ type TransactionBrute = { $queryRawUnsafe: <T = unknown>(requete: string, ...val
  * refusé. Sans version lue (assistant, script, ancien onglet), rien n'est
  * verrouillé ni contrôlé : comportement d'avant.
  *
- * `table` est un littéral du type `TableAVersion`, jamais une saisie.
+ * `table` est un littéral du type `TableAVersion`, jamais une saisie, et la
+ * liste blanche ci-dessus est revérifiée à l'exécution.
  */
 export async function controlerVersionFiche(
   tx: TransactionBrute,
@@ -125,12 +146,16 @@ export async function controlerVersionFiche(
   quoi: string,
 ): Promise<void> {
   if (lue === undefined) return
-  const lignes = await tx.$queryRawUnsafe<Array<{ version: number }>>(`SELECT "version" FROM "${table}" WHERE "id" = $1 FOR UPDATE`, id)
+  const cle = Object.prototype.hasOwnProperty.call(CLE_PRIMAIRE_TABLE_A_VERSION, table) ? CLE_PRIMAIRE_TABLE_A_VERSION[table] : null
+  if (!cle) throw new Error(`Table sans version de fiche : ${String(table)}`)
+  // `FOR NO KEY UPDATE` : sérialise les écritures de la fiche sans bloquer les
+  // contrôles de clé étrangère des lignes qui la référencent (référentiels partagés).
+  const lignes = await tx.$queryRawUnsafe<Array<{ version: number }>>(`SELECT "version" FROM "${table}" WHERE "${cle}" = $1 FOR NO KEY UPDATE`, id)
   const enBase = lignes[0] ?? null
   if (versionFichePerimee(lue, enBase)) throw new FicheModifieeAilleurs(quoi, enBase?.version ?? null)
 }
 
-type ClientTransactionnel<Tx extends TransactionBrute> = { $transaction: <R>(action: (tx: Tx) => Promise<R>) => Promise<R> }
+type ClientTransactionnel<Tx extends TransactionBrute> = { $transaction: <R>(action: (tx: Tx) => Promise<R>, options?: { timeout?: number; maxWait?: number }) => Promise<R> }
 
 /**
  * Écriture d'une fiche hors transaction existante. Avec une version lue : la
@@ -148,8 +173,10 @@ export async function ecrireFicheVersionnee<Tx extends TransactionBrute, R>(
   ecrire: (db: Tx) => Promise<R>,
 ): Promise<R> {
   if (lue === undefined) return ecrire(client)
+  // Délai porté à 15 s : certaines écritures de fiche propagent un changement
+  // (unité d'une espèce) et dépassaient les 5 s par défaut d'une transaction interactive.
   return client.$transaction(async (tx) => {
     await controlerVersionFiche(tx, table, id, lue, quoi)
     return ecrire(tx)
-  })
+  }, { timeout: 15_000, maxWait: 5_000 })
 }

@@ -640,6 +640,8 @@ export default function EditEspecePage() {
           if (res.status === 409 && err.code === "MODIFIE_AILLEURS" && typeof err.versionActuelle === "number") {
             // La saisie reste ouverte ; un second « Enregistrer » l'impose en connaissance de cause.
             setEditingVariete({ ...editingVariete, version: err.versionActuelle })
+            // La liste est relue : fermer ce dialogue montre bien la variété à jour.
+            void reloadVarietes()
             throw new Error(`${err.error} Enregistrez de nouveau pour imposer votre saisie, ou fermez pour voir la variété à jour.`)
           }
           throw new Error(err.error || "Erreur")

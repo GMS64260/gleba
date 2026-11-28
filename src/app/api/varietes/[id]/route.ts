@@ -156,7 +156,8 @@ export async function PUT(
           ...(existing.userId && body.partageCommunaute !== undefined
             ? { partageCommunaute: body.partageCommunaute === true }
             : {}),
-          ...INCREMENT_VERSION,
+          // Le partage à la communauté n'est pas un champ du formulaire : seul, il n'avance pas la version.
+          ...(Object.keys({ ...donnees, ...(renommage ?? {}) }).length > 0 ? INCREMENT_VERSION : {}),
         },
         include: {
           espece: true,

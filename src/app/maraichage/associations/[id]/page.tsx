@@ -35,8 +35,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { confirmDialog } from "@/lib/global-dialog"
-import { MESSAGE_FICHE_NON_ENREGISTREE, envoyerFiche, useVersionFiche } from "@/hooks/use-version-fiche"
 import { updateAssociationSchema, type UpdateAssociationInput } from "@/lib/validations/association"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
@@ -77,7 +75,6 @@ export default function EditAssociationPage() {
   const lectureSeule = status !== "loading" && session?.user?.role !== "ADMIN"
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const versionFiche = useVersionFiche()
   const [especes, setEspeces] = React.useState<Espece[]>([])
   const [familles, setFamilles] = React.useState<Famille[]>([])
   const [association, setAssociation] = React.useState<AssociationData | null>(null)
@@ -115,7 +112,6 @@ export default function EditAssociationPage() {
         }
 
         const associationData = await associationRes.json()
-        versionFiche.retenir(associationData)
         setAssociation(associationData)
 
         // Mettre a jour le formulaire
@@ -154,7 +150,7 @@ export default function EditAssociationPage() {
       }
     }
     loadData()
-  }, [id, form, router, toast, versionFiche])
+  }, [id, form, router, toast])
 
   const onSubmit = async (data: UpdateAssociationInput) => {
     setIsSubmitting(true)
@@ -184,12 +180,11 @@ export default function EditAssociationPage() {
         }
       }
 
-      const response = await envoyerFiche(versionFiche, corps, (envoi) => fetch(`/api/associations/${id}`, {
+      const response = await fetch(`/api/associations/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(envoi),
-      }), confirmDialog)
-      if (!response) throw new Error(MESSAGE_FICHE_NON_ENREGISTREE)
+        body: JSON.stringify(corps),
+      })
 
       if (!response.ok) {
         const error = await response.json()

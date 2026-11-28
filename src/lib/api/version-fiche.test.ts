@@ -1,5 +1,6 @@
+import { Prisma } from '@prisma/client'
 import { describe, expect, it } from 'vitest'
-import { FicheModifieeAilleurs, CHAMPS_HORS_FICHE, avecVersionSiFiche, controlerVersionFiche, ecrireFicheVersionnee, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from './version-fiche'
+import { FicheModifieeAilleurs, CHAMPS_HORS_FICHE, CLE_PRIMAIRE_TABLE_A_VERSION, avecVersionSiFiche, avecVersionSiTouche, controlerVersionFiche, ecrireFicheVersionnee, lireVersionLue, reponseFicheModifiee, versionFichePerimee } from './version-fiche'
 
 describe('lireVersionLue', () => {
   it('lit un entier, la sentinelle de création et l’absence', () => {
@@ -65,6 +66,14 @@ describe('avecVersionSiFiche', () => {
   })
 })
 
+describe('avecVersionSiTouche', () => {
+  it('n’avance que si un champ du formulaire est écrit', () => {
+    expect(avecVersionSiTouche({ resolu: true }, ['symptome', 'notes'])).not.toHaveProperty('version')
+    expect(avecVersionSiTouche({ resolu: true, notes: 'x' }, ['symptome', 'notes'])).toMatchObject({ version: { increment: 1 } })
+    expect(avecVersionSiTouche({ notes: undefined }, ['symptome', 'notes'])).not.toHaveProperty('version')
+  })
+})
+
 describe('controlerVersionFiche et ecrireFicheVersionnee', () => {
   const base = (version: number | null) => {
     const requetes: Array<{ sql: string; valeurs: unknown[] }> = []
@@ -78,7 +87,25 @@ describe('controlerVersionFiche et ecrireFicheVersionnee', () => {
   it('verrouille la ligne et laisse passer la version lue', async () => {
     const { tx, requetes } = base(4)
     await expect(controlerVersionFiche(tx, 'itps', 'itp-1', 4, 'Itinéraire')).resolves.toBeUndefined()
-    expect(requetes).toEqual([{ sql: 'SELECT "version" FROM "itps" WHERE "id" = $1 FOR UPDATE', valeurs: ['itp-1'] }])
+    // La clé d'un itinéraire est `it_plante`, pas `id`.
+    expect(requetes).toEqual([{ sql: 'SELECT "version" FROM "itps" WHERE "it_plante" = $1 FOR NO KEY UPDATE', valeurs: ['itp-1'] }])
+    await controlerVersionFiche(tx, 'animaux', 7, 4, 'Animal')
+    expect(requetes[1]).toEqual({ sql: 'SELECT "version" FROM "animaux" WHERE "id" = $1 FOR NO KEY UPDATE', valeurs: [7] })
+  })
+
+  it('refuse une table hors de la liste blanche', async () => {
+    await expect(controlerVersionFiche(base(1).tx, 'users; DROP TABLE x' as never, 1, 1, 'x')).rejects.toThrow('Table sans version de fiche')
+  })
+
+  it('nomme pour chaque table la vraie colonne de sa clé primaire et une colonne version (modèle Prisma)', () => {
+    const modeles = Prisma.dmmf.datamodel.models
+    for (const [table, cle] of Object.entries(CLE_PRIMAIRE_TABLE_A_VERSION)) {
+      const modele = modeles.find((m) => (m.dbName ?? m.name) === table)
+      expect(modele, table).toBeDefined()
+      const cles = modele!.fields.filter((f) => f.isId)
+      expect(cles.map((f) => f.dbName ?? f.name), table).toEqual([cle])
+      expect(modele!.fields.some((f) => f.name === 'version' && f.type === 'Int'), `${table}.version`).toBe(true)
+    }
   })
 
   it('refuse une version qui a avancé, ou une fiche disparue', async () => {

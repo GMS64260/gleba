@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
-import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from "@/lib/api/version-fiche"
+import { FicheModifieeAilleurs, avecVersionSiFiche, controlerVersionFiche, lireVersionLue } from "@/lib/api/version-fiche"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { MESSAGE_AMM_INVALIDE, numAMMValide } from "@/lib/tracabilite/amm"
 import { resoudreOperateurExploitation } from "@/lib/tracabilite/operateur-exploitation"
@@ -166,7 +166,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
       const observation = await tx.observationSante.update({
         where: { id: obsId },
-        data: { ...data, ...INCREMENT_VERSION },
+        // « Résolu » est un geste de la liste, hors formulaire : il ne fait pas avancer la version.
+        data: avecVersionSiFiche(data, ['resolu', 'dateResolution']),
         include: {
           arbre: { select: { id: true, nom: true, type: true } },
         },

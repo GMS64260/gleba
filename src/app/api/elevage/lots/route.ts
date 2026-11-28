@@ -11,7 +11,7 @@ import { ErreurReglement } from '@/lib/comptabilite/monnaie'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { FicheModifieeAilleurs, INCREMENT_VERSION, controlerVersionFiche, lireVersionLue } from '@/lib/api/version-fiche'
+import { FicheModifieeAilleurs, avecVersionSiFiche, controlerVersionFiche, lireVersionLue } from '@/lib/api/version-fiche'
 import { Prisma } from '@prisma/client'
 import { lotSchema } from '@/lib/validations/elevage-lot'
 import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
@@ -341,7 +341,8 @@ export async function PATCH(request: NextRequest) {
       }
       const updated = await tx.lotAnimaux.update({
         where: { id: parseInt(id) },
-        data: { ...updateData, ...INCREMENT_VERSION },
+        // Réformer, réactiver, clôturer : gestes de la liste, hors formulaire.
+        data: avecVersionSiFiche(updateData, ['statut', 'dateReforme']),
         include: { especeAnimale: true },
       })
       if (updateData.parcelleGeoId !== undefined && updated.parcelleGeoId !== existing.parcelleGeoId) {

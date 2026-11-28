@@ -8,7 +8,7 @@
 import { refusSuppressionParcelle, usagesParcelle } from '@/lib/parcelles/suppression'
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { FicheModifieeAilleurs, INCREMENT_VERSION, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
+import { FicheModifieeAilleurs, avecVersionSiTouche, ecrireFicheVersionnee, lireVersionLue } from '@/lib/api/version-fiche'
 import { irrigationCache } from '@/lib/irrigation-cache'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { updateParcelleSchema } from '@/lib/validations/parcelle'
@@ -155,7 +155,9 @@ export async function PUT(
     // Mise à jour en base
     const parcelle = await ecrireFicheVersionnee(prisma, 'parcelles_geo', id, lecture.version, 'Parcelle', (db) => db.parcelleGeo.update({
       where: { id },
-      data: { ...updateData, ...INCREMENT_VERSION },
+      // Seuls les champs du panneau font avancer la version : un tracé corrigé
+      // ou une couche ajoutée ne font pas refuser le panneau ouvert à côté.
+      data: avecVersionSiTouche(updateData, ['nom', 'usage', 'typeSol', 'couleur', 'notes']),
       select: parcelleSelect,
     }))
     // Le sol de la parcelle nourrit le conseil d'irrigation (ticket QA cmv2re9vl).

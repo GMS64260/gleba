@@ -66,7 +66,7 @@ export async function envoyerFiche<T extends object>(
   envoyer: (corps: object) => Promise<Response>,
   confirmer: (message: string) => Promise<boolean>,
 ): Promise<Response | null> {
-  // Deux essais au plus : un second refus (encore modifiée entre-temps) se traite comme le premier.
+  // Trois envois au plus : un nouveau refus (encore modifiée entre-temps) repose la question.
   for (let essai = 0; essai < 3; essai++) {
     const reponse = await envoyer(version.joindre(corps))
     const conflit = await lireConflitVersion(reponse)
@@ -99,7 +99,7 @@ export async function conflitDansDialogue<L extends object>(reponse: Response, l
   if (!conflit || !ligne) return null
   return {
     ligne: conflit.versionActuelle === null ? ligne : { ...ligne, version: conflit.versionActuelle },
-    message: `${conflit.message} Enregistrez de nouveau pour imposer votre saisie, ou fermez pour voir la fiche à jour.`,
+    message: messageConflitDialogue(conflit),
   }
 }
 
@@ -107,7 +107,7 @@ export const TITRE_FICHE_MODIFIEE = "Modifiée ailleurs"
 
 /** Message d'un refus dans un dialogue : la saisie reste ouverte, un second envoi l'impose. */
 export function messageConflitDialogue(conflit: ConflitVersion): string {
-  return `${conflit.message} Enregistrez de nouveau pour imposer votre saisie, ou fermez pour voir la fiche à jour.`
+  return `${conflit.message} Enregistrez de nouveau pour imposer votre saisie, ou fermez ce formulaire et actualisez la page pour voir la fiche à jour.`
 }
 
 /**
