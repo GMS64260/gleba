@@ -184,9 +184,12 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         const result = await res.json()
         if (!estActuelle()) return
         setTaches(result)
+      } else if (estActuelle()) {
+        // Lecture refusée : les tâches d'une autre semaine ne restent pas actionnables.
+        setTaches(null)
       }
     } catch {
-      // silent
+      if (estActuelle()) setTaches(null)
     } finally {
       if (estActuelle()) setLoadingTaches(false)
     }

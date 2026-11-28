@@ -96,6 +96,9 @@ export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTa
   // une autre parcelle (ou une autre planche) n'est plus proposée à celle-ci.
   const coordonneesAffichees = React.useRef("")
   coordonneesAffichees.current = `${planche.id}:${planche.parcelleGeo?.centroidLat}:${planche.parcelleGeo?.centroidLng}`
+  // Une estimation reçue ne survit pas au changement de planche ou de parcelle : « Appliquer » écrirait le sol de l'ancienne.
+  const coordonnees = coordonneesAffichees.current
+  React.useEffect(() => { setSoilEstimate(null) }, [coordonnees])
   const fetchSoilEstimate = async () => {
     if (!hasGPS) return
     const demandePour = coordonneesAffichees.current

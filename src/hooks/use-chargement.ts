@@ -180,6 +180,10 @@ export async function lireJson<T>(url: string, signal?: AbortSignal): Promise<T>
  *   }, [filtre])
  *   const fetchData = useDernierChargeur(charger)
  *   React.useEffect(() => { void fetchData() }, [fetchData, charger])   // `charger` change avec les filtres
+ *
+ * ATTENTION : la fonction rendue étant stable, un `useEffect(..., [fetchData])`
+ * seul ne se relance plus quand un filtre change. L'effet doit citer le
+ * chargeur interne (`charger`) dans ses dépendances, comme ci-dessus.
  */
 export type EtatChargeur<R> = {
   chargeur: (estActuelle: () => boolean) => Promise<R>

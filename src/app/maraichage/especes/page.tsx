@@ -365,6 +365,9 @@ function EspecesPageContent() {
       setPageCount(result.totalPages)
     } catch {
       if (!estActuelle()) return
+      // Les lignes d'un autre filtre ne restent pas affichées ni exportables sous le nouveau.
+      setData([])
+      setPageCount(0)
       toast({
         variant: "destructive",
         title: "Erreur",

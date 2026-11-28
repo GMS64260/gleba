@@ -414,6 +414,12 @@ function TraçabilitéContent() {
     const fetchData = async () => {
       setLoading(true)
       setRefusRegistre(null)
+      // Le registre de l'onglet demandé est vidé avant la lecture : s'il échoue,
+      // celui d'une autre année ne reste pas affiché ni imprimable sous la nouvelle.
+      if (activeTab === "phyto") setPhytoData(null)
+      else if (activeTab === "culture") setCultureData(null)
+      else if (activeTab === "sanitaire") setSanitaireData(null)
+      else if (activeTab === "elevage") setElevageData(null)
       try {
         if (activeTab === "phyto") {
           const res = await fetch(`/api/tracabilite/registre-phyto?annee=${selectedYear}`)
